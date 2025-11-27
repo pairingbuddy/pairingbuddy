@@ -17,6 +17,25 @@ def load_structure_spec():
         return yaml.safe_load(f)
 
 
+def load_shared_files_manifest():
+    """Load the shared files manifest."""
+    with open(TESTS_DIR / "shared-files.yaml") as f:
+        return yaml.safe_load(f)
+
+
+def get_skill_expected_files(skill_name: str, manifest: dict) -> list[str]:
+    """Get list of files a skill should have based on its bundles."""
+    skill_bundles = manifest.get("skill_files", {}).get(skill_name, [])
+    bundles = manifest.get("bundles", {})
+
+    files = []
+    for bundle_name in skill_bundles:
+        bundle_files = bundles.get(bundle_name, [])
+        files.extend(bundle_files)
+
+    return files
+
+
 def get_skill_category(skill_name: str, spec: dict) -> dict:
     """Find the category info for a skill.
 
@@ -94,3 +113,15 @@ def test_required_directories(skill_name):
         assert required_dir.exists(), (
             f"Skill '{skill_name}' ({category['name']}): Missing required directory '{dir_name}'"
         )
+
+
+def test_shared_files_exist(skill_name):
+    """Verify each skill has all shared files it should receive."""
+    skill_dir = SKILLS_DIR / skill_name
+
+    manifest = load_shared_files_manifest()
+    expected_files = get_skill_expected_files(skill_name, manifest)
+
+    for file_path in expected_files:
+        full_path = skill_dir / file_path
+        assert full_path.exists(), f"Skill '{skill_name}' missing shared file '{file_path}'"
