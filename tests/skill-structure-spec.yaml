@@ -13,6 +13,9 @@ categories:
     required_sections:
       - "## Workflow Rules"
       - "## When Stuck"
+    required_directories:
+      - modules
+      - reference
 
   # The main entry point that classifies and delegates
   orchestrator:
@@ -21,6 +24,9 @@ categories:
     required_sections:
       - "## Workflow"
       - "## Task Classification"
+    required_directories:
+      - modules
+      - subagent-templates
 
   # Bootstrap skill loaded at session start
   bootstrap:
@@ -28,6 +34,7 @@ categories:
       - using-mimer-code
     required_sections:
       - "## Critical Rules"
+    required_directories: []
 
   # Atomic skills that perform single operations
   atomic:
@@ -47,3 +54,5 @@ categories:
       - "## Critical Constraints"
       - "## Process"
       - "## Remember"
+    required_directories:
+      - reference

@@ -17,12 +17,19 @@ def load_structure_spec():
         return yaml.safe_load(f)
 
 
-def get_skill_category(skill_name: str, spec: dict) -> tuple[str, list[str]]:
-    """Find the category and required sections for a skill."""
+def get_skill_category(skill_name: str, spec: dict) -> dict:
+    """Find the category info for a skill.
+
+    Returns dict with 'name', 'required_sections', 'required_directories'.
+    """
     for category_name, category in spec["categories"].items():
         if skill_name in category["skills"]:
-            return category_name, category["required_sections"]
-    return "unknown", []
+            return {
+                "name": category_name,
+                "required_sections": category.get("required_sections", []),
+                "required_directories": category.get("required_directories", []),
+            }
+    return {"name": "unknown", "required_sections": [], "required_directories": []}
 
 
 def test_skill_md_exists(skill_name):
@@ -60,16 +67,30 @@ def test_required_sections(skill_name):
     sut = skill_md.read_text()
 
     spec = load_structure_spec()
-    category, required_sections = get_skill_category(skill_name, spec)
+    category = get_skill_category(skill_name, spec)
 
-    assert category != "unknown", (
+    assert category["name"] != "unknown", (
         f"Skill '{skill_name}' not found in any category in skill-structure-spec.yaml"
     )
 
     headings = extract_headings(sut)
     heading_texts = [f"## {h['text']}" for h in headings if h["level"] == 2]
 
-    for section in required_sections:
+    for section in category["required_sections"]:
         assert section in heading_texts, (
-            f"Skill '{skill_name}' ({category}): Missing required section '{section}'"
+            f"Skill '{skill_name}' ({category['name']}): Missing required section '{section}'"
+        )
+
+
+def test_required_directories(skill_name):
+    """Verify each skill has required subdirectories for its category."""
+    skill_dir = SKILLS_DIR / skill_name
+
+    spec = load_structure_spec()
+    category = get_skill_category(skill_name, spec)
+
+    for dir_name in category["required_directories"]:
+        required_dir = skill_dir / dir_name
+        assert required_dir.exists(), (
+            f"Skill '{skill_name}' ({category['name']}): Missing required directory '{dir_name}'"
         )
