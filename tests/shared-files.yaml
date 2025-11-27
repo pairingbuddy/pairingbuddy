@@ -1,0 +1,86 @@
+# Shared Files Manifest
+# Single source of truth for files shared across skills
+# Used by sync script and contract tests
+
+# Sources: where shared files live in the superpowers repository
+sources:
+  reference:
+    - code-patterns.md
+    - test-patterns.md
+    - test-enumeration.md
+    - data-passing-pattern.md
+    - enumerate-test-scenarios-subagent-context.md
+    - implement-test-subagent-context.md
+    - implement-code-subagent-context.md
+    - identify-test-issues-subagent-context.md
+    - refactor-test-subagent-context.md
+    - identify-code-issues-subagent-context.md
+    - refactor-code-subagent-context.md
+    - identify-coverage-gaps-subagent-context.md
+    - document-test-coverage-subagent-context.md
+    - verify-test-coverage-subagent-context.md
+    - extend-test-coverage-subagent-context.md
+    - optimize-test-execution-subagent-context.md
+    - refactor-app-code-subagent-context.md
+    - refactor-test-code-subagent-context.md
+
+  modules:
+    - phase-red.md
+    - phase-green.md
+    - phase-refactor.md
+    - phase-coverage.md
+    - phase-optimize.md
+    - phase-0-enumerate.md
+    - phase-0-establish-safety-net.md
+    - phase-final-verification.md
+    - phase-verify-coverage-preserved.md
+
+# Distributions: which skills get which files
+distributions:
+  # Task skills that receive full reference and module sets
+  task_skills:
+    skills:
+      - build-new-feature
+      - fix-bug
+      - extend-functionality
+      - refactor
+    files:
+      reference:
+        - code-patterns.md
+        - test-patterns.md
+        - test-enumeration.md
+        - data-passing-pattern.md
+      modules: all  # All phase modules
+      subagent_contexts: all  # All subagent context files
+
+  # Atomic skills with specific reference files
+  atomic_skills:
+    identify-code-issues:
+      - reference/code-patterns.md
+      - reference/data-passing-pattern.md
+
+    refactor-code:
+      - reference/code-patterns.md
+      - reference/data-passing-pattern.md
+
+    implement-code:
+      - reference/code-patterns.md
+
+    identify-test-issues:
+      - reference/test-patterns.md
+      - reference/data-passing-pattern.md
+
+    refactor-test:
+      - reference/test-patterns.md
+      - reference/data-passing-pattern.md
+
+    implement-test:
+      - reference/test-patterns.md
+
+    enumerate-test-scenarios:
+      - reference/test-enumeration.md
+      - reference/data-passing-pattern.md
+
+    identify-coverage-gaps:
+      - reference/test-enumeration.md
+      - reference/data-passing-pattern.md
