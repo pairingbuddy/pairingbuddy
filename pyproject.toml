@@ -18,6 +18,8 @@ dependencies = [
 dev = [
     "pytest>=8.3.4",
     "python-frontmatter>=1.1.0",
+    "tree-sitter>=0.25.2",
+    "tree-sitter-markdown>=0.5.1",
     "ruff>=0.14.6",
     "pre-commit>=4.0.0",
 ]
