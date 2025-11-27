@@ -1,0 +1,49 @@
+# Skill Structure Specification
+# Defines required sections for each skill category
+# Used by contract tests to validate skill structure
+
+categories:
+  # Task skills that orchestrate TDD workflows
+  task:
+    skills:
+      - build-new-feature
+      - fix-bug
+      - extend-functionality
+      - refactor
+    required_sections:
+      - "## Workflow Rules"
+      - "## When Stuck"
+
+  # The main entry point that classifies and delegates
+  orchestrator:
+    skills:
+      - coding-orchestrator
+    required_sections:
+      - "## Workflow"
+      - "## Task Classification"
+
+  # Bootstrap skill loaded at session start
+  bootstrap:
+    skills:
+      - using-mimer-code
+    required_sections:
+      - "## Critical Rules"
+
+  # Atomic skills that perform single operations
+  atomic:
+    skills:
+      - implement-test
+      - implement-code
+      - refactor-code
+      - refactor-test
+      - enumerate-test-scenarios
+      - identify-coverage-gaps
+      - identify-code-issues
+      - identify-test-issues
+      - document-test-coverage
+      - verify-test-coverage
+    required_sections:
+      - "## Your Role"
+      - "## Critical Constraints"
+      - "## Process"
+      - "## Remember"
