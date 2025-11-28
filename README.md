@@ -1,11 +1,11 @@
-# PairingBuddy
+# Pairing Buddy
 
 Your pair programming companion for test-driven development and clean architecture.
 
 ## Installation
 
 ```bash
-/plugin marketplace add albertodpl/pairingbuddy-marketplace
+/plugin marketplace add pairingbuddy/pairingbuddy-marketplace
 /plugin install pairingbuddy@pairingbuddy-marketplace
 ```
 
@@ -24,6 +24,16 @@ Your pair programming companion for test-driven development and clean architectu
 
 [Description of how the skills work together - to be added]
 
+## Development
+
+```bash
+# Install dev dependencies
+uv sync --extra dev
+
+# Run tests
+uv run pytest
+```
+
 ## Requirements
 
 - Claude Code
@@ -38,13 +48,12 @@ Skills update automatically when you update the plugin:
 
 ## Attribution
 
-PairingBuddy builds upon the excellent foundation of [obra/superpowers](https://github.com/obra/superpowers).
-Refined through hundreds of development sessions.
+Pairing Buddy builds upon the excellent foundation of [obra/superpowers](https://github.com/obra/superpowers).
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/albertodpl/pairingbuddy/issues)
-- **Marketplace**: [albertodpl/pairingbuddy-marketplace](https://github.com/albertodpl/pairingbuddy-marketplace)
+- **Issues**: [GitHub Issues](https://github.com/pairingbuddy/pairingbuddy/issues)
+- **Marketplace**: [pairingbuddy/pairingbuddy-marketplace](https://github.com/pairingbuddy/pairingbuddy-marketplace)
 
 ## License
 

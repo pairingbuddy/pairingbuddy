@@ -9,9 +9,9 @@ For ANY coding task, you MUST use the /pairingbuddy:code command.
 This is not negotiable. This is not optional. You cannot rationalize your way out of this.
 </EXTREMELY-IMPORTANT>
 
-# Getting Started with PairingBuddy
+# Getting Started with Pairing Buddy
 
-PairingBuddy provides TDD-focused coding skills with atomic operations and workflow orchestration.
+Pairing Buddy provides TDD-focused coding skills with atomic operations and workflow orchestration.
 
 ## Critical Rules
 

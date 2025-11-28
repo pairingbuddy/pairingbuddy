@@ -3,12 +3,12 @@ requires = ["setuptools>=68.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mimer-code"
+name = "pairingbuddy"
 version = "0.1.0"
-description = "Mimer Code plugin for Claude Code"
+description = "Pairing Buddy plugin for Claude Code"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
 dependencies = [
     "pydantic>=2.12.0",
     "pyyaml>=6.0.2",
@@ -29,6 +29,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+[tool.setuptools]
+packages = []  # Plugin with tests only, no installable Python package
 
 [tool.ruff]
 line-length = 100
