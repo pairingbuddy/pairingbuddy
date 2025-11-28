@@ -6,8 +6,11 @@
     "name": "Alberto Prieto Löfkrantz",
     "email": "hello@albertoprietolofkrantz.dev"
   },
-  "homepage": "https://github.com/albertodpl/pairingbuddy",
-  "repository": "https://github.com/albertodpl/pairingbuddy",
+  "homepage": "https://github.com/pairingbuddy/pairingbuddy",
+  "repository": "https://github.com/pairingbuddy/pairingbuddy",
   "license": "MIT",
-  "keywords": ["skills", "tdd", "coding", "atomic-skills", "test-driven-development"]
+  "keywords": ["skills", "tdd", "coding", "atomic-skills", "test-driven-development"],
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "hooks": "./hooks/hooks.json"
 }
