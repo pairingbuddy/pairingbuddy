@@ -232,3 +232,51 @@ def test_skill_references_valid(skill_name):
                 f"Skill '{skill_name}': References external skill "
                 f"'@{ref_plugin}:{ref_skill}' - not declared in external_skills"
             )
+
+
+def test_subagent_templates_reference_skills(skill_name):
+    """Verify subagent templates contain valid skill references.
+
+    Subagent templates describe how to spawn atomic skills. Each template
+    MUST contain at least one @plugin:skill reference to the skill it spawns.
+    """
+    skill_dir = SKILLS_DIR / skill_name
+    templates_dir = skill_dir / "subagent-templates"
+
+    if not templates_dir.exists():
+        return  # Skill doesn't have subagent templates
+
+    template_files = list(templates_dir.glob("*.md"))
+    if not template_files:
+        return  # No templates to validate
+
+    manifest = load_shared_files_manifest()
+    plugin_name = manifest.get("plugin_name", "mimer-code")
+    local_skills = set(manifest.get("skills", []))
+    external_skills = manifest.get("external_skills", {})
+
+    for template_file in template_files:
+        template_name = template_file.stem
+        content = template_file.read_text()
+        skill_refs = extract_skill_references(content)
+
+        # Each template MUST reference at least one skill
+        assert skill_refs, (
+            f"Template '{template_name}' in skill '{skill_name}': "
+            f"Missing skill reference - templates must contain @plugin:skill-name"
+        )
+
+        # All referenced skills must be valid
+        for ref_plugin, ref_skill in skill_refs:
+            if ref_plugin == plugin_name:
+                assert ref_skill in local_skills, (
+                    f"Template '{template_name}' in skill '{skill_name}': "
+                    f"References unknown local skill '@{ref_plugin}:{ref_skill}'"
+                )
+            else:
+                declared_external = external_skills.get(ref_plugin, [])
+                assert ref_skill in declared_external, (
+                    f"Template '{template_name}' in skill '{skill_name}': "
+                    f"References external skill '@{ref_plugin}:{ref_skill}' "
+                    f"- not declared in external_skills"
+                )
