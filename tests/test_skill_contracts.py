@@ -6,6 +6,7 @@ import frontmatter
 import yaml
 
 from tests.contracts.markdown import extract_headings
+from tests.contracts.parsers import extract_file_references, find_bare_references
 
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
 TESTS_DIR = Path(__file__).parent
@@ -156,4 +157,40 @@ def test_shared_source_files_exist():
         full_path = shared_source_dir / source_path
         assert full_path.exists(), (
             f"Shared source file '{source_path}' missing from skills/_shared/"
+        )
+
+
+def test_file_references_use_markdown_links(skill_name):
+    """Verify all file/URL references use markdown link syntax [text](path).
+
+    Bare references like `path/file.md` or bare URLs are not allowed.
+    Code blocks are excluded from this check.
+    """
+    skill_md = SKILLS_DIR / skill_name / "SKILL.md"
+    if not skill_md.exists():
+        return  # Other tests will catch missing SKILL.md
+
+    content = skill_md.read_text()
+    bare_refs = find_bare_references(content)
+
+    assert not bare_refs, (
+        f"Skill '{skill_name}': Non-markdown-link references found - use [text](path) syntax:\n"
+        + "\n".join(f"  - {ref}" for ref in bare_refs)
+    )
+
+
+def test_file_references_exist(skill_name):
+    """Verify all files referenced via markdown links exist."""
+    skill_dir = SKILLS_DIR / skill_name
+    skill_md = skill_dir / "SKILL.md"
+    if not skill_md.exists():
+        return  # Other tests will catch missing SKILL.md
+
+    content = skill_md.read_text()
+    file_refs = extract_file_references(content)
+
+    for file_path in file_refs:
+        full_path = skill_dir / file_path
+        assert full_path.exists(), (
+            f"Skill '{skill_name}': References non-existent file '{file_path}'"
         )
