@@ -125,3 +125,35 @@ def test_shared_files_exist(skill_name):
     for file_path in expected_files:
         full_path = skill_dir / file_path
         assert full_path.exists(), f"Skill '{skill_name}' missing shared file '{file_path}'"
+
+
+def get_all_source_files(manifest: dict) -> set[str]:
+    """Get all unique source file paths from all bundles.
+
+    Bundle paths are like '_shared/reference/foo.md'.
+    Source files are in 'skills/_shared/reference/foo.md'.
+    Returns paths relative to skills/_shared/ (e.g., 'reference/foo.md').
+    """
+    files = set()
+    for bundle_files in manifest.get("bundles", {}).values():
+        for file_path in bundle_files:
+            # Strip _shared/ prefix to get source path
+            if file_path.startswith("_shared/"):
+                source_path = file_path[len("_shared/") :]
+            else:
+                source_path = file_path
+            files.add(source_path)
+    return files
+
+
+def test_shared_source_files_exist():
+    """Verify all source files referenced in bundles exist in skills/_shared/."""
+    shared_source_dir = SKILLS_DIR / "_shared"
+    manifest = load_shared_files_manifest()
+    source_files = get_all_source_files(manifest)
+
+    for source_path in sorted(source_files):
+        full_path = shared_source_dir / source_path
+        assert full_path.exists(), (
+            f"Shared source file '{source_path}' missing from skills/_shared/"
+        )

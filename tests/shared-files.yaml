@@ -22,46 +22,47 @@ skills:
   - verify-test-coverage
 
 # Named bundles of shared files
-# Source location: skills/_shared/{path}
+# Source location: skills/_shared/{path} (without _shared/ prefix)
+# Target location: skills/{skill_name}/_shared/{path}
 bundles:
   tdd-phases:
-    - modules/phase-red.md
-    - modules/phase-green.md
-    - modules/phase-refactor.md
-    - modules/phase-coverage.md
-    - modules/phase-optimize.md
-    - modules/phase-0-enumerate.md
-    - modules/phase-0-establish-safety-net.md
-    - modules/phase-final-verification.md
-    - modules/phase-verify-coverage-preserved.md
+    - _shared/modules/phase-red.md
+    - _shared/modules/phase-green.md
+    - _shared/modules/phase-refactor.md
+    - _shared/modules/phase-coverage.md
+    - _shared/modules/phase-optimize.md
+    - _shared/modules/phase-0-enumerate.md
+    - _shared/modules/phase-0-establish-safety-net.md
+    - _shared/modules/phase-final-verification.md
+    - _shared/modules/phase-verify-coverage-preserved.md
 
   code-patterns:
-    - reference/code-patterns.md
-    - reference/data-passing-pattern.md
+    - _shared/reference/code-patterns.md
+    - _shared/reference/data-passing-pattern.md
 
   test-patterns:
-    - reference/test-patterns.md
-    - reference/data-passing-pattern.md
+    - _shared/reference/test-patterns.md
+    - _shared/reference/data-passing-pattern.md
 
   test-enumeration:
-    - reference/test-enumeration.md
-    - reference/data-passing-pattern.md
+    - _shared/reference/test-enumeration.md
+    - _shared/reference/data-passing-pattern.md
 
   subagent-contexts:
-    - reference/enumerate-test-scenarios-subagent-context.md
-    - reference/implement-test-subagent-context.md
-    - reference/implement-code-subagent-context.md
-    - reference/identify-test-issues-subagent-context.md
-    - reference/refactor-test-subagent-context.md
-    - reference/identify-code-issues-subagent-context.md
-    - reference/refactor-code-subagent-context.md
-    - reference/identify-coverage-gaps-subagent-context.md
-    - reference/document-test-coverage-subagent-context.md
-    - reference/verify-test-coverage-subagent-context.md
-    - reference/extend-test-coverage-subagent-context.md
-    - reference/optimize-test-execution-subagent-context.md
-    - reference/refactor-app-code-subagent-context.md
-    - reference/refactor-test-code-subagent-context.md
+    - _shared/reference/enumerate-test-scenarios-subagent-context.md
+    - _shared/reference/implement-test-subagent-context.md
+    - _shared/reference/implement-code-subagent-context.md
+    - _shared/reference/identify-test-issues-subagent-context.md
+    - _shared/reference/refactor-test-subagent-context.md
+    - _shared/reference/identify-code-issues-subagent-context.md
+    - _shared/reference/refactor-code-subagent-context.md
+    - _shared/reference/identify-coverage-gaps-subagent-context.md
+    - _shared/reference/document-test-coverage-subagent-context.md
+    - _shared/reference/verify-test-coverage-subagent-context.md
+    - _shared/reference/extend-test-coverage-subagent-context.md
+    - _shared/reference/optimize-test-execution-subagent-context.md
+    - _shared/reference/refactor-app-code-subagent-context.md
+    - _shared/reference/refactor-test-code-subagent-context.md
 
 # Which bundles each skill receives
 # Skills not listed here have no shared files
