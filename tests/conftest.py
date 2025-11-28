@@ -11,8 +11,8 @@ SYNC_SCRIPT = PROJECT_ROOT / "scripts" / "sync-shared-files.py"
 
 
 def load_manifest():
-    """Load the shared-files.yaml manifest."""
-    yaml_path = Path(__file__).parent / "shared-files.yaml"
+    """Load the skill-manifest.yaml."""
+    yaml_path = Path(__file__).parent / "skill-manifest.yaml"
     with open(yaml_path) as f:
         return yaml.safe_load(f)
 

@@ -6,7 +6,11 @@ import frontmatter
 import yaml
 
 from tests.contracts.markdown import extract_headings
-from tests.contracts.parsers import extract_file_references, find_bare_references
+from tests.contracts.parsers import (
+    extract_file_references,
+    extract_skill_references,
+    find_bare_references,
+)
 
 SKILLS_DIR = Path(__file__).parent.parent / "skills"
 TESTS_DIR = Path(__file__).parent
@@ -20,7 +24,7 @@ def load_structure_spec():
 
 def load_shared_files_manifest():
     """Load the shared files manifest."""
-    with open(TESTS_DIR / "shared-files.yaml") as f:
+    with open(TESTS_DIR / "skill-manifest.yaml") as f:
         return yaml.safe_load(f)
 
 
@@ -194,3 +198,37 @@ def test_file_references_exist(skill_name):
         assert full_path.exists(), (
             f"Skill '{skill_name}': References non-existent file '{file_path}'"
         )
+
+
+def test_skill_references_valid(skill_name):
+    """Verify all skill references are valid (local or declared external)."""
+    skill_dir = SKILLS_DIR / skill_name
+    skill_md = skill_dir / "SKILL.md"
+    if not skill_md.exists():
+        return  # Other tests will catch missing SKILL.md
+
+    content = skill_md.read_text()
+    skill_refs = extract_skill_references(content)
+
+    if not skill_refs:
+        return  # No skill references to validate
+
+    manifest = load_shared_files_manifest()
+    plugin_name = manifest.get("plugin_name", "mimer-code")
+    local_skills = set(manifest.get("skills", []))
+    external_skills = manifest.get("external_skills", {})
+
+    for ref_plugin, ref_skill in skill_refs:
+        if ref_plugin == plugin_name:
+            # Internal reference - skill must exist locally
+            assert ref_skill in local_skills, (
+                f"Skill '{skill_name}': References unknown local skill "
+                f"'@{ref_plugin}:{ref_skill}' - not found in skills list"
+            )
+        else:
+            # External reference - must be declared in external_skills
+            declared_external = external_skills.get(ref_plugin, [])
+            assert ref_skill in declared_external, (
+                f"Skill '{skill_name}': References external skill "
+                f"'@{ref_plugin}:{ref_skill}' - not declared in external_skills"
+            )

@@ -126,3 +126,23 @@ def find_bare_references(content: str) -> list[str]:
         bare_refs.append(f"Read {path}")
 
     return bare_refs
+
+
+def extract_skill_references(content: str) -> list[tuple[str, str]]:
+    """Extract skill references from SKILL.md content.
+
+    Finds @plugin:skill-name patterns.
+
+    Returns list of (plugin_name, skill_name) tuples.
+    """
+    references = []
+
+    # Pattern: @plugin-name:skill-name
+    # Matches: @mimer-code:build-new-feature, @superpowers:committing-changes
+    at_pattern = r"@([\w-]+):([\w-]+)"
+    for match in re.finditer(at_pattern, content):
+        plugin_name = match.group(1)
+        skill_name = match.group(2)
+        references.append((plugin_name, skill_name))
+
+    return references

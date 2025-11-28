@@ -2,7 +2,7 @@
 """Sync shared files from skills/_shared/ to skill directories.
 
 This script:
-1. Loads the shared-files.yaml manifest
+1. Loads the skill-manifest.yaml
 2. For each skill with bundles: deletes its _shared/ subdir entirely
 3. Copies fresh files from skills/_shared/ to skills/{name}/_shared/
 
@@ -20,11 +20,11 @@ SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 SKILLS_DIR = PROJECT_ROOT / "skills"
 SHARED_SOURCE = SKILLS_DIR / "_shared"
-MANIFEST_PATH = PROJECT_ROOT / "tests" / "shared-files.yaml"
+MANIFEST_PATH = PROJECT_ROOT / "tests" / "skill-manifest.yaml"
 
 
 def load_manifest() -> dict:
-    """Load the shared-files.yaml manifest."""
+    """Load the skill-manifest.yaml."""
     with open(MANIFEST_PATH) as f:
         return yaml.safe_load(f)
 

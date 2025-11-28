@@ -3,6 +3,7 @@
 from tests.contracts.parsers import (
     extract_file_references,
     extract_markdown_links,
+    extract_skill_references,
     find_bare_references,
     remove_code_blocks,
 )
@@ -152,4 +153,39 @@ Read modules/in-code-block.md
     def test_read_with_markdown_link_is_valid(self):
         content = "Read [phase-red](modules/phase-red.md) for details."
         refs = find_bare_references(content)
+        assert len(refs) == 0
+
+
+class TestExtractSkillReferences:
+    """Tests for extract_skill_references function."""
+
+    def test_extracts_skill_reference(self):
+        content = "Use @mimer-code:build-new-feature for this."
+        refs = extract_skill_references(content)
+        assert ("mimer-code", "build-new-feature") in refs
+
+    def test_extracts_multiple_references(self):
+        content = """
+Follow @mimer-code:test-driven-development.
+Then use @superpowers:committing-changes.
+"""
+        refs = extract_skill_references(content)
+        assert len(refs) == 2
+        assert ("mimer-code", "test-driven-development") in refs
+        assert ("superpowers", "committing-changes") in refs
+
+    def test_extracts_reference_with_hyphens(self):
+        content = "Use @my-plugin:my-skill-name for details."
+        refs = extract_skill_references(content)
+        assert ("my-plugin", "my-skill-name") in refs
+
+    def test_ignores_email_addresses(self):
+        content = "Contact user@example.com for help."
+        refs = extract_skill_references(content)
+        # email doesn't match @plugin:skill pattern
+        assert len(refs) == 0
+
+    def test_returns_empty_for_no_references(self):
+        content = "No skill references here."
+        refs = extract_skill_references(content)
         assert len(refs) == 0

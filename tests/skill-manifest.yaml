@@ -1,6 +1,9 @@
-# Shared Files Manifest
-# Single source of truth for skills and their shared files
+# Skill Manifest
+# Single source of truth for this plugin's skills and their contracts
 # Used by sync script and contract tests
+
+# Plugin name (used to identify internal vs external skill references)
+plugin_name: mimer-code
 
 # All skills in this plugin
 skills:
@@ -114,3 +117,12 @@ skill_files:
 
   identify-coverage-gaps:
     - test-enumeration
+
+# External skill dependencies (skills from other plugins)
+# Format: plugin_name: [list of skill names]
+# These are validated to be declared, not that they exist
+external_skills: {}
+  # Example:
+  # superpowers:
+  #   - committing-changes
+  #   - brainstorming
