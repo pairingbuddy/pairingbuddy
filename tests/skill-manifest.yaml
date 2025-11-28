@@ -118,11 +118,15 @@ skill_files:
   identify-coverage-gaps:
     - test-enumeration
 
+  document-test-coverage:
+    - test-patterns
+
+  verify-test-coverage:
+    - test-patterns
+
 # External skill dependencies (skills from other plugins)
 # Format: plugin_name: [list of skill names]
 # These are validated to be declared, not that they exist
-external_skills: {}
-  # Example:
-  # superpowers:
-  #   - committing-changes
-  #   - brainstorming
+external_skills:
+  superpowers:
+    - committing-changes

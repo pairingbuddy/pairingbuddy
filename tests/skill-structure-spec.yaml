@@ -11,11 +11,10 @@ categories:
       - extend-functionality
       - refactor
     required_sections:
-      - "## Workflow Rules"
+      - "## Workflow Rules (CRITICAL - Follow Exactly)"
       - "## When Stuck"
     required_directories:
-      - modules
-      - reference
+      - _shared
 
   # The main entry point that classifies and delegates
   orchestrator:
@@ -55,4 +54,4 @@ categories:
       - "## Process"
       - "## Remember"
     required_directories:
-      - reference
+      - _shared
