@@ -1,0 +1,57 @@
+frontmatter:
+  required:
+    name:
+      type: string
+    description:
+      type: string
+      min_length: 20
+
+categories:
+  task:
+    skills:
+      - build-new-feature
+      - fix-bug
+      - extend-functionality
+      - refactor
+    sections:
+      - heading: "## Workflow Rules (CRITICAL - Follow Exactly)"
+      - heading: "## When Stuck"
+    directories:
+      - _shared
+
+  orchestrator:
+    skills:
+      - coding-orchestrator
+    sections:
+      - heading: "## Workflow"
+      - heading: "## Task Classification"
+    directories:
+      - modules
+      - subagent-templates
+
+  bootstrap:
+    skills:
+      - using-pairingbuddy
+    sections:
+      - heading: "## Critical Rules"
+    directories: []
+
+  atomic:
+    skills:
+      - implement-test
+      - implement-code
+      - refactor-code
+      - refactor-test
+      - enumerate-test-scenarios
+      - identify-coverage-gaps
+      - identify-code-issues
+      - identify-test-issues
+      - document-test-coverage
+      - verify-test-coverage
+    sections:
+      - heading: "## Your Role"
+      - heading: "## Critical Constraints"
+      - heading: "## Process"
+      - heading: "## Remember"
+    directories:
+      - _shared
