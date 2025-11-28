@@ -1,6 +1,6 @@
 # identify-code-issues
 
-**Skill:** @mimer-code:identify-code-issues
+**Skill:** @pairingbuddy:identify-code-issues
 
 **Purpose:** Analyze production code and return structured report of quality issues.
 

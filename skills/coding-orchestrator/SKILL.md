@@ -19,7 +19,7 @@ Entry point for all coding tasks.
 
 **Step 3: Delegate to Appropriate Skill**
 - Read [task-classification](modules/task-classification.md) for classification logic and delegation patterns
-- Use Skill tool for task skills: @mimer-code:build-new-feature, @mimer-code:fix-bug, @mimer-code:extend-functionality, @mimer-code:refactor
+- Use Skill tool for task skills: @pairingbuddy:build-new-feature, @pairingbuddy:fix-bug, @pairingbuddy:extend-functionality, @pairingbuddy:refactor
 - Use Task tool for atomic skills when spawning subagents (see subagent templates)
 
 **Step 4: Invoke Committing Changes**

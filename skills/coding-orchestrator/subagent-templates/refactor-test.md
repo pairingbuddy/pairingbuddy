@@ -1,6 +1,6 @@
 # refactor-test
 
-**Skill:** @mimer-code:refactor-test
+**Skill:** @pairingbuddy:refactor-test
 
 **Purpose:** Refactor test code to fix identified issues and verify all tests still pass.
 

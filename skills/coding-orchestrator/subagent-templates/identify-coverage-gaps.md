@@ -1,6 +1,6 @@
 # identify-coverage-gaps
 
-**Skill:** @mimer-code:identify-coverage-gaps
+**Skill:** @pairingbuddy:identify-coverage-gaps
 
 **Purpose:** Analyze existing tests and code to identify missing test scenarios.
 

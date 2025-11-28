@@ -21,14 +21,14 @@ Improve code quality and structure without changing behavior using TDD safety ne
 Work through refactoring issues incrementally, keeping all tests GREEN:
 
 1. **If test quality issues exist:**
-   - Spawn @mimer-code:refactor-test atomic skill (model: sonnet)
+   - Spawn @pairingbuddy:refactor-test atomic skill (model: sonnet)
    - Reads: `/tmp/test-quality-issues-{timestamp}.txt`
    - Makes: ONE refactoring change at a time
    - Verifies: All tests still GREEN after each change
    - Continues until all test issues resolved
 
 2. **If code quality issues exist:**
-   - Spawn @mimer-code:refactor-code atomic skill (model: sonnet)
+   - Spawn @pairingbuddy:refactor-code atomic skill (model: sonnet)
    - Reads: `/tmp/code-quality-issues-{timestamp}.txt`
    - Makes: ONE refactoring change at a time
    - Verifies: All tests still GREEN after each change
@@ -48,7 +48,7 @@ Work through refactoring issues incrementally, keeping all tests GREEN:
 After refactoring, verify coverage preservation before proceeding:
 
 1. Read [phase-verify-coverage-preserved](_shared/modules/phase-verify-coverage-preserved.md)
-2. Spawn @mimer-code:verify-test-coverage atomic skill (model: sonnet)
+2. Spawn @pairingbuddy:verify-test-coverage atomic skill (model: sonnet)
 3. Compares baseline coverage against current test files
 4. If coverage lost:
    - STOP immediately

@@ -214,7 +214,7 @@ def test_skill_references_valid(skill_name):
         return  # No skill references to validate
 
     manifest = load_shared_files_manifest()
-    plugin_name = manifest.get("plugin_name", "mimer-code")
+    plugin_name = manifest.get("plugin_name", "pairingbuddy")
     local_skills = set(manifest.get("skills", []))
     external_skills = manifest.get("external_skills", {})
 
@@ -251,7 +251,7 @@ def test_subagent_templates_reference_skills(skill_name):
         return  # No templates to validate
 
     manifest = load_shared_files_manifest()
-    plugin_name = manifest.get("plugin_name", "mimer-code")
+    plugin_name = manifest.get("plugin_name", "pairingbuddy")
     local_skills = set(manifest.get("skills", []))
     external_skills = manifest.get("external_skills", {})
 

@@ -1,1 +1,1 @@
-# Tests package for mimer-code
+# Tests package for pairingbuddy

@@ -1,6 +1,6 @@
 # refactor-code
 
-**Skill:** @mimer-code:refactor-code
+**Skill:** @pairingbuddy:refactor-code
 
 **Purpose:** Refactor production code to fix identified issues and verify all tests still pass.
 

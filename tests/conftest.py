@@ -1,4 +1,4 @@
-# Shared pytest fixtures for mimer-code tests
+# Shared pytest fixtures for pairingbuddy tests
 import subprocess
 import sys
 from pathlib import Path

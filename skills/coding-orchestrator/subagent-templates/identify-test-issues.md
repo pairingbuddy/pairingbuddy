@@ -1,6 +1,6 @@
 # identify-test-issues
 
-**Skill:** @mimer-code:identify-test-issues
+**Skill:** @pairingbuddy:identify-test-issues
 
 **Purpose:** Analyze test code and return structured report of quality issues.
 

@@ -1,12 +1,12 @@
-# Mimer Code
+# PairingBuddy
 
 Your pair programming companion for test-driven development and clean architecture.
 
 ## Installation
 
 ```bash
-/plugin marketplace add albertodpl/mimer-marketplace
-/plugin install mimer-code@mimer-marketplace
+/plugin marketplace add albertodpl/pairingbuddy-marketplace
+/plugin install pairingbuddy@pairingbuddy-marketplace
 ```
 
 ## Included Skills
@@ -14,7 +14,7 @@ Your pair programming companion for test-driven development and clean architectu
 ### [Skill 1 Name]
 [Description placeholder]
 
-### [Skill 2 Name]  
+### [Skill 2 Name]
 [Description placeholder]
 
 ### [Skill 3 Name]
@@ -33,18 +33,18 @@ Your pair programming companion for test-driven development and clean architectu
 
 Skills update automatically when you update the plugin:
 ```bash
-/plugin update superpowers
+/plugin update pairingbuddy
 ```
 
 ## Attribution
 
-Mimer Code builds upon the excellent foundation of [obra/superpowers](https://github.com/obra/superpowers).  
+PairingBuddy builds upon the excellent foundation of [obra/superpowers](https://github.com/obra/superpowers).
 Refined through hundreds of development sessions.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/albertodpl/mimer-code/issues)
-- **Marketplace**: [albertodpl/mimer-marketplace](https://github.com/albertodpl/mimer-marketplace)
+- **Issues**: [GitHub Issues](https://github.com/albertodpl/pairingbuddy/issues)
+- **Marketplace**: [albertodpl/pairingbuddy-marketplace](https://github.com/albertodpl/pairingbuddy-marketplace)
 
 ## License
 

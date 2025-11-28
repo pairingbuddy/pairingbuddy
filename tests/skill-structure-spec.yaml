@@ -30,7 +30,7 @@ categories:
   # Bootstrap skill loaded at session start
   bootstrap:
     skills:
-      - using-mimer-code
+      - using-pairingbuddy
     required_sections:
       - "## Critical Rules"
     required_directories: []

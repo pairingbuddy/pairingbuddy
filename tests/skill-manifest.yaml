@@ -3,7 +3,7 @@
 # Used by sync script and contract tests
 
 # Plugin name (used to identify internal vs external skill references)
-plugin_name: mimer-code
+plugin_name: pairingbuddy
 
 # All skills in this plugin
 skills:
@@ -12,7 +12,7 @@ skills:
   - extend-functionality
   - refactor
   - coding-orchestrator
-  - using-mimer-code
+  - using-pairingbuddy
   - implement-test
   - implement-code
   - refactor-code

@@ -1,6 +1,6 @@
 # implement-test
 
-**Skill:** @mimer-code:implement-test
+**Skill:** @pairingbuddy:implement-test
 
 **Purpose:** Write ONE failing test for a scenario and verify it fails correctly.
 

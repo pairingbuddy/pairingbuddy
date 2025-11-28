@@ -1,6 +1,6 @@
 # implement-code
 
-**Skill:** @mimer-code:implement-code
+**Skill:** @pairingbuddy:implement-code
 
 **Purpose:** Write minimal production code to make ONE failing test pass and verify all tests pass.
 

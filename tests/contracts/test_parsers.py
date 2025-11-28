@@ -160,18 +160,18 @@ class TestExtractSkillReferences:
     """Tests for extract_skill_references function."""
 
     def test_extracts_skill_reference(self):
-        content = "Use @mimer-code:build-new-feature for this."
+        content = "Use @pairingbuddy:build-new-feature for this."
         refs = extract_skill_references(content)
-        assert ("mimer-code", "build-new-feature") in refs
+        assert ("pairingbuddy", "build-new-feature") in refs
 
     def test_extracts_multiple_references(self):
         content = """
-Follow @mimer-code:test-driven-development.
+Follow @pairingbuddy:test-driven-development.
 Then use @superpowers:committing-changes.
 """
         refs = extract_skill_references(content)
         assert len(refs) == 2
-        assert ("mimer-code", "test-driven-development") in refs
+        assert ("pairingbuddy", "test-driven-development") in refs
         assert ("superpowers", "committing-changes") in refs
 
     def test_extracts_reference_with_hyphens(self):

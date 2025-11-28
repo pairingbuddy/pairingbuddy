@@ -1,6 +1,6 @@
 # enumerate-test-scenarios
 
-**Skill:** @mimer-code:enumerate-test-scenarios
+**Skill:** @pairingbuddy:enumerate-test-scenarios
 
 **Purpose:** Analyze requirements and return structured list of test scenario descriptions.
 
