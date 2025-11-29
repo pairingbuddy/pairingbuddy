@@ -1,5 +1,7 @@
 # Pairing Buddy
 
+> **Work in Progress**: This plugin is not ready for use yet. After learning from previous mistakes, I'm moving to an agent-based approach.
+
 Your pair programming companion for test-driven development and clean architecture.
 
 ## Installation
