@@ -21,7 +21,7 @@ categories:
 
   orchestrator:
     skills:
-      - coding-orchestrator
+      - coding
     sections:
       - heading: "## Workflow"
       - heading: "## Task Classification"

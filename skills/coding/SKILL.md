@@ -1,9 +1,9 @@
 ---
-name: coding-orchestrator
+name: coding
 description: Entry point for all coding tasks - classifies task type and delegates to specialized skills
 ---
 
-# Coding Orchestrator
+# Coding
 
 Entry point for all coding tasks.
 

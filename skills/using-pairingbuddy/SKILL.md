@@ -42,7 +42,7 @@ If you catch yourself thinking ANY of these thoughts, STOP. Use /pairingbuddy:co
 ## Available Skills
 
 **Entry Point:**
-- coding-orchestrator - Classifies tasks and delegates to appropriate workflow
+- coding - Classifies tasks and delegates to appropriate workflow
 
 **TDD Workflows (Task Skills):**
 - build-new-feature - New functionality with full TDD
