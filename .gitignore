@@ -45,3 +45,6 @@ htmlcov/
 
 # Ruff
 .ruff_cache/
+
+# PairingBuddy state files
+.pairingbuddy/

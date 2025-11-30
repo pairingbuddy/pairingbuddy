@@ -12,5 +12,8 @@
   "keywords": ["skills", "tdd", "coding", "atomic-skills", "test-driven-development"],
   "skills": "./skills/",
   "commands": "./commands/",
-  "hooks": "./hooks/hooks.json"
+  "hooks": "./hooks/hooks.json",
+  "agents": [
+    "./agents/spike-echo.md"
+  ]
 }
