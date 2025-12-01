@@ -1,0 +1,180 @@
+"""Structural validation tests for plugin agents."""
+
+import json
+from pathlib import Path
+
+import frontmatter
+import pytest
+import yaml
+
+from tests.contracts.markdown import extract_headings
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+AGENTS_DIR = PROJECT_ROOT / "agents"
+PLUGIN_JSON = PROJECT_ROOT / ".claude-plugin" / "plugin.json"
+AGENT_CONFIG = Path(__file__).parent / "agent-config.yaml"
+
+# Maximum description length per Claude Code docs
+MAX_DESCRIPTION_LENGTH = 1024
+
+
+def load_agent_config():
+    """Load agent configuration from YAML."""
+    with open(AGENT_CONFIG) as f:
+        return yaml.safe_load(f)
+
+
+def load_plugin_json():
+    """Load plugin.json."""
+    with open(PLUGIN_JSON) as f:
+        return json.load(f)
+
+
+def get_agent_names():
+    """Get list of agent names from config."""
+    config = load_agent_config()
+    return list(config["agents"].keys())
+
+
+@pytest.mark.parametrize("agent_name", get_agent_names())
+def test_agent_file_exists(agent_name):
+    """Agent file must exist at agents/<name>.md."""
+    agent_file = AGENTS_DIR / f"{agent_name}.md"
+    assert agent_file.exists(), f"Agent file not found: {agent_file}"
+
+
+@pytest.mark.parametrize("agent_name", get_agent_names())
+def test_agent_registered_in_plugin_json(agent_name):
+    """Agent must be registered in plugin.json agents array."""
+    plugin = load_plugin_json()
+    agents = plugin.get("agents", [])
+
+    expected_path = f"./agents/{agent_name}.md"
+    assert expected_path in agents, (
+        f"Agent '{agent_name}' not registered in plugin.json. "
+        f"Expected '{expected_path}' in agents array."
+    )
+
+
+@pytest.mark.parametrize("agent_name", get_agent_names())
+def test_agent_has_required_frontmatter_fields(agent_name):
+    """Agent must have name, description, model, and color in frontmatter."""
+    agent_file = AGENTS_DIR / f"{agent_name}.md"
+    if not agent_file.exists():
+        pytest.skip(f"Agent file not found: {agent_file}")
+
+    post = frontmatter.load(agent_file)
+
+    for field in ["name", "description", "model", "color"]:
+        assert field in post.metadata, f"Missing frontmatter field: {field}"
+
+
+@pytest.mark.parametrize("agent_name", get_agent_names())
+def test_agent_name_matches_filename(agent_name):
+    """Agent frontmatter name must match the filename."""
+    agent_file = AGENTS_DIR / f"{agent_name}.md"
+    if not agent_file.exists():
+        pytest.skip(f"Agent file not found: {agent_file}")
+
+    post = frontmatter.load(agent_file)
+    assert post.metadata.get("name") == agent_name, (
+        f"Agent name '{post.metadata.get('name')}' doesn't match filename '{agent_name}'"
+    )
+
+
+@pytest.mark.parametrize("agent_name", get_agent_names())
+def test_agent_description_valid(agent_name):
+    """Agent description must be non-empty and within max length."""
+    agent_file = AGENTS_DIR / f"{agent_name}.md"
+    if not agent_file.exists():
+        pytest.skip(f"Agent file not found: {agent_file}")
+
+    post = frontmatter.load(agent_file)
+    description = post.metadata.get("description")
+
+    assert isinstance(description, str), "description must be a string"
+    assert description.strip(), "description cannot be empty"
+    assert len(description) <= MAX_DESCRIPTION_LENGTH, (
+        f"description exceeds {MAX_DESCRIPTION_LENGTH} characters"
+    )
+
+
+@pytest.mark.parametrize("agent_name", get_agent_names())
+def test_agent_color_matches_config(agent_name):
+    """Agent color must match the expected value from agent-config.yaml."""
+    agent_file = AGENTS_DIR / f"{agent_name}.md"
+    if not agent_file.exists():
+        pytest.skip(f"Agent file not found: {agent_file}")
+
+    config = load_agent_config()
+    expected_color = config["agents"][agent_name]["color"]
+
+    post = frontmatter.load(agent_file)
+    assert post.metadata.get("color") == expected_color, (
+        f"Agent color '{post.metadata.get('color')}' doesn't match expected '{expected_color}'"
+    )
+
+
+@pytest.mark.parametrize("agent_name", get_agent_names())
+def test_agent_model_matches_config(agent_name):
+    """Agent model must match the expected value from agent-config.yaml."""
+    agent_file = AGENTS_DIR / f"{agent_name}.md"
+    if not agent_file.exists():
+        pytest.skip(f"Agent file not found: {agent_file}")
+
+    config = load_agent_config()
+    expected_model = config["agents"][agent_name]["model"]
+
+    post = frontmatter.load(agent_file)
+    assert post.metadata.get("model") == expected_model, (
+        f"Agent model '{post.metadata.get('model')}' doesn't match expected '{expected_model}'"
+    )
+
+
+@pytest.mark.parametrize("agent_name", get_agent_names())
+def test_agent_skills_match_config(agent_name):
+    """Agent skills must match the expected list from agent-config.yaml."""
+    agent_file = AGENTS_DIR / f"{agent_name}.md"
+    if not agent_file.exists():
+        pytest.skip(f"Agent file not found: {agent_file}")
+
+    config = load_agent_config()
+    expected_skills = config["agents"][agent_name].get("skills", [])
+
+    post = frontmatter.load(agent_file)
+    actual_skills = post.metadata.get("skills", [])
+
+    # Normalize to list if string
+    if isinstance(actual_skills, str):
+        actual_skills = [actual_skills]
+
+    assert actual_skills == expected_skills, (
+        f"Agent skills {actual_skills} don't match expected {expected_skills}"
+    )
+
+
+@pytest.mark.parametrize("agent_name", get_agent_names())
+def test_agent_has_required_sections_in_order(agent_name):
+    """Agent must have required sections in order per agent-config.yaml."""
+    agent_file = AGENTS_DIR / f"{agent_name}.md"
+    if not agent_file.exists():
+        pytest.skip(f"Agent file not found: {agent_file}")
+
+    config = load_agent_config()
+    required_sections = config["agents"][agent_name]["sections"]
+
+    content = agent_file.read_text()
+    headings = extract_headings(content)
+    heading_texts = [h["text"] for h in headings]
+
+    last_index = -1
+    for section in required_sections:
+        expected_heading = section["heading"].lstrip("# ").strip()
+
+        assert expected_heading in heading_texts, (
+            f"Missing required section: '{section['heading']}'"
+        )
+
+        index = heading_texts.index(expected_heading)
+        assert index > last_index, f"Section '{section['heading']}' is out of order"
+        last_index = index

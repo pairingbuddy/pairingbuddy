@@ -1,0 +1,103 @@
+# Agent configuration for agent architecture tests
+# Single source of truth for agent structure validation
+
+agents:
+  enumerate-scenarios-and-test-cases:
+    color: cyan
+    model: sonnet
+    skills: []
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
+  create-test-placeholders:
+    color: cyan
+    model: haiku
+    skills: []
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
+  implement-tests:
+    color: red
+    model: haiku
+    skills: [writing-tests]
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
+  implement-code:
+    color: green
+    model: sonnet
+    skills: []
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
+  identify-test-issues:
+    color: yellow
+    model: haiku
+    skills: [writing-tests]
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
+  refactor-tests:
+    color: blue
+    model: haiku
+    skills: [writing-tests, refactoring-code]
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
+  identify-code-issues:
+    color: yellow
+    model: haiku
+    skills: [refactoring-code]
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
+  refactor-code:
+    color: blue
+    model: sonnet
+    skills: [refactoring-code]
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
+  identify-coverage-gaps:
+    color: yellow
+    model: haiku
+    skills: []
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
+  verify-coverage:
+    color: magenta
+    model: haiku
+    skills: []
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
