@@ -1,0 +1,9 @@
+# Skill configuration for agent architecture tests
+# Single source of truth for orchestrator skill structure
+
+skills:
+  coding:
+    sections:
+      - heading: "## State File Mappings"
+      - heading: "## Workflow"
+        requires_python_code_block: true
