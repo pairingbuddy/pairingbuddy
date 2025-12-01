@@ -12,7 +12,7 @@ from tests.contracts.markdown import extract_headings
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 AGENTS_DIR = PROJECT_ROOT / "agents"
 PLUGIN_JSON = PROJECT_ROOT / ".claude-plugin" / "plugin.json"
-AGENT_CONFIG = Path(__file__).parent / "agent-config.yaml"
+AGENT_CONFIG = PROJECT_ROOT / "contracts" / "agent-config.yaml"
 
 # Maximum description length per Claude Code docs
 MAX_DESCRIPTION_LENGTH = 1024

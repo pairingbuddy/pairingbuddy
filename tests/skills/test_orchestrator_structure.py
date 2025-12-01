@@ -9,9 +9,10 @@ import yaml
 
 from tests.contracts.markdown import extract_headings
 
-SKILLS_DIR = Path(__file__).parent.parent.parent / "skills"
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+SKILLS_DIR = PROJECT_ROOT / "skills"
 ORCHESTRATOR_SKILL = SKILLS_DIR / "coding" / "SKILL.md"
-SKILL_CONFIG = Path(__file__).parent / "skill-config.yaml"
+SKILL_CONFIG = PROJECT_ROOT / "contracts" / "skill-config.yaml"
 
 # Maximum description length per Claude Code docs
 MAX_DESCRIPTION_LENGTH = 1024
