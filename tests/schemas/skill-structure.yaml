@@ -23,11 +23,9 @@ categories:
     skills:
       - coding
     sections:
+      - heading: "## State File Mappings"
       - heading: "## Workflow"
-      - heading: "## Task Classification"
-    directories:
-      - modules
-      - subagent-templates
+    directories: []
 
   bootstrap:
     skills:
