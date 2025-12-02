@@ -54,3 +54,8 @@ ignore = []
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[dependency-groups]
+dev = [
+    "jsonschema>=4.25.1",
+]

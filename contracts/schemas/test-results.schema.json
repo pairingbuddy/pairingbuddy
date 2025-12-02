@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Test Results",
+  "description": "Output of implement-tests agent",
+  "type": "object",
+  "required": ["results"],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["test_id", "test_file", "test_function", "test_case_id", "status"],
+        "properties": {
+          "test_id": {
+            "type": "string",
+            "description": "Unique identifier for this test"
+          },
+          "test_file": {
+            "type": "string",
+            "description": "Path to test file"
+          },
+          "test_function": {
+            "type": "string",
+            "description": "Test function name"
+          },
+          "test_case_id": {
+            "type": "string",
+            "description": "Back-reference to test case"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["failing_correctly", "failing_wrong_reason", "passing", "error"],
+            "description": "Test result status"
+          },
+          "failure_type": {
+            "type": "string",
+            "description": "Type of failure (optional)"
+          },
+          "failure_message": {
+            "type": "string",
+            "description": "Failure message (optional)"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

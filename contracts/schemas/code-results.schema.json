@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Code Results",
+  "description": "Output of implement-code agent",
+  "type": "object",
+  "required": ["results"],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["test_id", "test_file", "test_function", "status", "files_changed"],
+        "properties": {
+          "test_id": {
+            "type": "string",
+            "description": "Unique identifier for this test"
+          },
+          "test_file": {
+            "type": "string",
+            "description": "Path to test file"
+          },
+          "test_function": {
+            "type": "string",
+            "description": "Test function name"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["passing", "failing", "error"],
+            "description": "Test result status after code implementation"
+          },
+          "files_changed": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "List of files modified"
+          },
+          "error_message": {
+            "type": "string",
+            "description": "Error message (optional)"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

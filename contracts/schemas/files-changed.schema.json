@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Files Changed",
+  "description": "Output of refactor-tests and refactor-code agents",
+  "type": "object",
+  "required": ["files"],
+  "properties": {
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "action", "description"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path"
+          },
+          "action": {
+            "type": "string",
+            "enum": ["modified", "created", "deleted"],
+            "description": "What was done to the file"
+          },
+          "description": {
+            "type": "string",
+            "description": "What was changed"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Test Configuration",
+  "description": "How to run tests - flows through all agents",
+  "type": "object",
+  "required": ["source_directory", "runners", "default_runner"],
+  "properties": {
+    "source_directory": {
+      "type": "string",
+      "description": "Where production code lives"
+    },
+    "runners": {
+      "type": "object",
+      "description": "Test runner configurations keyed by runner_id",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "command", "test_directory", "file_pattern", "run_args"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name"
+          },
+          "command": {
+            "type": "string",
+            "description": "Full invocation including wrapper and runner"
+          },
+          "test_directory": {
+            "type": "string",
+            "description": "Where these tests live"
+          },
+          "file_pattern": {
+            "type": "string",
+            "description": "Glob pattern for test files"
+          },
+          "run_args": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Args appended after test path"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "default_runner": {
+      "type": "string",
+      "description": "Runner ID to use when not specified"
+    }
+  },
+  "additionalProperties": false
+}

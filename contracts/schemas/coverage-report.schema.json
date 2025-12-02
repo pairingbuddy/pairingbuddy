@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Coverage Report",
+  "description": "Output of verify-coverage agent",
+  "type": "object",
+  "required": ["status", "scenarios_covered", "scenarios_total", "test_cases_covered", "test_cases_total", "gaps"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["complete", "incomplete", "error"],
+      "description": "Overall coverage status"
+    },
+    "scenarios_covered": {
+      "type": "integer",
+      "description": "Number of scenarios with tests"
+    },
+    "scenarios_total": {
+      "type": "integer",
+      "description": "Total number of scenarios"
+    },
+    "test_cases_covered": {
+      "type": "integer",
+      "description": "Number of test cases with tests"
+    },
+    "test_cases_total": {
+      "type": "integer",
+      "description": "Total number of test cases"
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scenario_id", "description"],
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "description": "Scenario with missing coverage"
+          },
+          "test_case_id": {
+            "type": "string",
+            "description": "Specific test case missing (optional)"
+          },
+          "description": {
+            "type": "string",
+            "description": "What coverage is missing"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "List of coverage gaps"
+    }
+  },
+  "additionalProperties": false
+}
