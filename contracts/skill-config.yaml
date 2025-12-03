@@ -5,5 +5,16 @@ skills:
   coding:
     sections:
       - heading: "## State File Mappings"
+      - heading: "## How to Execute This Workflow"
+        subsections:
+          - heading: "### Reading the Pseudocode"
+          - heading: "### Agent Invocation"
+          - heading: "### Control Flow"
       - heading: "## Workflow"
         requires_python_code_block: true
+      - heading: "## Orchestrator Behavior"
+        subsections:
+          - heading: "### Bootstrap test-config.json"
+          - heading: "### State File Management"
+          - heading: "### Human Checkpoints"
+          - heading: "### Error Handling"
