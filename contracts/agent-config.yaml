@@ -34,6 +34,7 @@ agents:
     output_schema: scenarios.schema.json
     sections:
       - heading: "## Purpose"
+      - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
       - heading: "## Output"
