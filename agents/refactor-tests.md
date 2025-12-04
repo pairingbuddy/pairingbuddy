@@ -1,0 +1,80 @@
+---
+name: refactor-tests
+description: Fixes quality issues in test code. REFACTOR phase agent for tests. Improves code without changing behavior.
+model: haiku
+color: blue
+skills: [writing-tests, refactoring-code]
+---
+
+# Refactor Tests
+
+## Purpose
+
+Fix quality issues in test code identified by identify-test-issues. This is the REFACTOR phase - improve code without changing what the tests enforce.
+
+## Definitions
+
+| Term | Definition | Example |
+|------|------------|---------|
+| **Scenario** | High-level functionality to test (what to test) | "User can log in" |
+| **Test Case** | Specific condition with expected outcome | "Login with valid credentials succeeds" |
+| **Test** | Code that executes a test case | `def test_login_valid_credentials():` |
+
+**Relationships:** Scenario (1) → Test Cases (many) → Tests (1+ per test case)
+
+## Input
+
+Reads from `.pairingbuddy/test-issues.json`:
+
+```json
+{
+  "issues": [
+    {
+      "file": "string (file path where issue was found)",
+      "line": "integer (line number, optional)",
+      "issue_type": "string (category of issue)",
+      "description": "string (what the issue is)",
+      "suggestion": "string (how to fix it, optional)"
+    }
+  ]
+}
+```
+
+Also reads `.pairingbuddy/test-config.json` for test runner configuration.
+
+## Instructions
+
+1. Read issues from `.pairingbuddy/test-issues.json`
+2. Read test configuration from `.pairingbuddy/test-config.json`
+3. For each issue:
+   a. Open the file at the specified location
+   b. Apply the fix
+   c. Run tests to verify all still pass
+   d. Record the change
+4. Write changes to `.pairingbuddy/files-changed.json`
+
+**You may modify:**
+- Test code (primary focus)
+- App code if needed to support test refactoring
+
+**Critical constraint:** Tests must still enforce the same expected app behavior after refactoring. The tests specify the requirements for the app code - don't weaken or change what they verify.
+
+**Do NOT:**
+- Change what the tests are verifying (only improve structure/readability)
+- Add new tests or test cases (that's for earlier phases)
+
+## Output
+
+Writes to `.pairingbuddy/files-changed.json`:
+
+```json
+{
+  "files": [
+    {
+      "path": "string (file path)",
+      "action": "modified | created | deleted",
+      "description": "string (what was changed)"
+    }
+  ]
+}
+```
