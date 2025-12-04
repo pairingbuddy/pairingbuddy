@@ -15,6 +15,7 @@
   "hooks": "./hooks/hooks.json",
   "agents": [
     "./agents/spike-echo.md",
-    "./agents/enumerate-scenarios-and-test-cases.md"
+    "./agents/enumerate-scenarios-and-test-cases.md",
+    "./agents/create-test-placeholders.md"
   ]
 }

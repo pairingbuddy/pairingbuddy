@@ -42,11 +42,12 @@ agents:
   create-test-placeholders:
     color: cyan
     model: haiku
-    skills: []
+    skills: [writing-tests]
     input_schema: scenarios.schema.json
     output_schema: tests.schema.json
     sections:
       - heading: "## Purpose"
+      - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
       - heading: "## Output"
