@@ -1,0 +1,23 @@
+# Test Terminology Definitions
+# Single source of truth for scenario/test case/test terminology.
+# Agents listed below MUST have a ## Definitions section containing this content verbatim.
+
+# The full content that must appear in agent Definitions sections
+definitions_content: |
+  | Term | Definition | Example |
+  |------|------------|---------|
+  | **Scenario** | High-level functionality to test (what to test) | "User can log in" |
+  | **Test Case** | Specific condition with expected outcome | "Login with valid credentials succeeds" |
+  | **Test** | Code that executes a test case | `def test_login_valid_credentials():` |
+
+  **Relationships:** Scenario (1) → Test Cases (many) → Tests (1+ per test case)
+
+# Agents that MUST have a ## Definitions section with the above content
+agents_requiring_definitions:
+  - enumerate-scenarios-and-test-cases
+  - create-test-placeholders
+  - implement-tests
+  - identify-test-issues
+  - refactor-tests
+  - identify-coverage-gaps
+  - verify-coverage
