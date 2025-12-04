@@ -60,6 +60,7 @@ agents:
     output_schema: test-results.schema.json
     sections:
       - heading: "## Purpose"
+      - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
       - heading: "## Output"
@@ -84,6 +85,7 @@ agents:
     output_schema: issues.schema.json
     sections:
       - heading: "## Purpose"
+      - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
       - heading: "## Output"
@@ -96,6 +98,7 @@ agents:
     output_schema: files-changed.schema.json
     sections:
       - heading: "## Purpose"
+      - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
       - heading: "## Output"
@@ -132,6 +135,7 @@ agents:
     output_schema: scenarios.schema.json
     sections:
       - heading: "## Purpose"
+      - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
       - heading: "## Output"
@@ -144,6 +148,7 @@ agents:
     output_schema: coverage-report.schema.json
     sections:
       - heading: "## Purpose"
+      - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
       - heading: "## Output"
