@@ -68,7 +68,7 @@ agents:
   implement-code:
     color: green
     model: sonnet
-    skills: []
+    skills: [writing-code]
     input_schema: test-results.schema.json
     output_schema: code-results.schema.json
     sections:

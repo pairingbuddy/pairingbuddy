@@ -31,6 +31,12 @@ skills:
       - heading: "## Contents"
       - heading: "## Quick Reference"
 
+  writing-code:
+    category: reference
+    sections:
+      - heading: "## Contents"
+      - heading: "## Quick Reference"
+
   refactoring-code:
     category: reference
     sections:

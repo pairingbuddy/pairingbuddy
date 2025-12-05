@@ -3,6 +3,7 @@ name: implement-code
 description: Writes minimal production code to make failing tests pass. GREEN phase agent in TDD workflow. Implements only what tests require.
 model: sonnet
 color: green
+skills: [writing-code]
 ---
 
 # Implement Code
