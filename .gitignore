@@ -48,3 +48,6 @@ htmlcov/
 
 # PairingBuddy state files
 .pairingbuddy/
+
+# Claude Code local settings
+.claude/
