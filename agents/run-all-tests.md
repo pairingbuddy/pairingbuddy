@@ -56,6 +56,7 @@ Writes to `.pairingbuddy/all-tests-results.json`:
   "total": "integer (total number of tests run)",
   "passed": "integer (number of passing tests)",
   "failed": "integer (number of failing tests)",
+  "skipped": "integer (number of skipped tests)",
   "status": "pass | fail",
   "failures": [
     {

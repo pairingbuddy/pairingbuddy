@@ -17,6 +17,10 @@
       "type": "integer",
       "description": "Number of failing tests"
     },
+    "skipped": {
+      "type": "integer",
+      "description": "Number of skipped tests"
+    },
     "status": {
       "type": "string",
       "enum": ["pass", "fail"],
