@@ -24,6 +24,7 @@ State files live in `.pairingbuddy/` at the git root of the target project.
 | code_issues | .pairingbuddy/code-issues.json | issues.schema.json |
 | files_changed | .pairingbuddy/files-changed.json | files-changed.schema.json |
 | coverage_report | .pairingbuddy/coverage-report.json | coverage-report.schema.json |
+| all_tests_results | .pairingbuddy/all-tests-results.json | all-tests-results.schema.json |
 
 ## How to Execute This Workflow
 
@@ -86,6 +87,9 @@ for test in tests:
 # Coverage verification
 coverage_gaps = identify_coverage_gaps(tests, test_config)
 coverage_report = verify_coverage(tests, test_config)
+
+# Final verification
+all_tests_results = run_all_tests(test_config)  # Run FULL test suite
 ```
 
 ## Orchestrator Behavior

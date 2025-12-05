@@ -3,6 +3,7 @@ name: enumerate-scenarios-and-test-cases
 description: Analyzes a coding task and enumerates scenarios with test cases. First agent in TDD workflow. Outputs structured tree for test placeholder creation.
 model: sonnet
 color: cyan
+skills: [enumerating-tests]
 ---
 
 # Enumerate Scenarios and Test Cases

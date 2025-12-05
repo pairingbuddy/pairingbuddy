@@ -38,7 +38,7 @@ class SkillSchema:
 
 def load_schema(schema_path: Path | None = None) -> SkillSchema:
     if schema_path is None:
-        schema_path = Path(__file__).parent.parent / "schemas" / "skill-structure.yaml"
+        schema_path = Path(__file__).parent.parent.parent / "contracts" / "skill-config.yaml"
 
     with open(schema_path) as f:
         raw = yaml.safe_load(f)
@@ -53,14 +53,22 @@ def load_schema(schema_path: Path | None = None) -> SkillSchema:
             )
         )
 
-    categories = {}
-    for cat_name, cat_def in raw["categories"].items():
-        sections = [SectionRule(heading=s["heading"]) for s in cat_def["sections"]]
-        categories[cat_name] = CategorySchema(
-            name=cat_name,
-            skills=cat_def["skills"],
-            sections=sections,
-            directories=cat_def.get("directories", []),
-        )
+    # Build categories by grouping skills by their category field
+    categories: dict[str, CategorySchema] = {}
+    for skill_name, skill_def in raw["skills"].items():
+        cat_name = skill_def["category"]
+        if cat_name not in categories:
+            categories[cat_name] = CategorySchema(
+                name=cat_name,
+                skills=[],
+                sections=[],
+                directories=[],
+            )
+        categories[cat_name].skills.append(skill_name)
+        # Use sections from skill definition (all skills in same category have same structure)
+        if not categories[cat_name].sections and "sections" in skill_def:
+            categories[cat_name].sections = [
+                SectionRule(heading=s["heading"]) for s in skill_def["sections"]
+            ]
 
     return SkillSchema(frontmatter=frontmatter, categories=categories)

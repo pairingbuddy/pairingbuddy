@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "All Tests Results",
+  "description": "Output of run-all-tests agent - summary of full test suite run",
+  "type": "object",
+  "required": ["total", "passed", "failed", "status"],
+  "properties": {
+    "total": {
+      "type": "integer",
+      "description": "Total number of tests run"
+    },
+    "passed": {
+      "type": "integer",
+      "description": "Number of passing tests"
+    },
+    "failed": {
+      "type": "integer",
+      "description": "Number of failing tests"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail"],
+      "description": "Overall test suite status"
+    },
+    "failures": {
+      "type": "array",
+      "description": "Details of failing tests (only present if status is fail)",
+      "items": {
+        "type": "object",
+        "required": ["test_file", "test_function", "failure_message"],
+        "properties": {
+          "test_file": {
+            "type": "string",
+            "description": "Path to test file"
+          },
+          "test_function": {
+            "type": "string",
+            "description": "Test function name"
+          },
+          "failure_message": {
+            "type": "string",
+            "description": "Failure message"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

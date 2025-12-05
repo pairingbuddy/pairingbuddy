@@ -87,6 +87,9 @@ def extract_property_names(obj: dict, prefix: str = "") -> set:
     names = set()
     if isinstance(obj, dict):
         for key, value in obj.items():
+            # Normalize dynamic key patterns (e.g., <runner_id> -> <key>)
+            if key.startswith("<") and key.endswith(">"):
+                key = "<key>"
             full_name = f"{prefix}.{key}" if prefix else key
             names.add(full_name)
             if isinstance(value, dict):
@@ -114,7 +117,18 @@ def extract_properties_from_json_schema(schema: dict, prefix: str = "") -> set:
             names.add(full_name)
 
             if prop_schema.get("type") == "object":
-                names.update(extract_properties_from_json_schema(prop_schema, full_name))
+                # Handle additionalProperties for dynamic keys
+                if "additionalProperties" in prop_schema:
+                    add_props = prop_schema["additionalProperties"]
+                    if isinstance(add_props, dict) and add_props.get("type") == "object":
+                        # Use wildcard <key> to represent dynamic keys
+                        # Add the <key> level itself, then its nested properties
+                        names.add(f"{full_name}.<key>")
+                        names.update(
+                            extract_properties_from_json_schema(add_props, f"{full_name}.<key>")
+                        )
+                else:
+                    names.update(extract_properties_from_json_schema(prop_schema, full_name))
             elif prop_schema.get("type") == "array" and "items" in prop_schema:
                 items = prop_schema["items"]
                 if items.get("type") == "object":

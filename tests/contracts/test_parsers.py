@@ -160,18 +160,18 @@ class TestExtractSkillReferences:
     """Tests for extract_skill_references function."""
 
     def test_extracts_skill_reference(self):
-        content = "Use @pairingbuddy:build-new-feature for this."
+        content = "Use @pairingbuddy:coding for this."
         refs = extract_skill_references(content)
-        assert ("pairingbuddy", "build-new-feature") in refs
+        assert ("pairingbuddy", "coding") in refs
 
     def test_extracts_multiple_references(self):
         content = """
-Follow @pairingbuddy:test-driven-development.
+Follow @pairingbuddy:writing-tests.
 Then use @superpowers:committing-changes.
 """
         refs = extract_skill_references(content)
         assert len(refs) == 2
-        assert ("pairingbuddy", "test-driven-development") in refs
+        assert ("pairingbuddy", "writing-tests") in refs
         assert ("superpowers", "committing-changes") in refs
 
     def test_extracts_reference_with_hyphens(self):

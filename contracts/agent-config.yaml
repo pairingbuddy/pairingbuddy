@@ -20,6 +20,7 @@ schemas:
   - issues.schema.json
   - files-changed.schema.json
   - coverage-report.schema.json
+  - all-tests-results.schema.json
 
 # =============================================================================
 # Agent definitions
@@ -29,7 +30,7 @@ agents:
   enumerate-scenarios-and-test-cases:
     color: cyan
     model: sonnet
-    skills: []
+    skills: [enumerating-tests]
     input_schema: task.schema.json
     output_schema: scenarios.schema.json
     sections:
@@ -130,7 +131,7 @@ agents:
   identify-coverage-gaps:
     color: yellow
     model: haiku
-    skills: []
+    skills: [enumerating-tests]
     input_schema: tests.schema.json
     output_schema: scenarios.schema.json
     sections:
@@ -149,6 +150,18 @@ agents:
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
+  run-all-tests:
+    color: green
+    model: haiku
+    skills: []
+    input_schema: test-config.schema.json
+    output_schema: all-tests-results.schema.json
+    sections:
+      - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
       - heading: "## Output"

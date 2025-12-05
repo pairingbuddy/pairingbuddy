@@ -95,6 +95,9 @@ def find_bare_references(content: str) -> list[str]:
         # If preceded by ]( it's part of a link
         if start >= 2 and content_no_code[start - 2 : start] == "](":
             continue
+        # Skip runtime state file references (.pairingbuddy/ directory)
+        if path.startswith(".pairingbuddy/"):
+            continue
         # Must have a directory separator to be a path reference
         if "/" in path:
             bare_refs.append(f"`{path}`")
@@ -120,9 +123,13 @@ def find_bare_references(content: str) -> list[str]:
     # Pattern 3: "Read path/to/file" without markdown link
     # Matches: Read modules/foo.md, read reference/bar.md
     # But not: Read [foo](modules/foo.md)
-    read_pattern = r"\b[Rr]ead\s+(?!\[)([a-zA-Z0-9_\-./]+\.[a-zA-Z]+)"
+    # Only matches paths WITH directory separators (not bare filenames)
+    read_pattern = r"\b[Rr]ead\s+(?!\[)([a-zA-Z0-9_\-./]+/[a-zA-Z0-9_\-./]+\.[a-zA-Z]+)"
     for match in re.finditer(read_pattern, content_no_code):
         path = match.group(1)
+        # Skip runtime state file references
+        if path.startswith(".pairingbuddy/"):
+            continue
         bare_refs.append(f"Read {path}")
 
     return bare_refs

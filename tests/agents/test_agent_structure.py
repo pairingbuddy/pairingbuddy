@@ -178,3 +178,34 @@ def test_agent_has_required_sections_in_order(agent_name):
         index = heading_texts.index(expected_heading)
         assert index > last_index, f"Section '{section['heading']}' is out of order"
         last_index = index
+
+
+SKILLS_DIR = PROJECT_ROOT / "skills"
+
+
+@pytest.mark.parametrize("agent_name", get_agent_names())
+def test_agent_skill_references_resolve(agent_name):
+    """Agent skills must reference existing skill directories with SKILL.md."""
+    agent_file = AGENTS_DIR / f"{agent_name}.md"
+    if not agent_file.exists():
+        pytest.skip(f"Agent file not found: {agent_file}")
+
+    post = frontmatter.load(agent_file)
+    skills = post.metadata.get("skills", [])
+
+    # Normalize to list if string
+    if isinstance(skills, str):
+        skills = [skills]
+
+    for skill_name in skills:
+        skill_dir = SKILLS_DIR / skill_name
+        skill_file = skill_dir / "SKILL.md"
+
+        assert skill_dir.exists(), (
+            f"Agent '{agent_name}' references skill '{skill_name}' "
+            f"but directory not found: {skill_dir}"
+        )
+        assert skill_file.exists(), (
+            f"Agent '{agent_name}' references skill '{skill_name}' "
+            f"but SKILL.md not found: {skill_file}"
+        )

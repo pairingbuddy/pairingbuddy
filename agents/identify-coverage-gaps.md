@@ -3,6 +3,7 @@ name: identify-coverage-gaps
 description: Identifies missing test scenarios or cases. Coverage analysis agent. Compares implemented tests against original scenarios.
 model: haiku
 color: yellow
+skills: [enumerating-tests]
 ---
 
 # Identify Coverage Gaps

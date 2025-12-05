@@ -1,11 +1,32 @@
-# Skill configuration for agent architecture tests
-# Single source of truth for skill structure validation
+# Skill Configuration
+# Single source of truth for all skill definitions and validation rules
+
+plugin_name: pairingbuddy
+
+# External skill dependencies (skills from other plugins)
+external_skills:
+  superpowers:
+    - committing-changes
+
+# Frontmatter validation rules
+frontmatter:
+  required:
+    name:
+      type: string
+    description:
+      type: string
+      min_length: 20
+
+# =============================================================================
+# Skill Definitions
+# =============================================================================
 
 skills:
-  # =============================================================================
-  # Orchestrator skill
-  # =============================================================================
+  # ---------------------------------------------------------------------------
+  # Orchestrator
+  # ---------------------------------------------------------------------------
   coding:
+    category: orchestrator
     sections:
       - heading: "## State File Mappings"
       - heading: "## How to Execute This Workflow"
@@ -22,9 +43,17 @@ skills:
           - heading: "### Human Checkpoints"
           - heading: "### Error Handling"
 
-  # =============================================================================
+  # ---------------------------------------------------------------------------
+  # Bootstrap
+  # ---------------------------------------------------------------------------
+  using-pairingbuddy:
+    category: bootstrap
+    sections:
+      - heading: "## Critical Rules"
+
+  # ---------------------------------------------------------------------------
   # Reference skills (auto-loaded by agents via skills: field)
-  # =============================================================================
+  # ---------------------------------------------------------------------------
   writing-tests:
     category: reference
     sections:
@@ -38,6 +67,12 @@ skills:
       - heading: "## Quick Reference"
 
   refactoring-code:
+    category: reference
+    sections:
+      - heading: "## Contents"
+      - heading: "## Quick Reference"
+
+  enumerating-tests:
     category: reference
     sections:
       - heading: "## Contents"
