@@ -1,7 +1,10 @@
 # Skill configuration for agent architecture tests
-# Single source of truth for orchestrator skill structure
+# Single source of truth for skill structure validation
 
 skills:
+  # =============================================================================
+  # Orchestrator skill
+  # =============================================================================
   coding:
     sections:
       - heading: "## State File Mappings"
@@ -18,3 +21,18 @@ skills:
           - heading: "### State File Management"
           - heading: "### Human Checkpoints"
           - heading: "### Error Handling"
+
+  # =============================================================================
+  # Reference skills (auto-loaded by agents via skills: field)
+  # =============================================================================
+  writing-tests:
+    category: reference
+    sections:
+      - heading: "## Contents"
+      - heading: "## Quick Reference"
+
+  refactoring-code:
+    category: reference
+    sections:
+      - heading: "## Contents"
+      - heading: "## Quick Reference"

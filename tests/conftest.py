@@ -42,7 +42,7 @@ def sync_shared_files():
 
 
 def pytest_generate_tests(metafunc):
-    """Generate parametrized tests for skill names."""
-    if "skill_name" in metafunc.fixturenames:
+    """Generate parametrized tests for skill names (OLD - will be removed in Phase 10)."""
+    if "old_skill_name" in metafunc.fixturenames:
         config = load_manifest()
-        metafunc.parametrize("skill_name", config["skills"])
+        metafunc.parametrize("old_skill_name", config["skills"])
