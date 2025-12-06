@@ -53,6 +53,12 @@ Also reads `.pairingbuddy/test-config.json` for test directory configuration.
    c. Record each issue with file, line, type, description
 4. Write issues to `.pairingbuddy/test-issues.json`
 
+### File Creation Restrictions
+
+**You may ONLY write to:** `.pairingbuddy/test-issues.json`
+
+Do NOT create any other files. No /tmp files, no markdown files, no text files. Your sole output is the JSON file specified in the Output section.
+
 **Do NOT:**
 - Fix issues (that's for refactor-tests agent)
 - Report issues in production code (that's for identify-code-issues)

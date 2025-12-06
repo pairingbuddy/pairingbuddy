@@ -7,6 +7,12 @@ description: Orchestrates TDD workflow by invoking specialized agents. Manages s
 
 Orchestrates the TDD workflow by invoking specialized agents via the Task tool. Each agent reads input JSON, performs one operation, writes output JSON.
 
+## CRITICAL: Follow the Workflow Exactly
+
+**You MUST follow the workflow pseudocode exactly as specified.** Do not skip steps, reorder agents, or deviate from the sequence. The workflow exists because each agent depends on the output of prior agents.
+
+If you think a step doesn't apply, you are probably wrong. The workflow handles edge cases. Follow it.
+
 ## State File Mappings
 
 State files live in `.pairingbuddy/` at the git root of the target project.
@@ -14,6 +20,7 @@ State files live in `.pairingbuddy/` at the git root of the target project.
 | Variable | File | Schema |
 |----------|------|--------|
 | task | .pairingbuddy/task.json | task.schema.json |
+| task_classification | .pairingbuddy/task-classification.json | task-classification.schema.json |
 | test_config | .pairingbuddy/test-config.json | test-config.schema.json |
 | scenarios | .pairingbuddy/scenarios.json | scenarios.schema.json |
 | tests | .pairingbuddy/tests.json | tests.schema.json |
@@ -61,36 +68,73 @@ Interpret control flow statements as orchestration logic:
 **Prerequisites:** Before starting, ensure `.pairingbuddy/test-config.json` exists. See "Bootstrap test-config.json" in Orchestrator Behavior.
 
 ```python
-# Pre-coding phase
-scenarios = enumerate_scenarios_and_test_cases(task, test_config)
-tests = create_test_placeholders(scenarios, test_config)
+# Task classification
+task_classification = classify_task(task)
+task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refactoring" | "config_change"
 
-# Red-Green-Refactor loop (batch size 1)
-for test in tests:
-    current_batch = [test]
+if task_type == "new_feature":
+    # Full TDD workflow
+    scenarios = enumerate_scenarios_and_test_cases(task, test_config)
+    tests = create_test_placeholders(scenarios, test_config)
 
-    # RED: implement test
-    test_results = implement_tests(current_batch, test_config)
+    for test in tests:
+        current_batch = [test]
+        test_results = implement_tests(current_batch, test_config)
+        code_results = implement_code(test_results, test_config)
 
-    # GREEN: implement code
-    code_results = implement_code(test_results, test_config)
+        test_issues = identify_test_issues(tests, test_config)
+        if test_issues:
+            files_changed = refactor_tests(test_issues, test_config)
 
-    # REFACTOR: identify and fix issues (with human checkpoint)
-    test_issues = identify_test_issues(tests, test_config)
-    if test_issues:
-        files_changed = refactor_tests(test_issues, test_config)
+        code_issues = identify_code_issues(code_results, test_config)
+        if code_issues:
+            files_changed = refactor_code(code_issues, test_config)
+
+    coverage_gaps = identify_coverage_gaps(tests, test_config)
+    coverage_report = verify_coverage(tests, test_config)
+
+elif task_type == "bug_fix":
+    # Bug fix: add regression test first, then fix
+    scenarios = enumerate_scenarios_and_test_cases(task, test_config)  # describes the bug
+    tests = create_test_placeholders(scenarios, test_config)
+
+    for test in tests:
+        current_batch = [test]
+        test_results = implement_tests(current_batch, test_config)  # test should fail (reproduces bug)
+        code_results = implement_code(test_results, test_config)    # fix makes it pass
+
+elif task_type == "refactoring":
+    # Refactoring: skip test enumeration, work on existing code
+    # First verify all tests pass before refactoring
+    all_tests_results = run_all_tests(test_config)
+    if all_tests_results.status != "pass":
+        raise Error("Cannot refactor: tests must pass first")
 
     code_issues = identify_code_issues(code_results, test_config)
     if code_issues:
         files_changed = refactor_code(code_issues, test_config)
 
-# Coverage verification
-coverage_gaps = identify_coverage_gaps(tests, test_config)
-coverage_report = verify_coverage(tests, test_config)
+    test_issues = identify_test_issues(tests, test_config)
+    if test_issues:
+        files_changed = refactor_tests(test_issues, test_config)
 
-# Final verification
-all_tests_results = run_all_tests(test_config)  # Run FULL test suite
+elif task_type == "config_change":
+    # Config change: just make the change and verify tests still pass
+    # No agents needed - orchestrator makes the change directly
+    pass
+
+# Final verification (all task types)
+all_tests_results = run_all_tests(test_config)
 ```
+
+### Task Type Definitions
+
+| Task Type | Description | Example |
+|-----------|-------------|---------|
+| **new_feature** | Adding new functionality that requires new tests | "Add user authentication" |
+| **bug_fix** | Fixing incorrect behavior with a regression test | "Fix login failing for users with spaces in email" |
+| **refactoring** | Improving code structure, no behavior change | "Extract payment logic into separate module" |
+| **config_change** | Changing configuration values only | "Update API timeout to 30s" |
 
 ## Orchestrator Behavior
 

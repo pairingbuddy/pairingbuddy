@@ -11,6 +11,7 @@ schema_version: "http://json-schema.org/draft-07/schema#"
 
 schemas:
   - task.schema.json
+  - task-classification.schema.json
   - test-config.schema.json
   - scenarios.schema.json
   - tests.schema.json
@@ -27,12 +28,26 @@ schemas:
 # =============================================================================
 
 agents:
+  classify-task:
+    color: cyan
+    model: haiku
+    skills: []
+    input_schema: task.schema.json
+    output_schema: task-classification.schema.json
+    output_file: .pairingbuddy/task-classification.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
   enumerate-scenarios-and-test-cases:
     color: cyan
     model: sonnet
     skills: [enumerating-tests]
     input_schema: task.schema.json
     output_schema: scenarios.schema.json
+    output_file: .pairingbuddy/scenarios.json
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -46,6 +61,7 @@ agents:
     skills: [writing-tests]
     input_schema: scenarios.schema.json
     output_schema: tests.schema.json
+    output_file: .pairingbuddy/tests.json
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -59,6 +75,7 @@ agents:
     skills: [writing-tests]
     input_schema: current-batch.schema.json
     output_schema: test-results.schema.json
+    output_file: .pairingbuddy/test-results.json
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -72,6 +89,7 @@ agents:
     skills: [writing-code]
     input_schema: test-results.schema.json
     output_schema: code-results.schema.json
+    output_file: .pairingbuddy/code-results.json
     sections:
       - heading: "## Purpose"
       - heading: "## Input"
@@ -84,6 +102,7 @@ agents:
     skills: [writing-tests]
     input_schema: tests.schema.json
     output_schema: issues.schema.json
+    output_file: .pairingbuddy/test-issues.json
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -97,6 +116,7 @@ agents:
     skills: [writing-tests, refactoring-code]
     input_schema: issues.schema.json
     output_schema: files-changed.schema.json
+    output_file: .pairingbuddy/files-changed.json
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -110,6 +130,7 @@ agents:
     skills: [refactoring-code]
     input_schema: code-results.schema.json
     output_schema: issues.schema.json
+    output_file: .pairingbuddy/code-issues.json
     sections:
       - heading: "## Purpose"
       - heading: "## Input"
@@ -122,6 +143,7 @@ agents:
     skills: [refactoring-code]
     input_schema: issues.schema.json
     output_schema: files-changed.schema.json
+    output_file: .pairingbuddy/files-changed.json
     sections:
       - heading: "## Purpose"
       - heading: "## Input"
@@ -134,6 +156,7 @@ agents:
     skills: [enumerating-tests]
     input_schema: tests.schema.json
     output_schema: scenarios.schema.json
+    output_file: .pairingbuddy/scenarios.json
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -147,6 +170,7 @@ agents:
     skills: []
     input_schema: tests.schema.json
     output_schema: coverage-report.schema.json
+    output_file: .pairingbuddy/coverage-report.json
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -160,6 +184,7 @@ agents:
     skills: []
     input_schema: test-config.schema.json
     output_schema: all-tests-results.schema.json
+    output_file: .pairingbuddy/all-tests-results.json
     sections:
       - heading: "## Purpose"
       - heading: "## Input"

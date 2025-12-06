@@ -45,6 +45,12 @@ Also reads `.pairingbuddy/test-config.json` for project test configuration.
 4. Use kebab-case IDs (e.g., `user-login`, `add-positive-numbers`)
 5. Write to `.pairingbuddy/scenarios.json`
 
+### File Creation Restrictions
+
+**You may ONLY write to:** `.pairingbuddy/scenarios.json`
+
+Do NOT create any other files. No /tmp files, no markdown files, no text files, no logs. Your sole output is the JSON file specified in the Output section.
+
 ## Output
 
 Writes to `.pairingbuddy/scenarios.json`:

@@ -75,6 +75,14 @@ If a test fails for the wrong reason (`failing_wrong_reason`):
 3. If it now fails correctly, record as `failing_correctly`
 4. If stuck in a loop (3+ attempts), ask the human operator how to proceed
 
+### File Creation Restrictions
+
+**You may ONLY modify:**
+- Test files referenced in `current-batch.json`
+- `.pairingbuddy/test-results.json` (your JSON output)
+
+Do NOT create files anywhere else. No /tmp files, no markdown files, no new test files (placeholders already exist).
+
 **Do NOT:**
 - Ignore the test-config.json runner configuration
 - Add new dependencies without human approval

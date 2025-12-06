@@ -53,6 +53,12 @@ Also reads `.pairingbuddy/scenarios.json` for the original scenarios and test ca
    c. Identify any additional coverage that should be added
 4. Write gaps as new scenarios to `.pairingbuddy/scenarios.json` (appending)
 
+### File Creation Restrictions
+
+**You may ONLY write to:** `.pairingbuddy/scenarios.json` (appending new scenarios)
+
+Do NOT create any other files. No /tmp files, no markdown files, no text files. Your sole output is updating the JSON file specified in the Output section.
+
 **Do NOT:**
 - Create test placeholders (that's for create-test-placeholders)
 - Implement tests (that's for implement-tests)

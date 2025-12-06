@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Task Classification",
+  "description": "Classification of coding task type to determine workflow",
+  "type": "object",
+  "required": ["task_type"],
+  "properties": {
+    "task_type": {
+      "type": "string",
+      "enum": ["new_feature", "bug_fix", "refactoring", "config_change"],
+      "description": "The type of coding task"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Why this classification was chosen"
+    }
+  }
+}

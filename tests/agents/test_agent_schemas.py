@@ -224,3 +224,44 @@ def test_agent_output_schema_matches_canonical(agent_name):
             msg += f"  Extra in agent: {extra_in_agent}\n"
         msg += f"  Canonical schema: {output_schema_file}"
         pytest.fail(msg)
+
+
+@pytest.mark.parametrize("agent_name", AGENTS)
+def test_agent_has_file_creation_restrictions_section(agent_name):
+    """Test that agent has a File Creation Restrictions section."""
+    agent_path = AGENTS_DIR / f"{agent_name}.md"
+    assert agent_path.exists(), f"Agent file {agent_path} does not exist"
+
+    with open(agent_path) as f:
+        agent_content = f.read()
+
+    assert "### File Creation Restrictions" in agent_content, (
+        f"Agent {agent_name} is missing '### File Creation Restrictions' section"
+    )
+
+
+@pytest.mark.parametrize("agent_name", AGENTS)
+def test_agent_file_creation_restrictions_mentions_output_file(agent_name):
+    """Test that File Creation Restrictions mentions the configured output_file."""
+    agent_config = config["agents"][agent_name]
+    output_file = agent_config.get("output_file")
+
+    assert output_file, f"Agent {agent_name} must have output_file configured"
+
+    agent_path = AGENTS_DIR / f"{agent_name}.md"
+    assert agent_path.exists(), f"Agent file {agent_path} does not exist"
+
+    with open(agent_path) as f:
+        agent_content = f.read()
+
+    # Extract the File Creation Restrictions section
+    section_pattern = r"### File Creation Restrictions\s*\n(.*?)(?=\n##|\n\*\*Do NOT|\Z)"
+    match = re.search(section_pattern, agent_content, re.DOTALL)
+    assert match, f"Agent {agent_name} is missing '### File Creation Restrictions' section"
+
+    restrictions_content = match.group(1)
+
+    assert output_file in restrictions_content, (
+        f"Agent {agent_name} File Creation Restrictions does not mention "
+        f"configured output_file '{output_file}'"
+    )

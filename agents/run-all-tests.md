@@ -41,6 +41,12 @@ Reads from `.pairingbuddy/test-config.json`:
 3. Aggregate results across all runners
 4. Write summary to `.pairingbuddy/all-tests-results.json`
 
+### File Creation Restrictions
+
+**You may ONLY write to:** `.pairingbuddy/all-tests-results.json`
+
+Do NOT create any other files. No /tmp files, no markdown files, no text files. Your sole output is the JSON file specified in the Output section.
+
 **Important:**
 - Run the FULL test suite, not just the tests created in this session
 - Report only failure details (not individual passing tests)

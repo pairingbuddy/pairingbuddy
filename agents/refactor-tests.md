@@ -49,15 +49,48 @@ Also reads `.pairingbuddy/test-config.json` for test runner configuration.
 3. For each issue:
    a. Open the file at the specified location
    b. Apply the fix
-   c. Run tests to verify all still pass
+   c. Run tests using test-config.json to verify all still pass
    d. Record the change
 4. Write changes to `.pairingbuddy/files-changed.json`
+
+### Running Tests
+
+Use the test configuration to run tests. For each runner in test-config.json:
+
+```
+{command} {test_directory} {run_args}
+```
+
+Example with test-config.json:
+```json
+{
+  "runners": {
+    "unit": {
+      "command": "uv run pytest",
+      "test_directory": "tests/",
+      "run_args": ["-v"]
+    }
+  }
+}
+```
+
+Run: `uv run pytest tests/ -v`
+
+**If tests fail after a fix, revert the change and try a different approach.**
 
 **You may modify:**
 - Test code (primary focus)
 - App code if needed to support test refactoring
 
 **Critical constraint:** Tests must still enforce the same expected app behavior after refactoring. The tests specify the requirements for the app code - don't weaken or change what they verify.
+
+### File Creation Restrictions
+
+**You may ONLY write to:**
+- Test files and production files referenced in issues or needed for refactoring
+- `.pairingbuddy/files-changed.json` (your JSON output)
+
+Do NOT create files anywhere else. No /tmp files, no markdown files, no new arbitrary files.
 
 **Do NOT:**
 - Change what the tests are verifying (only improve structure/readability)

@@ -60,6 +60,14 @@ If a test doesn't pass after implementation:
 3. Run the test again
 4. If stuck after 3 attempts, ask the human operator how to proceed
 
+### File Creation Restrictions
+
+**You may ONLY write to:**
+- Production code files within `source_directory` from `test-config.json`
+- `.pairingbuddy/code-results.json` (your JSON output)
+
+Do NOT create files anywhere else. No /tmp files, no markdown files, no files outside the source directory.
+
 **Do NOT:**
 - Ignore the test-config.json source directory configuration
 - Add features not required by the test

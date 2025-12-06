@@ -52,6 +52,12 @@ Also reads `.pairingbuddy/scenarios.json` and `.pairingbuddy/test-config.json`.
 6. Calculate coverage statistics
 7. Write coverage report to `.pairingbuddy/coverage-report.json`
 
+### File Creation Restrictions
+
+**You may ONLY write to:** `.pairingbuddy/coverage-report.json`
+
+Do NOT create any other files. No /tmp files, no markdown files, no text files. Your sole output is the JSON file specified in the Output section.
+
 **Status meanings:**
 - `complete`: All scenarios and test cases have passing tests
 - `incomplete`: Some scenarios or test cases missing tests

@@ -49,9 +49,17 @@ Also reads `.pairingbuddy/test-config.json` for test directory and runner config
 
 1. Read scenarios from `.pairingbuddy/scenarios.json`
 2. Read test configuration from `.pairingbuddy/test-config.json`
-3. Create placeholder tests for the test cases
+3. Create placeholder tests for the test cases in the configured test directory
 4. Generate unique test_id for each test created
 5. Write test mapping to `.pairingbuddy/tests.json`
+
+### File Creation Restrictions
+
+**You may ONLY write to:**
+- `.pairingbuddy/tests.json` (your JSON output)
+- Test files within the `test_directory` specified in `test-config.json`
+
+Do NOT create files anywhere else. No /tmp files, no markdown files, no files outside the test directory.
 
 ## Output
 
