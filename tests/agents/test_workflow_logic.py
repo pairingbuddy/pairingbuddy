@@ -77,12 +77,12 @@ def test_workflow_references_resolve_to_agents():
     function_calls = extract_function_calls(code)
     registered_agents = get_registered_agent_names()
 
-    # For each function call, check if it maps to a registered agent
-    # Only validate functions with underscores (agent naming pattern)
+    # All function calls must resolve to registered agents
+    # Exception: _ prefixed functions are orchestrator logic, not agents
     unresolved = []
     for func_name in function_calls:
-        if "_" not in func_name:
-            continue
+        if func_name.startswith("_"):
+            continue  # orchestrator-only functions use _ prefix
         agent_name = python_name_to_agent_name(func_name)
         if agent_name not in registered_agents:
             unresolved.append(f"{func_name} -> {agent_name}")

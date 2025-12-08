@@ -14,7 +14,7 @@ Analyze production code and identify quality issues that should be addressed dur
 
 ## Input
 
-Reads from `.pairingbuddy/code-results.json`:
+Reads from `.pairingbuddy/code-state.json`:
 
 ```json
 {
@@ -31,11 +31,27 @@ Reads from `.pairingbuddy/code-results.json`:
 }
 ```
 
-Also reads `.pairingbuddy/test-config.json` for source directory configuration.
+Also reads `.pairingbuddy/test-config.json`:
+
+```json
+{
+  "source_directory": "string (where production code lives)",
+  "runners": {
+    "<runner_id>": {
+      "name": "string (human-readable name)",
+      "command": "string (full invocation including wrapper and runner)",
+      "test_directory": "string (where these tests live)",
+      "file_pattern": "string (glob pattern for test files)",
+      "run_args": ["array of strings appended after test path"]
+    }
+  },
+  "default_runner": "string (runner ID to use when not specified)"
+}
+```
 
 ## Instructions
 
-1. Read code results from `.pairingbuddy/code-results.json`
+1. Read code state from `.pairingbuddy/code-state.json`
 2. Read test configuration from `.pairingbuddy/test-config.json`
 3. For each production file referenced in `files_changed`:
    a. Read the production code

@@ -14,7 +14,7 @@ Write minimal production code to make failing tests pass. This is the GREEN phas
 
 ## Input
 
-Reads from `.pairingbuddy/test-results.json`:
+Reads from `.pairingbuddy/test-state.json`:
 
 ```json
 {
@@ -32,18 +32,34 @@ Reads from `.pairingbuddy/test-results.json`:
 }
 ```
 
-Also reads `.pairingbuddy/test-config.json` for test runner and source directory configuration.
+Also reads `.pairingbuddy/test-config.json`:
+
+```json
+{
+  "source_directory": "string (where production code lives)",
+  "runners": {
+    "<runner_id>": {
+      "name": "string (human-readable name)",
+      "command": "string (full invocation including wrapper and runner)",
+      "test_directory": "string (where these tests live)",
+      "file_pattern": "string (glob pattern for test files)",
+      "run_args": ["array of strings appended after test path"]
+    }
+  },
+  "default_runner": "string (runner ID to use when not specified)"
+}
+```
 
 ## Instructions
 
-1. Read test results from `.pairingbuddy/test-results.json`
+1. Read test state from `.pairingbuddy/test-state.json`
 2. Read test configuration from `.pairingbuddy/test-config.json`
 3. For each test with status `failing_correctly`:
    a. Analyze what the test expects
    b. Write minimal production code to make it pass
    c. Run the test to verify it passes
    d. Record the result and files changed
-4. Write results to `.pairingbuddy/code-results.json`
+4. Write results to `.pairingbuddy/code-state.json`
 
 ### Writing Minimal Code
 
@@ -64,7 +80,7 @@ If a test doesn't pass after implementation:
 
 **You may ONLY write to:**
 - Production code files within `source_directory` from `test-config.json`
-- `.pairingbuddy/code-results.json` (your JSON output)
+- `.pairingbuddy/code-state.json` (your JSON output)
 
 Do NOT create files anywhere else. No /tmp files, no markdown files, no files outside the source directory.
 
@@ -78,7 +94,7 @@ Do NOT create files anywhere else. No /tmp files, no markdown files, no files ou
 
 ## Output
 
-Writes to `.pairingbuddy/code-results.json`:
+Writes to `.pairingbuddy/code-state.json`:
 
 ```json
 {

@@ -25,8 +25,8 @@ State files live in `.pairingbuddy/` at the git root of the target project.
 | scenarios | .pairingbuddy/scenarios.json | scenarios.schema.json |
 | tests | .pairingbuddy/tests.json | tests.schema.json |
 | current_batch | .pairingbuddy/current-batch.json | current-batch.schema.json |
-| test_results | .pairingbuddy/test-results.json | test-results.schema.json |
-| code_results | .pairingbuddy/code-results.json | code-results.schema.json |
+| test_state | .pairingbuddy/test-state.json | test-state.schema.json |
+| code_state | .pairingbuddy/code-state.json | code-state.schema.json |
 | test_issues | .pairingbuddy/test-issues.json | issues.schema.json |
 | code_issues | .pairingbuddy/code-issues.json | issues.schema.json |
 | files_changed | .pairingbuddy/files-changed.json | files-changed.schema.json |
@@ -63,6 +63,18 @@ Interpret control flow statements as orchestration logic:
 - `test_issues = identify_test_issues(...)` then `if test_issues:` → Invoke agent, then check if test-issues.json contains items
 - `while condition:` → Loop until condition is false
 
+### Orchestrator Functions
+
+Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orchestrator implements these directly:
+
+| Function | Behavior |
+|----------|----------|
+| `_filter_pending(tests)` | Filter tests.json to return only tests not yet processed in this session |
+| `_ask_human(question)` | Present question to human, return true/false based on response |
+| `_stop(message)` | Stop workflow execution and report message to human |
+
+These functions handle coordination, human interaction, and control flow that doesn't belong in agents.
+
 ## Workflow
 
 **Prerequisites:** Before starting, ensure `.pairingbuddy/test-config.json` exists. See "Bootstrap test-config.json" in Orchestrator Behavior.
@@ -73,25 +85,38 @@ task_classification = classify_task(task)
 task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refactoring" | "config_change"
 
 if task_type == "new_feature":
-    # Full TDD workflow
+    # Full TDD workflow with coverage verification loop
     scenarios = enumerate_scenarios_and_test_cases(task, test_config)
-    tests = create_test_placeholders(scenarios, test_config)
+    gaps = None  # No gaps on first pass
 
-    for test in tests:
-        current_batch = [test]
-        test_results = implement_tests(current_batch, test_config)
-        code_results = implement_code(test_results, test_config)
+    while True:
+        tests = create_test_placeholders(scenarios, test_config, gaps)  # idempotent; gaps optional
 
-        test_issues = identify_test_issues(tests, test_config)
-        if test_issues:
-            files_changed = refactor_tests(test_issues, test_config)
+        # RED-GREEN-REFACTOR for pending tests
+        for test in _filter_pending(tests):
+            current_batch = [test]
+            test_state = implement_tests(current_batch, test_config)
+            code_state = implement_code(test_state, test_config)
 
-        code_issues = identify_code_issues(code_results, test_config)
-        if code_issues:
-            files_changed = refactor_code(code_issues, test_config)
+            test_issues = identify_test_issues(tests, test_config)
+            if test_issues:
+                refactor_tests(test_issues, test_config)
 
-    coverage_gaps = identify_coverage_gaps(tests, test_config)
-    coverage_report = verify_coverage(tests, test_config)
+            code_issues = identify_code_issues(code_state, test_config)
+            if code_issues:
+                refactor_code(code_issues, test_config)
+
+        # Verify coverage (reconciles tests.json, checks against scenarios)
+        coverage = verify_test_coverage(scenarios, tests, test_config)
+
+        if coverage.status == "complete":
+            break
+
+        # Human checkpoint: coverage gaps found
+        if not _ask_human("Coverage gaps found. Implement missing tests?"):
+            break
+
+        gaps = coverage.gaps  # Pass gaps to next iteration
 
 elif task_type == "bug_fix":
     # Bug fix: add regression test first, then fix
@@ -100,23 +125,31 @@ elif task_type == "bug_fix":
 
     for test in tests:
         current_batch = [test]
-        test_results = implement_tests(current_batch, test_config)  # test should fail (reproduces bug)
-        code_results = implement_code(test_results, test_config)    # fix makes it pass
+        test_state = implement_tests(current_batch, test_config)  # test should fail (reproduces bug)
+        code_state = implement_code(test_state, test_config)      # fix makes it pass
 
 elif task_type == "refactoring":
-    # Refactoring: skip test enumeration, work on existing code
+    # Refactoring: work on existing code/tests per task intent
     # First verify all tests pass before refactoring
     all_tests_results = run_all_tests(test_config)
     if all_tests_results.status != "pass":
-        raise Error("Cannot refactor: tests must pass first")
+        _stop("Cannot refactor: tests must pass first")
 
-    code_issues = identify_code_issues(code_results, test_config)
+    # scope_refactoring creates issues directly from task intent
+    # (skip identify agents - for large codebases they'd report ALL issues,
+    # but we only want to address the specific refactoring the user requested)
+    code_issues, test_issues = scope_refactoring(task, test_config)
+
     if code_issues:
-        files_changed = refactor_code(code_issues, test_config)
+        refactor_code(code_issues, test_config)
 
-    test_issues = identify_test_issues(tests, test_config)
     if test_issues:
-        files_changed = refactor_tests(test_issues, test_config)
+        refactor_tests(test_issues, test_config)
+
+    # Verify tests still pass after refactoring
+    all_tests_results = run_all_tests(test_config)
+    if all_tests_results.status != "pass":
+        _stop("Refactoring broke tests")
 
 elif task_type == "config_change":
     # Config change: just make the change and verify tests still pass

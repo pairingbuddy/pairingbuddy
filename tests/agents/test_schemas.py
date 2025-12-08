@@ -87,12 +87,20 @@ def test_schema_is_valid_json_schema(schema_name):
 
 
 def get_agent_schema_refs():
-    """Get list of (agent_name, schema_type, schema_name) tuples."""
+    """Get list of (agent_name, schema_type, schema_name) tuples.
+
+    All agents use the inputs/outputs format with nested schema fields.
+    """
     config = load_agent_config()
     refs = []
     for agent_name, agent_config in config["agents"].items():
-        refs.append((agent_name, "input_schema", agent_config["input_schema"]))
-        refs.append((agent_name, "output_schema", agent_config["output_schema"]))
+        # Collect input schemas
+        for input_name, input_def in agent_config["inputs"].items():
+            refs.append((agent_name, f"inputs.{input_name}.schema", input_def["schema"]))
+
+        # Collect output schemas
+        for output_name, output_def in agent_config["outputs"].items():
+            refs.append((agent_name, f"outputs.{output_name}.schema", output_def["schema"]))
     return refs
 
 

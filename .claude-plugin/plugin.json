@@ -23,8 +23,8 @@
     "./agents/refactor-tests.md",
     "./agents/identify-code-issues.md",
     "./agents/refactor-code.md",
-    "./agents/identify-coverage-gaps.md",
-    "./agents/verify-coverage.md",
-    "./agents/run-all-tests.md"
+    "./agents/verify-test-coverage.md",
+    "./agents/run-all-tests.md",
+    "./agents/scope-refactoring.md"
   ]
 }

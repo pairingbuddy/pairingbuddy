@@ -43,15 +43,74 @@ Reads from `.pairingbuddy/scenarios.json`:
 }
 ```
 
-Also reads `.pairingbuddy/test-config.json` for test directory and runner configuration.
+Also reads `.pairingbuddy/test-config.json`:
+
+```json
+{
+  "source_directory": "string (where production code lives)",
+  "runners": {
+    "<runner_id>": {
+      "name": "string (human-readable name)",
+      "command": "string (full invocation including wrapper and runner)",
+      "test_directory": "string (where these tests live)",
+      "file_pattern": "string (glob pattern for test files)",
+      "run_args": ["array of strings appended after test path"]
+    }
+  },
+  "default_runner": "string (runner ID to use when not specified)"
+}
+```
+
+**Optional:** `.pairingbuddy/coverage-report.json` - if present, only create placeholders for test_cases listed in the `gaps` array:
+
+```json
+{
+  "status": "complete | incomplete | error",
+  "scenarios_covered": "integer (number of scenarios with tests)",
+  "scenarios_total": "integer (total number of scenarios)",
+  "test_cases_covered": "integer (number of test cases with tests)",
+  "test_cases_total": "integer (total number of test cases)",
+  "gaps": [
+    {
+      "scenario_id": "string (scenario with missing coverage)",
+      "test_case_id": "string (specific test case missing, optional)",
+      "description": "string (what coverage is missing)"
+    }
+  ]
+}
+```
+
+**Optional:** `.pairingbuddy/tests.json` (if exists) to check for existing test entries:
+
+```json
+{
+  "tests": [
+    {
+      "test_id": "string (unique identifier for this test)",
+      "test_case_id": "string (back-reference to test case)",
+      "scenario_id": "string (back-reference to scenario)",
+      "runner_id": "string (which runner from test-config)",
+      "test_file": "string (path to test file)",
+      "test_function": "string (test function name)"
+    }
+  ]
+}
+```
 
 ## Instructions
 
 1. Read scenarios from `.pairingbuddy/scenarios.json`
 2. Read test configuration from `.pairingbuddy/test-config.json`
-3. Create placeholder tests for the test cases in the configured test directory
-4. Generate unique test_id for each test created
-5. Write test mapping to `.pairingbuddy/tests.json`
+3. Read existing tests from `.pairingbuddy/tests.json` (if exists)
+4. **If `.pairingbuddy/coverage-report.json` exists with gaps:**
+   - Only process test_cases listed in the gaps array
+5. **Otherwise (first pass):**
+   - Process all test_cases from scenarios.json
+6. **For each test_case to process:**
+   - Skip if tests.json already has an entry for this test_case_id (idempotent)
+   - Create placeholder test in the configured test directory
+   - Generate unique test_id
+   - Append entry to tests.json
 
 ### File Creation Restrictions
 

@@ -35,7 +35,23 @@ Reads from `.pairingbuddy/task.json`:
 }
 ```
 
-Also reads `.pairingbuddy/test-config.json` for project test configuration.
+Also reads `.pairingbuddy/test-config.json`:
+
+```json
+{
+  "source_directory": "string (where production code lives)",
+  "runners": {
+    "<runner_id>": {
+      "name": "string (human-readable name)",
+      "command": "string (full invocation including wrapper and runner)",
+      "test_directory": "string (where these tests live)",
+      "file_pattern": "string (glob pattern for test files)",
+      "run_args": ["array of strings appended after test path"]
+    }
+  },
+  "default_runner": "string (runner ID to use when not specified)"
+}
+```
 
 ## Instructions
 

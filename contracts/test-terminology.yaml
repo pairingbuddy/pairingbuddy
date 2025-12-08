@@ -19,5 +19,4 @@ agents_requiring_definitions:
   - implement-tests
   - identify-test-issues
   - refactor-tests
-  - identify-coverage-gaps
-  - verify-coverage
+  - verify-test-coverage

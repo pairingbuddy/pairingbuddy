@@ -41,17 +41,20 @@ def extract_json_from_section(content: str, section_name: str) -> dict | None:
     else:
         section_content = content[section_start:]
 
-    # Extract JSON from code block
+    # Extract ALL JSON from code blocks (agents may document multiple inputs)
     json_pattern = r"```json\s*\n(.*?)\n```"
-    json_match = re.search(json_pattern, section_content, re.DOTALL)
-    if not json_match:
+    json_matches = re.findall(json_pattern, section_content, re.DOTALL)
+    if not json_matches:
         return None
 
-    json_text = json_match.group(1)
+    # Parse each JSON block and return list of schemas
+    schemas = []
+    for json_text in json_matches:
+        parsed = parse_simplified_schema(json_text)
+        if parsed:
+            schemas.append(parsed)
 
-    # Parse the simplified schema format used in agents
-    # e.g., "property": "string (description)" -> extract property names
-    return parse_simplified_schema(json_text)
+    return schemas if schemas else None
 
 
 def parse_simplified_schema(json_text: str) -> dict:
@@ -137,20 +140,40 @@ def extract_properties_from_json_schema(schema: dict, prefix: str = "") -> set:
     return names
 
 
+def normalize_dynamic_keys(props: set) -> set:
+    """Normalize dynamic key patterns to <key> for comparison.
+
+    Agent docs may use descriptive names like <runner_id> or <config_name>
+    which should match the canonical <key> from additionalProperties.
+    """
+    import re
+
+    normalized = set()
+    for prop in props:
+        # Replace any <word> pattern with <key>
+        normalized.add(re.sub(r"<\w+>", "<key>", prop))
+    return normalized
+
+
 # Get all agents from config
 config = load_agent_config()
 AGENTS = list(config["agents"].keys())
 
 
-@pytest.mark.parametrize("agent_name", AGENTS)
-def test_agent_input_schema_matches_canonical(agent_name):
-    """Test that agent's Input section matches canonical schema."""
-    agent_config = config["agents"][agent_name]
-    input_schema_file = agent_config.get("input_schema")
+def get_agent_input_refs():
+    """Get list of (agent_name, input_name, schema_name) tuples for parameterization."""
+    config = load_agent_config()
+    refs = []
+    for agent_name, agent_config in config["agents"].items():
+        inputs = agent_config.get("inputs", {})
+        for input_name, input_def in inputs.items():
+            refs.append((agent_name, input_name, input_def["schema"]))
+    return refs
 
-    if not input_schema_file:
-        pytest.skip(f"Agent {agent_name} has no input_schema configured")
 
+@pytest.mark.parametrize("agent_name,input_name,schema_file", get_agent_input_refs())
+def test_agent_input_schema_matches_canonical(agent_name, input_name, schema_file):
+    """Test that agent's Input section contains properties from canonical schema."""
     # Read agent file
     agent_path = AGENTS_DIR / f"{agent_name}.md"
     if not agent_path.exists():
@@ -159,40 +182,44 @@ def test_agent_input_schema_matches_canonical(agent_name):
     with open(agent_path) as f:
         agent_content = f.read()
 
-    # Extract properties from agent's Input section
-    agent_schema = extract_json_from_section(agent_content, "Input")
-    if not agent_schema:
+    # Extract properties from agent's Input section (may have multiple JSON blocks)
+    agent_schemas = extract_json_from_section(agent_content, "Input")
+    if not agent_schemas:
         pytest.fail(f"Could not extract JSON from Input section of {agent_name}")
 
-    agent_props = extract_property_names(agent_schema)
+    # Collect properties from all documented schemas
+    agent_props = set()
+    for schema in agent_schemas:
+        agent_props.update(normalize_dynamic_keys(extract_property_names(schema)))
 
-    # Get properties from canonical schema
-    canonical_path = SCHEMAS_DIR / input_schema_file
+    # Get properties from canonical schema (already uses <key> for dynamic keys)
+    canonical_path = SCHEMAS_DIR / schema_file
     canonical_props = get_canonical_properties(canonical_path)
 
-    # Compare property names (ignoring $schema, title, description meta-fields)
+    # Check that canonical properties are present in agent's documented schema
     missing_in_agent = canonical_props - agent_props
-    extra_in_agent = agent_props - canonical_props
-
-    if missing_in_agent or extra_in_agent:
-        msg = f"Schema drift detected in {agent_name} Input section:\n"
-        if missing_in_agent:
-            msg += f"  Missing from agent: {missing_in_agent}\n"
-        if extra_in_agent:
-            msg += f"  Extra in agent: {extra_in_agent}\n"
-        msg += f"  Canonical schema: {input_schema_file}"
-        pytest.fail(msg)
+    if missing_in_agent:
+        pytest.fail(
+            f"Schema drift detected in {agent_name} Input section for {input_name}:\n"
+            f"  Missing from agent: {missing_in_agent}\n"
+            f"  Canonical schema: {schema_file}"
+        )
 
 
-@pytest.mark.parametrize("agent_name", AGENTS)
-def test_agent_output_schema_matches_canonical(agent_name):
-    """Test that agent's Output section matches canonical schema."""
-    agent_config = config["agents"][agent_name]
-    output_schema_file = agent_config.get("output_schema")
+def get_agent_output_refs():
+    """Get list of (agent_name, output_name, schema_name) tuples for parameterization."""
+    config = load_agent_config()
+    refs = []
+    for agent_name, agent_config in config["agents"].items():
+        outputs = agent_config.get("outputs", {})
+        for output_name, output_def in outputs.items():
+            refs.append((agent_name, output_name, output_def["schema"]))
+    return refs
 
-    if not output_schema_file:
-        pytest.skip(f"Agent {agent_name} has no output_schema configured")
 
+@pytest.mark.parametrize("agent_name,output_name,schema_file", get_agent_output_refs())
+def test_agent_output_schema_matches_canonical(agent_name, output_name, schema_file):
+    """Test that agent's Output section contains properties from canonical schema."""
     # Read agent file
     agent_path = AGENTS_DIR / f"{agent_name}.md"
     if not agent_path.exists():
@@ -201,29 +228,28 @@ def test_agent_output_schema_matches_canonical(agent_name):
     with open(agent_path) as f:
         agent_content = f.read()
 
-    # Extract properties from agent's Output section
-    agent_schema = extract_json_from_section(agent_content, "Output")
-    if not agent_schema:
+    # Extract properties from agent's Output section (may have multiple JSON blocks)
+    agent_schemas = extract_json_from_section(agent_content, "Output")
+    if not agent_schemas:
         pytest.fail(f"Could not extract JSON from Output section of {agent_name}")
 
-    agent_props = extract_property_names(agent_schema)
+    # Collect properties from all documented schemas
+    agent_props = set()
+    for schema in agent_schemas:
+        agent_props.update(normalize_dynamic_keys(extract_property_names(schema)))
 
-    # Get properties from canonical schema
-    canonical_path = SCHEMAS_DIR / output_schema_file
+    # Get properties from canonical schema (already uses <key> for dynamic keys)
+    canonical_path = SCHEMAS_DIR / schema_file
     canonical_props = get_canonical_properties(canonical_path)
 
-    # Compare property names
+    # Check that canonical properties are present in agent's documented schema
     missing_in_agent = canonical_props - agent_props
-    extra_in_agent = agent_props - canonical_props
-
-    if missing_in_agent or extra_in_agent:
-        msg = f"Schema drift detected in {agent_name} Output section:\n"
-        if missing_in_agent:
-            msg += f"  Missing from agent: {missing_in_agent}\n"
-        if extra_in_agent:
-            msg += f"  Extra in agent: {extra_in_agent}\n"
-        msg += f"  Canonical schema: {output_schema_file}"
-        pytest.fail(msg)
+    if missing_in_agent:
+        pytest.fail(
+            f"Schema drift detected in {agent_name} Output section for {output_name}:\n"
+            f"  Missing from agent: {missing_in_agent}\n"
+            f"  Canonical schema: {schema_file}"
+        )
 
 
 @pytest.mark.parametrize("agent_name", AGENTS)
@@ -241,12 +267,12 @@ def test_agent_has_file_creation_restrictions_section(agent_name):
 
 
 @pytest.mark.parametrize("agent_name", AGENTS)
-def test_agent_file_creation_restrictions_mentions_output_file(agent_name):
-    """Test that File Creation Restrictions mentions the configured output_file."""
+def test_agent_file_creation_restrictions_mentions_output_files(agent_name):
+    """Test that File Creation Restrictions mentions all configured output files."""
     agent_config = config["agents"][agent_name]
-    output_file = agent_config.get("output_file")
+    outputs = agent_config.get("outputs", {})
 
-    assert output_file, f"Agent {agent_name} must have output_file configured"
+    assert outputs, f"Agent {agent_name} must have outputs configured"
 
     agent_path = AGENTS_DIR / f"{agent_name}.md"
     assert agent_path.exists(), f"Agent file {agent_path} does not exist"
@@ -261,7 +287,10 @@ def test_agent_file_creation_restrictions_mentions_output_file(agent_name):
 
     restrictions_content = match.group(1)
 
-    assert output_file in restrictions_content, (
-        f"Agent {agent_name} File Creation Restrictions does not mention "
-        f"configured output_file '{output_file}'"
-    )
+    # Check each output file is mentioned
+    for output_name, output_def in outputs.items():
+        output_file = output_def["file"]
+        assert output_file in restrictions_content, (
+            f"Agent {agent_name} File Creation Restrictions does not mention "
+            f"configured output file '{output_file}' for output '{output_name}'"
+        )
