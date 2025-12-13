@@ -22,6 +22,7 @@ schemas:
   - files-changed.schema.json
   - coverage-report.schema.json
   - all-tests-results.schema.json
+  - commit-result.schema.json
 
 # =============================================================================
 # Agent definitions
@@ -264,6 +265,24 @@ agents:
       all_tests_results:
         schema: all-tests-results.schema.json
         file: .pairingbuddy/all-tests-results.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Output"
+
+  commit-changes:
+    color: magenta
+    model: haiku
+    skills: [committing-changes]
+    inputs:
+      files_changed:
+        schema: files-changed.schema.json
+        file: .pairingbuddy/files-changed.json
+    outputs:
+      commit_result:
+        schema: commit-result.schema.json
+        file: .pairingbuddy/commit-result.json
     sections:
       - heading: "## Purpose"
       - heading: "## Input"

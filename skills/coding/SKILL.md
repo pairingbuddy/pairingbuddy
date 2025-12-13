@@ -32,6 +32,7 @@ State files live in `.pairingbuddy/` at the git root of the target project.
 | files_changed | .pairingbuddy/files-changed.json | files-changed.schema.json |
 | coverage_report | .pairingbuddy/coverage-report.json | coverage-report.schema.json |
 | all_tests_results | .pairingbuddy/all-tests-results.json | all-tests-results.schema.json |
+| commit_result | .pairingbuddy/commit-result.json | commit-result.schema.json |
 
 ## How to Execute This Workflow
 
@@ -158,6 +159,12 @@ elif task_type == "config_change":
 
 # Final verification (all task types)
 all_tests_results = run_all_tests(test_config)
+if all_tests_results.status != "pass":
+    _stop("Final verification failed - tests not passing")
+
+# Commit changes (human checkpoint)
+if _ask_human("All tests pass. Commit changes?"):
+    commit_result = commit_changes(files_changed)
 ```
 
 ### Task Type Definitions

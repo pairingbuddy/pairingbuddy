@@ -4,9 +4,7 @@
 plugin_name: pairingbuddy
 
 # External skill dependencies (skills from other plugins)
-external_skills:
-  superpowers:
-    - committing-changes
+external_skills: {}
 
 # Frontmatter validation rules
 frontmatter:
@@ -73,6 +71,12 @@ skills:
       - heading: "## Quick Reference"
 
   enumerating-tests:
+    category: reference
+    sections:
+      - heading: "## Contents"
+      - heading: "## Quick Reference"
+
+  committing-changes:
     category: reference
     sections:
       - heading: "## Contents"

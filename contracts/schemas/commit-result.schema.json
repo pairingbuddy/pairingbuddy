@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Commit Output",
+  "description": "Output of commit-changes agent - result of git commit operation",
+  "type": "object",
+  "required": ["status", "commit_sha"],
+  "oneOf": [
+    {
+      "description": "Successful commit with valid SHA",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "success"
+        },
+        "commit_sha": {
+          "type": "string",
+          "minLength": 40,
+          "description": "Git commit SHA (40 chars for SHA1, 64 for SHA256)"
+        },
+        "commit_message": {
+          "type": "string",
+          "description": "The commit message used"
+        },
+        "files_committed": {
+          "type": "array",
+          "description": "List of files included in the commit",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "File path that was committed"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["status", "commit_sha", "commit_message"],
+      "additionalProperties": false
+    },
+    {
+      "description": "Failed commit with error message",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "failure"
+        },
+        "commit_sha": {
+          "type": "string",
+          "maxLength": 0,
+          "description": "Empty string when commit failed"
+        },
+        "commit_message": {
+          "type": "string",
+          "description": "The commit message that was attempted"
+        },
+        "files_committed": {
+          "type": "array",
+          "description": "List of files that were attempted to be committed",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "File path"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "error_message": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Error message explaining why commit failed"
+        }
+      },
+      "required": ["status", "commit_sha", "error_message"],
+      "additionalProperties": false
+    }
+  ]
+}

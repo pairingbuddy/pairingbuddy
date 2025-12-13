@@ -167,12 +167,12 @@ class TestExtractSkillReferences:
     def test_extracts_multiple_references(self):
         content = """
 Follow @pairingbuddy:writing-tests.
-Then use @superpowers:committing-changes.
+Then use @external-plugin:some-skill.
 """
         refs = extract_skill_references(content)
         assert len(refs) == 2
         assert ("pairingbuddy", "writing-tests") in refs
-        assert ("superpowers", "committing-changes") in refs
+        assert ("external-plugin", "some-skill") in refs
 
     def test_extracts_reference_with_hyphens(self):
         content = "Use @my-plugin:my-skill-name for details."

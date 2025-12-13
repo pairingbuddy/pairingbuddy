@@ -145,7 +145,7 @@ def extract_skill_references(content: str) -> list[tuple[str, str]]:
     references = []
 
     # Pattern: @plugin-name:skill-name
-    # Matches: @pairingbuddy:build-new-feature, @superpowers:committing-changes
+    # Matches: @pairingbuddy:build-new-feature, @external-plugin:some-skill
     at_pattern = r"@([\w-]+):([\w-]+)"
     for match in re.finditer(at_pattern, content):
         plugin_name = match.group(1)

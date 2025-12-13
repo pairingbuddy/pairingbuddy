@@ -141,6 +141,7 @@ dev = [
 [package.dev-dependencies]
 dev = [
     { name = "jsonschema" },
+    { name = "pre-commit" },
 ]
 
 [package.metadata]
@@ -157,7 +158,10 @@ requires-dist = [
 provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "jsonschema", specifier = ">=4.25.1" }]
+dev = [
+    { name = "jsonschema", specifier = ">=4.25.1" },
+    { name = "pre-commit", specifier = ">=4.5.0" },
+]
 
 [[package]]
 name = "platformdirs"
