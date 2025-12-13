@@ -2,7 +2,7 @@
 name: create-test-placeholders
 description: Creates test files with placeholder tests from scenarios. Second agent in TDD workflow. Outputs test mapping for implementation phase.
 model: haiku
-color: cyan
+color: yellow
 skills: [writing-tests]
 ---
 

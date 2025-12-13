@@ -48,7 +48,7 @@ agents:
       - heading: "## Output"
 
   enumerate-scenarios-and-test-cases:
-    color: cyan
+    color: magenta
     model: sonnet
     skills: [enumerating-tests]
     inputs:
@@ -70,7 +70,7 @@ agents:
       - heading: "## Output"
 
   create-test-placeholders:
-    color: cyan
+    color: yellow
     model: haiku
     skills: [writing-tests]
     inputs:
@@ -165,7 +165,7 @@ agents:
       - heading: "## Output"
 
   refactor-tests:
-    color: blue
+    color: magenta
     model: haiku
     skills: [writing-tests, refactoring-code]
     inputs:
