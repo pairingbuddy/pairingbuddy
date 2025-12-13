@@ -70,6 +70,24 @@ Do NOT create any other files. No /tmp files, no markdown files, no text files. 
 - Report issues in test code (that's for identify-test-issues)
 - Suggest features not required by tests
 
+## Human Review
+
+Before proceeding with implementation, pause and present your analysis to the human operator for review.
+
+- Use the AskUserQuestion tool to present your findings
+- Wait for explicit approval before proceeding
+- If the human operator requests changes, revise your analysis and ask again
+
+Example interaction:
+
+```
+AskUserQuestion: "I've identified the following items for processing:
+- Item 1: [description]
+- Item 2: [description]
+
+Should I proceed with this approach?"
+```
+
 ## Output
 
 Writes to `.pairingbuddy/code-issues.json`:

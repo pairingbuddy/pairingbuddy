@@ -48,7 +48,7 @@ agents:
       - heading: "## Output"
 
   enumerate-scenarios-and-test-cases:
-    color: cyan
+    color: magenta
     model: sonnet
     skills: [enumerating-tests]
     inputs:
@@ -67,10 +67,12 @@ agents:
       - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
+      - heading: "## Human Review"
+        content: human_review
       - heading: "## Output"
 
   create-test-placeholders:
-    color: cyan
+    color: yellow
     model: haiku
     skills: [writing-tests]
     inputs:
@@ -97,6 +99,8 @@ agents:
       - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
+      - heading: "## Human Review"
+        content: human_review
       - heading: "## Output"
 
   implement-tests:
@@ -162,10 +166,12 @@ agents:
       - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
+      - heading: "## Human Review"
+        content: human_review
       - heading: "## Output"
 
   refactor-tests:
-    color: blue
+    color: magenta
     model: haiku
     skills: [writing-tests, refactoring-code]
     inputs:
@@ -205,6 +211,8 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+      - heading: "## Human Review"
+        content: human_review
       - heading: "## Output"
 
   refactor-code:
@@ -251,6 +259,8 @@ agents:
       - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
+      - heading: "## Human Review"
+        content: human_review
       - heading: "## Output"
 
   run-all-tests:
@@ -311,4 +321,28 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+      - heading: "## Human Review"
+        content: human_review
       - heading: "## Output"
+
+# =============================================================================
+# Human Review Configuration
+# =============================================================================
+
+human_review:
+  content: |
+    Before proceeding with implementation, pause and present your analysis to the human operator for review.
+
+    - Use the AskUserQuestion tool to present your findings
+    - Wait for explicit approval before proceeding
+    - If the human operator requests changes, revise your analysis and ask again
+
+    Example interaction:
+
+    ```
+    AskUserQuestion: "I've identified the following items for processing:
+    - Item 1: [description]
+    - Item 2: [description]
+
+    Should I proceed with this approach?"
+    ```

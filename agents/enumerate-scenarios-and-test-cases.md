@@ -2,7 +2,7 @@
 name: enumerate-scenarios-and-test-cases
 description: Analyzes a coding task and enumerates scenarios with test cases. First agent in TDD workflow. Outputs structured tree for test placeholder creation.
 model: sonnet
-color: cyan
+color: magenta
 skills: [enumerating-tests]
 ---
 
@@ -66,6 +66,24 @@ Also reads `.pairingbuddy/test-config.json`:
 **You may ONLY write to:** `.pairingbuddy/scenarios.json`
 
 Do NOT create any other files. No /tmp files, no markdown files, no text files, no logs. Your sole output is the JSON file specified in the Output section.
+
+## Human Review
+
+Before proceeding with implementation, pause and present your analysis to the human operator for review.
+
+- Use the AskUserQuestion tool to present your findings
+- Wait for explicit approval before proceeding
+- If the human operator requests changes, revise your analysis and ask again
+
+Example interaction:
+
+```
+AskUserQuestion: "I've identified the following items for processing:
+- Item 1: [description]
+- Item 2: [description]
+
+Should I proceed with this approach?"
+```
 
 ## Output
 

@@ -2,7 +2,7 @@
 name: create-test-placeholders
 description: Creates test files with placeholder tests from scenarios. Second agent in TDD workflow. Outputs test mapping for implementation phase.
 model: haiku
-color: cyan
+color: yellow
 skills: [writing-tests]
 ---
 
@@ -119,6 +119,24 @@ Also reads `.pairingbuddy/test-config.json`:
 - Test files within the `test_directory` specified in `test-config.json`
 
 Do NOT create files anywhere else. No /tmp files, no markdown files, no files outside the test directory.
+
+## Human Review
+
+Before proceeding with implementation, pause and present your analysis to the human operator for review.
+
+- Use the AskUserQuestion tool to present your findings
+- Wait for explicit approval before proceeding
+- If the human operator requests changes, revise your analysis and ask again
+
+Example interaction:
+
+```
+AskUserQuestion: "I've identified the following items for processing:
+- Item 1: [description]
+- Item 2: [description]
+
+Should I proceed with this approach?"
+```
 
 ## Output
 

@@ -1,6 +1,7 @@
 """Structural validation tests for plugin agents."""
 
 import json
+import re
 from pathlib import Path
 
 import frontmatter
@@ -209,3 +210,71 @@ def test_agent_skill_references_resolve(agent_name):
             f"Agent '{agent_name}' references skill '{skill_name}' "
             f"but SKILL.md not found: {skill_file}"
         )
+
+
+def extract_section_content(content: str, heading: str) -> str | None:
+    """Extract the content of a markdown section by heading.
+
+    Args:
+        content: Full markdown content
+        heading: The heading to find (e.g., "## Human Review")
+
+    Returns:
+        The section content (stripped), or None if not found.
+    """
+    # Escape special regex chars in heading and match it
+    escaped_heading = re.escape(heading.lstrip("# ").strip())
+    section_pattern = rf"^## {escaped_heading}\s*$"
+    section_match = re.search(section_pattern, content, re.MULTILINE)
+    if not section_match:
+        return None
+
+    section_start = section_match.end()
+    next_section = re.search(r"^## ", content[section_start:], re.MULTILINE)
+    if next_section:
+        section_content = content[section_start : section_start + next_section.start()]
+    else:
+        section_content = content[section_start:]
+
+    return section_content.strip()
+
+
+def get_sections_with_content_refs():
+    """Get list of (agent_name, section_heading, content_key) for sections with content refs."""
+    config = load_agent_config()
+    result = []
+    for agent_name, agent_config in config["agents"].items():
+        for section in agent_config.get("sections", []):
+            if "content" in section:
+                result.append((agent_name, section["heading"], section["content"]))
+    return result
+
+
+@pytest.mark.parametrize(
+    "agent_name,section_heading,content_key",
+    get_sections_with_content_refs(),
+    ids=lambda x: x if isinstance(x, str) else None,
+)
+def test_agent_section_content_matches_canonical(agent_name, section_heading, content_key):
+    """Agent section with content reference must contain canonical content verbatim."""
+    agent_file = AGENTS_DIR / f"{agent_name}.md"
+    if not agent_file.exists():
+        pytest.skip(f"Agent file not found: {agent_file}")
+
+    config = load_agent_config()
+
+    # Get canonical content from the referenced key
+    canonical = config.get(content_key, {}).get("content", "")
+    assert canonical, f"No content found at config key '{content_key}'"
+    canonical = canonical.strip()
+
+    # Extract section content from agent
+    content = agent_file.read_text()
+    section_content = extract_section_content(content, section_heading)
+    assert section_content is not None, f"Agent {agent_name} missing section '{section_heading}'"
+
+    assert canonical in section_content, (
+        f"Agent {agent_name} section '{section_heading}' does not contain canonical content.\n"
+        f"Expected:\n{canonical}\n\n"
+        f"Found:\n{section_content}"
+    )
