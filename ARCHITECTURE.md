@@ -152,6 +152,7 @@ State files live in `.pairingbuddy/` at the git root of the target project:
 | task.json | User's coding task description | task.schema.json |
 | task-classification.json | Classified task type | task-classification.schema.json |
 | test-config.json | Test runner configuration (persists) | test-config.schema.json |
+| human-guidance.json | Accumulated human feedback (per session) | human-guidance.schema.json |
 | scenarios.json | Enumerated test scenarios | scenarios.schema.json |
 | tests.json | Test file/function mappings | tests.schema.json |
 | current-batch.json | Tests being processed | current-batch.schema.json |
@@ -521,10 +522,11 @@ skills/writing-tests/
 
 ### JSON Schemas
 
-13 JSON schemas define state contracts (all in `contracts/schemas/`):
+14 JSON schemas define state contracts (all in `contracts/schemas/`):
 - task.schema.json
 - task-classification.schema.json
 - test-config.schema.json
+- human-guidance.schema.json
 - scenarios.schema.json
 - tests.schema.json
 - current-batch.schema.json
@@ -660,7 +662,10 @@ Six agents pause for human review before proceeding:
 1. Agent completes analysis
 2. Presents bullet-point list to human
 3. Human approves or provides modifications
-4. Agent writes JSON only after approval
+4. If modifications: agent appends feedback to `human-guidance.json`
+5. Agent writes JSON only after approval
+
+**Feedback persistence:** When the human provides corrections, agents append the feedback to `human-guidance.json`. All agents read this file as input, so corrections given to one agent are visible to all subsequent agents. This prevents the human from having to repeat the same guidance across multiple agents.
 
 ### 6. Test Config Persistence
 

@@ -23,6 +23,7 @@ schemas:
   - coverage-report.schema.json
   - all-tests-results.schema.json
   - commit-result.schema.json
+  - human-guidance.schema.json
 
 # =============================================================================
 # Agent definitions
@@ -37,6 +38,10 @@ agents:
       task:
         schema: task.schema.json
         file: .pairingbuddy/task.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       task_classification:
         schema: task-classification.schema.json
@@ -58,6 +63,10 @@ agents:
       test_config:
         schema: test-config.schema.json
         file: .pairingbuddy/test-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       scenarios:
         schema: scenarios.schema.json
@@ -90,6 +99,10 @@ agents:
         schema: coverage-report.schema.json
         file: .pairingbuddy/coverage-report.json
         optional: true
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       tests:
         schema: tests.schema.json
@@ -114,6 +127,10 @@ agents:
       test_config:
         schema: test-config.schema.json
         file: .pairingbuddy/test-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       test_state:
         schema: test-state.schema.json
@@ -136,6 +153,10 @@ agents:
       test_config:
         schema: test-config.schema.json
         file: .pairingbuddy/test-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       code_state:
         schema: code-state.schema.json
@@ -157,6 +178,10 @@ agents:
       test_config:
         schema: test-config.schema.json
         file: .pairingbuddy/test-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       test_issues:
         schema: issues.schema.json
@@ -181,6 +206,10 @@ agents:
       test_config:
         schema: test-config.schema.json
         file: .pairingbuddy/test-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       files_changed:
         schema: files-changed.schema.json
@@ -203,6 +232,10 @@ agents:
       test_config:
         schema: test-config.schema.json
         file: .pairingbuddy/test-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       code_issues:
         schema: issues.schema.json
@@ -226,6 +259,10 @@ agents:
       test_config:
         schema: test-config.schema.json
         file: .pairingbuddy/test-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       files_changed:
         schema: files-changed.schema.json
@@ -250,6 +287,10 @@ agents:
       test_config:
         schema: test-config.schema.json
         file: .pairingbuddy/test-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       coverage_report:
         schema: coverage-report.schema.json
@@ -271,6 +312,10 @@ agents:
       test_config:
         schema: test-config.schema.json
         file: .pairingbuddy/test-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       all_tests_results:
         schema: all-tests-results.schema.json
@@ -289,6 +334,10 @@ agents:
       files_changed:
         schema: files-changed.schema.json
         file: .pairingbuddy/files-changed.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       commit_result:
         schema: commit-result.schema.json
@@ -310,6 +359,10 @@ agents:
       test_config:
         schema: test-config.schema.json
         file: .pairingbuddy/test-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
     outputs:
       code_issues:
         schema: issues.schema.json
@@ -335,7 +388,27 @@ human_review:
 
     - Use the AskUserQuestion tool to present your findings
     - Wait for explicit approval before proceeding
-    - If the human operator requests changes, revise your analysis and ask again
+    - If the human operator requests changes:
+      1. Revise your analysis accordingly
+      2. Append their feedback to `.pairingbuddy/human-guidance.json`
+      3. Ask again with the revised analysis
+
+    When appending to human-guidance.json:
+    - Read existing file first (or create with `{"guidance": []}` if missing)
+    - Append a new entry capturing the essence of the feedback
+    - Write the updated file
+
+    Example guidance entry:
+    ```json
+    {
+      "agent": "enumerate-scenarios-and-test-cases",
+      "timestamp": "2025-12-15T10:30:00Z",
+      "context": "reviewing proposed scenarios",
+      "feedback": "Focus on core functionality, edge cases are out of scope"
+    }
+    ```
+
+    Only append when the human provides corrections or guidance. Simple approvals ("looks good", "proceed") do not need to be recorded.
 
     Example interaction:
 

@@ -22,6 +22,7 @@ State files live in `.pairingbuddy/` at the git root of the target project.
 | task | .pairingbuddy/task.json | task.schema.json |
 | task_classification | .pairingbuddy/task-classification.json | task-classification.schema.json |
 | test_config | .pairingbuddy/test-config.json | test-config.schema.json |
+| human_guidance | .pairingbuddy/human-guidance.json | human-guidance.schema.json |
 | scenarios | .pairingbuddy/scenarios.json | scenarios.schema.json |
 | tests | .pairingbuddy/tests.json | tests.schema.json |
 | current_batch | .pairingbuddy/current-batch.json | current-batch.schema.json |
@@ -190,7 +191,10 @@ if _ask_human("All tests pass. Commit changes?"):
 
 1. At cycle start, verify `.pairingbuddy/` is in `.gitignore`
 2. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json` at start of new task
-3. Keep files after run for human review
+3. Initialize `human-guidance.json` with `{"guidance": []}` after cleanup
+4. Keep files after run for human review
+
+**Note:** `human-guidance.json` accumulates human feedback within a single task session. Agents with Human Review checkpoints append to this file when the human provides corrections. It is cleared at the start of each new task.
 
 ### Human Checkpoints
 

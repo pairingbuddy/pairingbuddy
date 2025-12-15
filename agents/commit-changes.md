@@ -28,6 +28,23 @@ Reads from `.pairingbuddy/files-changed.json`:
 }
 ```
 
+Also reads `.pairingbuddy/human-guidance.json` (if exists):
+
+```json
+{
+  "guidance": [
+    {
+      "agent": "string (agent that received this feedback)",
+      "timestamp": "string (ISO 8601 datetime)",
+      "context": "string (what was being reviewed)",
+      "feedback": "string (human's guidance or correction)"
+    }
+  ]
+}
+```
+
+Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
+
 ## Instructions
 
 1. **Validate input file:**

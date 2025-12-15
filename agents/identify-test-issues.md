@@ -59,6 +59,23 @@ Also reads `.pairingbuddy/test-config.json`:
 }
 ```
 
+Also reads `.pairingbuddy/human-guidance.json` (if exists):
+
+```json
+{
+  "guidance": [
+    {
+      "agent": "string (agent that received this feedback)",
+      "timestamp": "string (ISO 8601 datetime)",
+      "context": "string (what was being reviewed)",
+      "feedback": "string (human's guidance or correction)"
+    }
+  ]
+}
+```
+
+Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
+
 ## Instructions
 
 1. Read test mapping from `.pairingbuddy/tests.json`
@@ -86,7 +103,27 @@ Before proceeding with implementation, pause and present your analysis to the hu
 
 - Use the AskUserQuestion tool to present your findings
 - Wait for explicit approval before proceeding
-- If the human operator requests changes, revise your analysis and ask again
+- If the human operator requests changes:
+  1. Revise your analysis accordingly
+  2. Append their feedback to `.pairingbuddy/human-guidance.json`
+  3. Ask again with the revised analysis
+
+When appending to human-guidance.json:
+- Read existing file first (or create with `{"guidance": []}` if missing)
+- Append a new entry capturing the essence of the feedback
+- Write the updated file
+
+Example guidance entry:
+```json
+{
+  "agent": "enumerate-scenarios-and-test-cases",
+  "timestamp": "2025-12-15T10:30:00Z",
+  "context": "reviewing proposed scenarios",
+  "feedback": "Focus on core functionality, edge cases are out of scope"
+}
+```
+
+Only append when the human provides corrections or guidance. Simple approvals ("looks good", "proceed") do not need to be recorded.
 
 Example interaction:
 
