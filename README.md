@@ -4,6 +4,10 @@
 
 Your pair programming companion for test-driven development and clean architecture.
 
+## Documentation
+
+- **[Architecture Guide](./ARCHITECTURE.md)** - Design philosophy, testing strategy, agent architecture, and extensibility
+
 ## Installation
 
 ```bash
