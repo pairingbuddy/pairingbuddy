@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Spike Findings",
+  "description": "Accumulated findings with code references",
+  "type": "object",
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["unit_id", "summary", "code_references"],
+        "properties": {
+          "unit_id": {
+            "type": "string",
+            "description": "ID of the unit this finding relates to"
+          },
+          "summary": {
+            "type": "string",
+            "description": "Summary of findings for this unit"
+          },
+          "code_references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string",
+                  "description": "Path to file containing relevant code"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "What this code demonstrates"
+                }
+              }
+            },
+            "description": "References to code files created during exploration"
+          },
+          "recommendation": {
+            "type": "string",
+            "description": "Optional recommendation based on findings"
+          }
+        }
+      }
+    }
+  }
+}

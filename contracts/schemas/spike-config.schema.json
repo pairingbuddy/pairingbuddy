@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Spike Configuration",
+  "description": "Global spike configuration defining goal, code location, and exploration mode",
+  "type": "object",
+  "required": ["goal", "code_location", "exploration_mode"],
+  "properties": {
+    "goal": {
+      "type": "string",
+      "description": "What the spike aims to learn/answer"
+    },
+    "code_location": {
+      "type": "string",
+      "description": "Base location for spike code (e.g., 'spike/' or 'branch:spike-db-comparison')"
+    },
+    "exploration_mode": {
+      "type": "string",
+      "enum": ["questions", "approaches", "comparison"],
+      "description": "How exploration is structured"
+    }
+  }
+}

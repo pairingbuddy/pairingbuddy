@@ -7,7 +7,7 @@
   "properties": {
     "task_type": {
       "type": "string",
-      "enum": ["new_feature", "bug_fix", "refactoring", "config_change"],
+      "enum": ["new_feature", "bug_fix", "refactoring", "config_change", "spike"],
       "description": "The type of coding task"
     },
     "rationale": {

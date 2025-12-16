@@ -43,11 +43,12 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 1. Read the task from `.pairingbuddy/task.json`
 2. Analyze the task description and context
-3. Classify into one of four types:
+3. Classify into one of five types:
    - **new_feature**: Adding new functionality that requires new tests
    - **bug_fix**: Fixing incorrect behavior (needs regression test)
    - **refactoring**: Improving code structure without changing behavior
    - **config_change**: Changing configuration values only
+   - **spike**: Exploratory coding to answer questions or compare approaches
 4. If unclear, ask the human operator to clarify
 5. Write classification to `.pairingbuddy/task-classification.json`
 
@@ -59,6 +60,7 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 | **bug_fix** | "fix", "broken", "doesn't work", "incorrect", error reports |
 | **refactoring** | "refactor", "extract", "reorganize", "clean up", no behavior change |
 | **config_change** | "update config", "change setting", "set value", no code logic |
+| **spike** | "explore", "compare", "try out", "figure out", "which is better", "prototype", "experiment", feasibility questions |
 
 ### File Creation Restrictions
 
@@ -72,7 +74,7 @@ Writes to `.pairingbuddy/task-classification.json`:
 
 ```json
 {
-  "task_type": "new_feature | bug_fix | refactoring | config_change",
+  "task_type": "new_feature | bug_fix | refactoring | config_change | spike",
   "rationale": "string (why this classification was chosen)"
 }
 ```

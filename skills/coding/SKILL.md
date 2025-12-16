@@ -34,6 +34,11 @@ State files live in `.pairingbuddy/` at the git root of the target project.
 | coverage_report | .pairingbuddy/coverage-report.json | coverage-report.schema.json |
 | all_tests_results | .pairingbuddy/all-tests-results.json | all-tests-results.schema.json |
 | commit_result | .pairingbuddy/commit-result.json | commit-result.schema.json |
+| spike_config | .pairingbuddy/spike-config.json | spike-config.schema.json |
+| spike_questions | .pairingbuddy/spike-questions.json | spike-questions.schema.json |
+| spike_findings | .pairingbuddy/spike-findings.json | spike-findings.schema.json |
+| spike_summary | .pairingbuddy/spike-summary.json | spike-summary.schema.json |
+| current_unit | .pairingbuddy/current-unit.json | current-unit.schema.json |
 
 ## How to Execute This Workflow
 
@@ -72,6 +77,8 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | Function | Behavior |
 |----------|----------|
 | `_filter_pending(tests)` | Filter tests.json to return only tests not yet processed in this session |
+| `_filter_pending(spike_questions)` | Filter spike-questions.json units to return only units with status "pending" |
+| `_mark_unit_answered(spike_questions, unit_id)` | Update unit status to "answered" in spike-questions.json |
 | `_ask_human(question)` | Present question to human, return true/false based on response |
 | `_stop(message)` | Stop workflow execution and report message to human |
 
@@ -158,7 +165,33 @@ elif task_type == "config_change":
     # No agents needed - orchestrator makes the change directly
     pass
 
-# Final verification (all task types)
+elif task_type == "spike":
+    # Spike: exploratory coding without TDD
+    spike_config, spike_questions = setup_spike(task)
+
+    # Initialize findings file
+    spike_findings = {"findings": []}
+
+    # Explore each unit
+    for unit in _filter_pending(spike_questions):
+        current_unit = unit
+        spike_findings = explore_spike_unit(spike_config, spike_questions, current_unit, spike_findings)
+
+        # Update unit status to answered
+        _mark_unit_answered(spike_questions, unit.id)
+
+        # Human checkpoint after each unit
+        if not _ask_human(f"Unit '{unit.name}' explored. Continue to next unit?"):
+            break  # Human can stop early or redirect
+
+    # Summary (optional)
+    if _ask_human("Create findings summary document?"):
+        spike_summary = summarize_spike(spike_config, spike_findings)
+
+    # Skip final test verification and commit for spike
+    _stop("Spike complete. Review findings and decide next steps.")
+
+# Final verification (all task types except spike)
 all_tests_results = run_all_tests(test_config)
 if all_tests_results.status != "pass":
     _stop("Final verification failed - tests not passing")
@@ -176,6 +209,7 @@ if _ask_human("All tests pass. Commit changes?"):
 | **bug_fix** | Fixing incorrect behavior with a regression test | "Fix login failing for users with spaces in email" |
 | **refactoring** | Improving code structure, no behavior change | "Extract payment logic into separate module" |
 | **config_change** | Changing configuration values only | "Update API timeout to 30s" |
+| **spike** | Exploratory coding to answer questions, compare approaches, or evaluate technologies. No tests, throwaway code. | "Compare Redis vs Postgres for session storage" |
 
 ## Orchestrator Behavior
 

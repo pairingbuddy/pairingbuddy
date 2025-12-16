@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Current Unit",
+  "description": "Single exploration unit passed to explore-spike-unit agent",
+  "type": "object",
+  "required": ["id", "name"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the unit"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for the unit"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of what to explore"
+    },
+    "execution": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string",
+          "description": "Programming language for this unit"
+        },
+        "run_command": {
+          "type": "string",
+          "description": "Command to run the code"
+        },
+        "setup_command": {
+          "type": "string",
+          "description": "Optional command to set up dependencies"
+        },
+        "working_directory": {
+          "type": "string",
+          "description": "Subdirectory for this unit"
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment variables for this unit"
+        }
+      }
+    }
+  }
+}

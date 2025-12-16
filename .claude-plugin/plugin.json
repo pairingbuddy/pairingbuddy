@@ -26,6 +26,9 @@
     "./agents/verify-test-coverage.md",
     "./agents/run-all-tests.md",
     "./agents/commit-changes.md",
-    "./agents/scope-refactoring.md"
+    "./agents/scope-refactoring.md",
+    "./agents/setup-spike.md",
+    "./agents/explore-spike-unit.md",
+    "./agents/summarize-spike.md"
   ]
 }

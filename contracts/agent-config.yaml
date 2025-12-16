@@ -24,6 +24,11 @@ schemas:
   - all-tests-results.schema.json
   - commit-result.schema.json
   - human-guidance.schema.json
+  - spike-config.schema.json
+  - spike-questions.schema.json
+  - spike-findings.schema.json
+  - spike-summary.schema.json
+  - current-unit.schema.json
 
 # =============================================================================
 # Agent definitions
@@ -376,6 +381,92 @@ agents:
       - heading: "## Instructions"
       - heading: "## Human Review"
         content: human_review
+      - heading: "## Output"
+
+  setup-spike:
+    color: cyan
+    model: sonnet
+    skills: []
+    inputs:
+      task:
+        schema: task.schema.json
+        file: .pairingbuddy/task.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
+    outputs:
+      spike_config:
+        schema: spike-config.schema.json
+        file: .pairingbuddy/spike-config.json
+      spike_questions:
+        schema: spike-questions.schema.json
+        file: .pairingbuddy/spike-questions.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Human Review"
+        content: human_review
+      - heading: "## Output"
+
+  explore-spike-unit:
+    color: blue
+    model: sonnet
+    skills: []
+    inputs:
+      spike_config:
+        schema: spike-config.schema.json
+        file: .pairingbuddy/spike-config.json
+      spike_questions:
+        schema: spike-questions.schema.json
+        file: .pairingbuddy/spike-questions.json
+      current_unit:
+        schema: current-unit.schema.json
+        file: .pairingbuddy/current-unit.json
+      spike_findings:
+        schema: spike-findings.schema.json
+        file: .pairingbuddy/spike-findings.json
+        optional: true
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
+    outputs:
+      spike_findings:
+        schema: spike-findings.schema.json
+        file: .pairingbuddy/spike-findings.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+      - heading: "## Human Review"
+        content: human_review
+      - heading: "## Output"
+
+  summarize-spike:
+    color: green
+    model: sonnet
+    skills: []
+    inputs:
+      spike_config:
+        schema: spike-config.schema.json
+        file: .pairingbuddy/spike-config.json
+      spike_findings:
+        schema: spike-findings.schema.json
+        file: .pairingbuddy/spike-findings.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
+    outputs:
+      spike_summary:
+        schema: spike-summary.schema.json
+        file: .pairingbuddy/spike-summary.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
       - heading: "## Output"
 
 # =============================================================================
