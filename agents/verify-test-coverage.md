@@ -120,9 +120,13 @@ Refactoring may have changed tests. Scan actual test files and compare to tests.
    - The referenced test actually exists in the test file
 3. Identify gaps: test_cases with no valid covering test
 
-### Step 3: Write coverage report
+### Step 3: Present findings for review
 
-Write results to `.pairingbuddy/coverage-report.json`
+[Present reconciliation changes and coverage gaps to human for review](#human-review)
+
+### Step 4: Write coverage report
+
+After approval, write results to `.pairingbuddy/coverage-report.json`
 
 **Do NOT run tests** - that's handled by a dedicated agent elsewhere.
 

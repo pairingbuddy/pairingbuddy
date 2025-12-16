@@ -76,7 +76,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 2. Identify scenarios (distinct feature areas or behaviors)
 3. For each scenario, enumerate test cases (specific conditions to verify)
 4. Use kebab-case IDs (e.g., `user-login`, `add-positive-numbers`)
-5. Write to `.pairingbuddy/scenarios.json`
+5. [Present scenarios and test cases to human for review](#human-review)
+6. After approval, write to `.pairingbuddy/scenarios.json`
 
 ### File Creation Restrictions
 

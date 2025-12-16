@@ -111,7 +111,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    - Capture results and observations
 5. Focus on answering the specific question - avoid scope creep
 6. Document findings with code references
-7. Append findings to spike-findings.json
+7. [Present findings to human for review](#human-review)
+8. After approval, append findings to spike-findings.json
 
 ### Exploration Guidelines
 

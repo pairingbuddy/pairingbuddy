@@ -53,7 +53,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    - Language/runtime needed
    - Working directory (suggest based on exploration mode)
 6. Ask human where spike code should live (directory or branch)
-7. Write spike configuration and exploration units
+7. [Present spike configuration and units to human for review](#human-review)
+8. After approval, write spike configuration and exploration units
 
 ### Exploration Unit Guidelines
 

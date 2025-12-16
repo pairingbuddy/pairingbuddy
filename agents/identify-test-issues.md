@@ -84,7 +84,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    a. Read the test code
    b. Identify quality issues
    c. Record each issue with file, line, type, description
-4. Write issues to `.pairingbuddy/test-issues.json`
+4. [Present identified issues to human for review](#human-review)
+5. After approval, write issues to `.pairingbuddy/test-issues.json`
 
 ### File Creation Restrictions
 

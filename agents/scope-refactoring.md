@@ -70,7 +70,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    - **Focus**: Code, tests, or both
 4. Search the codebase to locate target files
 5. Create issue entries for the specific refactoring requested
-6. Write to appropriate issues file(s)
+6. [Present scoped issues to human for review](#human-review)
+7. After approval, write to appropriate issues file(s)
 
 ### Determining Focus
 

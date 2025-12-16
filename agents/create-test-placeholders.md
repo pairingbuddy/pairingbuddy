@@ -123,7 +123,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    - Only process test_cases listed in the gaps array
 5. **Otherwise (first pass):**
    - Process all test_cases from scenarios.json
-6. **For each test_case to process:**
+6. [Present planned test placeholders to human for review](#human-review)
+7. **After approval, for each test_case to process:**
    - Skip if tests.json already has an entry for this test_case_id (idempotent)
    - Create placeholder test in the configured test directory
    - Generate unique test_id
