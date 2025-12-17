@@ -74,12 +74,25 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
-1. Read the task from `.pairingbuddy/task.json`
+### Step 1: Read Inputs
+
+Read all input files listed above, including `.pairingbuddy/human-guidance.json`.
+Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
+
+### Step 2: Main Work
+
+1. Analyze the task from `.pairingbuddy/task.json`
 2. Identify scenarios (distinct feature areas or behaviors)
 3. For each scenario, enumerate test cases (specific conditions to verify)
 4. Use kebab-case IDs (e.g., `user-login`, `add-positive-numbers`)
-5. [Present scenarios and test cases to human for review](#human-review)
-6. After approval, write to `.pairingbuddy/scenarios.json`
+
+### Step 3: Human Review
+
+[Present to human for review](#human-review). If feedback, go back to Step 2.
+
+### Step 4: Output
+
+After approval, write to `.pairingbuddy/scenarios.json`.
 
 ### File Creation Restrictions
 
@@ -89,14 +102,19 @@ Do NOT create any other files. No /tmp files, no markdown files, no text files, 
 
 ## Human Review
 
-Before proceeding with implementation, pause and present your analysis to the human operator for review.
+Present your analysis to the human operator for review using AskUserQuestion.
 
-- Use the AskUserQuestion tool to present your findings
-- Wait for explicit approval before proceeding
-- If the human operator requests changes:
-  1. Revise your analysis accordingly
-  2. Append their feedback to `.pairingbuddy/human-guidance.json`
-  3. Ask again with the revised analysis
+**Review loop:**
+1. Present findings and ask for approval
+2. If human provides corrections or feedback:
+   a. **IMMEDIATELY** append to `.pairingbuddy/human-guidance.json` (before anything else)
+   b. Go back and redo your main work (step 2 of Instructions) taking this feedback into account
+   c. Present revised analysis and ask again (return to step 1 of this loop)
+3. Only exit the loop when human either:
+   - Explicitly approves (e.g., "yes", "proceed", "looks good")
+   - Explicitly terminates (e.g., "stop", "skip", "cancel")
+
+**Do NOT proceed to output after receiving feedback** - always redo analysis and ask again.
 
 When appending to human-guidance.json:
 - Read existing file first (or create with `{"guidance": []}` if missing)

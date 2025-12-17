@@ -217,20 +217,38 @@ def extract_section_content(content: str, heading: str) -> str | None:
 
     Args:
         content: Full markdown content
-        heading: The heading to find (e.g., "## Human Review")
+        heading: The heading to find (e.g., "## Human Review" or "### Step 1")
 
     Returns:
         The section content (stripped), or None if not found.
     """
+    # Determine heading level from the input (count # characters)
+    heading_prefix = ""
+    for char in heading:
+        if char == "#":
+            heading_prefix += "#"
+        else:
+            break
+
+    if not heading_prefix:
+        heading_prefix = "##"  # Default to level 2
+
+    heading_level = len(heading_prefix)
+    heading_text = heading.lstrip("# ").strip()
+
     # Escape special regex chars in heading and match it
-    escaped_heading = re.escape(heading.lstrip("# ").strip())
-    section_pattern = rf"^## {escaped_heading}\s*$"
+    escaped_heading = re.escape(heading_text)
+    section_pattern = rf"^{heading_prefix} {escaped_heading}\s*$"
     section_match = re.search(section_pattern, content, re.MULTILINE)
     if not section_match:
         return None
 
     section_start = section_match.end()
-    next_section = re.search(r"^## ", content[section_start:], re.MULTILINE)
+
+    # Look for the next heading at same or higher level (fewer or equal #)
+    # e.g., for ### heading, next section is ##, ###, or # (but not ####)
+    next_section_pattern = rf"^#{{1,{heading_level}}} "
+    next_section = re.search(next_section_pattern, content[section_start:], re.MULTILINE)
     if next_section:
         section_content = content[section_start : section_start + next_section.start()]
     else:

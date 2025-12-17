@@ -700,14 +700,28 @@ Tests validate that implementations match these contracts.
 8. setup-spike
 9. explore-spike-unit
 
-**Pattern:**
-1. Agent completes analysis
-2. Presents bullet-point list to human
-3. Human approves or provides modifications
-4. If modifications: agent appends feedback to `human-guidance.json`
-5. Agent writes JSON only after approval
+**Workflow Pattern (Step 1-4):**
 
-**Feedback persistence:** When the human provides corrections, agents append the feedback to `human-guidance.json`. All agents read this file as input, so corrections given to one agent are visible to all subsequent agents. This prevents the human from having to repeat the same guidance across multiple agents.
+All agents with human review follow an explicit 4-step workflow in their Instructions section:
+
+| Step | Purpose |
+|------|---------|
+| **Step 1: Read Inputs** | Read all input JSON files, always including `human-guidance.json`. Apply prior guidance. |
+| **Step 2: Main Work** | Agent-specific analysis (enumerate scenarios, identify issues, etc.) |
+| **Step 3: Human Review** | Present findings, ask for approval. If feedback, go back to Step 2. |
+| **Step 4: Output** | Write JSON output only after explicit approval. |
+
+**Review Loop:**
+1. Agent presents findings and asks for approval
+2. If human provides feedback:
+   - Agent **immediately** appends to `human-guidance.json`
+   - Agent redoes Step 2 with the new guidance
+   - Agent presents revised findings and asks again
+3. Loop continues until human explicitly approves or terminates
+
+**Critical:** Agents do NOT proceed to output after receiving feedback - they must redo their analysis and present again. This ensures human corrections are actually applied.
+
+**Feedback persistence:** When the human provides corrections, agents append the feedback to `human-guidance.json`. All agents read this file as input (Step 1), so corrections given to one agent are visible to all subsequent agents. This prevents the human from having to repeat the same guidance across multiple agents.
 
 ### 6. Test Config Persistence
 

@@ -118,6 +118,13 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
+### Step 1: Read Inputs
+
+Read all input files listed above, including `.pairingbuddy/human-guidance.json`.
+Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
+
+### Step 2: Main Work
+
 1. Read scenarios from `.pairingbuddy/scenarios.json`
 2. Read test configuration from `.pairingbuddy/test-config.json`
 3. Read existing tests from `.pairingbuddy/tests.json` (if exists)
@@ -125,12 +132,19 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    - Only process test_cases listed in the gaps array
 5. **Otherwise (first pass):**
    - Process all test_cases from scenarios.json
-6. [Present planned test placeholders to human for review](#human-review)
-7. **After approval, for each test_case to process:**
-   - Skip if tests.json already has an entry for this test_case_id (idempotent)
-   - Create placeholder test in the configured test directory
-   - Generate unique test_id
-   - Append entry to tests.json
+6. Plan placeholder tests for each test_case to process
+
+### Step 3: Human Review
+
+[Present to human for review](#human-review). If feedback, go back to Step 2.
+
+### Step 4: Output
+
+After approval, for each test_case to process:
+- Skip if tests.json already has an entry for this test_case_id (idempotent)
+- Create placeholder test in the configured test directory
+- Generate unique test_id
+- Append entry to tests.json
 
 ### File Creation Restrictions
 
@@ -142,14 +156,19 @@ Do NOT create files anywhere else. No /tmp files, no markdown files, no files ou
 
 ## Human Review
 
-Before proceeding with implementation, pause and present your analysis to the human operator for review.
+Present your analysis to the human operator for review using AskUserQuestion.
 
-- Use the AskUserQuestion tool to present your findings
-- Wait for explicit approval before proceeding
-- If the human operator requests changes:
-  1. Revise your analysis accordingly
-  2. Append their feedback to `.pairingbuddy/human-guidance.json`
-  3. Ask again with the revised analysis
+**Review loop:**
+1. Present findings and ask for approval
+2. If human provides corrections or feedback:
+   a. **IMMEDIATELY** append to `.pairingbuddy/human-guidance.json` (before anything else)
+   b. Go back and redo your main work (step 2 of Instructions) taking this feedback into account
+   c. Present revised analysis and ask again (return to step 1 of this loop)
+3. Only exit the loop when human either:
+   - Explicitly approves (e.g., "yes", "proceed", "looks good")
+   - Explicitly terminates (e.g., "stop", "skip", "cancel")
+
+**Do NOT proceed to output after receiving feedback** - always redo analysis and ask again.
 
 When appending to human-guidance.json:
 - Read existing file first (or create with `{"guidance": []}` if missing)

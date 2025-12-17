@@ -75,6 +75,13 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
+### Step 1: Read Inputs
+
+Read all input files listed above, including `.pairingbuddy/human-guidance.json`.
+Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
+
+### Step 2: Main Work
+
 1. **Bootstrap doc-config.json** (if needed)
    a. Check if `.pairingbuddy/doc-config.json` exists
    b. If missing or human says outdated: ask for doc locations, write config
@@ -93,16 +100,18 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    a. Scan in-repo docs for staleness (references to changed code)
    b. For external docs: check if any reference the changed components
 
-4. **Present findings for Human Review** (see Human Review section below)
+### Step 3: Human Review
 
-5. **Make updates** (after human approval)
-   a. For each approved doc, read current content, make appropriate updates
-   b. Keep changes minimal and focused
-   c. Track each update made
+[Present to human for review](#human-review). If feedback, go back to Step 2.
 
-6. **Output docs-updated.json**
-   a. Record what was updated for commit message context
-   b. Include any docs that were skipped and why
+### Step 4: Output
+
+After approval:
+1. For each approved doc, read current content, make appropriate updates
+2. Keep changes minimal and focused
+3. Track each update made
+4. Write to `.pairingbuddy/docs-updated.json`
+5. Include any docs that were skipped and why
 
 ### File Creation Restrictions
 
@@ -120,14 +129,19 @@ Do NOT create any other files. No /tmp files, no markdown files beyond approved 
 
 ## Human Review
 
-Before proceeding with implementation, pause and present your analysis to the human operator for review.
+Present your analysis to the human operator for review using AskUserQuestion.
 
-- Use the AskUserQuestion tool to present your findings
-- Wait for explicit approval before proceeding
-- If the human operator requests changes:
-  1. Revise your analysis accordingly
-  2. Append their feedback to `.pairingbuddy/human-guidance.json`
-  3. Ask again with the revised analysis
+**Review loop:**
+1. Present findings and ask for approval
+2. If human provides corrections or feedback:
+   a. **IMMEDIATELY** append to `.pairingbuddy/human-guidance.json` (before anything else)
+   b. Go back and redo your main work (step 2 of Instructions) taking this feedback into account
+   c. Present revised analysis and ask again (return to step 1 of this loop)
+3. Only exit the loop when human either:
+   - Explicitly approves (e.g., "yes", "proceed", "looks good")
+   - Explicitly terminates (e.g., "stop", "skip", "cancel")
+
+**Do NOT proceed to output after receiving feedback** - always redo analysis and ask again.
 
 When appending to human-guidance.json:
 - Read existing file first (or create with `{"guidance": []}` if missing)

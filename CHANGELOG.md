@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Agent count increased from 16 to 17
 - Schema count increased from 19 to 21
 
+### Changed
+
+- Restructured Human Review workflow with explicit Step 1-4 pattern:
+  - Step 1: Read Inputs (always includes human-guidance.json first)
+  - Step 2: Main Work (agent-specific analysis)
+  - Step 3: Human Review (with retry loop back to Step 2 on feedback)
+  - Step 4: Output (only after explicit approval)
+- Added canonical workflow blocks to agent-config.yaml (workflow_read_inputs, workflow_human_review, workflow_append_guidance)
+- All 9 agents with Human Review now enforce: read guidance first, redo work after feedback, never proceed to output without approval
+
 ## [0.2.0] - 2025-12-17
 
 ### Added

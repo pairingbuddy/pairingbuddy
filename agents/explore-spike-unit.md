@@ -103,18 +103,30 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
-1. Read the current unit from `.pairingbuddy/current-unit.json`
-2. Read spike config and existing findings for context
-3. Create code in the working directory to explore the unit's question
-4. Follow the unit's execution configuration:
+### Step 1: Read Inputs
+
+Read all input files listed above, including `.pairingbuddy/human-guidance.json`.
+Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
+
+### Step 2: Main Work
+
+1. Read spike config and existing findings for context
+2. Create code in the working directory to explore the unit's question
+3. Follow the unit's execution configuration:
    - Run setup command if provided
    - Create minimal exploratory code
    - Run using the run_command
    - Capture results and observations
-5. Focus on answering the specific question - avoid scope creep
-6. Document findings with code references
-7. [Present findings to human for review](#human-review)
-8. After approval, append findings to spike-findings.json
+4. Focus on answering the specific question - avoid scope creep
+5. Document findings with code references
+
+### Step 3: Human Review
+
+[Present to human for review](#human-review). If feedback, go back to Step 2.
+
+### Step 4: Output
+
+After approval, append findings to `.pairingbuddy/spike-findings.json`.
 
 ### Exploration Guidelines
 
@@ -135,14 +147,19 @@ Do NOT create files outside these locations. No /tmp files, no markdown files ou
 
 ## Human Review
 
-Before proceeding with implementation, pause and present your analysis to the human operator for review.
+Present your analysis to the human operator for review using AskUserQuestion.
 
-- Use the AskUserQuestion tool to present your findings
-- Wait for explicit approval before proceeding
-- If the human operator requests changes:
-  1. Revise your analysis accordingly
-  2. Append their feedback to `.pairingbuddy/human-guidance.json`
-  3. Ask again with the revised analysis
+**Review loop:**
+1. Present findings and ask for approval
+2. If human provides corrections or feedback:
+   a. **IMMEDIATELY** append to `.pairingbuddy/human-guidance.json` (before anything else)
+   b. Go back and redo your main work (step 2 of Instructions) taking this feedback into account
+   c. Present revised analysis and ask again (return to step 1 of this loop)
+3. Only exit the loop when human either:
+   - Explicitly approves (e.g., "yes", "proceed", "looks good")
+   - Explicitly terminates (e.g., "stop", "skip", "cancel")
+
+**Do NOT proceed to output after receiving feedback** - always redo analysis and ask again.
 
 When appending to human-guidance.json:
 - Read existing file first (or create with `{"guidance": []}` if missing)
