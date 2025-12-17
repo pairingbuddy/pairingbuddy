@@ -91,8 +91,6 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
-      - heading: "## Human Review"
-        content: human_review
       - heading: "## Output"
 
   create-test-placeholders:
@@ -134,8 +132,6 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
-      - heading: "## Human Review"
-        content: human_review
       - heading: "## Output"
 
   implement-tests:
@@ -222,8 +218,6 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
-      - heading: "## Human Review"
-        content: human_review
       - heading: "## Output"
 
   refactor-tests:
@@ -283,8 +277,6 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
-      - heading: "## Human Review"
-        content: human_review
       - heading: "## Output"
 
   refactor-code:
@@ -347,8 +339,6 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
-      - heading: "## Human Review"
-        content: human_review
       - heading: "## Output"
 
   run-all-tests:
@@ -407,8 +397,6 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
-      - heading: "## Human Review"
-        content: human_review
       - heading: "## Output"
 
   commit-changes:
@@ -467,8 +455,6 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
-      - heading: "## Human Review"
-        content: human_review
       - heading: "## Output"
 
   setup-spike:
@@ -501,8 +487,6 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
-      - heading: "## Human Review"
-        content: human_review
       - heading: "## Output"
 
   explore-spike-unit:
@@ -542,8 +526,6 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
-      - heading: "## Human Review"
-        content: human_review
       - heading: "## Output"
 
   summarize-spike:
@@ -595,47 +577,7 @@ workflow_read_inputs:
     Read all input files listed above, including `.pairingbuddy/human-guidance.json`.
     Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
-workflow_human_review:
-  content: |
-    Present your analysis to the human operator for review using AskUserQuestion.
-
-    **Review loop:**
-    1. Present findings and ask for approval
-    2. If human provides corrections or feedback:
-       a. **IMMEDIATELY** append to `.pairingbuddy/human-guidance.json` (before anything else)
-       b. Go back and redo your main work (step 2) taking this feedback into account
-       c. Present revised analysis and ask again (return to step 1 of this loop)
-    3. Only exit the loop when human either:
-       - Explicitly approves (e.g., "yes", "proceed", "looks good")
-       - Explicitly terminates (e.g., "stop", "skip", "cancel")
-
-    **Do NOT proceed to output after receiving feedback** - always redo analysis and ask again.
-
-workflow_append_guidance:
-  content: |
-    When appending to human-guidance.json:
-    - Read existing file first (or create with `{"guidance": []}` if missing)
-    - Append a new entry capturing the essence of the feedback
-    - Write the updated file
-
-    Example guidance entry:
-    ```json
-    {
-      "agent": "enumerate-scenarios-and-test-cases",
-      "timestamp": "2025-12-15T10:30:00Z",
-      "context": "reviewing proposed scenarios",
-      "feedback": "Focus on core functionality, edge cases are out of scope"
-    }
-    ```
-
-    Only append when the human provides corrections or guidance. Simple approvals ("looks good", "proceed") do not need to be recorded.
-
 workflow_step3_human_review:
-  content: |
-    [Present to human for review](#human-review). If feedback, go back to Step 2.
-
-# Legacy alias for tests (combines all workflow content for Human Review section)
-human_review:
   content: |
     Present your analysis to the human operator for review using AskUserQuestion.
 

@@ -86,25 +86,6 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 3: Human Review
 
-[Present to human for review](#human-review). If feedback, go back to Step 2.
-
-### Step 4: Output
-
-After approval, write issues to `.pairingbuddy/code-issues.json`.
-
-### File Creation Restrictions
-
-**You may ONLY write to:** `.pairingbuddy/code-issues.json`
-
-Do NOT create any other files. No /tmp files, no markdown files, no text files. Your sole output is the JSON file specified in the Output section.
-
-**Do NOT:**
-- Fix issues (that's for refactor-code agent)
-- Report issues in test code (that's for identify-test-issues)
-- Suggest features not required by tests
-
-## Human Review
-
 Present your analysis to the human operator for review using AskUserQuestion.
 
 **Review loop:**
@@ -145,6 +126,21 @@ AskUserQuestion: "I've identified the following items for processing:
 
 Should I proceed with this approach?"
 ```
+
+### Step 4: Output
+
+After approval, write issues to `.pairingbuddy/code-issues.json`.
+
+### File Creation Restrictions
+
+**You may ONLY write to:** `.pairingbuddy/code-issues.json`
+
+Do NOT create any other files. No /tmp files, no markdown files, no text files. Your sole output is the JSON file specified in the Output section.
+
+**Do NOT:**
+- Fix issues (that's for refactor-code agent)
+- Report issues in test code (that's for identify-test-issues)
+- Suggest features not required by tests
 
 ## Output
 

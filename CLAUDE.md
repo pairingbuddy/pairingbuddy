@@ -43,7 +43,7 @@ pairingbuddy/
 │   ├── skill-config.yaml    # Skill definitions
 │   └── schemas/             # JSON schemas for state
 ├── commands/         # Slash commands (/pairingbuddy:code)
-└── tests/            # Structural tests (~500)
+└── tests/            # Structural tests (~565)
 ```
 
 ## Key Conventions

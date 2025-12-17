@@ -26,8 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Step 2: Main Work (agent-specific analysis)
   - Step 3: Human Review (with retry loop back to Step 2 on feedback)
   - Step 4: Output (only after explicit approval)
-- Added canonical workflow blocks to agent-config.yaml (workflow_read_inputs, workflow_human_review, workflow_append_guidance)
+- Moved Human Review content into Step 3 (removed separate ## Human Review section)
+- Added canonical content blocks: workflow_read_inputs, workflow_step3_human_review
 - All 9 agents with Human Review now enforce: read guidance first, redo work after feedback, never proceed to output without approval
+- Test count changed from ~500 to ~565
 
 ## [0.2.0] - 2025-12-17
 

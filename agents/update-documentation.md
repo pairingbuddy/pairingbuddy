@@ -100,34 +100,9 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    a. Scan in-repo docs for staleness (references to changed code)
    b. For external docs: check if any reference the changed components
 
+4. **Make changes iteratively with human review**
+
 ### Step 3: Human Review
-
-[Present to human for review](#human-review). If feedback, go back to Step 2.
-
-### Step 4: Output
-
-After approval:
-1. For each approved doc, read current content, make appropriate updates
-2. Keep changes minimal and focused
-3. Track each update made
-4. Write to `.pairingbuddy/docs-updated.json`
-5. Include any docs that were skipped and why
-
-### File Creation Restrictions
-
-**You may ONLY write to:**
-- `.pairingbuddy/doc-config.json` (bootstrap or update)
-- `.pairingbuddy/docs-updated.json` (output)
-- Documentation files approved by the human (in-repo and external)
-
-Do NOT create any other files. No /tmp files, no markdown files beyond approved doc updates.
-
-**Do NOT:**
-- Update documentation without human approval
-- Make changes beyond what was approved
-- Create new documentation files (only update existing ones)
-
-## Human Review
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -169,6 +144,29 @@ AskUserQuestion: "I've identified the following items for processing:
 
 Should I proceed with this approach?"
 ```
+
+### Step 4: Output
+
+After approval:
+1. For each approved doc, read current content, make appropriate updates
+2. Keep changes minimal and focused
+3. Track each update made
+4. Write to `.pairingbuddy/docs-updated.json`
+5. Include any docs that were skipped and why
+
+### File Creation Restrictions
+
+**You may ONLY write to:**
+- `.pairingbuddy/doc-config.json` (bootstrap or update)
+- `.pairingbuddy/docs-updated.json` (output)
+- Documentation files approved by the human (in-repo and external)
+
+Do NOT create any other files. No /tmp files, no markdown files beyond approved doc updates.
+
+**Do NOT:**
+- Update documentation without human approval
+- Make changes beyond what was approved
+- Create new documentation files (only update existing ones)
 
 ## Output
 

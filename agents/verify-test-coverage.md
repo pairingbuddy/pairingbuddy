@@ -131,24 +131,6 @@ Refactoring may have changed tests. Scan actual test files and compare to tests.
 
 ### Step 3: Human Review
 
-[Present to human for review](#human-review). If feedback, go back to Step 2.
-
-### Step 4: Output
-
-After approval, write results to `.pairingbuddy/coverage-report.json`
-
-**Do NOT run tests** - that's handled by a dedicated agent elsewhere.
-
-### File Creation Restrictions
-
-**You may ONLY write to:**
-- `.pairingbuddy/tests.json` (reconciliation updates)
-- `.pairingbuddy/coverage-report.json` (your primary output)
-
-Do NOT create any other files. No /tmp files, no markdown files, no text files.
-
-## Human Review
-
 Present your analysis to the human operator for review using AskUserQuestion.
 
 **Review loop:**
@@ -189,6 +171,20 @@ AskUserQuestion: "I've identified the following items for processing:
 
 Should I proceed with this approach?"
 ```
+
+### Step 4: Output
+
+After approval, write results to `.pairingbuddy/coverage-report.json`
+
+**Do NOT run tests** - that's handled by a dedicated agent elsewhere.
+
+### File Creation Restrictions
+
+**You may ONLY write to:**
+- `.pairingbuddy/tests.json` (reconciliation updates)
+- `.pairingbuddy/coverage-report.json` (your primary output)
+
+Do NOT create any other files. No /tmp files, no markdown files, no text files.
 
 ## Output
 

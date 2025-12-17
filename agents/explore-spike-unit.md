@@ -122,31 +122,6 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 3: Human Review
 
-[Present to human for review](#human-review). If feedback, go back to Step 2.
-
-### Step 4: Output
-
-After approval, append findings to `.pairingbuddy/spike-findings.json`.
-
-### Exploration Guidelines
-
-- Write minimal code - this is throwaway/prototype code
-- Focus on speed and learning, not quality
-- Run the code to verify it works
-- Capture specific observations (performance, complexity, ease of use, etc.)
-- Reference the files you created
-- Keep recommendations concrete and actionable
-
-### File Creation Restrictions
-
-**You may ONLY write to:**
-- Files within the unit's `working_directory` (exploratory code)
-- `.pairingbuddy/spike-findings.json` (append findings)
-
-Do NOT create files outside these locations. No /tmp files, no markdown files outside spike directories, no text files. Create exploratory code in the working directory and append findings to spike-findings.json.
-
-## Human Review
-
 Present your analysis to the human operator for review using AskUserQuestion.
 
 **Review loop:**
@@ -187,6 +162,27 @@ AskUserQuestion: "I've identified the following items for processing:
 
 Should I proceed with this approach?"
 ```
+
+### Step 4: Output
+
+After approval, append findings to `.pairingbuddy/spike-findings.json`.
+
+### Exploration Guidelines
+
+- Write minimal code - this is throwaway/prototype code
+- Focus on speed and learning, not quality
+- Run the code to verify it works
+- Capture specific observations (performance, complexity, ease of use, etc.)
+- Reference the files you created
+- Keep recommendations concrete and actionable
+
+### File Creation Restrictions
+
+**You may ONLY write to:**
+- Files within the unit's `working_directory` (exploratory code)
+- `.pairingbuddy/spike-findings.json` (append findings)
+
+Do NOT create files outside these locations. No /tmp files, no markdown files outside spike directories, no text files. Create exploratory code in the working directory and append findings to spike-findings.json.
 
 ## Output
 

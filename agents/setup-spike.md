@@ -64,28 +64,6 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 3: Human Review
 
-[Present to human for review](#human-review). If feedback, go back to Step 2.
-
-### Step 4: Output
-
-After approval, write spike configuration to `.pairingbuddy/spike-config.json` and exploration units to `.pairingbuddy/spike-questions.json`.
-
-### Exploration Unit Guidelines
-
-- Each unit should be focused and independent
-- Units should have clear success criteria
-- Keep units small (1-2 hours of exploration each)
-- Suggest sensible defaults for execution config
-- Working directories should be under the code_location
-
-### File Creation Restrictions
-
-**You may ONLY write to:** `.pairingbuddy/spike-config.json` and `.pairingbuddy/spike-questions.json`
-
-Do NOT create any other files. No /tmp files, no markdown files, no text files, no logs. Your sole outputs are the two JSON files specified in the Output section.
-
-## Human Review
-
 Present your analysis to the human operator for review using AskUserQuestion.
 
 **Review loop:**
@@ -126,6 +104,24 @@ AskUserQuestion: "I've identified the following items for processing:
 
 Should I proceed with this approach?"
 ```
+
+### Step 4: Output
+
+After approval, write spike configuration to `.pairingbuddy/spike-config.json` and exploration units to `.pairingbuddy/spike-questions.json`.
+
+### Exploration Unit Guidelines
+
+- Each unit should be focused and independent
+- Units should have clear success criteria
+- Keep units small (1-2 hours of exploration each)
+- Suggest sensible defaults for execution config
+- Working directories should be under the code_location
+
+### File Creation Restrictions
+
+**You may ONLY write to:** `.pairingbuddy/spike-config.json` and `.pairingbuddy/spike-questions.json`
+
+Do NOT create any other files. No /tmp files, no markdown files, no text files, no logs. Your sole outputs are the two JSON files specified in the Output section.
 
 ## Output
 

@@ -80,30 +80,6 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 3: Human Review
 
-[Present to human for review](#human-review). If feedback, go back to Step 2.
-
-### Step 4: Output
-
-After approval, write to appropriate issues file(s) based on focus.
-
-### Determining Focus
-
-| Task mentions | Creates |
-|---------------|---------|
-| test files, fixtures, specs, mocks | test-issues.json only |
-| source files, modules, services, classes, production code | code-issues.json only |
-| both or ambiguous ("refactor the auth system") | both files |
-
-### File Creation Restrictions
-
-**You may ONLY write to:**
-- `.pairingbuddy/code-issues.json` (for code refactoring)
-- `.pairingbuddy/test-issues.json` (for test refactoring)
-
-Do NOT create any other files. No /tmp files, no markdown files, no text files.
-
-## Human Review
-
 Present your analysis to the human operator for review using AskUserQuestion.
 
 **Review loop:**
@@ -144,6 +120,26 @@ AskUserQuestion: "I've identified the following items for processing:
 
 Should I proceed with this approach?"
 ```
+
+### Step 4: Output
+
+After approval, write to appropriate issues file(s) based on focus.
+
+### Determining Focus
+
+| Task mentions | Creates |
+|---------------|---------|
+| test files, fixtures, specs, mocks | test-issues.json only |
+| source files, modules, services, classes, production code | code-issues.json only |
+| both or ambiguous ("refactor the auth system") | both files |
+
+### File Creation Restrictions
+
+**You may ONLY write to:**
+- `.pairingbuddy/code-issues.json` (for code refactoring)
+- `.pairingbuddy/test-issues.json` (for test refactoring)
+
+Do NOT create any other files. No /tmp files, no markdown files, no text files.
 
 ## Output
 

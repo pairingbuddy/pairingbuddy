@@ -115,7 +115,7 @@ pairingbuddy/
 │   └── committing-changes/       # Reference skill for git commits
 ├── commands/                      # Slash commands
 │   └── code.md                   # Entry point: /pairingbuddy:code
-├── tests/                         # Test suite (~500 tests)
+├── tests/                         # Test suite (~565 tests)
 │   ├── agents/                   # Agent structure and contract tests
 │   ├── skills/                   # Skill structure tests
 │   └── contracts/                # Test utilities

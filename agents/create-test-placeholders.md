@@ -136,26 +136,6 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 3: Human Review
 
-[Present to human for review](#human-review). If feedback, go back to Step 2.
-
-### Step 4: Output
-
-After approval, for each test_case to process:
-- Skip if tests.json already has an entry for this test_case_id (idempotent)
-- Create placeholder test in the configured test directory
-- Generate unique test_id
-- Append entry to tests.json
-
-### File Creation Restrictions
-
-**You may ONLY write to:**
-- `.pairingbuddy/tests.json` (your JSON output)
-- Test files within the `test_directory` specified in `test-config.json`
-
-Do NOT create files anywhere else. No /tmp files, no markdown files, no files outside the test directory.
-
-## Human Review
-
 Present your analysis to the human operator for review using AskUserQuestion.
 
 **Review loop:**
@@ -196,6 +176,22 @@ AskUserQuestion: "I've identified the following items for processing:
 
 Should I proceed with this approach?"
 ```
+
+### Step 4: Output
+
+After approval, for each test_case to process:
+- Skip if tests.json already has an entry for this test_case_id (idempotent)
+- Create placeholder test in the configured test directory
+- Generate unique test_id
+- Append entry to tests.json
+
+### File Creation Restrictions
+
+**You may ONLY write to:**
+- `.pairingbuddy/tests.json` (your JSON output)
+- Test files within the `test_directory` specified in `test-config.json`
+
+Do NOT create files anywhere else. No /tmp files, no markdown files, no files outside the test directory.
 
 ## Output
 
