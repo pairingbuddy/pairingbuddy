@@ -73,10 +73,6 @@ Skills update automatically when you update the plugin:
 /plugin update pairingbuddy
 ```
 
-## Attribution
-
-Pairing Buddy builds upon the excellent foundation of [obra/superpowers](https://github.com/obra/superpowers).
-
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/pairingbuddy/pairingbuddy/issues)
