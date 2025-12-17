@@ -1,12 +1,8 @@
 # Pairing Buddy
 
-> **Work in Progress**: This plugin is not ready for use yet. After learning from previous mistakes, I'm moving to an agent-based approach.
-
 Your pair programming companion for test-driven development and clean architecture.
 
-## Documentation
-
-- **[Architecture Guide](./ARCHITECTURE.md)** - Design philosophy, testing strategy, agent architecture, and extensibility
+A Claude Code plugin that enforces TDD, SOLID, and Clean Code practices. Human review checkpoints keep you in control.
 
 ## Installation
 
@@ -15,63 +11,26 @@ Your pair programming companion for test-driven development and clean architectu
 /plugin install pairingbuddy@pairingbuddy-marketplace
 ```
 
-## Included Skills
+## Usage
 
-### coding
-Orchestrates TDD workflows through specialized agents. Classifies tasks and delegates to the appropriate workflow.
-
-### writing-tests
-Reference skill for test patterns, FIRST principles, and anti-patterns.
-
-### writing-code
-Reference skill for SOLID principles, Clean Code practices, and minimal code approach.
-
-### refactoring-code
-Reference skill for code smell identification and refactoring techniques.
-
-### enumerating-tests
-Reference skill for test scenario enumeration patterns.
-
-### committing-changes
-Reference skill for git commit best practices.
-
-## How It Works
-
-Use `/pairingbuddy:code` to start any coding task. The orchestrator:
-
-1. **Classifies** your task (new feature, bug fix, refactoring, config change, or spike)
-2. **Delegates** to the appropriate TDD workflow
-3. **Invokes** specialized agents via the Task tool
-4. **Pauses** for human review at key checkpoints
-
-**Task Types:**
-- **new_feature**: Full TDD with RED-GREEN-REFACTOR cycle
-- **bug_fix**: Regression test + fix
-- **refactoring**: Verify tests pass, scope changes, refactor
-- **config_change**: Make change, verify tests pass
-- **spike**: Exploratory coding without TDD (for answering questions, comparing approaches, evaluating technologies)
-
-## Development
-
-```bash
-# Install dev dependencies
-uv sync --extra dev
-
-# Run tests
-uv run pytest
+```
+/pairingbuddy:code <describe what you want to build or fix>
 ```
 
-## Requirements
+The orchestrator classifies your task and runs the appropriate workflow:
 
-- Claude Code
-- Familiarity with TDD concepts
+| Task | Workflow |
+|------|----------|
+| **New feature** | Enumerate scenarios → Write failing tests → Implement → Refactor |
+| **Bug fix** | Write regression test → Fix → Verify |
+| **Refactoring** | Verify tests pass → Scope changes → Refactor → Verify again |
+| **Spike** | Exploratory coding without tests (research and prototyping) |
 
-## Updating
+## Documentation
 
-Skills update automatically when you update the plugin:
-```bash
-/plugin update pairingbuddy
-```
+- [Architecture](./ARCHITECTURE.md) - Design philosophy and system structure
+- [Contributing](./CONTRIBUTING.md) - Development setup and release process
+- [Changelog](./CHANGELOG.md) - Version history
 
 ## Support
 

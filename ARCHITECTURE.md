@@ -617,7 +617,7 @@ To add support for a new language (e.g., Java):
 
 ### Future Extensions
 
-**Planned skills (to migrate from superpowers):**
+**Planned skills:**
 - brainstorming - Refine ideas through collaborative questioning
 - executing-plans - Execute plans in batches with checkpoints
 - writing-plans - Create detailed implementation plans

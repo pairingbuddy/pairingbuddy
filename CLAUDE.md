@@ -91,3 +91,14 @@ pairingbuddy/
 - **Don't forget to register new agents in plugin.json** - They won't be invocable
 - **Keep definitions in sync** - Test terminology must match `contracts/test-terminology.yaml`
 - **Focus warning is mandatory** - All agents must include the laser-focused warning from `agent-config.yaml`
+
+## Releases
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full release process.
+
+**Quick reference:**
+1. Update version in `.claude-plugin/plugin.json`
+2. Update `CHANGELOG.md` (move Unreleased to new version)
+3. Commit: `git commit -m "Bump version to X.Y.Z"`
+4. Tag: `git tag -a vX.Y.Z -m "Release description"`
+5. Push: `git push origin main && git push origin vX.Y.Z`
