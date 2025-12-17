@@ -80,28 +80,28 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Running Tests
 
-Use the test configuration to run tests. For each runner in test-config.json:
+After each fix, run only the **tests that exercise the modified code** (not the entire test suite):
 
-```
-{command} {test_directory} {run_args}
-```
+1. Identify which test files cover the modified production code
+2. Run those specific test files:
+   ```
+   {command} {relevant_test_file} {run_args}
+   ```
 
-Example with test-config.json:
-```json
-{
-  "runners": {
-    "unit": {
-      "command": "uv run pytest",
-      "test_directory": "tests/",
-      "run_args": ["-v"]
-    }
-  }
-}
+Example: If you modified `src/user.py`, find and run tests that import/test it:
+```
+uv run pytest tests/test_user.py -v
 ```
 
-Run: `uv run pytest tests/ -v`
-
-**If tests fail after a fix, revert the change and try a different approach.**
+**Verify-fix loop:**
+1. Apply the fix to production code
+2. Run the tests that exercise that code
+3. If tests fail:
+   - Analyze why the fix broke the tests
+   - Adjust the fix (remember: tests are the spec, don't change test behavior)
+   - Run again
+4. Only proceed to the next issue when the relevant tests pass
+5. If stuck after 3 attempts, ask the human operator how to proceed
 
 **You may modify:**
 - App/production code (primary focus)

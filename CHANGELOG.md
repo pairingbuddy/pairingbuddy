@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added canonical content blocks: workflow_read_inputs, workflow_step3_human_review
 - All 9 agents with Human Review now enforce: read guidance first, redo work after feedback, never proceed to output without approval
 - Test count changed from ~500 to ~565
+- Refactor agents (refactor-tests, refactor-code) now run targeted tests with verify-fix loop:
+  - Run only modified test files or tests that exercise modified code (not entire suite)
+  - Retry loop: if tests fail, analyze and fix before proceeding
+  - Ask human operator if stuck after 3 attempts
 
 ## [0.2.0] - 2025-12-17
 
