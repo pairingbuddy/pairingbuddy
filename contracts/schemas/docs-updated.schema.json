@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["updates"],
+  "properties": {
+    "updates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "location", "changes"],
+        "properties": {
+          "file": { "type": "string" },
+          "location": {
+            "type": "string",
+            "enum": ["in_repo", "external"]
+          },
+          "changes": { "type": "string" }
+        }
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "reason"],
+        "properties": {
+          "file": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}

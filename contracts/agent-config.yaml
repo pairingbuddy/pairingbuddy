@@ -29,6 +29,8 @@ schemas:
   - spike-findings.schema.json
   - spike-summary.schema.json
   - current-unit.schema.json
+  - doc-config.schema.json
+  - docs-updated.schema.json
 
 # =============================================================================
 # Agent definitions
@@ -340,6 +342,37 @@ agents:
       - heading: "## Input"
       - heading: "## Instructions"
         content: focus_warning
+      - heading: "## Output"
+
+  update-documentation:
+    color: cyan
+    model: sonnet
+    skills: []
+    inputs:
+      files_changed:
+        schema: files-changed.schema.json
+        file: .pairingbuddy/files-changed.json
+      doc_config:
+        schema: doc-config.schema.json
+        file: .pairingbuddy/doc-config.json
+      task:
+        schema: task.schema.json
+        file: .pairingbuddy/task.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
+    outputs:
+      docs_updated:
+        schema: docs-updated.schema.json
+        file: .pairingbuddy/docs-updated.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Human Review"
+        content: human_review
       - heading: "## Output"
 
   commit-changes:

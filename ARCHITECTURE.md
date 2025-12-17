@@ -82,7 +82,7 @@ The system includes human review points to prevent:
 ```
 pairingbuddy/
 ├── .claude-plugin/plugin.json    # Register agents and skills
-├── agents/                        # Plugin agents (16 total)
+├── agents/                        # Plugin agents (17 total)
 │   ├── classify-task.md
 │   ├── enumerate-scenarios-and-test-cases.md
 │   ├── create-test-placeholders.md
@@ -95,6 +95,7 @@ pairingbuddy/
 │   ├── verify-test-coverage.md
 │   ├── scope-refactoring.md
 │   ├── run-all-tests.md
+│   ├── update-documentation.md
 │   ├── commit-changes.md
 │   ├── setup-spike.md
 │   ├── explore-spike-unit.md
@@ -103,7 +104,7 @@ pairingbuddy/
 │   ├── agent-config.yaml         # Agent structure requirements (single source of truth)
 │   ├── skill-config.yaml         # Skill + frontmatter requirements
 │   ├── test-terminology.yaml     # Shared definitions for test-related agents
-│   └── schemas/                  # JSON schemas for state contracts (19 total)
+│   └── schemas/                  # JSON schemas for state contracts (21 total)
 ├── skills/                        # Skills (run in main context)
 │   ├── coding/                   # Orchestrator skill
 │   ├── using-pairingbuddy/       # Entry point skill
@@ -172,6 +173,8 @@ State files live in `.pairingbuddy/` at the git root of the target project:
 | spike-findings.json | Accumulated findings per unit | spike-findings.schema.json |
 | spike-summary.json | Reference to summary document | spike-summary.schema.json |
 | current-unit.json | Current exploration unit being processed | current-unit.schema.json |
+| doc-config.json | Documentation locations (persists) | doc-config.schema.json |
+| docs-updated.json | Documentation updates made | docs-updated.schema.json |
 
 ### Flow
 
@@ -512,6 +515,7 @@ implement-tests:
 | verify-test-coverage | VERIFY | Check coverage against scenarios | writing-tests |
 | scope-refactoring | REFACTOR | Translate refactoring intent to issues | refactoring-code |
 | run-all-tests | VERIFY | Final verification of test suite | - |
+| update-documentation | DOCS | Analyze changes, update docs | - |
 | commit-changes | COMMIT | Create git commit with changes | committing-changes |
 | setup-spike | SPIKE | Clarify goal, determine exploration units | - |
 | explore-spike-unit | SPIKE | Explore one unit, capture findings | - |
@@ -548,7 +552,7 @@ skills/writing-tests/
 
 ### JSON Schemas
 
-19 JSON schemas define state contracts (all in `contracts/schemas/`):
+21 JSON schemas define state contracts (all in `contracts/schemas/`):
 - task.schema.json
 - task-classification.schema.json
 - test-config.schema.json
@@ -568,6 +572,8 @@ skills/writing-tests/
 - spike-findings.schema.json
 - spike-summary.schema.json
 - current-unit.schema.json
+- doc-config.schema.json
+- docs-updated.schema.json
 
 ---
 
@@ -681,17 +687,18 @@ Tests validate that implementations match these contracts.
 
 ### 5. Agent Focus and Human Review
 
-**Focus Warning:** All 16 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
+**Focus Warning:** All 17 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
 
-**Human Review Checkpoints:** Eight agents pause for human review before proceeding:
+**Human Review Checkpoints:** Nine agents pause for human review before proceeding:
 1. enumerate-scenarios-and-test-cases
 2. create-test-placeholders
 3. identify-test-issues
 4. identify-code-issues
 5. verify-test-coverage
 6. scope-refactoring
-7. setup-spike
-8. explore-spike-unit
+7. update-documentation
+8. setup-spike
+9. explore-spike-unit
 
 **Pattern:**
 1. Agent completes analysis

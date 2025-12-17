@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- update-documentation agent for keeping docs in sync with code changes
+  - Analyzes code changes and identifies documentation needing updates
+  - Supports both in-repo and external documentation locations
+  - Human checkpoint before making updates
+  - New persistent doc-config.json for documentation locations
+  - New docs-updated.json output for commit context
+- Two new schemas: doc-config.schema.json, docs-updated.schema.json
+- Agent count increased from 16 to 17
+- Schema count increased from 19 to 21
+
 ## [0.2.0] - 2025-12-17
 
 ### Added

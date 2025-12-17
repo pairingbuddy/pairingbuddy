@@ -25,8 +25,8 @@ uv run ruff format .
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
 - Design philosophy (WHAT vs HOW separation)
 - Testing strategy (BDD outer-to-inner, test layers pyramid)
-- Agent and skill structure (16 agents, 7 skills)
-- State management via JSON files (19 schemas)
+- Agent and skill structure (17 agents, 7 skills)
+- State management via JSON files (21 schemas)
 - Spike workflow (exploratory coding without TDD)
 - Extensibility patterns
 
@@ -91,6 +91,14 @@ pairingbuddy/
 - **Don't forget to register new agents in plugin.json** - They won't be invocable
 - **Keep definitions in sync** - Test terminology must match `contracts/test-terminology.yaml`
 - **Focus warning is mandatory** - All agents must include the laser-focused warning from `agent-config.yaml`
+
+## Changelog Convention
+
+This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+**When making changes:** Add entries to the `[Unreleased]` section as you work. This accumulates changes between releases.
+
+**When releasing:** Move the `[Unreleased]` content to a new versioned section (e.g., `[0.3.0] - 2025-12-17`).
 
 ## Releases
 

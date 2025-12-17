@@ -25,6 +25,7 @@
     "./agents/refactor-code.md",
     "./agents/verify-test-coverage.md",
     "./agents/run-all-tests.md",
+    "./agents/update-documentation.md",
     "./agents/commit-changes.md",
     "./agents/scope-refactoring.md",
     "./agents/setup-spike.md",

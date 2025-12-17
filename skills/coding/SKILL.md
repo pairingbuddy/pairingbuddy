@@ -39,6 +39,8 @@ State files live in `.pairingbuddy/` at the git root of the target project.
 | spike_findings | .pairingbuddy/spike-findings.json | spike-findings.schema.json |
 | spike_summary | .pairingbuddy/spike-summary.json | spike-summary.schema.json |
 | current_unit | .pairingbuddy/current-unit.json | current-unit.schema.json |
+| doc_config | .pairingbuddy/doc-config.json | doc-config.schema.json |
+| docs_updated | .pairingbuddy/docs-updated.json | docs-updated.schema.json |
 
 ## How to Execute This Workflow
 
@@ -188,6 +190,9 @@ elif task_type == "spike":
     if _ask_human("Create findings summary document?"):
         spike_summary = summarize_spike(spike_config, spike_findings)
 
+    # Update documentation (human checkpoint)
+    docs_updated = update_documentation(files_changed, task, doc_config)
+
     # Skip final test verification and commit for spike
     _stop("Spike complete. Review findings and decide next steps.")
 
@@ -195,6 +200,9 @@ elif task_type == "spike":
 all_tests_results = run_all_tests(test_config)
 if all_tests_results.status != "pass":
     _stop("Final verification failed - tests not passing")
+
+# Update documentation (human checkpoint)
+docs_updated = update_documentation(files_changed, task, doc_config)
 
 # Commit changes (human checkpoint)
 if _ask_human("All tests pass. Commit changes?"):
@@ -224,7 +232,7 @@ if _ask_human("All tests pass. Commit changes?"):
 ### State File Management
 
 1. At cycle start, verify `.pairingbuddy/` is in `.gitignore`
-2. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json` at start of new task
+2. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json` and `doc-config.json` at start of new task
 3. Initialize `human-guidance.json` with `{"guidance": []}` after cleanup
 4. Keep files after run for human review
 
