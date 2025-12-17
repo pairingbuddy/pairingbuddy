@@ -82,7 +82,7 @@ The system includes human review points to prevent:
 ```
 pairingbuddy/
 ├── .claude-plugin/plugin.json    # Register agents and skills
-├── agents/                        # Plugin agents (13 total)
+├── agents/                        # Plugin agents (16 total)
 │   ├── classify-task.md
 │   ├── enumerate-scenarios-and-test-cases.md
 │   ├── create-test-placeholders.md
@@ -95,12 +95,15 @@ pairingbuddy/
 │   ├── verify-test-coverage.md
 │   ├── scope-refactoring.md
 │   ├── run-all-tests.md
-│   └── commit-changes.md
+│   ├── commit-changes.md
+│   ├── setup-spike.md
+│   ├── explore-spike-unit.md
+│   └── summarize-spike.md
 ├── contracts/                     # Structure definitions and schemas
 │   ├── agent-config.yaml         # Agent structure requirements (single source of truth)
 │   ├── skill-config.yaml         # Skill + frontmatter requirements
 │   ├── test-terminology.yaml     # Shared definitions for test-related agents
-│   └── schemas/                  # JSON schemas for state contracts (13 total)
+│   └── schemas/                  # JSON schemas for state contracts (19 total)
 ├── skills/                        # Skills (run in main context)
 │   ├── coding/                   # Orchestrator skill
 │   ├── using-pairingbuddy/       # Entry point skill
@@ -111,7 +114,7 @@ pairingbuddy/
 │   └── committing-changes/       # Reference skill for git commits
 ├── commands/                      # Slash commands
 │   └── code.md                   # Entry point: /pairingbuddy:code
-├── tests/                         # Test suite (~300 tests)
+├── tests/                         # Test suite (~500 tests)
 │   ├── agents/                   # Agent structure and contract tests
 │   ├── skills/                   # Skill structure tests
 │   └── contracts/                # Test utilities
@@ -164,6 +167,11 @@ State files live in `.pairingbuddy/` at the git root of the target project:
 | coverage-report.json | Test coverage verification | coverage-report.schema.json |
 | all-tests-results.json | Final test suite results | all-tests-results.schema.json |
 | commit-result.json | Git commit results | commit-result.schema.json |
+| spike-config.json | Spike goal and exploration mode | spike-config.schema.json |
+| spike-questions.json | Exploration units with execution config | spike-questions.schema.json |
+| spike-findings.json | Accumulated findings per unit | spike-findings.schema.json |
+| spike-summary.json | Reference to summary document | spike-summary.schema.json |
+| current-unit.json | Current exploration unit being processed | current-unit.schema.json |
 
 ### Flow
 
@@ -198,6 +206,21 @@ task → classify_task → enumerate_scenarios_and_test_cases
 | **bug_fix** | Fixing incorrect behavior | Regression test + fix |
 | **refactoring** | Improving structure | Verify tests pass → scope → refactor → verify |
 | **config_change** | Configuration only | Make change → verify tests pass |
+| **spike** | Exploratory coding | Setup → explore units → summarize findings |
+
+**Spike Flow:**
+```
+task → classify_task → setup_spike
+                            ↓
+                     [for each unit]
+                        explore_spike_unit
+                            ↓
+                     (human checkpoint)
+                            ↓
+                     summarize_spike (optional)
+```
+
+The spike workflow is for exploratory coding without TDD - answering questions, comparing approaches, or evaluating technologies. Each exploration unit can have its own language/runtime configuration.
 
 ---
 
@@ -431,7 +454,7 @@ implement-tests:
 | `test_agent_skill_references_resolve` | Agent skills reference existing skill directories |
 | `test_agent_schemas_match` | Agent inline schemas match canonical schema files |
 | `test_agent_definitions_match` | Test terminology consistent across agents |
-| `test_agent_section_content_matches_canonical` | Human review content matches config |
+| `test_agent_section_content_matches_canonical` | Canonical content (focus_warning, human_review) matches config |
 
 **Schema Tests:**
 | Test | What It Validates |
@@ -490,6 +513,9 @@ implement-tests:
 | scope-refactoring | REFACTOR | Translate refactoring intent to issues | refactoring-code |
 | run-all-tests | VERIFY | Final verification of test suite | - |
 | commit-changes | COMMIT | Create git commit with changes | committing-changes |
+| setup-spike | SPIKE | Clarify goal, determine exploration units | - |
+| explore-spike-unit | SPIKE | Explore one unit, capture findings | - |
+| summarize-spike | SPIKE | Create summary document from findings | - |
 
 **Color coding follows TDD phases:**
 - Cyan: Setup/classification
@@ -522,7 +548,7 @@ skills/writing-tests/
 
 ### JSON Schemas
 
-14 JSON schemas define state contracts (all in `contracts/schemas/`):
+19 JSON schemas define state contracts (all in `contracts/schemas/`):
 - task.schema.json
 - task-classification.schema.json
 - test-config.schema.json
@@ -537,6 +563,11 @@ skills/writing-tests/
 - coverage-report.schema.json
 - all-tests-results.schema.json
 - commit-result.schema.json
+- spike-config.schema.json
+- spike-questions.schema.json
+- spike-findings.schema.json
+- spike-summary.schema.json
+- current-unit.schema.json
 
 ---
 
@@ -648,15 +679,19 @@ Configuration lives in `contracts/`:
 
 Tests validate that implementations match these contracts.
 
-### 5. Human Review Checkpoints
+### 5. Agent Focus and Human Review
 
-Six agents pause for human review before proceeding:
+**Focus Warning:** All 16 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
+
+**Human Review Checkpoints:** Eight agents pause for human review before proceeding:
 1. enumerate-scenarios-and-test-cases
 2. create-test-placeholders
 3. identify-test-issues
 4. identify-code-issues
 5. verify-test-coverage
 6. scope-refactoring
+7. setup-spike
+8. explore-spike-unit
 
 **Pattern:**
 1. Agent completes analysis

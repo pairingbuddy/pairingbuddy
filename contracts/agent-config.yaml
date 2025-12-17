@@ -55,6 +55,7 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Output"
 
   enumerate-scenarios-and-test-cases:
@@ -81,6 +82,7 @@ agents:
       - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Human Review"
         content: human_review
       - heading: "## Output"
@@ -117,6 +119,7 @@ agents:
       - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Human Review"
         content: human_review
       - heading: "## Output"
@@ -145,6 +148,7 @@ agents:
       - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Output"
 
   implement-code:
@@ -170,6 +174,7 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Output"
 
   identify-test-issues:
@@ -196,6 +201,7 @@ agents:
       - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Human Review"
         content: human_review
       - heading: "## Output"
@@ -224,6 +230,7 @@ agents:
       - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Output"
 
   identify-code-issues:
@@ -249,6 +256,7 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Human Review"
         content: human_review
       - heading: "## Output"
@@ -276,6 +284,7 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Output"
 
   verify-test-coverage:
@@ -305,6 +314,7 @@ agents:
       - heading: "## Definitions"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Human Review"
         content: human_review
       - heading: "## Output"
@@ -329,6 +339,7 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Output"
 
   commit-changes:
@@ -351,6 +362,7 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Output"
 
   scope-refactoring:
@@ -379,6 +391,7 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Human Review"
         content: human_review
       - heading: "## Output"
@@ -406,6 +419,7 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Human Review"
         content: human_review
       - heading: "## Output"
@@ -440,6 +454,7 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Human Review"
         content: human_review
       - heading: "## Output"
@@ -467,11 +482,16 @@ agents:
       - heading: "## Purpose"
       - heading: "## Input"
       - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Output"
 
 # =============================================================================
-# Human Review Configuration
+# Shared Content Blocks
 # =============================================================================
+
+focus_warning:
+  content: |
+    **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
 human_review:
   content: |

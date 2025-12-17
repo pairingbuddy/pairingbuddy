@@ -69,6 +69,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ## Instructions
 
+**CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
+
 1. Read test state from `.pairingbuddy/test-state.json`
 2. Read test configuration from `.pairingbuddy/test-config.json`
 3. For each test with status `failing_correctly`:

@@ -25,8 +25,9 @@ uv run ruff format .
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
 - Design philosophy (WHAT vs HOW separation)
 - Testing strategy (BDD outer-to-inner, test layers pyramid)
-- Agent and skill structure
-- State management via JSON files
+- Agent and skill structure (16 agents, 7 skills)
+- State management via JSON files (19 schemas)
+- Spike workflow (exploratory coding without TDD)
 - Extensibility patterns
 
 ## Project Structure
@@ -42,7 +43,7 @@ pairingbuddy/
 │   ├── skill-config.yaml    # Skill definitions
 │   └── schemas/             # JSON schemas for state
 ├── commands/         # Slash commands (/pairingbuddy:code)
-└── tests/            # Structural tests (~300)
+└── tests/            # Structural tests (~500)
 ```
 
 ## Key Conventions
@@ -89,3 +90,4 @@ pairingbuddy/
 - **Don't modify agent behavior without updating config** - Tests will fail
 - **Don't forget to register new agents in plugin.json** - They won't be invocable
 - **Keep definitions in sync** - Test terminology must match `contracts/test-terminology.yaml`
+- **Focus warning is mandatory** - All agents must include the laser-focused warning from `agent-config.yaml`

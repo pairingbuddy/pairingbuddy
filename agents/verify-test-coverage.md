@@ -97,6 +97,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ## Instructions
 
+**CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
+
 ### Step 1: Reconcile tests.json with actual test files
 
 Refactoring may have changed tests. Scan actual test files and compare to tests.json:

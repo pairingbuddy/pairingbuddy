@@ -72,6 +72,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ## Instructions
 
+**CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
+
 1. Read the task from `.pairingbuddy/task.json`
 2. Identify scenarios (distinct feature areas or behaviors)
 3. For each scenario, enumerate test cases (specific conditions to verify)

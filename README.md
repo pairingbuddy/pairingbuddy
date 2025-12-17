@@ -17,18 +17,39 @@ Your pair programming companion for test-driven development and clean architectu
 
 ## Included Skills
 
-### [Skill 1 Name]
-[Description placeholder]
+### coding
+Orchestrates TDD workflows through specialized agents. Classifies tasks and delegates to the appropriate workflow.
 
-### [Skill 2 Name]
-[Description placeholder]
+### writing-tests
+Reference skill for test patterns, FIRST principles, and anti-patterns.
 
-### [Skill 3 Name]
-[Description placeholder]
+### writing-code
+Reference skill for SOLID principles, Clean Code practices, and minimal code approach.
+
+### refactoring-code
+Reference skill for code smell identification and refactoring techniques.
+
+### enumerating-tests
+Reference skill for test scenario enumeration patterns.
+
+### committing-changes
+Reference skill for git commit best practices.
 
 ## How It Works
 
-[Description of how the skills work together - to be added]
+Use `/pairingbuddy:code` to start any coding task. The orchestrator:
+
+1. **Classifies** your task (new feature, bug fix, refactoring, config change, or spike)
+2. **Delegates** to the appropriate TDD workflow
+3. **Invokes** specialized agents via the Task tool
+4. **Pauses** for human review at key checkpoints
+
+**Task Types:**
+- **new_feature**: Full TDD with RED-GREEN-REFACTOR cycle
+- **bug_fix**: Regression test + fix
+- **refactoring**: Verify tests pass, scope changes, refactor
+- **config_change**: Make change, verify tests pass
+- **spike**: Exploratory coding without TDD (for answering questions, comparing approaches, evaluating technologies)
 
 ## Development
 
