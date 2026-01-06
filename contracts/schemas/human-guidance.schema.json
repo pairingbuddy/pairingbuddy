@@ -27,6 +27,11 @@
           "feedback": {
             "type": "string",
             "description": "The human's guidance or correction"
+          },
+          "persistent": {
+            "type": "boolean",
+            "description": "If true, this guidance was carried over from a previous session and should persist across tasks",
+            "default": false
           }
         },
         "additionalProperties": false

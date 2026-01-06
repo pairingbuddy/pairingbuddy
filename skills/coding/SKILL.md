@@ -91,6 +91,9 @@ These functions handle coordination, human interaction, and control flow that do
 **Prerequisites:** Before starting, ensure `.pairingbuddy/test-config.json` exists. See "Bootstrap test-config.json" in Orchestrator Behavior.
 
 ```python
+# Curate guidance from previous session (always runs - handles review and bootstrap)
+human_guidance = curate_guidance(human_guidance, task)
+
 # Task classification
 task_classification = classify_task(task)
 task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refactoring" | "config_change"
@@ -232,11 +235,17 @@ if _ask_human("All tests pass. Commit changes?"):
 ### State File Management
 
 1. At cycle start, verify `.pairingbuddy/` is in `.gitignore`
-2. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json` and `doc-config.json` at start of new task
-3. Initialize `human-guidance.json` with `{"guidance": []}` after cleanup
-4. Keep files after run for human review
+2. Invoke `curate_guidance` agent (before cleanup):
+   - If `human-guidance.json` has entries: review/curate existing guidance
+   - If empty or missing: offer to add new persistent guidance
+   - Approved entries get `"persistent": true` flag
+3. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json`, `doc-config.json`, and `human-guidance.json`
+4. If `human-guidance.json` doesn't exist after curation, initialize with `{"guidance": []}`
+5. Keep files after run for human review
 
-**Note:** `human-guidance.json` accumulates human feedback within a single task session. Agents with Human Review checkpoints append to this file when the human provides corrections. It is cleared at the start of each new task.
+**Note:** `human-guidance.json` serves two purposes:
+- **Session feedback:** Agents with Human Review checkpoints append corrections during the task
+- **Persistent guidance:** Entries with `"persistent": true` survive cleanup and carry over to future tasks (operational knowledge, coding preferences, project conventions)
 
 ### Human Checkpoints
 

@@ -37,6 +37,36 @@ schemas:
 # =============================================================================
 
 agents:
+  curate-guidance:
+    color: cyan
+    model: sonnet
+    skills: []
+    inputs:
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
+      task:
+        schema: task.schema.json
+        file: .pairingbuddy/task.json
+        optional: true
+    outputs:
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "### Step 1: Read Inputs"
+        content: workflow_read_inputs
+      - heading: "### Step 2: Main Work"
+      - heading: "### Step 3: Human Review"
+        content: workflow_step3_human_review
+      - heading: "### Step 4: Output"
+      - heading: "## Output"
+
   classify-task:
     color: cyan
     model: haiku

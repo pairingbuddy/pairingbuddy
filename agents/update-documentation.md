@@ -63,7 +63,8 @@ Also reads `.pairingbuddy/human-guidance.json` (if exists):
       "agent": "string (agent that received this feedback)",
       "timestamp": "string (ISO 8601 datetime)",
       "context": "string (what was being reviewed)",
-      "feedback": "string (human's guidance or correction)"
+      "feedback": "string (human's guidance or correction)",
+      "persistent": "boolean (optional - if true, carried over from previous session)"
     }
   ]
 }

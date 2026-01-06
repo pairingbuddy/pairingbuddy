@@ -25,7 +25,7 @@ uv run ruff format .
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
 - Design philosophy (WHAT vs HOW separation)
 - Testing strategy (BDD outer-to-inner, test layers pyramid)
-- Agent and skill structure (17 agents, 7 skills)
+- Agent and skill structure (18 agents, 7 skills)
 - State management via JSON files (21 schemas)
 - Spike workflow (exploratory coding without TDD)
 - Extensibility patterns

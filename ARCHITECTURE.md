@@ -82,7 +82,8 @@ The system includes human review points to prevent:
 ```
 pairingbuddy/
 ├── .claude-plugin/plugin.json    # Register agents and skills
-├── agents/                        # Plugin agents (17 total)
+├── agents/                        # Plugin agents (18 total)
+│   ├── curate-guidance.md
 │   ├── classify-task.md
 │   ├── enumerate-scenarios-and-test-cases.md
 │   ├── create-test-placeholders.md
@@ -503,6 +504,7 @@ implement-tests:
 
 | Agent | Phase | Purpose | Skills |
 |-------|-------|---------|--------|
+| curate-guidance | Pre | Curate human guidance for carry-over between tasks | - |
 | classify-task | Pre | Determine task type (new feature, bug fix, refactoring, config) | - |
 | enumerate-scenarios-and-test-cases | Pre | Analyze requirements, output scenario/test case tree | enumerating-tests |
 | create-test-placeholders | Pre | Create test files with placeholder tests | writing-tests |
@@ -687,18 +689,19 @@ Tests validate that implementations match these contracts.
 
 ### 5. Agent Focus and Human Review
 
-**Focus Warning:** All 17 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
+**Focus Warning:** All 18 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
 
-**Human Review Checkpoints:** Nine agents pause for human review before proceeding:
-1. enumerate-scenarios-and-test-cases
-2. create-test-placeholders
-3. identify-test-issues
-4. identify-code-issues
-5. verify-test-coverage
-6. scope-refactoring
-7. update-documentation
-8. setup-spike
-9. explore-spike-unit
+**Human Review Checkpoints:** Ten agents pause for human review before proceeding:
+1. curate-guidance
+2. enumerate-scenarios-and-test-cases
+3. create-test-placeholders
+4. identify-test-issues
+5. identify-code-issues
+6. verify-test-coverage
+7. scope-refactoring
+8. update-documentation
+9. setup-spike
+10. explore-spike-unit
 
 **Workflow Pattern (Step 1-4):**
 

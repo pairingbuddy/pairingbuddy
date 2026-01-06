@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- curate-guidance agent for selective carry-over of human guidance between tasks
+  - Analyzes existing guidance entries and classifies as task-specific (drop) or general (keep)
+  - Proposes consolidation of similar entries into principles
+  - Human checkpoint for approval with ability to modify or add new entries
+  - Supports bootstrap mode when no existing guidance (offer to seed persistent guidance)
+- Persistent guidance feature via `persistent` field in human-guidance.schema.json
+  - Entries with `persistent: true` survive cleanup between tasks
+  - Preserves operational knowledge (how to run tests, where to document, coding preferences)
+
+### Changed
+
+- Agent count increased from 17 to 18
+- Human review checkpoint count increased from 9 to 10
+- Updated orchestrator workflow to invoke curate-guidance before task classification
+- human-guidance.json now persists across tasks (like test-config.json and doc-config.json)
+
 ## [0.3.0] - 2025-12-17
 
 ### Added

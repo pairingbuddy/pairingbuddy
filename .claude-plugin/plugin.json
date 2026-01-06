@@ -14,6 +14,7 @@
   "commands": "./commands/",
   "hooks": "./hooks/hooks.json",
   "agents": [
+    "./agents/curate-guidance.md",
     "./agents/classify-task.md",
     "./agents/enumerate-scenarios-and-test-cases.md",
     "./agents/create-test-placeholders.md",
