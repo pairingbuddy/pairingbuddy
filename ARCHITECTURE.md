@@ -100,7 +100,7 @@ pairingbuddy/
 │   ├── commit-changes.md
 │   ├── setup-spike.md
 │   ├── explore-spike-unit.md
-│   └── summarize-spike.md
+│   └── document-spike.md
 ├── contracts/                     # Structure definitions and schemas
 │   ├── agent-config.yaml         # Agent structure requirements (single source of truth)
 │   ├── skill-config.yaml         # Skill + frontmatter requirements
@@ -210,7 +210,7 @@ task → classify_task → enumerate_scenarios_and_test_cases
 | **bug_fix** | Fixing incorrect behavior | Regression test + fix |
 | **refactoring** | Improving structure | Verify tests pass → scope → refactor → verify |
 | **config_change** | Configuration only | Make change → verify tests pass |
-| **spike** | Exploratory coding | Setup → explore units → summarize findings |
+| **spike** | Exploratory coding | Setup → explore units → document findings |
 
 **Spike Flow:**
 ```
@@ -221,7 +221,7 @@ task → classify_task → setup_spike
                             ↓
                      (human checkpoint)
                             ↓
-                     summarize_spike (optional)
+                     document_spike (mandatory)
 ```
 
 The spike workflow is for exploratory coding without TDD - answering questions, comparing approaches, or evaluating technologies. Each exploration unit can have its own language/runtime configuration.
@@ -521,7 +521,7 @@ implement-tests:
 | commit-changes | COMMIT | Create git commit with changes | committing-changes |
 | setup-spike | SPIKE | Clarify goal, determine exploration units | - |
 | explore-spike-unit | SPIKE | Explore one unit, capture findings | - |
-| summarize-spike | SPIKE | Create summary document from findings | - |
+| document-spike | SPIKE | Document all findings, persist to human-specified location | - |
 
 **Color coding follows TDD phases:**
 - Cyan: Setup/classification

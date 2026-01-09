@@ -31,6 +31,6 @@
     "./agents/scope-refactoring.md",
     "./agents/setup-spike.md",
     "./agents/explore-spike-unit.md",
-    "./agents/summarize-spike.md"
+    "./agents/document-spike.md"
   ]
 }

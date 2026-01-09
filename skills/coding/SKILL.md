@@ -193,15 +193,10 @@ elif task_type == "spike":
         if not _ask_human(f"Unit '{unit.name}' explored. Continue to next unit?"):
             break  # Human can stop early or redirect
 
-    # Summary (optional)
-    if _ask_human("Create findings summary document?"):
-        spike_summary = summarize_spike(spike_config, spike_findings)
+    # Document all findings and persist (mandatory, human checkpoint)
+    spike_summary = document_spike(spike_config, spike_findings)
 
-    # Update documentation (human checkpoint)
-    docs_updated = update_documentation(files_changed, task, doc_config)
-
-    # Skip final test verification and commit for spike
-    _stop("Spike complete. Review findings and decide next steps.")
+    _stop("Spike complete.")
 
 # Final verification (all task types except spike)
 all_tests_results = run_all_tests(test_config)

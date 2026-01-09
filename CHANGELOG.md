@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Replaced `summarize-spike` agent with `document-spike` agent
+  - Now MANDATORY at end of spike workflow (was optional)
+  - Creates comprehensive documentation capturing ALL findings (not a summary that loses information)
+  - Includes: all findings, caveats, unexplored areas, issues, limitations, recommendations
+  - Shows human mapping: spike-findings.json → document (proves nothing lost)
+  - Asks human: where to persist, option to modify content, option to modify format
+  - Human review checkpoint with full Step 1-4 workflow pattern
+
 - Improved Human Review step to require comprehensive descriptions
   - Updated canonical `workflow_step3_human_review` content block with explicit instructions
   - Example interaction now shows `[description with all relevant details]` instead of generic `[description]`

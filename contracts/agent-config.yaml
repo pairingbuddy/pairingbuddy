@@ -568,7 +568,7 @@ agents:
         content: workflow_step4_output
       - heading: "## Output"
 
-  summarize-spike:
+  document-spike:
     color: green
     model: sonnet
     skills: []
@@ -592,6 +592,13 @@ agents:
       - heading: "## Input"
       - heading: "## Instructions"
         content: focus_warning
+      - heading: "### Step 1: Read Inputs"
+        content: workflow_read_inputs
+      - heading: "### Step 2: Main Work"
+      - heading: "### Step 3: Human Review"
+        content: workflow_step3_human_review
+      - heading: "### Step 4: Output"
+        content: workflow_step4_output
       - heading: "## Output"
 
 # =============================================================================
