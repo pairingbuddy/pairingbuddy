@@ -78,6 +78,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 
 | Function | Behavior |
 |----------|----------|
+| `_cleanup_state_files()` | **MANDATORY.** Delete ALL `.pairingbuddy/*.json` files EXCEPT: `test-config.json`, `doc-config.json`, `human-guidance.json`. These three files persist across tasks. All other state files (task.json, task-classification.json, scenarios.json, tests.json, spike-*.json, etc.) MUST be deleted to start fresh. This prevents stale state from previous tasks from affecting the current task. |
 | `_filter_pending(tests)` | Filter tests.json to return only tests not yet processed in this session |
 | `_filter_pending(spike_questions)` | Filter spike-questions.json units to return only units with status "pending" |
 | `_mark_unit_answered(spike_questions, unit_id)` | Update unit status to "answered" in spike-questions.json |
@@ -93,6 +94,9 @@ These functions handle coordination, human interaction, and control flow that do
 ```python
 # Curate guidance from previous session (always runs - handles review and bootstrap)
 human_guidance = curate_guidance(human_guidance, task)
+
+# Clean up stale state files from previous task (MANDATORY - do not skip)
+_cleanup_state_files()
 
 # Task classification
 task_classification = classify_task(task)

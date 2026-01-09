@@ -726,14 +726,30 @@ All agents with human review follow an explicit 4-step workflow in their Instruc
 
 **Feedback persistence:** When the human provides corrections, agents append the feedback to `human-guidance.json`. All agents read this file as input (Step 1), so corrections given to one agent are visible to all subsequent agents. This prevents the human from having to repeat the same guidance across multiple agents.
 
-### 6. Test Config Persistence
+### 6. State File Cleanup and Persistence
 
-`test-config.json` persists across tasks (not cleaned up). It contains project-specific test runner configuration that shouldn't be re-inferred each time.
+At the start of each task, the orchestrator runs `_cleanup_state_files()` to delete stale state from previous tasks. This happens after `curate_guidance` but before `classify_task`.
+
+**Files that persist across tasks:**
+| File | Why It Persists |
+|------|-----------------|
+| `test-config.json` | Project-specific test runner configuration |
+| `doc-config.json` | Documentation locations |
+| `human-guidance.json` | Persistent operational knowledge (entries with `persistent: true`) |
+
+**All other files are deleted:**
+- `task.json`, `task-classification.json`
+- `scenarios.json`, `tests.json`, `current-batch.json`
+- `test-state.json`, `code-state.json`
+- `test-issues.json`, `code-issues.json`, `files-changed.json`
+- `coverage-report.json`, `all-tests-results.json`, `commit-result.json`
+- `spike-config.json`, `spike-questions.json`, `spike-findings.json`, `spike-summary.json`, `current-unit.json`
+- `docs-updated.json`
 
 **Why this matters:**
-- Without explicit test commands, agents default to broken assumptions (e.g., `python` instead of `uv run`, missing `--env-file`)
-- Test configuration is project-specific, not task-specific
-- Human validates once, reuses many times
+- Stale state from previous tasks can cause incorrect behavior (e.g., old spike files causing confusion)
+- Test configuration is project-specific, not task-specific - human validates once, reuses many times
+- Human guidance with `persistent: true` captures operational knowledge that applies across tasks
 
 ---
 

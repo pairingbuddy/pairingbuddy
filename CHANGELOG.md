@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Made state file cleanup explicit in workflow pseudocode
+  - Added `_cleanup_state_files()` orchestrator function with crystal-clear description
+  - Added mandatory call in workflow after `curate_guidance`, before `classify_task`
+  - Previously cleanup was only described in prose (State File Management section), causing Claude to skip it
+  - Files preserved: `test-config.json`, `doc-config.json`, `human-guidance.json`
+  - All other state files deleted to prevent stale state from previous tasks
+
 ### Changed
 
 - Improved Human Review step to require comprehensive descriptions
