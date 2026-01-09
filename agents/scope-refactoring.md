@@ -116,11 +116,13 @@ Example interaction:
 
 ```
 AskUserQuestion: "I've identified the following items for processing:
-- Item 1: [description]
-- Item 2: [description]
+- Item 1: [description with all relevant details]
+- Item 2: [description with all relevant details]
 
 Should I proceed with this approach?"
 ```
+
+**Important:** Descriptions must include ALL relevant details the human needs to make an informed decision. Do not use generic placeholders - provide specific names, configurations, file paths, or other context-specific information so the human can validate your analysis.
 
 ### Step 4: Output
 

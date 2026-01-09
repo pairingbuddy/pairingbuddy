@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Improved Human Review step to require comprehensive descriptions
+  - Updated canonical `workflow_step3_human_review` content block with explicit instructions
+  - Example interaction now shows `[description with all relevant details]` instead of generic `[description]`
+  - Added **Important** paragraph emphasizing that descriptions must include ALL relevant details for informed decisions
+  - setup-spike agent now has spike-specific guidance listing required details (goal, exploration mode, code location, unit details)
+  - All 10 agents with Human Review updated to match new canonical content
+
 ## [0.4.0] - 2026-01-06
 
 ### Added
