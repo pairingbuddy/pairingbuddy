@@ -12,7 +12,6 @@
   "keywords": ["skills", "tdd", "coding", "atomic-skills", "test-driven-development"],
   "skills": "./skills/",
   "commands": "./commands/",
-  "hooks": "./hooks/hooks.json",
   "agents": [
     "./agents/curate-guidance.md",
     "./agents/classify-task.md",
