@@ -177,6 +177,26 @@ Should I proceed with this approach?"
 
 ### Step 4: Output
 
+**MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
+
+After approval, write output using this procedure for EACH output file:
+
+1. **Determine write mode** from the Output section:
+   - "Writes to" = create/overwrite the file with your complete results
+   - "Appends to" = read existing file first, add your new entries to the array, write back
+   - "Updates" = read existing file first, modify entries as needed, write back
+
+2. **For append/update modes:** Read the existing file (use Read tool). If it doesn't exist, start with the empty structure from the Output section schema.
+
+3. **Write** the complete JSON to the output file (use Write tool)
+
+**Completion requirements:**
+- You are NOT done until ALL output files are written
+- Do not exit, do not report completion, do not hand off to the next agent until every file listed in Output is written
+- Verify each file was written by reading it back if unsure
+
+**NEVER use bash commands (echo, cat, printf, heredoc, etc.) to write JSON files.** Always use the Write tool.
+
 After approval, write results to `.pairingbuddy/coverage-report.json`
 
 **Do NOT run tests** - that's handled by a dedicated agent elsewhere.
@@ -190,6 +210,8 @@ After approval, write results to `.pairingbuddy/coverage-report.json`
 Do NOT create any other files. No /tmp files, no markdown files, no text files.
 
 ## Output
+
+Updates `.pairingbuddy/tests.json` (reconciliation - may rename, move, or remove entries to match actual test files).
 
 Writes to `.pairingbuddy/coverage-report.json`:
 

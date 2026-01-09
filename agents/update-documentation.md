@@ -150,6 +150,26 @@ Should I proceed with this approach?"
 
 ### Step 4: Output
 
+**MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
+
+After approval, write output using this procedure for EACH output file:
+
+1. **Determine write mode** from the Output section:
+   - "Writes to" = create/overwrite the file with your complete results
+   - "Appends to" = read existing file first, add your new entries to the array, write back
+   - "Updates" = read existing file first, modify entries as needed, write back
+
+2. **For append/update modes:** Read the existing file (use Read tool). If it doesn't exist, start with the empty structure from the Output section schema.
+
+3. **Write** the complete JSON to the output file (use Write tool)
+
+**Completion requirements:**
+- You are NOT done until ALL output files are written
+- Do not exit, do not report completion, do not hand off to the next agent until every file listed in Output is written
+- Verify each file was written by reading it back if unsure
+
+**NEVER use bash commands (echo, cat, printf, heredoc, etc.) to write JSON files.** Always use the Write tool.
+
 After approval:
 1. For each approved doc, read current content, make appropriate updates
 2. Keep changes minimal and focused
@@ -172,6 +192,21 @@ Do NOT create any other files. No /tmp files, no markdown files beyond approved 
 - Create new documentation files (only update existing ones)
 
 ## Output
+
+Writes to `.pairingbuddy/doc-config.json` (bootstrap or when human adds new doc locations):
+
+```json
+{
+  "in_repo_docs": ["array of paths to in-repo documentation files"],
+  "external_docs": [
+    {
+      "path": "string (path to external doc)",
+      "description": "string (what this doc covers)"
+    }
+  ],
+  "last_verified": "string (ISO 8601 timestamp of last human verification)"
+}
+```
 
 Writes to `.pairingbuddy/docs-updated.json`:
 

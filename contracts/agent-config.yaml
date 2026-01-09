@@ -65,6 +65,7 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
+        content: workflow_step4_output
       - heading: "## Output"
 
   classify-task:
@@ -121,6 +122,7 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
+        content: workflow_step4_output
       - heading: "## Output"
 
   create-test-placeholders:
@@ -162,6 +164,7 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
+        content: workflow_step4_output
       - heading: "## Output"
 
   implement-tests:
@@ -248,6 +251,7 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
+        content: workflow_step4_output
       - heading: "## Output"
 
   refactor-tests:
@@ -307,6 +311,7 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
+        content: workflow_step4_output
       - heading: "## Output"
 
   refactor-code:
@@ -369,6 +374,7 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
+        content: workflow_step4_output
       - heading: "## Output"
 
   run-all-tests:
@@ -427,6 +433,7 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
+        content: workflow_step4_output
       - heading: "## Output"
 
   commit-changes:
@@ -485,6 +492,7 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
+        content: workflow_step4_output
       - heading: "## Output"
 
   setup-spike:
@@ -517,6 +525,7 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
+        content: workflow_step4_output
       - heading: "## Output"
 
   explore-spike-unit:
@@ -556,6 +565,7 @@ agents:
       - heading: "### Step 3: Human Review"
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
+        content: workflow_step4_output
       - heading: "## Output"
 
   summarize-spike:
@@ -651,3 +661,25 @@ workflow_step3_human_review:
     ```
 
     **Important:** Descriptions must include ALL relevant details the human needs to make an informed decision. Do not use generic placeholders - provide specific names, configurations, file paths, or other context-specific information so the human can validate your analysis.
+
+workflow_step4_output:
+  content: |
+    **MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
+
+    After approval, write output using this procedure for EACH output file:
+
+    1. **Determine write mode** from the Output section:
+       - "Writes to" = create/overwrite the file with your complete results
+       - "Appends to" = read existing file first, add your new entries to the array, write back
+       - "Updates" = read existing file first, modify entries as needed, write back
+
+    2. **For append/update modes:** Read the existing file (use Read tool). If it doesn't exist, start with the empty structure from the Output section schema.
+
+    3. **Write** the complete JSON to the output file (use Write tool)
+
+    **Completion requirements:**
+    - You are NOT done until ALL output files are written
+    - Do not exit, do not report completion, do not hand off to the next agent until every file listed in Output is written
+    - Verify each file was written by reading it back if unsure
+
+    **NEVER use bash commands (echo, cat, printf, heredoc, etc.) to write JSON files.** Always use the Write tool.

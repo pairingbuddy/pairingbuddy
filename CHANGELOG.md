@@ -16,6 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - setup-spike agent now has spike-specific guidance listing required details (goal, exploration mode, code location, unit details)
   - All 10 agents with Human Review updated to match new canonical content
 
+- Added mandatory output file writing instructions to Step 4: Output
+  - New canonical `workflow_step4_output` content block with explicit Write tool requirements
+  - Three write modes: "Writes to" (overwrite), "Appends to" (read-add-write), "Updates" (read-modify-write)
+  - Completion requirements: agent cannot exit until all output files are written
+  - Explicitly forbids bash commands (echo, cat, printf, heredoc) for JSON file writing
+  - All 10 agents with Step 4: Output updated to match new canonical content
+
+- Fixed Output section documentation for consistency
+  - create-test-placeholders: Changed "Writes to" to "Appends to" for tests.json (preserves existing entries)
+  - verify-test-coverage: Added tests.json with "Updates" mode (reconciliation)
+  - update-documentation: Added doc-config.json with "Writes to" mode (bootstrap/update)
+
 ## [0.4.0] - 2026-01-06
 
 ### Added
