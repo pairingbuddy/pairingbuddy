@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Improved curate-guidance agent to show actual entries during human review
+  - Added step 4 in Main Work requiring ACTUAL entry text (not generic placeholders)
+  - Must show proposed action (KEEP/DROP/CONSOLIDATE) for each entry
+  - Must show reasoning for each classification
+  - For consolidations: show both original entries AND proposed merged text
+
 - Replaced `summarize-spike` agent with `document-spike` agent
   - Now MANDATORY at end of spike workflow (was optional)
   - Creates comprehensive documentation capturing ALL findings (not a summary that loses information)

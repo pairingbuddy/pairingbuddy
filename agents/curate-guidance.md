@@ -77,6 +77,12 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    - Entries to DROP (with reason)
    - Proposed consolidations
 
+4. **Format for human review** - you MUST show:
+   - The ACTUAL text of each entry (not generic placeholders)
+   - Your proposed action (KEEP/DROP/CONSOLIDATE)
+   - Your reasoning for each classification
+   - For consolidations: both original entries AND the proposed merged text
+
 **If no guidance exists (empty or missing file):**
 
 1. Offer to bootstrap with persistent guidance
