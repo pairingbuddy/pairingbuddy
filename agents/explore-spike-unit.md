@@ -111,15 +111,24 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 2: Main Work
 
+**CRITICAL FILE RESTRICTIONS - READ BEFORE DOING ANYTHING:**
+- You may ONLY create files in TWO places:
+  1. Exploratory code files within the unit's `working_directory`
+  2. Append findings to `.pairingbuddy/spike-findings.json`
+- **NEVER create documentation files** - that is `document-spike`'s job, not yours
+- **NEVER write to /tmp** - no temporary files, no scratch files
+- **NEVER create .md files** - no summaries, no findings docs, no READMEs
+- Your job is to write CODE, run it, and record findings in JSON format only
+
 1. Read spike config and existing findings for context
-2. Create code in the working directory to explore the unit's question
+2. Create exploratory code in the working directory ONLY
 3. Follow the unit's execution configuration:
    - Run setup command if provided
    - Create minimal exploratory code
    - Run using the run_command
    - Capture results and observations
 4. Focus on answering the specific question - avoid scope creep
-5. Document findings with code references
+5. Record findings in spike-findings.json - NOT in markdown files
 
 ### Step 3: Human Review
 
@@ -201,11 +210,17 @@ After approval, append findings to `.pairingbuddy/spike-findings.json`.
 
 ### File Creation Restrictions
 
-**You may ONLY write to:**
-- Files within the unit's `working_directory` (exploratory code)
+**CRITICAL - You may ONLY write to:**
+- Exploratory code files within the unit's `working_directory`
 - `.pairingbuddy/spike-findings.json` (append findings)
 
-Do NOT create files outside these locations. No /tmp files, no markdown files outside spike directories, no text files. Create exploratory code in the working directory and append findings to spike-findings.json.
+**ABSOLUTELY FORBIDDEN:**
+- `/tmp/` or any temporary directory - NEVER
+- `.md` files anywhere - documentation is `document-spike`'s job
+- Summary files, findings files, or any prose outside spike-findings.json
+- Files outside the working_directory (except spike-findings.json)
+
+Your role is exploration through CODE. Documentation comes later via `document-spike`.
 
 ## Output
 
