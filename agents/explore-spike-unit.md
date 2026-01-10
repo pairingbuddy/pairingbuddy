@@ -1,7 +1,7 @@
 ---
 name: explore-spike-unit
 description: Explores a single spike unit by writing exploratory code, running it, and capturing findings. Stays focused on answering the unit's question without rabbit holes.
-model: sonnet
+model: opus
 color: blue
 ---
 

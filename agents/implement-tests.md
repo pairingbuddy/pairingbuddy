@@ -1,7 +1,7 @@
 ---
 name: implement-tests
 description: Implements real test code from placeholders. RED phase agent in TDD workflow. Replaces placeholder tests with actual assertions that should fail.
-model: haiku
+model: sonnet
 color: red
 skills: [writing-tests]
 ---

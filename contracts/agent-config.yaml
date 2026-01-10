@@ -169,7 +169,7 @@ agents:
 
   implement-tests:
     color: red
-    model: haiku
+    model: sonnet
     skills: [writing-tests]
     inputs:
       current_batch:
@@ -256,7 +256,7 @@ agents:
 
   refactor-tests:
     color: magenta
-    model: haiku
+    model: sonnet
     skills: [writing-tests, refactoring-code]
     inputs:
       test_issues:
@@ -530,7 +530,7 @@ agents:
 
   explore-spike-unit:
     color: blue
-    model: sonnet
+    model: opus
     skills: []
     inputs:
       spike_config:

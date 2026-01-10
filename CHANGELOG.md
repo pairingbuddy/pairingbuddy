@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Front-loaded file restrictions in explore-spike-unit to prevent /tmp writes
+  - Moved file creation restrictions to start of Step 2 (before main work begins)
+  - Previously restrictions came after instructions, causing LLM to create markdown files in /tmp
+  - Added emphatic "CRITICAL FILE RESTRICTIONS - READ BEFORE DOING ANYTHING" header
+  - Explicit NEVER statements: no /tmp, no .md files, no documentation (that's document-spike's job)
+  - Reinforced in File Creation Restrictions section with "ABSOLUTELY FORBIDDEN" list
+
 - Made state file cleanup explicit in workflow pseudocode
   - Added `_cleanup_state_files()` orchestrator function with crystal-clear description
   - Added mandatory call in workflow after `curate_guidance`, before `classify_task`
@@ -17,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All other state files deleted to prevent stale state from previous tasks
 
 ### Changed
+
+- Upgraded models for better task performance
+  - implement-tests: haiku → sonnet (tests may require design decisions beyond mechanical translation)
+  - refactor-tests: haiku → sonnet (consistency with refactor-code which was already sonnet)
+  - explore-spike-unit: sonnet → opus (spikes involve complex research and exploration)
 
 - Improved curate-guidance agent to show actual entries during human review
   - Added step 4 in Main Work requiring ACTUAL entry text (not generic placeholders)

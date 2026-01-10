@@ -1,7 +1,7 @@
 ---
 name: refactor-tests
 description: Fixes quality issues in test code. REFACTOR phase agent for tests. Improves code without changing behavior.
-model: haiku
+model: sonnet
 color: magenta
 skills: [writing-tests, refactoring-code]
 ---
