@@ -222,7 +222,7 @@ agents:
 
   identify-test-issues:
     color: yellow
-    model: haiku
+    model: opus
     skills: [writing-tests]
     inputs:
       tests:
@@ -283,7 +283,7 @@ agents:
 
   identify-code-issues:
     color: yellow
-    model: haiku
+    model: opus
     skills: [refactoring-code]
     inputs:
       code_state:

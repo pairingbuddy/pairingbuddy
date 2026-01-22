@@ -1,7 +1,7 @@
 ---
 name: identify-code-issues
 description: Identifies quality issues in production code. Analysis agent for REFACTOR phase. Outputs issues for human review before refactoring.
-model: haiku
+model: opus
 color: yellow
 skills: [refactoring-code]
 ---

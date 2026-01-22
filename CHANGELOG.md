@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - implement-tests: haiku → sonnet (tests may require design decisions beyond mechanical translation)
   - refactor-tests: haiku → sonnet (consistency with refactor-code which was already sonnet)
   - explore-spike-unit: sonnet → opus (spikes involve complex research and exploration)
+  - identify-test-issues: haiku → opus (critical quality gate - misses have compounding effects)
+  - identify-code-issues: haiku → opus (critical quality gate - misses have compounding effects)
 
 - Improved curate-guidance agent to show actual entries during human review
   - Added step 4 in Main Work requiring ACTUAL entry text (not generic placeholders)

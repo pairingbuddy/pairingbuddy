@@ -1,7 +1,7 @@
 ---
 name: identify-test-issues
 description: Identifies quality issues in test code. Analysis agent for REFACTOR phase. Outputs issues for human review before refactoring.
-model: haiku
+model: opus
 color: yellow
 skills: [writing-tests]
 ---
