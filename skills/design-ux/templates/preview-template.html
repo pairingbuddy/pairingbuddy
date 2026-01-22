@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{DS_NAME}} | Design System Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ============================================
+       EMBEDDED TOKENS
+       Replace {{CSS_VARIABLES}} with generated CSS
+       ============================================ */
+{{CSS_VARIABLES}}
+
+    /* ============================================
+       BASE STYLES (Static - do not modify)
+       ============================================ */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      line-height: 1.5;
+      transition: background-color var(--transition-smooth), color var(--transition-smooth);
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    /* ============================================
+       LAYOUT
+       ============================================ */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background-color: hsl(var(--card) / 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid hsl(var(--border));
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: hsl(var(--foreground));
+    }
+
+    .header-meta {
+      font-size: 0.875rem;
+      color: hsl(var(--muted-foreground));
+    }
+
+    .header-controls {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    /* ============================================
+       TABS
+       ============================================ */
+    .tabs {
+      display: flex;
+      gap: 0.25rem;
+      border-bottom: 1px solid hsl(var(--border));
+      margin-bottom: 2rem;
+      overflow-x: auto;
+    }
+
+    .tab {
+      padding: 0.75rem 1.25rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: hsl(var(--muted-foreground));
+      background: none;
+      border: none;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all var(--transition-fast);
+      white-space: nowrap;
+    }
+
+    .tab:hover {
+      color: hsl(var(--foreground));
+    }
+
+    .tab.active {
+      color: hsl(var(--primary));
+      border-bottom-color: hsl(var(--primary));
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* ============================================
+       SECTIONS
+       ============================================ */
+    .section {
+      margin-bottom: 3rem;
+    }
+
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+      color: hsl(var(--foreground));
+    }
+
+    .section-subtitle {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: hsl(var(--foreground));
+    }
+
+    .section-desc {
+      font-size: 0.875rem;
+      color: hsl(var(--muted-foreground));
+      margin-bottom: 1rem;
+    }
+
+    /* ============================================
+       COLOR SWATCHES
+       ============================================ */
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .color-scale {
+      background: hsl(var(--card));
+      border-radius: var(--radius);
+      border: 1px solid hsl(var(--border));
+      overflow: hidden;
+    }
+
+    .color-scale-header {
+      padding: 1rem;
+      border-bottom: 1px solid hsl(var(--border));
+      font-weight: 600;
+    }
+
+    .color-swatch-row {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      transition: background-color var(--transition-fast);
+    }
+
+    .color-swatch-row:hover {
+      background: hsl(var(--muted) / 0.5);
+    }
+
+    .color-swatch {
+      width: 64px;
+      height: 48px;
+      flex-shrink: 0;
+    }
+
+    .color-swatch-info {
+      padding: 0.5rem 1rem;
+      flex: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .color-swatch-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .color-swatch-value {
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: hsl(var(--muted-foreground));
+    }
+
+    /* ============================================
+       SEMANTIC TOKENS
+       ============================================ */
+    .semantic-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+
+    .semantic-card {
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      padding: 1rem;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .semantic-card:hover {
+      border-color: hsl(var(--primary));
+      box-shadow: var(--shadow-md);
+    }
+
+    .semantic-preview {
+      width: 100%;
+      height: 48px;
+      border-radius: calc(var(--radius) - 4px);
+      margin-bottom: 0.75rem;
+    }
+
+    .semantic-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 0.25rem;
+    }
+
+    .semantic-ref {
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: hsl(var(--muted-foreground));
+    }
+
+    /* ============================================
+       TYPOGRAPHY
+       ============================================ */
+    .type-scale {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .type-specimen {
+      padding: 1.5rem;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+    }
+
+    .type-specimen-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: hsl(var(--muted-foreground));
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.5rem;
+    }
+
+    .type-5xl { font-size: 3rem; line-height: 1.1; font-weight: 700; }
+    .type-4xl { font-size: 2.25rem; line-height: 1.15; font-weight: 700; }
+    .type-3xl { font-size: 1.875rem; line-height: 1.2; font-weight: 600; }
+    .type-2xl { font-size: 1.5rem; line-height: 1.25; font-weight: 600; }
+    .type-xl { font-size: 1.25rem; line-height: 1.3; font-weight: 500; }
+    .type-lg { font-size: 1.125rem; line-height: 1.4; }
+    .type-base { font-size: 1rem; line-height: 1.5; }
+    .type-sm { font-size: 0.875rem; line-height: 1.5; }
+    .type-xs { font-size: 0.75rem; line-height: 1.5; }
+
+    /* ============================================
+       SPACING
+       ============================================ */
+    .spacing-scale {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .spacing-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.5rem;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+    }
+
+    .spacing-bar {
+      height: 24px;
+      background: hsl(var(--primary));
+      border-radius: 4px;
+    }
+
+    .spacing-label {
+      font-size: 0.875rem;
+      font-weight: 500;
+      min-width: 60px;
+    }
+
+    .spacing-value {
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: hsl(var(--muted-foreground));
+    }
+
+    .radius-grid, .shadow-grid {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .radius-item, .shadow-item {
+      text-align: center;
+    }
+
+    .radius-preview {
+      width: 80px;
+      height: 80px;
+      background: hsl(var(--primary));
+      margin-bottom: 0.5rem;
+    }
+
+    .shadow-preview {
+      width: 120px;
+      height: 80px;
+      background: hsl(var(--card));
+      border-radius: var(--radius);
+      margin-bottom: 0.5rem;
+    }
+
+    .radius-label, .shadow-label {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    /* ============================================
+       COMPONENTS
+       ============================================ */
+    .component-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 2rem;
+    }
+
+    .component-card {
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .component-header {
+      padding: 1rem;
+      border-bottom: 1px solid hsl(var(--border));
+      font-weight: 600;
+    }
+
+    .component-body {
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .component-row {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .component-label {
+      font-size: 0.75rem;
+      color: hsl(var(--muted-foreground));
+      min-width: 80px;
+    }
+
+    /* ============================================
+       COMPONENT STYLES
+       These use CSS variables from the design system
+       ============================================ */
+{{COMPONENT_STYLES}}
+
+    /* ============================================
+       MOTION
+       ============================================ */
+    .motion-demo {
+      padding: 1.5rem;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .motion-box {
+      width: 60px;
+      height: 60px;
+      background: hsl(var(--primary));
+      border-radius: var(--radius);
+    }
+
+    /* ============================================
+       UTILITIES
+       ============================================ */
+    .theme-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: hsl(var(--secondary));
+      border: 1px solid hsl(var(--border));
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: hsl(var(--foreground));
+      transition: all var(--transition-fast);
+    }
+
+    .theme-toggle:hover {
+      background: hsl(var(--muted));
+    }
+
+    .copy-toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: hsl(var(--foreground));
+      color: hsl(var(--background));
+      padding: 0.75rem 1.25rem;
+      border-radius: var(--radius);
+      font-size: 0.875rem;
+      font-weight: 500;
+      opacity: 0;
+      transition: opacity var(--transition-fast);
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    .copy-toast.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <header class="header" data-testid="header">
+    <div>
+      <h1 class="header-title">{{DS_NAME}}</h1>
+      <p class="header-meta">{{DS_DESCRIPTION}} | v{{DS_VERSION}}</p>
+    </div>
+    <div class="header-controls">
+      <button class="theme-toggle" onclick="toggleTheme()" data-testid="theme-toggle">
+        <span id="theme-icon">🌙</span>
+        <span id="theme-label">Dark</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="container">
+    <nav class="tabs" data-testid="tabs">
+      <button class="tab active" onclick="showTab('colors')" data-testid="tab-colors">Colors</button>
+      <button class="tab" onclick="showTab('typography')" data-testid="tab-typography">Typography</button>
+      <button class="tab" onclick="showTab('spacing')" data-testid="tab-spacing">Spacing</button>
+      <button class="tab" onclick="showTab('motion')" data-testid="tab-motion">Motion</button>
+      <button class="tab" onclick="showTab('components')" data-testid="tab-components">Components</button>
+    </nav>
+
+    <!-- ============================================
+         COLORS TAB
+         ============================================ -->
+    <div id="tab-colors" class="tab-content active" data-testid="content-colors">
+      <section class="section">
+        <h2 class="section-title">Brand Colors</h2>
+        <p class="section-desc">Raw color scales forming the foundation of the design system. Click any swatch to copy its value.</p>
+        <div class="color-grid" data-testid="brand-colors">
+{{BRAND_COLORS}}
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Semantic Tokens</h2>
+        <p class="section-desc">Application-level tokens that reference brand colors. These adapt automatically to light/dark mode.</p>
+        <div class="semantic-grid" data-testid="semantic-colors">
+{{SEMANTIC_COLORS}}
+        </div>
+      </section>
+    </div>
+
+    <!-- ============================================
+         TYPOGRAPHY TAB
+         ============================================ -->
+    <div id="tab-typography" class="tab-content" data-testid="content-typography">
+      <section class="section">
+        <h2 class="section-title">Type Scale</h2>
+        <p class="section-desc">{{TYPOGRAPHY_DESCRIPTION}}</p>
+        <div class="type-scale" data-testid="type-scale">
+{{TYPOGRAPHY}}
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Font Weights</h2>
+        <div class="type-scale">
+          <div class="type-specimen">
+            <span style="font-weight: 400">Regular (400)</span> -
+            <span style="font-weight: 500">Medium (500)</span> -
+            <span style="font-weight: 600">Semibold (600)</span> -
+            <span style="font-weight: 700">Bold (700)</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Monospace</h2>
+        <div class="type-scale">
+          <div class="type-specimen">
+            <div class="type-specimen-label">{{MONO_FONT}}</div>
+            <code class="mono" style="font-size: 0.875rem;">const greeting = "Hello, World!";</code>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============================================
+         SPACING TAB
+         ============================================ -->
+    <div id="tab-spacing" class="tab-content" data-testid="content-spacing">
+      <section class="section">
+        <h2 class="section-title">Spacing Scale</h2>
+        <p class="section-desc">Base unit: {{SPACING_BASE}}px. {{SPACING_DENSITY}} density.</p>
+        <div class="spacing-scale" data-testid="spacing-scale">
+{{SPACING}}
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Border Radius</h2>
+        <div class="radius-grid" data-testid="radius-scale">
+{{RADIUS}}
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Shadows</h2>
+        <div class="shadow-grid" data-testid="shadow-scale">
+{{SHADOWS}}
+        </div>
+      </section>
+    </div>
+
+    <!-- ============================================
+         MOTION TAB
+         ============================================ -->
+    <div id="tab-motion" class="tab-content" data-testid="content-motion">
+      <section class="section">
+        <h2 class="section-title">Transitions</h2>
+        <p class="section-desc">Semantic motion tokens for consistent animation timing.</p>
+        <div class="component-grid">
+{{TRANSITIONS}}
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Animations</h2>
+        <p class="section-desc">Click to replay animation.</p>
+        <div class="component-grid" data-testid="animations">
+{{ANIMATIONS}}
+        </div>
+      </section>
+    </div>
+
+    <!-- ============================================
+         COMPONENTS TAB
+         ============================================ -->
+    <div id="tab-components" class="tab-content" data-testid="content-components">
+
+      <!-- Core Components (Always rendered) -->
+{{CORE_COMPONENTS}}
+
+      <!-- Domain Pack Components (Conditional) -->
+{{PACK_COMPONENTS}}
+
+    </div>
+  </div>
+
+  <!-- Copy Toast -->
+  <div class="copy-toast" id="copy-toast">Copied!</div>
+
+  <script>
+    // Theme toggle
+    function toggleTheme() {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      document.getElementById('theme-icon').textContent = isDark ? '☀️' : '🌙';
+      document.getElementById('theme-label').textContent = isDark ? 'Light' : 'Dark';
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    }
+
+    // Load saved theme
+    if (localStorage.getItem('theme') === 'dark') {
+      document.body.classList.add('dark');
+      document.getElementById('theme-icon').textContent = '☀️';
+      document.getElementById('theme-label').textContent = 'Light';
+    }
+
+    // Tab navigation
+    function showTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.getElementById('tab-' + tabId).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    // Copy to clipboard
+    function copyValue(value) {
+      navigator.clipboard.writeText(value).then(() => {
+        const toast = document.getElementById('copy-toast');
+        toast.textContent = 'Copied: ' + value;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2000);
+      });
+    }
+
+    // Replay animation
+    function replayAnimation(element, animationClass) {
+      element.classList.remove(animationClass);
+      void element.offsetWidth;
+      element.classList.add(animationClass);
+    }
+
+    // Toggle component (for toggles/switches)
+    function toggleComponent(element) {
+      element.classList.toggle('active');
+    }
+  </script>
+</body>
+</html>
