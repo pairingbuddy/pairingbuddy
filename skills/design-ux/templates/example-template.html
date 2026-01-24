@@ -1,19 +1,16 @@
 <!--
   EXAMPLE PAGE TEMPLATE
 
-  This template provides a minimal structure for contextual example pages
-  (e.g., landing pages, dashboards) that demonstrate the design system in use.
-
-  Features:
-  - Dark mode toggle (floating button, bottom-right)
-  - Embeds design system tokens
-  - Self-contained (no external dependencies except fonts)
+  Uses Tailwind CDN + linked tokens.css so you can:
+  - Edit tokens.css and refresh to see changes
+  - See real Tailwind class usage patterns
+  - Copy classes directly to your project
 
   Placeholders:
   - {{DS_NAME}} - Design system name
-  - {{CSS_VARIABLES}} - Generated design tokens CSS
   - {{EXAMPLE_TITLE}} - Page title (e.g., "Acme Landing Page")
-  - {{EXAMPLE_CONTENT}} - Main page content HTML
+  - {{TAILWIND_CONFIG}} - Inline Tailwind config object
+  - {{EXAMPLE_CONTENT}} - Main page content HTML using Tailwind classes
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -21,72 +18,51 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{EXAMPLE_TITLE}} | {{DS_NAME}}</title>
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Design Tokens (edit this file to tweak the design system) -->
+  <link href="tokens.css" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {{TAILWIND_CONFIG}}
+  </script>
+
+  <!-- Dark mode toggle styles -->
   <style>
-    /* ============================================
-       DESIGN TOKENS (generated)
-       ============================================ */
-{{CSS_VARIABLES}}
-
-    /* ============================================
-       BASE STYLES
-       ============================================ */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background-color: hsl(var(--surface-page));
-      color: hsl(var(--text-body));
-      line-height: 1.6;
-      transition: background-color var(--transition-smooth), color var(--transition-smooth);
-    }
-
-    /* ============================================
-       DARK MODE TOGGLE (floating)
-       Uses design tokens instead of magic numbers
-       ============================================ */
     .theme-toggle {
       position: fixed;
-      bottom: var(--spacing-xl, 24px);
-      right: var(--spacing-xl, 24px);
+      bottom: var(--spacing-xl);
+      right: var(--spacing-xl);
       z-index: 1000;
-      width: var(--touch-target, 48px);
-      height: var(--touch-target, 48px);
-      border-radius: var(--radius-full, 9999px);
-      border: var(--border-thin, 1px) solid hsl(var(--border-default));
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-full);
+      border: 1px solid hsl(var(--border-default));
       background: hsl(var(--surface-card));
-      color: hsl(var(--text-body));
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: var(--shadow-md);
-      transition: all var(--transition-smooth);
+      box-shadow: var(--shadow-lg);
+      transition: transform 0.2s, box-shadow 0.2s;
     }
-
     .theme-toggle:hover {
       transform: scale(1.05);
-      box-shadow: var(--shadow-lg, 0 6px 16px hsl(0 0% 0% / 0.2));
     }
-
-    .theme-toggle .sun-icon { display: block; }
+    .theme-toggle .sun-icon { display: block; color: hsl(var(--text-body)); }
     .theme-toggle .moon-icon { display: none; }
     .dark .theme-toggle .sun-icon { display: none; }
-    .dark .theme-toggle .moon-icon { display: block; }
-
-    /* ============================================
-       EXAMPLE CONTENT STYLES
-       ============================================ */
-{{EXAMPLE_STYLES}}
+    .dark .theme-toggle .moon-icon { display: block; color: hsl(var(--text-body)); }
   </style>
 </head>
-<body>
+<body class="bg-page text-body font-sans">
+
   <!-- Dark Mode Toggle -->
   <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode" title="Toggle dark/light mode">
     <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -97,20 +73,18 @@
     </svg>
   </button>
 
-  <!-- Example Content -->
+  <!-- Example Content (uses Tailwind classes) -->
 {{EXAMPLE_CONTENT}}
 
   <script>
-    // Theme toggle
     function toggleTheme() {
-      document.body.classList.toggle('dark');
-      localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+      document.documentElement.classList.toggle('dark');
+      localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
     }
 
-    // Load saved theme preference
     if (localStorage.getItem('theme') === 'dark' ||
         (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      document.body.classList.add('dark');
+      document.documentElement.classList.add('dark');
     }
   </script>
 </body>

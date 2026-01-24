@@ -931,56 +931,75 @@ The template includes conditional sections:
 - Forms components (if `forms` pack selected)
 - Mobile components (if `mobile` pack selected)
 
+## Generated Files
+
+**Per design system folder:**
+
+| File | Purpose |
+|------|---------|
+| `config.json` | Design system metadata (name, version, settings) |
+| `tokens.css` | CSS variables - all three tiers, light + dark mode |
+| `tailwind.config.js` | Tailwind v3 config - references CSS vars |
+| `tailwind.v4.css` | Tailwind v4 config - uses @theme directive |
+| `preview.html` | Component visualization - uses Tailwind classes |
+| `example.html` | Contextual demo - uses Tailwind classes |
+
+**At exploration root (for parallel explorations):**
+
+| File | Purpose |
+|------|---------|
+| `index.html` | Navigation linking to all design systems |
+| `comparison.html` | Side-by-side comparison with screenshots |
+| `screenshots/` | PNG screenshots for comparison |
+| `robots.txt` | Prevent indexing |
+
+**Why both v3 and v4 configs?**
+- v3 for compatibility with existing projects
+- v4 for newer projects using CSS-native approach
+- Same visual output, different config formats
+
 ## Tailwind Generation
 
-### tailwind.config.js
-
-The Tailwind config references CSS variables from tokens.css, enabling:
-- Dark mode via `.dark` class toggle
-- Dynamic theming without rebuilding
-- Consistent tokens between Tailwind and vanilla CSS
+### tailwind.config.js (v3)
 
 ```javascript
 module.exports = {
-  content: ['./src/**/*.{js,jsx,ts,tsx,html}'],
+  content: ['./*.html'],
   darkMode: 'class',
   theme: {
     extend: {
-      // TIER 1: Brand - raw color scales (for direct color access)
+      // TIER 1: Brand - raw color scales
       colors: {
         primary: {
           50: 'hsl(var(--color-primary-50))',
-          100: 'hsl(var(--color-primary-100))',
-          // ... 200-800 ...
+          500: 'hsl(var(--color-primary-500))',
           900: 'hsl(var(--color-primary-900))',
+          // ... full scale ...
         },
         neutral: { /* same pattern */ },
       },
 
-      // TIER 2: Alias - semantic spacing/sizing
+      // TIER 2: Alias - semantic tokens
       spacing: {
         'xs': 'var(--spacing-xs)',
         'sm': 'var(--spacing-sm)',
         'md': 'var(--spacing-md)',
         'lg': 'var(--spacing-lg)',
         'xl': 'var(--spacing-xl)',
-        '2xl': 'var(--spacing-2xl)',
       },
-
       borderRadius: {
         'sm': 'var(--radius-sm)',
         'md': 'var(--radius-md)',
         'lg': 'var(--radius-lg)',
         'full': 'var(--radius-full)',
       },
-
       boxShadow: {
         'sm': 'var(--shadow-sm)',
         'md': 'var(--shadow-md)',
         'lg': 'var(--shadow-lg)',
       },
 
-      // TIER 3: Mapped - component-specific (for semantic classes)
+      // TIER 3: Mapped - component tokens
       textColor: {
         'heading': 'hsl(var(--text-heading))',
         'body': 'hsl(var(--text-body))',
@@ -991,23 +1010,87 @@ module.exports = {
         'card': 'hsl(var(--surface-card))',
         'action': 'hsl(var(--surface-action))',
       },
-      borderColor: {
-        'default': 'hsl(var(--border-default))',
-        'focus': 'hsl(var(--border-focus))',
-      },
-
-      // Motion
-      transitionDuration: {
-        'fast': 'var(--duration-200)',
-        'smooth': 'var(--duration-300)',
-      },
-
-      keyframes: { /* ... */ },
-      animation: { /* ... */ },
     },
   },
-  plugins: [],
 }
+```
+
+### tailwind.v4.css
+
+```css
+@import "tailwindcss";
+@import "./tokens.css";
+
+@theme {
+  /* Colors reference tokens.css variables */
+  --color-primary-50: hsl(var(--color-primary-50));
+  --color-primary-500: hsl(var(--color-primary-500));
+  /* ... */
+
+  /* Spacing */
+  --spacing-xs: var(--spacing-xs);
+  --spacing-sm: var(--spacing-sm);
+  --spacing-lg: var(--spacing-lg);
+  /* ... */
+}
+```
+
+## HTML Files Use Tailwind Classes
+
+**CRITICAL:** preview.html and example.html must:
+1. Link to tokens.css (not embed styles inline)
+2. Use Tailwind CDN with inline config
+3. Use Tailwind utility classes (not custom CSS)
+
+This allows editing tokens.css and seeing changes on refresh.
+
+### HTML Structure
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{DS_NAME}} Preview</title>
+
+  <!-- 1. Link to tokens (editable) -->
+  <link href="tokens.css" rel="stylesheet">
+
+  <!-- 2. Tailwind CDN with inline config -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          // Same config as tailwind.config.js
+          spacing: {
+            'xs': 'var(--spacing-xs)',
+            'sm': 'var(--spacing-sm)',
+            'lg': 'var(--spacing-lg)',
+          },
+          // ... etc
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-page text-body">
+  <!-- 3. Use Tailwind classes -->
+  <button class="px-lg py-sm bg-action text-white rounded-md shadow-md">
+    Click me
+  </button>
+</body>
+</html>
+```
+
+### Benefits
+
+- **Editable**: Change tokens.css → refresh → see results
+- **Real patterns**: Shows actual Tailwind usage
+- **Copy-paste ready**: Classes work in your project
+- **No inline CSS mess**: Clean, readable HTML
 ```
 
 ### Generated Files Summary

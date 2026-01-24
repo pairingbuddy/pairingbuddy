@@ -1,14 +1,20 @@
 <!--
-  DESIGN SYSTEM PREVIEW TEMPLATE (Minimal)
+  DESIGN SYSTEM PREVIEW TEMPLATE
 
-  This template provides the HTML structure with placeholders.
-  See preview-styles.css for all CSS classes and styling reference.
-  See README.md for placeholder documentation.
+  Uses Tailwind CDN + linked tokens.css so you can:
+  - Edit tokens.css and refresh to see changes
+  - See real Tailwind class usage patterns
+  - Copy classes directly to your project
 
-  When generating preview.html:
-  1. Replace all {{PLACEHOLDER}} values with generated content
-  2. Embed CSS from preview-styles.css inline in the <style> tag
-  3. Generate HTML for each content section following the class patterns
+  Placeholders:
+  - {{DS_NAME}}, {{DS_DESCRIPTION}}, {{DS_VERSION}} - Metadata
+  - {{TAILWIND_CONFIG}} - Inline Tailwind config object
+  - {{BRAND_COLORS}}, {{SEMANTIC_COLORS}} - Color swatches HTML
+  - {{TYPOGRAPHY}}, {{TYPOGRAPHY_DESCRIPTION}}, {{MONO_FONT}} - Type specimens
+  - {{SPACING}}, {{SPACING_BASE}}, {{SPACING_DENSITY}} - Spacing scale
+  - {{RADIUS}}, {{SHADOWS}} - Border radius and shadow examples
+  - {{TRANSITIONS}}, {{ANIMATIONS}} - Motion demos
+  - {{CORE_COMPONENTS}}, {{PACK_COMPONENTS}} - Component examples
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -16,124 +22,149 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{DS_NAME}} | Design System Preview</title>
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Design Tokens (edit this file to tweak the design system) -->
+  <link href="tokens.css" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {{TAILWIND_CONFIG}}
+  </script>
+
+  <!-- Preview-specific styles (layout/visualization only) -->
   <style>
-    /* ============================================
-       EMBEDDED TOKENS (generated from tokens.css)
-       ============================================ */
-{{CSS_VARIABLES}}
+    /* Preview chrome - not part of the design system */
+    .preview-tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid hsl(var(--border-default)); }
+    .preview-tab { padding: 0.75rem 1.25rem; font-weight: 500; background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; color: hsl(var(--text-muted)); }
+    .preview-tab:hover { color: hsl(var(--text-body)); }
+    .preview-tab.active { color: hsl(var(--color-primary-500)); border-bottom-color: hsl(var(--color-primary-500)); }
+    .preview-content { display: none; }
+    .preview-content.active { display: block; }
 
-    /* ============================================
-       PREVIEW STYLES (from preview-styles.css)
-       ============================================ */
-{{PREVIEW_STYLES}}
+    /* Color swatch visualization */
+    .color-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; }
+    .color-scale { display: flex; flex-direction: column; gap: 0.25rem; }
+    .color-swatch { height: 3rem; border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 0 0.75rem; font-size: 0.75rem; }
+    .color-swatch:hover { outline: 2px solid hsl(var(--color-primary-500)); outline-offset: 2px; }
 
-    /* ============================================
-       COMPONENT STYLES (generated)
-       ============================================ */
-{{COMPONENT_STYLES}}
+    /* Spacing visualization */
+    .spacing-demo { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+    .spacing-block { background: hsl(var(--color-primary-500)); border-radius: var(--radius-sm); }
+
+    /* Toast notifications */
+    #toast-container { position: fixed; bottom: 1rem; right: 1rem; z-index: 1000; }
+    .toast { background: hsl(var(--surface-card)); color: hsl(var(--text-body)); padding: 0.75rem 1rem; border-radius: var(--radius-md); box-shadow: var(--shadow-lg); margin-top: 0.5rem; opacity: 0; transform: translateY(1rem); transition: all 0.3s; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    /* Theme toggle */
+    .theme-toggle { width: 2.5rem; height: 2.5rem; border-radius: var(--radius-full); border: 1px solid hsl(var(--border-default)); background: hsl(var(--surface-card)); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .theme-toggle .sun-icon { display: block; }
+    .theme-toggle .moon-icon { display: none; }
+    .dark .theme-toggle .sun-icon { display: none; }
+    .dark .theme-toggle .moon-icon { display: block; }
   </style>
 </head>
-<body>
+<body class="bg-page text-body font-sans">
+
   <!-- Header -->
-  <header class="header" data-testid="header">
+  <header class="sticky top-0 z-50 bg-card/95 backdrop-blur border-b border-default px-lg py-md flex justify-between items-center" data-testid="header">
     <div>
-      <div class="header-title">{{DS_NAME}}</div>
-      <div class="header-meta">{{DS_DESCRIPTION}} <span class="mono">v{{DS_VERSION}}</span></div>
+      <h1 class="text-xl font-semibold text-heading">{{DS_NAME}}</h1>
+      <p class="text-sm text-muted">{{DS_DESCRIPTION}} <code class="font-mono">v{{DS_VERSION}}</code></p>
     </div>
-    <div class="header-controls">
-      <button class="theme-toggle" onclick="toggleTheme()" data-testid="theme-toggle" aria-label="Toggle dark mode">
-        <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-        </svg>
-        <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-        </svg>
-      </button>
-    </div>
+    <button class="theme-toggle" onclick="toggleTheme()" data-testid="theme-toggle" aria-label="Toggle dark mode">
+      <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+      </svg>
+      <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </button>
   </header>
 
   <!-- Tabs -->
-  <nav class="tabs" data-testid="tabs">
-    <button class="tab active" onclick="showTab('colors')" data-testid="tab-colors">Colors</button>
-    <button class="tab" onclick="showTab('typography')" data-testid="tab-typography">Typography</button>
-    <button class="tab" onclick="showTab('spacing')" data-testid="tab-spacing">Spacing</button>
-    <button class="tab" onclick="showTab('motion')" data-testid="tab-motion">Motion</button>
-    <button class="tab" onclick="showTab('components')" data-testid="tab-components">Components</button>
+  <nav class="preview-tabs px-lg" data-testid="tabs">
+    <button class="preview-tab active" onclick="showTab('colors')" data-testid="tab-colors">Colors</button>
+    <button class="preview-tab" onclick="showTab('typography')" data-testid="tab-typography">Typography</button>
+    <button class="preview-tab" onclick="showTab('spacing')" data-testid="tab-spacing">Spacing</button>
+    <button class="preview-tab" onclick="showTab('motion')" data-testid="tab-motion">Motion</button>
+    <button class="preview-tab" onclick="showTab('components')" data-testid="tab-components">Components</button>
   </nav>
 
-  <!-- Tab Contents -->
-  <main class="content">
+  <!-- Content -->
+  <main class="p-lg max-w-7xl mx-auto">
 
     <!-- Colors Tab -->
-    <section id="colors" class="tab-content active" data-testid="content-colors">
-      <h2 class="section-title">Brand Colors</h2>
-      <p class="section-desc">Full color scales generated from brand colors. Click any swatch to copy its value.</p>
-      <div class="color-grid" data-testid="brand-colors">
+    <section id="colors" class="preview-content active" data-testid="content-colors">
+      <h2 class="text-2xl font-semibold text-heading mb-sm">Brand Colors</h2>
+      <p class="text-muted mb-lg">Full color scales. Click any swatch to copy its value.</p>
+      <div class="color-grid mb-xl" data-testid="brand-colors">
 {{BRAND_COLORS}}
       </div>
 
-      <h2 class="section-title">Semantic Tokens</h2>
-      <p class="section-desc">Purpose-driven color assignments that adapt to light and dark modes.</p>
-      <div class="semantic-grid" data-testid="semantic-colors">
+      <h2 class="text-2xl font-semibold text-heading mb-sm">Semantic Tokens</h2>
+      <p class="text-muted mb-lg">Purpose-driven colors that adapt to light and dark modes.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-lg" data-testid="semantic-colors">
 {{SEMANTIC_COLORS}}
       </div>
     </section>
 
     <!-- Typography Tab -->
-    <section id="typography" class="tab-content" data-testid="content-typography">
-      <h2 class="section-title">Type Scale</h2>
-      <p class="section-desc">{{TYPOGRAPHY_DESCRIPTION}}</p>
-      <div class="type-scale" data-testid="type-scale">
+    <section id="typography" class="preview-content" data-testid="content-typography">
+      <h2 class="text-2xl font-semibold text-heading mb-sm">Type Scale</h2>
+      <p class="text-muted mb-lg">{{TYPOGRAPHY_DESCRIPTION}}</p>
+      <div class="space-y-md" data-testid="type-scale">
 {{TYPOGRAPHY}}
       </div>
 
-      <h2 class="section-title">Monospace</h2>
-      <p class="section-desc">{{MONO_FONT}} for code and technical content.</p>
-      <div class="type-specimen mono" style="font-size: 1rem;">
-        <code>const designSystem = createTokens({ primary: 'purple' });</code>
-      </div>
+      <h2 class="text-2xl font-semibold text-heading mt-xl mb-sm">Monospace</h2>
+      <p class="text-muted mb-lg">{{MONO_FONT}} for code and technical content.</p>
+      <code class="font-mono text-base bg-card p-md rounded-md block">const designSystem = createTokens({ primary: 'purple' });</code>
     </section>
 
     <!-- Spacing Tab -->
-    <section id="spacing" class="tab-content" data-testid="content-spacing">
-      <h2 class="section-title">Spacing Scale</h2>
-      <p class="section-desc">{{SPACING_BASE}}px base unit with {{SPACING_DENSITY}} density.</p>
-      <div class="spacing-scale" data-testid="spacing-scale">
+    <section id="spacing" class="preview-content" data-testid="content-spacing">
+      <h2 class="text-2xl font-semibold text-heading mb-sm">Spacing Scale</h2>
+      <p class="text-muted mb-lg">{{SPACING_BASE}}px base unit with {{SPACING_DENSITY}} density.</p>
+      <div class="spacing-demo mb-xl" data-testid="spacing-scale">
 {{SPACING}}
       </div>
 
-      <h2 class="section-title">Border Radius</h2>
-      <div class="radius-examples" data-testid="radius-scale">
+      <h2 class="text-2xl font-semibold text-heading mb-sm">Border Radius</h2>
+      <div class="flex gap-lg flex-wrap mb-xl" data-testid="radius-scale">
 {{RADIUS}}
       </div>
 
-      <h2 class="section-title">Shadows</h2>
-      <div class="shadow-examples" data-testid="shadow-scale">
+      <h2 class="text-2xl font-semibold text-heading mb-sm">Shadows</h2>
+      <div class="flex gap-lg flex-wrap" data-testid="shadow-scale">
 {{SHADOWS}}
       </div>
     </section>
 
     <!-- Motion Tab -->
-    <section id="motion" class="tab-content" data-testid="content-motion">
-      <h2 class="section-title">Transitions</h2>
-      <p class="section-desc">Hover over cards to see transition timing.</p>
-      <div class="motion-demos" data-testid="transitions">
+    <section id="motion" class="preview-content" data-testid="content-motion">
+      <h2 class="text-2xl font-semibold text-heading mb-sm">Transitions</h2>
+      <p class="text-muted mb-lg">Hover to see timing.</p>
+      <div class="flex gap-lg flex-wrap mb-xl" data-testid="transitions">
 {{TRANSITIONS}}
       </div>
 
-      <h2 class="section-title">Animations</h2>
-      <div class="animation-demos" data-testid="animations">
+      <h2 class="text-2xl font-semibold text-heading mb-sm">Animations</h2>
+      <div class="flex gap-lg flex-wrap" data-testid="animations">
 {{ANIMATIONS}}
       </div>
     </section>
 
     <!-- Components Tab -->
-    <section id="components" class="tab-content" data-testid="content-components">
-      <h2 class="section-title">Core Components</h2>
-      <p class="section-desc">Foundation components included in every design system.</p>
+    <section id="components" class="preview-content" data-testid="content-components">
+      <h2 class="text-2xl font-semibold text-heading mb-sm">Core Components</h2>
+      <p class="text-muted mb-lg">Foundation components using Tailwind classes.</p>
 
 {{CORE_COMPONENTS}}
 
@@ -141,48 +172,38 @@
     </section>
   </main>
 
-  <!-- Toast container for copy notifications -->
+  <!-- Toast container -->
   <div id="toast-container"></div>
 
   <script>
-    // Theme toggle
     function toggleTheme() {
-      document.body.classList.toggle('dark');
-      localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+      document.documentElement.classList.toggle('dark');
+      localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
     }
 
-    // Load saved theme
     if (localStorage.getItem('theme') === 'dark' ||
         (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      document.body.classList.add('dark');
+      document.documentElement.classList.add('dark');
     }
 
-    // Tab switching
     function showTab(tabId) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.preview-content').forEach(c => c.classList.remove('active'));
       document.querySelector(`[onclick="showTab('${tabId}')"]`).classList.add('active');
       document.getElementById(tabId).classList.add('active');
     }
 
-    // Copy to clipboard with toast
     function copyValue(value) {
-      navigator.clipboard.writeText(value).then(() => {
-        showToast(`Copied: ${value}`);
-      });
+      navigator.clipboard.writeText(value).then(() => showToast(`Copied: ${value}`));
     }
 
     function showToast(message) {
-      const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
       toast.className = 'toast';
       toast.textContent = message;
-      container.appendChild(toast);
+      document.getElementById('toast-container').appendChild(toast);
       setTimeout(() => toast.classList.add('show'), 10);
-      setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 300);
-      }, 2000);
+      setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 2000);
     }
   </script>
 </body>
