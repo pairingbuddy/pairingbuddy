@@ -30,6 +30,8 @@
     "./agents/scope-refactoring.md",
     "./agents/setup-spike.md",
     "./agents/explore-spike-unit.md",
-    "./agents/document-spike.md"
+    "./agents/document-spike.md",
+    "./agents/design-ux-builder.md",
+    "./agents/design-ux-critic.md"
   ]
 }

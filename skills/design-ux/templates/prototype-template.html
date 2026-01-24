@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{EXPERIENCE_NAME}} - Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ============================================
+       EMBEDDED DESIGN SYSTEM CSS
+       Replace {{EMBEDDED_CSS}} with tokens from design system
+       ============================================ */
+{{EMBEDDED_CSS}}
+
+    /* ============================================
+       PROTOTYPE CHROME (Static - do not modify)
+       ============================================ */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: #1a1a2e;
+      color: #eaeaea;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ============================================
+       PROTOTYPE NAVIGATION
+       ============================================ */
+    .prototype-nav {
+      background: #16213e;
+      border-bottom: 1px solid #0f3460;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+
+    .prototype-nav-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #e94560;
+      white-space: nowrap;
+      padding-right: 1rem;
+      border-right: 1px solid #0f3460;
+    }
+
+    .prototype-nav-states {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: nowrap;
+    }
+
+    .prototype-nav-state {
+      padding: 0.5rem 1rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #a0a0a0;
+      background: transparent;
+      border: 1px solid #0f3460;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .prototype-nav-state:hover {
+      background: #0f3460;
+      color: #eaeaea;
+    }
+
+    .prototype-nav-state.active {
+      background: #e94560;
+      border-color: #e94560;
+      color: white;
+    }
+
+    .prototype-nav-state.error-state {
+      border-color: #ff6b6b;
+      color: #ff6b6b;
+    }
+
+    .prototype-nav-state.error-state.active {
+      background: #ff6b6b;
+      border-color: #ff6b6b;
+      color: white;
+    }
+
+    .prototype-nav-state.empty-state {
+      border-color: #ffd93d;
+      color: #ffd93d;
+    }
+
+    .prototype-nav-state.empty-state.active {
+      background: #ffd93d;
+      border-color: #ffd93d;
+      color: #1a1a2e;
+    }
+
+    /* ============================================
+       PROTOTYPE VIEWPORT
+       ============================================ */
+    .prototype-viewport {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 2rem;
+      overflow: auto;
+      background:
+        linear-gradient(90deg, #2a2a4a 1px, transparent 1px),
+        linear-gradient(#2a2a4a 1px, transparent 1px);
+      background-size: 20px 20px;
+      background-position: center center;
+    }
+
+    .prototype-frame {
+      background: white;
+      border-radius: 12px;
+      box-shadow:
+        0 25px 50px -12px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      max-width: 100%;
+      transition: all 0.3s ease;
+    }
+
+    .prototype-frame.mobile {
+      width: 375px;
+      min-height: 667px;
+    }
+
+    .prototype-frame.tablet {
+      width: 768px;
+      min-height: 600px;
+    }
+
+    .prototype-frame.desktop {
+      width: 1200px;
+      min-height: 700px;
+    }
+
+    .prototype-state {
+      display: none;
+    }
+
+    .prototype-state.active {
+      display: block;
+    }
+
+    /* ============================================
+       PROTOTYPE FOOTER
+       ============================================ */
+    .prototype-meta {
+      background: #16213e;
+      border-top: 1px solid #0f3460;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      color: #a0a0a0;
+      flex-shrink: 0;
+    }
+
+    .prototype-meta-left {
+      display: flex;
+      gap: 1.5rem;
+    }
+
+    .prototype-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .prototype-meta-label {
+      color: #666;
+    }
+
+    .prototype-meta-value {
+      color: #eaeaea;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .prototype-controls {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .prototype-control {
+      padding: 0.375rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #a0a0a0;
+      background: #0f3460;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .prototype-control:hover {
+      background: #1a4a7a;
+      color: #eaeaea;
+    }
+
+    .prototype-control.active {
+      background: #e94560;
+      color: white;
+    }
+
+    /* ============================================
+       FLOW INDICATORS
+       ============================================ */
+    .flow-indicator {
+      position: fixed;
+      bottom: 5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.875rem;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    .flow-indicator.show {
+      opacity: 1;
+    }
+
+    .flow-indicator-arrow {
+      color: #e94560;
+    }
+
+    /* ============================================
+       HOTSPOTS (Clickable areas in prototype)
+       ============================================ */
+    [data-navigate] {
+      cursor: pointer;
+      position: relative;
+    }
+
+    [data-navigate]::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border: 2px solid transparent;
+      border-radius: inherit;
+      transition: border-color 0.2s ease;
+      pointer-events: none;
+    }
+
+    [data-navigate]:hover::after {
+      border-color: #e94560;
+    }
+
+    /* Debug mode - show all hotspots */
+    body.debug-mode [data-navigate]::after {
+      border-color: rgba(233, 69, 96, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation Bar -->
+  <nav class="prototype-nav" data-testid="prototype-nav">
+    <div class="prototype-nav-title">{{EXPERIENCE_NAME}}</div>
+    <div class="prototype-nav-states" data-testid="state-navigation">
+{{STATE_NAVIGATION}}
+    </div>
+  </nav>
+
+  <!-- Viewport -->
+  <main class="prototype-viewport" data-testid="prototype-viewport">
+    <div class="prototype-frame desktop" id="prototype-frame" data-testid="prototype-frame">
+{{STATES_CONTENT}}
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="prototype-meta" data-testid="prototype-meta">
+    <div class="prototype-meta-left">
+      <div class="prototype-meta-item">
+        <span class="prototype-meta-label">Iteration</span>
+        <span class="prototype-meta-value">{{ITERATION}}</span>
+      </div>
+      <div class="prototype-meta-item">
+        <span class="prototype-meta-label">Based on</span>
+        <span class="prototype-meta-value">{{DESIGN_SYSTEM}} v{{DS_VERSION}}</span>
+      </div>
+      <div class="prototype-meta-item">
+        <span class="prototype-meta-label">Updated</span>
+        <span class="prototype-meta-value">{{TIMESTAMP}}</span>
+      </div>
+    </div>
+    <div class="prototype-controls">
+      <button class="prototype-control" onclick="setViewport('mobile')" data-testid="viewport-mobile">Mobile</button>
+      <button class="prototype-control" onclick="setViewport('tablet')" data-testid="viewport-tablet">Tablet</button>
+      <button class="prototype-control active" onclick="setViewport('desktop')" data-testid="viewport-desktop">Desktop</button>
+      <button class="prototype-control" onclick="toggleDebug()" data-testid="toggle-debug">Hotspots</button>
+    </div>
+  </footer>
+
+  <!-- Flow Indicator (shows during transitions) -->
+  <div class="flow-indicator" id="flow-indicator">
+    <span id="flow-from">welcome</span>
+    <span class="flow-indicator-arrow">→</span>
+    <span id="flow-to">select-plan</span>
+  </div>
+
+  <script>
+    // Flow definition from flow.json
+    const flow = {{FLOW_JSON}};
+
+    // Current state tracking
+    let currentState = flow.initial || 'welcome';
+    let currentViewport = 'desktop';
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      showState(currentState);
+      setupHotspots();
+    });
+
+    // Navigate to a state
+    function showState(stateId) {
+      // Update current state
+      const previousState = currentState;
+      currentState = stateId;
+
+      // Hide all states
+      document.querySelectorAll('.prototype-state').forEach(state => {
+        state.classList.remove('active');
+      });
+
+      // Show target state
+      const targetState = document.getElementById('state-' + stateId);
+      if (targetState) {
+        targetState.classList.add('active');
+      }
+
+      // Update nav buttons
+      document.querySelectorAll('.prototype-nav-state').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.state === stateId) {
+          btn.classList.add('active');
+        }
+      });
+
+      // Show flow indicator briefly
+      if (previousState !== stateId) {
+        showFlowIndicator(previousState, stateId);
+      }
+
+      // Re-setup hotspots for new state
+      setupHotspots();
+    }
+
+    // Setup click handlers for hotspots
+    function setupHotspots() {
+      document.querySelectorAll('[data-navigate]').forEach(element => {
+        element.onclick = (e) => {
+          e.preventDefault();
+          const targetState = element.dataset.navigate;
+          if (targetState) {
+            showState(targetState);
+          }
+        };
+      });
+    }
+
+    // Show flow indicator during transitions
+    function showFlowIndicator(from, to) {
+      const indicator = document.getElementById('flow-indicator');
+      document.getElementById('flow-from').textContent = from;
+      document.getElementById('flow-to').textContent = to;
+      indicator.classList.add('show');
+      setTimeout(() => indicator.classList.remove('show'), 1500);
+    }
+
+    // Viewport controls
+    function setViewport(size) {
+      currentViewport = size;
+      const frame = document.getElementById('prototype-frame');
+      frame.classList.remove('mobile', 'tablet', 'desktop');
+      frame.classList.add(size);
+
+      // Update button states
+      document.querySelectorAll('.prototype-controls .prototype-control').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.toLowerCase() === size) {
+          btn.classList.add('active');
+        }
+      });
+    }
+
+    // Toggle debug mode (show all hotspots)
+    function toggleDebug() {
+      document.body.classList.toggle('debug-mode');
+      const btn = document.querySelector('[data-testid="toggle-debug"]');
+      btn.classList.toggle('active');
+    }
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      const stateConfig = flow.states[currentState];
+      if (!stateConfig) return;
+
+      const transitions = stateConfig.transitions || {};
+
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        // Go to next state
+        if (transitions.next) {
+          e.preventDefault();
+          showState(transitions.next);
+        }
+      } else if (e.key === 'ArrowLeft' || e.key === 'Backspace') {
+        // Go to previous state
+        if (transitions.back) {
+          e.preventDefault();
+          showState(transitions.back);
+        }
+      } else if (e.key === 'Escape') {
+        // Go to initial state
+        e.preventDefault();
+        showState(flow.initial);
+      }
+    });
+  </script>
+</body>
+</html>

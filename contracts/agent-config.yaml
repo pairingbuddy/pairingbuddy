@@ -31,6 +31,8 @@ schemas:
   - current-unit.schema.json
   - doc-config.schema.json
   - docs-updated.schema.json
+  - design-artifacts.schema.json
+  - design-critique.schema.json
 
 # =============================================================================
 # Agent definitions
@@ -599,6 +601,41 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Output"
+
+  # ---------------------------------------------------------------------------
+  # Design UX Agents
+  # ---------------------------------------------------------------------------
+  design-ux-builder:
+    color: blue
+    model: opus
+    skills: []
+    inputs: {}
+    outputs:
+      design_artifacts:
+        schema: design-artifacts.schema.json
+        file: exploration-folder
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
+  design-ux-critic:
+    color: yellow
+    model: opus
+    skills: []
+    inputs: {}
+    outputs:
+      critique:
+        schema: design-critique.schema.json
+        file: critique.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
       - heading: "## Output"
 
 # =============================================================================

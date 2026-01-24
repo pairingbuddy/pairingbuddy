@@ -81,3 +81,14 @@ skills:
     sections:
       - heading: "## Contents"
       - heading: "## Quick Reference"
+
+  # ---------------------------------------------------------------------------
+  # Design UX Orchestrator
+  # ---------------------------------------------------------------------------
+  design-ux:
+    category: orchestrator
+    sections:
+      - heading: "## Overview"
+      - heading: "## Design Principles"
+      - heading: "## Agents"
+      - heading: "## Conversational Interface"

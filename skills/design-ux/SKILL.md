@@ -5,9 +5,153 @@ description: Creates, iterates, and manages production-ready design systems with
 
 # Design UX Skill
 
+## Overview
+
 Creates, iterates, and manages production-ready design systems. Generates three-tiered token architecture (brand, alias, mapped), interactive HTML visualization, and Tailwind CSS configuration.
 
 **Announce at start:** "I'm using the design-ux skill to [create/iterate on] your design system."
+
+## Design Principles
+
+All work must follow design principles from reference files:
+- [Design Principles](./reference/design-principles.md) - Core UX principles (Rams, Norman, Laws of UX)
+- [UX Passes](./reference/ux-passes.md) - 6-pass critique framework
+- [Component Specs](./reference/component-specs.md) - Component patterns and domain packs
+
+**Key requirements:**
+- Touch targets: 48x48px minimum
+- Color contrast: 4.5:1 for text (WCAG AA)
+- Spacing: 8px base scale only
+- Apply Laws of UX (Fitts, Hick, Miller, Jakob, Von Restorff)
+
+## Agents
+
+This skill coordinates two specialized agents:
+
+**Builder Agent** (`design-ux-builder`)
+- Creates and iterates on design systems and experiences
+- Generates tokens, components, and states
+- Uses Playwright for visual feedback
+- Follows design principles
+
+**Critic Agent** (`design-ux-critic`)
+- Evaluates designs using 6-pass framework
+- Checks design principle compliance
+- Provides structured, prioritized critique
+- Uses Playwright for visual analysis
+
+## Conversational Interface
+
+The skill provides a conversational interface for design work. See Commands section below for available operations.
+
+## State File Mappings
+
+State files for design explorations are stored in the exploration folder structure:
+
+| Variable | File | Purpose |
+|----------|------|---------|
+| direction | direction.md | Human's brief, constraints, feedback |
+| critique | critique.json | Latest critique findings |
+| config | config.json or experience.json | Design system or experience metadata |
+
+## How to Execute This Workflow
+
+The design-ux workflow is conversational and human-driven, not pseudocode-based like the coding orchestrator. The orchestrator responds to human commands and spawns agents as needed.
+
+### Reading the Pseudocode
+
+Not applicable - design-ux uses a conversational interface instead of pseudocode workflow.
+
+### Agent Invocation
+
+Agents are invoked via the Task tool as needed:
+
+```
+Task tool:
+  subagent_type: pairingbuddy:design-ux-builder
+```
+
+or
+
+```
+Task tool:
+  subagent_type: pairingbuddy:design-ux-critic
+```
+
+### Control Flow
+
+The orchestrator manages the builder-critic loop based on human direction rather than hardcoded control flow.
+
+## Workflow
+
+```python
+# Phase 1 MVP: Minimal workflow for creating design systems
+# Future phases will add experience design, parallel exploration, etc.
+
+def design_ux_workflow():
+    """
+    Conversational workflow for design work.
+    Responds to human commands to create/iterate on designs.
+    """
+    # Human initiates with /design-ux
+    command = _get_human_command()
+
+    if command == "create":
+        # Create new design system
+        direction = _get_direction_from_human()
+        _write_direction_md(direction)
+
+        # Build initial version
+        _invoke_builder_agent()
+
+        # Run critique
+        _invoke_critic_agent()
+
+        # Present results to human
+        _present_critique()
+
+    elif command == "iterate":
+        # Iterate on existing design
+        feedback = _get_human_feedback()
+        _update_direction_md(feedback)
+
+        # Build with feedback
+        _invoke_builder_agent()
+
+        # Run critique
+        _invoke_critic_agent()
+
+        # Present results
+        _present_critique()
+```
+
+## Orchestrator Behavior
+
+### Bootstrap test-config.json
+
+Not applicable - design-ux does not use test-config.json.
+
+### State File Management
+
+The orchestrator manages state files in the exploration folder:
+- Creates exploration folder structure on first run
+- Writes direction.md from human input
+- Passes critique.json between builder and critic
+- Maintains version history in config.json
+
+### Human Checkpoints
+
+The orchestrator pauses for human review after:
+- Builder completes initial generation
+- Critic completes analysis
+- Each iteration cycle
+
+### Error Handling
+
+If agents fail or produce invalid output:
+- Report the error to the human
+- Ask how to proceed
+- Do not attempt automatic recovery
 
 ## Prerequisites
 
@@ -17,7 +161,7 @@ At skill start, check for Playwright MCP availability:
 
 1. Look for Playwright MCP in available tools
 2. If unavailable:
-   - Inform user: "Playwright MCP not detected. Visual critique/iteration requires it. Install from: https://github.com/anthropics/anthropic-cookbook/tree/main/misc/mcp_playwright"
+   - Inform user: "Playwright MCP not detected. Visual critique/iteration requires it. Install from [Playwright MCP](https://github.com/anthropics/anthropic-cookbook/tree/main/misc/mcp_playwright)"
    - Offer: "Continue in generation-only mode? (No visual feedback)"
 3. If available: proceed with full capabilities
 
@@ -25,9 +169,9 @@ At skill start, check for Playwright MCP availability:
 
 **Before generating or critiquing, read these skill reference files:**
 
-1. `reference/design-principles.md` - Core UX principles (Rams, Norman, Laws of UX)
-2. `reference/ux-passes.md` - 6-pass critique framework
-3. `reference/component-specs.md` - Component patterns and domain packs
+1. [Design Principles](./reference/design-principles.md) - Core UX principles (Rams, Norman, Laws of UX)
+2. [UX Passes](./reference/ux-passes.md) - 6-pass critique framework
+3. [Component Specs](./reference/component-specs.md) - Component patterns and domain packs
 
 **For additional context, optionally read:**
 - External design notes if user provides paths
@@ -260,9 +404,13 @@ Application-level tokens for actual use:
 
 ## Template System
 
-### Preview Generation
+### Preview Generation (Design Systems)
 
-When generating preview.html, use the template at `templates/preview-template.html`.
+When generating preview.html, use the [preview template](./templates/preview-template.html).
+
+### Prototype Generation (Experiences)
+
+When generating prototype.html, use the [prototype template](./templates/prototype-template.html).
 
 The template uses placeholder markers that get replaced with actual data:
 
@@ -279,7 +427,7 @@ The template uses placeholder markers that get replaced with actual data:
 ### Component Rendering
 
 For each component pack selected:
-1. Read component specs from `reference/component-specs.md`
+1. Read [component specs](./reference/component-specs.md)
 2. Generate HTML for each component with all states
 3. Insert into the Components tab section
 
@@ -335,7 +483,7 @@ module.exports = {
 
 ## Critique Framework (6 Passes)
 
-When Playwright is available, run visual critique after generation. See `reference/ux-passes.md` for full details.
+When Playwright is available, run visual critique after generation. See [UX Passes](./reference/ux-passes.md) for full details.
 
 ### Pass Summary
 1. **Mental Model** - Do token names communicate intent?
