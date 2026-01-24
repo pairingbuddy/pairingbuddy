@@ -153,31 +153,163 @@ These are universal - every design system needs them.
 - Visited (optional)
 - Focus
 
+### Label
+
+**Variants:**
+- Default
+- Required (with asterisk)
+- Optional (with "(optional)" text)
+- With helper text
+- With error text
+
+### Text Area
+
+**States:**
+- Empty
+- Focused
+- Filled
+- Error
+- Disabled
+- With character count
+
+**Sizes:**
+- `sm` - 2 rows
+- `default` - 4 rows
+- `lg` - 8 rows
+
+### Menu / Dropdown Menu
+
+**Anatomy:**
+- Trigger (button or link)
+- Menu container
+- Menu item (default, hover, disabled)
+- Separator
+- Submenu (optional)
+- Icon support
+
+**States:**
+- Closed
+- Open
+- Item hover
+- Item disabled
+
+### Tabs / Tab Bar
+
+**Anatomy:**
+- Tab list container
+- Tab item (default, active, disabled)
+- Tab panel
+
+**Variants:**
+- Underline (default)
+- Pills
+- Bordered
+
+### Button Group
+
+**Variants:**
+- Horizontal
+- Vertical
+- With dividers
+
+**Usage:**
+- Related actions grouped together
+- Segmented controls
+- Toolbar actions
+
+### Breadcrumb
+
+**Anatomy:**
+- Item (clickable)
+- Separator (/, >, chevron)
+- Current item (non-clickable)
+
+**Variants:**
+- Simple text
+- With icons
+- Collapsed (with dropdown for long paths)
+
+### Progress Bar
+
+**Anatomy:**
+- Track (background)
+- Fill (foreground)
+- Label (optional)
+- Percentage text (optional)
+
+**Variants:**
+- Default
+- Success
+- Warning
+- Error
+- Indeterminate (animated)
+
+### Progress Circle
+
+**Anatomy:**
+- Circle track
+- Circle fill
+- Center content (percentage or icon)
+
+**Sizes:**
+- `sm` - 32px
+- `default` - 48px
+- `lg` - 64px
+
+### Carousel
+
+**Anatomy:**
+- Slide container
+- Slide content
+- Navigation arrows
+- Pagination dots
+- Auto-play controls (optional)
+
+**States:**
+- Default
+- Dragging
+- Transitioning
+
+### Table
+
+**Anatomy:**
+- Header row (sticky optional, sortable)
+- Body rows
+- Footer row (optional)
+- Cell variants (text, number, action, status)
+
+**States:**
+- Default
+- Row hover
+- Row selected
+- Column sorted (asc/desc)
+- Empty state
+
+**Features:**
+- Zebra striping (optional)
+- Row selection (checkbox)
+- Column resizing (optional)
+- Sticky header
+
 ---
 
 ## Domain Packs
 
 ### SaaS / Dashboard Pack
 
-**Data Table:**
-- Header row (sticky, sortable)
-- Body rows (zebra optional)
-- Row hover
-- Row selection (checkbox)
-- Pagination
+*Extends core Table, Tabs, Progress Bar, Breadcrumb with additional features.*
+
+**Data Table Extensions** (adds to core Table):
+- Pagination component
 - Column sorting indicators
 - Bulk action bar
+- Export actions
 
 **Pagination:**
 - Page numbers
 - Prev/Next buttons
 - Page size selector
 - "Showing X-Y of Z"
-
-**Tabs:**
-- Tab list
-- Tab (default, active, disabled)
-- Tab panel
 
 **Sidebar Nav:**
 - Nav group
@@ -191,23 +323,12 @@ These are universal - every design system needs them.
 - Trend indicator (up/down)
 - Sparkline (optional)
 
-**Progress Bar:**
-- Track
-- Fill
-- Label (optional)
-- Percentage
-
 **Modal:**
 - Overlay
 - Container
 - Header (title, close button)
 - Body
 - Footer (actions)
-
-**Breadcrumb:**
-- Item
-- Separator
-- Current (non-clickable)
 
 ### E-commerce Pack
 
