@@ -6,29 +6,33 @@ This directory contains HTML templates for generating design system previews and
 
 | Template | Purpose |
 |----------|---------|
-| `preview-template.html` | Design system visualization (colors, typography, components) |
+| `preview-template.html` | Design system visualization (colors, typography, components) - minimal HTML with placeholders |
+| `preview-styles.css` | Static CSS for preview template (base styles, layout, component classes) |
 | `prototype-template.html` | Experience prototype (clickable state machine with navigation) |
 | `index-template.html` | Navigation page for web-hosted exploration output |
 | `comparison-template.html` | Side-by-side comparison page using screenshots |
 
-## Preview Template
+## Preview Template (Split Structure)
 
-The `preview-template.html` is a **reference template** showing the exact structure, CSS, and component styling for design system previews.
+The preview template is split into two files to stay within Claude Code's token limits:
+
+1. **`preview-template.html`** - Minimal HTML structure with placeholders (~190 lines)
+2. **`preview-styles.css`** - Static CSS classes and base styles (~980 lines)
 
 **Structure:**
 - Header: Name, description, version, dark mode toggle
 - Tabs: Colors | Typography | Spacing | Motion | Components
-- Each tab has sections with examples using CSS classes defined in the template
+- Each tab has sections with examples using CSS classes from preview-styles.css
 
 **When generating preview.html:**
-1. Copy the entire template structure
-2. Replace CSS variables in `:root` and `.dark` with generated tokens
-3. Replace color swatches HTML with generated brand colors
-4. Replace semantic tokens HTML with generated mappings
-5. Update component examples to use the design system's colors
-6. Replace `{{DS_NAME}}`, `{{DS_DESCRIPTION}}`, `{{DS_VERSION}}` in header
+1. Start with preview-template.html structure
+2. Read preview-styles.css and embed it via `{{PREVIEW_STYLES}}` placeholder
+3. Replace `{{CSS_VARIABLES}}` with generated design tokens
+4. Replace `{{COMPONENT_STYLES}}` with generated component CSS
+5. Replace content placeholders (`{{BRAND_COLORS}}`, `{{TYPOGRAPHY}}`, etc.) with generated HTML
+6. Replace metadata placeholders (`{{DS_NAME}}`, `{{DS_DESCRIPTION}}`, `{{DS_VERSION}}`)
 
-**The CSS classes are pre-defined** - use them for consistent styling:
+**The CSS classes in preview-styles.css** provide consistent styling:
 - `.color-scale`, `.color-swatch-row` - for brand color display
 - `.semantic-card`, `.semantic-preview` - for semantic tokens
 - `.type-specimen`, `.type-5xl` through `.type-xs` - for typography
@@ -44,11 +48,18 @@ The `preview-template.html` is a **reference template** showing the exact struct
 | `{{DS_VERSION}}` | Version number | `1` |
 | `{{DS_DESCRIPTION}}` | Brief description | `Design system for SaaS app` |
 
+### Style Placeholders
+
+| Placeholder | Description |
+|-------------|-------------|
+| `{{CSS_VARIABLES}}` | Generated design tokens CSS (see Dark Mode structure below) |
+| `{{PREVIEW_STYLES}}` | Static CSS from preview-styles.css (embed the entire file) |
+| `{{COMPONENT_STYLES}}` | Generated CSS for components (buttons, inputs, etc.) |
+
 ### Token Placeholders
 
 | Placeholder | Description |
 |-------------|-------------|
-| `{{CSS_VARIABLES}}` | Full CSS with all variables (see Dark Mode structure below) |
 | `{{BRAND_COLORS}}` | HTML for brand color scale swatches |
 | `{{SEMANTIC_COLORS}}` | HTML for semantic token cards |
 
@@ -81,7 +92,6 @@ The `preview-template.html` is a **reference template** showing the exact struct
 
 | Placeholder | Description |
 |-------------|-------------|
-| `{{COMPONENT_STYLES}}` | CSS for all components (buttons, inputs, etc.) |
 | `{{CORE_COMPONENTS}}` | HTML for core components (always rendered) |
 | `{{PACK_COMPONENTS}}` | HTML for domain pack components (conditional) |
 
