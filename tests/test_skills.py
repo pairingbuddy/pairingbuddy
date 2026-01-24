@@ -62,27 +62,27 @@ def test_frontmatter(skill_name):
 
 @pytest.mark.parametrize("skill_name", ALL_SKILLS)
 def test_sections(skill_name):
-    """Validate skill sections against schema."""
+    """Validate skill sections against skill-specific schema."""
     skill_md = SKILLS_DIR / skill_name / "SKILL.md"
-    category = SCHEMA.get_category_for_skill(skill_name)
+    skill_def = SCHEMA.get_skill_definition(skill_name)
 
-    assert category is not None, f"Unknown skill: {skill_name}"
+    assert skill_def is not None, f"Unknown skill: {skill_name}"
 
     content = skill_md.read_text()
-    errors = validate_sections(content, category)
+    errors = validate_sections(content, skill_def)
 
     assert not errors, "\n".join(errors)
 
 
 @pytest.mark.parametrize("skill_name", ALL_SKILLS)
 def test_directories(skill_name):
-    """Validate skill directories against schema."""
+    """Validate skill directories against skill-specific schema."""
     skill_dir = SKILLS_DIR / skill_name
-    category = SCHEMA.get_category_for_skill(skill_name)
+    skill_def = SCHEMA.get_skill_definition(skill_name)
 
-    assert category is not None, f"Unknown skill: {skill_name}"
+    assert skill_def is not None, f"Unknown skill: {skill_name}"
 
-    errors = validate_directories(skill_dir, category)
+    errors = validate_directories(skill_dir, skill_def)
 
     assert not errors, "\n".join(errors)
 

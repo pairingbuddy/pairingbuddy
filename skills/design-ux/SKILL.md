@@ -44,6 +44,87 @@ This skill coordinates two specialized agents:
 
 The skill provides a conversational interface for design work. See Commands section below for available operations.
 
+## Parallel Exploration
+
+The design-ux orchestrator can spawn multiple builder-critic loops to explore different design directions simultaneously.
+
+### Launching Parallel Explorations
+
+When the human requests multiple explorations:
+
+1. Create exploration parent folder (e.g., `onboarding-explorations/`)
+2. Write `brief.md` with the human's shared requirements
+3. Create status.json to track all explorations:
+```json
+{
+  "created": "2026-01-24T10:00:00Z",
+  "agents": [
+    {"id": "v1-minimal", "status": "running", "iterations": 0},
+    {"id": "v2-playful", "status": "running", "iterations": 0}
+  ]
+}
+```
+4. Create subfolder for each exploration (v1-minimal/, v2-playful/, etc.)
+5. Copy design system dependencies to each subfolder if needed
+6. Write direction.md in each subfolder's .session/ (brief.md + specific angle)
+7. Spawn builder-critic agents with `run_in_background: true` for each exploration
+8. Update status.json as each agent progresses
+
+### Monitoring Progress
+
+The orchestrator polls running explorations using TaskOutput tool:
+- Check status of background agents
+- Update status.json with iterations completed
+- Present completed explorations to human for review
+- Continue polling for still-running agents
+
+### Status Updates
+
+status.json tracks exploration state:
+- `running` - Agent is actively iterating
+- `completed` - Agent finished requested iterations
+- `killed` - Human terminated this exploration
+
+## Agent Management Commands
+
+During parallel explorations, the human can control running agents:
+
+### kill
+
+Stop an underperforming exploration:
+```
+Human: "Kill v3-bold, it's too aggressive"
+```
+
+Orchestrator:
+1. Updates status.json: `{"id": "v3-bold", "status": "killed", "iterations": 2, "reason": "Too aggressive"}`
+2. Stops polling that agent (agent continues in background but is ignored)
+3. Preserves artifacts in v3-bold/ folder for reference
+
+### continue
+
+Extend an interesting exploration:
+```
+Human: "v7 is interesting. Continue 4 more iterations, but make the CTAs more prominent."
+```
+
+Orchestrator:
+1. Appends to v7's .session/direction.md with new guidance
+2. Spawns new builder-critic loop with updated direction and run_in_background: true
+3. Updates status.json to track new iterations
+
+### converge
+
+Focus on a single winner:
+```
+Human: "v7 is the winner. Let's refine it."
+```
+
+Orchestrator:
+1. Updates status.json: marks v7 as `running`, others as `killed` or `completed`
+2. Switches to tight human-in-the-loop iteration on v7 only
+3. No more background agents, full conversational control
+
 ## State File Mappings
 
 State files for design explorations are stored in the exploration folder structure:
@@ -85,44 +166,46 @@ The orchestrator manages the builder-critic loop based on human direction rather
 ## Workflow
 
 ```python
-# Phase 1 MVP: Minimal workflow for creating design systems
-# Future phases will add experience design, parallel exploration, etc.
-
 def design_ux_workflow():
     """
     Conversational workflow for design work.
-    Responds to human commands to create/iterate on designs.
     """
-    # Human initiates with /design-ux
-    command = _get_human_command()
+    # 1. Establish what we're working on
+    target = _get_target()  # new DS, existing DS, new experience, etc.
 
-    if command == "create":
-        # Create new design system
-        direction = _get_direction_from_human()
-        _write_direction_md(direction)
+    # 2. Set exploration parameters
+    params = _get_exploration_params()
+    # - iterations_before_checkpoint
+    # - parallel_directions (1..N)
+    # - max_iterations
 
-        # Build initial version
+    # 3. Spawn explorations (parallel if N > 1)
+    for direction in params.directions:
+        _run_exploration(target, direction, params, run_in_background=True)
+
+    # 4. Poll and present completions, handle human commands
+    _monitor_and_respond()
+
+
+def _run_exploration(target, direction, params):
+    """
+    Single exploration loop: builder-critic cycle until done.
+    Called with run_in_background=True for parallel explorations.
+    """
+    _setup_exploration_folder(target, direction)
+
+    iterations = 0
+    while iterations < params.max_iterations:
         _invoke_builder_agent()
-
-        # Run critique
         _invoke_critic_agent()
+        iterations += 1
 
-        # Present results to human
-        _present_critique()
-
-    elif command == "iterate":
-        # Iterate on existing design
-        feedback = _get_human_feedback()
-        _update_direction_md(feedback)
-
-        # Build with feedback
-        _invoke_builder_agent()
-
-        # Run critique
-        _invoke_critic_agent()
-
-        # Present results
-        _present_critique()
+        if iterations % params.iterations_before_checkpoint == 0:
+            _present_to_human()
+            response = _get_human_response()  # feedback, kill, continue
+            if response == "kill":
+                return
+            _apply_feedback(response)
 ```
 
 ## Orchestrator Behavior

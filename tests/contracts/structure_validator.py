@@ -1,7 +1,20 @@
 from pathlib import Path
+from typing import Protocol
 
 from .markdown import extract_headings
-from .schema_loader import CategorySchema, SkillSchema
+from .schema_loader import CategorySchema, SectionRule, SkillDefinition, SkillSchema
+
+
+class HasSections(Protocol):
+    """Protocol for objects with sections attribute."""
+
+    sections: list[SectionRule]
+
+
+class HasDirectories(Protocol):
+    """Protocol for objects with directories attribute."""
+
+    directories: list[str]
 
 
 def validate_frontmatter(metadata: dict, schema: SkillSchema) -> list[str]:
@@ -22,13 +35,21 @@ def validate_frontmatter(metadata: dict, schema: SkillSchema) -> list[str]:
     return errors
 
 
-def validate_sections(content: str, category: CategorySchema) -> list[str]:
+def validate_sections(
+    content: str, definition: CategorySchema | SkillDefinition | HasSections
+) -> list[str]:
+    """Validate that required sections exist in content.
+
+    Args:
+        content: The markdown content to validate
+        definition: A CategorySchema, SkillDefinition, or any object with sections attribute
+    """
     errors = []
     headings = extract_headings(content)
     heading_texts = [f"## {h['text']}" for h in headings if h["level"] == 2]
 
     last_index = -1
-    for section in category.sections:
+    for section in definition.sections:
         try:
             index = heading_texts.index(section.heading)
             if index < last_index:
@@ -40,9 +61,17 @@ def validate_sections(content: str, category: CategorySchema) -> list[str]:
     return errors
 
 
-def validate_directories(skill_dir: Path, category: CategorySchema) -> list[str]:
+def validate_directories(
+    skill_dir: Path, definition: CategorySchema | SkillDefinition | HasDirectories
+) -> list[str]:
+    """Validate that required directories exist.
+
+    Args:
+        skill_dir: The skill directory to validate
+        definition: A CategorySchema, SkillDefinition, or any object with directories attribute
+    """
     errors = []
-    for dir_name in category.directories:
+    for dir_name in definition.directories:
         if not (skill_dir / dir_name).exists():
             errors.append(f"Missing directory: {dir_name}")
     return errors
