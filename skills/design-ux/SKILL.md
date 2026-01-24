@@ -17,6 +17,7 @@ Before ANY generation work:
 
 1. **Check Playwright MCP** - Look for Playwright tools. If unavailable, inform user and offer generation-only mode.
 2. **Read the templates** - Read [preview template](./templates/preview-template.html) and [prototype template](./templates/prototype-template.html) before generating any HTML.
+3. **Read web hosting templates** - Read [index template](./templates/index-template.html) and [comparison template](./templates/comparison-template.html) for generating navigation pages.
 
 ### Mandatory Template Usage
 
@@ -793,6 +794,17 @@ Before any Playwright operations:
 2. Navigate Playwright to the localhost URL (e.g., port 8000, path /preview.html)
 3. For parallel explorations, use different ports or serve parent folder
 
+### Screenshot Capture for Web Output
+
+**Mandatory:** After each exploration completes, capture screenshots for the comparison page:
+
+1. Navigate to the example.html page (not preview.html) at localhost
+2. Set viewport to 1200x800px
+3. Screenshot the full page
+4. Save to screenshots folder, naming by exploration folder (01-bold becomes 01-bold.png)
+
+These screenshots are used in comparison.html instead of iframes (which don't work reliably across hosts).
+
 ### Screenshot + Critique (Default Mode)
 
 1. Navigate to the localhost URL for preview.html
@@ -830,6 +842,120 @@ If brand colors conflict with AA/AAA requirements:
 1. Show the conflict
 2. Propose adjusted colors that meet requirements
 3. Human decides: adjust or accept compromise
+
+## Web Hosting Output
+
+Design explorations produce web-hostable output that can be copied directly to any web server.
+
+### Output Structure
+
+After explorations complete, the folder is ready to deploy:
+
+```
+explorations/
+├── index.html              # Navigation page with cards for each DS
+├── comparison.html         # Side-by-side screenshot comparison
+├── robots.txt              # Blocks indexing (noindex, nofollow)
+├── screenshots/            # Auto-captured during exploration
+│   ├── 01-jordbruk.png
+│   ├── 02-satellite.png
+│   └── ...
+├── 01-jordbruk/
+│   ├── preview.html        # Design system tokens/components
+│   ├── example.html        # Contextual landing page
+│   └── tokens.css
+├── 02-satellite-view/
+│   └── ...
+└── ...
+```
+
+### Generating Web Output
+
+When explorations complete, generate navigation pages using templates:
+
+1. Read [index template](./templates/index-template.html)
+2. Read [comparison template](./templates/comparison-template.html)
+3. Replace placeholders with exploration data
+4. Write `index.html`, `comparison.html`, and `robots.txt` to exploration root
+5. Ensure all screenshots are captured to `screenshots/` folder
+
+### robots.txt
+
+Always generate to prevent search engine indexing:
+
+```
+User-agent: *
+Disallow: /
+```
+
+### index.html (Navigation Page)
+
+Generate from [index-template.html](./templates/index-template.html) with cards for each design system:
+
+**Card structure:**
+- Number and name (e.g., "01 Bold")
+- Theme subtitle (e.g., "Confident Modern")
+- Links: "Design Tokens" → preview.html, "Live Example" → example.html
+
+**Styling requirements:**
+- Self-contained CSS (no external dependencies for portability)
+- Responsive grid layout
+- Clean, neutral styling that doesn't compete with the design systems
+- Link to comparison.html at bottom
+
+### comparison.html (Side-by-Side View)
+
+Generate from [comparison-template.html](./templates/comparison-template.html) using **screenshots** (not iframes - they don't work reliably across hosts):
+
+**Structure:**
+- Header with title and description
+- Quick navigation anchors to each design system
+- Cards showing screenshot + metadata + links
+- Summary table comparing all systems
+
+**Screenshots:**
+- Captured automatically using Playwright during exploration
+- Stored in screenshots/ folder
+- Named by design system folder (e.g., 01-jordbruk.png)
+- Captured at 1200x800px for consistency
+
+**Card content:**
+- Screenshot image
+- Name, theme, personality description
+- Color palette swatches
+- Primary CTA linking to example.html
+- Secondary CTA linking to preview.html (components)
+
+### Path Requirements
+
+**Critical:** All paths must be relative for portability:
+
+```html
+<!-- CORRECT - relative paths -->
+<a href="01-bold/example.html">View Landing Page</a>
+<img src="screenshots/01-bold.png">
+
+<!-- WRONG - absolute paths won't work on subfolder deploys -->
+<a href="/01-bold/example.html">View Landing Page</a>
+```
+
+### Deployment
+
+The output folder can be deployed to:
+- Vercel (drag & drop or git)
+- Netlify
+- GitHub Pages
+- Any static web server
+- NextJS public folder
+
+Simply copy the entire explorations/ folder to the hosting destination.
+
+### Sharing Link
+
+After deployment, share the URL to:
+- index.html for the navigation view
+- comparison.html for side-by-side comparison
+- Individual example.html pages for specific designs
 
 ## Skill Evolution
 

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{PROJECT_NAME}} Design Systems</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fa;
+      color: #1a1a1a;
+      line-height: 1.6;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 2rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 1rem;
+    }
+
+    .card h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .card .theme {
+      color: #666;
+      font-size: 0.875rem;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .links {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    .links a {
+      flex: 1;
+      text-align: center;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+
+    .links .preview {
+      background: #1a1a1a;
+      color: white;
+    }
+
+    .links .preview:hover {
+      background: #333;
+    }
+
+    .links .example {
+      background: #e9ecef;
+      color: #1a1a1a;
+    }
+
+    .links .example:hover {
+      background: #dee2e6;
+    }
+
+    .comparison-link {
+      margin-top: 2rem;
+      text-align: center;
+    }
+
+    .comparison-link a {
+      display: inline-block;
+      padding: 1rem 2rem;
+      background: #2d5a27;
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 500;
+    }
+
+    .comparison-link a:hover {
+      background: #1e3d1a;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>{{PROJECT_NAME}} Design Systems</h1>
+    <p class="subtitle">{{PROJECT_DESCRIPTION}}</p>
+
+    <div class="grid">
+      {{DESIGN_SYSTEM_CARDS}}
+    </div>
+
+    <div class="comparison-link">
+      <a href="comparison.html">View Side-by-Side Comparison</a>
+    </div>
+  </div>
+</body>
+</html>

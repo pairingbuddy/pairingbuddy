@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{PROJECT_NAME}} - Design Comparison</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f0f;
+      color: #ffffff;
+      line-height: 1.6;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      color: #999;
+      font-size: 1.125rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    /* Quick Navigation */
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-bottom: 3rem;
+    }
+
+    .nav a {
+      padding: 0.5rem 1rem;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+
+    .nav a:hover {
+      background: #333;
+    }
+
+    /* Design Cards */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 2rem;
+      margin-bottom: 3rem;
+    }
+
+    .card {
+      background: #1a1a1a;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid #333;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    }
+
+    .card-image {
+      width: 100%;
+      aspect-ratio: 16/10;
+      object-fit: cover;
+      object-position: top;
+      background: #222;
+    }
+
+    .card-content {
+      padding: 1.5rem;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 1rem;
+    }
+
+    .card-number {
+      font-size: 0.75rem;
+      font-family: monospace;
+      color: #666;
+    }
+
+    .card h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-top: 0.25rem;
+    }
+
+    .card .theme {
+      color: #999;
+      font-size: 0.875rem;
+    }
+
+    .color-swatches {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 1px solid #444;
+    }
+
+    .card-description {
+      color: #999;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    .card-links {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .card-links a {
+      flex: 1;
+      text-align: center;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+
+    .card-links .primary {
+      background: var(--card-primary, #333);
+      color: white;
+    }
+
+    .card-links .primary:hover {
+      filter: brightness(1.2);
+    }
+
+    .card-links .secondary {
+      background: #2a2a2a;
+      color: white;
+    }
+
+    .card-links .secondary:hover {
+      background: #3a3a3a;
+    }
+
+    /* Summary Table */
+    .summary {
+      background: linear-gradient(135deg, #1a1a1a, #222);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 3rem;
+      border: 1px solid #333;
+    }
+
+    .summary h2 {
+      font-size: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th {
+      padding: 0.75rem;
+      border-bottom: 1px solid #333;
+      color: #999;
+      font-weight: 500;
+      font-size: 0.875rem;
+    }
+
+    td {
+      padding: 1rem 0.75rem;
+      border-bottom: 1px solid #222;
+      font-size: 0.875rem;
+    }
+
+    td:first-child {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .color-cell {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .color-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 2rem 0;
+      border-top: 1px solid #222;
+      color: #666;
+      font-size: 0.875rem;
+    }
+
+    /* Back link */
+    .back-link {
+      margin-bottom: 2rem;
+    }
+
+    .back-link a {
+      color: #666;
+      text-decoration: none;
+      font-size: 0.875rem;
+    }
+
+    .back-link a:hover {
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="back-link">
+      <a href="index.html">&larr; Back to Overview</a>
+    </div>
+
+    <header>
+      <h1>{{PROJECT_NAME}}</h1>
+      <p class="subtitle">{{PROJECT_DESCRIPTION}}</p>
+    </header>
+
+    <nav class="nav">
+      {{NAVIGATION_LINKS}}
+    </nav>
+
+    <div class="grid">
+      {{COMPARISON_CARDS}}
+    </div>
+
+    <section class="summary">
+      <h2>Design System Summary</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>System</th>
+            <th>Personality</th>
+            <th>Primary Color</th>
+            <th>Typography</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{SUMMARY_ROWS}}
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      <p>{{PROJECT_NAME}} - Design System Exploration</p>
+      <p>{{PROJECT_CONTEXT}}</p>
+    </footer>
+  </div>
+</body>
+</html>

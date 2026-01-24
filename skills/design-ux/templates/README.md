@@ -8,6 +8,8 @@ This directory contains HTML templates for generating design system previews and
 |----------|---------|
 | `preview-template.html` | Design system visualization (colors, typography, components) |
 | `prototype-template.html` | Experience prototype (clickable state machine with navigation) |
+| `index-template.html` | Navigation page for web-hosted exploration output |
+| `comparison-template.html` | Side-by-side comparison page using screenshots |
 
 ## Template Placeholders
 
@@ -258,3 +260,110 @@ Click "Hotspots" button to highlight all clickable areas with a subtle border.
 - `prototype-meta` - Footer with metadata
 - `viewport-mobile`, `viewport-tablet`, `viewport-desktop` - Viewport controls
 - `toggle-debug` - Debug mode toggle
+
+---
+
+# Index Template
+
+The `index-template.html` is the navigation page for web-hosted exploration output. It provides a card-based overview of all design systems in an exploration.
+
+## Index Placeholders
+
+| Placeholder | Description | Example |
+|-------------|-------------|---------|
+| `{{PROJECT_NAME}}` | Project or exploration name | `Acme Design Systems` |
+| `{{PROJECT_DESCRIPTION}}` | Brief description | `5 design directions for SaaS platform` |
+| `{{DESIGN_SYSTEM_CARDS}}` | HTML for all design system cards | See example below |
+
+## Card HTML Structure
+
+Each design system card follows this structure:
+
+```html
+<div class="card">
+  <div class="card-header">
+    <div>
+      <h2>01 Bold</h2>
+      <p class="theme">Confident Modern</p>
+    </div>
+  </div>
+  <div class="links">
+    <a href="01-bold/preview.html" class="preview">Design Tokens</a>
+    <a href="01-bold/example.html" class="example">Live Example</a>
+  </div>
+</div>
+```
+
+---
+
+# Comparison Template
+
+The `comparison-template.html` shows side-by-side comparison of all design systems using screenshots (not iframes - they don't work reliably across hosts).
+
+## Comparison Placeholders
+
+| Placeholder | Description | Example |
+|-------------|-------------|---------|
+| `{{PROJECT_NAME}}` | Project name | `Acme Design Systems` |
+| `{{PROJECT_DESCRIPTION}}` | Description | `5 distinct visual directions for SaaS platform` |
+| `{{PROJECT_CONTEXT}}` | Footer context | `Created for enterprise SaaS` |
+| `{{NAVIGATION_LINKS}}` | Quick-jump anchor links | See example below |
+| `{{COMPARISON_CARDS}}` | HTML for all comparison cards | See example below |
+| `{{SUMMARY_ROWS}}` | Table rows for summary | See example below |
+
+## Navigation Links HTML
+
+```html
+<a href="#bold">01 Bold</a>
+<a href="#minimal">02 Minimal</a>
+<a href="#playful">03 Playful</a>
+```
+
+## Comparison Card HTML
+
+```html
+<article id="bold" class="card" style="--card-primary: #2563eb;">
+  <img src="screenshots/01-bold.png" alt="Bold Preview" class="card-image">
+  <div class="card-content">
+    <div class="card-header">
+      <div>
+        <span class="card-number">01</span>
+        <h2>Bold</h2>
+        <p class="theme">Confident Modern</p>
+      </div>
+      <div class="color-swatches">
+        <span class="swatch" style="background: #2563eb" title="Primary Blue"></span>
+        <span class="swatch" style="background: #1e293b" title="Dark Slate"></span>
+        <span class="swatch" style="background: #10b981" title="Accent Green"></span>
+      </div>
+    </div>
+    <p class="card-description">
+      Strong color contrast with confident typography and bold action elements.
+    </p>
+    <div class="card-links">
+      <a href="01-bold/example.html" class="primary">View Landing Page</a>
+      <a href="01-bold/preview.html" class="secondary">View Components</a>
+    </div>
+  </div>
+</article>
+```
+
+## Summary Table Rows HTML
+
+```html
+<tr>
+  <td>01 Bold</td>
+  <td>Confident, modern</td>
+  <td><span class="color-cell"><span class="color-dot" style="background: #2563eb"></span>Primary Blue</span></td>
+  <td>Inter</td>
+</tr>
+```
+
+## Screenshot Requirements
+
+Screenshots must be:
+- Captured using Playwright during exploration
+- Stored in screenshots folder at exploration root
+- Named by folder (e.g., 01-bold.png for the 01-bold/ exploration)
+- Captured at 1200x800px for consistency
+- PNG format for quality
