@@ -20,8 +20,8 @@ All templates follow the same pattern:
 <!-- 1. Link to editable tokens -->
 <link href="tokens.css" rel="stylesheet">
 
-<!-- 2. Tailwind CDN with inline config -->
-<script src="https://cdn.tailwindcss.com"></script>
+<!-- 2. Tailwind v3 CDN with inline config -->
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
 <script>tailwind.config = {{TAILWIND_CONFIG}}</script>
 
 <!-- 3. Content uses Tailwind classes -->
@@ -29,6 +29,8 @@ All templates follow the same pattern:
   Click me
 </button>
 ```
+
+**Note:** Preview and example files use Tailwind **v3** via CDN. The `tailwind.v4.css` file is provided for projects using v4, but the HTML previews use v3 for broader compatibility.
 
 **Benefits:**
 - Edit `tokens.css` → refresh → see changes
