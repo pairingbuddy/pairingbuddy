@@ -749,9 +749,16 @@ Application-level tokens for actual use:
 ### Example Page Generation
 
 **OPTIONAL** - When context suggests a specific use case (e.g., "design system for a farming insurance company"):
-1. Generate `example.html` showing the design system in use
-2. This is freeform - no template required
+1. Generate `example.html` using the [example template](./templates/example-template.html)
+2. Include the dark mode toggle (built into template)
 3. Should demonstrate real-world application of the tokens/components
+
+**Template placeholders:**
+- `{{DS_NAME}}` - Design system name
+- `{{CSS_VARIABLES}}` - Generated design tokens (same as preview.html)
+- `{{EXAMPLE_TITLE}}` - Page title (e.g., "Acme Landing Page")
+- `{{EXAMPLE_STYLES}}` - Page-specific CSS for the example
+- `{{EXAMPLE_CONTENT}}` - Main page HTML content
 
 ### Prototype Generation (Experiences)
 

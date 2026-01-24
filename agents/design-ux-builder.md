@@ -71,6 +71,13 @@ Generate tailwind.config.js and tokens.css.
 
 Generate preview.html using template at `skills/design-ux/templates/preview-template.html`. The preview includes a dark mode toggle that adds/removes `.dark` class on body.
 
+**Example Page (optional):**
+
+If direction.md mentions a specific use case (e.g., "farming insurance SaaS"), generate example.html using template at `skills/design-ux/templates/example-template.html`. The example page:
+- Demonstrates the design system in real-world context
+- Includes dark mode toggle (floating button, bottom-right)
+- Uses the same CSS variables as preview.html
+
 ### Experience Mode
 
 Generate state-based screens in states/ folder.
@@ -127,6 +134,7 @@ Writes to `exploration-folder` with generated artifacts:
 - Updated tokens.css
 - Updated preview.html
 - Updated config.json (increment version)
+- Optional: example.html (if context-specific example requested)
 
 **For Experiences:**
 - Updated states/

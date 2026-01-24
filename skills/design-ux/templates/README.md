@@ -8,6 +8,7 @@ This directory contains HTML templates for generating design system previews and
 |----------|---------|
 | `preview-template.html` | Design system visualization (colors, typography, components) - minimal HTML with placeholders |
 | `preview-styles.css` | Static CSS for preview template (base styles, layout, component classes) |
+| `example-template.html` | Contextual example page (landing page, dashboard) with dark mode toggle |
 | `prototype-template.html` | Experience prototype (clickable state machine with navigation) |
 | `index-template.html` | Navigation page for web-hosted exploration output |
 | `comparison-template.html` | Side-by-side comparison page using screenshots |
@@ -450,3 +451,66 @@ Screenshots must be:
 - Named by folder (e.g., 01-bold.png for the 01-bold/ exploration)
 - Captured at 1200x800px for consistency
 - PNG format for quality
+
+---
+
+# Example Template
+
+The `example-template.html` is used for contextual example pages that demonstrate the design system in real-world use (e.g., landing pages, dashboards, forms).
+
+## Features
+
+- **Dark mode toggle** - Floating button (bottom-right) that persists preference
+- **Self-contained** - Embeds design tokens directly
+- **Flexible content** - Main content is fully customizable
+
+## Example Placeholders
+
+| Placeholder | Description | Example |
+|-------------|-------------|---------|
+| `{{DS_NAME}}` | Design system name | `acme-ds` |
+| `{{CSS_VARIABLES}}` | Generated design tokens CSS | See CSS_VARIABLES structure above |
+| `{{EXAMPLE_TITLE}}` | Page title | `Acme Insurance Landing Page` |
+| `{{EXAMPLE_STYLES}}` | Page-specific CSS | Custom styles for the example |
+| `{{EXAMPLE_CONTENT}}` | Main page HTML content | Hero, features, CTA, etc. |
+
+## Dark Mode Toggle
+
+The toggle is a floating button that:
+- Appears in the bottom-right corner
+- Shows sun icon in dark mode, moon icon in light mode
+- Persists preference to localStorage
+- Respects system preference on first visit
+
+## When to Generate example.html
+
+Generate an example page when:
+- The design brief mentions a specific context (e.g., "farming insurance SaaS")
+- The human explicitly requests a landing page or demo
+- Showing components in isolation (preview.html) isn't sufficient
+
+## Example Content Structure
+
+A typical landing page example might include:
+
+```html
+{{EXAMPLE_CONTENT}}
+<header class="hero">
+  <nav>...</nav>
+  <h1>Hero headline</h1>
+  <p>Subheadline</p>
+  <button class="btn-primary">Get Started</button>
+</header>
+
+<section class="features">
+  <div class="feature-card">...</div>
+  <div class="feature-card">...</div>
+</section>
+
+<section class="cta">
+  <h2>Ready to start?</h2>
+  <button class="btn-primary">Sign Up</button>
+</section>
+
+<footer>...</footer>
+```

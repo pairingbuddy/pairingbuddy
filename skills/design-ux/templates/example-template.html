@@ -1,0 +1,116 @@
+<!--
+  EXAMPLE PAGE TEMPLATE
+
+  This template provides a minimal structure for contextual example pages
+  (e.g., landing pages, dashboards) that demonstrate the design system in use.
+
+  Features:
+  - Dark mode toggle (floating button, bottom-right)
+  - Embeds design system tokens
+  - Self-contained (no external dependencies except fonts)
+
+  Placeholders:
+  - {{DS_NAME}} - Design system name
+  - {{CSS_VARIABLES}} - Generated design tokens CSS
+  - {{EXAMPLE_TITLE}} - Page title (e.g., "Acme Landing Page")
+  - {{EXAMPLE_CONTENT}} - Main page content HTML
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{EXAMPLE_TITLE}} | {{DS_NAME}}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ============================================
+       DESIGN TOKENS (generated)
+       ============================================ */
+{{CSS_VARIABLES}}
+
+    /* ============================================
+       BASE STYLES
+       ============================================ */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      line-height: 1.6;
+      transition: background-color var(--transition-smooth, 0.3s), color var(--transition-smooth, 0.3s);
+    }
+
+    /* ============================================
+       DARK MODE TOGGLE (floating)
+       ============================================ */
+    .theme-toggle {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      z-index: 1000;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 1px solid hsl(var(--border));
+      background: hsl(var(--card));
+      color: hsl(var(--foreground));
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px hsl(0 0% 0% / 0.15);
+      transition: all var(--transition-smooth, 0.3s);
+    }
+
+    .theme-toggle:hover {
+      transform: scale(1.05);
+      box-shadow: 0 6px 16px hsl(0 0% 0% / 0.2);
+    }
+
+    .theme-toggle .sun-icon { display: block; }
+    .theme-toggle .moon-icon { display: none; }
+    .dark .theme-toggle .sun-icon { display: none; }
+    .dark .theme-toggle .moon-icon { display: block; }
+
+    /* ============================================
+       EXAMPLE CONTENT STYLES
+       ============================================ */
+{{EXAMPLE_STYLES}}
+  </style>
+</head>
+<body>
+  <!-- Dark Mode Toggle -->
+  <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode" title="Toggle dark/light mode">
+    <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+    </svg>
+    <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  </button>
+
+  <!-- Example Content -->
+{{EXAMPLE_CONTENT}}
+
+  <script>
+    // Theme toggle
+    function toggleTheme() {
+      document.body.classList.toggle('dark');
+      localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+    }
+
+    // Load saved theme preference
+    if (localStorage.getItem('theme') === 'dark' ||
+        (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.body.classList.add('dark');
+    }
+  </script>
+</body>
+</html>
