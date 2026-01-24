@@ -96,20 +96,32 @@ All work MUST follow principles from reference files including:
 - Spacing: 8px base scale only
 - Laws of UX (Fitts, Hick, Miller, Jakob, Von Restorff)
 
-### Token Usage (No Magic Numbers)
+### Three-Tier Token Architecture
 
-**CRITICAL: Always use tokens, never hardcoded values.**
+**CRITICAL: Follow the tier chain. Components use MAPPED tokens, not raw values.**
 
-Generated CSS must reference tokens:
-- Spacing: `var(--spacing-400)` not `16px`, `var(--spacing-600)` not `24px`
-- Radius: `var(--radius-md)` not `0.5rem`
-- Shadows: `var(--shadow-md)` not inline box-shadow
-- Touch targets: `var(--touch-target)` not `48px`
-- Transitions: `var(--transition-smooth)` not inline timing
+```
+Tier 1 (Brand)  →  Tier 2 (Alias)  →  Tier 3 (Mapped)
+--scale-400        --spacing-lg       --button-padding-x
+```
 
-Spacing scale uses numeric naming (like colors): 0, 25, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900
+**Tier 1: Brand** - Raw numeric scale (used for spacing, radius, sizing)
+- `--scale-0`, `--scale-100`, `--scale-200`, ... `--scale-900`
 
-This is the whole point of generating a design system - consistency through tokens.
+**Tier 2: Alias** - Semantic names referencing brand
+- `--spacing-lg: var(--scale-400)`
+- `--radius-md: var(--scale-200)`
+
+**Tier 3: Mapped** - Component-specific referencing aliases
+- `--button-padding-x: var(--spacing-lg)`
+- `--card-radius: var(--radius-md)`
+
+**Component CSS uses mapped tokens:**
+```css
+.button { padding: var(--button-padding-y) var(--button-padding-x); }
+```
+
+This is the whole point of generating a design system - one change propagates everywhere.
 
 ### Playwright Usage
 

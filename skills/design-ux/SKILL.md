@@ -622,7 +622,7 @@ Generate raw color scales using the opacity blending technique:
 **Also generate:**
 - Foundation: black, white
 - Typography: families, weights
-- Spacing scale: 0, 25, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900
+- Numeric scale: 0, 25, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900 (used for spacing, radius, sizing)
 
 ### Tier 2: Alias Collection
 
@@ -708,88 +708,171 @@ Application-level tokens for actual use:
 - Brand accent colors may stay fixed
 - Example: `primary.500-fixed` stays `primary.500` in both modes
 
-**CSS output structure:**
+**CSS output structure (three-tier architecture):**
 
 ```css
 :root {
   /* ============================================
-     FOUNDATION TOKENS (don't change between modes)
+     TIER 1: BRAND - Raw values
+     These are the foundation, never change between modes
      ============================================ */
 
-  /* Colors - Brand scales */
+  /* Color scales (50-900) */
+  --color-primary-50: #eff6ff;
   --color-primary-500: #2563eb;
+  --color-primary-900: #1e3a8a;
   --color-neutral-50: #fafafa;
+  --color-neutral-500: #737373;
   --color-neutral-900: #171717;
   /* ... full scales 50-900 for each color ... */
 
-  /* Spacing scale (4px increments, numeric naming like colors) */
-  --spacing-0: 0;
-  --spacing-25: 1px;      /* edge case */
-  --spacing-50: 2px;      /* edge case */
-  --spacing-100: 4px;
-  --spacing-200: 8px;
-  --spacing-300: 12px;
-  --spacing-400: 16px;
-  --spacing-500: 20px;
-  --spacing-600: 24px;
-  --spacing-700: 28px;
-  --spacing-800: 32px;
-  --spacing-900: 36px;
+  /* Numeric scale - used for spacing, sizing, radius, etc. */
+  --scale-0: 0;
+  --scale-25: 1px;      /* edge case */
+  --scale-50: 2px;      /* edge case */
+  --scale-100: 4px;
+  --scale-200: 8px;
+  --scale-300: 12px;
+  --scale-400: 16px;
+  --scale-500: 20px;
+  --scale-600: 24px;
+  --scale-700: 28px;
+  --scale-800: 32px;
+  --scale-900: 36px;
 
-  /* Border radius scale */
-  --radius-none: 0;
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  /* Shadow raw values */
+  --shadow-raw-100: 0 1px 2px hsl(0 0% 0% / 0.05);
+  --shadow-raw-200: 0 2px 4px hsl(0 0% 0% / 0.08);
+  --shadow-raw-300: 0 4px 12px hsl(0 0% 0% / 0.1);
+  --shadow-raw-400: 0 8px 24px hsl(0 0% 0% / 0.15);
+  --shadow-raw-500: 0 16px 48px hsl(0 0% 0% / 0.2);
+
+  /* Duration raw values */
+  --duration-100: 100ms;
+  --duration-200: 150ms;
+  --duration-300: 300ms;
+  --duration-400: 500ms;
+
+  /* Easing raw values */
+  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ============================================
+     TIER 2: ALIAS - Semantic names referencing brand
+     Give meaning to the raw scale values
+     ============================================ */
+
+  /* Spacing (references numeric scale) */
+  --spacing-xs: var(--scale-100);      /* 4px */
+  --spacing-sm: var(--scale-200);      /* 8px */
+  --spacing-md: var(--scale-300);      /* 12px */
+  --spacing-lg: var(--scale-400);      /* 16px */
+  --spacing-xl: var(--scale-600);      /* 24px */
+  --spacing-2xl: var(--scale-800);     /* 32px */
+
+  /* Radius (references same numeric scale) */
+  --radius-sm: var(--scale-100);       /* 4px */
+  --radius-md: var(--scale-200);       /* 8px */
+  --radius-lg: var(--scale-300);       /* 12px */
   --radius-full: 9999px;
 
   /* Shadows */
-  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.05);
-  --shadow-md: 0 4px 12px hsl(0 0% 0% / 0.1);
-  --shadow-lg: 0 8px 24px hsl(0 0% 0% / 0.15);
-  --shadow-xl: 0 16px 48px hsl(0 0% 0% / 0.2);
+  --shadow-sm: var(--shadow-raw-100);
+  --shadow-md: var(--shadow-raw-300);
+  --shadow-lg: var(--shadow-raw-400);
 
-  /* Border widths */
-  --border-width: 1px;
-  --border-width-2: 2px;
+  /* Transitions */
+  --transition-fast: var(--duration-200) var(--easing-default);
+  --transition-smooth: var(--duration-300) var(--easing-default);
+  --transition-spring: var(--duration-400) var(--easing-spring);
 
-  /* Touch targets (accessibility) */
+  /* Border widths (references numeric scale) */
+  --border-thin: var(--scale-25);      /* 1px */
+  --border-medium: var(--scale-50);    /* 2px */
+
+  /* Touch target (accessibility) */
   --touch-target: 48px;
 
-  /* Motion/transitions */
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-smooth: 300ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
-
   /* ============================================
-     SEMANTIC TOKENS - Light mode (default)
+     TIER 3: MAPPED - Application tokens (Light mode)
+     Component-specific, references aliases
      ============================================ */
+
+  /* Text colors */
   --text-heading: var(--color-neutral-900);
   --text-body: var(--color-neutral-700);
+  --text-muted: var(--color-neutral-500);
+
+  /* Surface colors */
   --surface-page: white;
-  --surface-primary: var(--color-neutral-50);
-  --surface-action: var(--color-primary-500);  /* fixed */
+  --surface-card: var(--color-neutral-50);
+  --surface-action: var(--color-primary-500);
+
+  /* Border colors */
+  --border-default: var(--color-neutral-200);
+  --border-focus: var(--color-primary-500);
+
+  /* Component tokens - using aliases */
+  --button-padding-x: var(--spacing-lg);
+  --button-padding-y: var(--spacing-sm);
+  --button-radius: var(--radius-md);
+  --card-padding: var(--spacing-xl);
+  --card-radius: var(--radius-lg);
+  --card-shadow: var(--shadow-md);
+  --input-padding: var(--spacing-sm) var(--spacing-md);
+  --input-radius: var(--radius-md);
 }
 
 .dark {
   /* ============================================
-     SEMANTIC TOKENS - Dark mode (reversed)
+     TIER 3: MAPPED - Application tokens (Dark mode)
+     Only semantic/mapped tokens change, brand stays same
      ============================================ */
+
+  /* Text colors - reversed */
   --text-heading: var(--color-neutral-50);
   --text-body: var(--color-neutral-300);
+  --text-muted: var(--color-neutral-400);
+
+  /* Surface colors - reversed */
   --surface-page: var(--color-neutral-900);
-  --surface-primary: var(--color-neutral-800);
+  --surface-card: var(--color-neutral-800);
   --surface-action: var(--color-primary-500);  /* stays same */
+
+  /* Border colors - reversed */
+  --border-default: var(--color-neutral-700);
+  --border-focus: var(--color-primary-400);
 }
 ```
 
-**CRITICAL: Use tokens, not magic numbers.** All generated CSS should reference these tokens:
-- Use `var(--spacing-400)` not `16px` or `1rem`
-- Use `var(--spacing-600)` not `24px` or `1.5rem`
-- Use `var(--radius-md)` not `0.5rem`
-- Use `var(--shadow-md)` not inline box-shadow values
-- Use `var(--touch-target)` for interactive element sizes
+**The chain of references:**
+```
+Brand (raw)  →  Alias (semantic)  →  Mapped (application)
+--scale-400     --spacing-lg         --button-padding-x
+    16px    →      16px         →        16px
+```
+
+The same `--scale-400` can be used for both spacing and radius:
+```
+--scale-400 → --spacing-lg  → --button-padding-x
+--scale-400 → --radius-lg   → --card-radius
+```
+
+**CRITICAL: Components use MAPPED tokens, not brand or alias directly:**
+```css
+.button {
+  padding: var(--button-padding-y) var(--button-padding-x);
+  border-radius: var(--button-radius);
+}
+
+.card {
+  padding: var(--card-padding);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+}
+```
+
+This allows changing a button's padding globally by updating `--button-padding-x` once.
 
 ## Template System
 

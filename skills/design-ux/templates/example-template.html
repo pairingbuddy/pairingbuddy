@@ -41,10 +41,10 @@
 
     body {
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background-color: hsl(var(--background));
-      color: hsl(var(--foreground));
+      background-color: hsl(var(--surface-page));
+      color: hsl(var(--text-body));
       line-height: 1.6;
-      transition: background-color var(--transition-smooth, 0.3s), color var(--transition-smooth, 0.3s);
+      transition: background-color var(--transition-smooth), color var(--transition-smooth);
     }
 
     /* ============================================
@@ -53,21 +53,21 @@
        ============================================ */
     .theme-toggle {
       position: fixed;
-      bottom: var(--spacing-600, 24px);
-      right: var(--spacing-600, 24px);
+      bottom: var(--spacing-xl, 24px);
+      right: var(--spacing-xl, 24px);
       z-index: 1000;
       width: var(--touch-target, 48px);
       height: var(--touch-target, 48px);
       border-radius: var(--radius-full, 9999px);
-      border: var(--border-width, 1px) solid hsl(var(--border));
-      background: hsl(var(--card));
-      color: hsl(var(--foreground));
+      border: var(--border-thin, 1px) solid hsl(var(--border-default));
+      background: hsl(var(--surface-card));
+      color: hsl(var(--text-body));
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: var(--shadow-md, 0 4px 12px hsl(0 0% 0% / 0.15));
-      transition: all var(--transition-smooth, 0.3s);
+      box-shadow: var(--shadow-md);
+      transition: all var(--transition-smooth);
     }
 
     .theme-toggle:hover {
