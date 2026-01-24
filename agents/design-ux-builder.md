@@ -96,6 +96,19 @@ All work MUST follow principles from reference files including:
 - Spacing: 8px base scale only
 - Laws of UX (Fitts, Hick, Miller, Jakob, Von Restorff)
 
+### Token Usage (No Magic Numbers)
+
+**CRITICAL: Always use tokens, never hardcoded values.**
+
+Generated CSS must reference tokens:
+- Spacing: `var(--spacing-4)` not `1rem`
+- Radius: `var(--radius-md)` not `0.5rem`
+- Shadows: `var(--shadow-md)` not inline box-shadow
+- Touch targets: `var(--touch-target)` not `48px`
+- Transitions: `var(--transition-smooth)` not inline timing
+
+This is the whole point of generating a design system - consistency through tokens.
+
 ### Playwright Usage
 
 If Playwright MCP is available:

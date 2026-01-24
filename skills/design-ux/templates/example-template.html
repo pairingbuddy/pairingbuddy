@@ -49,29 +49,30 @@
 
     /* ============================================
        DARK MODE TOGGLE (floating)
+       Uses design tokens instead of magic numbers
        ============================================ */
     .theme-toggle {
       position: fixed;
-      bottom: 1.5rem;
-      right: 1.5rem;
+      bottom: var(--spacing-6, 1.5rem);
+      right: var(--spacing-6, 1.5rem);
       z-index: 1000;
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      border: 1px solid hsl(var(--border));
+      width: var(--touch-target, 48px);
+      height: var(--touch-target, 48px);
+      border-radius: var(--radius-full, 50%);
+      border: var(--border-width, 1px) solid hsl(var(--border));
       background: hsl(var(--card));
       color: hsl(var(--foreground));
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px hsl(0 0% 0% / 0.15);
+      box-shadow: var(--shadow-md, 0 4px 12px hsl(0 0% 0% / 0.15));
       transition: all var(--transition-smooth, 0.3s);
     }
 
     .theme-toggle:hover {
       transform: scale(1.05);
-      box-shadow: 0 6px 16px hsl(0 0% 0% / 0.2);
+      box-shadow: var(--shadow-lg, 0 6px 16px hsl(0 0% 0% / 0.2));
     }
 
     .theme-toggle .sun-icon { display: block; }

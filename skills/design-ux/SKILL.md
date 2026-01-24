@@ -712,12 +712,58 @@ Application-level tokens for actual use:
 
 ```css
 :root {
-  /* Brand tokens (don't change) */
+  /* ============================================
+     FOUNDATION TOKENS (don't change between modes)
+     ============================================ */
+
+  /* Colors - Brand scales */
   --color-primary-500: #2563eb;
   --color-neutral-50: #fafafa;
   --color-neutral-900: #171717;
+  /* ... full scales 50-900 for each color ... */
 
-  /* Mapped tokens - Light mode (default) */
+  /* Spacing scale (8px base) */
+  --spacing-0: 0;
+  --spacing-1: 0.25rem;   /* 4px */
+  --spacing-2: 0.5rem;    /* 8px */
+  --spacing-3: 0.75rem;   /* 12px */
+  --spacing-4: 1rem;      /* 16px */
+  --spacing-5: 1.25rem;   /* 20px */
+  --spacing-6: 1.5rem;    /* 24px */
+  --spacing-8: 2rem;      /* 32px */
+  --spacing-10: 2.5rem;   /* 40px */
+  --spacing-12: 3rem;     /* 48px */
+  --spacing-16: 4rem;     /* 64px */
+
+  /* Border radius scale */
+  --radius-none: 0;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.05);
+  --shadow-md: 0 4px 12px hsl(0 0% 0% / 0.1);
+  --shadow-lg: 0 8px 24px hsl(0 0% 0% / 0.15);
+  --shadow-xl: 0 16px 48px hsl(0 0% 0% / 0.2);
+
+  /* Border widths */
+  --border-width: 1px;
+  --border-width-2: 2px;
+
+  /* Touch targets (accessibility) */
+  --touch-target: 48px;
+
+  /* Motion/transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ============================================
+     SEMANTIC TOKENS - Light mode (default)
+     ============================================ */
   --text-heading: var(--color-neutral-900);
   --text-body: var(--color-neutral-700);
   --surface-page: white;
@@ -726,7 +772,9 @@ Application-level tokens for actual use:
 }
 
 .dark {
-  /* Mapped tokens - Dark mode (reversed) */
+  /* ============================================
+     SEMANTIC TOKENS - Dark mode (reversed)
+     ============================================ */
   --text-heading: var(--color-neutral-50);
   --text-body: var(--color-neutral-300);
   --surface-page: var(--color-neutral-900);
@@ -734,6 +782,12 @@ Application-level tokens for actual use:
   --surface-action: var(--color-primary-500);  /* stays same */
 }
 ```
+
+**CRITICAL: Use tokens, not magic numbers.** All generated CSS should reference these tokens:
+- Use `var(--spacing-4)` not `1rem`
+- Use `var(--radius-md)` not `0.5rem`
+- Use `var(--shadow-md)` not inline box-shadow values
+- Use `var(--touch-target)` for interactive element sizes
 
 ## Template System
 
