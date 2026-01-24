@@ -11,9 +11,30 @@ This directory contains HTML templates for generating design system previews and
 | `index-template.html` | Navigation page for web-hosted exploration output |
 | `comparison-template.html` | Side-by-side comparison page using screenshots |
 
-## Template Placeholders
+## Preview Template
 
-The `preview-template.html` file uses placeholder markers that get replaced with generated content.
+The `preview-template.html` is a **reference template** showing the exact structure, CSS, and component styling for design system previews.
+
+**Structure:**
+- Header: Name, description, version, dark mode toggle
+- Tabs: Colors | Typography | Spacing | Motion | Components
+- Each tab has sections with examples using CSS classes defined in the template
+
+**When generating preview.html:**
+1. Copy the entire template structure
+2. Replace CSS variables in `:root` and `.dark` with generated tokens
+3. Replace color swatches HTML with generated brand colors
+4. Replace semantic tokens HTML with generated mappings
+5. Update component examples to use the design system's colors
+6. Replace `{{DS_NAME}}`, `{{DS_DESCRIPTION}}`, `{{DS_VERSION}}` in header
+
+**The CSS classes are pre-defined** - use them for consistent styling:
+- `.color-scale`, `.color-swatch-row` - for brand color display
+- `.semantic-card`, `.semantic-preview` - for semantic tokens
+- `.type-specimen`, `.type-5xl` through `.type-xs` - for typography
+- Component classes: `.btn`, `.input`, `.card`, `.badge`, `.toast`, etc.
+
+## Template Placeholders
 
 ### Metadata Placeholders
 
