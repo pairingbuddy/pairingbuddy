@@ -89,7 +89,7 @@ When the human requests multiple explorations:
 ```
 4. Create subfolder for each exploration (v1-minimal/, v2-playful/, etc.)
 5. Copy design system dependencies to each subfolder if needed
-6. Write direction.md in each subfolder's .session/ (brief.md + specific angle)
+6. Write direction.md in each subfolder's .pairingbuddy-design-ux/ (brief.md + specific angle)
 7. Spawn builder-critic agents with `run_in_background: true` for each exploration
 8. Update status.json as each agent progresses
 
@@ -132,7 +132,7 @@ Human: "v7 is interesting. Continue 4 more iterations, but make the CTAs more pr
 ```
 
 Orchestrator:
-1. Appends to v7's .session/direction.md with new guidance
+1. Appends to v7's .pairingbuddy-design-ux/direction.md with new guidance
 2. Spawns new builder-critic loop with updated direction and run_in_background: true
 3. Updates status.json to track new iterations
 
