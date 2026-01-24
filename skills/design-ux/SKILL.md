@@ -76,13 +76,13 @@ When the human requests multiple explorations:
 
 1. Create exploration parent folder (e.g., `onboarding-explorations/`)
 2. Write `brief.md` with the human's shared requirements
-3. Create status.json to track all explorations:
+3. Create status.json to track all explorations (including server ports):
 ```json
 {
   "created": "2026-01-24T10:00:00Z",
   "agents": [
-    {"id": "v1-minimal", "status": "running", "iterations": 0},
-    {"id": "v2-playful", "status": "running", "iterations": 0}
+    {"id": "v1-minimal", "status": "running", "iterations": 0, "port": 8001},
+    {"id": "v2-playful", "status": "running", "iterations": 0, "port": 8002}
   ]
 }
 ```
@@ -388,6 +388,55 @@ At skill start, check for Playwright MCP availability:
    - Inform user: "Playwright MCP not detected. Visual critique/iteration requires it. Install from [Playwright MCP](https://github.com/anthropics/anthropic-cookbook/tree/main/misc/mcp_playwright)"
    - Offer: "Continue in generation-only mode? (No visual feedback)"
 3. If available: proceed with full capabilities
+
+### Local Server for Playwright
+
+**Playwright cannot access file:// URLs directly.** Serve design systems over localhost:
+
+**Start server** (from design system output directory):
+```bash
+python -m http.server 8000
+```
+
+Alternative options:
+```bash
+npx serve -p 8000        # if npm available
+php -S localhost:8000    # if PHP available
+```
+
+**Use localhost URLs** in Playwright:
+```
+Instead of: file:///path/to/preview.html
+Use:        http://localhost:8000/preview.html
+```
+
+**Server lifecycle:**
+1. Start server before first Playwright operation
+2. Keep running during all builder-critic iterations
+3. Stop when exploration completes or user exits
+
+**For parallel explorations - explicit port mapping:**
+
+Each exploration gets its own port. Track in status.json:
+```json
+{
+  "created": "2026-01-24T10:00:00Z",
+  "agents": [
+    {"id": "v1-minimal", "status": "running", "iterations": 0, "port": 8001},
+    {"id": "v2-playful", "status": "running", "iterations": 0, "port": 8002},
+    {"id": "v3-bold", "status": "running", "iterations": 0, "port": 8003}
+  ]
+}
+```
+
+Start servers for each:
+```bash
+cd v1-minimal && python -m http.server 8001 &
+cd v2-playful && python -m http.server 8002 &
+cd v3-bold && python -m http.server 8003 &
+```
+
+**Always use the correct port for each exploration** - never navigate to the wrong port or you'll critique the wrong design system.
 
 ### Reference Files
 
@@ -732,9 +781,21 @@ When Playwright is available, run visual critique after generation. See [UX Pass
 
 ## Playwright Integration
 
+**Important:** Playwright accesses files via localhost, not file:// URLs. See "Local Server for Playwright" in Prerequisites.
+
+### Starting a Viewing Session
+
+Before any Playwright operations:
+1. Start local server in design system folder:
+   ```bash
+   python -m http.server 8000
+   ```
+2. Navigate Playwright to the localhost URL (e.g., port 8000, path /preview.html)
+3. For parallel explorations, use different ports or serve parent folder
+
 ### Screenshot + Critique (Default Mode)
 
-1. Open preview.html in Playwright
+1. Navigate to the localhost URL for preview.html
 2. Screenshot key sections (data-testid targets)
 3. Analyze screenshots against principles
 4. Present findings to human
@@ -749,6 +810,12 @@ When human says "iterate until X":
 3. Log each iteration to history/
 4. Stop when conditions met OR max 5 iterations
 5. Return summary of changes made
+
+### Stopping the Server
+
+When exploration completes:
+1. Stop the local server (Ctrl+C or kill the process)
+2. Inform user that viewing session has ended
 
 ## Error Handling
 
