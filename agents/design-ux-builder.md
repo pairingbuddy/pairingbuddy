@@ -51,13 +51,25 @@ Reads from exploration folder (varies by task):
 Generate three-tiered token architecture:
 - **Brand tier** (brand.json) - Raw color scales, foundation values
 - **Alias tier** (alias.json) - Semantic mappings
-- **Mapped tier** (mapped.json) - Application-level tokens
+- **Mapped tier** (mapped.json) - Application-level tokens for light AND dark modes
+
+**Dark Mode Generation:**
+
+Generate BOTH light and dark mode tokens in mapped.json. Use color reversal:
+- Light mode uses lighter values (50-400): text uses 900/700/500, surfaces use white/50/100
+- Dark mode uses darker values (600-900) reversed: text uses 50/300/400, surfaces use 900/800/700
+
+Fixed colors (action buttons, brand accents) may stay the same in both modes.
+
+tokens.css must include:
+- `:root` with brand colors AND light mode semantic tokens
+- `.dark` class with dark mode semantic tokens
 
 Generate components based on selected component packs.
 
 Generate tailwind.config.js and tokens.css.
 
-Generate preview.html using template at `skills/design-ux/templates/preview-template.html`.
+Generate preview.html using template at `skills/design-ux/templates/preview-template.html`. The preview includes a dark mode toggle that adds/removes `.dark` class on body.
 
 ### Experience Mode
 

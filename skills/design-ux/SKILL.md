@@ -677,6 +677,64 @@ Application-level tokens for actual use:
 }
 ```
 
+### Dark Mode Generation
+
+**Approach:** Reverse the color scale values between light and dark mode.
+
+**Light mode** uses lighter values (50-400):
+- Text: neutral.900, neutral.700, neutral.500
+- Surfaces: white, neutral.50, neutral.100
+
+**Dark mode** uses darker values (600-900), reversed:
+- Text: neutral.50, neutral.300, neutral.400
+- Surfaces: neutral.900, neutral.800, neutral.700
+
+**Color reversal pattern:**
+| Light | Dark |
+|-------|------|
+| 50 | 900 |
+| 100 | 800 |
+| 200 | 700 |
+| 300 | 600 |
+| 400 | 500 |
+| 500 | 400 |
+| 600 | 300 |
+| 700 | 200 |
+| 800 | 100 |
+| 900 | 50 |
+
+**Fixed colors:** Some colors should NOT change between modes. Use `-fixed` suffix in alias names to indicate this:
+- Primary action colors (buttons) often stay the same
+- Brand accent colors may stay fixed
+- Example: `primary.500-fixed` stays `primary.500` in both modes
+
+**CSS output structure:**
+
+```css
+:root {
+  /* Brand tokens (don't change) */
+  --color-primary-500: #2563eb;
+  --color-neutral-50: #fafafa;
+  --color-neutral-900: #171717;
+
+  /* Mapped tokens - Light mode (default) */
+  --text-heading: var(--color-neutral-900);
+  --text-body: var(--color-neutral-700);
+  --surface-page: white;
+  --surface-primary: var(--color-neutral-50);
+  --surface-action: var(--color-primary-500);  /* fixed */
+}
+
+.dark {
+  /* Mapped tokens - Dark mode (reversed) */
+  --text-heading: var(--color-neutral-50);
+  --text-body: var(--color-neutral-300);
+  --surface-page: var(--color-neutral-900);
+  --surface-primary: var(--color-neutral-800);
+  --surface-action: var(--color-primary-500);  /* stays same */
+}
+```
+
 ## Template System
 
 **CRITICAL**: Templates ensure consistent, comparable output. Never skip them.

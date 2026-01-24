@@ -27,7 +27,7 @@ The `preview-template.html` file uses placeholder markers that get replaced with
 
 | Placeholder | Description |
 |-------------|-------------|
-| `{{CSS_VARIABLES}}` | Full CSS with all variables (brand, alias, mapped) for light/dark modes |
+| `{{CSS_VARIABLES}}` | Full CSS with all variables (see Dark Mode structure below) |
 | `{{BRAND_COLORS}}` | HTML for brand color scale swatches |
 | `{{SEMANTIC_COLORS}}` | HTML for semantic token cards |
 
@@ -63,6 +63,58 @@ The `preview-template.html` file uses placeholder markers that get replaced with
 | `{{COMPONENT_STYLES}}` | CSS for all components (buttons, inputs, etc.) |
 | `{{CORE_COMPONENTS}}` | HTML for core components (always rendered) |
 | `{{PACK_COMPONENTS}}` | HTML for domain pack components (conditional) |
+
+## CSS_VARIABLES Structure (Dark Mode)
+
+The `{{CSS_VARIABLES}}` placeholder must include both light and dark mode tokens:
+
+```css
+:root {
+  /* Transitions */
+  --radius: 0.5rem;
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Brand colors (don't change between modes) */
+  --purple-50: 270 100% 98%;
+  --purple-100: 269 100% 95%;
+  /* ... full scale 50-900 ... */
+  --neutral-50: 0 0% 98%;
+  --neutral-900: 240 6% 10%;
+  /* ... other color scales ... */
+
+  /* Semantic tokens - Light mode (default) */
+  --background: var(--neutral-50);
+  --foreground: var(--neutral-900);
+  --primary: var(--purple-600);
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-500);
+  --border: var(--neutral-200);
+  --card: 0 0% 100%;
+  --card-foreground: var(--neutral-900);
+  /* ... etc ... */
+}
+
+.dark {
+  /* Semantic tokens - Dark mode (reversed) */
+  --background: var(--neutral-900);
+  --foreground: var(--neutral-50);
+  --primary: var(--purple-600);  /* stays same */
+  --muted: var(--neutral-800);
+  --muted-foreground: var(--neutral-400);
+  --border: var(--neutral-700);
+  --card: var(--neutral-800);
+  --card-foreground: var(--neutral-50);
+  /* ... etc ... */
+}
+```
+
+**Key points:**
+- Brand color scales (50-900) go in `:root` and don't change
+- Semantic tokens reference brand colors via `var(--color-name)`
+- Light mode tokens go in `:root`
+- Dark mode tokens go in `.dark` class
+- Colors use HSL format for flexibility: `270 100% 98%` (used as `hsl(var(--purple-50))`)
 
 ## How Placeholders Are Replaced
 
