@@ -11,6 +11,28 @@ Creates, iterates, and manages production-ready design systems. Generates three-
 
 **Announce at start:** "I'm using the design-ux skill to [create/iterate on] your design system."
 
+### Mandatory First Steps
+
+Before ANY generation work:
+
+1. **Check Playwright MCP** - Look for Playwright tools. If unavailable, inform user and offer generation-only mode.
+2. **Read the templates** - Read [preview template](./templates/preview-template.html) and [prototype template](./templates/prototype-template.html) before generating any HTML.
+
+### Mandatory Template Usage
+
+**NEVER generate preview.html from scratch.** Always:
+1. Read the template file first
+2. Replace placeholders with generated content
+3. Keep the template structure intact
+
+This ensures consistent, comparable output across all design systems.
+
+### Output Files
+
+Each design system produces:
+- `preview.html` - **MUST use template** - Standard design system preview (tokens, typography, components)
+- `example.html` - Optional contextual page showing the design system in use for the specific business/context
+
 ## Design Principles
 
 All work must follow design principles from reference files:
@@ -515,7 +537,8 @@ Each design system lives in its own self-contained folder:
 │   └── mapped.json       # Tier 3: Application tokens
 ├── tailwind.config.js    # Ready-to-use Tailwind v3
 ├── tokens.css            # CSS variables
-├── preview.html          # Interactive visualization (from template)
+├── preview.html          # MUST use template - design system preview
+├── example.html          # Optional - contextual usage example
 ├── variations/           # When comparing
 │   ├── blue/
 │   ├── green/
@@ -606,9 +629,21 @@ Application-level tokens for actual use:
 
 ## Template System
 
+**CRITICAL**: Templates ensure consistent, comparable output. Never skip them.
+
 ### Preview Generation (Design Systems)
 
-When generating preview.html, use the [preview template](./templates/preview-template.html).
+**MANDATORY** - When generating preview.html:
+1. Read [preview template](./templates/preview-template.html) first
+2. Replace placeholders with generated content
+3. Never generate preview.html from scratch
+
+### Example Page Generation
+
+**OPTIONAL** - When context suggests a specific use case (e.g., "design system for a farming insurance company"):
+1. Generate `example.html` showing the design system in use
+2. This is freeform - no template required
+3. Should demonstrate real-world application of the tokens/components
 
 ### Prototype Generation (Experiences)
 
