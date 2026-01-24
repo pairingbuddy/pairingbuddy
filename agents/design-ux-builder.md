@@ -101,11 +101,13 @@ All work MUST follow principles from reference files including:
 **CRITICAL: Always use tokens, never hardcoded values.**
 
 Generated CSS must reference tokens:
-- Spacing: `var(--spacing-4)` not `1rem`
+- Spacing: `var(--spacing-400)` not `16px`, `var(--spacing-600)` not `24px`
 - Radius: `var(--radius-md)` not `0.5rem`
 - Shadows: `var(--shadow-md)` not inline box-shadow
 - Touch targets: `var(--touch-target)` not `48px`
 - Transitions: `var(--transition-smooth)` not inline timing
+
+Spacing scale uses numeric naming (like colors): 0, 25, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900
 
 This is the whole point of generating a design system - consistency through tokens.
 

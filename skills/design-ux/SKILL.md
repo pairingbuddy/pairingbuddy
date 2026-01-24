@@ -722,18 +722,19 @@ Application-level tokens for actual use:
   --color-neutral-900: #171717;
   /* ... full scales 50-900 for each color ... */
 
-  /* Spacing scale (8px base) */
+  /* Spacing scale (4px increments, numeric naming like colors) */
   --spacing-0: 0;
-  --spacing-1: 0.25rem;   /* 4px */
-  --spacing-2: 0.5rem;    /* 8px */
-  --spacing-3: 0.75rem;   /* 12px */
-  --spacing-4: 1rem;      /* 16px */
-  --spacing-5: 1.25rem;   /* 20px */
-  --spacing-6: 1.5rem;    /* 24px */
-  --spacing-8: 2rem;      /* 32px */
-  --spacing-10: 2.5rem;   /* 40px */
-  --spacing-12: 3rem;     /* 48px */
-  --spacing-16: 4rem;     /* 64px */
+  --spacing-25: 1px;      /* edge case */
+  --spacing-50: 2px;      /* edge case */
+  --spacing-100: 4px;
+  --spacing-200: 8px;
+  --spacing-300: 12px;
+  --spacing-400: 16px;
+  --spacing-500: 20px;
+  --spacing-600: 24px;
+  --spacing-700: 28px;
+  --spacing-800: 32px;
+  --spacing-900: 36px;
 
   /* Border radius scale */
   --radius-none: 0;
@@ -784,7 +785,8 @@ Application-level tokens for actual use:
 ```
 
 **CRITICAL: Use tokens, not magic numbers.** All generated CSS should reference these tokens:
-- Use `var(--spacing-4)` not `1rem`
+- Use `var(--spacing-400)` not `16px` or `1rem`
+- Use `var(--spacing-600)` not `24px` or `1.5rem`
 - Use `var(--radius-md)` not `0.5rem`
 - Use `var(--shadow-md)` not inline box-shadow values
 - Use `var(--touch-target)` for interactive element sizes
