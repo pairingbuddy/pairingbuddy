@@ -125,6 +125,125 @@ Orchestrator:
 2. Switches to tight human-in-the-loop iteration on v7 only
 3. No more background agents, full conversational control
 
+## Component Promotion
+
+During experience design, new component patterns emerge. The promotion flow moves them from local drafts to the design system.
+
+### Discovery
+
+The Critic agent identifies repeated patterns:
+```
+Critic notices: "team-card pattern used in 3 places (team-setup.html,
+team-setup--empty.html, complete.html)"
+```
+
+### Draft Stage
+
+Extract to local-components/ within the experience:
+```
+experience/
+├── local-components/
+│   └── team-card.html          # Extracted, local to this experience
+├── states/
+│   ├── team-setup.html         # Now references local-components/team-card.html
+│   └── ...
+```
+
+### Promotion
+
+Human requests promotion to design system:
+```
+Human: "Promote team-card to the design system"
+```
+
+Orchestrator:
+1. Copies the component from local-components to design-system/components/
+2. Updates `experience.json` to note the promotion
+3. Asks: "Update source design system? This would become acme-ds v4"
+
+Human decides whether to update the source of truth or keep it local.
+
+## Custom Design Principles
+
+Human operators can provide custom design principles that override or extend the defaults.
+
+### Providing Custom Principles
+
+Custom principles can be specified:
+- In the initial direction when starting an exploration
+- As a dedicated `principles.md` file in the exploration folder
+- Inline during iteration feedback
+
+### Format
+
+```markdown
+# Custom Design Principles
+
+## Overrides
+- Spacing: Use 4px base scale (overrides default 8px)
+- Touch targets: 44x44px minimum (overrides default 48px)
+
+## Extensions
+- Brand voice: Playful and casual, use informal language
+- Animations: Prefer spring physics, avoid linear easing
+- Icons: Use outlined style only, 24px standard size
+```
+
+### Application
+
+The orchestrator:
+1. Reads default principles from reference files
+2. Merges custom principles (overrides take precedence)
+3. Passes combined principles to Builder and Critic agents
+4. Agents apply merged principles in their work
+
+## Version History
+
+Every design system maintains a version history for auditability and rollback.
+
+### History Structure
+
+```
+design-system/
+├── config.json              # Current version metadata
+├── tailwind.config.js       # /* acme-ds v3 - 2026-01-24 */
+├── tokens.css               # /* acme-ds v3 - 2026-01-24 */
+└── history/
+    ├── v1.json              # Full snapshot of v1
+    ├── v2.json              # Full snapshot of v2
+    └── v3.json              # Full snapshot of v3
+```
+
+### Version Comments
+
+Generated files include version comments for auditability:
+```javascript
+/* acme-ds v3 - 2026-01-24 */
+module.exports = {
+  // ...
+}
+```
+
+### Creating Versions
+
+On each iteration that produces changes:
+1. Increment version in config.json
+2. Save full snapshot to history/ folder
+3. Update version comments in generated files
+
+### Rollback
+
+Use `/design-ux:rollback` to restore a previous version:
+```
+/design-ux:rollback my-app-ds v2
+```
+
+Orchestrator:
+1. Loads the requested version snapshot from history/
+2. Replaces current config.json
+3. Regenerates all artifacts from that version's state
+4. Creates a new version (current + 1) as the "rolled back" version
+
 ## State File Mappings
 
 State files for design explorations are stored in the exploration folder structure:
