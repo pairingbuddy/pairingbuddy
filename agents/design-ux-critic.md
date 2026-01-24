@@ -74,11 +74,23 @@ Reads from exploration folder (varies by task):
 - Are patterns consistent?
 - Does the whole feel unified?
 
+### Dark Mode Verification
+
+**CRITICAL: Check BOTH light and dark modes.** Toggle the theme using the dark mode button.
+
+For each mode, verify:
+- Text remains readable against backgrounds
+- Color contrast meets requirements (4.5:1 for text)
+- Semantic colors swap correctly (backgrounds, foregrounds, borders)
+- Fixed colors (action buttons, brand accents) remain appropriate
+- No visual artifacts or broken styling
+- Component states visible in both modes
+
 ### Design Principles Check
 
 Verify compliance with:
 - Touch target minimums (48x48px)
-- Color contrast requirements (4.5:1 for text)
+- Color contrast requirements (4.5:1 for text) - **in both light AND dark mode**
 - Spacing scale adherence (8px base)
 - Laws of UX application (Fitts, Hick, Miller, Jakob, Von Restorff)
 
@@ -86,9 +98,11 @@ Verify compliance with:
 
 Use Playwright MCP to:
 1. Open preview.html or prototype.html
-2. Screenshot key sections
-3. Interact with components to test states
-4. Measure actual rendered dimensions and contrast
+2. Screenshot key sections in light mode
+3. Click theme toggle to switch to dark mode
+4. Screenshot same sections in dark mode
+5. Interact with components to test states (in both modes)
+6. Measure actual rendered dimensions and contrast
 
 ### Prioritization
 
@@ -148,12 +162,24 @@ Writes to `critique.json`:
       "what_works": ["array of strings"]
     }
   },
+  "dark_mode": {
+    "tested": true,
+    "issues": [
+      {
+        "severity": "critical | high | medium | low",
+        "description": "string",
+        "component": "string (affected element)"
+      }
+    ],
+    "what_works": ["array of strings"]
+  },
   "principle_violations": [
     {
       "principle": "string (which principle)",
       "severity": "critical | high | medium | low",
       "description": "string",
-      "location": "string (where in the design)"
+      "location": "string (where in the design)",
+      "mode": "light | dark | both"
     }
   ],
   "priority_issues": [
