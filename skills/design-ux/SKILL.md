@@ -935,33 +935,71 @@ The template includes conditional sections:
 
 ### tailwind.config.js
 
+The Tailwind config references CSS variables from tokens.css, enabling:
+- Dark mode via `.dark` class toggle
+- Dynamic theming without rebuilding
+- Consistent tokens between Tailwind and vanilla CSS
+
 ```javascript
 module.exports = {
   content: ['./src/**/*.{js,jsx,ts,tsx,html}'],
   darkMode: 'class',
   theme: {
     extend: {
-      // Brand tier - raw scales
+      // TIER 1: Brand - raw color scales (for direct color access)
       colors: {
-        blue: { 50: '...', /* ... */ 900: '...' },
-        neutral: { /* ... */ },
+        primary: {
+          50: 'hsl(var(--color-primary-50))',
+          100: 'hsl(var(--color-primary-100))',
+          // ... 200-800 ...
+          900: 'hsl(var(--color-primary-900))',
+        },
+        neutral: { /* same pattern */ },
       },
 
-      // Mapped tier - semantic tokens via CSS vars
+      // TIER 2: Alias - semantic spacing/sizing
+      spacing: {
+        'xs': 'var(--spacing-xs)',
+        'sm': 'var(--spacing-sm)',
+        'md': 'var(--spacing-md)',
+        'lg': 'var(--spacing-lg)',
+        'xl': 'var(--spacing-xl)',
+        '2xl': 'var(--spacing-2xl)',
+      },
+
+      borderRadius: {
+        'sm': 'var(--radius-sm)',
+        'md': 'var(--radius-md)',
+        'lg': 'var(--radius-lg)',
+        'full': 'var(--radius-full)',
+      },
+
+      boxShadow: {
+        'sm': 'var(--shadow-sm)',
+        'md': 'var(--shadow-md)',
+        'lg': 'var(--shadow-lg)',
+      },
+
+      // TIER 3: Mapped - component-specific (for semantic classes)
       textColor: {
-        heading: 'var(--text-heading)',
-        body: 'var(--text-body)',
+        'heading': 'hsl(var(--text-heading))',
+        'body': 'hsl(var(--text-body))',
+        'muted': 'hsl(var(--text-muted))',
       },
       backgroundColor: {
-        page: 'var(--surface-page)',
-        action: 'var(--surface-action)',
+        'page': 'hsl(var(--surface-page))',
+        'card': 'hsl(var(--surface-card))',
+        'action': 'hsl(var(--surface-action))',
+      },
+      borderColor: {
+        'default': 'hsl(var(--border-default))',
+        'focus': 'hsl(var(--border-focus))',
       },
 
-      // Border radius with calc() for single source of truth
-      borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+      // Motion
+      transitionDuration: {
+        'fast': 'var(--duration-200)',
+        'smooth': 'var(--duration-300)',
       },
 
       keyframes: { /* ... */ },
@@ -971,6 +1009,18 @@ module.exports = {
   plugins: [],
 }
 ```
+
+### Generated Files Summary
+
+| File | Purpose |
+|------|---------|
+| `tokens/brand.json` | Tier 1: Raw values (scales, colors) |
+| `tokens/alias.json` | Tier 2: Semantic mappings |
+| `tokens/mapped.json` | Tier 3: Application tokens |
+| `tokens.css` | CSS variables (all three tiers) |
+| `tailwind.config.js` | Tailwind config referencing CSS vars |
+| `preview.html` | Interactive visualization |
+| `example.html` | Optional contextual demo |
 
 ## Critique Framework (6 Passes)
 
