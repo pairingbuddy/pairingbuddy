@@ -5,6 +5,69 @@ description: Creates, iterates, and manages production-ready design systems with
 
 # Design UX Skill
 
+## STOP - READ THIS FIRST (Critical Mistakes to Avoid)
+
+**These are the three most common failures. Read before doing ANYTHING.**
+
+### 1. NEVER use project root as exploration path
+
+```
+The user's working directory is the PROJECT ROOT.
+DO NOT put explorations there.
+
+WRONG:
+/Users/alberto/src/glimra/design-system-tests-003/    ← Project root
+├── tokens/                                           ← WRONG - artifacts at root
+├── preview.html                                      ← WRONG
+└── config.json                                       ← WRONG
+
+CORRECT:
+/Users/alberto/src/glimra/design-system-tests-003/    ← Project root (don't touch)
+└── my-session/                                       ← CREATE new session folder
+    ├── .pairingbuddy/                                ← Session state
+    ├── exploration-1/                                ← Each exploration is isolated
+    │   ├── .pairingbuddy/
+    │   ├── tokens/
+    │   ├── preview.html
+    │   └── config.json
+    └── exploration-2/
+        └── ...
+```
+
+**ASK the user where to create the session folder before creating anything.**
+
+### 2. ONE agent per exploration
+
+```
+WRONG:
+- Spawn 1 builder agent to create 2 design systems
+
+CORRECT:
+- Spawn builder agent for exploration-1, wait for completion
+- Spawn builder agent for exploration-2, wait for completion
+(Or run them in parallel with separate exploration_path parameters)
+```
+
+**Each builder agent receives ONE exploration_path and creates ONE design system.**
+
+### 3. Create folders BEFORE invoking agents
+
+```
+WRONG:
+1. Invoke builder agent
+2. Agent tries to mkdir exploration path
+
+CORRECT:
+1. Orchestrator creates session folder
+2. Orchestrator creates exploration folders with .pairingbuddy/ inside each
+3. Orchestrator writes direction.json to each
+4. THEN invoke builder agent with exploration_path
+```
+
+**Agents do NOT create the folder structure. You (the orchestrator) do.**
+
+---
+
 ## Overview
 
 Creates, iterates, and manages production-ready design systems. Generates three-tiered token architecture (brand, alias, mapped), interactive HTML visualization, and Tailwind CSS configuration.
