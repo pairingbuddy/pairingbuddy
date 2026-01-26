@@ -185,9 +185,12 @@ Before writing output, verify:
 - `{exploration_path}/domain-spec.json`
 
 **Do NOT:**
+- **mkdir or create directories** - The orchestrator already created the exploration folder
 - Create files outside `{exploration_path}/`
 - Write to /tmp or system directories
 - Generate design artifacts (that's design-ux-builder's job)
+
+**The exploration_path ALREADY EXISTS.** The orchestrator created it before invoking you. If it doesn't exist, that's an orchestrator bug - do not try to fix it by running mkdir.
 
 ## Output
 

@@ -545,9 +545,12 @@ If Playwright MCP is available:
 - Generated artifacts (tailwind.config.js, tokens.css, preview.html, prototype.html)
 
 **Do NOT:**
+- **mkdir the exploration_path itself** - It already exists (orchestrator created it)
 - Create files outside the {exploration_path}
 - Write to /tmp or system directories
 - Modify files outside the designated exploration scope
+
+**Note:** You MAY create subdirectories INSIDE {exploration_path} (e.g., `mkdir {exploration_path}/tokens`). You may NOT create the exploration_path directory itself.
 
 ## Output
 

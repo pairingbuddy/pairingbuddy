@@ -297,6 +297,7 @@ WRONG - at exploration root:
 ```
 
 **Do NOT:**
+- **mkdir anything** - All directories already exist (orchestrator created them)
 - Write critique.json anywhere except `{exploration_path}/.pairingbuddy/`
 - Write to parent/session level `.pairingbuddy/`
 - Modify design artifacts
