@@ -225,25 +225,61 @@ Missing tokens/ folder → **CRITICAL**
 --input-height: 48px;         /* FAIL */
 ```
 
-**3. Scan tokens.css for violations:**
-- Search for `px` values outside tier 1 section → CRITICAL
-- Search for `#` hex values outside tier 1 section → CRITICAL
-- Search for `rem` values outside tier 1 section → CRITICAL
-- Search for `hsl(` with literal values outside tier 1 → CRITICAL
-- Search for numeric shadow values outside tier 1 → CRITICAL
+**3. Scan for magic numbers (tokens.css AND inline styles in HTML):**
 
-**4. Tailwind Config Check:**
+Check BOTH:
+- `tokens.css` (separate file)
+- `<style>` blocks in preview.html (inline CSS)
+
+Search for violations:
+- `px` values outside tier 1 section → CRITICAL
+- `#` hex values outside tier 1 section → CRITICAL
+- `rem` values outside tier 1 section → CRITICAL
+- `hsl(` with literal values outside tier 1 → CRITICAL
+- Numeric shadow values outside tier 1 → CRITICAL
+
+**Inline CSS example (WRONG):**
+```css
+<style>
+  :root {
+    --accent-primary: #005293;      /* FAIL - hex in tier 2/3 */
+    --surface-page: #231A13;        /* FAIL */
+  }
+</style>
+```
+
+**Should be:**
+```css
+<style>
+  :root {
+    --accent-primary: var(--color-sweden-blue-600);  /* refs tier 1 */
+    --surface-page: var(--color-soil-800);           /* refs tier 1 */
+  }
+</style>
+```
+
+**4. Tailwind Config Check (BOTH files and inline):**
+
+Check BOTH:
+- `tailwind.config.js` (separate file)
+- `<script>tailwind.config = {...}</script>` (inline in preview.html)
+
 ```javascript
 /* FORBIDDEN - any raw value */
 spacing: { lg: '16px' }           /* FAIL */
 colors: { earth: { 50: '#faf8f6' } }  /* FAIL */
 borderRadius: { md: '8px' }       /* FAIL */
+soil: { 50: '#F5F2EF' }           /* FAIL - even with domain name */
 
 /* REQUIRED - CSS variable references */
 spacing: { lg: 'var(--spacing-lg)' }
 colors: { earth: { 50: 'hsl(var(--color-earth-50))' } }
 borderRadius: { md: 'var(--radius-md)' }
+soil: { 50: 'var(--color-soil-50)' }  /* References tier 1 */
 ```
+
+**Domain-named colors with hex values are STILL magic numbers.**
+`soil: { 50: '#F5F2EF' }` is just as wrong as `gray: { 50: '#F5F2EF' }`.
 
 **5. Preview HTML Check:**
 - Uses template with tabbed navigation
