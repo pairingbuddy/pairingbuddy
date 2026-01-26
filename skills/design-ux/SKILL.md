@@ -390,37 +390,86 @@ The orchestrator manages the builder-critic loop based on human direction rather
 
 **Before invoking ANY agent, the orchestrator MUST set up the folder structure.**
 
+### CRITICAL: Folder Hierarchy Rules
+
+**NEVER use the project root as the exploration parent.**
+
+The project root (where the user is working) is NOT where explorations go. You MUST create a NEW subfolder for each exploration session.
+
+```
+PROJECT ROOT (e.g., /Users/alberto/src/glimra/)     ← DON'T write here
+└── {session-folder}/                               ← CREATE this (new folder)
+    ├── .pairingbuddy/                              ← Parent session state
+    │   ├── brief.json
+    │   └── status.json
+    ├── exploration-1/                              ← Self-contained exploration
+    │   ├── .pairingbuddy/
+    │   │   ├── direction.json
+    │   │   └── critique.json
+    │   ├── domain-spec.json
+    │   ├── config.json
+    │   ├── tokens/
+    │   ├── tokens.css
+    │   ├── preview.html
+    │   └── example.html
+    ├── exploration-2/                              ← Another exploration
+    │   └── ...
+    ├── index.html                                  ← Web output (at session level)
+    ├── comparison.html
+    └── robots.txt
+```
+
+### Step 0: Ask Where to Create Session Folder
+
+**ALWAYS ask the user before creating folders:**
+
+```
+"Where should I create the design exploration session?
+
+Suggested: {project_root}/design-explorations-{date}/
+
+Or provide a different path."
+```
+
+Wait for user confirmation before proceeding.
+
 ### Single Exploration Setup
 
 ```
-1. CREATE exploration folder
-   mkdir {exploration_path}
+1. ASK user for session folder location
+   Suggested: {project_root}/{descriptive-name}/
 
-2. CREATE .pairingbuddy folder INSIDE exploration
-   mkdir {exploration_path}/.pairingbuddy
+2. CREATE session folder (this becomes the exploration folder for single)
+   mkdir {session_path}
 
-3. WRITE direction.json (JSON, not markdown!)
-   Write to {exploration_path}/.pairingbuddy/direction.json:
+3. CREATE .pairingbuddy folder INSIDE session
+   mkdir {session_path}/.pairingbuddy
+
+4. WRITE direction.json (JSON, not markdown!)
+   Write to {session_path}/.pairingbuddy/direction.json:
    {
      "brief": "user's design request",
      "constraints": [],
      "feedback_history": []
    }
 
-4. NOW invoke explorer agent with exploration_path
+5. NOW invoke explorer agent with session_path as exploration_path
 ```
 
 ### Parallel Explorations Setup
 
 ```
-1. CREATE parent folder
-   mkdir {parent_path}
+1. ASK user for session folder location
+   Suggested: {project_root}/{project-name}-explorations/
 
-2. CREATE parent .pairingbuddy
-   mkdir {parent_path}/.pairingbuddy
+2. CREATE session folder (this is the parent for all explorations)
+   mkdir {session_path}
 
-3. WRITE brief.json to parent
-   Write to {parent_path}/.pairingbuddy/brief.json:
+3. CREATE parent .pairingbuddy
+   mkdir {session_path}/.pairingbuddy
+
+4. WRITE brief.json to parent
+   Write to {session_path}/.pairingbuddy/brief.json:
    {
      "title": "project name",
      "requirements": "shared requirements",
@@ -428,8 +477,8 @@ The orchestrator manages the builder-critic loop based on human direction rather
      "created": "ISO timestamp"
    }
 
-4. WRITE status.json to parent
-   Write to {parent_path}/.pairingbuddy/status.json:
+5. WRITE status.json to parent
+   Write to {session_path}/.pairingbuddy/status.json:
    {
      "created": "ISO timestamp",
      "agents": [
@@ -438,15 +487,15 @@ The orchestrator manages the builder-critic loop based on human direction rather
      ]
    }
 
-5. FOR EACH exploration:
-   a. CREATE exploration folder
-      mkdir {parent_path}/{exploration-name}
+6. FOR EACH exploration:
+   a. CREATE exploration folder INSIDE session
+      mkdir {session_path}/{exploration-name}
 
    b. CREATE .pairingbuddy INSIDE exploration (NOT optional!)
-      mkdir {parent_path}/{exploration-name}/.pairingbuddy
+      mkdir {session_path}/{exploration-name}/.pairingbuddy
 
    c. WRITE direction.json (JSON!)
-      Write to {parent_path}/{exploration-name}/.pairingbuddy/direction.json:
+      Write to {session_path}/{exploration-name}/.pairingbuddy/direction.json:
       {
         "brief": "from parent brief.json",
         "angle": "specific direction for this exploration",
@@ -454,10 +503,12 @@ The orchestrator manages the builder-critic loop based on human direction rather
         "feedback_history": []
       }
 
-6. NOW invoke agents with each exploration_path
+7. NOW invoke agents with each exploration_path
 ```
 
 **VERIFY before proceeding:**
+- [ ] Session folder is a NEW folder (not project root)
+- [ ] Each exploration is a subfolder inside session folder
 - [ ] Each exploration has its own `.pairingbuddy/` folder
 - [ ] Each `.pairingbuddy/` contains `direction.json` (JSON, not .md)
 - [ ] Parent has `brief.json` and `status.json` (for parallel)
