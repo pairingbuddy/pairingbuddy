@@ -1,0 +1,151 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Brand Tokens",
+  "description": "Brand-level design tokens supporting single brand and multi-brand architectures",
+  "type": "object",
+  "required": ["colors", "foundation", "typography", "scale"],
+  "properties": {
+    "architecture": {
+      "type": "string",
+      "enum": ["single", "branded-house", "house-of-brands"],
+      "default": "single",
+      "description": "Brand architecture type: single (one brand), branded-house (master + variants sharing DNA), house-of-brands (independent brands)"
+    },
+    "master": {
+      "type": "object",
+      "description": "Master brand identity (required for branded-house, optional for others)",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Master brand name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Master brand description"
+        }
+      }
+    },
+    "variants": {
+      "type": "array",
+      "description": "Brand variants for branded-house or house-of-brands architectures",
+      "items": {
+        "type": "object",
+        "required": ["name", "colors"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Variant name (e.g., 'Norway', 'Enterprise', 'Youth')"
+          },
+          "description": {
+            "type": "string",
+            "description": "Variant description or meaning"
+          },
+          "relationship": {
+            "type": "string",
+            "enum": ["regional", "product-line", "audience", "tier", "independent"],
+            "description": "How this variant relates to master brand"
+          },
+          "colors": {
+            "type": "object",
+            "description": "Color palettes specific to this variant",
+            "additionalProperties": {
+              "$ref": "#/definitions/colorScale"
+            }
+          },
+          "inherits": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Which palettes to inherit from master (e.g., ['neutral', 'semantic'])"
+          }
+        }
+      }
+    },
+    "colors": {
+      "type": "object",
+      "description": "Color palettes (master brand colors for branded-house, all colors for single)",
+      "additionalProperties": {
+        "$ref": "#/definitions/colorScale"
+      }
+    },
+    "foundation": {
+      "type": "object",
+      "description": "Foundation colors (black, white, etc.)",
+      "properties": {
+        "black": { "type": "string" },
+        "white": { "type": "string" }
+      },
+      "additionalProperties": { "type": "string" }
+    },
+    "typography": {
+      "type": "object",
+      "description": "Typography definitions",
+      "properties": {
+        "families": {
+          "type": "object",
+          "properties": {
+            "sans": { "type": "string" },
+            "serif": { "type": "string" },
+            "mono": { "type": "string" }
+          },
+          "additionalProperties": { "type": "string" }
+        },
+        "weights": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "sizes": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "lineHeights": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        }
+      }
+    },
+    "scale": {
+      "type": "object",
+      "description": "Spacing/sizing scale",
+      "additionalProperties": { "type": "number" }
+    }
+  },
+  "definitions": {
+    "colorScale": {
+      "type": "object",
+      "description": "Color scale from 50 to 900",
+      "properties": {
+        "50": { "type": "string" },
+        "100": { "type": "string" },
+        "200": { "type": "string" },
+        "300": { "type": "string" },
+        "400": { "type": "string" },
+        "500": { "type": "string" },
+        "600": { "type": "string" },
+        "700": { "type": "string" },
+        "800": { "type": "string" },
+        "900": { "type": "string" }
+      },
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "architecture": { "const": "branded-house" } }
+      },
+      "then": {
+        "required": ["master", "variants"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "architecture": { "const": "house-of-brands" } }
+      },
+      "then": {
+        "required": ["variants"]
+      }
+    }
+  ]
+}

@@ -53,6 +53,19 @@
     .color-swatch { height: 3rem; border-radius: var(--radius-sm); cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 0 0.75rem; font-size: 0.75rem; }
     .color-swatch:hover { outline: 2px solid hsl(var(--color-primary-500)); outline-offset: 2px; }
 
+    /* Brand architecture visualization */
+    .brand-architecture { margin-bottom: 2rem; }
+    .brand-architecture h3 { font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: hsl(var(--text-heading)); }
+    .variant-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-top: 1rem; }
+    .brand-variant { background: hsl(var(--surface-card)); border: 1px solid hsl(var(--border-default)); border-radius: var(--radius-lg); padding: 1.25rem; }
+    .variant-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid hsl(var(--border-muted)); }
+    .variant-flag { font-size: 1.5rem; width: 2.5rem; height: 1.75rem; display: flex; align-items: center; justify-content: center; border-radius: 0.25rem; overflow: hidden; }
+    .variant-header h4 { font-size: 1rem; font-weight: 600; color: hsl(var(--text-heading)); margin: 0; }
+    .variant-header p { font-size: 0.75rem; color: hsl(var(--text-muted)); margin: 0; }
+    .variant-inherits { font-size: 0.75rem; color: hsl(var(--text-muted)); margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid hsl(var(--border-muted)); }
+    .master-brand { background: linear-gradient(135deg, hsl(var(--color-primary-50)) 0%, hsl(var(--surface-card)) 100%); border: 2px solid hsl(var(--color-primary-200)); }
+    .master-badge { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.625rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: hsl(var(--color-primary-600)); background: hsl(var(--color-primary-100)); padding: 0.125rem 0.5rem; border-radius: var(--radius-full); }
+
     /* Spacing visualization */
     .spacing-demo { display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
     .spacing-block { background: hsl(var(--color-primary-500)); border-radius: var(--radius-sm); }

@@ -169,6 +169,50 @@ Generate three-tiered token architecture:
 - **Alias tier** (alias.json) - Semantic mappings
 - **Mapped tier** (mapped.json) - Application-level tokens for light AND dark modes
 
+### Brand Architecture Support
+
+brand.json supports three architecture types. Detect which to use from domain-spec.json context:
+
+**1. Single Brand** (`architecture: "single"`) - Default
+- One primary palette + supporting colors
+- Standard structure with `colors`, `foundation`, `typography`, `scale`
+
+**2. Branded House** (`architecture: "branded-house"`)
+- Master brand + variants sharing DNA (e.g., Nordic Insurance with country variants)
+- Use when domain has regional, product-line, or audience segments
+- Structure:
+```json
+{
+  "architecture": "branded-house",
+  "master": { "name": "Nordic Insurance", "description": "Master brand" },
+  "variants": [
+    {
+      "name": "Sweden",
+      "description": "Blue-Gold - Loyalty, truth",
+      "relationship": "regional",
+      "colors": { "primary": {...}, "accent": {...} },
+      "inherits": ["neutral", "semantic"]
+    }
+  ],
+  "colors": { /* master/shared palettes */ },
+  "foundation": {...},
+  "typography": {...},
+  "scale": {...}
+}
+```
+
+**3. House of Brands** (`architecture: "house-of-brands"`)
+- Independent brands under one umbrella (e.g., P&G with Tide, Pampers)
+- Each variant is fully independent, minimal sharing
+- Structure similar to branded-house but `inherits` is typically empty
+
+**Choosing Architecture:**
+- Domain mentions regions/countries → branded-house with regional relationship
+- Domain mentions product lines → branded-house with product-line relationship
+- Domain mentions audience segments (youth, enterprise) → branded-house with audience relationship
+- Domain mentions completely separate brands → house-of-brands
+- Otherwise → single
+
 **Dark Mode Generation:**
 
 Generate BOTH light and dark mode tokens in mapped.json. Use color reversal:
@@ -185,7 +229,74 @@ Generate components based on selected component packs.
 
 Generate tailwind.config.js and tokens.css.
 
-Generate preview.html using template at `skills/design-ux/templates/preview-template.html`. The preview includes a dark mode toggle that adds/removes `.dark` class on body.
+### Preview Generation (MANDATORY TEMPLATE USAGE)
+
+**CRITICAL: You MUST use the preview template. Do NOT create a custom preview.html from scratch.**
+
+1. READ the template at `skills/design-ux/templates/preview-template.html`
+2. COPY the entire template structure including:
+   - The tabbed navigation (Colors, Typography, Spacing, Motion, Components)
+   - The header with theme toggle
+   - The tab switching JavaScript
+   - The `<link href="tokens.css">` reference
+3. REPLACE only the placeholders with generated content:
+   - `{{DS_NAME}}`, `{{DS_DESCRIPTION}}`, `{{DS_VERSION}}` - From config
+   - `{{TAILWIND_CONFIG}}` - Inline Tailwind config object
+   - `{{BRAND_COLORS}}` - Color swatch HTML (architecture-aware, see below)
+   - `{{SEMANTIC_COLORS}}` - Semantic token visualizations
+   - `{{TYPOGRAPHY}}`, `{{TYPOGRAPHY_DESCRIPTION}}`, `{{MONO_FONT}}` - Type specimens
+   - `{{SPACING}}`, `{{SPACING_BASE}}`, `{{SPACING_DENSITY}}` - Spacing demos
+   - `{{RADIUS}}`, `{{SHADOWS}}` - Border radius and shadow examples
+   - `{{TRANSITIONS}}`, `{{ANIMATIONS}}` - Motion demos
+   - `{{CORE_COMPONENTS}}`, `{{PACK_COMPONENTS}}` - Component examples
+
+**Architecture-Aware Color Rendering for `{{BRAND_COLORS}}`:**
+
+Based on `brand.json` architecture, generate different HTML:
+
+**Single brand:**
+```html
+<div class="color-scale">
+  <h3>Primary</h3>
+  <!-- standard 50-900 swatches -->
+</div>
+```
+
+**Branded house:**
+```html
+<div class="brand-architecture">
+  <h3>Master Brand: Nordic Insurance</h3>
+  <div class="color-scale"><!-- master palettes --></div>
+
+  <h3>Brand Variants</h3>
+  <div class="variant-grid">
+    <div class="brand-variant">
+      <div class="variant-header">
+        <span class="variant-flag">🇸🇪</span>
+        <div>
+          <h4>Sweden</h4>
+          <p class="text-muted">Blue-Gold - Loyalty, truth</p>
+        </div>
+      </div>
+      <div class="color-scale"><!-- variant palettes --></div>
+      <p class="text-sm text-muted">Inherits: neutral, semantic</p>
+    </div>
+    <!-- more variants -->
+  </div>
+</div>
+```
+
+**House of brands:**
+```html
+<div class="brand-architecture">
+  <h3>Brand Portfolio</h3>
+  <div class="variant-grid">
+    <!-- each brand rendered independently -->
+  </div>
+</div>
+```
+
+The preview MUST have the tabbed structure. If you generate a single-page preview without tabs, you have failed.
 
 **Example Page (optional):**
 
