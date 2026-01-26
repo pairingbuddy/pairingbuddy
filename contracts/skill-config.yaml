@@ -82,6 +82,30 @@ skills:
       - heading: "## Contents"
       - heading: "## Quick Reference"
 
+  differentiating-designs:
+    category: reference
+    sections:
+      - heading: "## Contents"
+      - heading: "## Quick Reference"
+
+  applying-design-principles:
+    category: reference
+    sections:
+      - heading: "## Contents"
+      - heading: "## Quick Reference"
+
+  critiquing-designs:
+    category: reference
+    sections:
+      - heading: "## Contents"
+      - heading: "## Quick Reference"
+
+  building-components:
+    category: reference
+    sections:
+      - heading: "## Contents"
+      - heading: "## Quick Reference"
+
   # ---------------------------------------------------------------------------
   # Design UX Orchestrator (separate category - different section structure)
   # ---------------------------------------------------------------------------

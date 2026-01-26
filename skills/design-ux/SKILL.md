@@ -36,10 +36,11 @@ Each design system produces:
 
 ## Design Principles
 
-All work must follow design principles from reference files:
-- [Design Principles](./reference/design-principles.md) - Core UX principles (Rams, Norman, Laws of UX)
-- [UX Passes](./reference/ux-passes.md) - 6-pass critique framework
-- [Component Specs](./reference/component-specs.md) - Component patterns and domain packs
+All work must follow design principles from reference skills:
+- **applying-design-principles** - Core UX principles (Rams, Norman, Laws of UX)
+- **critiquing-designs** - 6-pass critique framework
+- **building-components** - Component patterns and domain packs
+- **differentiating-designs** - Craft knowledge for intentionally differentiated designs
 
 **Key requirements:**
 - Touch targets: 48x48px minimum
@@ -47,21 +48,37 @@ All work must follow design principles from reference files:
 - Spacing: 8px base scale only
 - Apply Laws of UX (Fitts, Hick, Miller, Jakob, Von Restorff)
 
+**Craft requirements (from differentiating-designs):**
+- Establish domain grounding before generation
+- Reject obvious defaults explicitly
+- Use product-specific token names (e.g., `--ink` not `--gray-700`)
+- Pass the four pre-delivery tests: swap, squint, signature, token
+
 ## Agents
 
-This skill coordinates two specialized agents:
+This skill coordinates three specialized agents:
+
+**Explorer Agent** (`design-ux-explorer`) - NEW, MANDATORY
+- Establishes domain grounding and design intent before any generation
+- Produces `domain-spec.json` with intent, domain concepts, signature, defaults to reject
+- Must run FIRST before builder or critic
+- Skills: differentiating-designs
 
 **Builder Agent** (`design-ux-builder`)
 - Creates and iterates on design systems and experiences
+- Reads `domain-spec.json` to apply domain grounding during generation
 - Generates tokens, components, and states
 - Uses Playwright for visual feedback
-- Follows design principles
+- Skills: applying-design-principles, building-components
 
 **Critic Agent** (`design-ux-critic`)
-- Evaluates designs using 6-pass framework
+- Evaluates designs using 6-pass framework plus craft tests
+- Reads `domain-spec.json` to check domain alignment
 - Checks design principle compliance
+- Runs four craft tests: swap, squint, signature, token
 - Provides structured, prioritized critique
 - Uses Playwright for visual analysis
+- Skills: differentiating-designs, critiquing-designs, applying-design-principles
 
 ## Conversational Interface
 
@@ -315,31 +332,38 @@ def design_ux_workflow():
     # 1. Establish what we're working on
     target = _get_target()  # new DS, existing DS, new experience, etc.
 
-    # 2. Set exploration parameters
+    # 2. EXPLORER PHASE (MANDATORY - runs first)
+    # Establishes domain grounding before any generation
+    domain_spec = _invoke_explorer_agent(target)
+    # Produces: domain-spec.json with intent, domain, signature, defaults to reject
+
+    # 3. Set exploration parameters
     params = _get_exploration_params()
     # - iterations_before_checkpoint
     # - parallel_directions (1..N)
     # - max_iterations
 
-    # 3. Spawn explorations (parallel if N > 1)
+    # 4. Spawn explorations (parallel if N > 1)
     for direction in params.directions:
-        _run_exploration(target, direction, params, run_in_background=True)
+        _run_exploration(target, direction, params, domain_spec, run_in_background=True)
 
-    # 4. Poll and present completions, handle human commands
+    # 5. Poll and present completions, handle human commands
     _monitor_and_respond()
 
 
-def _run_exploration(target, direction, params):
+def _run_exploration(target, direction, params, domain_spec):
     """
     Single exploration loop: builder-critic cycle until done.
     Called with run_in_background=True for parallel explorations.
+
+    Both builder and critic read domain_spec for domain grounding.
     """
     _setup_exploration_folder(target, direction)
 
     iterations = 0
     while iterations < params.max_iterations:
-        _invoke_builder_agent()
-        _invoke_critic_agent()
+        _invoke_builder_agent(domain_spec)  # Reads domain-spec.json
+        _invoke_critic_agent(domain_spec)   # Reads domain-spec.json, runs craft tests
         iterations += 1
 
         if iterations % params.iterations_before_checkpoint == 0:
@@ -439,13 +463,14 @@ cd v3-bold && python -m http.server 8003 &
 
 **Always use the correct port for each exploration** - never navigate to the wrong port or you'll critique the wrong design system.
 
-### Reference Files
+### Reference Skills
 
-**Before generating or critiquing, read these skill reference files:**
+**Agents automatically load their assigned skills. The skills contain:**
 
-1. [Design Principles](./reference/design-principles.md) - Core UX principles (Rams, Norman, Laws of UX)
-2. [UX Passes](./reference/ux-passes.md) - 6-pass critique framework
-3. [Component Specs](./reference/component-specs.md) - Component patterns and domain packs
+1. **applying-design-principles** - Core UX principles (Rams, Norman, Laws of UX)
+2. **critiquing-designs** - 6-pass critique framework
+3. **building-components** - Component patterns and domain packs
+4. **differentiating-designs** - Craft knowledge for intentional differentiation
 
 **For additional context, optionally read:**
 - External design notes if user provides paths
@@ -918,7 +943,7 @@ The template uses placeholder markers that get replaced with actual data:
 ### Component Rendering
 
 For each component pack selected:
-1. Read [component specs](./reference/component-specs.md)
+1. The builder agent loads the **building-components** skill automatically
 2. Generate HTML for each component with all states
 3. Insert into the Components tab section
 
@@ -1107,7 +1132,7 @@ This allows editing tokens.css and seeing changes on refresh.
 
 ## Critique Framework (6 Passes)
 
-When Playwright is available, run visual critique after generation. See [UX Passes](./reference/ux-passes.md) for full details.
+When Playwright is available, run visual critique after generation. The critic agent loads the **critiquing-designs** skill which contains the full 6-pass framework.
 
 ### Pass Summary
 1. **Mental Model** - Do token names communicate intent?

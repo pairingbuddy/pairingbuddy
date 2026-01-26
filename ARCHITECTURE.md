@@ -82,7 +82,7 @@ The system includes human review points to prevent:
 ```
 pairingbuddy/
 ├── .claude-plugin/plugin.json    # Register agents and skills
-├── agents/                        # Plugin agents (18 total)
+├── agents/                        # Plugin agents (19 TDD + 3 design-ux)
 │   ├── curate-guidance.md
 │   ├── classify-task.md
 │   ├── enumerate-scenarios-and-test-cases.md
@@ -105,7 +105,7 @@ pairingbuddy/
 │   ├── agent-config.yaml         # Agent structure requirements (single source of truth)
 │   ├── skill-config.yaml         # Skill + frontmatter requirements
 │   ├── test-terminology.yaml     # Shared definitions for test-related agents
-│   └── schemas/                  # JSON schemas for state contracts (21 total)
+│   └── schemas/                  # JSON schemas for state contracts (22 total)
 ├── skills/                        # Skills (run in main context)
 │   ├── coding/                   # Orchestrator skill
 │   ├── using-pairingbuddy/       # Entry point skill
@@ -522,6 +522,9 @@ implement-tests:
 | setup-spike | SPIKE | Clarify goal, determine exploration units | - |
 | explore-spike-unit | SPIKE | Explore one unit, capture findings | - |
 | document-spike | SPIKE | Document all findings, persist to human-specified location | - |
+| design-ux-explorer | DESIGN | Establish domain grounding and design intent | differentiating-designs |
+| design-ux-builder | DESIGN | Create and iterate on design systems | applying-design-principles, building-components |
+| design-ux-critic | DESIGN | Evaluate designs using 6-pass framework | differentiating-designs, critiquing-designs, applying-design-principles |
 
 **Color coding follows TDD phases:**
 - Cyan: Setup/classification
@@ -536,12 +539,17 @@ implement-tests:
 | Skill | Category | Purpose |
 |-------|----------|---------|
 | coding | Orchestrator | Main workflow orchestration |
+| design-ux | Orchestrator | Design system and UX workflow orchestration |
 | using-pairingbuddy | Entry | Entry point, establishes mandatory workflows |
 | writing-tests | Reference | Test patterns, FIRST principles, anti-patterns |
 | writing-code | Reference | SOLID, Clean Code, minimal code approach |
 | refactoring-code | Reference | Code smells, refactoring techniques |
 | enumerating-tests | Reference | Test scenario enumeration patterns |
 | committing-changes | Reference | Git commit best practices |
+| differentiating-designs | Reference | Craft knowledge for intentional differentiation |
+| applying-design-principles | Reference | Laws of UX, Norman's principles, specifications |
+| critiquing-designs | Reference | 6-pass UX critique framework |
+| building-components | Reference | Component patterns and domain packs |
 
 **Reference skills provide progressive disclosure:**
 ```
@@ -554,7 +562,7 @@ skills/writing-tests/
 
 ### JSON Schemas
 
-21 JSON schemas define state contracts (all in `contracts/schemas/`):
+22 JSON schemas define state contracts (all in `contracts/schemas/`):
 - task.schema.json
 - task-classification.schema.json
 - test-config.schema.json
@@ -576,6 +584,7 @@ skills/writing-tests/
 - current-unit.schema.json
 - doc-config.schema.json
 - docs-updated.schema.json
+- domain-spec.schema.json
 
 ---
 

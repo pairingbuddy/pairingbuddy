@@ -1,10 +1,41 @@
-# Component Specifications
+# Component Specifications - Detailed Reference
 
-This file defines core components and domain packs for the design-ux skill.
+Full specifications for all core components and domain packs.
 
-## Core Components (Always Generated)
+## Contents
 
-These are universal - every design system needs them.
+- [Core Components](#core-components)
+  - [Button](#button)
+  - [Input](#input)
+  - [Select / Dropdown](#select--dropdown)
+  - [Checkbox](#checkbox)
+  - [Radio](#radio)
+  - [Toggle / Switch](#toggle--switch)
+  - [Card](#card)
+  - [Badge / Tag](#badge--tag)
+  - [Toast / Notification](#toast--notification)
+  - [Loading](#loading)
+  - [Empty State](#empty-state)
+  - [Avatar](#avatar)
+  - [Link](#link)
+  - [Label](#label)
+  - [Text Area](#text-area)
+  - [Menu / Dropdown Menu](#menu--dropdown-menu)
+  - [Tabs / Tab Bar](#tabs--tab-bar)
+  - [Button Group](#button-group)
+  - [Breadcrumb](#breadcrumb)
+  - [Progress Bar](#progress-bar)
+  - [Progress Circle](#progress-circle)
+  - [Carousel](#carousel)
+  - [Table](#table)
+- [Domain Packs](#domain-packs)
+  - [SaaS / Dashboard Pack](#saas--dashboard-pack)
+  - [E-commerce Pack](#e-commerce-pack)
+  - [Marketing / Landing Pack](#marketing--landing-pack)
+  - [Forms-heavy Pack](#forms-heavy-pack)
+  - [Mobile-first Pack](#mobile-first-pack)
+
+## Core Components
 
 ### Button
 
@@ -291,15 +322,13 @@ These are universal - every design system needs them.
 - Column resizing (optional)
 - Sticky header
 
----
-
 ## Domain Packs
 
 ### SaaS / Dashboard Pack
 
 *Extends core Table, Tabs, Progress Bar, Breadcrumb with additional features.*
 
-**Data Table Extensions** (adds to core Table):
+**Data Table Extensions:**
 - Pagination component
 - Column sorting indicators
 - Bulk action bar
@@ -453,48 +482,3 @@ These are universal - every design system needs them.
 - Sheet container
 - Action items
 - Cancel button
-
----
-
-## Component Token Usage Examples
-
-### Button
-```
-default: bg-action text-on-action hover:bg-action-hover
-secondary: bg-surface-primary text-body hover:bg-surface-primary/80
-ghost: hover:bg-surface-primary hover:text-heading
-destructive: bg-error text-on-action hover:bg-error/90
-outline: border border-default bg-transparent hover:bg-surface-primary
-```
-
-### Input
-```
-base: border-default bg-surface-page text-body
-focus: border-focus ring-2 ring-focus/20
-error: border-error text-error
-disabled: bg-surface-primary/50 cursor-not-allowed
-```
-
-### Card
-```
-base: bg-surface-page border-default rounded-lg shadow-card
-interactive: hover:shadow-soft hover:-translate-y-0.5
-selected: border-action
-```
-
-### Badge
-```
-default: bg-neutral-100 text-neutral-700
-primary: bg-action/10 text-action
-success: bg-success/10 text-success
-warning: bg-warning/10 text-warning
-error: bg-error/10 text-error
-```
-
-### Toast
-```
-success: bg-success/10 border-success/20 text-success
-error: bg-error/10 border-error/20 text-error
-warning: bg-warning/10 border-warning/20 text-warning
-info: bg-action/10 border-action/20 text-action
-```

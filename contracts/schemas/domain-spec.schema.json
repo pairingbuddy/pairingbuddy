@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Domain Specification",
+  "description": "Output of design-ux-explorer agent - domain grounding and design intent before generation",
+  "type": "object",
+  "required": ["intent", "domain", "defaults_to_reject"],
+  "properties": {
+    "intent": {
+      "type": "object",
+      "required": ["who", "what", "feel"],
+      "properties": {
+        "who": {
+          "type": "string",
+          "description": "Specific description of the end user"
+        },
+        "what": {
+          "type": "string",
+          "description": "The actual verb/action they must accomplish"
+        },
+        "feel": {
+          "type": "string",
+          "description": "Specific emotional descriptors (not 'clean and modern')"
+        }
+      }
+    },
+    "domain": {
+      "type": "object",
+      "required": ["concepts", "colors", "signature"],
+      "properties": {
+        "concepts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 5,
+          "description": "5+ metaphors from the product's world"
+        },
+        "colors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 5,
+          "description": "5+ colors naturally existing in this domain"
+        },
+        "signature": {
+          "type": "string",
+          "description": "One unique visual/structural element for THIS product"
+        }
+      }
+    },
+    "defaults_to_reject": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 3,
+      "description": "Three obvious choices we explicitly won't make"
+    },
+    "token_naming_suggestions": {
+      "type": "object",
+      "description": "Examples of domain-specific token names",
+      "properties": {
+        "example": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

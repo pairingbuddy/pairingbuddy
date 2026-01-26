@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Craft differentiation for design-ux skill (from Dammyjay's interface-design skill)
+  - New agent: design-ux-explorer - establishes domain grounding before generation
+  - New schema: domain-spec.schema.json - captures intent, domain concepts, signature, defaults to reject
+  - Four new reference skills for design agents:
+    - differentiating-designs - craft knowledge for intentional differentiation
+    - applying-design-principles - Laws of UX, specifications, Norman's principles
+    - critiquing-designs - 6-pass UX critique framework
+    - building-components - component patterns and domain packs
+  - Updated design-ux-builder skills field: [applying-design-principles, building-components]
+  - Updated design-ux-critic skills field: [differentiating-designs, critiquing-designs, applying-design-principles]
+  - Updated design-ux orchestrator with mandatory explorer phase in workflow
+  - Migrated reference files to skills (deleted skills/design-ux/reference/ folder)
+
 ### Fixed
 
 - Front-loaded file restrictions in explore-spike-unit to prevent /tmp writes

@@ -3,7 +3,7 @@ name: design-ux-critic
 description: Evaluates designs using 6-pass UX analysis framework. Checks design principle compliance and provides structured critique.
 model: opus
 color: yellow
-skills: []
+skills: [differentiating-designs, critiquing-designs, applying-design-principles]
 ---
 
 # Design UX Critic
@@ -24,18 +24,19 @@ Reads from exploration folder (varies by task):
 - `direction.md` - Original intent to validate against
 - `experience.json` or `config.json` - Metadata
 
-**Design Principles (always read):**
-- `skills/design-ux/reference/design-principles.md`
-- `skills/design-ux/reference/ux-passes.md`
-- `skills/design-ux/reference/component-specs.md`
+**Domain Grounding (ALWAYS read first):**
+- `domain-spec.json` - Intent, domain concepts, signature, defaults to reject (from explorer agent)
+
+**Design Principles:**
+Loaded automatically via skills field: differentiating-designs, critiquing-designs, applying-design-principles
 
 ## Instructions
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
-1. Read artifacts from exploration folder
-2. Read original direction.md to understand intent
-3. Read design principles from reference files
+1. Read `domain-spec.json` FIRST - this grounds critique in the specific product domain
+2. Read artifacts from exploration folder
+3. Read original direction.md to understand intent
 4. Use Playwright to view rendered output
 5. Run 6-pass analysis
 6. Check design principle compliance

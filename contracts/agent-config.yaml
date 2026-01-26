@@ -33,6 +33,7 @@ schemas:
   - docs-updated.schema.json
   - design-artifacts.schema.json
   - design-critique.schema.json
+  - domain-spec.schema.json
 
 # =============================================================================
 # Agent definitions
@@ -609,7 +610,7 @@ agents:
   design-ux-builder:
     color: blue
     model: opus
-    skills: []
+    skills: [applying-design-principles, building-components]
     inputs: {}
     outputs:
       design_artifacts:
@@ -625,12 +626,28 @@ agents:
   design-ux-critic:
     color: yellow
     model: opus
-    skills: []
+    skills: [differentiating-designs, critiquing-designs, applying-design-principles]
     inputs: {}
     outputs:
       critique:
         schema: design-critique.schema.json
         file: critique.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
+  design-ux-explorer:
+    color: cyan
+    model: opus
+    skills: [differentiating-designs]
+    inputs: {}
+    outputs:
+      domain_spec:
+        schema: domain-spec.schema.json
+        file: domain-spec.json
     sections:
       - heading: "## Purpose"
       - heading: "## Input"

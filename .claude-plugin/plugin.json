@@ -32,6 +32,7 @@
     "./agents/explore-spike-unit.md",
     "./agents/document-spike.md",
     "./agents/design-ux-builder.md",
-    "./agents/design-ux-critic.md"
+    "./agents/design-ux-critic.md",
+    "./agents/design-ux-explorer.md"
   ]
 }
