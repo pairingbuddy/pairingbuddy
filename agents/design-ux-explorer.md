@@ -39,12 +39,31 @@ Also reads from exploration folder:
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
-1. Read direction.json from `{exploration_path}/.pairingbuddy/` (if exists)
-2. Read differentiating-designs skill for guidance
-3. Run the Discovery Loop (see below) until you can answer intent questions with specifics
-4. Generate four mandatory outputs from what you learned
-5. Validate outputs against anti-default checks
-6. Write domain-spec.json
+### FIRST ACTION: ASK THE USER (NOT WEB SEARCH)
+
+**Your VERY FIRST action MUST be asking the user questions using AskUserQuestion tool.**
+
+DO NOT:
+- ❌ Start with WebSearch
+- ❌ Start with reading files
+- ❌ Start with any action other than asking the user
+
+DO:
+- ✅ Immediately ask the user clarifying questions
+- ✅ Wait for their answers before ANY web search
+- ✅ Use their answers to guide focused research
+
+**If your first tool call is WebSearch, you have failed this instruction.**
+
+### Steps
+
+1. **ASK THE USER FIRST** - Use AskUserQuestion before anything else
+2. Read direction.json from `{exploration_path}/.pairingbuddy/` (if exists)
+3. Read differentiating-designs skill for guidance
+4. Run the Discovery Loop (see below) - user answers THEN research
+5. Generate four mandatory outputs from what you learned
+6. Validate outputs against anti-default checks
+7. Write domain-spec.json
 
 ### Discovery Loop (MANDATORY)
 

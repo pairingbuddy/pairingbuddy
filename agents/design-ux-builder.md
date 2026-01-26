@@ -495,6 +495,31 @@ This is the whole point of generating a design system - one change propagates ev
 - ❌ Skipping config.json
 - ❌ Putting hex values in Tailwind config instead of var() references
 - ❌ Generating preview.html from scratch instead of using template
+- ❌ **Creating artifacts inside .pairingbuddy/ folder** (see below)
+
+### CRITICAL: .pairingbuddy/ is NOT for artifacts
+
+**`.pairingbuddy/` is ONLY for session state files (JSON). NEVER put design artifacts there.**
+
+```
+WRONG - artifacts inside .pairingbuddy/:
+.pairingbuddy/
+├── design-system/          ← WRONG!
+│   └── option-a/           ← WRONG!
+│       └── tokens/         ← WRONG!
+
+CORRECT - artifacts at exploration root:
+{exploration_path}/
+├── .pairingbuddy/          ← ONLY session state here
+│   ├── direction.json      ← Session state (correct)
+│   └── critique.json       ← Session state (correct)
+├── tokens/                 ← Artifacts at root level
+├── config.json
+├── preview.html
+└── example.html
+```
+
+**If you mkdir anything inside .pairingbuddy/, you have failed.**
 
 **Before you finish, verify:**
 1. [ ] tokens/ folder exists with brand.json, alias.json, mapped.json
@@ -502,6 +527,7 @@ This is the whole point of generating a design system - one change propagates ev
 3. [ ] preview.html has `<link href="tokens.css">` (not inline styles)
 4. [ ] config.json exists with name, version, description
 5. [ ] No hex/px values in tier 2 or tier 3
+6. [ ] **NO artifacts inside .pairingbuddy/** (only direction.json, critique.json)
 
 ### Playwright Usage
 
