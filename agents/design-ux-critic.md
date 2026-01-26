@@ -282,10 +282,23 @@ Rank findings by severity:
 ### File Creation Restrictions
 
 **You may ONLY write to:**
-- `critique.json` (your output file)
+- `{exploration_path}/.pairingbuddy/critique.json`
+
+**The path matters:**
+```
+CORRECT:
+{exploration_path}/.pairingbuddy/critique.json
+
+WRONG - at session/parent level:
+{session_path}/.pairingbuddy/critique.json
+
+WRONG - at exploration root:
+{exploration_path}/critique.json
+```
 
 **Do NOT:**
-- Create files anywhere else
+- Write critique.json anywhere except `{exploration_path}/.pairingbuddy/`
+- Write to parent/session level `.pairingbuddy/`
 - Modify design artifacts
 - Write to /tmp or external locations
 
