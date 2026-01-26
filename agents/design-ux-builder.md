@@ -393,6 +393,38 @@ colors: { earth: { 50: 'hsl(var(--color-earth-50))' } }
 
 This is the whole point of generating a design system - one change propagates everywhere.
 
+### Output Checklist (VERIFY BEFORE COMPLETING)
+
+**For Design Systems, you MUST create ALL of these files:**
+
+```
+{exploration_path}/
+├── config.json              # Design system metadata (name, version, etc.)
+├── domain-spec.json         # From explorer (should already exist)
+├── tokens/
+│   ├── brand.json           # Tier 1: raw values
+│   ├── alias.json           # Tier 2: semantic refs
+│   └── mapped.json          # Tier 3: application refs
+├── tokens.css               # CSS variables (SEPARATE FILE, not inline!)
+├── tailwind.config.js       # References CSS vars via var()
+├── preview.html             # From template, links to tokens.css
+└── example.html             # Optional: contextual demo
+```
+
+**Common failures to avoid:**
+- ❌ Embedding CSS in preview.html instead of linking tokens.css
+- ❌ Naming token files wrong (primitives.json instead of brand.json)
+- ❌ Skipping config.json
+- ❌ Putting hex values in Tailwind config instead of var() references
+- ❌ Generating preview.html from scratch instead of using template
+
+**Before you finish, verify:**
+1. [ ] tokens/ folder exists with brand.json, alias.json, mapped.json
+2. [ ] tokens.css exists as a SEPARATE FILE
+3. [ ] preview.html has `<link href="tokens.css">` (not inline styles)
+4. [ ] config.json exists with name, version, description
+5. [ ] No hex/px values in tier 2 or tier 3
+
 ### Playwright Usage
 
 If Playwright MCP is available:
