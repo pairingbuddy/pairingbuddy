@@ -164,7 +164,7 @@ Loaded automatically via skills field: applying-design-principles, building-comp
 
 ### Applying domain-spec.json (MANDATORY)
 
-**domain-spec.json contains the soul of this design. USE IT.**
+**domain-spec.json contains the soul of this design. USE IT FOR EVERYTHING - not just token names.**
 
 ```json
 {
@@ -181,17 +181,19 @@ Loaded automatically via skills field: applying-design-principles, building-comp
 
 **How to apply each section:**
 
-| domain-spec.json | How to apply |
-|------------------|--------------|
-| `intent.feel` | Drives typography, spacing density, color temperature |
-| `domain.colors` | Becomes your brand color palette (NOT generic blue/gray) |
-| `domain.concepts` | Influences component naming and visual metaphors |
-| `domain.signature` | Must appear visibly in the design (example.html especially) |
-| `defaults_to_reject` | Explicitly avoid these - if you use them, you've failed |
-| `token_naming_suggestions` | Use these names! `--soil` not `--brown-500` |
+| domain-spec.json | Token Impact | Visual Impact |
+|------------------|--------------|---------------|
+| `intent.who` | - | Layout density, information hierarchy, touch target sizing |
+| `intent.what` | - | Primary action prominence, workflow structure |
+| `intent.feel` | - | Typography choice, spacing rhythm, animation style, depth strategy |
+| `domain.colors` | Brand palette names | Color temperature, saturation levels |
+| `domain.concepts` | Semantic token names | **Component shapes, layout structure, visual metaphors** |
+| `domain.signature` | Signature token | **Actual visible component/pattern you can point to** |
+| `defaults_to_reject` | - | **What NOT to do - actively design around these** |
 
-**Token naming examples:**
+**Two types of application - BOTH are required:**
 
+**1. Token Naming (Necessary but not sufficient):**
 ```css
 /* GENERIC (FAIL) */
 --color-primary-500: #8B4513;
@@ -204,7 +206,22 @@ Loaded automatically via skills field: applying-design-principles, building-comp
 --text-earth: var(--color-soil-700);
 ```
 
-**If your token names could belong to ANY product, you have failed.**
+**2. Visual Expression (The part most builders miss):**
+
+From `domain.concepts: ["crop rotation", "weather patterns", "soil quality"]`:
+- **Crop rotation** → Cyclic navigation, seasonal phases in UI
+- **Weather patterns** → Gradient backgrounds, atmospheric depth, status colors
+- **Soil quality** → Grounded layouts, heavy bottom elements, stable footers
+
+From `defaults_to_reject: ["generic blue primary", "standard card grid"]`:
+- **NOT** → Blue action buttons. USE → Earthy action colors from domain
+- **NOT** → 3-column card grid. USE → Field-plot layout or horizon bands
+
+From `domain.signature: "field boundary visualization"`:
+- **NOT** → Just a token named `--field-border`
+- **YES** → Actual dashed-border component with corner markers, used throughout
+
+**If your visual output looks like "a generic app with brown colors" instead of "a farming app", you have only done half the work.**
 
 ### Design System Mode
 
@@ -352,14 +369,204 @@ Examples that trigger requirement:
 - "inventory management" → REQUIRED
 - "abstract design system with no context" → optional
 
-Generate example.html using template at `skills/design-ux/templates/example-template.html`:
-- Demonstrates the design system in real-world context
-- Includes dark mode toggle (floating button, bottom-right)
-- Uses the same CSS variables as preview.html
-- **Shows the domain.signature element from domain-spec.json**
-- **Uses domain vocabulary in UI copy** (not lorem ipsum)
+**example.html is THE MOST IMPORTANT FILE for differentiation.** Preview.html shows tokens; example.html shows the design system BEING the product.
 
-**example.html is where differentiation becomes visible.** Without it, you're just showing abstract tokens that look like every other design system.
+Generate example.html using template at `skills/design-ux/templates/example-template.html`:
+
+**Required elements in example.html:**
+
+1. **Domain-specific layout** (NOT standard card grid)
+   - Use layout patterns from Visual Differentiation section
+   - Structure should reflect how users think about their work
+
+2. **Reimagined components** (at least 3)
+   - Custom data visualization using domain metaphor
+   - Status indicators using domain vocabulary
+   - Progress/completion using domain concepts
+
+3. **The signature element** - prominently displayed
+   - If signature is "field boundary visualization" → show fields with boundaries
+   - If signature is "seasonal color shifts" → demonstrate the shift
+   - If signature is "growth progression" → show growth indicator
+
+4. **Domain vocabulary in all UI copy**
+   - NOT: "Dashboard", "Status", "Progress"
+   - YES: "My Fields", "Weather Outlook", "Yield Forecast"
+   - NOT: Lorem ipsum
+   - YES: Realistic farming/domain content
+
+5. **Domain-appropriate data visualization**
+   - NOT: Generic bar chart or pie chart
+   - YES: Field map, weather timeline, growth chart, seasonal cycle
+
+6. **Dark mode support** (floating toggle button, bottom-right)
+
+**Example structure for farming insurance:**
+```html
+<main class="horizon-layout">
+  <!-- Signature: Field boundary visualization -->
+  <section class="field-overview">
+    <div class="field-plot" style="--field-health: 85%">
+      <div class="field-boundary">
+        <span class="boundary-marker nw"></span>
+        <span class="boundary-marker ne"></span>
+        <span class="boundary-marker sw"></span>
+        <span class="boundary-marker se"></span>
+      </div>
+      <h3>North Wheat Field</h3>
+      <div class="yield-indicator"><!-- Growth visualization --></div>
+    </div>
+  </section>
+
+  <!-- Domain data viz: Weather not generic chart -->
+  <section class="weather-outlook">
+    <div class="weather-timeline"><!-- Atmospheric gradient --></div>
+  </section>
+
+  <!-- Domain status: Harvest not "Success" -->
+  <div class="status-harvest">Harvest forecast: Excellent</div>
+</main>
+```
+
+**If example.html could be any SaaS dashboard with different colors, you have failed.**
+
+### Visual Differentiation (MANDATORY - NOT OPTIONAL)
+
+**Token names are necessary but NOT sufficient. The VISUAL OUTPUT must also be differentiated.**
+
+Having `--soil` instead of `--brown-500` means nothing if you still produce a standard card grid with rounded corners and drop shadows. The STRUCTURE, LAYOUT, and COMPONENT DESIGN must also emerge from the domain.
+
+#### 1. Layout Differentiation
+
+**NEVER use standard card grids without domain justification.**
+
+| Domain | Layout Approach |
+|--------|-----------------|
+| Farming | Field-boundary divisions, horizon lines, seasonal sections |
+| Finance | Dense data tables, trading-floor density, ticker-style updates |
+| Healthcare | Clean clinical zones, clear visual separation, calming whitespace |
+| Education | Notebook/journal feel, margins for notes, progressive disclosure |
+
+**Ask:** What physical space does this domain inhabit? How is information arranged THERE?
+
+**Example (farming insurance):**
+```
+WRONG - Standard SaaS layout:
+┌─────────────────────────────────────┐
+│ [Card] [Card] [Card]               │
+│ [Card] [Card] [Card]               │
+└─────────────────────────────────────┘
+
+RIGHT - Field-inspired layout:
+┌─────────────────────────────────────┐
+│ ═══════════ Horizon Band ══════════ │
+│ ┌─────────┐                        │
+│ │ Field 1 │  Weather     Yield     │
+│ └─────────┘  ~~~~~~~~    ▓▓▓▓░░░   │
+│ ┌─────────┐                        │
+│ │ Field 2 │  ~~~~~~~~    ▓▓▓▓▓░   │
+│ └─────────┘                        │
+└─────────────────────────────────────┘
+```
+
+#### 2. Component Reimagining
+
+**Standard components should be reimagined for the domain.**
+
+| Standard | Farming Domain Alternative |
+|----------|---------------------------|
+| Progress bar | Growth indicator (seedling → full plant) |
+| Status badge | Weather-inspired (sunny=good, stormy=warning) |
+| Success toast | Harvest celebration (golden glow animation) |
+| Error state | Drought/blight metaphor |
+| Loading spinner | Seasonal cycle or sun position |
+| Cards | Field plots with boundary styling |
+| Tabs | Seasonal navigation (planting → growing → harvest) |
+
+**The signature element from domain-spec.json MUST appear as an actual component:**
+- If signature is "field boundary visualization" → create a FieldBoundary component
+- If signature is "seasonal color shifts" → implement CSS that changes based on context
+- If signature is "growth progression" → create custom progress indicators
+
+#### 3. Typography Feel
+
+**Typography shapes how products FEEL. Choose intentionally.**
+
+| Feel | Typography Direction |
+|------|---------------------|
+| Grounded/farming | Sturdy serifs, slightly weathered, generous x-height |
+| Clinical/precise | Clean geometric sans, high contrast weights |
+| Warm/friendly | Rounded sans, open counters, relaxed spacing |
+| Technical/dense | Monospace accents, tight tracking, functional |
+| Premium/crafted | Classic serifs, generous spacing, subtle weights |
+
+**From domain-spec.json `intent.feel`:**
+- "Grounded like farming tools" → NOT Inter/system fonts. Consider Source Serif, Merriweather, or sturdy sans like Work Sans
+- "Cold as a terminal" → Monospace-influenced: JetBrains Mono, IBM Plex Mono
+- "Warm as a notebook" → Humanist: Nunito, Lora, Literata
+
+#### 4. Navigation as Product
+
+**Navigation is NOT scaffolding around the product - IT IS the product.**
+
+Navigation teaches users how to think about the space:
+
+| Pattern | Mental Model | When to Use |
+|---------|-------------|-------------|
+| Seasonal/cyclical | Time-based workflow | Agriculture, education terms, fiscal years |
+| Hub-and-spoke | Central command + tools | Dashboards, monitoring |
+| Linear flow | Step-by-step process | Wizards, onboarding |
+| Spatial/map | Geographic or area-based | Field management, floor plans |
+| Hierarchical | Category organization | Content-heavy, documentation |
+
+**Example (farming insurance):**
+```
+WRONG - Generic sidebar:
+Dashboard | Policies | Claims | Settings
+
+RIGHT - Domain-aware navigation:
+My Fields | Growing Season | Claims & Weather | Policy
+    └── reflects how farmers think about their work
+```
+
+#### 5. Visual Metaphors (Beyond Color)
+
+**Colors named after domain concepts is step 1. Step 2 is VISUAL expression.**
+
+| Concept | Visual Expression |
+|---------|-------------------|
+| Growth | Upward motion, expanding elements, green progression |
+| Harvest | Golden accents on completion, gathering/consolidating UI |
+| Weather | Gradient backgrounds that shift, atmospheric depth |
+| Soil/grounding | Heavy bottom borders, earthy textures, stable footers |
+| Seasons | Color temperature shifts, layout density changes |
+
+**Implement at least 3 visual metaphors in example.html:**
+1. A data visualization using domain metaphor (not standard bar chart)
+2. A status system using domain vocabulary
+3. A transition/animation reflecting domain motion
+
+#### 6. Signature Element Implementation
+
+**The signature from domain-spec.json MUST be visibly implemented, not just named.**
+
+```json
+"signature": "field boundary visualization"
+```
+
+**Wrong:** Token named `--field-border` with standard 1px border
+**Right:** Actual component with:
+- Dashed borders like property lines
+- Corner markers like survey stakes
+- Subtle texture suggesting soil/earth
+- Hover state showing field expansion
+
+**Implementation checklist for signature:**
+1. [ ] Create dedicated CSS class or component
+2. [ ] Use in at least 3 places in preview.html
+3. [ ] Feature prominently in example.html
+4. [ ] Include in component documentation
+5. [ ] Signature should be recognizable at a glance
 
 ### Four Mandates Self-Check (RUN BEFORE COMPLETING)
 
@@ -375,11 +582,19 @@ Blur your eyes at preview.html and example.html. Is hierarchy clear without hars
 
 **3. Signature Test**
 Can you point to the `domain.signature` element from domain-spec.json in your output?
-→ If you can't find it, you didn't implement it. Fix it.
+→ If you can't find it visually (not just as a token name), you didn't implement it. Fix it.
 
 **4. Token Test**
 Read your CSS variable names aloud. Do they sound like THIS product's world?
 → If you hear `--gray-700` or `--primary-500`, you defaulted. Fix it.
+
+**5. Layout Test (NEW)**
+Is your layout structure domain-specific or could it be any SaaS dashboard?
+→ If you used standard card grids without domain justification, you defaulted. Fix it.
+
+**6. Component Test (NEW)**
+Did you reimagine any standard components for this domain?
+→ If all your buttons, cards, and status indicators look generic, you defaulted. Fix it.
 
 **Key mandate:** "If another AI, given a similar prompt, would produce substantially the same output - you have failed."
 
