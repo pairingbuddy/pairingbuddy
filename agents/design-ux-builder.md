@@ -327,26 +327,69 @@ All work MUST follow principles from reference files including:
 
 **CRITICAL: Follow the tier chain. Components use MAPPED tokens, not raw values.**
 
+**FORBIDDEN: Magic numbers and hardcoded hex values.**
+
 ```
 Tier 1 (Brand)  →  Tier 2 (Alias)  →  Tier 3 (Mapped)
 --scale-400        --spacing-lg       --button-padding-x
 ```
 
-**Tier 1: Brand** - Raw numeric scale (used for spacing, radius, sizing)
-- `--scale-0`, `--scale-100`, `--scale-200`, ... `--scale-900`
+**Tier 1: Brand** - Raw values (ONLY place hex values appear)
+- `--color-primary-500: #2563eb;` (hex value OK here)
+- `--scale-400: 16px;` (pixel value OK here)
 
-**Tier 2: Alias** - Semantic names referencing brand
-- `--spacing-lg: var(--scale-400)`
-- `--radius-md: var(--scale-200)`
+**Tier 2: Alias** - Semantic names referencing brand via var()
+- `--spacing-lg: var(--scale-400);` (references tier 1)
+- `--text-muted: var(--color-neutral-500);` (references tier 1)
 
-**Tier 3: Mapped** - Component-specific referencing aliases
-- `--button-padding-x: var(--spacing-lg)`
-- `--card-radius: var(--radius-md)`
+**Tier 3: Mapped** - Component-specific referencing aliases via var()
+- `--button-padding-x: var(--spacing-lg);` (references tier 2)
+- `--card-bg: var(--surface-card);` (references tier 2)
 
-**Component CSS uses mapped tokens:**
+### NO MAGIC NUMBERS - Enforcement
+
+**If you write this, you have FAILED:**
 ```css
-.button { padding: var(--button-padding-y) var(--button-padding-x); }
+/* BAD - hardcoded hex in semantic/mapped tier */
+--color-brand-primary: #3a6dbd;
+--color-text-primary: #4a4540;
+background-color: #faf8f6;
 ```
+
+**Correct approach:**
+```css
+/* GOOD - Tier 1 has the hex values */
+--color-sweden-blue-600: #3a6dbd;
+--color-stone-900: #4a4540;
+--color-earth-50: #faf8f6;
+
+/* GOOD - Tier 2/3 reference via var() */
+--color-brand-primary: var(--color-sweden-blue-600);
+--color-text-primary: var(--color-stone-900);
+--surface-page: var(--color-earth-50);
+```
+
+**Tailwind config MUST also reference CSS variables:**
+```javascript
+// BAD - hardcoded hex
+colors: { earth: { 50: '#faf8f6' } }
+
+// GOOD - references CSS variable
+colors: { earth: { 50: 'hsl(var(--color-earth-50))' } }
+```
+
+### Required Output Files
+
+**You MUST generate these files in tokens/ folder:**
+1. `tokens/brand.json` - Tier 1: raw color scales, spacing scale, typography
+2. `tokens/alias.json` - Tier 2: semantic mappings referencing brand
+3. `tokens/mapped.json` - Tier 3: application tokens for light AND dark modes
+
+**Then generate:**
+4. `tokens.css` - CSS variables from all three tiers (hex ONLY in tier 1)
+5. `tailwind.config.js` - References CSS variables, NOT hex values
+
+**If tokens/ folder is missing, you have failed the most basic requirement.**
 
 This is the whole point of generating a design system - one change propagates everywhere.
 
