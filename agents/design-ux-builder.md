@@ -156,11 +156,55 @@ Loaded automatically via skills field: applying-design-principles, building-comp
 1. Read `domain-spec.json` FIRST - this grounds all design decisions in the specific product domain
 2. Read all input files from the exploration folder
 3. Determine mode (design system or experience) from file structure
-4. Plan changes based on direction and critique
+4. **Apply domain-spec.json to EVERY design decision** (see below)
 5. Generate or update artifacts following design principles
 6. Use Playwright to view results (if available)
-7. Self-check against design principles
+7. **Run the Four Mandates self-check** (see below)
 8. Write updated artifacts
+
+### Applying domain-spec.json (MANDATORY)
+
+**domain-spec.json contains the soul of this design. USE IT.**
+
+```json
+{
+  "intent": { "who": "...", "what": "...", "feel": "..." },
+  "domain": {
+    "concepts": ["crop rotation", "weather patterns", "soil quality"],
+    "colors": ["soil browns", "wheat golds", "sky blues"],
+    "signature": "field boundary visualization"
+  },
+  "defaults_to_reject": ["generic blue primary", "standard card grid"],
+  "token_naming_suggestions": { "example": "--soil, --harvest, --field" }
+}
+```
+
+**How to apply each section:**
+
+| domain-spec.json | How to apply |
+|------------------|--------------|
+| `intent.feel` | Drives typography, spacing density, color temperature |
+| `domain.colors` | Becomes your brand color palette (NOT generic blue/gray) |
+| `domain.concepts` | Influences component naming and visual metaphors |
+| `domain.signature` | Must appear visibly in the design (example.html especially) |
+| `defaults_to_reject` | Explicitly avoid these - if you use them, you've failed |
+| `token_naming_suggestions` | Use these names! `--soil` not `--brown-500` |
+
+**Token naming examples:**
+
+```css
+/* GENERIC (FAIL) */
+--color-primary-500: #8B4513;
+--color-neutral-100: #F5F5DC;
+
+/* DOMAIN-SPECIFIC (CORRECT) */
+--color-soil-500: #8B4513;
+--color-wheat-100: #F5F5DC;
+--surface-field: var(--color-wheat-100);
+--text-earth: var(--color-soil-700);
+```
+
+**If your token names could belong to ANY product, you have failed.**
 
 ### Design System Mode
 
@@ -298,12 +342,46 @@ Based on `brand.json` architecture, generate different HTML:
 
 The preview MUST have the tabbed structure. If you generate a single-page preview without tabs, you have failed.
 
-**Example Page (optional):**
+### Example Page (REQUIRED when use case exists)
 
-If direction.json mentions a specific use case (e.g., "farming insurance SaaS"), generate example.html using template at `skills/design-ux/templates/example-template.html`. The example page:
+**If direction.json or domain-spec.json mentions ANY specific context, example.html is REQUIRED.**
+
+Examples that trigger requirement:
+- "farming insurance SaaS" → REQUIRED
+- "Nordic farmer portal" → REQUIRED
+- "inventory management" → REQUIRED
+- "abstract design system with no context" → optional
+
+Generate example.html using template at `skills/design-ux/templates/example-template.html`:
 - Demonstrates the design system in real-world context
 - Includes dark mode toggle (floating button, bottom-right)
 - Uses the same CSS variables as preview.html
+- **Shows the domain.signature element from domain-spec.json**
+- **Uses domain vocabulary in UI copy** (not lorem ipsum)
+
+**example.html is where differentiation becomes visible.** Without it, you're just showing abstract tokens that look like every other design system.
+
+### Four Mandates Self-Check (RUN BEFORE COMPLETING)
+
+Before writing final output, run these checks. If ANY fails, iterate.
+
+**1. Swap Test**
+Would swapping the typeface for Inter matter? Would a standard dashboard template feel different?
+→ If NO, you defaulted. Fix it.
+
+**2. Squint Test**
+Blur your eyes at preview.html and example.html. Is hierarchy clear without harsh jumps?
+→ If harsh borders or dramatic surface jumps, you defaulted. Fix it.
+
+**3. Signature Test**
+Can you point to the `domain.signature` element from domain-spec.json in your output?
+→ If you can't find it, you didn't implement it. Fix it.
+
+**4. Token Test**
+Read your CSS variable names aloud. Do they sound like THIS product's world?
+→ If you hear `--gray-700` or `--primary-500`, you defaulted. Fix it.
+
+**Key mandate:** "If another AI, given a similar prompt, would produce substantially the same output - you have failed."
 
 ### Experience Mode
 
