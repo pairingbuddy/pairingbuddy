@@ -41,10 +41,67 @@ Also reads from exploration folder:
 
 1. Read direction.json from `{exploration_path}/.pairingbuddy/` (if exists)
 2. Read differentiating-designs skill for guidance
-3. Answer the three intent questions with specifics
-4. Explore product domain to generate four mandatory outputs
+3. Run the Discovery Loop (see below) until you can answer intent questions with specifics
+4. Generate four mandatory outputs from what you learned
 5. Validate outputs against anti-default checks
 6. Write domain-spec.json
+
+### Discovery Loop (MANDATORY)
+
+**Stop Rule:** If you cannot answer "who, what, feel" with specifics, STOP. Ask the user. Do not guess. Do not default.
+
+The discovery loop iterates between asking the user and web research:
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  START                              │
+│  Can you answer who/what/feel with specifics?       │
+└─────────────────┬───────────────────────────────────┘
+                  │
+         NO ──────┴────── YES → Proceed to outputs
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────┐
+│            ASK THE USER                             │
+│  - Who exactly will use this?                       │
+│  - What specific task do they need to accomplish?   │
+│  - What does their world look like?                 │
+│  - What existing tools/processes do they use?       │
+│  - What should this feel like to them?              │
+└─────────────────┬───────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────┐
+│           WEB RESEARCH                              │
+│  Based on user answers, search to deepen:           │
+│  - Domain vocabulary and concepts                   │
+│  - Physical/visual world of the domain              │
+│  - Competitor interfaces (to consciously differ)    │
+│  - Domain-specific color palettes                   │
+│  - Professional tools users already know            │
+└─────────────────┬───────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────┐
+│        FOLLOW-UP QUESTIONS                          │
+│  Web research often reveals NEW questions:          │
+│  - "I see farmers use X terminology - is that       │
+│     relevant to your users?"                        │
+│  - "Competitor Y does Z - should we differ?"        │
+│  - "The domain has seasonal cycles - does that      │
+│     affect your users' workflow?"                   │
+└─────────────────┬───────────────────────────────────┘
+                  │
+                  ▼
+          Loop back to "Can you answer...?"
+```
+
+**Key principles:**
+- ASK FIRST, then research. User context focuses your searches.
+- Research DEEPENS understanding, doesn't replace user input.
+- Each research round should generate follow-up questions for the user.
+- Iterate 2-3 times until you have rich, specific answers.
+- Never write domain-spec.json until you have genuine specifics.
 
 ### Intent-First Framework
 
