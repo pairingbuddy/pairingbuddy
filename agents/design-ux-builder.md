@@ -14,22 +14,135 @@ Creates and iterates on design systems and user experiences. Generates design to
 
 ## Input
 
-Reads from exploration folder (varies by task):
+Reads from `.pairingbuddy/direction.json`:
 
-**For Design Systems:**
-- `direction.md` - Human's brief, constraints, feedback
-- `critique.json` - Latest critique findings (if exists)
-- `config.json` - Design system metadata
-- Current tokens/ and components/
+```json
+{
+  "brief": "string",
+  "constraints": ["array of strings"],
+  "feedback_history": [
+    {
+      "iteration": 1,
+      "feedback": "string",
+      "timestamp": "ISO 8601 datetime"
+    }
+  ]
+}
+```
 
-**For Experiences:**
-- `direction.md` - Human's brief, constraints, feedback
-- `critique.json` - Latest critique findings (if exists)
-- `experience.json` - Metadata and design system reference
-- Current states/ and flow.json
+Reads from `exploration-folder/domain-spec.json`:
 
-**Domain Grounding (ALWAYS read first):**
-- `domain-spec.json` - Intent, domain concepts, signature, defaults to reject (from explorer agent)
+```json
+{
+  "intent": {
+    "who": "string",
+    "what": "string",
+    "feel": "string"
+  },
+  "domain": {
+    "concepts": ["array"],
+    "colors": ["array"],
+    "signature": "string"
+  },
+  "defaults_to_reject": ["array"],
+  "token_naming_suggestions": {
+    "example": "string",
+    "rationale": "string"
+  }
+}
+```
+
+Reads from `.pairingbuddy/critique.json` (optional):
+
+```json
+{
+  "iteration": 1,
+  "timestamp": "ISO 8601 datetime",
+  "passes": {
+    "mental_model": {
+      "score": 8,
+      "findings": ["array"],
+      "what_works": ["array"]
+    },
+    "information_architecture": {
+      "score": 7,
+      "findings": ["array"],
+      "what_works": ["array"]
+    },
+    "affordances": {
+      "score": 9,
+      "findings": ["array"],
+      "what_works": ["array"]
+    },
+    "cognitive_load": {
+      "score": 8,
+      "findings": ["array"],
+      "what_works": ["array"]
+    },
+    "state_design": {
+      "score": 7,
+      "findings": ["array"],
+      "what_works": ["array"]
+    },
+    "flow_integrity": {
+      "score": 8,
+      "findings": ["array"],
+      "what_works": ["array"]
+    }
+  },
+  "principle_violations": [
+    {
+      "principle": "string",
+      "severity": "critical|high|medium|low",
+      "description": "string",
+      "location": "string"
+    }
+  ],
+  "priority_issues": [
+    {
+      "severity": "critical|high|medium|low",
+      "category": "string",
+      "description": "string",
+      "suggestion": "string"
+    }
+  ],
+  "overall_assessment": "string",
+  "ready_for": "iteration|human_review|handoff"
+}
+```
+
+Reads from `exploration-folder/config.json` (optional, for Design Systems):
+
+```json
+{
+  "name": "string",
+  "version": "string",
+  "description": "string",
+  "personality": ["array"],
+  "primary_color": "string",
+  "component_packs": ["array"],
+  "created": "ISO 8601 datetime",
+  "updated": "ISO 8601 datetime"
+}
+```
+
+Reads from `exploration-folder/experience.json` (optional, for Experiences):
+
+```json
+{
+  "name": "string",
+  "design_system_ref": "string",
+  "states": ["array"],
+  "flow": "string",
+  "promoted_components": ["array"],
+  "created": "ISO 8601 datetime",
+  "updated": "ISO 8601 datetime"
+}
+```
+
+Also reads from exploration folder:
+- Current tokens/ and components/ (for design systems)
+- Current states/ and flow.json (for experiences)
 
 **Design Principles:**
 Loaded automatically via skills field: applying-design-principles, building-components
@@ -74,7 +187,7 @@ Generate preview.html using template at `skills/design-ux/templates/preview-temp
 
 **Example Page (optional):**
 
-If direction.md mentions a specific use case (e.g., "farming insurance SaaS"), generate example.html using template at `skills/design-ux/templates/example-template.html`. The example page:
+If direction.json mentions a specific use case (e.g., "farming insurance SaaS"), generate example.html using template at `skills/design-ux/templates/example-template.html`. The example page:
 - Demonstrates the design system in real-world context
 - Includes dark mode toggle (floating button, bottom-right)
 - Uses the same CSS variables as preview.html

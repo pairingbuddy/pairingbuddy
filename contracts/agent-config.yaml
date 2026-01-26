@@ -34,6 +34,11 @@ schemas:
   - design-artifacts.schema.json
   - design-critique.schema.json
   - domain-spec.schema.json
+  - design-direction.schema.json
+  - design-brief.schema.json
+  - design-system-config.schema.json
+  - design-experience-config.schema.json
+  - exploration-status.schema.json
 
 # =============================================================================
 # Agent definitions
@@ -611,7 +616,25 @@ agents:
     color: blue
     model: opus
     skills: [applying-design-principles, building-components]
-    inputs: {}
+    inputs:
+      direction:
+        schema: design-direction.schema.json
+        file: direction.json
+      domain_spec:
+        schema: domain-spec.schema.json
+        file: domain-spec.json
+      critique:
+        schema: design-critique.schema.json
+        file: critique.json
+        optional: true
+      design_system_config:
+        schema: design-system-config.schema.json
+        file: config.json
+        optional: true
+      experience_config:
+        schema: design-experience-config.schema.json
+        file: experience.json
+        optional: true
     outputs:
       design_artifacts:
         schema: design-artifacts.schema.json
@@ -627,7 +650,21 @@ agents:
     color: yellow
     model: opus
     skills: [differentiating-designs, critiquing-designs, applying-design-principles]
-    inputs: {}
+    inputs:
+      direction:
+        schema: design-direction.schema.json
+        file: direction.json
+      domain_spec:
+        schema: domain-spec.schema.json
+        file: domain-spec.json
+      design_system_config:
+        schema: design-system-config.schema.json
+        file: config.json
+        optional: true
+      experience_config:
+        schema: design-experience-config.schema.json
+        file: experience.json
+        optional: true
     outputs:
       critique:
         schema: design-critique.schema.json
@@ -643,7 +680,11 @@ agents:
     color: cyan
     model: opus
     skills: [differentiating-designs]
-    inputs: {}
+    inputs:
+      direction:
+        schema: design-direction.schema.json
+        file: direction.json
+        optional: true
     outputs:
       domain_spec:
         schema: domain-spec.schema.json

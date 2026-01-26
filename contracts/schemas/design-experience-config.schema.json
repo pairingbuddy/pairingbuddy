@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Design Experience Config",
+  "description": "Experience metadata and configuration",
+  "type": "object",
+  "required": ["name", "design_system_ref", "created"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Experience name"
+    },
+    "design_system_ref": {
+      "type": "string",
+      "description": "Reference to the design system this experience uses"
+    },
+    "states": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "States represented in this experience (e.g., loading, error, success)"
+    },
+    "flow": {
+      "type": "string",
+      "description": "User flow description or diagram"
+    },
+    "promoted_components": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Components promoted from the design system for this experience"
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this experience was created"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this experience was last updated"
+    }
+  },
+  "additionalProperties": false
+}

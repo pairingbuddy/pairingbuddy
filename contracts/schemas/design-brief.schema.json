@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Design Brief",
+  "description": "Shared requirements across parallel design explorations",
+  "type": "object",
+  "required": ["title", "requirements", "created"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Brief title or name for this design exploration"
+    },
+    "requirements": {
+      "type": "string",
+      "description": "Detailed requirements and goals for the design"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Design constraints shared across all explorations"
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this brief was created"
+    }
+  },
+  "additionalProperties": false
+}

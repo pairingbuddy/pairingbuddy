@@ -14,18 +14,78 @@ Evaluates designs objectively using 6-pass UX analysis framework. Checks complia
 
 ## Input
 
-Reads from exploration folder (varies by task):
+Reads from `.pairingbuddy/direction.json`:
+
+```json
+{
+  "brief": "string",
+  "constraints": ["array of strings"],
+  "feedback_history": [
+    {
+      "iteration": 1,
+      "feedback": "string",
+      "timestamp": "ISO 8601 datetime"
+    }
+  ]
+}
+```
+
+Reads from `exploration-folder/domain-spec.json`:
+
+```json
+{
+  "intent": {
+    "who": "string",
+    "what": "string",
+    "feel": "string"
+  },
+  "domain": {
+    "concepts": ["array"],
+    "colors": ["array"],
+    "signature": "string"
+  },
+  "defaults_to_reject": ["array"],
+  "token_naming_suggestions": {
+    "example": "string",
+    "rationale": "string"
+  }
+}
+```
+
+Reads from `exploration-folder/config.json` (optional, for Design Systems):
+
+```json
+{
+  "name": "string",
+  "version": "string",
+  "description": "string",
+  "personality": ["array"],
+  "primary_color": "string",
+  "component_packs": ["array"],
+  "created": "ISO 8601 datetime",
+  "updated": "ISO 8601 datetime"
+}
+```
+
+Reads from `exploration-folder/experience.json` (optional, for Experiences):
+
+```json
+{
+  "name": "string",
+  "design_system_ref": "string",
+  "states": ["array"],
+  "flow": "string",
+  "promoted_components": ["array"],
+  "created": "ISO 8601 datetime",
+  "updated": "ISO 8601 datetime"
+}
+```
+
+Also reads from exploration folder:
 
 **Artifacts to evaluate:**
 - For design systems: preview.html, tokens/, components/
 - For experiences: prototype.html, states/, flow.json
-
-**Context:**
-- `direction.md` - Original intent to validate against
-- `experience.json` or `config.json` - Metadata
-
-**Domain Grounding (ALWAYS read first):**
-- `domain-spec.json` - Intent, domain concepts, signature, defaults to reject (from explorer agent)
 
 **Design Principles:**
 Loaded automatically via skills field: differentiating-designs, critiquing-designs, applying-design-principles
@@ -36,7 +96,7 @@ Loaded automatically via skills field: differentiating-designs, critiquing-desig
 
 1. Read `domain-spec.json` FIRST - this grounds critique in the specific product domain
 2. Read artifacts from exploration folder
-3. Read original direction.md to understand intent
+3. Read original direction.json to understand intent
 4. Use Playwright to view rendered output
 5. Run 6-pass analysis
 6. Check design principle compliance

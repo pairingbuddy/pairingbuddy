@@ -14,16 +14,30 @@ Establishes domain grounding and design intent before any generation work. Explo
 
 ## Input
 
-Reads from exploration folder:
+Reads from `.pairingbuddy/direction.json` (optional):
 
-- `direction.md` - Human's brief, context, or constraints
+```json
+{
+  "brief": "string",
+  "constraints": ["array of strings"],
+  "feedback_history": [
+    {
+      "iteration": 1,
+      "feedback": "string",
+      "timestamp": "ISO 8601 datetime"
+    }
+  ]
+}
+```
+
+Also reads from exploration folder:
 - `domain-spec.json` - Previous domain specification (if exists, for iteration)
 
 ## Instructions
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
-1. Read direction.md from exploration folder
+1. Read direction.json from .pairingbuddy folder (if exists)
 2. Read differentiating-designs skill for guidance
 3. Answer the three intent questions with specifics
 4. Explore product domain to generate four mandatory outputs

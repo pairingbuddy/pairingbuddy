@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Design System Config",
+  "description": "Design system metadata and configuration",
+  "type": "object",
+  "required": ["name", "version", "created"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Design system name"
+    },
+    "version": {
+      "type": "string",
+      "description": "Design system version"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the design system"
+    },
+    "personality": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Design personality traits (e.g., modern, playful, professional)"
+    },
+    "primary_color": {
+      "type": "string",
+      "description": "Primary brand color"
+    },
+    "component_packs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of component packs included in this design system"
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this design system was created"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this design system was last updated"
+    }
+  },
+  "additionalProperties": false
+}

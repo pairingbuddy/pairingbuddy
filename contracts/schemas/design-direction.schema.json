@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Design Direction",
+  "description": "Human's brief, constraints, and feedback history for design exploration",
+  "type": "object",
+  "required": ["brief"],
+  "properties": {
+    "brief": {
+      "type": "string",
+      "description": "Human's high-level description of what they want designed"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Design constraints (e.g., accessibility, color requirements)"
+    },
+    "feedback_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["iteration", "feedback", "timestamp"],
+        "properties": {
+          "iteration": {
+            "type": "integer",
+            "description": "Iteration number when feedback was given"
+          },
+          "feedback": {
+            "type": "string",
+            "description": "Human's feedback on the design"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the feedback was provided"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "History of human feedback across iterations"
+    }
+  },
+  "additionalProperties": false
+}

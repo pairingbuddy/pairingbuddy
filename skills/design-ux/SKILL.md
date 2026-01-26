@@ -93,7 +93,7 @@ The design-ux orchestrator can spawn multiple builder-critic loops to explore di
 When the human requests multiple explorations:
 
 1. Create exploration parent folder (e.g., `onboarding-explorations/`)
-2. Write `brief.md` with the human's shared requirements
+2. Write `brief.json` with the human's shared requirements
 3. Create status.json to track all explorations (including server ports):
 ```json
 {
@@ -106,7 +106,7 @@ When the human requests multiple explorations:
 ```
 4. Create subfolder for each exploration (v1-minimal/, v2-playful/, etc.)
 5. Copy design system dependencies to each subfolder if needed
-6. Write direction.md in each subfolder's .pairingbuddy-design-ux/ (brief.md + specific angle)
+6. Write direction.json in each subfolder's .pairingbuddy/ (brief.json + specific angle)
 7. Spawn builder-critic agents with `run_in_background: true` for each exploration
 8. Update status.json as each agent progresses
 
@@ -149,7 +149,7 @@ Human: "v7 is interesting. Continue 4 more iterations, but make the CTAs more pr
 ```
 
 Orchestrator:
-1. Appends to v7's .pairingbuddy-design-ux/direction.md with new guidance
+1. Appends to v7's .pairingbuddy/direction.json with new guidance
 2. Spawns new builder-critic loop with updated direction and run_in_background: true
 3. Updates status.json to track new iterations
 
@@ -290,9 +290,12 @@ State files for design explorations are stored in the exploration folder structu
 
 | Variable | File | Purpose |
 |----------|------|---------|
-| direction | direction.md | Human's brief, constraints, feedback |
+| direction | direction.json | Human's brief, constraints, feedback |
+| brief | brief.json | Shared requirements across parallel explorations |
 | critique | critique.json | Latest critique findings |
 | config | config.json or experience.json | Design system or experience metadata |
+| domain_spec | domain-spec.json | Domain grounding from explorer agent |
+| status | status.json | Parallel exploration tracking |
 
 ## How to Execute This Workflow
 
@@ -332,26 +335,47 @@ def design_ux_workflow():
     # 1. Establish what we're working on
     target = _get_target()  # new DS, existing DS, new experience, etc.
 
-    # 2. EXPLORER PHASE (MANDATORY - runs first)
-    # Establishes domain grounding before any generation
-    domain_spec = _invoke_explorer_agent(target)
-    # Produces: domain-spec.json with intent, domain, signature, defaults to reject
+    # 2. Write direction.json
+    Write(".pairingbuddy/direction.json", {
+        "brief": human_input,
+        "constraints": [],
+        "feedback_history": []
+    })
 
-    # 3. Set exploration parameters
+    # 3. EXPLORER PHASE (MANDATORY - runs first)
+    # Establishes domain grounding before any generation
+    _invoke_explorer_agent(target)
+    # Reads: .pairingbuddy/direction.json (optional)
+    # Writes: exploration-folder/domain-spec.json
+
+    # 4. Set exploration parameters
     params = _get_exploration_params()
     # - iterations_before_checkpoint
     # - parallel_directions (1..N)
     # - max_iterations
 
-    # 4. Spawn explorations (parallel if N > 1)
-    for direction in params.directions:
-        _run_exploration(target, direction, params, domain_spec, run_in_background=True)
+    # 5. For parallel explorations: write brief.json
+    if params.parallel_directions > 1:
+        Write("parent-folder/brief.json", {
+            "title": target,
+            "requirements": shared_requirements,
+            "constraints": [],
+            "created": now()
+        })
+        Write("parent-folder/status.json", {
+            "created": now(),
+            "agents": [{"id": dir_id, "status": "running", ...} for dir_id in params.directions]
+        })
 
-    # 5. Poll and present completions, handle human commands
+    # 6. Spawn explorations (parallel if N > 1)
+    for direction in params.directions:
+        _run_exploration(target, direction, params, run_in_background=(N > 1))
+
+    # 7. Poll and present completions, handle human commands
     _monitor_and_respond()
 
 
-def _run_exploration(target, direction, params, domain_spec):
+def _run_exploration(target, direction, params):
     """
     Single exploration loop: builder-critic cycle until done.
     Called with run_in_background=True for parallel explorations.
@@ -362,8 +386,22 @@ def _run_exploration(target, direction, params, domain_spec):
 
     iterations = 0
     while iterations < params.max_iterations:
-        _invoke_builder_agent(domain_spec)  # Reads domain-spec.json
-        _invoke_critic_agent(domain_spec)   # Reads domain-spec.json, runs craft tests
+        # Builder reads:
+        # - .pairingbuddy/direction.json
+        # - exploration-folder/domain-spec.json
+        # - .pairingbuddy/critique.json (optional)
+        # - exploration-folder/config.json or experience.json
+        # Writes: tokens/, components/, preview.html, etc.
+        _invoke_builder_agent()
+
+        # Critic reads:
+        # - .pairingbuddy/direction.json
+        # - exploration-folder/domain-spec.json
+        # - exploration-folder/config.json or experience.json
+        # - artifacts (preview.html, etc.)
+        # Writes: .pairingbuddy/critique.json
+        _invoke_critic_agent()
+
         iterations += 1
 
         if iterations % params.iterations_before_checkpoint == 0:
@@ -371,7 +409,15 @@ def _run_exploration(target, direction, params, domain_spec):
             response = _get_human_response()  # feedback, kill, continue
             if response == "kill":
                 return
-            _apply_feedback(response)
+            if response.has_feedback:
+                # Append to direction.json
+                direction_data = Read(".pairingbuddy/direction.json")
+                direction_data["feedback_history"].append({
+                    "iteration": iterations,
+                    "feedback": response.feedback,
+                    "timestamp": now()
+                })
+                Write(".pairingbuddy/direction.json", direction_data)
 ```
 
 ## Orchestrator Behavior
@@ -384,9 +430,11 @@ Not applicable - design-ux does not use test-config.json.
 
 The orchestrator manages state files in the exploration folder:
 - Creates exploration folder structure on first run
-- Writes direction.md from human input
-- Passes critique.json between builder and critic
-- Maintains version history in config.json
+- Writes direction.json from human input to .pairingbuddy/
+- Passes critique.json between builder and critic (in .pairingbuddy/)
+- Maintains version history in config.json (in exploration folder)
+- Writes brief.json for parallel explorations (in parent folder)
+- Writes domain-spec.json from explorer agent (in exploration folder)
 
 ### Human Checkpoints
 
