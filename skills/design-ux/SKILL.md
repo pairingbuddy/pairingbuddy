@@ -332,6 +332,23 @@ explorations/
     └── tokens/
 ```
 
+### CRITICAL: Folder Structure is MANDATORY
+
+**This structure is not optional. You MUST follow it exactly.**
+
+**Common mistakes to AVOID:**
+- ❌ Putting session state files at parent level only (each exploration needs its own `.pairingbuddy/`)
+- ❌ Using markdown files instead of JSON (use `.json` files as specified)
+- ❌ Skipping the `.pairingbuddy/` folder inside explorations
+- ❌ Mixing session state with artifacts
+
+**Before invoking ANY agent, verify:**
+1. Parent folder has `.pairingbuddy/` with `brief.json` and `status.json`
+2. Each exploration folder has its own `.pairingbuddy/` with `direction.json`
+3. All state files are JSON, not markdown
+
+**If you catch yourself writing `design-critique.md` instead of `critique.json`, STOP. You are violating the structure.**
+
 ### Concurrency Safety
 
 | File | Writer | Readers | Safe? |
@@ -368,6 +385,82 @@ Task tool:
 ### Control Flow
 
 The orchestrator manages the builder-critic loop based on human direction rather than hardcoded control flow.
+
+## Pre-Exploration Setup (MANDATORY - Do This First)
+
+**Before invoking ANY agent, the orchestrator MUST set up the folder structure.**
+
+### Single Exploration Setup
+
+```
+1. CREATE exploration folder
+   mkdir {exploration_path}
+
+2. CREATE .pairingbuddy folder INSIDE exploration
+   mkdir {exploration_path}/.pairingbuddy
+
+3. WRITE direction.json (JSON, not markdown!)
+   Write to {exploration_path}/.pairingbuddy/direction.json:
+   {
+     "brief": "user's design request",
+     "constraints": [],
+     "feedback_history": []
+   }
+
+4. NOW invoke explorer agent with exploration_path
+```
+
+### Parallel Explorations Setup
+
+```
+1. CREATE parent folder
+   mkdir {parent_path}
+
+2. CREATE parent .pairingbuddy
+   mkdir {parent_path}/.pairingbuddy
+
+3. WRITE brief.json to parent
+   Write to {parent_path}/.pairingbuddy/brief.json:
+   {
+     "title": "project name",
+     "requirements": "shared requirements",
+     "constraints": [],
+     "created": "ISO timestamp"
+   }
+
+4. WRITE status.json to parent
+   Write to {parent_path}/.pairingbuddy/status.json:
+   {
+     "created": "ISO timestamp",
+     "agents": [
+       {"id": "exploration-1", "status": "pending", "iterations": 0},
+       {"id": "exploration-2", "status": "pending", "iterations": 0}
+     ]
+   }
+
+5. FOR EACH exploration:
+   a. CREATE exploration folder
+      mkdir {parent_path}/{exploration-name}
+
+   b. CREATE .pairingbuddy INSIDE exploration (NOT optional!)
+      mkdir {parent_path}/{exploration-name}/.pairingbuddy
+
+   c. WRITE direction.json (JSON!)
+      Write to {parent_path}/{exploration-name}/.pairingbuddy/direction.json:
+      {
+        "brief": "from parent brief.json",
+        "angle": "specific direction for this exploration",
+        "constraints": [],
+        "feedback_history": []
+      }
+
+6. NOW invoke agents with each exploration_path
+```
+
+**VERIFY before proceeding:**
+- [ ] Each exploration has its own `.pairingbuddy/` folder
+- [ ] Each `.pairingbuddy/` contains `direction.json` (JSON, not .md)
+- [ ] Parent has `brief.json` and `status.json` (for parallel)
 
 ## Workflow
 
@@ -1356,15 +1449,64 @@ explorations/
 └── ...
 ```
 
-### Generating Web Output
+### Generating Web Output (MANDATORY - Orchestrator Responsibility)
 
-When explorations complete, generate navigation pages using templates:
+**CRITICAL: The orchestrator (YOU, running the skill) MUST generate these files. Agents do NOT generate them.**
 
-1. Read [index template](./templates/index-template.html)
-2. Read [comparison template](./templates/comparison-template.html)
-3. Replace placeholders with exploration data
-4. Write `index.html`, `comparison.html`, and `robots.txt` to exploration root
-5. Ensure all screenshots are captured to `screenshots/` folder
+**When to generate:** After ALL explorations complete (or after single exploration completes).
+
+**Step-by-step instructions:**
+
+```
+1. VERIFY all explorations have completed
+   - Check status.json shows all agents "completed" or "killed"
+   - Each exploration folder has: preview.html, tokens.css, config.json
+
+2. CAPTURE screenshots (if Playwright available)
+   - For each exploration:
+     a. Navigate to http://localhost:{port}/example.html (or preview.html if no example)
+     b. Set viewport to 1200x800
+     c. Take full-page screenshot
+     d. Save to {parent}/screenshots/{exploration-name}.png
+
+3. READ templates
+   - Read skills/design-ux/templates/index-template.html
+   - Read skills/design-ux/templates/comparison-template.html
+
+4. GENERATE index.html
+   - Replace {{PROJECT_NAME}} with project name from brief.json
+   - Replace {{PROJECT_DESCRIPTION}} with description
+   - Replace {{DESIGN_SYSTEM_CARDS}} with card HTML for each exploration:
+     ```html
+     <div class="card">
+       <div class="card-header">
+         <div>
+           <h2>{exploration-name}</h2>
+           <span class="theme">{personality from config.json}</span>
+         </div>
+       </div>
+       <div class="links">
+         <a href="{exploration-name}/preview.html" class="preview">Design Tokens</a>
+         <a href="{exploration-name}/example.html" class="example">Live Example</a>
+       </div>
+     </div>
+     ```
+   - Write to {parent}/index.html
+
+5. GENERATE comparison.html
+   - Replace placeholders with exploration data
+   - Include screenshot images from screenshots/ folder
+   - Write to {parent}/comparison.html
+
+6. GENERATE robots.txt
+   - Write "User-agent: *\nDisallow: /" to {parent}/robots.txt
+
+7. ANNOUNCE to user
+   - "Web output ready. Files generated: index.html, comparison.html, robots.txt"
+   - "Deploy by copying {parent}/ folder to any static host"
+```
+
+**If you skip this step, the output is NOT publishable. This is a failure.**
 
 ### robots.txt
 
