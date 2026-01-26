@@ -14,7 +14,9 @@ Establishes domain grounding and design intent before any generation work. Explo
 
 ## Input
 
-Reads from `.pairingbuddy/direction.json` (optional):
+**Exploration path:** Received from orchestrator. All file paths below are relative to this path.
+
+Reads from `{exploration_path}/.pairingbuddy/direction.json` (optional):
 
 ```json
 {
@@ -31,13 +33,13 @@ Reads from `.pairingbuddy/direction.json` (optional):
 ```
 
 Also reads from exploration folder:
-- `domain-spec.json` - Previous domain specification (if exists, for iteration)
+- `{exploration_path}/domain-spec.json` - Previous domain specification (if exists, for iteration)
 
 ## Instructions
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
-1. Read direction.json from .pairingbuddy folder (if exists)
+1. Read direction.json from `{exploration_path}/.pairingbuddy/` (if exists)
 2. Read differentiating-designs skill for guidance
 3. Answer the three intent questions with specifics
 4. Explore product domain to generate four mandatory outputs
@@ -104,16 +106,16 @@ Before writing output, verify:
 ### File Creation Restrictions
 
 **You may ONLY write to:**
-- `domain-spec.json` within the exploration-folder
+- `{exploration_path}/domain-spec.json`
 
 **Do NOT:**
-- Create files outside the exploration-folder
+- Create files outside `{exploration_path}/`
 - Write to /tmp or system directories
 - Generate design artifacts (that's design-ux-builder's job)
 
 ## Output
 
-Writes to `exploration-folder/domain-spec.json`:
+Writes to `{exploration_path}/domain-spec.json`:
 
 ```json
 {

@@ -14,7 +14,9 @@ Creates and iterates on design systems and user experiences. Generates design to
 
 ## Input
 
-Reads from `.pairingbuddy/direction.json`:
+**Exploration path:** Received from orchestrator. All file paths below are relative to this path.
+
+Reads from `{exploration_path}/.pairingbuddy/direction.json`:
 
 ```json
 {
@@ -30,7 +32,7 @@ Reads from `.pairingbuddy/direction.json`:
 }
 ```
 
-Reads from `exploration-folder/domain-spec.json`:
+Reads from `{exploration_path}/domain-spec.json`:
 
 ```json
 {
@@ -52,7 +54,7 @@ Reads from `exploration-folder/domain-spec.json`:
 }
 ```
 
-Reads from `.pairingbuddy/critique.json` (optional):
+Reads from `{exploration_path}/.pairingbuddy/critique.json` (optional):
 
 ```json
 {
@@ -111,7 +113,7 @@ Reads from `.pairingbuddy/critique.json` (optional):
 }
 ```
 
-Reads from `exploration-folder/config.json` (optional, for Design Systems):
+Reads from `{exploration_path}/config.json` (optional, for Design Systems):
 
 ```json
 {
@@ -126,7 +128,7 @@ Reads from `exploration-folder/config.json` (optional, for Design Systems):
 }
 ```
 
-Reads from `exploration-folder/experience.json` (optional, for Experiences):
+Reads from `{exploration_path}/experience.json` (optional, for Experiences):
 
 ```json
 {
@@ -248,18 +250,18 @@ If Playwright MCP is available:
 ### File Creation Restrictions
 
 **You may ONLY write to:**
-- Files within the exploration-folder (design-system/, states/, components/, tokens/, etc.)
+- Files within the {exploration_path} (design-system/, states/, components/, tokens/, etc.)
 - Updated config.json or experience.json within exploration folder
 - Generated artifacts (tailwind.config.js, tokens.css, preview.html, prototype.html)
 
 **Do NOT:**
-- Create files outside the exploration-folder
+- Create files outside the {exploration_path}
 - Write to /tmp or system directories
 - Modify files outside the designated exploration scope
 
 ## Output
 
-Writes to `exploration-folder` with generated artifacts:
+Writes to `{exploration_path}` with generated artifacts:
 
 ```json
 {

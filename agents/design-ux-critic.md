@@ -14,7 +14,9 @@ Evaluates designs objectively using 6-pass UX analysis framework. Checks complia
 
 ## Input
 
-Reads from `.pairingbuddy/direction.json`:
+**Exploration path:** Received from orchestrator. All file paths below are relative to this path.
+
+Reads from `{exploration_path}/.pairingbuddy/direction.json`:
 
 ```json
 {
@@ -30,7 +32,7 @@ Reads from `.pairingbuddy/direction.json`:
 }
 ```
 
-Reads from `exploration-folder/domain-spec.json`:
+Reads from `{exploration_path}/domain-spec.json`:
 
 ```json
 {
@@ -52,7 +54,7 @@ Reads from `exploration-folder/domain-spec.json`:
 }
 ```
 
-Reads from `exploration-folder/config.json` (optional, for Design Systems):
+Reads from `{exploration_path}/config.json` (optional, for Design Systems):
 
 ```json
 {
@@ -67,7 +69,7 @@ Reads from `exploration-folder/config.json` (optional, for Design Systems):
 }
 ```
 
-Reads from `exploration-folder/experience.json` (optional, for Experiences):
+Reads from `{exploration_path}/experience.json` (optional, for Experiences):
 
 ```json
 {
@@ -185,7 +187,7 @@ Rank findings by severity:
 
 ## Output
 
-Writes to `critique.json`:
+Writes to `{exploration_path}/.pairingbuddy/critique.json`:
 
 ```json
 {

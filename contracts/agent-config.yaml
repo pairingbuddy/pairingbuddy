@@ -638,7 +638,7 @@ agents:
     outputs:
       design_artifacts:
         schema: design-artifacts.schema.json
-        file: exploration-folder
+        file: "{exploration_path}"
     sections:
       - heading: "## Purpose"
       - heading: "## Input"

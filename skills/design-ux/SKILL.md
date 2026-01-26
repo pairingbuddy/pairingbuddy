@@ -93,9 +93,10 @@ The design-ux orchestrator can spawn multiple builder-critic loops to explore di
 When the human requests multiple explorations:
 
 1. Create exploration parent folder (e.g., `onboarding-explorations/`)
-2. Write `brief.json` with the human's shared requirements
-3. Create status.json to track all explorations (including server ports):
+2. Create `.pairingbuddy/` in parent folder for shared session state
+3. Write `brief.json` and `status.json` to parent's `.pairingbuddy/`:
 ```json
+// .pairingbuddy/status.json
 {
   "created": "2026-01-24T10:00:00Z",
   "agents": [
@@ -105,22 +106,22 @@ When the human requests multiple explorations:
 }
 ```
 4. Create subfolder for each exploration (v1-minimal/, v2-playful/, etc.)
-5. Copy design system dependencies to each subfolder if needed
-6. Write direction.json in each subfolder's .pairingbuddy/ (brief.json + specific angle)
+5. Create `.pairingbuddy/` in each subfolder for isolated session state
+6. Write `direction.json` in each subfolder's `.pairingbuddy/` (from brief + specific angle)
 7. Spawn builder-critic agents with `run_in_background: true` for each exploration
-8. Update status.json as each agent progresses
+8. Update parent's `.pairingbuddy/status.json` as each agent progresses
 
 ### Monitoring Progress
 
 The orchestrator polls running explorations using TaskOutput tool:
 - Check status of background agents
-- Update status.json with iterations completed
+- Update `.pairingbuddy/status.json` with iterations completed
 - Present completed explorations to human for review
 - Continue polling for still-running agents
 
 ### Status Updates
 
-status.json tracks exploration state:
+`.pairingbuddy/status.json` tracks exploration state:
 - `running` - Agent is actively iterating
 - `completed` - Agent finished requested iterations
 - `killed` - Human terminated this exploration
@@ -137,7 +138,7 @@ Human: "Kill v3-bold, it's too aggressive"
 ```
 
 Orchestrator:
-1. Updates status.json: `{"id": "v3-bold", "status": "killed", "iterations": 2, "reason": "Too aggressive"}`
+1. Updates `.pairingbuddy/status.json`: `{"id": "v3-bold", "status": "killed", "iterations": 2, "reason": "Too aggressive"}`
 2. Stops polling that agent (agent continues in background but is ignored)
 3. Preserves artifacts in v3-bold/ folder for reference
 
@@ -149,9 +150,9 @@ Human: "v7 is interesting. Continue 4 more iterations, but make the CTAs more pr
 ```
 
 Orchestrator:
-1. Appends to v7's .pairingbuddy/direction.json with new guidance
+1. Appends to v7's `.pairingbuddy/direction.json` with new guidance
 2. Spawns new builder-critic loop with updated direction and run_in_background: true
-3. Updates status.json to track new iterations
+3. Updates parent's `.pairingbuddy/status.json` to track new iterations
 
 ### converge
 
@@ -161,7 +162,7 @@ Human: "v7 is the winner. Let's refine it."
 ```
 
 Orchestrator:
-1. Updates status.json: marks v7 as `running`, others as `killed` or `completed`
+1. Updates `.pairingbuddy/status.json`: marks v7 as `running`, others as `killed` or `completed`
 2. Switches to tight human-in-the-loop iteration on v7 only
 3. No more background agents, full conversational control
 
@@ -286,16 +287,59 @@ Orchestrator:
 
 ## State File Mappings
 
-State files for design explorations are stored in the exploration folder structure:
+State files are organized to support parallel explorations without race conditions:
 
-| Variable | File | Purpose |
-|----------|------|---------|
-| direction | direction.json | Human's brief, constraints, feedback |
-| brief | brief.json | Shared requirements across parallel explorations |
-| critique | critique.json | Latest critique findings |
-| config | config.json or experience.json | Design system or experience metadata |
-| domain_spec | domain-spec.json | Domain grounding from explorer agent |
-| status | status.json | Parallel exploration tracking |
+### Session State (in `.pairingbuddy/` folders - ephemeral, gitignored)
+
+| File | Location | Purpose | Writer |
+|------|----------|---------|--------|
+| `brief.json` | `parent/.pairingbuddy/` | Shared requirements across parallel explorations | Orchestrator (write-once) |
+| `status.json` | `parent/.pairingbuddy/` | Parallel exploration tracking | Orchestrator only |
+| `direction.json` | `exploration/.pairingbuddy/` | Human's brief, constraints, feedback for THIS exploration | Orchestrator |
+| `critique.json` | `exploration/.pairingbuddy/` | Latest critique findings for THIS exploration | Critic agent |
+
+### Artifacts (in exploration folder - persistent, committed)
+
+| File | Location | Purpose | Writer |
+|------|----------|---------|--------|
+| `domain-spec.json` | `exploration/` | Domain grounding from explorer agent | Explorer agent |
+| `config.json` | `exploration/` | Design system metadata and version | Builder agent |
+| `experience.json` | `exploration/` | Experience metadata | Builder agent |
+| `tokens/`, `preview.html` | `exploration/` | Generated design artifacts | Builder agent |
+
+### Folder Structure Example
+
+```
+explorations/
+├── .pairingbuddy/                    # Parent session state (shared)
+│   ├── brief.json                    # Write-once, read by all
+│   └── status.json                   # Single writer (orchestrator)
+│
+├── v1-minimal/
+│   ├── .pairingbuddy/                # v1's session state (isolated)
+│   │   ├── direction.json            # v1's brief + feedback
+│   │   └── critique.json             # v1's critique
+│   ├── domain-spec.json              # v1's domain grounding
+│   ├── config.json                   # v1's design system
+│   └── tokens/
+│
+└── v2-playful/
+    ├── .pairingbuddy/                # v2's session state (isolated)
+    │   ├── direction.json            # v2's brief + feedback
+    │   └── critique.json             # v2's critique
+    ├── domain-spec.json              # v2's domain grounding
+    ├── config.json                   # v2's design system
+    └── tokens/
+```
+
+### Concurrency Safety
+
+| File | Writer | Readers | Safe? |
+|------|--------|---------|-------|
+| `brief.json` | Orchestrator (once) | All agents | ✓ Write-once |
+| `status.json` | Orchestrator only | Orchestrator | ✓ Single writer |
+| `direction.json` | Orchestrator per-exploration | That exploration's agents | ✓ Isolated |
+| `critique.json` | Critic per-exploration | Builder in same exploration | ✓ Isolated |
 
 ## How to Execute This Workflow
 
@@ -331,22 +375,27 @@ The orchestrator manages the builder-critic loop based on human direction rather
 def design_ux_workflow():
     """
     Conversational workflow for design work.
+
+    Key principle: Each exploration has its own .pairingbuddy/ folder
+    for isolated session state. Agents receive the exploration_path
+    as a parameter to know where to read/write files.
     """
     # 1. Establish what we're working on
     target = _get_target()  # new DS, existing DS, new experience, etc.
+    exploration_path = _get_or_create_exploration_path(target)
 
-    # 2. Write direction.json
-    Write(".pairingbuddy/direction.json", {
+    # 2. Create .pairingbuddy/ in exploration folder and write direction.json
+    Write(f"{exploration_path}/.pairingbuddy/direction.json", {
         "brief": human_input,
         "constraints": [],
         "feedback_history": []
     })
 
     # 3. EXPLORER PHASE (MANDATORY - runs first)
-    # Establishes domain grounding before any generation
-    _invoke_explorer_agent(target)
-    # Reads: .pairingbuddy/direction.json (optional)
-    # Writes: exploration-folder/domain-spec.json
+    # Pass exploration_path so agent knows where to read/write
+    _invoke_explorer_agent(exploration_path)
+    # Reads: {exploration_path}/.pairingbuddy/direction.json (optional)
+    # Writes: {exploration_path}/domain-spec.json
 
     # 4. Set exploration parameters
     params = _get_exploration_params()
@@ -354,53 +403,71 @@ def design_ux_workflow():
     # - parallel_directions (1..N)
     # - max_iterations
 
-    # 5. For parallel explorations: write brief.json
+    # 5. For parallel explorations: create parent .pairingbuddy/ with shared state
     if params.parallel_directions > 1:
-        Write("parent-folder/brief.json", {
+        parent_path = _get_parent_path(exploration_path)
+        Write(f"{parent_path}/.pairingbuddy/brief.json", {
             "title": target,
             "requirements": shared_requirements,
             "constraints": [],
             "created": now()
         })
-        Write("parent-folder/status.json", {
+        Write(f"{parent_path}/.pairingbuddy/status.json", {
             "created": now(),
             "agents": [{"id": dir_id, "status": "running", ...} for dir_id in params.directions]
         })
 
+        # Create isolated .pairingbuddy/ for each exploration
+        for direction in params.directions:
+            exp_path = f"{parent_path}/{direction.id}"
+            Write(f"{exp_path}/.pairingbuddy/direction.json", {
+                "brief": Read(f"{parent_path}/.pairingbuddy/brief.json")["requirements"],
+                "angle": direction.specific_angle,
+                "constraints": [],
+                "feedback_history": []
+            })
+
     # 6. Spawn explorations (parallel if N > 1)
     for direction in params.directions:
-        _run_exploration(target, direction, params, run_in_background=(N > 1))
+        exp_path = f"{parent_path}/{direction.id}" if params.parallel_directions > 1 else exploration_path
+        _run_exploration(exp_path, params, run_in_background=(params.parallel_directions > 1))
 
     # 7. Poll and present completions, handle human commands
-    _monitor_and_respond()
+    if params.parallel_directions > 1:
+        _monitor_and_respond(parent_path)
 
 
-def _run_exploration(target, direction, params):
+def _run_exploration(exploration_path, params, run_in_background=False):
     """
     Single exploration loop: builder-critic cycle until done.
-    Called with run_in_background=True for parallel explorations.
 
-    Both builder and critic read domain_spec for domain grounding.
+    All file paths are relative to exploration_path:
+    - Session state: {exploration_path}/.pairingbuddy/
+    - Artifacts: {exploration_path}/
+
+    This ensures parallel explorations don't conflict.
     """
-    _setup_exploration_folder(target, direction)
-
     iterations = 0
     while iterations < params.max_iterations:
-        # Builder reads:
-        # - .pairingbuddy/direction.json
-        # - exploration-folder/domain-spec.json
-        # - .pairingbuddy/critique.json (optional)
-        # - exploration-folder/config.json or experience.json
-        # Writes: tokens/, components/, preview.html, etc.
-        _invoke_builder_agent()
+        # Builder agent receives exploration_path
+        # Reads:
+        #   {exploration_path}/.pairingbuddy/direction.json
+        #   {exploration_path}/domain-spec.json
+        #   {exploration_path}/.pairingbuddy/critique.json (optional)
+        #   {exploration_path}/config.json or experience.json
+        # Writes:
+        #   {exploration_path}/tokens/, components/, preview.html, etc.
+        _invoke_builder_agent(exploration_path)
 
-        # Critic reads:
-        # - .pairingbuddy/direction.json
-        # - exploration-folder/domain-spec.json
-        # - exploration-folder/config.json or experience.json
-        # - artifacts (preview.html, etc.)
-        # Writes: .pairingbuddy/critique.json
-        _invoke_critic_agent()
+        # Critic agent receives exploration_path
+        # Reads:
+        #   {exploration_path}/.pairingbuddy/direction.json
+        #   {exploration_path}/domain-spec.json
+        #   {exploration_path}/config.json or experience.json
+        #   {exploration_path}/preview.html (artifacts)
+        # Writes:
+        #   {exploration_path}/.pairingbuddy/critique.json
+        _invoke_critic_agent(exploration_path)
 
         iterations += 1
 
@@ -410,14 +477,15 @@ def _run_exploration(target, direction, params):
             if response == "kill":
                 return
             if response.has_feedback:
-                # Append to direction.json
-                direction_data = Read(".pairingbuddy/direction.json")
+                # Append to THIS exploration's direction.json
+                direction_file = f"{exploration_path}/.pairingbuddy/direction.json"
+                direction_data = Read(direction_file)
                 direction_data["feedback_history"].append({
                     "iteration": iterations,
                     "feedback": response.feedback,
                     "timestamp": now()
                 })
-                Write(".pairingbuddy/direction.json", direction_data)
+                Write(direction_file, direction_data)
 ```
 
 ## Orchestrator Behavior
@@ -428,13 +496,22 @@ Not applicable - design-ux does not use test-config.json.
 
 ### State File Management
 
-The orchestrator manages state files in the exploration folder:
-- Creates exploration folder structure on first run
-- Writes direction.json from human input to .pairingbuddy/
-- Passes critique.json between builder and critic (in .pairingbuddy/)
-- Maintains version history in config.json (in exploration folder)
-- Writes brief.json for parallel explorations (in parent folder)
-- Writes domain-spec.json from explorer agent (in exploration folder)
+The orchestrator manages state files with isolation for parallel safety:
+
+**Per-exploration `.pairingbuddy/` folder:**
+- Creates `{exploration_path}/.pairingbuddy/` on first run
+- Writes `direction.json` from human input (isolated per exploration)
+- Passes `critique.json` between builder and critic (isolated per exploration)
+
+**Per-exploration artifacts:**
+- Writes `domain-spec.json` from explorer agent
+- Maintains version history in `config.json`
+
+**Parent `.pairingbuddy/` folder (parallel explorations only):**
+- Writes `brief.json` with shared requirements (write-once)
+- Writes `status.json` to track all explorations (single writer)
+
+**Path passing:** Agents receive `exploration_path` parameter to know where to read/write files. This enables parallel explorations without race conditions.
 
 ### Human Checkpoints
 
