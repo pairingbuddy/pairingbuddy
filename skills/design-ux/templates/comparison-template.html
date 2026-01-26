@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
+  <!-- Fix trailing slash issue: ensure relative paths resolve correctly -->
+  <script>
+    if (!window.location.pathname.endsWith('/')) {
+      const base = document.createElement('base');
+      base.href = window.location.pathname + '/';
+      document.head.appendChild(base);
+    }
+  </script>
   <title>{{PROJECT_NAME}} - Design Comparison</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
