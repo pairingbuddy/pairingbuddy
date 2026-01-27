@@ -24,14 +24,18 @@ Reference material for systematic design evaluation using 6-pass framework.
 
 Each pass forces a specific mindset and asks specific questions. Run all 6 passes for thorough critique.
 
-| Pass | Focus | Key Question |
-|------|-------|--------------|
-| 1. Mental Model | Understanding | "What does the user think this is?" |
-| 2. Information Architecture | Organization | "How is it organized?" |
-| 3. Affordances | Action signals | "What signals action?" |
-| 4. Cognitive Load | Decision burden | "Where will users hesitate?" |
-| 5. State Design | System feedback | "How does the system talk back?" |
-| 6. Flow Integrity | Cohesion | "Does it feel inevitable?" |
+| Pass | Designer Mindset | Key Question |
+|------|-----------------|--------------|
+| 1. Mental Model | "What does the user think is happening?" | What wrong mental models are likely? |
+| 2. Information Architecture | "What exists, and how is it organized?" | How are concepts grouped and prioritized? |
+| 3. Affordances | "What actions are obvious without explanation?" | What signals action? |
+| 4. Cognitive Load | "Where will the user hesitate?" | What decisions can be eliminated? |
+| 5. State Design | "How does the system talk back?" | Are all states covered? |
+| 6. Flow Integrity | "Does this feel inevitable?" | Where could users get lost? |
+
+### Why This Matters
+
+**This is where most AI UX attempts fail.** If you skip explicit passes (especially Information Architecture), your visual specs will be disorganized. Run all 6 passes systematically.
 
 ### Validation Categories
 
@@ -45,63 +49,86 @@ Each pass forces a specific mindset and asks specific questions. Run all 6 passe
 | Naming | Token names intuitive | Mental model alignment |
 | Completeness | All states covered | State design |
 
+---
+
 ## Pass 1: Mental Model Alignment
 
-**Designer mindset:** "What does the user think this is?"
+**Designer mindset:** "What does the user think is happening?"
 
-### Questions to Ask
+### Force These Questions
 
 - What does the user believe this system does?
 - What are they trying to accomplish in one sentence?
 - What wrong mental models are likely?
-- Do token names communicate intent clearly?
-- Will developers understand the naming conventions?
+- Do names (tokens, components, labels) communicate intent clearly?
 
-### For Design Systems
+### For Design Systems Specifically
 
 - Does `surface.primary` make sense?
 - Is `text.action` vs `text.body` clear?
 - Would a new developer intuitively find what they need?
+- Do token names align with how they'll be used?
 
-### Output Format
+### Required Output Format
 
 ```markdown
 ## Pass 1: Mental Model
 
-**Token naming clarity:** [Assessment]
+**Primary user intent:** [One sentence - what users are trying to accomplish]
 
 **Likely misconceptions:**
 - [Misconception 1]
 - [Misconception 2]
+- ...
+
+**Token naming clarity:** [Assessment of whether names communicate intent]
+
+**UX principle to reinforce/correct:** [Specific principle that applies]
 
 **Suggestions:**
 - [Suggestion 1]
+- [Suggestion 2]
 ```
+
+---
 
 ## Pass 2: Information Architecture
 
-**Designer mindset:** "How is it organized?"
+**Designer mindset:** "What exists, and how is it organized?"
 
-### Questions to Ask
+### Force These Actions
 
-- Are tokens logically grouped?
-- Can a developer find what they need quickly?
-- Is the hierarchy clear?
-- Are related things near each other?
+1. Enumerate ALL concepts the user will encounter
+2. Group into logical buckets
+3. Classify each as: **Primary** / **Secondary** / **Hidden** (progressive disclosure)
 
-### For Design Systems
+### For Design Systems Specifically
 
 - Colors grouped sensibly? (brand vs semantic vs mapped)
 - Typography organized by purpose?
 - Spacing scale easy to understand?
 - Component tokens grouped by component or by property?
+- Are related things near each other?
 
-### Output Format
+### Required Output Format
 
 ```markdown
 ## Pass 2: Information Architecture
 
-**Organization assessment:** [Assessment]
+**All user-visible concepts:**
+- [Concept 1]
+- [Concept 2]
+- ...
+
+**Grouped structure:**
+
+### [Group Name]
+- [Concept]: [Primary/Secondary/Hidden]
+- Rationale: [One sentence why this classification]
+
+### [Group Name]
+- [Concept]: [Primary/Secondary/Hidden]
+- Rationale: [Why]
 
 **Structure issues:**
 - [Issue 1]
@@ -111,11 +138,13 @@ Each pass forces a specific mindset and asks specific questions. Run all 6 passe
 - [Suggestion]
 ```
 
+---
+
 ## Pass 3: Affordances & Action Clarity
 
-**Designer mindset:** "What signals action?"
+**Designer mindset:** "What actions are obvious without explanation?"
 
-### Questions to Ask
+### Force Explicit Decisions
 
 - What is clickable?
 - What looks editable?
@@ -123,7 +152,7 @@ Each pass forces a specific mindset and asks specific questions. Run all 6 passe
 - What looks final vs in-progress?
 - Is focus state visible enough?
 
-### For Design Systems
+### For Design Systems Specifically
 
 - Do button colors clearly signal "clickable"?
 - Are interactive elements visually distinct from static?
@@ -131,10 +160,21 @@ Each pass forces a specific mindset and asks specific questions. Run all 6 passe
 - Does focus ring have sufficient contrast?
 - Are disabled states obviously disabled?
 
-### Output Format
+### Required Output Format
 
 ```markdown
 ## Pass 3: Affordances
+
+| Action | Visual/Interaction Signal |
+|--------|---------------------------|
+| [Action] | [What makes it obvious] |
+| Click button | [Signal] |
+| Edit input | [Signal] |
+| View output | [Signal] |
+
+**Affordance rules:**
+- If user sees X, they should assume Y
+- ...
 
 | Element | Signal Assessment |
 |---------|-------------------|
@@ -150,77 +190,96 @@ Each pass forces a specific mindset and asks specific questions. Run all 6 passe
 - [How to improve signaling]
 ```
 
+No visuals required—just clarity on what signals what.
+
+---
+
 ## Pass 4: Cognitive Load & Decision Minimization
 
-**Designer mindset:** "Where will users hesitate?"
+**Designer mindset:** "Where will the user hesitate?"
 
-### Questions to Ask
+### Force Identification Of
 
-- Are there too many similar colors?
-- Is naming confusing or ambiguous?
-- Are there too many options causing decision fatigue?
-- What can be simplified?
+- **Moments of choice** - decisions required
+- **Moments of uncertainty** - unclear what to do
+- **Moments of waiting** - system processing
 
-### For Design Systems
+### Then Apply These Strategies
+
+- **Collapse decisions** - fewer choices
+- **Delay complexity** - progressive disclosure
+- **Introduce defaults** - reduce decision burden
+
+### For Design Systems Specifically
 
 - Too many shades that look nearly identical?
 - Naming conventions inconsistent?
 - Too many component variants?
 - Could some tokens be consolidated?
 
-### Simplification Strategies
-
-- **Collapse decisions:** Fewer choices
-- **Delay complexity:** Progressive disclosure
-- **Introduce defaults:** Reduce decision burden
-
-### Output Format
+### Required Output Format
 
 ```markdown
 ## Pass 4: Cognitive Load
 
 **Friction points:**
-| Location | Type | Simplification |
-|----------|------|----------------|
-| [Where] | Choice/Uncertainty | [How to reduce] |
+| Moment | Type | Simplification |
+|--------|------|----------------|
+| [Where] | Choice/Uncertainty/Waiting | [How to reduce] |
+| [Where] | Choice/Uncertainty/Waiting | [How to reduce] |
 
 **Consolidation opportunities:**
 - [Tokens that could be merged]
 
-**Defaults to introduce:**
+**Defaults introduced:**
 - [Default 1]: [Rationale]
+- [Default 2]: [Rationale]
 ```
+
+---
 
 ## Pass 5: State Design & Feedback
 
 **Designer mindset:** "How does the system talk back?"
 
-### Questions to Ask
+### Force Enumeration of States
 
-For EACH major element, are these states covered?
-- Empty
-- Loading
-- Success
-- Partial (incomplete)
-- Error
-- Disabled
+For EACH major element, enumerate these states:
+- **Empty** - nothing to show
+- **Loading** - data being fetched
+- **Success** - operation completed
+- **Partial** - incomplete data/loading
+- **Error** - something went wrong
+- **Disabled** - cannot interact
 
-For each state:
-- What does the user see?
-- What do they understand?
-- What can they do next?
+### For Each State, Answer
 
-### For Design Systems
+- What does the user **see**?
+- What do they **understand**?
+- What can they **do next**?
+
+### For Design Systems Specifically
 
 - Are all button states defined? (default, hover, focus, active, disabled, loading)
 - Are all input states defined? (empty, focused, filled, error, success, disabled)
 - Are feedback colors distinct enough?
 - Is error state clearly different from other states?
 
-### Output Format
+### Required Output Format
 
 ```markdown
 ## Pass 5: State Design
+
+### [Element/Component Name]
+
+| State | User Sees | User Understands | User Can Do |
+|-------|-----------|------------------|-------------|
+| Empty | [Visual] | [Understanding] | [Next action] |
+| Loading | [Visual] | [Understanding] | [Next action] |
+| Success | [Visual] | [Understanding] | [Next action] |
+| Partial | [Visual] | [Understanding] | [Next action] |
+| Error | [Visual] | [Understanding] | [Next action] |
+| Disabled | [Visual] | [Understanding] | [Next action] |
 
 ### Buttons
 | State | Defined? | Distinct? |
@@ -232,9 +291,6 @@ For each state:
 | Disabled | Yes/No | Yes/No |
 | Loading | Yes/No | Yes/No |
 
-### Inputs
-[Same format]
-
 **Missing states:**
 - [Element] missing [state]
 
@@ -242,31 +298,38 @@ For each state:
 - [State A] too similar to [State B]
 ```
 
+This prevents "dead UX"—screens with no feedback.
+
+---
+
 ## Pass 6: Flow Integrity Check
 
-**Designer mindset:** "Does it feel inevitable?"
+**Designer mindset:** "Does this feel inevitable?"
 
-### Questions to Ask
+### Final Sanity Check
 
-- When applied to real UI, does the system guide users naturally?
-- Are there gaps or inconsistencies?
 - Where could users get lost?
 - Where would a first-time user fail?
 - What must be visible vs can be implied?
+- When applied to real UI, does the system guide users naturally?
 
-### For Design Systems
+### For Design Systems Specifically
 
 - Do the tokens work together cohesively?
 - Is there consistency across components?
 - Would applying these tokens to a real UI feel natural?
 - Are there edge cases not covered?
 
-### Output Format
+### Required Output Format
 
 ```markdown
 ## Pass 6: Flow Integrity
 
 **Cohesion assessment:** [Overall assessment]
+
+**Failure points for first-time users:**
+- [Where they'd fail]
+- [Where they'd fail]
 
 **Gaps identified:**
 - [Missing token or pattern]
@@ -276,7 +339,15 @@ For each state:
 
 **Edge cases not covered:**
 - [Scenario without clear token]
+
+**Visibility decisions:**
+| Element | Must Be Visible | Can Be Implied |
+|---------|-----------------|----------------|
+| [Element] | [Reason] | |
+| [Element] | | [Reason] |
 ```
+
+---
 
 ## Critique Summary Format
 
@@ -289,7 +360,7 @@ After running all 6 passes, produce a summary:
 [1-2 sentence summary]
 
 ## Critical Issues (Must Fix)
-1. [Issue] - [Pass where found] - [Severity: High]
+1. [Issue] - [Pass where found] - [Severity: Critical/High]
 2. ...
 
 ## Recommended Improvements

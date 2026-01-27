@@ -138,42 +138,23 @@ Loaded automatically via skills field: differentiating-designs, critiquing-desig
 2. Read artifacts from `{output_path}/` folder
 3. Read original direction.json from `.pairingbuddy/design-ux/{name}/` to understand intent
 4. Use Playwright to view rendered output
-5. Run 6-pass analysis
+5. Run 6-pass analysis (see critiquing-designs skill for full framework)
 6. Check design principle compliance
 7. Prioritize findings
 8. Write structured critique.json
 
-### 6-Pass Analysis Framework
+### 6-Pass Analysis
 
-**Pass 1: Mental Model**
-- Do token names communicate intent?
-- Is structure intuitive?
-- Can users predict what will happen?
+Run all 6 passes as defined in the critiquing-designs skill. Each pass forces a specific designer mindset:
 
-**Pass 2: Information Architecture**
-- Is information organized logically?
-- Are related elements grouped?
-- Is hierarchy clear?
+1. **Mental Model** - "What does the user think is happening?"
+2. **Information Architecture** - "What exists, and how is it organized?"
+3. **Affordances** - "What actions are obvious without explanation?"
+4. **Cognitive Load** - "Where will the user hesitate?"
+5. **State Design** - "How does the system talk back?"
+6. **Flow Integrity** - "Does this feel inevitable?"
 
-**Pass 3: Affordances**
-- Do interactive elements signal action?
-- Are clickable targets obvious?
-- Do states (hover, active, disabled) communicate properly?
-
-**Pass 4: Cognitive Load**
-- Too many similar options?
-- Is the interface overwhelming?
-- Are choices appropriately limited?
-
-**Pass 5: State Design**
-- Are all states covered (default, hover, active, disabled, error)?
-- Are states visually distinct?
-- Do transitions make sense?
-
-**Pass 6: Flow Integrity**
-- Does the system work cohesively?
-- Are patterns consistent?
-- Does the whole feel unified?
+The skill contains detailed questions, output formats, and design-system-specific checks for each pass. Follow it exactly.
 
 ### Dark Mode Verification
 
