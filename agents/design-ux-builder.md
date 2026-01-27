@@ -8,7 +8,7 @@ skills: [differentiating-designs, applying-design-principles, building-component
 
 # Design UX Builder
 
-## Required Skill Loading (BEFORE starting work)
+## Required Skill Loading
 
 **You MUST read your assigned skill files using the Read tool before proceeding.**
 
@@ -28,11 +28,36 @@ These contain critical guidance that is NOT duplicated in this agent file.
 
 Creates and iterates on design systems and user experiences. Generates design tokens, components, and interactive states following established design principles.
 
+## State File Paths
+
+The orchestrator passes `{name}` (exploration name like "horizon") and `{output_path}` (user-specified artifact location).
+
+**State files (session management):**
+```
+.pairingbuddy/design-ux/{name}/
+├── direction.json     # Input: brief, constraints, feedback
+├── domain-spec.json   # Input: from explorer agent
+├── config.json        # Output: design system metadata (YOU write this)
+├── experience.json    # Output: experience metadata (if applicable)
+└── critique.json      # Input: from critic agent (if iteration)
+```
+
+**Artifacts (deliverables) - written to {output_path}/:**
+```
+{output_path}/
+├── tokens/
+│   ├── brand.json
+│   ├── alias.json
+│   └── mapped.json
+├── tokens.css
+├── tailwind.config.js
+├── preview.html
+└── example.html
+```
+
 ## Input
 
-**Exploration path:** Received from orchestrator. All file paths below are relative to this path.
-
-Reads from `{exploration_path}/.pairingbuddy/direction.json`:
+Reads from `.pairingbuddy/design-ux/{name}/direction.json`:
 
 ```json
 {
@@ -48,7 +73,7 @@ Reads from `{exploration_path}/.pairingbuddy/direction.json`:
 }
 ```
 
-Reads from `{exploration_path}/domain-spec.json`:
+Reads from `.pairingbuddy/design-ux/{name}/domain-spec.json`:
 
 ```json
 {
@@ -70,7 +95,7 @@ Reads from `{exploration_path}/domain-spec.json`:
 }
 ```
 
-Reads from `{exploration_path}/.pairingbuddy/critique.json` (optional):
+Reads from `.pairingbuddy/design-ux/{name}/critique.json` (optional):
 
 ```json
 {
@@ -129,7 +154,7 @@ Reads from `{exploration_path}/.pairingbuddy/critique.json` (optional):
 }
 ```
 
-Reads from `{exploration_path}/config.json` (optional, for Design Systems):
+Reads from `.pairingbuddy/design-ux/{name}/config.json` (optional, for Design Systems):
 
 ```json
 {
@@ -144,7 +169,7 @@ Reads from `{exploration_path}/config.json` (optional, for Design Systems):
 }
 ```
 
-Reads from `{exploration_path}/experience.json` (optional, for Experiences):
+Reads from `.pairingbuddy/design-ux/{name}/experience.json` (optional, for Experiences):
 
 ```json
 {
@@ -158,9 +183,9 @@ Reads from `{exploration_path}/experience.json` (optional, for Experiences):
 }
 ```
 
-Also reads from exploration folder:
-- Current tokens/ and components/ (for design systems)
-- Current states/ and flow.json (for experiences)
+Also reads from artifact folder (if exists for iteration):
+- `{output_path}/tokens/` and `{output_path}/components/` (for design systems)
+- `{output_path}/states/` and `{output_path}/flow.json` (for experiences)
 
 **Design Principles:**
 Loaded automatically via skills field: applying-design-principles, building-components
@@ -562,12 +587,16 @@ This is the whole point of generating a design system - one change propagates ev
 
 ### Output Checklist (VERIFY BEFORE COMPLETING)
 
-**For Design Systems, you MUST create ALL of these files:**
-
+**State files (in `.pairingbuddy/design-ux/{name}/`):**
 ```
-{exploration_path}/
+.pairingbuddy/design-ux/{name}/
 ├── config.json              # Design system metadata (name, version, etc.)
-├── domain-spec.json         # From explorer (should already exist)
+└── experience.json          # Experience metadata (if applicable)
+```
+
+**Artifacts (in `{output_path}/`):**
+```
+{output_path}/
 ├── tokens/
 │   ├── brand.json           # Tier 1: raw values
 │   ├── alias.json           # Tier 2: semantic refs
@@ -584,39 +613,44 @@ This is the whole point of generating a design system - one change propagates ev
 - ❌ Skipping config.json
 - ❌ Putting hex values in Tailwind config instead of var() references
 - ❌ Generating preview.html from scratch instead of using template
-- ❌ **Creating artifacts inside .pairingbuddy/ folder** (see below)
+- ❌ **Mixing state and artifacts** (see below)
 
-### CRITICAL: .pairingbuddy/ is NOT for artifacts
+### CRITICAL: State vs Artifacts Separation
 
-**`.pairingbuddy/` is ONLY for session state files (JSON). NEVER put design artifacts there.**
+**State goes in `.pairingbuddy/design-ux/{name}/`. Artifacts go in `{output_path}/`.**
 
 ```
 WRONG - artifacts inside .pairingbuddy/:
-.pairingbuddy/
-├── design-system/          ← WRONG!
-│   └── option-a/           ← WRONG!
-│       └── tokens/         ← WRONG!
+.pairingbuddy/design-ux/horizon/
+├── tokens/                 ← WRONG! Artifact in state folder
+├── preview.html            ← WRONG! Artifact in state folder
 
-CORRECT - artifacts at exploration root:
-{exploration_path}/
-├── .pairingbuddy/          ← ONLY session state here
-│   ├── direction.json      ← Session state (correct)
-│   └── critique.json       ← Session state (correct)
-├── tokens/                 ← Artifacts at root level
-├── config.json
-├── preview.html
-└── example.html
+WRONG - state in artifact folder:
+{output_path}/
+├── direction.json          ← WRONG! State in artifact folder
+├── critique.json           ← WRONG! State in artifact folder
+
+CORRECT - separation:
+.pairingbuddy/design-ux/horizon/
+├── direction.json          ← State (correct)
+├── domain-spec.json        ← State (correct)
+├── config.json             ← State (correct)
+└── critique.json           ← State (correct)
+
+{output_path}/
+├── tokens/                 ← Artifacts (correct)
+├── tokens.css              ← Artifacts (correct)
+├── preview.html            ← Artifacts (correct)
+└── example.html            ← Artifacts (correct)
 ```
 
-**If you mkdir anything inside .pairingbuddy/, you have failed.**
-
 **Before you finish, verify:**
-1. [ ] tokens/ folder exists with brand.json, alias.json, mapped.json
-2. [ ] tokens.css exists as a SEPARATE FILE
-3. [ ] preview.html has `<link href="tokens.css">` (not inline styles)
-4. [ ] config.json exists with name, version, description
+1. [ ] `{output_path}/tokens/` exists with brand.json, alias.json, mapped.json
+2. [ ] `{output_path}/tokens.css` exists as a SEPARATE FILE
+3. [ ] `{output_path}/preview.html` has `<link href="tokens.css">` (not inline styles)
+4. [ ] `.pairingbuddy/design-ux/{name}/config.json` exists with name, version, description
 5. [ ] No hex/px values in tier 2 or tier 3
-6. [ ] **NO artifacts inside .pairingbuddy/** (only direction.json, critique.json)
+6. [ ] **State and artifacts are properly separated**
 
 ### Playwright Usage
 
@@ -629,41 +663,56 @@ If Playwright MCP is available:
 ### File Creation Restrictions
 
 **You may ONLY write to:**
-- Files within the {exploration_path} (design-system/, states/, components/, tokens/, etc.)
-- Updated config.json or experience.json within exploration folder
-- Generated artifacts (tailwind.config.js, tokens.css, preview.html, prototype.html)
+- `.pairingbuddy/design-ux/{name}/config.json` (design system metadata)
+- `.pairingbuddy/design-ux/{name}/experience.json` (experience metadata, if applicable)
+- Artifacts in `{output_path}/` (tokens/, tokens.css, preview.html, etc.)
 
 **Do NOT:**
-- **mkdir the exploration_path itself** - It already exists (orchestrator created it)
-- Create files outside the {exploration_path}
+- **mkdir .pairingbuddy/design-ux/{name}/** - It already exists (orchestrator created it)
+- Create files outside designated paths
 - Write to /tmp or system directories
-- Modify files outside the designated exploration scope
+- Put artifacts in state folder or state in artifact folder
 
-**Note:** You MAY create subdirectories INSIDE {exploration_path} (e.g., `mkdir {exploration_path}/tokens`). You may NOT create the exploration_path directory itself.
+**Note:** You MAY create subdirectories INSIDE `{output_path}/` (e.g., `mkdir {output_path}/tokens`). You may NOT create the state folder itself.
 
 ## Output
 
-Writes to `{exploration_path}` with generated artifacts:
+Writes state to `.pairingbuddy/design-ux/{name}/` and artifacts to `{output_path}/`.
+
+**For Design Systems:**
+
+Writes to `.pairingbuddy/design-ux/{name}/config.json`:
 
 ```json
 {
-  "folder": "string (path to exploration folder)",
-  "artifacts": ["array of file paths generated"]
+  "name": "string",
+  "version": "string",
+  "description": "string",
+  "personality": ["array"],
+  "primary_color": "string",
+  "component_packs": ["array"],
+  "created": "ISO 8601 datetime",
+  "updated": "ISO 8601 datetime"
 }
 ```
 
-**For Design Systems:**
-- Updated tokens/ (brand.json, alias.json, mapped.json)
-- Updated components/
-- Updated tailwind.config.js
-- Updated tokens.css
-- Updated preview.html
-- Updated config.json (increment version)
+State (`.pairingbuddy/design-ux/{name}/`):
+- config.json (with fields above, increment version)
+
+Artifacts (`{output_path}/`):
+- tokens/ (brand.json, alias.json, mapped.json)
+- tokens.css
+- tailwind.config.js
+- preview.html
 - Optional: example.html (if context-specific example requested)
 
 **For Experiences:**
-- Updated states/
-- Updated flow.json
-- Updated prototype.html
-- Updated experience.json
+
+State (`.pairingbuddy/design-ux/{name}/`):
+- experience.json
+
+Artifacts (`{output_path}/`):
+- states/
+- flow.json
+- prototype.html
 - Optional: local-components/

@@ -8,15 +8,39 @@ skills: [differentiating-designs]
 
 # Design UX Explorer
 
+## Required Skill Loading
+
+**You MUST read your assigned skill files using the Read tool before proceeding.**
+
+Read these files IN FULL - start to end, no skipping lines or sections:
+
+1. `skills/differentiating-designs/SKILL.md` - Differentiation guidance and anti-default checks
+
+**Do NOT:**
+- Skim or skip sections
+- Assume you know what's in them
+- Proceed without reading them completely
+
 ## Purpose
 
 Establishes domain grounding and design intent before any generation work. Explores the product's world to create foundations for intentionally differentiated designs.
 
+## State File Paths
+
+The orchestrator passes `{name}` (exploration name like "horizon") and `{output_path}` (user-specified artifact location).
+
+**State files (session management):**
+```
+.pairingbuddy/design-ux/{name}/
+├── direction.json     # Input: brief, constraints, feedback
+└── domain-spec.json   # Output: YOU write this
+```
+
+**Artifacts (deliverables):** Written to `{output_path}/` by the builder agent (not you).
+
 ## Input
 
-**Exploration path:** Received from orchestrator. All file paths below are relative to this path.
-
-Reads from `{exploration_path}/.pairingbuddy/direction.json` (optional):
+Reads from `.pairingbuddy/design-ux/{name}/direction.json` (optional):
 
 ```json
 {
@@ -32,8 +56,8 @@ Reads from `{exploration_path}/.pairingbuddy/direction.json` (optional):
 }
 ```
 
-Also reads from exploration folder:
-- `{exploration_path}/domain-spec.json` - Previous domain specification (if exists, for iteration)
+Also reads (for iteration):
+- `.pairingbuddy/design-ux/{name}/domain-spec.json` - Previous domain specification (if exists)
 
 ## Instructions
 
@@ -58,12 +82,12 @@ DO:
 ### Steps
 
 1. **ASK THE USER FIRST** - Use AskUserQuestion before anything else
-2. Read direction.json from `{exploration_path}/.pairingbuddy/` (if exists)
+2. Read direction.json from `.pairingbuddy/design-ux/{name}/` (if exists)
 3. Read differentiating-designs skill for guidance
 4. Run the Discovery Loop (see below) - user answers THEN research
 5. Generate four mandatory outputs from what you learned
 6. Validate outputs against anti-default checks
-7. Write domain-spec.json
+7. Write domain-spec.json to `.pairingbuddy/design-ux/{name}/`
 
 ### Discovery Loop (MANDATORY)
 
@@ -182,19 +206,19 @@ Before writing output, verify:
 ### File Creation Restrictions
 
 **You may ONLY write to:**
-- `{exploration_path}/domain-spec.json`
+- `.pairingbuddy/design-ux/{name}/domain-spec.json`
 
 **Do NOT:**
-- **mkdir or create directories** - The orchestrator already created the exploration folder
-- Create files outside `{exploration_path}/`
+- **mkdir or create directories** - The orchestrator already created `.pairingbuddy/design-ux/{name}/`
+- Create files outside `.pairingbuddy/design-ux/{name}/`
 - Write to /tmp or system directories
 - Generate design artifacts (that's design-ux-builder's job)
 
-**The exploration_path ALREADY EXISTS.** The orchestrator created it before invoking you. If it doesn't exist, that's an orchestrator bug - do not try to fix it by running mkdir.
+**The state folder ALREADY EXISTS.** The orchestrator created `.pairingbuddy/design-ux/{name}/` before invoking you. If it doesn't exist, that's an orchestrator bug - do not try to fix it by running mkdir.
 
 ## Output
 
-Writes to `{exploration_path}/domain-spec.json`:
+Writes to `.pairingbuddy/design-ux/{name}/domain-spec.json`:
 
 ```json
 {

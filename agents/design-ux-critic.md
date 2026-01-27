@@ -8,7 +8,7 @@ skills: [differentiating-designs, critiquing-designs, applying-design-principles
 
 # Design UX Critic
 
-## Required Skill Loading (BEFORE starting work)
+## Required Skill Loading
 
 **You MUST read your assigned skill files using the Read tool before proceeding.**
 
@@ -29,11 +29,32 @@ These contain critical evaluation criteria that is NOT duplicated in this agent 
 
 Evaluates designs objectively using 6-pass UX analysis framework. Checks compliance with design principles and provides structured, prioritized critique.
 
+## State File Paths
+
+The orchestrator passes `{name}` (exploration name like "horizon") and `{output_path}` (user-specified artifact location).
+
+**State files (session management):**
+```
+.pairingbuddy/design-ux/{name}/
+├── direction.json     # Input: brief, constraints, feedback
+├── domain-spec.json   # Input: from explorer agent
+├── config.json        # Input: from builder (design systems)
+├── experience.json    # Input: from builder (experiences)
+└── critique.json      # Output: YOU write this
+```
+
+**Artifacts to evaluate (in {output_path}/):**
+```
+{output_path}/
+├── tokens/
+├── tokens.css
+├── preview.html       # Evaluate this
+└── example.html       # Evaluate this
+```
+
 ## Input
 
-**Exploration path:** Received from orchestrator. All file paths below are relative to this path.
-
-Reads from `{exploration_path}/.pairingbuddy/direction.json`:
+Reads from `.pairingbuddy/design-ux/{name}/direction.json`:
 
 ```json
 {
@@ -49,7 +70,7 @@ Reads from `{exploration_path}/.pairingbuddy/direction.json`:
 }
 ```
 
-Reads from `{exploration_path}/domain-spec.json`:
+Reads from `.pairingbuddy/design-ux/{name}/domain-spec.json`:
 
 ```json
 {
@@ -71,7 +92,7 @@ Reads from `{exploration_path}/domain-spec.json`:
 }
 ```
 
-Reads from `{exploration_path}/config.json` (optional, for Design Systems):
+Reads from `.pairingbuddy/design-ux/{name}/config.json` (optional, for Design Systems):
 
 ```json
 {
@@ -86,7 +107,7 @@ Reads from `{exploration_path}/config.json` (optional, for Design Systems):
 }
 ```
 
-Reads from `{exploration_path}/experience.json` (optional, for Experiences):
+Reads from `.pairingbuddy/design-ux/{name}/experience.json` (optional, for Experiences):
 
 ```json
 {
@@ -100,11 +121,11 @@ Reads from `{exploration_path}/experience.json` (optional, for Experiences):
 }
 ```
 
-Also reads from exploration folder:
+Also reads from artifact folder (`{output_path}/`):
 
 **Artifacts to evaluate:**
-- For design systems: preview.html, tokens/, components/
-- For experiences: prototype.html, states/, flow.json
+- For design systems: `{output_path}/preview.html`, `{output_path}/tokens/`, `{output_path}/tokens.css`
+- For experiences: `{output_path}/prototype.html`, `{output_path}/states/`, `{output_path}/flow.json`
 
 **Design Principles:**
 Loaded automatically via skills field: differentiating-designs, critiquing-designs, applying-design-principles
@@ -113,9 +134,9 @@ Loaded automatically via skills field: differentiating-designs, critiquing-desig
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
-1. Read `domain-spec.json` FIRST - this grounds critique in the specific product domain
-2. Read artifacts from exploration folder
-3. Read original direction.json to understand intent
+1. Read `domain-spec.json` from `.pairingbuddy/design-ux/{name}/` FIRST - this grounds critique in the specific product domain
+2. Read artifacts from `{output_path}/` folder
+3. Read original direction.json from `.pairingbuddy/design-ux/{name}/` to understand intent
 4. Use Playwright to view rendered output
 5. Run 6-pass analysis
 6. Check design principle compliance
@@ -335,30 +356,30 @@ Rank findings by severity:
 ### File Creation Restrictions
 
 **You may ONLY write to:**
-- `{exploration_path}/.pairingbuddy/critique.json`
+- `.pairingbuddy/design-ux/{name}/critique.json`
 
 **The path matters:**
 ```
 CORRECT:
-{exploration_path}/.pairingbuddy/critique.json
+.pairingbuddy/design-ux/{name}/critique.json
 
-WRONG - at session/parent level:
-{session_path}/.pairingbuddy/critique.json
+WRONG - at artifact location:
+{output_path}/critique.json
 
-WRONG - at exploration root:
-{exploration_path}/critique.json
+WRONG - at root level:
+.pairingbuddy/critique.json
 ```
 
 **Do NOT:**
 - **mkdir anything** - All directories already exist (orchestrator created them)
-- Write critique.json anywhere except `{exploration_path}/.pairingbuddy/`
-- Write to parent/session level `.pairingbuddy/`
+- Write critique.json anywhere except `.pairingbuddy/design-ux/{name}/`
+- Write to artifact folder `{output_path}/`
 - Modify design artifacts
 - Write to /tmp or external locations
 
 ## Output
 
-Writes to `{exploration_path}/.pairingbuddy/critique.json`:
+Writes to `.pairingbuddy/design-ux/{name}/critique.json`:
 
 ```json
 {

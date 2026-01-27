@@ -612,35 +612,46 @@ agents:
   # ---------------------------------------------------------------------------
   # Design UX Agents
   # ---------------------------------------------------------------------------
+  #
+  # State files live in: .pairingbuddy/design-ux/{exploration_name}/
+  # Artifacts go to: {output_path} (user-specified, stored in session.json)
+  #
+  # Example:
+  #   State:     .pairingbuddy/design-ux/horizon/direction.json
+  #   Artifacts: ./design-systems/horizon/tokens.css
+  # ---------------------------------------------------------------------------
+
   design-ux-builder:
     color: blue
     model: opus
-    skills: [applying-design-principles, building-components]
+    skills: [differentiating-designs, applying-design-principles, building-components]
     inputs:
       direction:
         schema: design-direction.schema.json
-        file: direction.json
+        file: .pairingbuddy/design-ux/{name}/direction.json
       domain_spec:
         schema: domain-spec.schema.json
-        file: domain-spec.json
+        file: .pairingbuddy/design-ux/{name}/domain-spec.json
       critique:
         schema: design-critique.schema.json
-        file: critique.json
+        file: .pairingbuddy/design-ux/{name}/critique.json
         optional: true
       design_system_config:
         schema: design-system-config.schema.json
-        file: config.json
+        file: .pairingbuddy/design-ux/{name}/config.json
         optional: true
       experience_config:
         schema: design-experience-config.schema.json
-        file: experience.json
+        file: .pairingbuddy/design-ux/{name}/experience.json
         optional: true
     outputs:
-      design_artifacts:
-        schema: design-artifacts.schema.json
-        file: "{exploration_path}"
+      design_system_config:
+        schema: design-system-config.schema.json
+        file: .pairingbuddy/design-ux/{name}/config.json
     sections:
+      - heading: "## Required Skill Loading"
       - heading: "## Purpose"
+      - heading: "## State File Paths"
       - heading: "## Input"
       - heading: "## Instructions"
         content: focus_warning
@@ -653,24 +664,26 @@ agents:
     inputs:
       direction:
         schema: design-direction.schema.json
-        file: direction.json
+        file: .pairingbuddy/design-ux/{name}/direction.json
       domain_spec:
         schema: domain-spec.schema.json
-        file: domain-spec.json
+        file: .pairingbuddy/design-ux/{name}/domain-spec.json
       design_system_config:
         schema: design-system-config.schema.json
-        file: config.json
+        file: .pairingbuddy/design-ux/{name}/config.json
         optional: true
       experience_config:
         schema: design-experience-config.schema.json
-        file: experience.json
+        file: .pairingbuddy/design-ux/{name}/experience.json
         optional: true
     outputs:
       critique:
         schema: design-critique.schema.json
-        file: critique.json
+        file: .pairingbuddy/design-ux/{name}/critique.json
     sections:
+      - heading: "## Required Skill Loading"
       - heading: "## Purpose"
+      - heading: "## State File Paths"
       - heading: "## Input"
       - heading: "## Instructions"
         content: focus_warning
@@ -683,14 +696,16 @@ agents:
     inputs:
       direction:
         schema: design-direction.schema.json
-        file: direction.json
+        file: .pairingbuddy/design-ux/{name}/direction.json
         optional: true
     outputs:
       domain_spec:
         schema: domain-spec.schema.json
-        file: domain-spec.json
+        file: .pairingbuddy/design-ux/{name}/domain-spec.json
     sections:
+      - heading: "## Required Skill Loading"
       - heading: "## Purpose"
+      - heading: "## State File Paths"
       - heading: "## Input"
       - heading: "## Instructions"
         content: focus_warning

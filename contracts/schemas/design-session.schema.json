@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Design Session",
+  "description": "Tracks active design explorations and their output paths",
+  "type": "object",
+  "required": ["explorations"],
+  "properties": {
+    "explorations": {
+      "type": "object",
+      "description": "Map of exploration name to exploration config",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["output_path", "type", "status"],
+        "properties": {
+          "output_path": {
+            "type": "string",
+            "description": "Where artifacts should be written (user-specified)"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["design-system", "experience"],
+            "description": "Type of exploration"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["exploring", "building", "critiquing", "complete"],
+            "description": "Current workflow phase"
+          },
+          "iteration": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Current iteration number"
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "active_exploration": {
+      "type": "string",
+      "description": "Name of currently active exploration (if any)"
+    }
+  },
+  "additionalProperties": false
+}

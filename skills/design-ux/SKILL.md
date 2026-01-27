@@ -5,66 +5,79 @@ description: Creates, iterates, and manages production-ready design systems with
 
 # Design UX Skill
 
-## STOP - READ THIS FIRST (Critical Mistakes to Avoid)
+## State File Mappings
 
-**These are the three most common failures. Read before doing ANYTHING.**
+State files live in `.pairingbuddy/design-ux/` at the git root of the target project.
 
-### 1. NEVER use project root as exploration path
+| Variable | File | Schema |
+|----------|------|--------|
+| session | .pairingbuddy/design-ux/session.json | design-session.schema.json |
+| direction | .pairingbuddy/design-ux/{name}/direction.json | design-direction.schema.json |
+| domain_spec | .pairingbuddy/design-ux/{name}/domain-spec.json | domain-spec.schema.json |
+| config | .pairingbuddy/design-ux/{name}/config.json | design-system-config.schema.json |
+| experience | .pairingbuddy/design-ux/{name}/experience.json | design-experience-config.schema.json |
+| critique | .pairingbuddy/design-ux/{name}/critique.json | design-critique.schema.json |
+
+Where `{name}` is the exploration name (e.g., "horizon", "aurora").
+
+**Artifacts** (tokens/, preview.html, etc.) go to `{output_path}` which is stored in session.json and specified by the user.
+
+## Folder Structure
 
 ```
-The user's working directory is the PROJECT ROOT.
-DO NOT put explorations there.
-
-WRONG:
-/Users/alberto/src/glimra/design-system-tests-003/    ← Project root
-├── tokens/                                           ← WRONG - artifacts at root
-├── preview.html                                      ← WRONG
-└── config.json                                       ← WRONG
-
-CORRECT:
-/Users/alberto/src/glimra/design-system-tests-003/    ← Project root (don't touch)
-└── my-session/                                       ← CREATE new session folder
-    ├── .pairingbuddy/                                ← Session state
-    ├── exploration-1/                                ← Each exploration is isolated
-    │   ├── .pairingbuddy/
-    │   ├── tokens/
-    │   ├── preview.html
-    │   └── config.json
-    └── exploration-2/
-        └── ...
+project-root/
+├── .pairingbuddy/
+│   └── design-ux/
+│       ├── session.json              # Tracks all explorations
+│       ├── horizon/                  # State for "horizon" exploration
+│       │   ├── direction.json
+│       │   ├── domain-spec.json
+│       │   ├── config.json
+│       │   └── critique.json
+│       └── aurora/                   # State for "aurora" exploration
+│           └── ...
+└── {output_path}/                    # User-specified artifact location
+    └── horizon/                      # Artifacts for "horizon"
+        ├── tokens/
+        │   ├── brand.json
+        │   ├── alias.json
+        │   └── mapped.json
+        ├── tokens.css
+        ├── tailwind.config.js
+        ├── preview.html
+        └── example.html
 ```
 
-**ASK the user where to create the session folder before creating anything.**
+## Critical Rules
 
-### 2. ONE agent per exploration
+### 1. ONE agent per exploration
 
 ```
 WRONG:
 - Spawn 1 builder agent to create 2 design systems
 
 CORRECT:
-- Spawn builder agent for exploration-1, wait for completion
-- Spawn builder agent for exploration-2, wait for completion
-(Or run them in parallel with separate exploration_path parameters)
+- Spawn builder agent for "horizon", wait for completion
+- Spawn builder agent for "aurora", wait for completion
+(Or run them in parallel with separate {name} parameters)
 ```
 
-**Each builder agent receives ONE exploration_path and creates ONE design system.**
-
-### 3. Create folders BEFORE invoking agents
+### 2. Create state folders BEFORE invoking agents
 
 ```
 WRONG:
 1. Invoke builder agent
-2. Agent tries to mkdir exploration path
+2. Agent tries to mkdir state folder
 
 CORRECT:
-1. Orchestrator creates session folder
-2. Orchestrator creates exploration folders with .pairingbuddy/ inside each
-3. Orchestrator writes direction.json to each
-4. THEN invoke builder agent with exploration_path
+1. Orchestrator creates .pairingbuddy/design-ux/{name}/
+2. Orchestrator writes direction.json
+3. THEN invoke agent with {name} parameter
 ```
 
-**Agents do NOT create the folder structure. You (the orchestrator) do.**
+### 3. Ask user for output_path ONCE
+
+At session start, ask user where artifacts should go. Store in session.json. All explorations in that session use the same base output path.
 
 ---
 
@@ -348,77 +361,53 @@ Orchestrator:
 3. Regenerates all artifacts from that version's state
 4. Creates a new version (current + 1) as the "rolled back" version
 
-## State File Mappings
+## Detailed File Responsibilities
 
-State files are organized to support parallel explorations without race conditions:
+This section provides additional detail on the State File Mappings table at the top.
 
-### Session State (in `.pairingbuddy/` folders - ephemeral, gitignored)
-
-| File | Location | Purpose | Writer |
-|------|----------|---------|--------|
-| `brief.json` | `parent/.pairingbuddy/` | Shared requirements across parallel explorations | Orchestrator (write-once) |
-| `status.json` | `parent/.pairingbuddy/` | Parallel exploration tracking | Orchestrator only |
-| `direction.json` | `exploration/.pairingbuddy/` | Human's brief, constraints, feedback for THIS exploration | Orchestrator |
-| `critique.json` | `exploration/.pairingbuddy/` | Latest critique findings for THIS exploration | Critic agent |
-
-### Artifacts (in exploration folder - persistent, committed)
+### State Files (in `.pairingbuddy/design-ux/`)
 
 | File | Location | Purpose | Writer |
 |------|----------|---------|--------|
-| `domain-spec.json` | `exploration/` | Domain grounding from explorer agent | Explorer agent |
-| `config.json` | `exploration/` | Design system metadata and version | Builder agent |
-| `experience.json` | `exploration/` | Experience metadata | Builder agent |
-| `tokens/`, `preview.html` | `exploration/` | Generated design artifacts | Builder agent |
+| `session.json` | `.pairingbuddy/design-ux/` | Tracks all explorations & output paths | Orchestrator |
+| `direction.json` | `.pairingbuddy/design-ux/{name}/` | Brief, constraints, feedback | Orchestrator |
+| `domain-spec.json` | `.pairingbuddy/design-ux/{name}/` | Domain grounding | Explorer agent |
+| `config.json` | `.pairingbuddy/design-ux/{name}/` | Design system metadata | Builder agent |
+| `experience.json` | `.pairingbuddy/design-ux/{name}/` | Experience metadata | Builder agent |
+| `critique.json` | `.pairingbuddy/design-ux/{name}/` | Critique findings | Critic agent |
 
-### Folder Structure Example
+### Artifacts (in `{output_path}/`)
 
-```
-explorations/
-├── .pairingbuddy/                    # Parent session state (shared)
-│   ├── brief.json                    # Write-once, read by all
-│   └── status.json                   # Single writer (orchestrator)
-│
-├── v1-minimal/
-│   ├── .pairingbuddy/                # v1's session state (isolated)
-│   │   ├── direction.json            # v1's brief + feedback
-│   │   └── critique.json             # v1's critique
-│   ├── domain-spec.json              # v1's domain grounding
-│   ├── config.json                   # v1's design system
-│   └── tokens/
-│
-└── v2-playful/
-    ├── .pairingbuddy/                # v2's session state (isolated)
-    │   ├── direction.json            # v2's brief + feedback
-    │   └── critique.json             # v2's critique
-    ├── domain-spec.json              # v2's domain grounding
-    ├── config.json                   # v2's design system
-    └── tokens/
-```
+| File | Location | Purpose | Writer |
+|------|----------|---------|--------|
+| `tokens/` | `{output_path}/` | Token JSON files (brand, alias, mapped) | Builder agent |
+| `tokens.css` | `{output_path}/` | CSS variables | Builder agent |
+| `tailwind.config.js` | `{output_path}/` | Tailwind configuration | Builder agent |
+| `preview.html` | `{output_path}/` | Design system preview | Builder agent |
+| `example.html` | `{output_path}/` | Contextual example | Builder agent |
 
-### CRITICAL: Folder Structure is MANDATORY
+### CRITICAL: State vs Artifacts Separation
 
-**This structure is not optional. You MUST follow it exactly.**
+**State goes in `.pairingbuddy/design-ux/{name}/`. Artifacts go in `{output_path}/`.**
 
 **Common mistakes to AVOID:**
-- ❌ Putting session state files at parent level only (each exploration needs its own `.pairingbuddy/`)
+- ❌ Putting artifacts (tokens/, preview.html) in state folder
+- ❌ Putting state (direction.json, critique.json) in artifact folder
 - ❌ Using markdown files instead of JSON (use `.json` files as specified)
-- ❌ Skipping the `.pairingbuddy/` folder inside explorations
-- ❌ Mixing session state with artifacts
+- ❌ Creating nested `.pairingbuddy/` folders inside explorations
 
 **Before invoking ANY agent, verify:**
-1. Parent folder has `.pairingbuddy/` with `brief.json` and `status.json`
-2. Each exploration folder has its own `.pairingbuddy/` with `direction.json`
+1. `.pairingbuddy/design-ux/{name}/` exists for state files
+2. `{output_path}` is stored in session.json
 3. All state files are JSON, not markdown
-
-**If you catch yourself writing `design-critique.md` instead of `critique.json`, STOP. You are violating the structure.**
 
 ### Concurrency Safety
 
 | File | Writer | Readers | Safe? |
 |------|--------|---------|-------|
-| `brief.json` | Orchestrator (once) | All agents | ✓ Write-once |
-| `status.json` | Orchestrator only | Orchestrator | ✓ Single writer |
+| `session.json` | Orchestrator only | All agents | ✓ Single writer |
 | `direction.json` | Orchestrator per-exploration | That exploration's agents | ✓ Isolated |
+| `domain-spec.json` | Explorer per-exploration | Builder, Critic | ✓ Isolated |
 | `critique.json` | Critic per-exploration | Builder in same exploration | ✓ Isolated |
 
 ## How to Execute This Workflow
@@ -451,130 +440,78 @@ The orchestrator manages the builder-critic loop based on human direction rather
 
 ## Pre-Exploration Setup (MANDATORY - Do This First)
 
-**Before invoking ANY agent, the orchestrator MUST set up the folder structure.**
+**Before invoking ANY agent, the orchestrator MUST set up state folders and ask for output path.**
 
-### CRITICAL: Folder Hierarchy Rules
-
-**NEVER use the project root as the exploration parent.**
-
-The project root (where the user is working) is NOT where explorations go. You MUST create a NEW subfolder for each exploration session.
+### Setup Steps
 
 ```
-PROJECT ROOT (e.g., /Users/alberto/src/glimra/)     ← DON'T write here
-└── {session-folder}/                               ← CREATE this (new folder)
-    ├── .pairingbuddy/                              ← Parent session state
-    │   ├── brief.json
-    │   └── status.json
-    ├── exploration-1/                              ← Self-contained exploration
-    │   ├── .pairingbuddy/
-    │   │   ├── direction.json
-    │   │   └── critique.json
-    │   ├── domain-spec.json
-    │   ├── config.json
-    │   ├── tokens/
-    │   ├── tokens.css
-    │   ├── preview.html
-    │   └── example.html
-    ├── exploration-2/                              ← Another exploration
-    │   └── ...
-    ├── index.html                                  ← Web output (at session level)
-    ├── comparison.html
-    └── robots.txt
-```
+1. ASK user for output path (where artifacts will go)
+   "Where should I put the design system files?
+    Suggested: {project_root}/design-system-{name}/
+    Or provide a different path."
 
-### Step 0: Ask Where to Create Session Folder
+2. CREATE state folder for this exploration
+   mkdir -p .pairingbuddy/design-ux/{name}
 
-**ALWAYS ask the user before creating folders:**
-
-```
-"Where should I create the design exploration session?
-
-Suggested: {project_root}/design-explorations-{date}/
-
-Or provide a different path."
-```
-
-Wait for user confirmation before proceeding.
-
-### Single Exploration Setup
-
-```
-1. ASK user for session folder location
-   Suggested: {project_root}/{descriptive-name}/
-
-2. CREATE session folder (this becomes the exploration folder for single)
-   mkdir {session_path}
-
-3. CREATE .pairingbuddy folder INSIDE session
-   mkdir {session_path}/.pairingbuddy
+3. CREATE or UPDATE session.json
+   Write to .pairingbuddy/design-ux/session.json:
+   {
+     "explorations": {
+       "{name}": {
+         "output_path": "{user_specified_path}",
+         "type": "design-system",
+         "status": "exploring",
+         "iteration": 1,
+         "created": "ISO timestamp",
+         "updated": "ISO timestamp"
+       }
+     },
+     "active_exploration": "{name}"
+   }
 
 4. WRITE direction.json (JSON, not markdown!)
-   Write to {session_path}/.pairingbuddy/direction.json:
+   Write to .pairingbuddy/design-ux/{name}/direction.json:
    {
      "brief": "user's design request",
      "constraints": [],
      "feedback_history": []
    }
 
-5. NOW invoke explorer agent with session_path as exploration_path
+5. CREATE output folder
+   mkdir -p {output_path}
+
+6. NOW invoke explorer agent with {name} and {output_path}
 ```
 
 ### Parallel Explorations Setup
 
-```
-1. ASK user for session folder location
-   Suggested: {project_root}/{project-name}-explorations/
+For parallel explorations, repeat steps 2-5 for each exploration name, using the same session.json to track all:
 
-2. CREATE session folder (this is the parent for all explorations)
-   mkdir {session_path}
-
-3. CREATE parent .pairingbuddy
-   mkdir {session_path}/.pairingbuddy
-
-4. WRITE brief.json to parent
-   Write to {session_path}/.pairingbuddy/brief.json:
-   {
-     "title": "project name",
-     "requirements": "shared requirements",
-     "constraints": [],
-     "created": "ISO timestamp"
-   }
-
-5. WRITE status.json to parent
-   Write to {session_path}/.pairingbuddy/status.json:
-   {
-     "created": "ISO timestamp",
-     "agents": [
-       {"id": "exploration-1", "status": "pending", "iterations": 0},
-       {"id": "exploration-2", "status": "pending", "iterations": 0}
-     ]
-   }
-
-6. FOR EACH exploration:
-   a. CREATE exploration folder INSIDE session
-      mkdir {session_path}/{exploration-name}
-
-   b. CREATE .pairingbuddy INSIDE exploration (NOT optional!)
-      mkdir {session_path}/{exploration-name}/.pairingbuddy
-
-   c. WRITE direction.json (JSON!)
-      Write to {session_path}/{exploration-name}/.pairingbuddy/direction.json:
-      {
-        "brief": "from parent brief.json",
-        "angle": "specific direction for this exploration",
-        "constraints": [],
-        "feedback_history": []
-      }
-
-7. NOW invoke agents with each exploration_path
+```json
+{
+  "explorations": {
+    "horizon": {
+      "output_path": "/path/to/horizon",
+      "type": "design-system",
+      "status": "building",
+      "iteration": 2
+    },
+    "aurora": {
+      "output_path": "/path/to/aurora",
+      "type": "design-system",
+      "status": "exploring",
+      "iteration": 1
+    }
+  },
+  "active_exploration": "horizon"
+}
 ```
 
 **VERIFY before proceeding:**
-- [ ] Session folder is a NEW folder (not project root)
-- [ ] Each exploration is a subfolder inside session folder
-- [ ] Each exploration has its own `.pairingbuddy/` folder
-- [ ] Each `.pairingbuddy/` contains `direction.json` (JSON, not .md)
-- [ ] Parent has `brief.json` and `status.json` (for parallel)
+- [ ] `.pairingbuddy/design-ux/{name}/` exists
+- [ ] `session.json` has entry for this exploration with output_path
+- [ ] `direction.json` exists in state folder
+- [ ] Output folder exists at `{output_path}`
 
 ## Workflow
 
@@ -583,109 +520,82 @@ def design_ux_workflow():
     """
     Conversational workflow for design work.
 
-    Key principle: Each exploration has its own .pairingbuddy/ folder
-    for isolated session state. Agents receive the exploration_path
-    as a parameter to know where to read/write files.
+    Key principle: State in .pairingbuddy/design-ux/{name}/
+    Artifacts in {output_path}/ (user-specified)
     """
     # 1. Establish what we're working on
     target = _get_target()  # new DS, existing DS, new experience, etc.
-    exploration_path = _get_or_create_exploration_path(target)
+    name = _get_exploration_name(target)  # e.g., "horizon"
 
-    # 2. Create .pairingbuddy/ in exploration folder and write direction.json
-    Write(f"{exploration_path}/.pairingbuddy/direction.json", {
+    # 2. Ask user for output path
+    output_path = _ask_user_for_output_path(name)
+
+    # 3. Create state folder and session entry
+    mkdir(f".pairingbuddy/design-ux/{name}")
+    _update_session_json(name, output_path, "exploring")
+
+    # 4. Write direction.json
+    Write(f".pairingbuddy/design-ux/{name}/direction.json", {
         "brief": human_input,
         "constraints": [],
         "feedback_history": []
     })
 
-    # 3. EXPLORER PHASE (MANDATORY - runs first)
-    # Pass exploration_path so agent knows where to read/write
-    _invoke_explorer_agent(exploration_path)
-    # Reads: {exploration_path}/.pairingbuddy/direction.json (optional)
-    # Writes: {exploration_path}/domain-spec.json
+    # 5. Create output folder
+    mkdir(output_path)
 
-    # 4. Set exploration parameters
+    # 6. EXPLORER PHASE (MANDATORY - runs first)
+    _invoke_explorer_agent(name, output_path)
+    # Reads: .pairingbuddy/design-ux/{name}/direction.json
+    # Writes: .pairingbuddy/design-ux/{name}/domain-spec.json
+
+    # 7. Set exploration parameters
     params = _get_exploration_params()
-    # - iterations_before_checkpoint
-    # - parallel_directions (1..N)
-    # - max_iterations
 
-    # 5. For parallel explorations: create parent .pairingbuddy/ with shared state
-    if params.parallel_directions > 1:
-        parent_path = _get_parent_path(exploration_path)
-        Write(f"{parent_path}/.pairingbuddy/brief.json", {
-            "title": target,
-            "requirements": shared_requirements,
-            "constraints": [],
-            "created": now()
-        })
-        Write(f"{parent_path}/.pairingbuddy/status.json", {
-            "created": now(),
-            "agents": [{"id": dir_id, "status": "running", ...} for dir_id in params.directions]
-        })
-
-        # Create isolated .pairingbuddy/ for each exploration
-        for direction in params.directions:
-            exp_path = f"{parent_path}/{direction.id}"
-            Write(f"{exp_path}/.pairingbuddy/direction.json", {
-                "brief": Read(f"{parent_path}/.pairingbuddy/brief.json")["requirements"],
-                "angle": direction.specific_angle,
-                "constraints": [],
-                "feedback_history": []
-            })
-
-    # 6. Spawn explorations (parallel if N > 1)
-    for direction in params.directions:
-        exp_path = f"{parent_path}/{direction.id}" if params.parallel_directions > 1 else exploration_path
-        _run_exploration(exp_path, params, run_in_background=(params.parallel_directions > 1))
-
-    # 7. Poll and present completions, handle human commands
-    if params.parallel_directions > 1:
-        _monitor_and_respond(parent_path)
+    # 8. Run builder-critic loop
+    _run_exploration(name, output_path, params)
 
 
-def _run_exploration(exploration_path, params, run_in_background=False):
+def _run_exploration(name, output_path, params, run_in_background=False):
     """
     Single exploration loop: builder-critic cycle until done.
 
-    All file paths are relative to exploration_path:
-    - Session state: {exploration_path}/.pairingbuddy/
-    - Artifacts: {exploration_path}/
-
-    This ensures parallel explorations don't conflict.
+    State files: .pairingbuddy/design-ux/{name}/
+    Artifacts: {output_path}/
     """
     iterations = 0
     while iterations < params.max_iterations:
-        # Builder agent receives exploration_path
+        # Builder agent receives name and output_path
         # Reads:
-        #   {exploration_path}/.pairingbuddy/direction.json
-        #   {exploration_path}/domain-spec.json
-        #   {exploration_path}/.pairingbuddy/critique.json (optional)
-        #   {exploration_path}/config.json or experience.json
+        #   .pairingbuddy/design-ux/{name}/direction.json
+        #   .pairingbuddy/design-ux/{name}/domain-spec.json
+        #   .pairingbuddy/design-ux/{name}/critique.json (optional)
+        #   .pairingbuddy/design-ux/{name}/config.json
         # Writes:
-        #   {exploration_path}/tokens/, components/, preview.html, etc.
-        _invoke_builder_agent(exploration_path)
+        #   .pairingbuddy/design-ux/{name}/config.json
+        #   {output_path}/tokens/, preview.html, etc.
+        _invoke_builder_agent(name, output_path)
 
-        # Critic agent receives exploration_path
+        # Critic agent receives name and output_path
         # Reads:
-        #   {exploration_path}/.pairingbuddy/direction.json
-        #   {exploration_path}/domain-spec.json
-        #   {exploration_path}/config.json or experience.json
-        #   {exploration_path}/preview.html (artifacts)
+        #   .pairingbuddy/design-ux/{name}/direction.json
+        #   .pairingbuddy/design-ux/{name}/domain-spec.json
+        #   .pairingbuddy/design-ux/{name}/config.json
+        #   {output_path}/preview.html (artifacts)
         # Writes:
-        #   {exploration_path}/.pairingbuddy/critique.json
-        _invoke_critic_agent(exploration_path)
+        #   .pairingbuddy/design-ux/{name}/critique.json
+        _invoke_critic_agent(name, output_path)
 
         iterations += 1
+        _update_session_json(name, output_path, "building", iterations)
 
         if iterations % params.iterations_before_checkpoint == 0:
             _present_to_human()
-            response = _get_human_response()  # feedback, kill, continue
+            response = _get_human_response()
             if response == "kill":
                 return
             if response.has_feedback:
-                # Append to THIS exploration's direction.json
-                direction_file = f"{exploration_path}/.pairingbuddy/direction.json"
+                direction_file = f".pairingbuddy/design-ux/{name}/direction.json"
                 direction_data = Read(direction_file)
                 direction_data["feedback_history"].append({
                     "iteration": iterations,
@@ -693,6 +603,8 @@ def _run_exploration(exploration_path, params, run_in_background=False):
                     "timestamp": now()
                 })
                 Write(direction_file, direction_data)
+
+    _update_session_json(name, output_path, "complete", iterations)
 ```
 
 ## Orchestrator Behavior
@@ -703,12 +615,17 @@ Not applicable - design-ux does not use test-config.json.
 
 ### State File Management
 
-The orchestrator manages state files with isolation for parallel safety:
+The orchestrator manages state files:
 
-**Per-exploration `.pairingbuddy/` folder:**
-- Creates `{exploration_path}/.pairingbuddy/` on first run
-- Writes `direction.json` from human input (isolated per exploration)
-- Passes `critique.json` between builder and critic (isolated per exploration)
+**Session tracking (`.pairingbuddy/design-ux/session.json`):**
+- Tracks all explorations and their output paths
+- Single source of truth for exploration status
+- Updated after each workflow phase
+
+**Per-exploration state (`.pairingbuddy/design-ux/{name}/`):**
+- Creates folder on first run for each exploration
+- Writes `direction.json` from human input
+- Passes `critique.json` between builder and critic
 
 **Per-exploration artifacts:**
 - Writes `domain-spec.json` from explorer agent
@@ -1578,14 +1495,14 @@ explorations/
 
 2. CAPTURE screenshots (if Playwright available)
    - For each exploration:
-     a. Navigate to http://localhost:{port}/example.html (or preview.html if no example)
+     a. Navigate to the localhost URL for example.html (or preview.html if no example)
      b. Set viewport to 1200x800
      c. Take full-page screenshot
      d. Save to {parent}/screenshots/{exploration-name}.png
 
 3. READ templates
-   - Read skills/design-ux/templates/index-template.html
-   - Read skills/design-ux/templates/comparison-template.html
+   - Read [index-template.html](./templates/index-template.html)
+   - Read [comparison-template.html](./templates/comparison-template.html)
 
 4. GENERATE index.html
    - Replace {{PROJECT_NAME}} with project name from brief.json
