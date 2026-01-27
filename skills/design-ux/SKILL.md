@@ -103,6 +103,7 @@ Creates, iterates, and manages production-ready design systems. Generates three-
 | `design-ux-visual-builder` | preview.html, example.html | HTML artifacts |
 | `design-ux-validator` | validation.json | Structural validation |
 | `design-ux-critic` | critique.json | UX critique with change_level |
+| `design-ux-gallery-generator` | index.html, comparison.html, screenshots/ | Web gallery output |
 
 **Iteration routing:**
 - Strategic issues → Re-run from Architect
@@ -157,6 +158,9 @@ while iteration < max_iterations:
     response = _ask_human("Continue, adjust, or done?")
     if response == "done":
         break
+
+# After all explorations complete
+generate_gallery(output_path)  # Creates index.html, comparison.html, screenshots/
 ```
 
 ### Orchestrator Functions
@@ -181,36 +185,13 @@ Pause for human review after each iteration cycle.
 
 ### Playwright
 
-Check for Playwright MCP at start. If unavailable, explain the human operator how to install it, and offer generation-only mode if they prefer not to use it. See [playwright-setup.md](./playwright-setup.md) for server configuration.
-
-**Screenshot capture:** After each exploration completes, capture screenshot of example.html (viewport 1200x800) for comparison.html.
+Check for Playwright MCP at start. If unavailable, offer generation-only mode. See [playwright-setup.md](./playwright-setup.md) for server configuration.
 
 ### Error Handling
 
 - If agents fail: report to human, ask how to proceed
 - If color produces poor contrast: warn human, suggest alternatives
 - If brand colors conflict with accessibility: show conflict, propose adjusted colors, let human decide
-
-## Web Hosting Output
-
-After explorations complete, generate web-hostable output. **This is orchestrator responsibility - agents do NOT generate these.**
-
-### Steps
-
-1. **Verify** all explorations complete (session.json status: "complete")
-2. **Capture screenshots** (if Playwright available) - viewport 1200x800, save to `{output_path}/screenshots/`
-3. **Generate index.html** using [index-template.html](./templates/index-template.html)
-4. **Generate comparison.html** using [comparison-template.html](./templates/comparison-template.html)
-5. **Generate robots.txt** - `User-agent: *\nDisallow: /`
-6. **Announce** to user: "Web output ready. Deploy by copying folder to any static host."
-
-### Path Requirements
-
-All paths must be **relative** for portability:
-```html
-<a href="01-bold/example.html">View</a>  <!-- Correct -->
-<a href="/01-bold/example.html">View</a> <!-- Wrong -->
-```
 
 ## Skill Evolution
 

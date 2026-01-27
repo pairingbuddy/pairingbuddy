@@ -106,6 +106,12 @@ skills:
       - heading: "## Contents"
       - heading: "## Quick Reference"
 
+  generating-exploration-gallery:
+    category: reference
+    sections:
+      - heading: "## Templates"
+      - heading: "## Output Files"
+
   # ---------------------------------------------------------------------------
   # Design UX Orchestrator (separate category - different section structure)
   # ---------------------------------------------------------------------------
@@ -122,4 +128,3 @@ skills:
       - heading: "## Workflow"
         requires_python_code_block: true
       - heading: "## Orchestrator Behavior"
-      - heading: "## Web Hosting Output"

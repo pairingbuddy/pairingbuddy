@@ -797,6 +797,28 @@ agents:
         content: focus_warning
       - heading: "## Output"
 
+  design-ux-gallery-generator:
+    color: cyan
+    model: sonnet
+    skills: [generating-exploration-gallery]
+    inputs:
+      session:
+        schema: design-session.schema.json
+        file: .pairingbuddy/design-ux/session.json
+    outputs:
+      gallery_output:
+        schema: gallery-output.schema.json
+        file: .pairingbuddy/design-ux/gallery-output.json
+    # Also writes artifacts to {output_path}/index.html, comparison.html, robots.txt, screenshots/
+    sections:
+      - heading: "## Required Skill Loading"
+      - heading: "## Purpose"
+      - heading: "## State File Paths"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
 # =============================================================================
 # Shared Content Blocks
 # =============================================================================

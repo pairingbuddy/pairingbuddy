@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Gallery Output",
+  "description": "Result of gallery generation (index.html, comparison.html, screenshots)",
+  "type": "object",
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the gallery was generated"
+    },
+    "files_generated": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of files generated"
+    },
+    "screenshots_captured": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of screenshot files captured"
+    },
+    "explorations_included": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of exploration names included"
+    },
+    "playwright_available": {
+      "type": "boolean",
+      "description": "Whether Playwright was available for screenshots"
+    }
+  },
+  "required": ["timestamp", "files_generated", "screenshots_captured", "explorations_included", "playwright_available"]
+}
