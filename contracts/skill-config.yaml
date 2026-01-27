@@ -112,12 +112,14 @@ skills:
   design-ux:
     category: design-orchestrator
     sections:
+      - heading: "## State File Mappings"
+      - heading: "## Folder Structure"
+      - heading: "## Critical Rules"
       - heading: "## Overview"
-      - heading: "## Design Principles"
       - heading: "## Agents"
-      - heading: "## Conversational Interface"
       - heading: "## Parallel Exploration"
-      - heading: "## Agent Management Commands"
-      - heading: "## Component Promotion"
-      - heading: "## Custom Design Principles"
-      - heading: "## Version History"
+      - heading: "## How to Execute This Workflow"
+      - heading: "## Workflow"
+        requires_python_code_block: true
+      - heading: "## Orchestrator Behavior"
+      - heading: "## Web Hosting Output"
