@@ -3,7 +3,7 @@ name: design-ux-visual-builder
 description: Generates preview.html and example.html from design decisions and tokens. Iterates visually using Playwright feedback. Can modify token values.
 model: opus
 color: blue
-skills: [differentiating-designs, applying-design-principles, building-components]
+skills: [differentiating-designs, applying-design-principles, building-components, generating-design-previews]
 ---
 
 # Design UX Visual Builder
@@ -365,7 +365,7 @@ Read from `{output_path}/`:
 
 **CRITICAL: You MUST use the preview template. Do NOT create a custom preview.html from scratch.**
 
-1. READ the template at `skills/design-ux/templates/preview-template.html`
+1. READ the template from skill: `templates/preview-template.html`
 2. COPY the entire template structure including:
    - The tabbed navigation (Colors, Typography, Spacing, Motion, Components)
    - The header with theme toggle
@@ -442,7 +442,7 @@ Examples that trigger requirement:
 
 **example.html is THE MOST IMPORTANT FILE for differentiation.** Preview.html shows tokens; example.html shows the design system BEING the product.
 
-Generate example.html using template at `skills/design-ux/templates/example-template.html`:
+Generate example.html using template from skill: `templates/example-template.html`:
 
 **Required elements in example.html:**
 

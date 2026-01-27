@@ -680,7 +680,7 @@ agents:
   design-ux-visual-builder:
     color: blue
     model: opus
-    skills: [differentiating-designs, applying-design-principles, building-components]
+    skills: [differentiating-designs, applying-design-principles, building-components, generating-design-previews]
     inputs:
       design_decisions:
         schema: design-decisions.schema.json

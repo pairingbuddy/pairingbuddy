@@ -1,5 +1,5 @@
 ---
-name: design-ux
+name: designing-ux
 description: Creates, iterates, and manages production-ready design systems with three-tiered token architecture, Tailwind CSS output, and visual critique via Playwright MCP.
 ---
 

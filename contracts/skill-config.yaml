@@ -112,10 +112,16 @@ skills:
       - heading: "## Templates"
       - heading: "## Output Files"
 
+  generating-design-previews:
+    category: reference
+    sections:
+      - heading: "## Templates"
+      - heading: "## Output Files"
+
   # ---------------------------------------------------------------------------
   # Design UX Orchestrator (separate category - different section structure)
   # ---------------------------------------------------------------------------
-  design-ux:
+  designing-ux:
     category: design-orchestrator
     sections:
       - heading: "## State File Mappings"
