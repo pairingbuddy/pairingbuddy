@@ -168,39 +168,48 @@ The design-ux orchestrator can spawn multiple builder-critic loops to explore di
 
 When the human requests multiple explorations:
 
-1. Create exploration parent folder (e.g., `onboarding-explorations/`)
-2. Create `.pairingbuddy/` in parent folder for shared session state
-3. Write `brief.json` and `status.json` to parent's `.pairingbuddy/`:
+1. Ask user for output path (single location for all explorations)
+2. Create state folder for each exploration: `.pairingbuddy/design-ux/{name}/`
+3. Update session.json with all explorations:
 ```json
-// .pairingbuddy/status.json
+// .pairingbuddy/design-ux/session.json
 {
-  "created": "2026-01-24T10:00:00Z",
-  "agents": [
-    {"id": "v1-minimal", "status": "running", "iterations": 0, "port": 8001},
-    {"id": "v2-playful", "status": "running", "iterations": 0, "port": 8002}
-  ]
+  "explorations": {
+    "v1-minimal": {
+      "output_path": "/path/to/output/v1-minimal",
+      "type": "design-system",
+      "status": "building",
+      "iteration": 2
+    },
+    "v2-playful": {
+      "output_path": "/path/to/output/v2-playful",
+      "type": "design-system",
+      "status": "exploring",
+      "iteration": 1
+    }
+  }
 }
 ```
-4. Create subfolder for each exploration (v1-minimal/, v2-playful/, etc.)
-5. Create `.pairingbuddy/` in each subfolder for isolated session state
-6. Write `direction.json` in each subfolder's `.pairingbuddy/` (from brief + specific angle)
-7. Spawn builder-critic agents with `run_in_background: true` for each exploration
-8. Update parent's `.pairingbuddy/status.json` as each agent progresses
+4. Write direction.json in each `.pairingbuddy/design-ux/{name}/` (with specific angle)
+5. Create output folders at `{output_path}/{name}/`
+6. Spawn builder-critic agents with `run_in_background: true` for each exploration
+7. Update session.json as each agent progresses
 
 ### Monitoring Progress
 
 The orchestrator polls running explorations using TaskOutput tool:
 - Check status of background agents
-- Update `.pairingbuddy/status.json` with iterations completed
+- Update session.json with iterations completed
 - Present completed explorations to human for review
 - Continue polling for still-running agents
 
 ### Status Updates
 
-`.pairingbuddy/status.json` tracks exploration state:
-- `running` - Agent is actively iterating
-- `completed` - Agent finished requested iterations
-- `killed` - Human terminated this exploration
+session.json `status` field tracks exploration state:
+- `exploring` - Explorer agent running
+- `building` - Builder agent running
+- `critiquing` - Critic agent running
+- `complete` - Finished
 
 ## Agent Management Commands
 
@@ -214,9 +223,9 @@ Human: "Kill v3-bold, it's too aggressive"
 ```
 
 Orchestrator:
-1. Updates `.pairingbuddy/status.json`: `{"id": "v3-bold", "status": "killed", "iterations": 2, "reason": "Too aggressive"}`
+1. Updates session.json: sets v3-bold status to "complete"
 2. Stops polling that agent (agent continues in background but is ignored)
-3. Preserves artifacts in v3-bold/ folder for reference
+3. Preserves artifacts in output folder for reference
 
 ### continue
 
@@ -226,9 +235,9 @@ Human: "v7 is interesting. Continue 4 more iterations, but make the CTAs more pr
 ```
 
 Orchestrator:
-1. Appends to v7's `.pairingbuddy/direction.json` with new guidance
+1. Appends to `.pairingbuddy/design-ux/v7/direction.json` with new guidance
 2. Spawns new builder-critic loop with updated direction and run_in_background: true
-3. Updates parent's `.pairingbuddy/status.json` to track new iterations
+3. Updates session.json to track new iterations
 
 ### converge
 
@@ -238,7 +247,7 @@ Human: "v7 is the winner. Let's refine it."
 ```
 
 Orchestrator:
-1. Updates `.pairingbuddy/status.json`: marks v7 as `running`, others as `killed` or `completed`
+1. Updates session.json: sets active_exploration to "v7", others to "complete"
 2. Switches to tight human-in-the-loop iteration on v7 only
 3. No more background agents, full conversational control
 
@@ -627,15 +636,11 @@ The orchestrator manages state files:
 - Writes `direction.json` from human input
 - Passes `critique.json` between builder and critic
 
-**Per-exploration artifacts:**
-- Writes `domain-spec.json` from explorer agent
-- Maintains version history in `config.json`
+**Per-exploration artifacts (in `{output_path}/`):**
+- Writes tokens/, tokens.css, preview.html from builder agent
+- Maintains version history in state folder's `config.json`
 
-**Parent `.pairingbuddy/` folder (parallel explorations only):**
-- Writes `brief.json` with shared requirements (write-once)
-- Writes `status.json` to track all explorations (single writer)
-
-**Path passing:** Agents receive `exploration_path` parameter to know where to read/write files. This enables parallel explorations without race conditions.
+**Path passing:** Agents receive `{name}` and `{output_path}` parameters. State files go to `.pairingbuddy/design-ux/{name}/`, artifacts go to `{output_path}/`.
 
 ### Human Checkpoints
 
@@ -691,23 +696,12 @@ Use:        http://localhost:8000/preview.html
 
 **For parallel explorations - explicit port mapping:**
 
-Each exploration gets its own port. Track in status.json:
-```json
-{
-  "created": "2026-01-24T10:00:00Z",
-  "agents": [
-    {"id": "v1-minimal", "status": "running", "iterations": 0, "port": 8001},
-    {"id": "v2-playful", "status": "running", "iterations": 0, "port": 8002},
-    {"id": "v3-bold", "status": "running", "iterations": 0, "port": 8003}
-  ]
-}
-```
-
-Start servers for each:
+Each exploration gets its own port. Use different ports when serving multiple output folders:
 ```bash
-cd v1-minimal && python -m http.server 8001 &
-cd v2-playful && python -m http.server 8002 &
-cd v3-bold && python -m http.server 8003 &
+# Start servers from output path
+cd {output_path}/v1-minimal && python -m http.server 8001 &
+cd {output_path}/v2-playful && python -m http.server 8002 &
+cd {output_path}/v3-bold && python -m http.server 8003 &
 ```
 
 **Always use the correct port for each exploration** - never navigate to the wrong port or you'll critique the wrong design system.
@@ -1490,22 +1484,22 @@ explorations/
 
 ```
 1. VERIFY all explorations have completed
-   - Check status.json shows all agents "completed" or "killed"
-   - Each exploration folder has: preview.html, tokens.css, config.json
+   - Check session.json shows all explorations with status "complete"
+   - Each output folder has: preview.html, tokens.css
 
 2. CAPTURE screenshots (if Playwright available)
    - For each exploration:
      a. Navigate to the localhost URL for example.html (or preview.html if no example)
      b. Set viewport to 1200x800
      c. Take full-page screenshot
-     d. Save to {parent}/screenshots/{exploration-name}.png
+     d. Save to {output_path}/screenshots/{exploration-name}.png
 
 3. READ templates
    - Read [index-template.html](./templates/index-template.html)
    - Read [comparison-template.html](./templates/comparison-template.html)
 
 4. GENERATE index.html
-   - Replace {{PROJECT_NAME}} with project name from brief.json
+   - Replace {{PROJECT_NAME}} with project name from direction.json or user input
    - Replace {{PROJECT_DESCRIPTION}} with description
    - Replace {{DESIGN_SYSTEM_CARDS}} with card HTML for each exploration:
      ```html
@@ -1522,19 +1516,19 @@ explorations/
        </div>
      </div>
      ```
-   - Write to {parent}/index.html
+   - Write to {output_path}/index.html
 
 5. GENERATE comparison.html
    - Replace placeholders with exploration data
    - Include screenshot images from screenshots/ folder
-   - Write to {parent}/comparison.html
+   - Write to {output_path}/comparison.html
 
 6. GENERATE robots.txt
-   - Write "User-agent: *\nDisallow: /" to {parent}/robots.txt
+   - Write "User-agent: *\nDisallow: /" to {output_path}/robots.txt
 
 7. ANNOUNCE to user
    - "Web output ready. Files generated: index.html, comparison.html, robots.txt"
-   - "Deploy by copying {parent}/ folder to any static host"
+   - "Deploy by copying {output_path}/ folder to any static host"
 ```
 
 **If you skip this step, the output is NOT publishable. This is a failure.**
