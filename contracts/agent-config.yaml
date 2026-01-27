@@ -38,6 +38,8 @@ schemas:
   - design-brief.schema.json
   - design-system-config.schema.json
   - design-experience-config.schema.json
+  - design-decisions.schema.json
+  - tokens-generated.schema.json
   - design-validation.schema.json
   - exploration-status.schema.json
 
@@ -622,14 +624,67 @@ agents:
   #   Artifacts: ./design-systems/horizon/tokens.css
   # ---------------------------------------------------------------------------
 
-  design-ux-builder:
-    color: blue
+  design-ux-architect:
+    color: magenta
     model: opus
-    skills: [differentiating-designs, applying-design-principles, building-components]
+    skills: [differentiating-designs]
     inputs:
       direction:
         schema: design-direction.schema.json
         file: .pairingbuddy/design-ux/{name}/direction.json
+      domain_spec:
+        schema: domain-spec.schema.json
+        file: .pairingbuddy/design-ux/{name}/domain-spec.json
+      critique:
+        schema: design-critique.schema.json
+        file: .pairingbuddy/design-ux/{name}/critique.json
+        optional: true
+      existing_decisions:
+        schema: design-decisions.schema.json
+        file: .pairingbuddy/design-ux/{name}/design-decisions.json
+        optional: true
+    outputs:
+      design_decisions:
+        schema: design-decisions.schema.json
+        file: .pairingbuddy/design-ux/{name}/design-decisions.json
+    sections:
+      - heading: "## Required Skill Loading"
+      - heading: "## Purpose"
+      - heading: "## State File Paths"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
+  design-ux-token-generator:
+    color: green
+    model: sonnet
+    skills: []
+    inputs:
+      design_decisions:
+        schema: design-decisions.schema.json
+        file: .pairingbuddy/design-ux/{name}/design-decisions.json
+    outputs:
+      tokens_generated:
+        schema: tokens-generated.schema.json
+        file: .pairingbuddy/design-ux/{name}/tokens-generated.json
+    # Also writes artifacts to {output_path}/tokens/, tokens.css, tailwind.config.js
+    sections:
+      - heading: "## Purpose"
+      - heading: "## State File Paths"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
+  design-ux-visual-builder:
+    color: blue
+    model: opus
+    skills: [differentiating-designs, applying-design-principles, building-components]
+    inputs:
+      design_decisions:
+        schema: design-decisions.schema.json
+        file: .pairingbuddy/design-ux/{name}/design-decisions.json
       domain_spec:
         schema: domain-spec.schema.json
         file: .pairingbuddy/design-ux/{name}/domain-spec.json

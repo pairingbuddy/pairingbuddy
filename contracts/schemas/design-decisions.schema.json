@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Design Decisions",
+  "description": "Output of design-ux-architect agent - concrete visual decisions bridging domain-spec to implementation",
+  "type": "object",
+  "required": ["version", "timestamp", "layout", "color_strategy", "signature_element", "typography_feel"],
+  "properties": {
+    "version": {
+      "type": "number",
+      "description": "Decision version number, increments on strategic changes"
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "ISO 8601 datetime"
+    },
+    "layout": {
+      "type": "object",
+      "required": ["decision", "rationale"],
+      "properties": {
+        "decision": {
+          "type": "string",
+          "description": "Concrete layout decision (e.g., 'horizon-line with grounded footer')"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Why this layout fits the domain"
+        },
+        "rejected_alternatives": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Layouts explicitly not chosen"
+        }
+      },
+      "additionalProperties": false
+    },
+    "color_strategy": {
+      "type": "object",
+      "required": ["primary_source", "temperature"],
+      "properties": {
+        "primary_source": {
+          "type": "string",
+          "description": "Where primary color comes from (e.g., 'wheat gold from domain.colors')"
+        },
+        "temperature": {
+          "type": "string",
+          "description": "Overall color temperature (e.g., 'warm earth tones')"
+        },
+        "contrast_approach": {
+          "type": "string",
+          "description": "How contrast is handled (e.g., 'soft gradients, avoid harsh borders')"
+        },
+        "signature_color": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "usage": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "component_reimaginings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["standard", "reimagined_as", "visual_description"],
+        "properties": {
+          "standard": {
+            "type": "string",
+            "description": "Standard component being reimagined (e.g., 'progress bar')"
+          },
+          "reimagined_as": {
+            "type": "string",
+            "description": "Domain-specific concept (e.g., 'crop growth visualization')"
+          },
+          "visual_description": {
+            "type": "string",
+            "description": "Concrete visual description (e.g., 'vertical stalks growing from soil line')"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "signature_element": {
+      "type": "object",
+      "required": ["concept", "implementation"],
+      "properties": {
+        "concept": {
+          "type": "string",
+          "description": "The domain.signature from domain-spec.json"
+        },
+        "implementation": {
+          "type": "string",
+          "description": "How to visually implement it (e.g., 'corner markers on cards')"
+        },
+        "where_to_use": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Where this element should appear"
+        }
+      },
+      "additionalProperties": false
+    },
+    "typography_feel": {
+      "type": "object",
+      "required": ["heading", "body"],
+      "properties": {
+        "heading": {
+          "type": "string",
+          "description": "Heading typography feel (e.g., 'grounded, sturdy')"
+        },
+        "body": {
+          "type": "string",
+          "description": "Body typography feel (e.g., 'readable, practical')"
+        },
+        "rationale": {
+          "type": "string",
+          "description": "Why these choices fit the domain"
+        }
+      },
+      "additionalProperties": false
+    },
+    "decision_trail": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["iteration", "changed", "from", "to", "reason"],
+        "properties": {
+          "iteration": {
+            "type": "number",
+            "description": "Which iteration this change occurred"
+          },
+          "changed": {
+            "type": "string",
+            "description": "Path to changed field (e.g., 'color_strategy.temperature')"
+          },
+          "from": {
+            "type": "string",
+            "description": "Previous value"
+          },
+          "to": {
+            "type": "string",
+            "description": "New value"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the change was made"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "History of strategic decision changes"
+    }
+  },
+  "additionalProperties": false
+}

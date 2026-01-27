@@ -14,6 +14,8 @@ State files live in `.pairingbuddy/design-ux/` at the git root of the target pro
 | session | .pairingbuddy/design-ux/session.json | design-session.schema.json |
 | direction | .pairingbuddy/design-ux/{name}/direction.json | design-direction.schema.json |
 | domain_spec | .pairingbuddy/design-ux/{name}/domain-spec.json | domain-spec.schema.json |
+| design_decisions | .pairingbuddy/design-ux/{name}/design-decisions.json | design-decisions.schema.json |
+| tokens_generated | .pairingbuddy/design-ux/{name}/tokens-generated.json | tokens-generated.schema.json |
 | config | .pairingbuddy/design-ux/{name}/config.json | design-system-config.schema.json |
 | experience | .pairingbuddy/design-ux/{name}/experience.json | design-experience-config.schema.json |
 | validation | .pairingbuddy/design-ux/{name}/validation.json | design-validation.schema.json |
@@ -33,6 +35,8 @@ project-root/
 │       ├── horizon/                  # State for "horizon" exploration
 │       │   ├── direction.json
 │       │   ├── domain-spec.json
+│       │   ├── design-decisions.json
+│       │   ├── tokens-generated.json
 │       │   ├── config.json
 │       │   ├── validation.json
 │       │   └── critique.json
@@ -56,11 +60,11 @@ project-root/
 
 ```
 WRONG:
-- Spawn 1 builder agent to create 2 design systems
+- Spawn 1 visual-builder agent to create 2 design systems
 
 CORRECT:
-- Spawn builder agent for "horizon", wait for completion
-- Spawn builder agent for "aurora", wait for completion
+- Run full pipeline for "horizon", wait for completion
+- Run full pipeline for "aurora", wait for completion
 (Or run them in parallel with separate {name} parameters)
 ```
 
@@ -68,13 +72,13 @@ CORRECT:
 
 ```
 WRONG:
-1. Invoke builder agent
+1. Invoke explorer agent
 2. Agent tries to mkdir state folder
 
 CORRECT:
 1. Orchestrator creates .pairingbuddy/design-ux/{name}/
 2. Orchestrator writes direction.json
-3. THEN invoke agent with {name} parameter
+3. THEN invoke explorer agent with {name} parameter
 ```
 
 ### 3. Ask user for output_path ONCE
@@ -134,22 +138,37 @@ All work must follow design principles from reference skills:
 
 ## Agents
 
-This skill coordinates four specialized agents:
+This skill coordinates six specialized agents:
 
 **Explorer Agent** (`design-ux-explorer`)
 - Establishes domain grounding and design intent before any generation
 - Produces `domain-spec.json` with intent, domain concepts, signature, defaults to reject
-- Must run FIRST before builder
+- Must run FIRST before architect
 - Skills: differentiating-designs
 
-**Builder Agent** (`design-ux-builder`)
-- Creates and iterates on design systems and experiences
-- Reads `domain-spec.json` to apply domain grounding during generation
-- Generates tokens, components, and states
-- Uses Playwright for visual feedback
-- Skills: applying-design-principles, building-components
+**Architect Agent** (`design-ux-architect`) - NEW
+- Transforms abstract domain-spec into concrete visual decisions
+- Produces `design-decisions.json` with layout, color strategy, component reimaginings, signature implementation
+- Makes strategic creative decisions so downstream agents just execute
+- Skills: differentiating-designs
 
-**Validator Agent** (`design-ux-validator`) - NEW
+**Token Generator Agent** (`design-ux-token-generator`) - NEW
+- Generates 3-tier token architecture from design decisions
+- Creates brand.json (raw values), alias.json (semantic), mapped.json (light/dark modes)
+- Generates tokens.css and tailwind.config.js
+- Mechanical/rule-based - no creative decisions
+- On iteration: preserves existing values, applies deltas (not destructive)
+- Skills: none (rule-based generation)
+- Model: sonnet (doesn't need opus for mechanical work)
+
+**Visual Builder Agent** (`design-ux-visual-builder`) - RENAMED
+- Generates preview.html and example.html from design decisions and tokens
+- Uses Playwright for visual feedback and iteration
+- Can modify token VALUES (not architecture) during visual refinement
+- Implements signature element, component reimaginings from decisions
+- Skills: differentiating-designs, applying-design-principles, building-components
+
+**Validator Agent** (`design-ux-validator`)
 - Validates artifacts for structural correctness BEFORE design critique
 - Checks file existence, token architecture, template compliance
 - Tests browser functionality (theme toggle, tabs, screenshots)
@@ -159,15 +178,15 @@ This skill coordinates four specialized agents:
 **Critic Agent** (`design-ux-critic`)
 - Evaluates designs using 6-pass UX analysis framework
 - Reads `domain-spec.json` to check domain alignment
-- Focuses ONLY on design quality (visual, UX, principles)
-- Runs craft tests: swap, squint, signature
+- Classifies issues as `strategic` (needs Architect) or `tactical` (needs Visual Builder)
 - Provides structured, prioritized critique
 - Skills: differentiating-designs, critiquing-designs, applying-design-principles
 
-**Workflow:** Explorer → Builder → Validator → Critic
-- Validator runs before Critic
-- If validation fails, go back to Builder (don't waste time on design critique)
-- Critic only sees structurally valid output
+**Workflow:** Explorer → Architect → Token Generator → Visual Builder → Validator → Critic
+
+**Iteration routing (hybrid - critic suggests, human confirms):**
+- Strategic issues (layout, signature) → Re-run Architect → Token Gen → Visual Builder
+- Tactical issues (color values, spacing) → Re-run Visual Builder only (it tweaks tokens)
 
 ## Conversational Interface
 
@@ -175,7 +194,7 @@ The skill provides a conversational interface for design work. See Commands sect
 
 ## Parallel Exploration
 
-The design-ux orchestrator can spawn multiple builder-critic loops to explore different design directions simultaneously.
+The design-ux orchestrator can spawn multiple exploration loops to explore different design directions simultaneously.
 
 ### Launching Parallel Explorations
 
@@ -205,7 +224,7 @@ When the human requests multiple explorations:
 ```
 4. Write direction.json in each `.pairingbuddy/design-ux/{name}/` (with specific angle)
 5. Create output folders at `{output_path}/{name}/`
-6. Spawn builder-critic agents with `run_in_background: true` for each exploration
+6. Spawn exploration agents with `run_in_background: true` for each exploration
 7. Update session.json as each agent progresses
 
 ### Monitoring Progress
@@ -220,7 +239,7 @@ The orchestrator polls running explorations using TaskOutput tool:
 
 session.json `status` field tracks exploration state:
 - `exploring` - Explorer agent running
-- `building` - Builder agent running
+- `building` - Generation agents running (Architect/Token Gen/Visual Builder)
 - `validating` - Validator agent running
 - `critiquing` - Critic agent running
 - `complete` - Finished
@@ -250,7 +269,7 @@ Human: "v7 is interesting. Continue 4 more iterations, but make the CTAs more pr
 
 Orchestrator:
 1. Appends to `.pairingbuddy/design-ux/v7/direction.json` with new guidance
-2. Spawns new builder-critic loop with updated direction and run_in_background: true
+2. Spawns new exploration loop with updated direction and run_in_background: true
 3. Updates session.json to track new iterations
 
 ### converge
@@ -334,7 +353,7 @@ Custom principles can be specified:
 The orchestrator:
 1. Reads default principles from reference files
 2. Merges custom principles (overrides take precedence)
-3. Passes combined principles to Builder and Critic agents
+3. Passes combined principles to Visual Builder and Critic agents
 4. Agents apply merged principles in their work
 
 ## Version History
@@ -395,19 +414,22 @@ This section provides additional detail on the State File Mappings table at the 
 | `session.json` | `.pairingbuddy/design-ux/` | Tracks all explorations & output paths | Orchestrator |
 | `direction.json` | `.pairingbuddy/design-ux/{name}/` | Brief, constraints, feedback | Orchestrator |
 | `domain-spec.json` | `.pairingbuddy/design-ux/{name}/` | Domain grounding | Explorer agent |
-| `config.json` | `.pairingbuddy/design-ux/{name}/` | Design system metadata | Builder agent |
-| `experience.json` | `.pairingbuddy/design-ux/{name}/` | Experience metadata | Builder agent |
+| `design-decisions.json` | `.pairingbuddy/design-ux/{name}/` | Concrete visual decisions | Architect agent |
+| `tokens-generated.json` | `.pairingbuddy/design-ux/{name}/` | Token generation state | Token Generator agent |
+| `config.json` | `.pairingbuddy/design-ux/{name}/` | Design system metadata | Visual Builder agent |
+| `experience.json` | `.pairingbuddy/design-ux/{name}/` | Experience metadata | Visual Builder agent |
+| `validation.json` | `.pairingbuddy/design-ux/{name}/` | Validation results | Validator agent |
 | `critique.json` | `.pairingbuddy/design-ux/{name}/` | Critique findings | Critic agent |
 
 ### Artifacts (in `{output_path}/`)
 
 | File | Location | Purpose | Writer |
 |------|----------|---------|--------|
-| `tokens/` | `{output_path}/` | Token JSON files (brand, alias, mapped) | Builder agent |
-| `tokens.css` | `{output_path}/` | CSS variables | Builder agent |
-| `tailwind.config.js` | `{output_path}/` | Tailwind configuration | Builder agent |
-| `preview.html` | `{output_path}/` | Design system preview | Builder agent |
-| `example.html` | `{output_path}/` | Contextual example | Builder agent |
+| `tokens/` | `{output_path}/` | Token JSON files (brand, alias, mapped) | Token Generator agent |
+| `tokens.css` | `{output_path}/` | CSS variables | Token Generator agent |
+| `tailwind.config.js` | `{output_path}/` | Tailwind configuration | Token Generator agent |
+| `preview.html` | `{output_path}/` | Design system preview | Visual Builder agent |
+| `example.html` | `{output_path}/` | Contextual example | Visual Builder agent |
 
 ### CRITICAL: State vs Artifacts Separation
 
@@ -430,8 +452,9 @@ This section provides additional detail on the State File Mappings table at the 
 |------|--------|---------|-------|
 | `session.json` | Orchestrator only | All agents | ✓ Single writer |
 | `direction.json` | Orchestrator per-exploration | That exploration's agents | ✓ Isolated |
-| `domain-spec.json` | Explorer per-exploration | Builder, Critic | ✓ Isolated |
-| `critique.json` | Critic per-exploration | Builder in same exploration | ✓ Isolated |
+| `domain-spec.json` | Explorer per-exploration | Architect, Visual Builder, Critic | ✓ Isolated |
+| `design-decisions.json` | Architect per-exploration | Token Generator, Visual Builder | ✓ Isolated |
+| `critique.json` | Critic per-exploration | Architect, Visual Builder | ✓ Isolated |
 
 ## How to Execute This Workflow
 
@@ -443,23 +466,31 @@ Not applicable - design-ux uses a conversational interface instead of pseudocode
 
 ### Agent Invocation
 
-Agents are invoked via the Task tool as needed:
+Agents are invoked via the Task tool in sequence:
 
 ```
 Task tool:
-  subagent_type: pairingbuddy:design-ux-builder
-```
+  subagent_type: pairingbuddy:design-ux-explorer
 
-or
+Task tool:
+  subagent_type: pairingbuddy:design-ux-architect
 
-```
+Task tool:
+  subagent_type: pairingbuddy:design-ux-token-generator
+
+Task tool:
+  subagent_type: pairingbuddy:design-ux-visual-builder
+
+Task tool:
+  subagent_type: pairingbuddy:design-ux-validator
+
 Task tool:
   subagent_type: pairingbuddy:design-ux-critic
 ```
 
 ### Control Flow
 
-The orchestrator manages the builder-critic loop based on human direction rather than hardcoded control flow.
+The orchestrator manages the full pipeline based on human direction. On iteration, routing depends on critique's `change_level` classification.
 
 ## Pre-Exploration Setup (MANDATORY - Do This First)
 
@@ -575,55 +606,73 @@ def design_ux_workflow():
     # 7. Set exploration parameters
     params = _get_exploration_params()
 
-    # 8. Run builder-critic loop
+    # 8. Run architect-token-visual-validator-critic loop
     _run_exploration(name, output_path, params)
 
 
 def _run_exploration(name, output_path, params, run_in_background=False):
     """
-    Single exploration loop: builder-validator-critic cycle until done.
+    Single exploration loop: architect-token-visual-validator-critic cycle.
 
     State files: .pairingbuddy/design-ux/{name}/
     Artifacts: {output_path}/
     """
     iterations = 0
+    is_first_iteration = True
+
     while iterations < params.max_iterations:
-        # Builder agent receives name and output_path
-        # Reads:
-        #   .pairingbuddy/design-ux/{name}/direction.json
-        #   .pairingbuddy/design-ux/{name}/domain-spec.json
-        #   .pairingbuddy/design-ux/{name}/critique.json (optional)
-        #   .pairingbuddy/design-ux/{name}/config.json
-        # Writes:
-        #   .pairingbuddy/design-ux/{name}/config.json
-        #   {output_path}/tokens/, preview.html, etc.
-        _invoke_builder_agent(name, output_path)
+        # Determine what to run based on iteration and critique
+        if is_first_iteration:
+            # First iteration: run full pipeline
+            run_architect = True
+            run_token_gen = True
+            is_first_iteration = False
+        else:
+            # Subsequent iterations: route based on critique change_level
+            critique = Read(f".pairingbuddy/design-ux/{name}/critique.json")
+            has_strategic = any(i["change_level"] == "strategic" for i in critique["priority_issues"])
 
-        # Validator agent receives name and output_path
-        # Reads:
-        #   .pairingbuddy/design-ux/{name}/direction.json
-        #   .pairingbuddy/design-ux/{name}/domain-spec.json
-        #   .pairingbuddy/design-ux/{name}/config.json
-        #   {output_path}/tokens/, preview.html, etc. (artifacts)
-        # Writes:
-        #   .pairingbuddy/design-ux/{name}/validation.json
+            # Present routing decision to human for confirmation
+            if has_strategic:
+                run_architect = _confirm_with_human("Strategic issues found. Re-run Architect?")
+                run_token_gen = run_architect  # Token gen follows architect
+            else:
+                run_architect = False
+                run_token_gen = False  # Tactical only: Visual Builder tweaks tokens
+
+        # ARCHITECT PHASE (strategic decisions)
+        if run_architect:
+            _invoke_architect_agent(name, output_path)
+            # Reads: direction.json, domain-spec.json, critique.json (optional)
+            # Writes: design-decisions.json
+
+        # TOKEN GENERATOR PHASE (mechanical token generation)
+        if run_token_gen:
+            _invoke_token_generator_agent(name, output_path)
+            # Reads: design-decisions.json
+            # Writes: {output_path}/tokens/, tokens.css, tailwind.config.js
+            #         tokens-generated.json (state)
+
+        # VISUAL BUILDER PHASE (HTML generation, can tweak token values)
+        _invoke_visual_builder_agent(name, output_path)
+        # Reads: design-decisions.json, domain-spec.json, tokens/, critique.json
+        # Writes: {output_path}/preview.html, example.html
+        #         config.json (state)
+        #         May modify token VALUES in tokens.css, tokens/*.json
+
+        # VALIDATOR PHASE (structural checks)
         _invoke_validator_agent(name, output_path)
+        # Reads: artifacts, config.json
+        # Writes: validation.json
 
-        # If validation failed, go back to builder
         validation = Read(f".pairingbuddy/design-ux/{name}/validation.json")
         if not validation["ready_for_critique"]:
-            continue  # Re-run builder with validation issues
+            continue  # Re-run visual builder with validation issues
 
-        # Critic agent receives name and output_path
-        # Reads:
-        #   .pairingbuddy/design-ux/{name}/direction.json
-        #   .pairingbuddy/design-ux/{name}/domain-spec.json
-        #   .pairingbuddy/design-ux/{name}/config.json
-        #   .pairingbuddy/design-ux/{name}/validation.json
-        #   {output_path}/preview.html (artifacts)
-        # Writes:
-        #   .pairingbuddy/design-ux/{name}/critique.json
+        # CRITIC PHASE (UX analysis with change_level classification)
         _invoke_critic_agent(name, output_path)
+        # Reads: artifacts, domain-spec.json, config.json
+        # Writes: critique.json (with change_level on each issue)
 
         iterations += 1
         _update_session_json(name, output_path, "building", iterations)
@@ -634,14 +683,7 @@ def _run_exploration(name, output_path, params, run_in_background=False):
             if response == "kill":
                 return
             if response.has_feedback:
-                direction_file = f".pairingbuddy/design-ux/{name}/direction.json"
-                direction_data = Read(direction_file)
-                direction_data["feedback_history"].append({
-                    "iteration": iterations,
-                    "feedback": response.feedback,
-                    "timestamp": now()
-                })
-                Write(direction_file, direction_data)
+                _append_feedback(name, iterations, response.feedback)
 
     _update_session_json(name, output_path, "complete", iterations)
 ```
@@ -664,10 +706,10 @@ The orchestrator manages state files:
 **Per-exploration state (`.pairingbuddy/design-ux/{name}/`):**
 - Creates folder on first run for each exploration
 - Writes `direction.json` from human input
-- Passes `critique.json` between builder and critic
+- Passes `critique.json` between generation agents and critic
 
 **Per-exploration artifacts (in `{output_path}/`):**
-- Writes tokens/, tokens.css, preview.html from builder agent
+- Token Generator writes tokens/, tokens.css; Visual Builder writes preview.html
 - Maintains version history in state folder's `config.json`
 
 **Path passing:** Agents receive `{name}` and `{output_path}` parameters. State files go to `.pairingbuddy/design-ux/{name}/`, artifacts go to `{output_path}/`.
@@ -675,7 +717,7 @@ The orchestrator manages state files:
 ### Human Checkpoints
 
 The orchestrator pauses for human review after:
-- Builder completes initial generation
+- Visual Builder completes initial generation
 - Critic completes analysis
 - Each iteration cycle
 
@@ -721,7 +763,7 @@ Use:        http://localhost:8000/preview.html
 
 **Server lifecycle:**
 1. Start server before first Playwright operation
-2. Keep running during all builder-critic iterations
+2. Keep running during all exploration iterations
 3. Stop when exploration completes or user exits
 
 **For parallel explorations - explicit port mapping:**
@@ -1216,7 +1258,7 @@ The template uses placeholder markers that get replaced with actual data:
 ### Component Rendering
 
 For each component pack selected:
-1. The builder agent loads the **building-components** skill automatically
+1. The Visual Builder agent loads the **building-components** skill automatically
 2. Generate HTML for each component with all states
 3. Insert into the Components tab section
 

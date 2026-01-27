@@ -31,7 +31,9 @@
     "./agents/setup-spike.md",
     "./agents/explore-spike-unit.md",
     "./agents/document-spike.md",
-    "./agents/design-ux-builder.md",
+    "./agents/design-ux-architect.md",
+    "./agents/design-ux-token-generator.md",
+    "./agents/design-ux-visual-builder.md",
     "./agents/design-ux-critic.md",
     "./agents/design-ux-explorer.md",
     "./agents/design-ux-validator.md"

@@ -126,6 +126,11 @@
           },
           "suggestion": {
             "type": "string"
+          },
+          "change_level": {
+            "type": "string",
+            "enum": ["strategic", "tactical"],
+            "description": "Whether this requires strategic (Architect) or tactical (Visual Builder) changes"
           }
         },
         "additionalProperties": false

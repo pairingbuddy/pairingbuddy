@@ -314,7 +314,8 @@ Writes to `.pairingbuddy/design-ux/{name}/critique.json`:
       "severity": "critical | high | medium | low",
       "category": "string (which pass)",
       "description": "string",
-      "suggestion": "string"
+      "suggestion": "string",
+      "change_level": "strategic | tactical"
     }
   ],
   "overall_assessment": "string (summary)",

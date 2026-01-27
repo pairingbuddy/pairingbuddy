@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tokens Generated",
+  "description": "Output of design-ux-token-generator agent - tracks generated token artifacts",
+  "type": "object",
+  "required": ["timestamp", "files_created"],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "description": "ISO 8601 datetime"
+    },
+    "files_created": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of artifact files created (relative to output_path)"
+    },
+    "token_counts": {
+      "type": "object",
+      "properties": {
+        "brand": { "type": "number" },
+        "alias": { "type": "number" },
+        "mapped": { "type": "number" }
+      },
+      "description": "Count of tokens in each tier"
+    },
+    "dark_mode_generated": {
+      "type": "boolean",
+      "description": "Whether dark mode tokens were generated"
+    },
+    "iteration": {
+      "type": "number",
+      "description": "Which iteration this generation was for"
+    },
+    "preserved_from_previous": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Token paths that were preserved from previous iteration"
+    }
+  },
+  "additionalProperties": false
+}
