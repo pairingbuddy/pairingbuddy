@@ -116,14 +116,43 @@ For multiple explorations, spawn separate agent loops with `run_in_background: t
 
 ## How to Execute This Workflow
 
-Each function call in the workflow translates to a Task tool invocation:
+The Workflow section below contains Python pseudocode - a specification, not executable code. This section explains how to interpret and execute it.
+
+### Reading the Pseudocode
+
+- **Function calls** map to agent invocations
+- **Variable names** map to JSON file paths (see State File Mappings)
+- **Underscores** in function names become **hyphens** in agent names
+  - `design_ux_explorer()` → agent `design-ux-explorer`
+
+### Agent Invocation
+
+Each function call translates to a Task tool invocation:
 
 ```
 Task tool:
-  subagent_type: pairingbuddy:design-ux-<agent-name>
+  subagent_type: pairingbuddy:<agent-name>
 ```
 
-Agents are self-contained - they know what to read, what to do, and what to write.
+Agents are self-contained - they know what to read (Input section), what to do (Instructions), and what to write (Output section). No prompt needed.
+
+### Control Flow
+
+Interpret control flow statements as orchestration logic:
+
+- `validation = design_ux_validator(...)` then `if not validation.ready_for_critique:` → Invoke agent, then check if validation.json has `ready_for_critique: false`
+- `critique = design_ux_critic(...)` then `if _has_strategic_issues(critique):` → Invoke agent, then check if critique.json has any priority_issues with `change_level: "strategic"`
+- `while iteration < max_iterations:` → Loop until iteration limit reached
+
+### Orchestrator Functions
+
+Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orchestrator implements these directly:
+
+| Function | Behavior |
+|----------|----------|
+| `_setup_exploration(name, output_path, brief)` | Create state folder, session.json entry, direction.json, output folder |
+| `_has_strategic_issues(critique)` | Check if any priority_issues have `change_level: "strategic"` |
+| `_ask_human(question)` | Present question to human, return response |
 
 ## Workflow
 
@@ -134,25 +163,25 @@ output_path = _ask_output_path()
 _setup_exploration(name, output_path, brief)  # Creates folders, session.json, direction.json
 
 # Domain exploration (runs first)
-explore_domain(name, output_path)
+domain_spec = design_ux_explorer(name, output_path)
 
 # Generation loop
 while iteration < max_iterations:
     # First iteration or strategic issues: run full pipeline
     if first_iteration or _has_strategic_issues(critique):
-        architect_design(name, output_path)
-        generate_tokens(name, output_path)
+        design_decisions = design_ux_architect(name, output_path)
+        tokens_generated = design_ux_token_generator(name, output_path)
 
     # Always run visual builder
-    build_visuals(name, output_path)
+    config = design_ux_visual_builder(name, output_path)
 
     # Validation
-    validate_artifacts(name, output_path)
+    validation = design_ux_validator(name, output_path)
     if not validation.ready_for_critique:
         continue
 
     # Critique
-    critique_design(name, output_path)
+    critique = design_ux_critic(name, output_path)
 
     # Human checkpoint
     response = _ask_human("Continue, adjust, or done?")
@@ -160,16 +189,8 @@ while iteration < max_iterations:
         break
 
 # After all explorations complete
-generate_gallery(output_path)  # Creates index.html, comparison.html, screenshots/
+gallery_output = design_ux_gallery_generator(output_path)
 ```
-
-### Orchestrator Functions
-
-| Function | Behavior |
-|----------|----------|
-| `_setup_exploration(name, output_path, brief)` | Create state folder, session.json entry, direction.json, output folder |
-| `_has_strategic_issues(critique)` | Check if any priority_issues have `change_level: "strategic"` |
-| `_ask_human(question)` | Present question to human, return response |
 
 ## Orchestrator Behavior
 
