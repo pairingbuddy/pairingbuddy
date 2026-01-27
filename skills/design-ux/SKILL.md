@@ -16,6 +16,7 @@ State files live in `.pairingbuddy/design-ux/` at the git root of the target pro
 | domain_spec | .pairingbuddy/design-ux/{name}/domain-spec.json | domain-spec.schema.json |
 | config | .pairingbuddy/design-ux/{name}/config.json | design-system-config.schema.json |
 | experience | .pairingbuddy/design-ux/{name}/experience.json | design-experience-config.schema.json |
+| validation | .pairingbuddy/design-ux/{name}/validation.json | design-validation.schema.json |
 | critique | .pairingbuddy/design-ux/{name}/critique.json | design-critique.schema.json |
 
 Where `{name}` is the exploration name (e.g., "horizon", "aurora").
@@ -33,6 +34,7 @@ project-root/
 │       │   ├── direction.json
 │       │   ├── domain-spec.json
 │       │   ├── config.json
+│       │   ├── validation.json
 │       │   └── critique.json
 │       └── aurora/                   # State for "aurora" exploration
 │           └── ...
@@ -132,12 +134,12 @@ All work must follow design principles from reference skills:
 
 ## Agents
 
-This skill coordinates three specialized agents:
+This skill coordinates four specialized agents:
 
-**Explorer Agent** (`design-ux-explorer`) - NEW, MANDATORY
+**Explorer Agent** (`design-ux-explorer`)
 - Establishes domain grounding and design intent before any generation
 - Produces `domain-spec.json` with intent, domain concepts, signature, defaults to reject
-- Must run FIRST before builder or critic
+- Must run FIRST before builder
 - Skills: differentiating-designs
 
 **Builder Agent** (`design-ux-builder`)
@@ -147,14 +149,25 @@ This skill coordinates three specialized agents:
 - Uses Playwright for visual feedback
 - Skills: applying-design-principles, building-components
 
+**Validator Agent** (`design-ux-validator`) - NEW
+- Validates artifacts for structural correctness BEFORE design critique
+- Checks file existence, token architecture, template compliance
+- Tests browser functionality (theme toggle, tabs, screenshots)
+- Catches engineering issues so critic can focus on design
+- Skills: none (structural validation only)
+
 **Critic Agent** (`design-ux-critic`)
-- Evaluates designs using 6-pass framework plus craft tests
+- Evaluates designs using 6-pass UX analysis framework
 - Reads `domain-spec.json` to check domain alignment
-- Checks design principle compliance
-- Runs four craft tests: swap, squint, signature, token
+- Focuses ONLY on design quality (visual, UX, principles)
+- Runs craft tests: swap, squint, signature
 - Provides structured, prioritized critique
-- Uses Playwright for visual analysis
 - Skills: differentiating-designs, critiquing-designs, applying-design-principles
+
+**Workflow:** Explorer → Builder → Validator → Critic
+- Validator runs before Critic
+- If validation fails, go back to Builder (don't waste time on design critique)
+- Critic only sees structurally valid output
 
 ## Conversational Interface
 
@@ -208,6 +221,7 @@ The orchestrator polls running explorations using TaskOutput tool:
 session.json `status` field tracks exploration state:
 - `exploring` - Explorer agent running
 - `building` - Builder agent running
+- `validating` - Validator agent running
 - `critiquing` - Critic agent running
 - `complete` - Finished
 
@@ -567,7 +581,7 @@ def design_ux_workflow():
 
 def _run_exploration(name, output_path, params, run_in_background=False):
     """
-    Single exploration loop: builder-critic cycle until done.
+    Single exploration loop: builder-validator-critic cycle until done.
 
     State files: .pairingbuddy/design-ux/{name}/
     Artifacts: {output_path}/
@@ -585,11 +599,27 @@ def _run_exploration(name, output_path, params, run_in_background=False):
         #   {output_path}/tokens/, preview.html, etc.
         _invoke_builder_agent(name, output_path)
 
+        # Validator agent receives name and output_path
+        # Reads:
+        #   .pairingbuddy/design-ux/{name}/direction.json
+        #   .pairingbuddy/design-ux/{name}/domain-spec.json
+        #   .pairingbuddy/design-ux/{name}/config.json
+        #   {output_path}/tokens/, preview.html, etc. (artifacts)
+        # Writes:
+        #   .pairingbuddy/design-ux/{name}/validation.json
+        _invoke_validator_agent(name, output_path)
+
+        # If validation failed, go back to builder
+        validation = Read(f".pairingbuddy/design-ux/{name}/validation.json")
+        if not validation["ready_for_critique"]:
+            continue  # Re-run builder with validation issues
+
         # Critic agent receives name and output_path
         # Reads:
         #   .pairingbuddy/design-ux/{name}/direction.json
         #   .pairingbuddy/design-ux/{name}/domain-spec.json
         #   .pairingbuddy/design-ux/{name}/config.json
+        #   .pairingbuddy/design-ux/{name}/validation.json
         #   {output_path}/preview.html (artifacts)
         # Writes:
         #   .pairingbuddy/design-ux/{name}/critique.json

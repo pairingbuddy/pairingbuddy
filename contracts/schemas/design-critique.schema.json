@@ -39,6 +39,44 @@
       },
       "additionalProperties": false
     },
+    "dark_mode": {
+      "type": "object",
+      "description": "Dark mode visual testing results",
+      "required": ["tested"],
+      "properties": {
+        "tested": {
+          "type": "boolean"
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "description", "component"],
+            "properties": {
+              "severity": {
+                "type": "string",
+                "enum": ["critical", "high", "medium", "low"]
+              },
+              "description": {
+                "type": "string"
+              },
+              "component": {
+                "type": "string",
+                "description": "Affected element"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "what_works": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "principle_violations": {
       "type": "array",
       "items": {
@@ -59,6 +97,11 @@
           "location": {
             "type": "string",
             "description": "Where in the design"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["light", "dark", "both"],
+            "description": "Which mode(s) the violation occurs in"
           }
         },
         "additionalProperties": false

@@ -1,0 +1,189 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Design Validation",
+  "description": "Validation results for design system artifacts",
+  "type": "object",
+  "required": ["timestamp", "valid", "checks", "issues", "summary", "ready_for_critique"],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When validation was performed"
+    },
+    "valid": {
+      "type": "boolean",
+      "description": "True only if no critical or high severity issues"
+    },
+    "checks": {
+      "type": "object",
+      "required": ["file_existence", "token_architecture", "template_compliance"],
+      "properties": {
+        "file_existence": {
+          "type": "object",
+          "required": ["passed"],
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "missing_required": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "missing_optional": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "example_required": {
+              "type": "boolean",
+              "description": "Was example.html required by context?"
+            }
+          }
+        },
+        "token_architecture": {
+          "type": "object",
+          "required": ["passed"],
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "brand_json_valid": {
+              "type": "boolean"
+            },
+            "alias_json_valid": {
+              "type": "boolean"
+            },
+            "mapped_json_valid": {
+              "type": "boolean"
+            },
+            "magic_number_violations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["file", "violation", "tier"],
+                "properties": {
+                  "file": { "type": "string" },
+                  "line": { "type": ["integer", "null"] },
+                  "violation": { "type": "string" },
+                  "tier": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "template_compliance": {
+          "type": "object",
+          "required": ["passed"],
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "has_tabs": {
+              "type": "boolean"
+            },
+            "has_theme_toggle": {
+              "type": "boolean"
+            },
+            "links_tokens_css": {
+              "type": "boolean"
+            },
+            "inline_violations": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "browser_validation": {
+          "type": "object",
+          "properties": {
+            "tested": {
+              "type": "boolean",
+              "description": "False if Playwright unavailable"
+            },
+            "preview_loads": {
+              "type": "boolean"
+            },
+            "theme_toggle_works": {
+              "type": "boolean"
+            },
+            "tabs_work": {
+              "type": "boolean"
+            },
+            "example_loads": {
+              "type": ["boolean", "null"]
+            },
+            "console_errors": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "web_output": {
+          "type": "object",
+          "properties": {
+            "tested": {
+              "type": "boolean",
+              "description": "False if no index.html"
+            },
+            "index_exists": {
+              "type": "boolean"
+            },
+            "comparison_exists": {
+              "type": "boolean"
+            },
+            "robots_exists": {
+              "type": "boolean"
+            },
+            "screenshots_valid": {
+              "type": "boolean"
+            },
+            "missing_screenshots": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "broken_links": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "category", "description"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "category": {
+            "type": "string",
+            "description": "Which check category"
+          },
+          "description": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string",
+            "description": "Affected file"
+          },
+          "fix_hint": {
+            "type": "string",
+            "description": "What builder should do to fix"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "string",
+      "description": "One-line status"
+    },
+    "ready_for_critique": {
+      "type": "boolean",
+      "description": "True only if no critical or high severity issues"
+    }
+  },
+  "additionalProperties": false
+}

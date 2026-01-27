@@ -195,145 +195,17 @@ Verify compliance with:
 - Spacing scale adherence (8px base)
 - Laws of UX application (Fitts, Hick, Miller, Jakob, Von Restorff)
 
-### Architecture & Implementation Check (MANDATORY - Run First)
+### Pre-Requisite: Validation Must Pass
 
-**Before ANY visual critique, verify the implementation is structurally correct.**
+**IMPORTANT: Only proceed if `validation.json` exists and shows `ready_for_critique: true`.**
 
-**1. Token Architecture Files:**
-```
-Required in tokens/ folder:
-  [ ] tokens/brand.json   - Tier 1: raw values (ONLY place for literals)
-  [ ] tokens/alias.json   - Tier 2: semantic mappings (var() refs only)
-  [ ] tokens/mapped.json  - Tier 3: application tokens (var() refs only)
-```
-Missing tokens/ folder → **CRITICAL**
+The Validator agent handles all structural checks (file existence, token architecture, template compliance, browser functionality). If validation failed, do NOT critique - the builder needs to fix structural issues first.
 
-**2. NO MAGIC NUMBERS Rule:**
+Read `.pairingbuddy/design-ux/{name}/validation.json` and verify:
+- `ready_for_critique` is `true`
+- No critical or high severity issues
 
-**Tier 1 (Brand) - Raw values allowed:**
-```css
-/* Colors */
---color-earth-500: #9c8268;
---color-sweden-blue-600: #3a6dbd;
-
-/* Spacing/sizing scale */
---scale-100: 4px;
---scale-200: 8px;
---scale-400: 16px;
-
-/* Typography */
---font-size-base: 1rem;
---font-weight-bold: 700;
-
-/* Shadows */
---shadow-raw-200: 0 2px 4px hsl(0 0% 0% / 0.08);
-
-/* Durations */
---duration-200: 150ms;
-```
-
-**Tier 2 (Alias) - ONLY var() references allowed:**
-```css
-/* CORRECT */
---spacing-lg: var(--scale-400);
---radius-md: var(--scale-200);
---text-muted: var(--color-stone-500);
---shadow-md: var(--shadow-raw-200);
---transition-fast: var(--duration-200);
-
-/* FORBIDDEN - any literal value */
---spacing-lg: 16px;           /* FAIL */
---radius-md: 8px;             /* FAIL */
---text-muted: #918a7f;        /* FAIL */
---shadow-md: 0 2px 4px ...;   /* FAIL */
-```
-
-**Tier 3 (Mapped) - ONLY var() references allowed:**
-```css
-/* CORRECT */
---button-padding-x: var(--spacing-lg);
---card-radius: var(--radius-md);
---card-shadow: var(--shadow-md);
---input-height: var(--touch-target);
-
-/* FORBIDDEN - any literal value */
---button-padding-x: 16px;     /* FAIL */
---card-radius: 8px;           /* FAIL */
---card-shadow: 0 2px 4px ...; /* FAIL */
---input-height: 48px;         /* FAIL */
-```
-
-**3. Scan for magic numbers (tokens.css AND inline styles in HTML):**
-
-Check BOTH:
-- `tokens.css` (separate file)
-- `<style>` blocks in preview.html (inline CSS)
-
-Search for violations:
-- `px` values outside tier 1 section → CRITICAL
-- `#` hex values outside tier 1 section → CRITICAL
-- `rem` values outside tier 1 section → CRITICAL
-- `hsl(` with literal values outside tier 1 → CRITICAL
-- Numeric shadow values outside tier 1 → CRITICAL
-
-**Inline CSS example (WRONG):**
-```css
-<style>
-  :root {
-    --accent-primary: #005293;      /* FAIL - hex in tier 2/3 */
-    --surface-page: #231A13;        /* FAIL */
-  }
-</style>
-```
-
-**Should be:**
-```css
-<style>
-  :root {
-    --accent-primary: var(--color-sweden-blue-600);  /* refs tier 1 */
-    --surface-page: var(--color-soil-800);           /* refs tier 1 */
-  }
-</style>
-```
-
-**4. Tailwind Config Check (BOTH files and inline):**
-
-Check BOTH:
-- `tailwind.config.js` (separate file)
-- `<script>tailwind.config = {...}</script>` (inline in preview.html)
-
-```javascript
-/* FORBIDDEN - any raw value */
-spacing: { lg: '16px' }           /* FAIL */
-colors: { earth: { 50: '#faf8f6' } }  /* FAIL */
-borderRadius: { md: '8px' }       /* FAIL */
-soil: { 50: '#F5F2EF' }           /* FAIL - even with domain name */
-
-/* REQUIRED - CSS variable references */
-spacing: { lg: 'var(--spacing-lg)' }
-colors: { earth: { 50: 'hsl(var(--color-earth-50))' } }
-borderRadius: { md: 'var(--radius-md)' }
-soil: { 50: 'var(--color-soil-50)' }  /* References tier 1 */
-```
-
-**Domain-named colors with hex values are STILL magic numbers.**
-`soil: { 50: '#F5F2EF' }` is just as wrong as `gray: { 50: '#F5F2EF' }`.
-
-**5. Preview HTML Check:**
-- Uses template with tabbed navigation
-- Links to tokens.css (not inline styles)
-- Tailwind classes use token-based utilities
-
-**6. Required Files:**
-```
-[ ] config.json
-[ ] tokens/brand.json, alias.json, mapped.json
-[ ] tokens.css
-[ ] tailwind.config.js
-[ ] preview.html (from template)
-```
-
-**Architecture violations are ALWAYS severity: critical. They block handoff.**
+If validation hasn't been run or failed, stop and report: "Cannot critique - validation required first."
 
 ### Playwright Usage
 
@@ -385,28 +257,6 @@ Writes to `.pairingbuddy/design-ux/{name}/critique.json`:
 {
   "iteration": "number",
   "timestamp": "ISO 8601 datetime",
-  "architecture": {
-    "valid": "boolean - false if any critical issues",
-    "token_files": {
-      "brand_json": "boolean",
-      "alias_json": "boolean",
-      "mapped_json": "boolean"
-    },
-    "magic_number_violations": [
-      {
-        "file": "string (tokens.css, tailwind.config.js, etc.)",
-        "line": "number or null",
-        "violation": "string (the offending code)",
-        "tier": "string (tier-2 or tier-3 where it was found)"
-      }
-    ],
-    "missing_files": ["array of required files not found"],
-    "template_compliance": {
-      "uses_tabs": "boolean",
-      "has_theme_toggle": "boolean",
-      "links_tokens_css": "boolean"
-    }
-  },
   "passes": {
     "mental_model": {
       "score": "1-10",

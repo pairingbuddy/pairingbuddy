@@ -133,12 +133,24 @@ Reads from `.pairingbuddy/design-ux/{name}/critique.json` (optional):
       "what_works": ["array"]
     }
   },
+  "dark_mode": {
+    "tested": true,
+    "issues": [
+      {
+        "severity": "critical|high|medium|low",
+        "description": "string",
+        "component": "string"
+      }
+    ],
+    "what_works": ["array"]
+  },
   "principle_violations": [
     {
       "principle": "string",
       "severity": "critical|high|medium|low",
       "description": "string",
-      "location": "string"
+      "location": "string",
+      "mode": "light|dark|both"
     }
   ],
   "priority_issues": [

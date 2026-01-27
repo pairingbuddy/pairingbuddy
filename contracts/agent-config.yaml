@@ -38,6 +38,7 @@ schemas:
   - design-brief.schema.json
   - design-system-config.schema.json
   - design-experience-config.schema.json
+  - design-validation.schema.json
   - exploration-status.schema.json
 
 # =============================================================================
@@ -702,6 +703,36 @@ agents:
       domain_spec:
         schema: domain-spec.schema.json
         file: .pairingbuddy/design-ux/{name}/domain-spec.json
+    sections:
+      - heading: "## Required Skill Loading"
+      - heading: "## Purpose"
+      - heading: "## State File Paths"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
+  design-ux-validator:
+    color: green
+    model: sonnet
+    skills: []
+    inputs:
+      direction:
+        schema: design-direction.schema.json
+        file: .pairingbuddy/design-ux/{name}/direction.json
+        optional: true
+      domain_spec:
+        schema: domain-spec.schema.json
+        file: .pairingbuddy/design-ux/{name}/domain-spec.json
+        optional: true
+      design_system_config:
+        schema: design-system-config.schema.json
+        file: .pairingbuddy/design-ux/{name}/config.json
+        optional: true
+    outputs:
+      validation:
+        schema: design-validation.schema.json
+        file: .pairingbuddy/design-ux/{name}/validation.json
     sections:
       - heading: "## Required Skill Loading"
       - heading: "## Purpose"
