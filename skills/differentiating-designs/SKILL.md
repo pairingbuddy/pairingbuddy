@@ -31,7 +31,9 @@ Before presenting ANY design work, run these checks:
 1. **Swap test:** Would swapping typeface/layout change perception? If not, you defaulted.
 2. **Squint test:** Blur your eyes - does hierarchy persist without harsh jumps?
 3. **Signature test:** Can you point to specific elements showing your signature?
-4. **Token test:** Do CSS variable names sound product-specific (`--ink`) or universal (`--gray-700`)?
+4. **Visual test:** Does the OUTPUT look domain-specific, or like generic SaaS with different colors?
+
+**Note on token naming:** Clear, systematic names (`--color-primary-500`, `--spacing-lg`) are fine. Differentiation comes from visual output, not clever variable names. Cute names like `--harvest` or `--soil` can make systems harder to maintain.
 
 ### Stop Rule
 
@@ -152,12 +154,39 @@ A number isn't design - the question is what that number means to the viewer.
 
 ### Design Tokens
 
-CSS variables are design decisions.
+CSS variables are design decisions - but differentiation comes from VALUES, not NAMES.
 
-- `--ink` and `--parchment` evoke a world
-- `--gray-700` evokes a template
+**Three-tier naming convention:**
 
-Names should evoke the product's world.
+| Tier | Purpose | Naming | Example |
+|------|---------|--------|---------|
+| Brand | Raw values, scales | Can have numbers | `--color-blue-500`, `--scale-400` |
+| Alias | Semantic meaning | NO numbers | `--color-primary`, `--spacing-lg` |
+| Mapped | Component-specific | NO numbers | `--button-bg`, `--card-border` |
+
+**Good naming:**
+```css
+/* Brand - numbers OK for scales */
+--color-blue-500: #3b82f6;
+
+/* Alias - semantic, no numbers */
+--color-primary: var(--color-blue-500);
+--surface-page: var(--color-gray-50);
+
+/* Mapped - component-specific, no numbers */
+--button-bg: var(--color-primary);
+```
+
+**Bad naming:**
+```css
+/* Numbers in semantic tier - WRONG */
+--color-primary-500: var(--color-blue-500);
+
+/* Cute names that confuse maintainers - WRONG */
+--harvest-glow: var(--color-amber-300);
+```
+
+Differentiation comes from what the design LOOKS like, not what tokens are called.
 
 ## Craft Principles
 
@@ -248,14 +277,16 @@ Not overall feel, but actual components:
 - Signature color treatment
 - Distinctive spacing rhythm
 
-### 4. Token Test
+### 4. Visual Output Test
 
-Read CSS variables aloud.
+Look at the rendered output.
 
-Do they belong to this product's world, or any project?
+Does it look like THIS product's world, or a generic template with different colors?
 
-**Good:** `--soil`, `--harvest`, `--weather-alert`
-**Generic:** `--gray-700`, `--blue-500`, `--spacing-md`
+**Good:** Layout, components, and interactions that reflect the domain
+**Generic:** Standard card grid, generic buttons, same structure as every SaaS
+
+**Note:** Token NAMES don't matter for differentiation. `--gray-700` is fine if the visual output is distinctive.
 
 ## Common AI Mistakes to Avoid
 
@@ -288,3 +319,146 @@ Linear's cards don't look like Notion's - same concepts, infinite expressions.
 ## Key Mandate Statement
 
 "If another AI, given a similar prompt, would produce substantially the same output - you have failed. This isn't about being different for its own sake. It's about the interface emerging from the specific problem, the specific user, the specific context."
+
+## Implementation Guide (For Builders)
+
+Token names are necessary but NOT sufficient. The VISUAL OUTPUT must also be differentiated. Having `--soil` instead of `--brown-500` means nothing if you still produce a standard card grid.
+
+### Layout Differentiation
+
+**NEVER use standard card grids without domain justification.**
+
+| Domain | Layout Approach |
+|--------|-----------------|
+| Farming | Field-boundary divisions, horizon lines, seasonal sections |
+| Finance | Dense data tables, trading-floor density, ticker-style updates |
+| Healthcare | Clean clinical zones, clear visual separation, calming whitespace |
+| Education | Notebook/journal feel, margins for notes, progressive disclosure |
+
+**Ask:** What physical space does this domain inhabit? How is information arranged THERE?
+
+**Example (farming insurance):**
+```
+WRONG - Standard SaaS layout:
+┌─────────────────────────────────────┐
+│ [Card] [Card] [Card]               │
+│ [Card] [Card] [Card]               │
+└─────────────────────────────────────┘
+
+RIGHT - Field-inspired layout:
+┌─────────────────────────────────────┐
+│ ═══════════ Horizon Band ══════════ │
+│ ┌─────────┐                        │
+│ │ Field 1 │  Weather     Yield     │
+│ └─────────┘  ~~~~~~~~    ▓▓▓▓░░░   │
+│ ┌─────────┐                        │
+│ │ Field 2 │  ~~~~~~~~    ▓▓▓▓▓░   │
+│ └─────────┘                        │
+└─────────────────────────────────────┘
+```
+
+### Component Reimagining
+
+**Standard components should be reimagined for the domain.**
+
+| Standard | Farming Domain Alternative |
+|----------|---------------------------|
+| Progress bar | Growth indicator (seedling → full plant) |
+| Status badge | Weather-inspired (sunny=good, stormy=warning) |
+| Success toast | Harvest celebration (golden glow animation) |
+| Error state | Drought/blight metaphor |
+| Loading spinner | Seasonal cycle or sun position |
+| Cards | Field plots with boundary styling |
+| Tabs | Seasonal navigation (planting → growing → harvest) |
+
+**The signature element from domain-spec.json MUST appear as an actual component.**
+
+### Typography Feel
+
+**Typography shapes how products FEEL. Choose intentionally.**
+
+| Feel | Typography Direction |
+|------|---------------------|
+| Grounded/farming | Sturdy serifs, slightly weathered, generous x-height |
+| Clinical/precise | Clean geometric sans, high contrast weights |
+| Warm/friendly | Rounded sans, open counters, relaxed spacing |
+| Technical/dense | Monospace accents, tight tracking, functional |
+| Premium/crafted | Classic serifs, generous spacing, subtle weights |
+
+**From domain-spec.json `intent.feel`:**
+- "Grounded like farming tools" → NOT Inter/system fonts. Consider Source Serif, Merriweather, or sturdy sans like Work Sans
+- "Cold as a terminal" → Monospace-influenced: JetBrains Mono, IBM Plex Mono
+- "Warm as a notebook" → Humanist: Nunito, Lora, Literata
+
+### Navigation as Product
+
+**Navigation is NOT scaffolding around the product - IT IS the product.**
+
+| Pattern | Mental Model | When to Use |
+|---------|-------------|-------------|
+| Seasonal/cyclical | Time-based workflow | Agriculture, education terms, fiscal years |
+| Hub-and-spoke | Central command + tools | Dashboards, monitoring |
+| Linear flow | Step-by-step process | Wizards, onboarding |
+| Spatial/map | Geographic or area-based | Field management, floor plans |
+| Hierarchical | Category organization | Content-heavy, documentation |
+
+**Example (farming insurance):**
+```
+WRONG - Generic sidebar:
+Dashboard | Policies | Claims | Settings
+
+RIGHT - Domain-aware navigation:
+My Fields | Growing Season | Claims & Weather | Policy
+    └── reflects how farmers think about their work
+```
+
+### Visual Metaphors (Beyond Color)
+
+**Colors named after domain concepts is step 1. Step 2 is VISUAL expression.**
+
+| Concept | Visual Expression |
+|---------|-------------------|
+| Growth | Upward motion, expanding elements, green progression |
+| Harvest | Golden accents on completion, gathering/consolidating UI |
+| Weather | Gradient backgrounds that shift, atmospheric depth |
+| Soil/grounding | Heavy bottom borders, earthy textures, stable footers |
+| Seasons | Color temperature shifts, layout density changes |
+
+**Implement at least 3 visual metaphors in example.html.**
+
+### Signature Element Implementation
+
+**The signature from domain-spec.json MUST be visibly implemented, not just named.**
+
+```json
+"signature": "field boundary visualization"
+```
+
+**Wrong:** Token named `--field-border` with standard 1px border
+**Right:** Actual component with:
+- Dashed borders like property lines
+- Corner markers like survey stakes
+- Subtle texture suggesting soil/earth
+- Hover state showing field expansion
+
+**Implementation checklist for signature:**
+- [ ] Create dedicated CSS class or component
+- [ ] Use in at least 3 places in preview.html
+- [ ] Feature prominently in example.html
+- [ ] Include in component documentation
+- [ ] Signature should be recognizable at a glance
+
+### Six Mandates (Extended)
+
+Before completing ANY design work:
+
+1. **Swap test:** Would swapping typeface/layout change perception?
+2. **Squint test:** Does hierarchy persist without harsh jumps?
+3. **Signature test:** Can you point to the signature element visually?
+4. **Layout test:** Is layout domain-specific or generic SaaS dashboard?
+5. **Component test:** Did you reimagine any standard components?
+6. **Visual output test:** Does the rendered result look like THIS product, not generic SaaS?
+
+If ANY fails, iterate before completing.
+
+**Remember:** Differentiation is in the VISUAL OUTPUT - layouts, components, interactions, typography choices. Not in clever token names.
