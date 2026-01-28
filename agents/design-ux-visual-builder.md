@@ -462,12 +462,22 @@ CORRECT - separation:
 └── example.html            ← Artifacts (correct)
 ```
 
-**Before you finish, verify:**
-1. [ ] `{output_path}/preview.html` exists with `<link href="tokens.css">` (not inline styles)
-2. [ ] `{output_path}/example.html` exists (if context warrants it)
-3. [ ] `.pairingbuddy/design-ux/{name}/config.json` exists with name, version, description
-4. [ ] If you modified token values, changes are in BOTH JSON files AND tokens.css
-5. [ ] **State and artifacts are properly separated**
+### STOP - Mandatory File Check (BEFORE COMPLETING)
+
+**You MUST verify ALL of these exist before finishing. Do NOT complete without checking:**
+
+```
+[ ] {output_path}/preview.html  ← MANDATORY (from template)
+[ ] {output_path}/example.html  ← MANDATORY (domain demo)
+[ ] .pairingbuddy/design-ux/{name}/config.json ← MANDATORY (metadata)
+```
+
+**If ANY file is missing, create it NOW before completing.**
+
+Additional checks:
+- [ ] preview.html has `<link href="tokens.css">` (not inline styles)
+- [ ] If you modified token values, changes are in BOTH JSON files AND tokens.css
+- [ ] State and artifacts are properly separated
 
 ### Playwright Usage
 
