@@ -1,8 +1,8 @@
 """Tests that agent inline schemas match canonical schema files.
 
 Agents document their input/output schemas inline. These must match the
-canonical schemas in contracts/schemas/ - property names and structure
-must be consistent to prevent drift.
+canonical schemas in contracts/schemas/ - property names, structure,
+and enum values must be consistent to prevent drift.
 """
 
 import json
@@ -155,6 +155,100 @@ def normalize_dynamic_keys(props: set) -> set:
     return normalized
 
 
+def extract_enums_from_json_schema(schema: dict, prefix: str = "") -> dict:
+    """Extract enum values from JSON Schema format.
+
+    Returns dict mapping property paths to their enum values.
+    E.g., {"priority_issues[].change_level": ["domain", "strategic", "tactical"]}
+    """
+    enums = {}
+
+    if "properties" in schema:
+        for prop_name, prop_schema in schema["properties"].items():
+            full_name = f"{prefix}.{prop_name}" if prefix else prop_name
+
+            # Check if this property has an enum
+            if "enum" in prop_schema:
+                enums[full_name] = set(prop_schema["enum"])
+
+            # Recurse into nested objects
+            if prop_schema.get("type") == "object":
+                if "additionalProperties" in prop_schema:
+                    add_props = prop_schema["additionalProperties"]
+                    if isinstance(add_props, dict) and add_props.get("type") == "object":
+                        enums.update(
+                            extract_enums_from_json_schema(add_props, f"{full_name}.<key>")
+                        )
+                else:
+                    enums.update(extract_enums_from_json_schema(prop_schema, full_name))
+            elif prop_schema.get("type") == "array" and "items" in prop_schema:
+                items = prop_schema["items"]
+                if items.get("type") == "object":
+                    enums.update(extract_enums_from_json_schema(items, f"{full_name}[]"))
+
+    return enums
+
+
+def extract_enums_from_agent_schema(json_text: str) -> dict:
+    """Extract enum values from agent's simplified schema format.
+
+    Agent schemas use format like:
+    "change_level": "domain | strategic | tactical"
+
+    Returns dict mapping property paths to their enum values.
+    """
+    enums = {}
+
+    # Find all enum patterns: "property_name": "value1 | value2 | value3"
+    # This regex finds the property name and the pipe-separated values
+    enum_pattern = r'"([^"]+)":\s*"([a-z_]+(?:\s*\|\s*[a-z_]+)+)"'
+
+    for match in re.finditer(enum_pattern, json_text):
+        prop_name = match.group(1)
+        enum_str = match.group(2)
+        # Parse "value1 | value2 | value3" into set of values
+        values = {v.strip() for v in enum_str.split("|")}
+        enums[prop_name] = values
+
+    return enums
+
+
+def extract_all_enums_from_section(content: str, section_name: str) -> dict:
+    """Extract all enums from JSON blocks in a markdown section."""
+    # Find the section
+    section_pattern = rf"^## {section_name}\s*$"
+    section_match = re.search(section_pattern, content, re.MULTILINE)
+    if not section_match:
+        return {}
+
+    # Find content after section header until next ## heading
+    section_start = section_match.end()
+    next_section = re.search(r"^## ", content[section_start:], re.MULTILINE)
+    if next_section:
+        section_content = content[section_start : section_start + next_section.start()]
+    else:
+        section_content = content[section_start:]
+
+    # Extract ALL JSON from code blocks
+    json_pattern = r"```json\s*\n(.*?)\n```"
+    json_matches = re.findall(json_pattern, section_content, re.DOTALL)
+
+    # Collect enums from all JSON blocks
+    all_enums = {}
+    for json_text in json_matches:
+        all_enums.update(extract_enums_from_agent_schema(json_text))
+
+    return all_enums
+
+
+def get_canonical_enums(schema_path: Path) -> dict:
+    """Extract enum values from a canonical JSON Schema file."""
+    with open(schema_path) as f:
+        schema = json.load(f)
+
+    return extract_enums_from_json_schema(schema)
+
+
 # Get all agents from config
 config = load_agent_config()
 AGENTS = list(config["agents"].keys())
@@ -294,3 +388,77 @@ def test_agent_file_creation_restrictions_mentions_output_files(agent_name):
             f"Agent {agent_name} File Creation Restrictions does not mention "
             f"configured output file '{output_file}' for output '{output_name}'"
         )
+
+
+@pytest.mark.parametrize("agent_name,input_name,schema_file", get_agent_input_refs())
+def test_agent_input_enum_values_match_canonical(agent_name, input_name, schema_file):
+    """Test that enum values in agent's Input section match canonical schema."""
+    agent_path = AGENTS_DIR / f"{agent_name}.md"
+    if not agent_path.exists():
+        pytest.skip(f"Agent file {agent_path} does not exist")
+
+    with open(agent_path) as f:
+        agent_content = f.read()
+
+    # Get enums from canonical schema
+    canonical_path = SCHEMAS_DIR / schema_file
+    canonical_enums = get_canonical_enums(canonical_path)
+
+    if not canonical_enums:
+        pytest.skip(f"No enums in canonical schema {schema_file}")
+
+    # Get enums from agent's Input section
+    agent_enums = extract_all_enums_from_section(agent_content, "Input")
+
+    # For each canonical enum, check if agent documents it with matching values
+    for canonical_prop, canonical_values in canonical_enums.items():
+        # Extract just the property name (last segment of path)
+        prop_name = canonical_prop.split(".")[-1].rstrip("[]")
+
+        if prop_name in agent_enums:
+            agent_values = agent_enums[prop_name]
+            if agent_values != canonical_values:
+                pytest.fail(
+                    f"Enum value mismatch in {agent_name} Input for '{prop_name}':\n"
+                    f"  Agent has: {sorted(agent_values)}\n"
+                    f"  Canonical has: {sorted(canonical_values)}\n"
+                    f"  Missing in agent: {sorted(canonical_values - agent_values)}\n"
+                    f"  Extra in agent: {sorted(agent_values - canonical_values)}"
+                )
+
+
+@pytest.mark.parametrize("agent_name,output_name,schema_file", get_agent_output_refs())
+def test_agent_output_enum_values_match_canonical(agent_name, output_name, schema_file):
+    """Test that enum values in agent's Output section match canonical schema."""
+    agent_path = AGENTS_DIR / f"{agent_name}.md"
+    if not agent_path.exists():
+        pytest.skip(f"Agent file {agent_path} does not exist")
+
+    with open(agent_path) as f:
+        agent_content = f.read()
+
+    # Get enums from canonical schema
+    canonical_path = SCHEMAS_DIR / schema_file
+    canonical_enums = get_canonical_enums(canonical_path)
+
+    if not canonical_enums:
+        pytest.skip(f"No enums in canonical schema {schema_file}")
+
+    # Get enums from agent's Output section
+    agent_enums = extract_all_enums_from_section(agent_content, "Output")
+
+    # For each canonical enum, check if agent documents it with matching values
+    for canonical_prop, canonical_values in canonical_enums.items():
+        # Extract just the property name (last segment of path)
+        prop_name = canonical_prop.split(".")[-1].rstrip("[]")
+
+        if prop_name in agent_enums:
+            agent_values = agent_enums[prop_name]
+            if agent_values != canonical_values:
+                pytest.fail(
+                    f"Enum value mismatch in {agent_name} Output for '{prop_name}':\n"
+                    f"  Agent has: {sorted(agent_values)}\n"
+                    f"  Canonical has: {sorted(canonical_values)}\n"
+                    f"  Missing in agent: {sorted(canonical_values - agent_values)}\n"
+                    f"  Extra in agent: {sorted(agent_values - canonical_values)}"
+                )
