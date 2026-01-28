@@ -141,7 +141,8 @@ Agents are self-contained - they know what to read (Input section), what to do (
 Interpret control flow statements as orchestration logic:
 
 - `validation = design_ux_validator(...)` then `if not validation.ready_for_critique:` → Invoke agent, then check if validation.json has `ready_for_critique: false`
-- `critique = design_ux_critic(...)` then `if _has_strategic_issues(critique):` → Invoke agent, then check if critique.json has any priority_issues with `change_level: "strategic"`
+- `critique = design_ux_critic(...)` then `if _has_domain_issues(critique):` → Invoke agent, then check if critique.json has any priority_issues with `change_level: "domain"`
+- `if _has_strategic_issues(critique):` → Check if critique.json has any priority_issues with `change_level: "strategic"`
 - `while iteration < max_iterations:` → Loop until iteration limit reached
 
 ### Orchestrator Functions
@@ -151,6 +152,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | Function | Behavior |
 |----------|----------|
 | `_setup_exploration(name, output_path, brief)` | Create state folder, session.json entry, direction.json, output folder |
+| `_has_domain_issues(critique)` | Check if any priority_issues have `change_level: "domain"` |
 | `_has_strategic_issues(critique)` | Check if any priority_issues have `change_level: "strategic"` |
 | `_ask_human(question)` | Present question to human, return response |
 
@@ -167,8 +169,12 @@ domain_spec = design_ux_explorer(name, output_path)
 
 # Generation loop
 while iteration < max_iterations:
-    # First iteration or strategic issues: run full pipeline
-    if first_iteration or _has_strategic_issues(critique):
+    # Domain issues: re-run explorer to refine domain understanding
+    if _has_domain_issues(critique):
+        domain_spec = design_ux_explorer(name, output_path)
+
+    # First iteration, domain issues, or strategic issues: run architect + tokens
+    if first_iteration or _has_domain_issues(critique) or _has_strategic_issues(critique):
         design_decisions = design_ux_architect(name, output_path)
         tokens_generated = design_ux_token_generator(name, output_path)
 

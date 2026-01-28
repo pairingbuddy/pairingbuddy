@@ -202,6 +202,31 @@ Rank findings by severity:
 - **Medium** - Polish opportunity or minor inconsistency
 - **Low** - Nice-to-have improvement
 
+### Assigning Change Level
+
+For each priority issue, assign a `change_level` that determines which agent handles it:
+
+**domain** - Issues with fundamental understanding of users or their world:
+- "Colors don't feel agricultural - too corporate"
+- "User intent is vague - who exactly uses this?"
+- "Domain concepts are generic, not from the product's world"
+- "Signature element could belong to any app"
+→ Routes to Explorer to refine domain-spec.json
+
+**strategic** - Issues with design decisions (layout, color strategy, typography):
+- "Layout doesn't reflect the domain"
+- "Color palette is too generic"
+- "Component doesn't match the domain adaptation described"
+- "Typography feel doesn't match intent"
+→ Routes to Architect to update design-decisions.json
+
+**tactical** - Issues with implementation (spacing, contrast, states):
+- "Button contrast too low in dark mode"
+- "Missing hover state on cards"
+- "Spacing inconsistent between sections"
+- "Focus ring not visible enough"
+→ Routes to Visual Builder for HTML/CSS fixes
+
 ### File Creation Restrictions
 
 **You may ONLY write to:**
@@ -292,7 +317,7 @@ Writes to `.pairingbuddy/design-ux/{name}/critique.json`:
       "category": "string (which pass)",
       "description": "string",
       "suggestion": "string",
-      "change_level": "strategic | tactical"
+      "change_level": "domain | strategic | tactical"
     }
   ],
   "overall_assessment": "string (summary)",

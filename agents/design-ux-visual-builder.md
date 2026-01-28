@@ -190,7 +190,7 @@ Reads from `.pairingbuddy/design-ux/{name}/critique.json` (optional):
       "category": "string",
       "description": "string",
       "suggestion": "string",
-      "change_level": "strategic | tactical"
+      "change_level": "domain | strategic | tactical"
     }
   ],
   "overall_assessment": "string",

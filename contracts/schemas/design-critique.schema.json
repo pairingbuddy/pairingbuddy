@@ -129,8 +129,8 @@
           },
           "change_level": {
             "type": "string",
-            "enum": ["strategic", "tactical"],
-            "description": "Whether this requires strategic (Architect) or tactical (Visual Builder) changes"
+            "enum": ["domain", "strategic", "tactical"],
+            "description": "Whether this requires domain (Explorer), strategic (Architect), or tactical (Visual Builder) changes"
           }
         },
         "additionalProperties": false
