@@ -382,12 +382,26 @@ All work MUST follow principles from reference files including:
 
 See `differentiating-designs` skill (Section: Design Tokens) for three-tier architecture details.
 
-**Enforcement rule:** Hex values ONLY appear in Tier 1 (Brand). Tiers 2-3 use `var()` references.
+**Enforcement rules:**
+
+1. **Hex values ONLY in Tier 1 (Brand).** Tiers 2-3 use `var()` references.
+2. **HTML/CSS classes ONLY use Tier 3 (Mapped) tokens.** Never reference Tier 1 or Tier 2 directly.
 
 ```css
-/* WRONG */ --color-brand-primary: #3a6dbd;
-/* RIGHT */ --color-brand-primary: var(--color-sweden-blue-600);
+/* Token definition - WRONG */
+--color-brand-primary: #3a6dbd;
+/* Token definition - RIGHT */
+--color-brand-primary: var(--color-sweden-blue-600);
+
+/* HTML usage - WRONG (using Tier 1) */
+background-color: var(--color-wheat-500);
+/* HTML usage - WRONG (using Tier 2) */
+background-color: var(--color-primary);
+/* HTML usage - RIGHT (using Tier 3) */
+background-color: var(--surface-action);
 ```
+
+**Why Tier 3 only in HTML?** Tier 3 tokens encode semantic meaning (what it's FOR, not what color it IS). This makes the design system portable and maintainable.
 
 ### Required Input Files (from Token Generator)
 
