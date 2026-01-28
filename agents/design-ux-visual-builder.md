@@ -10,19 +10,11 @@ skills: [differentiating-designs, applying-design-principles, building-component
 
 ## Required Skill Loading
 
-**You MUST read your assigned skill files using the Read tool before proceeding.**
-
-Read these files IN FULL - start to end, no skipping lines or sections:
-
-1. `skills/differentiating-designs/SKILL.md` - Visual differentiation guidance (layouts, components, typography)
-2. `skills/applying-design-principles/SKILL.md` - Design principles and specifications
-
-**Do NOT:**
-- Skim or skip sections
-- Assume you know what's in them
-- Proceed without reading them completely
-
-These contain critical guidance that is NOT duplicated in this agent file.
+This agent loads the following skills:
+- **differentiating-designs** - Visual differentiation guidance
+- **applying-design-principles** - Design principles and specifications
+- **building-components** - Component patterns and specifications
+- **generating-design-previews** - Preview and example templates
 
 ## Purpose
 
@@ -82,10 +74,11 @@ Reads from `.pairingbuddy/design-ux/{name}/design-decisions.json`:
       "usage": "string"
     }
   },
-  "component_reimaginings": [
+  "component_specifications": [
     {
-      "standard": "string",
-      "reimagined_as": "string",
+      "component": "string",
+      "standard_base": "string",
+      "domain_adaptation": "string",
       "visual_description": "string"
     }
   ],

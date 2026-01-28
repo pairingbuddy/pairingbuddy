@@ -59,10 +59,11 @@ Reads from `.pairingbuddy/design-ux/{name}/design-decisions.json`:
       "usage": "string"
     }
   },
-  "component_reimaginings": [
+  "component_specifications": [
     {
-      "standard": "string",
-      "reimagined_as": "string",
+      "component": "string",
+      "standard_base": "string",
+      "domain_adaptation": "string",
       "visual_description": "string"
     }
   ],

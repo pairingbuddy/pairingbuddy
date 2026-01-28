@@ -627,7 +627,7 @@ agents:
   design-ux-architect:
     color: magenta
     model: opus
-    skills: [differentiating-designs]
+    skills: [differentiating-designs, applying-design-principles]
     inputs:
       direction:
         schema: design-direction.schema.json

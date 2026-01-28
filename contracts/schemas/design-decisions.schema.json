@@ -60,27 +60,32 @@
       },
       "additionalProperties": false
     },
-    "component_reimaginings": {
+    "component_specifications": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["standard", "reimagined_as", "visual_description"],
+        "required": ["component", "visual_description"],
         "properties": {
-          "standard": {
+          "component": {
             "type": "string",
-            "description": "Standard component being reimagined (e.g., 'progress bar')"
+            "description": "Component name (e.g., 'primary-button', 'field-card')"
           },
-          "reimagined_as": {
+          "standard_base": {
             "type": "string",
-            "description": "Domain-specific concept (e.g., 'crop growth visualization')"
+            "description": "Standard component it derives from (e.g., 'button', 'card')"
+          },
+          "domain_adaptation": {
+            "type": "string",
+            "description": "How it's adapted for this domain (e.g., 'harvest action button')"
           },
           "visual_description": {
             "type": "string",
-            "description": "Concrete visual description (e.g., 'vertical stalks growing from soil line')"
+            "description": "Concrete visual description detailed enough for implementation"
           }
         },
         "additionalProperties": false
-      }
+      },
+      "description": "ALL components the design system needs, with visual specifications"
     },
     "signature_element": {
       "type": "object",

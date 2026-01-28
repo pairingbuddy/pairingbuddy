@@ -10,16 +10,8 @@ skills: [differentiating-designs]
 
 ## Required Skill Loading
 
-**You MUST read your assigned skill files using the Read tool before proceeding.**
-
-Read these files IN FULL - start to end, no skipping lines or sections:
-
-1. `skills/differentiating-designs/SKILL.md` - Differentiation guidance and anti-default checks
-
-**Do NOT:**
-- Skim or skip sections
-- Assume you know what's in them
-- Proceed without reading them completely
+This agent loads the following skills:
+- **differentiating-designs** - Differentiation guidance and anti-default checks
 
 ## Purpose
 
@@ -46,6 +38,12 @@ Reads from `.pairingbuddy/design-ux/{name}/direction.json` (optional):
 {
   "brief": "string",
   "constraints": ["array of strings"],
+  "references": [
+    {
+      "url": "string (URL to view with Playwright)",
+      "note": "string (what to look at or learn)"
+    }
+  ],
   "feedback_history": [
     {
       "iteration": 1,

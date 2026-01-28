@@ -50,6 +50,12 @@ Reads from `.pairingbuddy/design-ux/{name}/direction.json`:
 {
   "brief": "string",
   "constraints": ["array of strings"],
+  "references": [
+    {
+      "url": "string (URL to view with Playwright)",
+      "note": "string (what to look at or learn)"
+    }
+  ],
   "feedback_history": [
     {
       "iteration": 1,

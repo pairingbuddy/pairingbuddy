@@ -10,20 +10,10 @@ skills: [differentiating-designs, critiquing-designs, applying-design-principles
 
 ## Required Skill Loading
 
-**You MUST read your assigned skill files using the Read tool before proceeding.**
-
-Read these files IN FULL - start to end, no skipping lines or sections:
-
-1. `skills/critiquing-designs/SKILL.md` - 6-pass critique framework
-2. `skills/differentiating-designs/SKILL.md` - Visual differentiation criteria
-3. `skills/applying-design-principles/SKILL.md` - Design principles and specifications
-
-**Do NOT:**
-- Skim or skip sections
-- Assume you know what's in them
-- Proceed without reading them completely
-
-These contain critical evaluation criteria that is NOT duplicated in this agent file.
+This agent loads the following skills:
+- **critiquing-designs** - 6-pass UX critique framework
+- **differentiating-designs** - Visual differentiation criteria
+- **applying-design-principles** - Design principles and specifications
 
 ## Purpose
 
@@ -60,6 +50,12 @@ Reads from `.pairingbuddy/design-ux/{name}/direction.json`:
 {
   "brief": "string",
   "constraints": ["array of strings"],
+  "references": [
+    {
+      "url": "string (URL to view with Playwright)",
+      "note": "string (what to look at or learn)"
+    }
+  ],
   "feedback_history": [
     {
       "iteration": 1,
