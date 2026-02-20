@@ -9,36 +9,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Craft differentiation for design-ux skill (from Dammyjay's interface-design skill)
-  - New agent: design-ux-explorer - establishes domain grounding before generation
-  - New schema: domain-spec.schema.json - captures intent, domain concepts, signature, defaults to reject
-  - Four new reference skills for design agents:
-    - differentiating-designs - craft knowledge for intentional differentiation
-    - applying-design-principles - Laws of UX, specifications, Norman's principles
-    - critiquing-designs - 6-pass UX critique framework
-    - building-components - component patterns and domain packs
-  - Updated design-ux-builder skills field: [applying-design-principles, building-components]
-  - Updated design-ux-critic skills field: [differentiating-designs, critiquing-designs, applying-design-principles]
-  - Updated design-ux orchestrator with mandatory explorer phase in workflow
-  - Migrated reference files to skills (deleted skills/design-ux/reference/ folder)
+- Design UX skill for creating production-ready design systems
+  - New orchestrator skill: designing-ux with `/pairingbuddy:design-ux` command
+  - Seven new agents for the design workflow:
+    - design-ux-explorer: establishes domain grounding and design intent before generation
+    - design-ux-architect: makes strategic layout, color, component, and typography decisions
+    - design-ux-token-generator: generates three-tier token architecture (global/alias/component)
+    - design-ux-visual-builder: creates preview.html and example.html with Playwright feedback
+    - design-ux-critic: evaluates designs using 6-pass UX analysis framework
+    - design-ux-validator: validates structural correctness of design artifacts
+    - design-ux-gallery-generator: creates web-hostable gallery for comparing explorations
+  - Six new reference skills for design agents:
+    - differentiating-designs: craft knowledge for intentional differentiation
+    - applying-design-principles: Laws of UX, specifications, Norman's principles
+    - critiquing-designs: 6-pass UX critique framework
+    - building-components: component patterns and domain packs
+    - generating-design-previews: preview and example HTML templates
+    - generating-exploration-gallery: gallery and comparison templates
+  - Fourteen new JSON schemas for design state management:
+    - brand, design-artifacts, design-brief, design-critique, design-decisions
+    - design-direction, design-experience-config, design-session
+    - design-system-config, design-validation, domain-spec
+    - exploration-status, gallery-output, tokens-generated
+  - Design state lives in `.pairingbuddy/design-ux/{exploration-name}/`
+  - Parallel exploration support with isolated session state
+  - Web output: preview.html, example.html with Tailwind CDN and dark mode
+  - Three-tier token architecture: global tokens → alias tokens → component tokens
+  - Multi-brand architecture support via brand.schema.json
 
 ### Fixed
 
 - Front-loaded file restrictions in explore-spike-unit to prevent /tmp writes
   - Moved file creation restrictions to start of Step 2 (before main work begins)
   - Previously restrictions came after instructions, causing LLM to create markdown files in /tmp
-  - Added emphatic "CRITICAL FILE RESTRICTIONS - READ BEFORE DOING ANYTHING" header
-  - Explicit NEVER statements: no /tmp, no .md files, no documentation (that's document-spike's job)
-  - Reinforced in File Creation Restrictions section with "ABSOLUTELY FORBIDDEN" list
 
 - Made state file cleanup explicit in workflow pseudocode
   - Added `_cleanup_state_files()` orchestrator function with crystal-clear description
   - Added mandatory call in workflow after `curate_guidance`, before `classify_task`
-  - Previously cleanup was only described in prose (State File Management section), causing Claude to skip it
-  - Files preserved: `test-config.json`, `doc-config.json`, `human-guidance.json`
-  - All other state files deleted to prevent stale state from previous tasks
+  - Previously cleanup was only described in prose, causing Claude to skip it
 
 ### Changed
+
+- Agent count increased from 18 to 25
+- Schema count increased from 21 to 35
+- Skill count increased from 7 to 14 (2 orchestrators, 1 entry, 11 reference)
+- Test count increased from ~565 to ~881
 
 - Upgraded models for better task performance
   - implement-tests: haiku → sonnet (tests may require design decisions beyond mechanical translation)
@@ -48,37 +63,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - identify-code-issues: haiku → opus (critical quality gate - misses have compounding effects)
 
 - Improved curate-guidance agent to show actual entries during human review
-  - Added step 4 in Main Work requiring ACTUAL entry text (not generic placeholders)
-  - Must show proposed action (KEEP/DROP/CONSOLIDATE) for each entry
-  - Must show reasoning for each classification
-  - For consolidations: show both original entries AND proposed merged text
 
 - Replaced `summarize-spike` agent with `document-spike` agent
   - Now MANDATORY at end of spike workflow (was optional)
   - Creates comprehensive documentation capturing ALL findings (not a summary that loses information)
-  - Includes: all findings, caveats, unexplored areas, issues, limitations, recommendations
-  - Shows human mapping: spike-findings.json → document (proves nothing lost)
-  - Asks human: where to persist, option to modify content, option to modify format
-  - Human review checkpoint with full Step 1-4 workflow pattern
 
 - Improved Human Review step to require comprehensive descriptions
   - Updated canonical `workflow_step3_human_review` content block with explicit instructions
-  - Example interaction now shows `[description with all relevant details]` instead of generic `[description]`
-  - Added **Important** paragraph emphasizing that descriptions must include ALL relevant details for informed decisions
-  - setup-spike agent now has spike-specific guidance listing required details (goal, exploration mode, code location, unit details)
   - All 10 agents with Human Review updated to match new canonical content
 
 - Added mandatory output file writing instructions to Step 4: Output
   - New canonical `workflow_step4_output` content block with explicit Write tool requirements
   - Three write modes: "Writes to" (overwrite), "Appends to" (read-add-write), "Updates" (read-modify-write)
-  - Completion requirements: agent cannot exit until all output files are written
-  - Explicitly forbids bash commands (echo, cat, printf, heredoc) for JSON file writing
   - All 10 agents with Step 4: Output updated to match new canonical content
-
-- Fixed Output section documentation for consistency
-  - create-test-placeholders: Changed "Writes to" to "Appends to" for tests.json (preserves existing entries)
-  - verify-test-coverage: Added tests.json with "Updates" mode (reconciliation)
-  - update-documentation: Added doc-config.json with "Writes to" mode (bootstrap/update)
 
 ## [0.4.0] - 2026-01-06
 

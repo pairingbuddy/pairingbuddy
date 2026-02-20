@@ -25,25 +25,27 @@ uv run ruff format .
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
 - Design philosophy (WHAT vs HOW separation)
 - Testing strategy (BDD outer-to-inner, test layers pyramid)
-- Agent and skill structure (18 agents, 7 skills)
-- State management via JSON files (21 schemas)
+- Agent and skill structure (25 agents, 14 skills)
+- State management via JSON files (35 schemas)
 - Spike workflow (exploratory coding without TDD)
+- Design UX workflow (design systems with three-tier token architecture)
 - Extensibility patterns
 
 ## Project Structure
 
 ```
 pairingbuddy/
-├── agents/           # Plugin agents (invoke via Task tool)
-├── skills/           # Skills (run in main context)
-│   ├── coding/       # Orchestrator skill
+├── agents/           # Plugin agents (25 total, invoke via Task tool)
+├── skills/           # Skills (14 total, run in main context)
+│   ├── coding/       # TDD orchestrator skill
+│   ├── designing-ux/ # Design UX orchestrator skill
 │   └── */            # Reference skills (writing-tests, etc.)
 ├── contracts/        # Single source of truth
 │   ├── agent-config.yaml    # Agent definitions
 │   ├── skill-config.yaml    # Skill definitions
-│   └── schemas/             # JSON schemas for state
-├── commands/         # Slash commands (/pairingbuddy:code)
-└── tests/            # Structural tests (~565)
+│   └── schemas/             # JSON schemas for state (35 total)
+├── commands/         # Slash commands (/pairingbuddy:code, /pairingbuddy:design-ux)
+└── tests/            # Structural tests (~881)
 ```
 
 ## Key Conventions
