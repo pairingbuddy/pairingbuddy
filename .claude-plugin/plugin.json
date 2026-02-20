@@ -1,7 +1,7 @@
 {
   "name": "pairingbuddy",
   "description": "TDD-focused coding skills for Claude Code: atomic operations, workflow orchestration, and test-driven development",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "author": {
     "name": "Alberto Prieto Löfkrantz",
     "email": "hello@albertoprietolofkrantz.dev"
