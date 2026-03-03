@@ -197,7 +197,10 @@ After approval, write output using this procedure for EACH output file:
 
 **NEVER use bash commands (echo, cat, printf, heredoc, etc.) to write JSON files.** Always use the Write tool.
 
-After approval, append findings to `.pairingbuddy/spike-findings.json`.
+When appending to spike-findings.json:
+- Read existing file first (or create with `{"findings": []}` if missing)
+- Add your new finding entry to the `findings` array
+- Write the updated file
 
 ### Exploration Guidelines
 
