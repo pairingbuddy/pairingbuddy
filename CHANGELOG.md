@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Spike findings overwrite bug in explore-spike-unit agent: replaced vague append instruction with explicit read-modify-write steps to prevent losing previous units' findings
 
+### Changed
+
+- Added soft wrapping markdown formatting guideline to document-spike agent
+
 ## [0.5.0] - 2026-02-20
 
 ### Added

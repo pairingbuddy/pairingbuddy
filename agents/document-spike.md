@@ -83,12 +83,14 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    - **Limitations Discovered**: Constraints or blockers found
    - **Recommendations**: Consolidated recommendations from all findings
 
-3. **CRITICAL - Prove nothing was lost**: Create a mapping showing:
+3. **Markdown formatting**: Use soft wrapping — one paragraph per line, no hard line breaks within prose. Let the editor/viewer handle wrapping. Keep bullet lists as one bullet per line. Tables and code blocks stay as-is.
+
+4. **CRITICAL - Prove nothing was lost**: Create a mapping showing:
    - Each finding from spike-findings.json
    - Where it appears in the document
    - This proves comprehensive coverage
 
-4. **Prepare for human review** - you will present:
+5. **Prepare for human review** - you will present:
    - The complete spike-findings.json content (so human can verify nothing is missing)
    - The comprehensive document with all sections
    - The mapping showing each finding → document location
