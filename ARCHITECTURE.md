@@ -82,7 +82,7 @@ The system includes human review points to prevent:
 ```
 pairingbuddy/
 ├── .claude-plugin/plugin.json    # Register agents and skills
-├── agents/                        # Plugin agents (18 TDD/spike + 7 design-ux = 25)
+├── agents/                        # Plugin agents (18 TDD/spike + 7 design-ux + 4 planning = 29)
 │   ├── curate-guidance.md
 │   ├── classify-task.md
 │   ├── enumerate-scenarios-and-test-cases.md
@@ -101,6 +101,10 @@ pairingbuddy/
 │   ├── setup-spike.md
 │   ├── explore-spike-unit.md
 │   ├── document-spike.md
+│   ├── brainstorm-requirements.md
+│   ├── solidify-architecture.md
+│   ├── decompose-tracer-bullets.md
+│   ├── sequence-tasks.md
 │   ├── design-ux-explorer.md
 │   ├── design-ux-architect.md
 │   ├── design-ux-token-generator.md
@@ -112,9 +116,10 @@ pairingbuddy/
 │   ├── agent-config.yaml         # Agent structure requirements (single source of truth)
 │   ├── skill-config.yaml         # Skill + frontmatter requirements
 │   ├── test-terminology.yaml     # Shared definitions for test-related agents
-│   └── schemas/                  # JSON schemas for state contracts (35 total)
+│   └── schemas/                  # JSON schemas for state contracts (39 total)
 ├── skills/                        # Skills (run in main context)
 │   ├── coding/                   # TDD orchestrator skill
+│   ├── planning/                 # Planning orchestrator skill
 │   ├── designing-ux/             # Design UX orchestrator skill
 │   ├── using-pairingbuddy/       # Entry point skill
 │   ├── writing-tests/            # Reference: test patterns
@@ -122,6 +127,8 @@ pairingbuddy/
 │   ├── refactoring-code/         # Reference: refactoring
 │   ├── enumerating-tests/        # Reference: test enumeration
 │   ├── committing-changes/       # Reference: git commits
+│   ├── decomposing-tracer-bullets/ # Reference: tracer bullet methodology
+│   ├── sequencing-tasks/         # Reference: task sequencing for TDD
 │   ├── differentiating-designs/  # Reference: design differentiation
 │   ├── applying-design-principles/ # Reference: UX principles
 │   ├── critiquing-designs/       # Reference: design critique
@@ -130,13 +137,19 @@ pairingbuddy/
 │   └── generating-exploration-gallery/ # Reference: gallery templates
 ├── commands/                      # Slash commands
 │   ├── code.md                   # Entry point: /pairingbuddy:code
+│   ├── plan.md                   # Entry point: /pairingbuddy:plan
 │   └── design-ux.md              # Entry point: /pairingbuddy:design-ux
-├── tests/                         # Test suite (~881 tests)
+├── tests/                         # Test suite (~1037 tests)
 │   ├── agents/                   # Agent structure and contract tests
 │   ├── skills/                   # Skill structure tests
 │   └── contracts/                # Test utilities
 └── .pairingbuddy/                # Runtime state (gitignored)
     ├── *.json                    # TDD state files during workflow
+    ├── plan/                     # Planning state (isolated from /code cleanup)
+    │   ├── plan-config.json      # Persists across plans
+    │   ├── plan-requirements.json
+    │   ├── plan-architecture.json
+    │   └── plan-tracer-bullets.json
     └── design-ux/                # Design UX state (per exploration)
         └── {name}/*.json
 ```
@@ -146,9 +159,9 @@ pairingbuddy/
 The architecture follows a clear separation:
 
 ```
-/pairingbuddy:code or /pairingbuddy:design-ux command
+/pairingbuddy:code or /pairingbuddy:plan or /pairingbuddy:design-ux command
     ↓
-orchestrator skill (coding or designing-ux - main context)
+orchestrator skill (coding, planning, or designing-ux - main context)
     ↓ (interprets Python pseudocode workflow)
     ↓
 Task tool: pairingbuddy:<agent-name>
@@ -164,6 +177,7 @@ Repeat...
 - Skills can invoke agents (via Task tool)
 - Agents cannot invoke other agents (by design)
 - TDD state passes through JSON files in `.pairingbuddy/`
+- Plan state passes through JSON files in `.pairingbuddy/plan/`
 - Design UX state passes through JSON files in `.pairingbuddy/design-ux/{name}/`
 
 ### State Management
@@ -194,6 +208,15 @@ State files live in `.pairingbuddy/` at the git root of the target project:
 | current-unit.json | Current exploration unit being processed | current-unit.schema.json |
 | doc-config.json | Documentation locations (persists) | doc-config.schema.json |
 | docs-updated.json | Documentation updates made | docs-updated.schema.json |
+
+**Planning state files** (in `.pairingbuddy/plan/`):
+
+| State File | Purpose | Schema |
+|------------|---------|--------|
+| plan-config.json | Plan name, output path, existing docs (persists) | plan-config.schema.json |
+| plan-requirements.json | Structured requirements from brainstorming | plan-requirements.schema.json |
+| plan-architecture.json | Architectural context and decisions | plan-architecture.schema.json |
+| plan-tracer-bullets.json | Tracer bullet decomposition | plan-tracer-bullets.schema.json |
 
 **Design UX state files** (in `.pairingbuddy/design-ux/{name}/`):
 
@@ -278,6 +301,41 @@ The spike workflow is for exploratory coding without TDD - answering questions, 
 ```
 
 The design UX workflow creates production-ready design systems with three-tiered token architecture (global → alias → component). It supports parallel explorations with isolated state per exploration, Playwright-based visual feedback, and web-hostable output.
+
+**Plan Flow:**
+```
+/pairingbuddy:plan → planning orchestrator
+                          ↓
+                   brainstorm_requirements (adaptive Socratic exploration)
+                          ↓ [human checkpoint]
+                   solidify_architecture (create/update arch docs)
+                          ↓ [human checkpoint]
+                   decompose_tracer_bullets (thin E2E slices)
+                          ↓ [human checkpoint]
+                   sequence_tasks (rich task descriptions, writes plan MD)
+                          ↓ [human checkpoint]
+                   Plan complete → human points /code at plan MD
+```
+
+The planning workflow produces a markdown plan document with checkboxes ready for `/code` execution. Each task is self-contained with goal, acceptance criteria, and context links. Plan state lives in `.pairingbuddy/plan/`, isolated from `/code`'s cleanup.
+
+**Plan Execution Flow (via `/code`):**
+```
+/pairingbuddy:code (with plan MD path)
+    ↓
+_detect_plan_file → _read_plan_tasks → _hydrate_claude_tasks
+    ↓
+[for each unchecked task]
+    Write task.json → normal TDD workflow
+        ↓
+    _mark_task_complete (update MD checkbox)
+        ↓
+    _update_claude_task (mark visible task done)
+        ↓
+    [human checkpoint between tasks]
+```
+
+When `/code` receives a plan MD file, it enters plan execution mode: iterates through unchecked tasks, runs the TDD workflow for each, updates checkboxes, and provides visibility via Claude Code Tasks. Cross-session recovery reads the MD checkboxes to determine progress.
 
 ---
 
@@ -575,6 +633,10 @@ implement-tests:
 | setup-spike | SPIKE | Clarify goal, determine exploration units | - |
 | explore-spike-unit | SPIKE | Explore one unit, capture findings | - |
 | document-spike | SPIKE | Document all findings, persist to human-specified location | - |
+| brainstorm-requirements | PLAN | Adaptive Socratic exploration of requirements | decomposing-tracer-bullets |
+| solidify-architecture | PLAN | Analyze/create/update architecture documents | - |
+| decompose-tracer-bullets | PLAN | Decompose into thin E2E tracer bullet slices | decomposing-tracer-bullets |
+| sequence-tasks | PLAN | Sequence tasks within TBs, write plan MD | sequencing-tasks |
 | design-ux-explorer | DESIGN | Establish domain grounding and design intent | differentiating-designs |
 | design-ux-architect | DESIGN | Make strategic layout, color, component, typography decisions | differentiating-designs, applying-design-principles |
 | design-ux-token-generator | DESIGN | Generate three-tier token architecture | - |
@@ -584,18 +646,19 @@ implement-tests:
 | design-ux-gallery-generator | DESIGN | Create web-hostable gallery for comparing explorations | generating-exploration-gallery |
 
 **Color coding follows workflow phases:**
-- Cyan: Setup/classification (classify-task, design-ux-explorer, design-ux-gallery-generator)
-- Magenta: Analysis/verification (enumerate-scenarios, verify-coverage, design-ux-architect)
-- Yellow: Issue identification (identify-*-issues, design-ux-critic)
+- Cyan: Setup/classification (classify-task, brainstorm-requirements, design-ux-explorer, design-ux-gallery-generator)
+- Magenta: Analysis/verification (enumerate-scenarios, verify-coverage, solidify-architecture, design-ux-architect)
+- Yellow: Issue identification/decomposition (identify-*-issues, decompose-tracer-bullets, design-ux-critic)
 - Red: Failing tests (RED phase)
-- Green: Passing tests (GREEN phase, design-ux-token-generator, design-ux-validator)
+- Green: Passing tests/output (GREEN phase, sequence-tasks, design-ux-token-generator, design-ux-validator)
 - Blue: Refactoring (refactor-*, design-ux-visual-builder)
 
 ### Skills
 
 | Skill | Category | Purpose |
 |-------|----------|---------|
-| coding | Orchestrator | TDD workflow orchestration |
+| coding | Orchestrator | TDD workflow orchestration (with plan execution mode) |
+| planning | Orchestrator | Tracer bullet planning workflow orchestration |
 | designing-ux | Orchestrator | Design system and UX workflow orchestration |
 | using-pairingbuddy | Entry | Entry point, establishes mandatory workflows |
 | writing-tests | Reference | Test patterns, FIRST principles, anti-patterns |
@@ -603,6 +666,8 @@ implement-tests:
 | refactoring-code | Reference | Code smells, refactoring techniques |
 | enumerating-tests | Reference | Test scenario enumeration patterns |
 | committing-changes | Reference | Git commit best practices |
+| decomposing-tracer-bullets | Reference | Tracer bullet methodology and thin E2E slicing |
+| sequencing-tasks | Reference | Task sequencing for TDD-ready plans |
 | differentiating-designs | Reference | Craft knowledge for intentional differentiation |
 | applying-design-principles | Reference | Laws of UX, Norman's principles, specifications |
 | critiquing-designs | Reference | 6-pass UX critique framework |
@@ -621,7 +686,7 @@ skills/writing-tests/
 
 ### JSON Schemas
 
-35 JSON schemas define state contracts (all in `contracts/schemas/`):
+39 JSON schemas define state contracts (all in `contracts/schemas/`):
 
 **TDD/Spike schemas (21):**
 - task.schema.json, task-classification.schema.json
@@ -633,6 +698,10 @@ skills/writing-tests/
 - spike-config.schema.json, spike-questions.schema.json, spike-findings.schema.json
 - spike-summary.schema.json, current-unit.schema.json
 - doc-config.schema.json, docs-updated.schema.json
+
+**Planning schemas (4):**
+- plan-config.schema.json, plan-requirements.schema.json
+- plan-architecture.schema.json, plan-tracer-bullets.schema.json
 
 **Design UX schemas (14):**
 - domain-spec.schema.json, design-direction.schema.json, design-brief.schema.json
@@ -691,9 +760,6 @@ To add support for a new language (e.g., Java):
 ### Future Extensions
 
 **Planned skills:**
-- brainstorming - Refine ideas through collaborative questioning
-- executing-plans - Execute plans in batches with checkpoints
-- writing-plans - Create detailed implementation plans
 - using-git-worktrees - Isolated feature development
 
 **Planned features:**
@@ -754,9 +820,9 @@ Tests validate that implementations match these contracts.
 
 ### 5. Agent Focus and Human Review
 
-**Focus Warning:** All 25 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
+**Focus Warning:** All 29 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
 
-**Human Review Checkpoints:** Ten TDD/spike agents pause for human review before proceeding (design-ux agents use orchestrator-level human interaction instead):
+**Human Review Checkpoints:** Fourteen TDD/spike/planning agents pause for human review before proceeding (design-ux agents use orchestrator-level human interaction instead):
 1. curate-guidance
 2. enumerate-scenarios-and-test-cases
 3. create-test-placeholders
@@ -767,6 +833,10 @@ Tests validate that implementations match these contracts.
 8. update-documentation
 9. setup-spike
 10. explore-spike-unit
+11. brainstorm-requirements
+12. solidify-architecture
+13. decompose-tracer-bullets
+14. sequence-tasks
 
 **Workflow Pattern (Step 1-4):**
 
@@ -801,6 +871,7 @@ At the start of each task, the orchestrator runs `_cleanup_state_files()` to del
 | `test-config.json` | Project-specific test runner configuration |
 | `doc-config.json` | Documentation locations |
 | `human-guidance.json` | Persistent operational knowledge (entries with `persistent: true`) |
+| `plan/plan-config.json` | Plan name, output path, existing docs (persists across plans) |
 
 **All other files are deleted:**
 - `task.json`, `task-classification.json`

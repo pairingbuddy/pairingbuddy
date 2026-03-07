@@ -25,9 +25,10 @@ uv run ruff format .
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
 - Design philosophy (WHAT vs HOW separation)
 - Testing strategy (BDD outer-to-inner, test layers pyramid)
-- Agent and skill structure (25 agents, 14 skills)
-- State management via JSON files (35 schemas)
+- Agent and skill structure (29 agents, 17 skills)
+- State management via JSON files (39 schemas)
 - Spike workflow (exploratory coding without TDD)
+- Planning workflow (tracer bullet methodology)
 - Design UX workflow (design systems with three-tier token architecture)
 - Extensibility patterns
 

@@ -37,6 +37,10 @@
     "./agents/design-ux-critic.md",
     "./agents/design-ux-explorer.md",
     "./agents/design-ux-validator.md",
-    "./agents/design-ux-gallery-generator.md"
+    "./agents/design-ux-gallery-generator.md",
+    "./agents/brainstorm-requirements.md",
+    "./agents/solidify-architecture.md",
+    "./agents/decompose-tracer-bullets.md",
+    "./agents/sequence-tasks.md"
   ]
 }

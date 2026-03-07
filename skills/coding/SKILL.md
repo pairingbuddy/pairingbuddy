@@ -84,6 +84,12 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_mark_unit_answered(spike_questions, unit_id)` | Update unit status to "answered" in spike-questions.json |
 | `_ask_human(question)` | Present question to human, return true/false based on response |
 | `_stop(message)` | Stop workflow execution and report message to human |
+| `_detect_plan_file(task)` | Check if the task description references a plan MD file path. Returns true if a plan file is detected. |
+| `_read_plan_tasks(plan_path)` | Parse the plan MD, extract tasks with their checkbox state (checked/unchecked), index, title, and full description |
+| `_next_unchecked_task(plan_tasks)` | Return the first unchecked task from the parsed plan tasks |
+| `_mark_task_complete(plan_path, task_index)` | Update `- [ ]` to `- [x]` in the MD file for the given task index |
+| `_hydrate_claude_tasks(plan_tasks)` | Create Claude Code Tasks (TaskCreate) for all plan tasks, marking completed ones. Provides in-session visibility. |
+| `_update_claude_task(task_id)` | Mark a Claude Code Task as completed (TaskUpdate) |
 
 These functions handle coordination, human interaction, and control flow that doesn't belong in agents.
 
@@ -92,6 +98,37 @@ These functions handle coordination, human interaction, and control flow that do
 **Prerequisites:** Before starting, ensure `.pairingbuddy/test-config.json` exists. See "Bootstrap test-config.json" in Orchestrator Behavior.
 
 ```python
+# Plan execution mode: iterate through tasks from a plan MD file
+if _detect_plan_file(task):
+    plan_path = task.plan_file
+    plan_tasks = _read_plan_tasks(plan_path)
+    _hydrate_claude_tasks(plan_tasks)
+
+    for plan_task in plan_tasks:
+        if plan_task.checked:
+            continue
+
+        # Write task.json with the rich task description from the plan
+        task = {"description": plan_task.description, "context": plan_task.context}
+
+        # Run normal TDD workflow for this task (falls through to code below)
+        human_guidance = curate_guidance(human_guidance, task)
+        _cleanup_state_files()
+        task_classification = classify_task(task)
+        # ... (same workflow as below, based on task_type) ...
+
+        # After successful completion:
+        _mark_task_complete(plan_path, plan_task.index)
+        _update_claude_task(plan_task.task_id)
+
+        # Human checkpoint between tasks
+        if not _ask_human(f"Task {plan_task.index} complete. Continue to next task?"):
+            break
+
+    _stop("Plan execution paused/complete.")
+
+# Normal (non-plan) execution continues below
+
 # Curate guidance from previous session (always runs - handles review and bootstrap)
 human_guidance = curate_guidance(human_guidance, task)
 
@@ -252,6 +289,23 @@ After each refactor cycle:
 1. Present issues found to human
 2. Human decides: continue, skip remaining, or stop
 3. Prevents infinite refactor loops
+
+### Plan Execution Mode
+
+When the task description references a plan MD file (produced by `/pairingbuddy:plan`), the orchestrator enters plan execution mode:
+
+1. **Detection:** `_detect_plan_file(task)` checks if the task references a `.md` file that contains plan-formatted content (TB headings with checkbox tasks)
+2. **Parsing:** `_read_plan_tasks(plan_path)` extracts all tasks from the plan MD with their checkbox state, title, and full description
+3. **Visibility:** `_hydrate_claude_tasks(plan_tasks)` creates Claude Code Tasks (via TaskCreate) for all plan tasks. Completed tasks (checked) are marked as done. This gives the human a visible progress view within the session.
+4. **Iteration:** For each unchecked task, the orchestrator:
+   a. Writes `task.json` with the plan task's rich description
+   b. Runs the normal TDD workflow (curate guidance, cleanup, classify, implement)
+   c. After successful completion, updates the MD checkbox (`- [ ]` → `- [x]`)
+   d. Marks the Claude Code Task as completed
+   e. Pauses for human confirmation before continuing to the next task
+5. **Cross-session recovery:** On a new session, the human says "continue executing plan at path/to/plan.md". The orchestrator reads the MD — checkboxes show what's done. It hydrates Claude Code Tasks from the current state and continues from the first unchecked task.
+
+**Note:** Claude Code Tasks are session-scoped (they don't persist across sessions). The MD checkboxes are the durable source of truth. Claude Code Tasks are hydrated fresh each session from the MD state.
 
 ### Error Handling
 

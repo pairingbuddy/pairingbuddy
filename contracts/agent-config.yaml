@@ -42,6 +42,10 @@ schemas:
   - tokens-generated.schema.json
   - design-validation.schema.json
   - exploration-status.schema.json
+  - plan-config.schema.json
+  - plan-requirements.schema.json
+  - plan-architecture.schema.json
+  - plan-tracer-bullets.schema.json
 
 # =============================================================================
 # Agent definitions
@@ -598,6 +602,152 @@ agents:
       spike_summary:
         schema: spike-summary.schema.json
         file: .pairingbuddy/spike-summary.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "### Step 1: Read Inputs"
+        content: workflow_read_inputs
+      - heading: "### Step 2: Main Work"
+      - heading: "### Step 3: Human Review"
+        content: workflow_step3_human_review
+      - heading: "### Step 4: Output"
+        content: workflow_step4_output
+      - heading: "## Output"
+
+  # ---------------------------------------------------------------------------
+  # Planning Agents
+  # ---------------------------------------------------------------------------
+  #
+  # State files live in: .pairingbuddy/plan/
+  # Plan MD output goes to: {output_path} (user-specified, stored in plan-config.json)
+  # ---------------------------------------------------------------------------
+
+  brainstorm-requirements:
+    color: cyan
+    model: opus
+    skills: [decomposing-tracer-bullets]
+    inputs:
+      plan_config:
+        schema: plan-config.schema.json
+        file: .pairingbuddy/plan/plan-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
+    outputs:
+      plan_requirements:
+        schema: plan-requirements.schema.json
+        file: .pairingbuddy/plan/plan-requirements.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "### Step 1: Read Inputs"
+        content: workflow_read_inputs
+      - heading: "### Step 2: Main Work"
+      - heading: "### Step 3: Human Review"
+        content: workflow_step3_human_review
+      - heading: "### Step 4: Output"
+        content: workflow_step4_output
+      - heading: "## Output"
+
+  solidify-architecture:
+    color: magenta
+    model: opus
+    skills: []
+    inputs:
+      plan_requirements:
+        schema: plan-requirements.schema.json
+        file: .pairingbuddy/plan/plan-requirements.json
+      plan_config:
+        schema: plan-config.schema.json
+        file: .pairingbuddy/plan/plan-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
+    outputs:
+      plan_architecture:
+        schema: plan-architecture.schema.json
+        file: .pairingbuddy/plan/plan-architecture.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "### Step 1: Read Inputs"
+        content: workflow_read_inputs
+      - heading: "### Step 2: Main Work"
+      - heading: "### Step 3: Human Review"
+        content: workflow_step3_human_review
+      - heading: "### Step 4: Output"
+        content: workflow_step4_output
+      - heading: "## Output"
+
+  decompose-tracer-bullets:
+    color: yellow
+    model: opus
+    skills: [decomposing-tracer-bullets]
+    inputs:
+      plan_requirements:
+        schema: plan-requirements.schema.json
+        file: .pairingbuddy/plan/plan-requirements.json
+      plan_architecture:
+        schema: plan-architecture.schema.json
+        file: .pairingbuddy/plan/plan-architecture.json
+      plan_config:
+        schema: plan-config.schema.json
+        file: .pairingbuddy/plan/plan-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
+    outputs:
+      plan_tracer_bullets:
+        schema: plan-tracer-bullets.schema.json
+        file: .pairingbuddy/plan/plan-tracer-bullets.json
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "### Step 1: Read Inputs"
+        content: workflow_read_inputs
+      - heading: "### Step 2: Main Work"
+      - heading: "### Step 3: Human Review"
+        content: workflow_step3_human_review
+      - heading: "### Step 4: Output"
+        content: workflow_step4_output
+      - heading: "## Output"
+
+  sequence-tasks:
+    color: green
+    model: opus
+    skills: [sequencing-tasks]
+    inputs:
+      plan_tracer_bullets:
+        schema: plan-tracer-bullets.schema.json
+        file: .pairingbuddy/plan/plan-tracer-bullets.json
+      plan_requirements:
+        schema: plan-requirements.schema.json
+        file: .pairingbuddy/plan/plan-requirements.json
+      plan_architecture:
+        schema: plan-architecture.schema.json
+        file: .pairingbuddy/plan/plan-architecture.json
+      plan_config:
+        schema: plan-config.schema.json
+        file: .pairingbuddy/plan/plan-config.json
+      human_guidance:
+        schema: human-guidance.schema.json
+        file: .pairingbuddy/human-guidance.json
+        optional: true
+    outputs:
+      plan_config:
+        schema: plan-config.schema.json
+        file: .pairingbuddy/plan/plan-config.json
     sections:
       - heading: "## Purpose"
       - heading: "## Input"

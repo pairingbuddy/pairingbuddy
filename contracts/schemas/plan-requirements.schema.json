@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Plan Requirements",
+  "description": "Structured requirements output from the brainstorm-requirements agent",
+  "type": "object",
+  "required": ["summary", "requirements"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "One-paragraph summary of what we are building"
+    },
+    "requirements": {
+      "type": "array",
+      "description": "Structured requirements with priorities",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "priority"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for this requirement"
+          },
+          "description": {
+            "type": "string",
+            "description": "What this requirement specifies"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["must", "should", "could"],
+            "description": "MoSCoW priority level"
+          },
+          "source": {
+            "type": "string",
+            "description": "Where this requirement came from (existing doc, brainstorming, etc.)"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "description": "Technical or business constraints identified",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "description": "Open questions that may need spikes or further investigation",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "suggested_action"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for this unknown"
+          },
+          "description": {
+            "type": "string",
+            "description": "What is unknown and why it matters"
+          },
+          "suggested_action": {
+            "type": "string",
+            "enum": ["spike", "ask_stakeholder", "defer"],
+            "description": "Recommended way to resolve this unknown"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -7,12 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `/pairingbuddy:plan` command for tracer bullet planning workflow
+  - Planning orchestrator skill with adaptive brainstorming, architecture management, tracer bullet decomposition, and task sequencing
+  - Four planning agents:
+    - brainstorm-requirements: adaptive Socratic exploration of requirements
+    - solidify-architecture: analyze/create/update architecture documents
+    - decompose-tracer-bullets: decompose into thin end-to-end tracer bullet slices
+    - sequence-tasks: sequence tasks within TBs and write plan markdown document
+  - Two new reference skills:
+    - decomposing-tracer-bullets: tracer bullet methodology and thin E2E slicing patterns
+    - sequencing-tasks: task sequencing for TDD-ready plans
+  - Four new JSON schemas: plan-config, plan-requirements, plan-architecture, plan-tracer-bullets
+  - Plan state isolated in `.pairingbuddy/plan/` (not affected by `/code` cleanup)
+  - Plan resumability: detect existing plan, offer resume/re-plan/start fresh
+- `/code` plan execution mode
+  - Detects plan MD files and iterates through unchecked tasks
+  - Claude Code Task visibility for in-session progress tracking
+  - Automatic MD checkbox updates on task completion (`- [ ]` → `- [x]`)
+  - Cross-session recovery via MD checkboxes (source of truth)
+  - Human checkpoint between tasks
+
 ### Fixed
 
 - Spike findings overwrite bug in explore-spike-unit agent: replaced vague append instruction with explicit read-modify-write steps to prevent losing previous units' findings
 
 ### Changed
 
+- Agent count increased from 25 to 29
+- Schema count increased from 35 to 39
+- Skill count increased from 14 to 17 (3 orchestrators, 1 entry, 13 reference)
+- Test count increased from ~881 to ~1037
 - Added soft wrapping markdown formatting guideline to document-spike agent
 
 ## [0.5.0] - 2026-02-20

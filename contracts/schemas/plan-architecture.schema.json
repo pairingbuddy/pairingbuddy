@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Plan Architecture",
+  "description": "Architectural context output from the solidify-architecture agent",
+  "type": "object",
+  "required": ["existing_docs_analyzed", "architectural_context", "key_decisions", "affected_components"],
+  "properties": {
+    "existing_docs_analyzed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "status"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to the document that was analyzed"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["sufficient", "needs_update", "missing"],
+            "description": "Assessment of the document's completeness"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Documents that were analyzed and their status"
+    },
+    "docs_created": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "description"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to the created document"
+          },
+          "description": {
+            "type": "string",
+            "description": "What the document contains"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "New architecture documents created during this step"
+    },
+    "docs_updated": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "changes"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to the updated document"
+          },
+          "changes": {
+            "type": "string",
+            "description": "Summary of changes made"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Existing documents that were updated"
+    },
+    "architectural_context": {
+      "type": "string",
+      "description": "Summary of how the planned feature fits into the existing architecture"
+    },
+    "key_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["decision", "rationale"],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "description": "The architectural decision made"
+          },
+          "rationale": {
+            "type": "string",
+            "description": "Why this decision was made"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Key architectural decisions for the planned work"
+    },
+    "affected_components": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Parts of the codebase that will be affected by the planned work"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Plan Configuration",
+  "description": "Configuration for the planning workflow including paths to existing docs and output location",
+  "type": "object",
+  "required": ["plan_name", "output_path"],
+  "properties": {
+    "plan_name": {
+      "type": "string",
+      "description": "Human-readable name for this plan"
+    },
+    "output_path": {
+      "type": "string",
+      "description": "Where to write the plan markdown document"
+    },
+    "existing_docs": {
+      "type": "array",
+      "description": "Paths to existing project documents relevant to this plan",
+      "items": {
+        "type": "object",
+        "required": ["path", "type"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to the document"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["requirements", "architecture", "design", "spike", "other"],
+            "description": "Category of document"
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief description of what this document contains"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

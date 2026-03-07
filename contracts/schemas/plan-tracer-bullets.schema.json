@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Plan Tracer Bullets",
+  "description": "Tracer bullet decomposition output from the decompose-tracer-bullets agent",
+  "type": "object",
+  "required": ["tracer_bullets"],
+  "properties": {
+    "tracer_bullets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "goal", "verification", "depends_on", "tasks_summary"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for this tracer bullet"
+          },
+          "name": {
+            "type": "string",
+            "description": "Short descriptive name"
+          },
+          "goal": {
+            "type": "string",
+            "description": "What this tracer bullet delivers when complete"
+          },
+          "verification": {
+            "type": "string",
+            "description": "How to verify this tracer bullet works end-to-end"
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "TB ids that must be complete before this one"
+          },
+          "tasks_summary": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "High-level task descriptions (details come from sequence-tasks agent)"
+          },
+          "includes_spike": {
+            "type": "boolean",
+            "description": "Whether this TB includes a spike task"
+          },
+          "spike_description": {
+            "type": "string",
+            "description": "What the spike needs to answer (if includes_spike is true)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Ordered list of tracer bullets decomposed from requirements"
+    }
+  },
+  "additionalProperties": false
+}
