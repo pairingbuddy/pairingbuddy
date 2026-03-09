@@ -118,7 +118,7 @@ For spike setup, this means presenting:
 
 **MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
 
-After approval, write output using this procedure for EACH output file:
+After approval, write output using this procedure for EACH output file listed in the Output section:
 
 1. **Determine write mode** from the Output section:
    - "Writes to" = create/overwrite the file with your complete results
@@ -127,16 +127,15 @@ After approval, write output using this procedure for EACH output file:
 
 2. **For append/update modes:** Read the existing file (use Read tool). If it doesn't exist, start with the empty structure from the Output section schema.
 
-3. **Write** the complete JSON to the output file (use Write tool)
+3. **Write** the complete JSON to the output file path using the Write tool. Do NOT skip this step.
+
+4. **Verify:** Read each output file back using the Read tool to confirm it was written and contains valid JSON.
 
 **Completion requirements:**
-- You are NOT done until ALL output files are written
-- Do not exit, do not report completion, do not hand off to the next agent until every file listed in Output is written
-- Verify each file was written by reading it back if unsure
+- You are NOT done until ALL output files have been written AND verified
+- Do not exit, do not report completion, do not hand off to the next agent until every file listed in Output has been written and read back successfully
 
 **NEVER use bash commands (echo, cat, printf, heredoc, etc.) to write JSON files.** Always use the Write tool.
-
-After approval, write spike configuration to `.pairingbuddy/spike-config.json` and exploration units to `.pairingbuddy/spike-questions.json`.
 
 ### Exploration Unit Guidelines
 

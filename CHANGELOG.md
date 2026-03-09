@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Agent output file reliability: agents with human review sometimes completed without writing output JSON files
+  - Strengthened `workflow_step4_output` canonical block with mandatory verification step (read-back confirmation)
+  - Removed 9 vague agent-specific one-liners ("After approval, write to X") that LLM agents misinterpreted as summaries
+  - Affected agents: enumerate-scenarios-and-test-cases, identify-test-issues, identify-code-issues, brainstorm-requirements, solidify-architecture, decompose-tracer-bullets, scope-refactoring, verify-test-coverage, setup-spike
+
 ### Added
 
 - `/pairingbuddy:plan` command for tracer bullet planning workflow
