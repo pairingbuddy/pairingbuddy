@@ -45,6 +45,7 @@ pairingbuddy/
 │   ├── agent-config.yaml    # Agent definitions
 │   ├── skill-config.yaml    # Skill definitions
 │   └── schemas/             # JSON schemas for state (35 total)
+├── hooks/            # Claude Code hooks (SessionStart, UserPromptSubmit)
 ├── commands/         # Slash commands (/pairingbuddy:code, /pairingbuddy:design-ux)
 └── tests/            # Structural tests (~881)
 ```
