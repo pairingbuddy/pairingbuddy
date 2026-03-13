@@ -145,7 +145,7 @@ pairingbuddy/
 │   └── contracts/                # Test utilities
 ├── hooks/                        # Claude Code hooks
 │   ├── hooks.json               # Hook registration (SessionStart, PostToolUse)
-│   ├── session-start.sh         # Injects using-pairingbuddy skill at session start
+│   ├── session-start.mjs        # Injects using-pairingbuddy skill at session start
 │   └── guardian.mjs             # Session drift guardian (time-based workflow reminder)
 └── .pairingbuddy/                # Runtime state (gitignored)
     ├── *.json                    # TDD state files during workflow

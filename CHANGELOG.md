@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Session drift guardian: time-based `PostToolUse` hook that re-injects workflow compliance reminders every 5 minutes of activity, plus always after context compaction (`SessionStart:compact`), to prevent the session agent from skipping steps, avoiding subagents, or doing agent work in the main context
 
+### Changed
+
+- Convert session-start hook from bash to Node.js for cross-platform compatibility
+
 ### Fixed
 
 - Agent output file reliability: agents with human review sometimes completed without writing output JSON files
