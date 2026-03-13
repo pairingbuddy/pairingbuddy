@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Convert session-start hook from bash to Node.js for cross-platform compatibility
+- Update using-pairingbuddy skill to reflect current architecture: three commands (/code, /plan, /design-ux), agent-based workflows, and commit step enforcement
 
 ### Fixed
 

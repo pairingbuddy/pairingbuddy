@@ -1,69 +1,57 @@
 ---
 name: using-pairingbuddy
-description: Use when starting any conversation - establishes mandatory TDD workflows for coding tasks, including using /pairingbuddy:code for all coding work
+description: Use when starting any conversation - establishes mandatory workflows for all coding, planning, and design tasks
 ---
 
 <EXTREMELY-IMPORTANT>
 For ANY coding task, you MUST use the /pairingbuddy:code command.
+For ANY planning task, you MUST use the /pairingbuddy:plan command.
+For ANY design system task, you MUST use the /pairingbuddy:design-ux command.
 
 This is not negotiable. This is not optional. You cannot rationalize your way out of this.
 </EXTREMELY-IMPORTANT>
 
 # Getting Started with Pairing Buddy
 
-Pairing Buddy provides TDD-focused coding skills with atomic operations and workflow orchestration.
+Pairing Buddy orchestrates TDD workflows, planning, and design system creation through specialized agents.
 
 ## Critical Rules
 
-1. **All coding tasks go through /pairingbuddy:code** - This is the entry point that classifies your task and delegates to the appropriate TDD workflow.
+1. **All coding tasks go through /pairingbuddy:code** - Classifies your task and runs the appropriate TDD workflow via subagents.
 
-2. **Follow TDD strictly** - RED-GREEN-REFACTOR is mandatory, not optional.
+2. **All planning tasks go through /pairingbuddy:plan** - Brainstorms requirements, solidifies architecture, decomposes into tracer bullets, and sequences TDD-ready tasks.
 
-3. **One test at a time** - No batch implementation. Write one failing test, make it pass, then refactor.
+3. **All design system tasks go through /pairingbuddy:design-ux** - Creates production-ready design systems with three-tiered token architecture.
 
-## When to Use /pairingbuddy:code
+4. **Follow workflows strictly** - Each command loads an orchestrator skill with pseudocode. Follow it exactly. Do not skip steps, reorder agents, or deviate.
 
-Use it for ANY of these:
-- Building new features
-- Fixing bugs
-- Extending existing functionality
-- Refactoring code
+5. **Use subagents** - Every function call in the workflow pseudocode maps to a Task tool invocation. Do not do agent work in the main context.
+
+6. **Never skip the commit step** - When the workflow includes a commit step, follow it.
+
+## When to Use What
+
+| Command | Use for |
+|---------|---------|
+| `/pairingbuddy:code` | Building features, fixing bugs, refactoring, config changes, spikes |
+| `/pairingbuddy:plan` | Planning features with tracer bullet methodology |
+| `/pairingbuddy:design-ux` | Creating and iterating on design systems |
 
 ## Common Rationalizations That Mean You're About To Fail
 
-If you catch yourself thinking ANY of these thoughts, STOP. Use /pairingbuddy:code.
+If you catch yourself thinking ANY of these thoughts, STOP. Use the appropriate command.
 
-- "This is a simple fix" → WRONG. Simple fixes need tests too.
-- "I'll just write the code quickly" → WRONG. TDD first.
-- "Testing this is overkill" → WRONG. Untested code is broken code waiting to happen.
-- "Let me implement first, then add tests" → WRONG. That's not TDD.
-- "I know what I'm doing" → WRONG. TDD catches what you don't know.
-
-## Available Skills
-
-**Entry Point:**
-- coding - Classifies tasks and delegates to appropriate workflow
-
-**TDD Workflows (Task Skills):**
-- build-new-feature - New functionality with full TDD
-- fix-bug - Bug fixes with reproduction tests
-- extend-functionality - Extend existing features
-- refactor - Improve code quality without changing behavior
-
-**Atomic Skills (Called by Workflows):**
-- enumerate-test-scenarios - List test scenarios needed
-- implement-test - Write ONE failing test
-- implement-code - Write minimal code to pass
-- refactor-code - Improve code quality
-- refactor-test - Improve test quality
-- identify-coverage-gaps - Find missing test scenarios
-- identify-code-issues - Find code quality issues
-- identify-test-issues - Find test quality issues
-- document-test-coverage - Document what's tested
-- verify-test-coverage - Verify coverage preserved
+- "This is a simple fix" - WRONG. Simple fixes need tests too. Use /code.
+- "I'll just write the code quickly" - WRONG. TDD first. Use /code.
+- "Let me implement first, then add tests" - WRONG. That's not TDD. Use /code.
+- "I can plan this in my head" - WRONG. Use /plan.
+- "I'll skip the subagent and do it myself" - WRONG. Subagents have specialized instructions you don't have.
+- "This step doesn't apply" - WRONG. The workflow handles edge cases. Follow it.
 
 ## Summary
 
-**For coding tasks:** Use /pairingbuddy:code
+- **Coding tasks:** /pairingbuddy:code
+- **Planning tasks:** /pairingbuddy:plan
+- **Design tasks:** /pairingbuddy:design-ux
 
-**TDD is mandatory.** RED-GREEN-REFACTOR every time.
+**Workflows are mandatory. Subagents are mandatory. No exceptions.**
