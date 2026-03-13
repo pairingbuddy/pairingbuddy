@@ -185,6 +185,23 @@ Repeat...
 - Plan state passes through JSON files in `.pairingbuddy/plan/`
 - Design UX state passes through JSON files in `.pairingbuddy/design-ux/{name}/`
 
+### Session Drift Guardian
+
+Long Claude Code sessions tend to drift — the session agent starts skipping workflow steps, doing agent work in the main context, or rationalizing its way out of following the pseudocode. The guardian is a hook-based mechanism that periodically re-injects a workflow compliance reminder.
+
+**How it works:**
+- `PostToolUse` hook fires after every tool call (the universal activity heartbeat)
+- If 5+ minutes have elapsed since the last injection, the guardian injects the reminder
+- After context compaction (`SessionStart:compact`), always inject — instructions may have been lost
+- No injection during idle periods (event-driven, no polling, no token waste)
+
+**State:** Injection timestamps are stored per session in `.pairingbuddy/hooks/{session-id}.json`.
+
+**Design constraints:**
+- The guardian runs as an external process, not controllable by the session agent
+- No activation signal needed — injects regardless of whether a workflow is active (the cost is 4 lines of harmless text)
+- Time-based, not count-based — adapts naturally to both rapid agent bursts and slow interactive sessions
+
 ### State Management
 
 State files live in `.pairingbuddy/` at the git root of the target project:
