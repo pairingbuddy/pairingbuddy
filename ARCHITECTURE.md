@@ -139,7 +139,7 @@ pairingbuddy/
 │   ├── code.md                   # Entry point: /pairingbuddy:code
 │   ├── plan.md                   # Entry point: /pairingbuddy:plan
 │   └── design-ux.md              # Entry point: /pairingbuddy:design-ux
-├── tests/                         # Test suite (~1037 tests)
+├── tests/                         # Test suite (~1121 tests)
 │   ├── agents/                   # Agent structure and contract tests
 │   ├── skills/                   # Skill structure tests
 │   └── contracts/                # Test utilities

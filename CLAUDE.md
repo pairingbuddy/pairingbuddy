@@ -36,18 +36,19 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
 
 ```
 pairingbuddy/
-├── agents/           # Plugin agents (25 total, invoke via Task tool)
-├── skills/           # Skills (14 total, run in main context)
+├── agents/           # Plugin agents (29 total, invoke via Task tool)
+├── skills/           # Skills (17 total, run in main context)
 │   ├── coding/       # TDD orchestrator skill
+│   ├── planning/     # Planning orchestrator skill
 │   ├── designing-ux/ # Design UX orchestrator skill
 │   └── */            # Reference skills (writing-tests, etc.)
 ├── contracts/        # Single source of truth
 │   ├── agent-config.yaml    # Agent definitions
 │   ├── skill-config.yaml    # Skill definitions
-│   └── schemas/             # JSON schemas for state (35 total)
-├── hooks/            # Claude Code hooks (SessionStart, UserPromptSubmit)
-├── commands/         # Slash commands (/pairingbuddy:code, /pairingbuddy:design-ux)
-└── tests/            # Structural tests (~881)
+│   └── schemas/             # JSON schemas for state (39 total)
+├── hooks/            # Claude Code hooks (SessionStart, PostToolUse)
+├── commands/         # Slash commands (/pairingbuddy:code, /pairingbuddy:plan, /pairingbuddy:design-ux)
+└── tests/            # Structural tests (~1121)
 ```
 
 ## Key Conventions

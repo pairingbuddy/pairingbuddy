@@ -7,24 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-15
+
 ### Added
 
 - Session drift guardian: time-based `PostToolUse` hook that re-injects workflow compliance reminders every 5 minutes of activity, plus always after context compaction (`SessionStart:compact`), to prevent the session agent from skipping steps, avoiding subagents, or doing agent work in the main context
-
-### Changed
-
-- Convert session-start hook from bash to Node.js for cross-platform compatibility
-- Update using-pairingbuddy skill to reflect current architecture: three commands (/code, /plan, /design-ux), agent-based workflows, and commit step enforcement
-
-### Fixed
-
-- Agent output file reliability: agents with human review sometimes completed without writing output JSON files
-  - Strengthened `workflow_step4_output` canonical block with mandatory verification step (read-back confirmation)
-  - Removed 9 vague agent-specific one-liners ("After approval, write to X") that LLM agents misinterpreted as summaries
-  - Affected agents: enumerate-scenarios-and-test-cases, identify-test-issues, identify-code-issues, brainstorm-requirements, solidify-architecture, decompose-tracer-bullets, scope-refactoring, verify-test-coverage, setup-spike
-
-### Added
-
 - `/pairingbuddy:plan` command for tracer bullet planning workflow
   - Planning orchestrator skill with adaptive brainstorming, architecture management, tracer bullet decomposition, and task sequencing
   - Four planning agents:
@@ -45,8 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cross-session recovery via MD checkboxes (source of truth)
   - Human checkpoint between tasks
 
+### Changed
+
+- Convert all hooks from bash to Node.js for cross-platform compatibility
+- Update using-pairingbuddy skill to reflect current architecture: three commands (/code, /plan, /design-ux), agent-based workflows, and commit step enforcement
+
 ### Fixed
 
+- Agent output file reliability: agents with human review sometimes completed without writing output JSON files
+  - Strengthened `workflow_step4_output` canonical block with mandatory verification step (read-back confirmation)
+  - Removed 9 vague agent-specific one-liners ("After approval, write to X") that LLM agents misinterpreted as summaries
+  - Affected agents: enumerate-scenarios-and-test-cases, identify-test-issues, identify-code-issues, brainstorm-requirements, solidify-architecture, decompose-tracer-bullets, scope-refactoring, verify-test-coverage, setup-spike
 - Spike findings overwrite bug in explore-spike-unit agent: replaced vague append instruction with explicit read-modify-write steps to prevent losing previous units' findings
 
 ### Changed
