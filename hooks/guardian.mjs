@@ -13,6 +13,7 @@ const REMINDER = [
   "Make sure to follow Pairing Buddy workflows strictly.",
   "You are not allowed to skip steps, and you MUST use the subagents.",
   "Do not waste context window here for work that should be done in those subagents.",
+  "No task is too small or simple to skip the workflow. Do not rationalize efficiency, speed, or simplicity as reasons to bypass subagents.",
   "</pairingbuddy-guardian>",
 ].join("\n");
 
