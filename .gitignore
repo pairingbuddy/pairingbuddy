@@ -49,5 +49,8 @@ htmlcov/
 # PairingBuddy state files
 .pairingbuddy/
 
+# Plan documents (ephemeral working documents)
+docs/plans/
+
 # Claude Code local settings
 .claude/
