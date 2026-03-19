@@ -72,28 +72,44 @@ def _run_guardian(
     return json.loads(result.stdout)
 
 
-class TestSoloModeInterval:
-    """Test that the Solo mode injection interval sits between 2 and 3 minutes."""
+class TestSoloInterval:
+    """Test that the Solo mode injection interval is exactly 120s."""
 
-    def test_solo_does_not_inject_before_interval(self, tmp_path):
-        """When PAIRINGBUDDY_SOLO=true and last injection was 1.5 min ago, the hook does not inject.
-
-        Combined with test_solo_injects_at_halved_interval (3 min triggers injection),
-        this brackets the Solo interval at ~2 min.
-        """
-        ninety_seconds_ms = 90 * 1000
-
+    def test_solo_does_not_inject_1s_before_interval(self, tmp_path):
+        """119s elapsed — 1s before the 120s Solo interval — does not inject."""
         output = _run_guardian(
             tmp_path,
-            session_id="solo-ninety-sec-session",
+            session_id="solo-119s-session",
             env_extra={"PAIRINGBUDDY_SOLO": "true"},
-            elapsed_ms=ninety_seconds_ms,
+            elapsed_ms=119_000,
         )
 
         additional_context = output["hookSpecificOutput"]["additionalContext"]
-        assert additional_context == "", (
-            "Expected hook to skip when 1.5 min elapsed in solo mode (interval=2 min)"
+        assert additional_context == "", "Should not inject at 119s (interval=120s)"
+
+    def test_solo_injects_at_exact_interval(self, tmp_path):
+        """120s elapsed — exactly at the Solo interval — injects."""
+        output = _run_guardian(
+            tmp_path,
+            session_id="solo-120s-session",
+            env_extra={"PAIRINGBUDDY_SOLO": "true"},
+            elapsed_ms=120_000,
         )
+
+        additional_context = output["hookSpecificOutput"]["additionalContext"]
+        assert additional_context != "", "Should inject at 120s (interval=120s)"
+
+    def test_solo_injects_1s_after_interval(self, tmp_path):
+        """121s elapsed — 1s past the 120s Solo interval — injects."""
+        output = _run_guardian(
+            tmp_path,
+            session_id="solo-121s-session",
+            env_extra={"PAIRINGBUDDY_SOLO": "true"},
+            elapsed_ms=121_000,
+        )
+
+        additional_context = output["hookSpecificOutput"]["additionalContext"]
+        assert additional_context != "", "Should inject at 121s (interval=120s)"
 
 
 class TestHooksJsonSessionStart:
@@ -115,56 +131,44 @@ class TestHooksJsonSessionStart:
         assert guardian_commands, "Expected at least one SessionStart hook to invoke guardian.mjs"
 
 
-class TestSoloPostToolUseInterval:
-    """Test PostToolUse interval logic in Solo mode."""
+class TestInteractiveInterval:
+    """Test that the interactive mode injection interval is exactly 240s."""
 
-    def test_solo_injects_at_halved_interval(self, tmp_path):
-        """When PAIRINGBUDDY_SOLO=true and last injection was 3 min ago, the hook injects."""
-        three_minutes_ms = 3 * 60 * 1000
-
+    def test_interactive_does_not_inject_1s_before_interval(self, tmp_path):
+        """239s elapsed — 1s before the 240s interactive interval — does not inject."""
         output = _run_guardian(
             tmp_path,
-            session_id="solo-inject-session",
-            env_extra={"PAIRINGBUDDY_SOLO": "true"},
-            elapsed_ms=three_minutes_ms,
-        )
-
-        additional_context = output["hookSpecificOutput"]["additionalContext"]
-        assert additional_context != "", (
-            "Expected hook to inject reminder when 3 min elapsed in solo mode (interval=2 min)"
-        )
-
-    def test_solo_skips_before_halved_interval(self, tmp_path):
-        """Solo mode skips injection if only 1 min elapsed (interval=2 min)."""
-        one_minute_ms = 1 * 60 * 1000
-
-        output = _run_guardian(
-            tmp_path,
-            session_id="solo-skip-session",
-            env_extra={"PAIRINGBUDDY_SOLO": "true"},
-            elapsed_ms=one_minute_ms,
-        )
-
-        additional_context = output["hookSpecificOutput"]["additionalContext"]
-        assert additional_context == "", (
-            "Expected hook to skip when 1 min elapsed in solo mode (interval=2 min)"
-        )
-
-    def test_interactive_skips_at_three_minutes(self, tmp_path):
-        """Interactive mode skips injection if only 3 min elapsed (interval=4 min)."""
-        three_minutes_ms = 3 * 60 * 1000
-
-        output = _run_guardian(
-            tmp_path,
-            session_id="interactive-skip-session",
+            session_id="interactive-239s-session",
             env_extra={},
-            elapsed_ms=three_minutes_ms,
+            elapsed_ms=239_000,
         )
 
         additional_context = output["hookSpecificOutput"]["additionalContext"]
-        assert additional_context == "", (
-            "Expected hook to skip when 3 min elapsed in interactive mode (interval=4 min)"
+        assert additional_context == "", "Should not inject at 239s (interval=240s)"
+
+    def test_interactive_injects_at_exact_interval(self, tmp_path):
+        """240s elapsed — exactly at the interactive interval — injects."""
+        output = _run_guardian(
+            tmp_path,
+            session_id="interactive-240s-session",
+            env_extra={},
+            elapsed_ms=240_000,
         )
+
+        additional_context = output["hookSpecificOutput"]["additionalContext"]
+        assert additional_context != "", "Should inject at 240s (interval=240s)"
+
+    def test_interactive_injects_1s_after_interval(self, tmp_path):
+        """241s elapsed — 1s past the 240s interactive interval — injects."""
+        output = _run_guardian(
+            tmp_path,
+            session_id="interactive-241s-session",
+            env_extra={},
+            elapsed_ms=241_000,
+        )
+
+        additional_context = output["hookSpecificOutput"]["additionalContext"]
+        assert additional_context != "", "Should inject at 241s (interval=240s)"
 
 
 class TestSoloReminderContent:
