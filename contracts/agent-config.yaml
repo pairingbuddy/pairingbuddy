@@ -55,7 +55,6 @@ agents:
   curate-guidance:
     color: cyan
     model: sonnet
-    solo_mode: true
     skills: []
     inputs:
       human_guidance:
@@ -111,7 +110,6 @@ agents:
   enumerate-scenarios-and-test-cases:
     color: magenta
     model: sonnet
-    solo_mode: true
     skills: [enumerating-tests]
     inputs:
       task:
@@ -147,7 +145,6 @@ agents:
   create-test-placeholders:
     color: yellow
     model: haiku
-    solo_mode: true
     skills: [writing-tests]
     inputs:
       scenarios:
@@ -244,7 +241,6 @@ agents:
   identify-test-issues:
     color: yellow
     model: opus
-    solo_mode: true
     skills: [writing-tests]
     inputs:
       tests:
@@ -307,7 +303,6 @@ agents:
   identify-code-issues:
     color: yellow
     model: opus
-    solo_mode: true
     skills: [refactoring-code]
     inputs:
       code_state:
@@ -368,7 +363,6 @@ agents:
   verify-test-coverage:
     color: magenta
     model: sonnet
-    solo_mode: true
     skills: [writing-tests]
     inputs:
       scenarios:
@@ -430,7 +424,6 @@ agents:
   update-documentation:
     color: cyan
     model: sonnet
-    solo_mode: true
     skills: []
     inputs:
       files_changed:
@@ -491,7 +484,6 @@ agents:
   scope-refactoring:
     color: cyan
     model: sonnet
-    solo_mode: true
     skills: [refactoring-code]
     inputs:
       task:
@@ -529,7 +521,6 @@ agents:
   setup-spike:
     color: cyan
     model: sonnet
-    solo_mode: true
     skills: []
     inputs:
       task:
@@ -564,7 +555,6 @@ agents:
   explore-spike-unit:
     color: blue
     model: opus
-    solo_mode: true
     skills: []
     inputs:
       spike_config:
@@ -606,7 +596,6 @@ agents:
   document-spike:
     color: green
     model: sonnet
-    solo_mode: true
     skills: []
     inputs:
       spike_config:
@@ -649,7 +638,6 @@ agents:
   brainstorm-requirements:
     color: cyan
     model: opus
-    solo_mode: true
     skills: [decomposing-tracer-bullets]
     inputs:
       plan_config:
@@ -681,7 +669,6 @@ agents:
   solidify-architecture:
     color: magenta
     model: opus
-    solo_mode: true
     skills: []
     inputs:
       plan_requirements:
@@ -716,7 +703,6 @@ agents:
   decompose-tracer-bullets:
     color: yellow
     model: opus
-    solo_mode: true
     skills: [decomposing-tracer-bullets]
     inputs:
       plan_requirements:
@@ -754,7 +740,6 @@ agents:
   sequence-tasks:
     color: green
     model: opus
-    solo_mode: true
     skills: [sequencing-tasks]
     inputs:
       plan_tracer_bullets:
