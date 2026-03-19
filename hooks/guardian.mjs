@@ -25,6 +25,7 @@ const SOLO_ADDITIONS = [
   "SOLO MODE: You are operating autonomously without a human pairing partner.",
   "Stay strictly focused on the current task. Do not add unrequested features.",
   "Update .pairingbuddy/SOLO_BUDDY_REPORT.md after each task (_update_solo_report).",
+  "The human operator WILL review all code when this session ends. No shortcuts, no sloppiness, no skipping quality steps because nobody is watching. Someone IS watching.",
 ].join("\n");
 
 const isSoloMode = process.env.PAIRINGBUDDY_SOLO === "true";
