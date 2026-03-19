@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Solo Buddy: autonomous execution mode via `scripts/solo-buddy.sh`
+  - Shell script entry point with `claude -p`, env var signal, API key safety (unsets `ANTHROPIC_API_KEY` by default)
+  - Guardian hook Solo mode: halved injection cadence (2.5 min), Solo constraint prompt on SessionStart
+  - 15 agents with Solo Mode section: skip Step 3 Human Review when `PAIRINGBUDDY_SOLO=true`
+  - Coding orchestrator Solo mode: `_ask_human` auto-yes, strict scope, sequential execution, resource exhaustion before stopping, bug handling, quality compliance
+  - `SOLO_BUDDY_REPORT.md` incremental report generation
+  - Push-to-remote on session completion (never pushes to main/master)
+
 ## [0.6.0] - 2026-03-15
 
 ### Added
