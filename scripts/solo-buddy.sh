@@ -23,7 +23,7 @@ usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS] <plan_file>
 
-Run Solo Buddy: autonomous Claude Code execution of a TDD plan.
+Run Solo Buddy: autonomous execution of a tracer bullets plan.
 
 Options:
   -n <retries>          Max retries (default: 5)
