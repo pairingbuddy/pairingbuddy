@@ -147,7 +147,8 @@ def test_prompt_includes_plan_path(plan_file, fake_claude):
     _run_script([str(plan_file)], fake_claude=fake_claude)
 
     args_text = fake_claude["args_file"].read_text()
-    assert "Execute the plan at:" in args_text
+    assert "/pairingbuddy:code" in args_text
+    assert "execute the plan at:" in args_text.lower()
     assert str(plan_file) in args_text
 
 
@@ -195,6 +196,35 @@ def test_custom_retries_accepted(plan_file, fake_claude):
     assert result.returncode == 0
     script_text = SCRIPT_PATH.read_text()
     assert 'MAX_RETRIES="$2"' in script_text
+
+
+# Scenario: api-key-safety
+# The script unsets ANTHROPIC_API_KEY by default to prevent unexpected API billing
+
+
+def test_api_key_unset_by_default(plan_file, fake_claude):
+    """ANTHROPIC_API_KEY is NOT present in the claude subprocess environment by default"""
+    _run_script(
+        [str(plan_file)],
+        fake_claude=fake_claude,
+        env={"ANTHROPIC_API_KEY": "sk-test-key-should-be-removed"},
+    )
+
+    env_text = fake_claude["env_file"].read_text()
+    assert "sk-test-key-should-be-removed" not in env_text
+    assert "ANTHROPIC_API_KEY" not in env_text
+
+
+def test_api_key_preserved_with_use_api_key_flag(plan_file, fake_claude):
+    """ANTHROPIC_API_KEY IS present when --use-api-key is passed"""
+    _run_script(
+        ["--use-api-key", str(plan_file)],
+        fake_claude=fake_claude,
+        env={"ANTHROPIC_API_KEY": "sk-test-key-should-be-kept"},
+    )
+
+    env_text = fake_claude["env_file"].read_text()
+    assert "sk-test-key-should-be-kept" in env_text
 
 
 # Scenario: help-flag

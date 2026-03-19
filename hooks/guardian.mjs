@@ -26,6 +26,7 @@ const SOLO_REMINDER = [
   "SOLO MODE: You are operating autonomously without a human pairing partner.",
   "Follow the Solo Buddy workflow strictly. Stay focused on the current task.",
   "Do not skip TDD steps. Keep changes minimal and incremental.",
+  "Update .pairingbuddy/SOLO_BUDDY_REPORT.md after each task (_update_solo_report).",
   GUARDIAN_CLOSE,
 ].join("\n");
 

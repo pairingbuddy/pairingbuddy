@@ -90,6 +90,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_mark_task_complete(plan_path, task_index)` | Update `- [ ]` to `- [x]` in the MD file for the given task index |
 | `_hydrate_claude_tasks(plan_tasks)` | Create Claude Code Tasks (TaskCreate) for all plan tasks, marking completed ones. Provides in-session visibility. |
 | `_update_claude_task(task_id)` | Mark a Claude Code Task as completed (TaskUpdate) |
+| `_update_solo_report(event, details)` | **Solo mode only.** Write or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file with header), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
 
 These functions handle coordination, human interaction, and control flow that doesn't belong in agents.
 
@@ -103,6 +104,7 @@ if _detect_plan_file(task):
     plan_path = task.plan_file
     plan_tasks = _read_plan_tasks(plan_path)
     _hydrate_claude_tasks(plan_tasks)
+    _update_solo_report("start", {"plan_path": plan_path, "plan_tasks": plan_tasks})
 
     for plan_task in plan_tasks:
         if plan_task.checked:
@@ -120,9 +122,11 @@ if _detect_plan_file(task):
         # After successful completion:
         _mark_task_complete(plan_path, plan_task.index)
         _update_claude_task(plan_task.task_id)
+        _update_solo_report("task_complete", {"plan_task": plan_task})
 
         # Human checkpoint between tasks
         if not _ask_human(f"Task {plan_task.index} complete. Continue to next task?"):
+            _update_solo_report("stopped", {"plan_task": plan_task, "reason": "stopped"})
             break
 
     _stop("Plan execution paused/complete.")

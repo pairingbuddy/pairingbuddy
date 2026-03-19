@@ -7,11 +7,14 @@
 #   -n <retries>          Max retries (default: 5)
 #   --max-turns <n>       Pass --max-turns to claude
 #   --max-budget-usd <n>  Pass --max-budget-usd to claude
+#   --plugin-dir <path>   Use a specific plugin directory instead of installed plugin
+#   --use-api-key         Use ANTHROPIC_API_KEY for billing (default: unset to use subscription)
 #   -h, --help            Show this help and exit
 
 set -euo pipefail
 
 MAX_RETRIES=5
+USE_API_KEY=false
 
 # Build claude invocation
 CLAUDE_ARGS=(-p --dangerously-skip-permissions --output-format json)
@@ -26,6 +29,8 @@ Options:
   -n <retries>          Max retries (default: 5)
   --max-turns <n>       Pass --max-turns to claude
   --max-budget-usd <n>  Pass --max-budget-usd to claude
+  --plugin-dir <path>   Use a specific plugin directory instead of installed plugin
+  --use-api-key         Use ANTHROPIC_API_KEY for billing (default: unset to use subscription)
   -h, --help            Show this help and exit
 
 Arguments:
@@ -63,6 +68,18 @@ while [[ $# -gt 0 ]]; do
             CLAUDE_ARGS+=(--max-budget-usd "$2")
             shift 2
             ;;
+        --plugin-dir)
+            if [[ -z "${2:-}" ]]; then
+                echo "Error: --plugin-dir requires a value" >&2
+                exit 1
+            fi
+            CLAUDE_ARGS+=(--plugin-dir "$2")
+            shift 2
+            ;;
+        --use-api-key)
+            USE_API_KEY=true
+            shift
+            ;;
         --)
             shift
             break
@@ -91,9 +108,15 @@ if [[ ! -f "$PLAN_FILE" ]]; then
     exit 1
 fi
 
+# By default, unset ANTHROPIC_API_KEY to use subscription billing (Max/Pro).
+# Use --use-api-key to explicitly opt in to API billing.
+if [[ "$USE_API_KEY" != "true" ]]; then
+    unset ANTHROPIC_API_KEY 2>/dev/null || true
+fi
+
 export PAIRINGBUDDY_SOLO=true
 export PAIRINGBUDDY_SOLO_MAX_RETRIES="$MAX_RETRIES"
 
-PROMPT="Execute the plan at: ${PLAN_FILE}"
+PROMPT="Use /pairingbuddy:code to execute the plan at: ${PLAN_FILE}"
 
 exec claude "${CLAUDE_ARGS[@]}" "$PROMPT"
