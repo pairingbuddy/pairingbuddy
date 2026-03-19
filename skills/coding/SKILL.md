@@ -82,8 +82,8 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_filter_pending(tests)` | Filter tests.json to return only tests not yet processed in this session |
 | `_filter_pending(spike_questions)` | Filter spike-questions.json units to return only units with status "pending" |
 | `_mark_unit_answered(spike_questions, unit_id)` | Update unit status to "answered" in spike-questions.json |
-| `_ask_human(question)` | Present question to human, return true/false based on response |
-| `_stop(message)` | Stop workflow execution and report message to human |
+| `_ask_human(question)` | **Interactive mode:** Present question to human, return true/false based on response. **Solo mode** (`PAIRINGBUDDY_SOLO=true`): Return `true` for all checkpoints (auto-yes). Exception: if the orchestrator has tracked N consecutive retry failures on the current task (where N = `PAIRINGBUDDY_SOLO_MAX_RETRIES` env var, default 5), return `false` to trigger a stop. |
+| `_stop(message)` | Stop workflow execution and report message to human. In Solo mode, also write the stop reason to `.pairingbuddy/SOLO_BUDDY_REPORT.md` (see Solo Mode section below). |
 | `_detect_plan_file(task)` | Check if the task description references a plan MD file path. Returns true if a plan file is detected. |
 | `_read_plan_tasks(plan_path)` | Parse the plan MD, extract tasks with their checkbox state (checked/unchecked), index, title, and full description |
 | `_next_unchecked_task(plan_tasks)` | Return the first unchecked task from the parsed plan tasks |
@@ -312,3 +312,85 @@ When the task description references a plan MD file (produced by `/pairingbuddy:
 1. If agent returns error or invalid output → stop and report
 2. If `implement_code` fails to make test pass → retry once with different approach (try prompting)
 3. If retry fails → ask human how to proceed
+
+### Solo Mode
+
+When `PAIRINGBUDDY_SOLO` environment variable is `true`, the orchestrator operates autonomously. The workflow pseudocode above is **unchanged** — Solo behavior comes entirely from `_ask_human` auto-yes (see Orchestrator Functions table) and the instructions below.
+
+**Detection:** Check `PAIRINGBUDDY_SOLO` env var at workflow start. If `true`, Solo mode is active.
+
+**Strict scope**
+- Every action must be traceable to an explicit rule in skills, contracts, or the plan
+- No additions, no improvements, no "while I'm here" moments
+- If rules don't cover the situation: STOP and document the gap
+- No "best judgment" decisions
+
+**Sequential execution**
+- On task failure, the plan execution loop must `break` (not `continue`)
+- The orchestrator MUST NOT skip to the next task
+- Stopping ensures the human reviews the situation
+
+**Resource exhaustion before stopping**
+Before stopping a Solo session due to a failure or ambiguity (not on normal completion or token exhaustion):
+1. Re-read the relevant skill reference files
+2. Re-read contracts and architecture docs
+3. Check if `CLAUDE.md` or project-specific docs have relevant guidance
+4. Only stop if the path forward is still unclear after all resources are consulted
+5. Document which resources were consulted in the stop report
+
+**Bug handling**
+- **Blocker bug for current task:** Fix it using the bug fix workflow. It's a dependency, not out of scope.
+- **Bug in code being touched by current task:** Fix it. Consistent with quality standards.
+- **Bug in unrelated code discovered by accident:** Log it in `SOLO_BUDDY_REPORT.md` but do NOT fix it. Not in scope.
+
+**Quality compliance**
+- Fix ALL issues flagged by quality agents (`identify-test-issues`, `identify-code-issues`). No exceptions.
+- The orchestrator MUST NOT rationalize skipping a quality issue by claiming scope boundaries.
+- If a quality agent flags it, it gets fixed — period.
+
+**Uncommitted changes on stop**
+- On session stop, uncommitted changes are left as-is in the worktree
+- No `git checkout .`, `git clean`, or any form of revert
+
+**Report generation**
+Create `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally:
+
+1. **At session start** (after first task begins), create the report with header:
+   ```markdown
+   # Solo Buddy Report
+
+   - **Plan:** <path to plan file>
+   - **Branch:** <current git branch name>
+   - **Started:** <ISO 8601 timestamp>
+   - **Tasks completed:** 0 of N
+   - **Status:** in_progress
+
+   ## Tasks
+   ```
+
+2. **After each task completes**, append a task entry:
+   ```markdown
+   ### Task N: <title>
+   - **Status:** completed
+   - **Commits:** <commit hashes with messages>
+   - **Decisions made:** <decisions made during this task>
+   - **Quality issues fixed:** <issues flagged and fixed>
+   ```
+
+3. **On session stop**, append a stopped entry and update the header:
+   ```markdown
+   ## Stopped
+
+   - **Task:** <which task it stopped on>
+   - **Reason:** <why it stopped>
+   - **What was tried:** <approaches attempted>
+   - **Resources consulted:** <skills, contracts, docs checked>
+   - **What the human needs to do:** <actionable next steps>
+   ```
+
+**Push to remote**
+After session ends (completion or stop):
+1. Commit `SOLO_BUDDY_REPORT.md`
+2. Push the current branch to remote with `git push`
+3. **NEVER push to main/master** — Solo Buddy only pushes to the branch the human set up
+4. If push fails, document the failure in the report (logged, not fatal)
