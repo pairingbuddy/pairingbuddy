@@ -8,12 +8,9 @@ hook registration, interval logic, and content injection.
 import datetime
 import json
 import os
-import re
 import subprocess
 import time
 from pathlib import Path
-
-import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
 GUARDIAN_PATH = REPO_ROOT / "hooks" / "guardian.mjs"
@@ -75,45 +72,27 @@ def _run_guardian(
     return json.loads(result.stdout)
 
 
-class TestSoloModeConstants:
-    """Test Solo mode constants defined in guardian.mjs."""
+class TestSoloModeInterval:
+    """Test that the Solo mode injection interval sits between 2 and 3 minutes."""
 
-    @pytest.fixture(scope="class")
-    def source(self):
-        return GUARDIAN_PATH.read_text()
+    def test_solo_does_not_inject_at_two_minutes(self, tmp_path):
+        """When PAIRINGBUDDY_SOLO=true and last injection was 2 min ago, the hook does not inject.
 
-    def test_solo_interval_ms_constant_exists(self, source):
-        """SOLO_INTERVAL_MS constant exists with value 150000 (2.5 minutes)."""
-        # Use regex to match the const declaration pattern, not just a substring
-        assert re.search(r"const\s+SOLO_INTERVAL_MS\s*=", source), (
-            "Expected SOLO_INTERVAL_MS to be declared as const in guardian.mjs"
-        )
-        # The value 150000 must appear somewhere (as literal, underscore form, or in comment)
-        assert re.search(r"150[_]?000", source), (
-            "Expected 150000 (2.5 minutes) to appear in guardian.mjs for SOLO_INTERVAL_MS"
-        )
+        Combined with test_solo_injects_at_halved_interval (3 min triggers injection),
+        this brackets the Solo interval between 2 and 3 minutes (i.e., ~2.5 min).
+        """
+        two_minutes_ms = 2 * 60 * 1000
 
-    def test_solo_additions_constant_exists(self, source):
-        """SOLO_ADDITIONS constant exists with Solo-specific constraint text."""
-        assert re.search(r"\bSOLO_ADDITIONS\b", source), (
-            "Expected SOLO_ADDITIONS constant in guardian.mjs"
-        )
-        assert "solo" in source.lower(), (
-            "Expected SOLO_ADDITIONS to contain Solo-specific constraint text"
+        output = _run_guardian(
+            tmp_path,
+            session_id="solo-two-min-session",
+            env_extra={"PAIRINGBUDDY_SOLO": "true"},
+            elapsed_ms=two_minutes_ms,
         )
 
-
-class TestEnvironmentVariableDetection:
-    """Test environment variable detection for Solo mode."""
-
-    @pytest.fixture(scope="class")
-    def source(self):
-        return GUARDIAN_PATH.read_text()
-
-    def test_references_pairingbuddy_solo_env_var(self, source):
-        """Source code references process.env.PAIRINGBUDDY_SOLO."""
-        assert "PAIRINGBUDDY_SOLO" in source, (
-            "Expected guardian.mjs to reference process.env.PAIRINGBUDDY_SOLO"
+        additional_context = output["hookSpecificOutput"]["additionalContext"]
+        assert additional_context == "", (
+            "Expected hook to skip when 2 min elapsed in solo mode (interval=2.5 min)"
         )
 
 
