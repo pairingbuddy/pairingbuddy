@@ -6,8 +6,8 @@
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 
-const INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const SOLO_INTERVAL_MS = 2.5 * 60 * 1000; // 150000 ms = 2.5 minutes
+const INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
+const SOLO_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
 const GUARDIAN_OPEN = "<pairingbuddy-guardian>";
 const GUARDIAN_CLOSE = "</pairingbuddy-guardian>";
