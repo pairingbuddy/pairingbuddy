@@ -21,24 +21,10 @@ const REMINDER = [
   GUARDIAN_CLOSE,
 ].join("\n");
 
-const SOLO_REMINDER = [
-  GUARDIAN_OPEN,
+const SOLO_ADDITIONS = [
   "SOLO MODE: You are operating autonomously without a human pairing partner.",
-  "Follow the Solo Buddy workflow strictly. Stay focused on the current task.",
-  "Do not skip TDD steps. Keep changes minimal and incremental.",
-  "Update .pairingbuddy/SOLO_BUDDY_REPORT.md after each task (_update_solo_report).",
-  GUARDIAN_CLOSE,
-].join("\n");
-
-const SOLO_PROMPT = [
-  GUARDIAN_OPEN,
-  "SOLO MODE ACTIVE: You are running as Solo Buddy in autonomous execution mode.",
-  "You must follow the Solo Buddy TDD workflow without deviation.",
   "Stay strictly focused on the current task. Do not add unrequested features.",
-  "Follow the RED-GREEN-REFACTOR cycle. Run tests after every change.",
-  "Keep commits small and incremental. Do not rationalize skipping steps.",
-  "The human will review your work when the session ends.",
-  GUARDIAN_CLOSE,
+  "Update .pairingbuddy/SOLO_BUDDY_REPORT.md after each task (_update_solo_report).",
 ].join("\n");
 
 const isSoloMode = process.env.PAIRINGBUDDY_SOLO === "true";
@@ -67,10 +53,8 @@ if (shouldInject) {
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(stateFile, JSON.stringify(state, null, 2));
 
-  if (forceInject && isSoloMode) {
-    injectedContent = SOLO_PROMPT;
-  } else if (isSoloMode) {
-    injectedContent = SOLO_REMINDER;
+  if (isSoloMode) {
+    injectedContent = REMINDER + "\n" + SOLO_ADDITIONS;
   } else {
     injectedContent = REMINDER;
   }

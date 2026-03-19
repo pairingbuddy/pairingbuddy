@@ -93,19 +93,13 @@ class TestSoloModeConstants:
             "Expected 150000 (2.5 minutes) to appear in guardian.mjs for SOLO_INTERVAL_MS"
         )
 
-    def test_solo_reminder_constant_exists(self, source):
-        """SOLO_REMINDER constant exists with Solo constraint text."""
-        assert re.search(r"\bSOLO_REMINDER\b", source), (
-            "Expected SOLO_REMINDER constant in guardian.mjs"
+    def test_solo_additions_constant_exists(self, source):
+        """SOLO_ADDITIONS constant exists with Solo-specific constraint text."""
+        assert re.search(r"\bSOLO_ADDITIONS\b", source), (
+            "Expected SOLO_ADDITIONS constant in guardian.mjs"
         )
         assert "solo" in source.lower(), (
-            "Expected SOLO_REMINDER to contain Solo-specific constraint text"
-        )
-
-    def test_solo_prompt_constant_exists(self, source):
-        """SOLO_PROMPT constant exists with full Solo constraint prompt for SessionStart."""
-        assert re.search(r"\bSOLO_PROMPT\b", source), (
-            "Expected SOLO_PROMPT constant in guardian.mjs"
+            "Expected SOLO_ADDITIONS to contain Solo-specific constraint text"
         )
 
 
@@ -217,16 +211,14 @@ class TestSoloReminderContent:
         additional_context = output["hookSpecificOutput"]["additionalContext"]
         assert additional_context != "", "Expected hook to inject in solo mode after 6 min"
 
-        # The solo reminder should be different from the standard interactive reminder
-        # The interactive reminder contains "You are not allowed to skip steps"
-        # The solo reminder should contain solo-specific content
-        assert "SOLO_REMINDER" not in additional_context, (
-            "Expected actual reminder text, not the constant name"
+        # Solo mode injects REMINDER + SOLO_ADDITIONS
+        # The base REMINDER mentions subagents (interactive workflow constraints)
+        assert "subagents" in additional_context, (
+            "Expected base REMINDER (mentioning subagents) to be present in Solo injection"
         )
-        # Solo reminder content should mention solo-specific constraints
-        # It should NOT be the interactive REMINDER (which mentions "subagents")
-        assert "subagents" not in additional_context, (
-            "Expected solo-specific reminder, not the interactive reminder mentioning subagents"
+        # SOLO_ADDITIONS appends Solo-specific content
+        assert "SOLO MODE" in additional_context, (
+            "Expected SOLO_ADDITIONS content ('SOLO MODE') to be present in Solo injection"
         )
 
     def test_interactive_injection_has_interactive_reminder(self, tmp_path):
@@ -280,14 +272,17 @@ class TestSoloSessionStartInjection:
         additional_context = output["hookSpecificOutput"]["additionalContext"]
         assert additional_context != "", "Expected injection to occur"
 
-        # The full SOLO_PROMPT should be longer and more detailed than the short SOLO_REMINDER
-        # The short reminder should be a subset of the full prompt
-        # We verify it contains solo-specific prompt content
-        assert "solo" in additional_context.lower(), (
-            "Expected full Solo prompt to contain Solo-specific content"
+        # Solo SessionStart injects REMINDER + SOLO_ADDITIONS
+        # The base REMINDER content must be present
+        assert "subagents" in additional_context, (
+            "Expected base REMINDER content (mentioning subagents) in Solo SessionStart injection"
         )
-        # The full prompt should be longer than a short reminder
-        # The interactive REMINDER is 6 lines; the full SOLO_PROMPT should be more substantive
+        # The SOLO_ADDITIONS content must also be present
+        assert "SOLO MODE" in additional_context, (
+            "Expected SOLO_ADDITIONS content ('SOLO MODE') in Solo SessionStart injection"
+        )
+        # The combined content should be substantive
         assert len(additional_context) > SOLO_PROMPT_MIN_LENGTH, (
-            f"Expected full Solo prompt to be substantive (>{SOLO_PROMPT_MIN_LENGTH} chars)"
+            f"Expected Solo SessionStart injection to be substantive "
+            f"(>{SOLO_PROMPT_MIN_LENGTH} chars)"
         )
