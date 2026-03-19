@@ -394,7 +394,8 @@ Create `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally:
 
 **Push to remote**
 After session ends (completion or stop):
-1. Commit `SOLO_BUDDY_REPORT.md`
-2. Push the current branch to remote with `git push`
-3. **NEVER push to main/master** — Solo Buddy only pushes to the branch the human set up
-4. If push fails, document the failure in the report (logged, not fatal)
+1. Push the current branch to remote with `git push`
+2. **NEVER push to main/master** — Solo Buddy only pushes to the branch the human set up
+3. If push fails, log the failure but don't stop — the work is already committed locally
+
+Note: `SOLO_BUDDY_REPORT.md` lives in `.pairingbuddy/` which is gitignored. It is a local artifact for the human to review, not committed to the repository.
