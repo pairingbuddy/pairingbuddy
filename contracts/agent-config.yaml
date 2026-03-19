@@ -55,6 +55,7 @@ agents:
   curate-guidance:
     color: cyan
     model: sonnet
+    solo_mode: true
     skills: []
     inputs:
       human_guidance:
@@ -81,6 +82,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   classify-task:
@@ -109,6 +111,7 @@ agents:
   enumerate-scenarios-and-test-cases:
     color: magenta
     model: sonnet
+    solo_mode: true
     skills: [enumerating-tests]
     inputs:
       task:
@@ -138,11 +141,13 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   create-test-placeholders:
     color: yellow
     model: haiku
+    solo_mode: true
     skills: [writing-tests]
     inputs:
       scenarios:
@@ -180,6 +185,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   implement-tests:
@@ -238,6 +244,7 @@ agents:
   identify-test-issues:
     color: yellow
     model: opus
+    solo_mode: true
     skills: [writing-tests]
     inputs:
       tests:
@@ -267,6 +274,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   refactor-tests:
@@ -299,6 +307,7 @@ agents:
   identify-code-issues:
     color: yellow
     model: opus
+    solo_mode: true
     skills: [refactoring-code]
     inputs:
       code_state:
@@ -327,6 +336,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   refactor-code:
@@ -358,6 +368,7 @@ agents:
   verify-test-coverage:
     color: magenta
     model: sonnet
+    solo_mode: true
     skills: [writing-tests]
     inputs:
       scenarios:
@@ -390,6 +401,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   run-all-tests:
@@ -418,6 +430,7 @@ agents:
   update-documentation:
     color: cyan
     model: sonnet
+    solo_mode: true
     skills: []
     inputs:
       files_changed:
@@ -449,6 +462,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   commit-changes:
@@ -477,6 +491,7 @@ agents:
   scope-refactoring:
     color: cyan
     model: sonnet
+    solo_mode: true
     skills: [refactoring-code]
     inputs:
       task:
@@ -508,11 +523,13 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   setup-spike:
     color: cyan
     model: sonnet
+    solo_mode: true
     skills: []
     inputs:
       task:
@@ -541,11 +558,13 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   explore-spike-unit:
     color: blue
     model: opus
+    solo_mode: true
     skills: []
     inputs:
       spike_config:
@@ -581,11 +600,13 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   document-spike:
     color: green
     model: sonnet
+    solo_mode: true
     skills: []
     inputs:
       spike_config:
@@ -614,6 +635,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   # ---------------------------------------------------------------------------
@@ -627,6 +649,7 @@ agents:
   brainstorm-requirements:
     color: cyan
     model: opus
+    solo_mode: true
     skills: [decomposing-tracer-bullets]
     inputs:
       plan_config:
@@ -652,11 +675,13 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   solidify-architecture:
     color: magenta
     model: opus
+    solo_mode: true
     skills: []
     inputs:
       plan_requirements:
@@ -685,11 +710,13 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   decompose-tracer-bullets:
     color: yellow
     model: opus
+    solo_mode: true
     skills: [decomposing-tracer-bullets]
     inputs:
       plan_requirements:
@@ -721,11 +748,13 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   sequence-tasks:
     color: green
     model: opus
+    solo_mode: true
     skills: [sequencing-tasks]
     inputs:
       plan_tracer_bullets:
@@ -760,6 +789,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   # ---------------------------------------------------------------------------

@@ -192,6 +192,13 @@ Do NOT create any other files. No /tmp files, no markdown files beyond approved 
 - Make changes beyond what was approved
 - Create new documentation files (only update existing ones)
 
+## Solo Mode
+
+If `PAIRINGBUDDY_SOLO` environment variable is `true`:
+- Skip Step 3 (Human Review) entirely
+- Assume all findings are approved
+- Proceed directly to writing output
+
 ## Output
 
 Writes to `.pairingbuddy/doc-config.json` (bootstrap or when human adds new doc locations):

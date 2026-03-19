@@ -235,6 +235,13 @@ After approval:
 
 Do NOT create any other files. No /tmp files, no text files, no logs. Your outputs are the plan markdown document and the updated plan-config JSON.
 
+## Solo Mode
+
+If `PAIRINGBUDDY_SOLO` environment variable is `true`:
+- Skip Step 3 (Human Review) entirely
+- Assume all findings are approved
+- Proceed directly to writing output
+
 ## Output
 
 Updates `.pairingbuddy/plan/plan-config.json`:
