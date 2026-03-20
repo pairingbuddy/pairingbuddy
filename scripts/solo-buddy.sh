@@ -10,6 +10,10 @@
 #   --plugin-dir <path>   Use a specific plugin directory instead of installed plugin
 #   --use-api-key         Use ANTHROPIC_API_KEY for billing (default: unset to use subscription)
 #   -h, --help            Show this help and exit
+#
+# On success, creates a GitHub PR via `gh pr create`. The PR title is derived
+# from the current branch name (e.g. feature/my-thing -> My thing). When
+# .pairingbuddy/SOLO_BUDDY_REPORT.md exists it is used as the PR body.
 
 set -euo pipefail
 
@@ -19,11 +23,58 @@ USE_API_KEY=false
 # Build claude invocation
 CLAUDE_ARGS=(-p --dangerously-skip-permissions --output-format json)
 
+require_arg() {
+    local flag="$1"
+    local value="${2:-}"
+    if [[ -z "$value" ]]; then
+        echo "Error: $flag requires a value" >&2
+        exit 1
+    fi
+}
+
+require_positive_integer() {
+    local flag="$1"
+    local value="$2"
+    if ! [[ "$value" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: $flag requires a positive integer, got: $value" >&2
+        exit 1
+    fi
+}
+
+require_positive_number() {
+    local flag="$1"
+    local value="$2"
+    if ! [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]] || [[ "$value" == "0" ]] || [[ "$value" == "0.0" ]]; then
+        echo "Error: $flag requires a positive number, got: $value" >&2
+        exit 1
+    fi
+}
+
+sanitize_branch_name() {
+    local branch="$1"
+    # Strip common prefixes (feature/, fix/, bugfix/, hotfix/, chore/, etc.)
+    local name="${branch#*/}"
+    if [[ "$name" == "$branch" ]]; then
+        # No prefix found, use as-is
+        name="$branch"
+    fi
+    # Replace hyphens and underscores with spaces
+    name="${name//-/ }"
+    name="${name//_/ }"
+    # Capitalize first letter (portable, works with bash 3)
+    name="$(printf '%s' "$name" | awk '{$1=toupper(substr($1,1,1)) substr($1,2); print}')"
+    echo "$name"
+}
+
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS] <plan_file>
 
 Run Solo Buddy: autonomous execution of a tracer bullets plan.
+
+On success, creates a GitHub PR via \`gh pr create\`. The PR title is derived
+from the current branch name (e.g. feature/my-thing -> My thing). When
+.pairingbuddy/SOLO_BUDDY_REPORT.md exists it is used as the PR body.
 
 Options:
   -n <retries>          Max retries (default: 5)
@@ -45,34 +96,25 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         -n)
-            if [[ -z "${2:-}" ]]; then
-                echo "Error: -n requires a value" >&2
-                exit 1
-            fi
+            require_arg "-n" "${2:-}"
+            require_positive_integer "-n" "$2"
             MAX_RETRIES="$2"
             shift 2
             ;;
         --max-turns)
-            if [[ -z "${2:-}" ]]; then
-                echo "Error: --max-turns requires a value" >&2
-                exit 1
-            fi
+            require_arg "--max-turns" "${2:-}"
+            require_positive_integer "--max-turns" "$2"
             CLAUDE_ARGS+=(--max-turns "$2")
             shift 2
             ;;
         --max-budget-usd)
-            if [[ -z "${2:-}" ]]; then
-                echo "Error: --max-budget-usd requires a value" >&2
-                exit 1
-            fi
+            require_arg "--max-budget-usd" "${2:-}"
+            require_positive_number "--max-budget-usd" "$2"
             CLAUDE_ARGS+=(--max-budget-usd "$2")
             shift 2
             ;;
         --plugin-dir)
-            if [[ -z "${2:-}" ]]; then
-                echo "Error: --plugin-dir requires a value" >&2
-                exit 1
-            fi
+            require_arg "--plugin-dir" "${2:-}"
             CLAUDE_ARGS+=(--plugin-dir "$2")
             shift 2
             ;;
@@ -119,4 +161,20 @@ export PAIRINGBUDDY_SOLO_MAX_RETRIES="$MAX_RETRIES"
 
 PROMPT="Use /pairingbuddy:code to execute the plan at: ${PLAN_FILE}"
 
-exec claude "${CLAUDE_ARGS[@]}" "$PROMPT"
+claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
+CLAUDE_EXIT=$?
+
+if [[ $CLAUDE_EXIT -eq 0 ]]; then
+    BRANCH=$(git branch --show-current)
+    PR_TITLE=$(sanitize_branch_name "$BRANCH")
+    REPORT_FILE=".pairingbuddy/SOLO_BUDDY_REPORT.md"
+    if [[ -f "$REPORT_FILE" ]]; then
+        gh pr create --title "$PR_TITLE" --body-file "$REPORT_FILE" || \
+            echo "Warning: gh pr create failed" >&2
+    else
+        gh pr create --title "$PR_TITLE" || \
+            echo "Warning: gh pr create failed" >&2
+    fi
+fi
+
+exit $CLAUDE_EXIT

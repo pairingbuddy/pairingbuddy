@@ -924,7 +924,7 @@ Solo Buddy is an autonomous execution mode where Pairing Buddy executes a pre-es
 
 Four components are Solo-aware:
 
-1. **Shell script** (`scripts/solo-buddy.sh`) — Sets env var, invokes `claude -p --dangerously-skip-permissions --output-format json`
+1. **Shell script** (`scripts/solo-buddy.sh`) — Sets env var, invokes `claude -p --dangerously-skip-permissions --output-format json`. On success, creates a GitHub PR via `gh pr create` using the sanitized branch name as the title and `SOLO_BUDDY_REPORT.md` as the body when present
 2. **Guardian hook** (`hooks/guardian.mjs`) — Detects `PAIRINGBUDDY_SOLO`, injects Solo constraint prompt on SessionStart, uses halved injection interval (2.5 min) and short Solo reminder for PostToolUse
 3. **15 agents** — Agents with AskUserQuestion (Step 3 Human Review) check `PAIRINGBUDDY_SOLO` and skip review, assuming approval
 4. **Coding orchestrator** (`skills/coding/SKILL.md`) — `_ask_human` auto-returns `true` in Solo mode. Solo Mode section defines strict scope, sequential execution, resource exhaustion before stopping, bug handling, quality compliance, report generation, and push-to-remote

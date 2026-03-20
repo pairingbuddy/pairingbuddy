@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Coding orchestrator Solo mode: `_ask_human` auto-yes, strict scope, sequential execution, resource exhaustion before stopping, bug handling, quality compliance
   - `SOLO_BUDDY_REPORT.md` incremental report generation
   - Push-to-remote on session completion (never pushes to main/master)
+  - GitHub PR creation on success via `gh pr create`: branch name used as title (e.g. `feature/foo` → `Foo`), `SOLO_BUDDY_REPORT.md` used as PR body when present
 
 ## [0.6.0] - 2026-03-15
 
