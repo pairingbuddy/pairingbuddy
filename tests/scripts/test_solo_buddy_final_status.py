@@ -38,7 +38,9 @@ def extract_shell_function(content: str, function_name: str) -> str:
     return "\n".join(function_lines)
 
 
-def build_write_final_status_script(script: str, tmpdir: str, plan_file: str) -> str:
+def build_write_final_status_script(
+    script: str, tmpdir: str, plan_file: str, branch: str = "feature/test-branch"
+) -> str:
     """Return a bash snippet that loads write_final_status from *script* and calls it.
 
     Uses awk to extract the function definition and eval to load it, then
@@ -47,13 +49,15 @@ def build_write_final_status_script(script: str, tmpdir: str, plan_file: str) ->
     does not exist yet.
 
     STATUS_FILE and PLAN_FILE are set to paths inside tmpdir so that the
-    function works correctly when called in isolation.
+    function works correctly when called in isolation. BRANCH defaults to
+    "feature/test-branch" for testing.
     """
     status_file_path = f"{tmpdir}/.pairingbuddy/solo-status"
     return f"""
 set +e
 STATUS_FILE={status_file_path!r}
 PLAN_FILE={plan_file!r}
+BRANCH={branch!r}
 CLAUDE_EXIT=0
 if grep -q 'write_final_status()' {script!r} 2>/dev/null; then
     eval "$(awk '/^write_final_status\\(\\)[ \\t]*\\{{/,/^\\}}/' {script!r})"
@@ -711,3 +715,92 @@ write_final_status
                 "Status file must contain █ for the completed portion of the progress bar"
             )
             assert "\u2591" in content, "Status must contain ░ for incomplete bar portion"
+
+
+class TestFinalStatusIncludesHeader:
+    """Tests for header content in write_final_status output (scenario 5)."""
+
+    def test_final_status_contains_title(self, script_path):
+        """Status file contains title with ⚡ emoji, 'Pairing Buddy', and 'Solo'."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("- [x] Task 1\n- [ ] Task 2\n")
+
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"), exist_ok=True)
+            bash_code = build_write_final_status_script(script_path, tmpdir, plan_file)
+            subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            status_file = os.path.join(tmpdir, ".pairingbuddy", "solo-status")
+            assert os.path.exists(status_file), "write_final_status must create the status file"
+            content = Path(status_file).read_text()
+            assert "⚡" in content, "Status file must contain ⚡ emoji in title"
+            assert "Pairing Buddy" in content, "Status file must contain 'Pairing Buddy' in title"
+            assert "Solo" in content, "Status file must contain 'Solo' in title"
+
+    def test_final_status_contains_plan_and_branch(self, script_path):
+        """Status file contains 'Plan:' with plan path and 'Branch:' with branch name."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_file = os.path.join(tmpdir, "my-plan.md")
+            with open(plan_file, "w") as f:
+                f.write("- [x] Task 1\n- [ ] Task 2\n")
+
+            branch_name = "feature/my-feature"
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"), exist_ok=True)
+            bash_code = build_write_final_status_script(script_path, tmpdir, plan_file, branch_name)
+            subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            status_file = os.path.join(tmpdir, ".pairingbuddy", "solo-status")
+            assert os.path.exists(status_file), "write_final_status must create the status file"
+            content = Path(status_file).read_text()
+            assert "Plan:" in content, "Status file must contain 'Plan:' label"
+            assert "my-plan.md" in content, "Status file must contain the plan file path"
+            assert "Branch:" in content, "Status file must contain 'Branch:' label"
+            assert "feature/my-feature" in content, "Status file must contain the branch name"
+
+    def test_final_status_has_section_spacing(self, script_path):
+        """Status file has blank lines: after title, after branch line, before progress bar."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("- [x] Task 1\n- [x] Task 2\n- [ ] Task 3\n")
+
+            branch_name = "feature/spacing-test"
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"), exist_ok=True)
+            bash_code = build_write_final_status_script(script_path, tmpdir, plan_file, branch_name)
+            subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            status_file = os.path.join(tmpdir, ".pairingbuddy", "solo-status")
+            assert os.path.exists(status_file), "write_final_status must create the status file"
+            content = Path(status_file).read_text()
+            lines = content.splitlines(keepends=True)
+
+            # Find header lines and spacing
+            has_title = any("⚡" in line and "Pairing Buddy" in line for line in lines)
+            has_plan = any("Plan:" in line for line in lines)
+            has_branch = any("Branch:" in line for line in lines)
+            has_blank_after_branch = any(
+                i > 0 and "Branch:" in lines[i - 1] and line.strip() == ""
+                for i, line in enumerate(lines)
+            )
+            has_task_line = any(line.strip().startswith(("✓", "→", "○")) for line in lines)
+            has_progress_bar = any("[" in line and "]" in line and "%" in line for line in lines)
+
+            assert has_title, "Status file must contain title line with ⚡ and 'Pairing Buddy'"
+            assert has_plan, "Status file must contain 'Plan:' line"
+            assert has_branch, "Status file must contain 'Branch:' line"
+            assert has_blank_after_branch, "Status file must have blank line after Branch line"
+            assert has_task_line, "Status file must contain task lines (✓, →, or ○)"
+            assert has_progress_bar, "Status file must contain progress bar line with [X/Y] and %"

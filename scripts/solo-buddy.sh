@@ -183,7 +183,11 @@ render_status() {
     if [[ -f "$status_file" ]]; then
         content=$(cat "$status_file")
     else
-        content="→ Initializing autonomous execution..."
+        if [[ "${FORCE_COLOR:-}" == "1" ]]; then
+            content=$'\033[36m→\033[0m \033[1mInitializing autonomous execution...\033[0m'
+        else
+            content="→ Initializing autonomous execution..."
+        fi
     fi
 
     # Advance spinner using a file to persist state across subshell calls
@@ -356,8 +360,21 @@ write_final_status() {
         footer="Session interrupted"
     fi
 
+    # Build header (matching print_header format, with FORCE_COLOR-gated ANSI)
+    local yellow="" dim="" reset=""
+    if [[ "${FORCE_COLOR:-}" == "1" ]]; then
+        yellow=$'\033[33m'
+        dim=$'\033[2m'
+        reset=$'\033[0m'
+    fi
+
     # Write to STATUS_FILE
     {
+        printf '%s⚡%s Pairing Buddy — Solo Mode\n' "$yellow" "$reset"
+        printf '\n'
+        printf 'Plan: %s%s%s\n' "$dim" "$PLAN_FILE" "$reset"
+        printf 'Branch: %s%s%s\n' "$dim" "$BRANCH" "$reset"
+        printf '\n'
         if [[ ${#task_lines[@]} -gt 0 ]]; then
             for tl in "${task_lines[@]}"; do
                 printf '%s\n' "$tl"
