@@ -29,6 +29,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "integration: marks tests that spawn subprocesses or touch the filesystem (deselect with '-m not integration')",
+]
 
 [tool.setuptools]
 packages = []  # Plugin with tests only, no installable Python package

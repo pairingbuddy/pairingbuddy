@@ -16,8 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Coding orchestrator Solo mode: `_ask_human` auto-yes, strict scope, sequential execution, resource exhaustion before stopping, bug handling, quality compliance
   - `SOLO_BUDDY_REPORT.md` incremental report generation
   - Background terminal renderer: polls `solo-status` and displays live progress bar via `/dev/tty`, configurable via `STATUS_FILE`/`RENDER_INTERVAL` constants
+  - Graceful renderer cleanup via `trap cleanup EXIT SIGTERM SIGINT` — no orphan processes after `solo-buddy.sh` exits
   - Push-to-remote on session completion (never pushes to main/master)
   - GitHub PR creation on success via `gh pr create`: branch name used as title (e.g. `feature/foo` → `Foo`), `SOLO_BUDDY_REPORT.md` used as PR body when present
+
+### Fixed
+
+- `solo-buddy.sh` `require_positive_number`: tightened validation regex to reject all zero representations (`0`, `00`, `0.0`, `0.00`, etc.) that previously passed as valid positive numbers
+- `solo-buddy.sh`: removed dead-code `STATUS_FILE` default (`${STATUS_FILE:-.pairingbuddy/solo-status}`) that was unreachable under `set -u`
+- `solo-buddy.sh`: added `sleep 0.1` in cleanup spin loop to avoid busy-waiting while the renderer process exits
 
 ## [0.6.0] - 2026-03-15
 
