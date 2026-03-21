@@ -256,6 +256,31 @@ print_header() {
     printf '%s\n' "$header"
 }
 
+print_exit_summary() {
+    local output
+    if [[ "$CLAUDE_EXIT" -eq 0 ]]; then
+        output="✓ Session complete"
+    else
+        output="✗ Session interrupted (exit code $CLAUDE_EXIT)"
+    fi
+    if [[ -n "${PR_URL:-}" ]]; then
+        output="${output}
+  PR: ${PR_URL}"
+    fi
+    if [[ -n "${PR_ERROR:-}" ]]; then
+        output="${output}
+  ⚠ PR: ${PR_ERROR}"
+    fi
+    if [[ -n "${REPORT_FILE:-}" ]] && [[ -f "${REPORT_FILE}" ]]; then
+        output="${output}
+  Report: ${REPORT_FILE}"
+    fi
+    if (printf '%s\n' "$output" > /dev/tty) 2>/dev/null; then
+        return 0
+    fi
+    printf '%s\n' "$output"
+}
+
 write_final_status() {
     clear_terminal
     local completed=0
@@ -346,27 +371,37 @@ CLAUDE_EXIT=$?
 
 write_final_status
 
+PR_URL=""
+PR_ERROR=""
+REPORT_FILE=".pairingbuddy/SOLO_BUDDY_REPORT.md"
+
 if [[ $CLAUDE_EXIT -eq 0 ]]; then
     BRANCH=$(git branch --show-current)
 
     # Never push to main/master
     if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
-        echo "Warning: refusing to push/create PR on $BRANCH" >&2
+        PR_ERROR="refusing to push/create PR on $BRANCH"
     else
         # Push branch to remote first (gh pr create needs it)
-        git push -u origin "$BRANCH" 2>/dev/null || \
-            echo "Warning: git push failed" >&2
+        git push -u origin "$BRANCH" 2>/dev/null || true
 
         PR_TITLE=$(sanitize_branch_name "$BRANCH")
-        REPORT_FILE=".pairingbuddy/SOLO_BUDDY_REPORT.md"
         if [[ -f "$REPORT_FILE" ]]; then
-            gh pr create --title "$PR_TITLE" --body-file "$REPORT_FILE" || \
+            if ! PR_URL=$(gh pr create --title "$PR_TITLE" --body-file "$REPORT_FILE" 2>&1); then
+                PR_ERROR="$PR_URL"
+                PR_URL=""
                 echo "Warning: gh pr create failed" >&2
+            fi
         else
-            gh pr create --title "$PR_TITLE" || \
+            if ! PR_URL=$(gh pr create --title "$PR_TITLE" 2>&1); then
+                PR_ERROR="$PR_URL"
+                PR_URL=""
                 echo "Warning: gh pr create failed" >&2
+            fi
         fi
     fi
 fi
+
+print_exit_summary
 
 exit $CLAUDE_EXIT
