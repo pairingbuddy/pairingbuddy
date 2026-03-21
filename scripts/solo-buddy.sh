@@ -163,8 +163,13 @@ export PAIRINGBUDDY_SOLO_MAX_RETRIES="$MAX_RETRIES"
 export PAIRINGBUDDY_PLAN_PATH="$PLAN_FILE"
 
 LAST_RENDER_LINES=0
+SPINNER_INDEX=0
 
 render_status() {
+    # Braille spinner character set: ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏
+    local spinner_chars=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+    local spinner_count=${#spinner_chars[@]}
+
     local status_file="$STATUS_FILE"
     local content
     if [[ -f "$status_file" ]]; then
@@ -173,12 +178,25 @@ render_status() {
         content="Waiting for first agent..."
     fi
 
-    # Count lines in new content
+    # Advance spinner using a file to persist state across subshell calls
+    local spinner_index_file
+    spinner_index_file="$(dirname "$status_file")/.solo-spinner-index"
+    mkdir -p "$(dirname "$spinner_index_file")" 2>/dev/null || true
+    local idx=0
+    if [[ -f "$spinner_index_file" ]]; then
+        idx=$(cat "$spinner_index_file" 2>/dev/null || echo 0)
+    fi
+    local spinner_char="${spinner_chars[$idx]}"
+    local next_idx=$(( (idx + 1) % spinner_count ))
+    printf '%d' "$next_idx" > "$spinner_index_file"
+
+    # Count lines in new content (spinner line + content lines)
     local new_lines
     new_lines=$(printf '%s\n' "$content" | wc -l | tr -d ' ')
+    new_lines=$(( new_lines + 1 ))
 
-    # Move cursor up and erase previous output using ANSI escape codes
-    if [[ "$LAST_RENDER_LINES" -gt 0 ]]; then
+    # Move cursor up and erase previous output using ANSI escape codes (TTY only)
+    if [[ "$LAST_RENDER_LINES" -gt 0 ]] && [[ -t 1 ]]; then
         local n=0
         while [[ $n -lt $LAST_RENDER_LINES ]]; do
             printf "\033[1A\033[2K"
@@ -186,7 +204,8 @@ render_status() {
         done
     fi
 
-    # Print status content
+    # Print spinner and status content
+    printf '%s\n' "$spinner_char"
     printf '%s\n' "$content"
 
     LAST_RENDER_LINES=$new_lines
@@ -205,16 +224,19 @@ start_renderer() {
 }
 
 cleanup() {
+    render_status
     kill "$RENDERER_PID" 2>/dev/null || true
     while kill -0 "$RENDERER_PID" 2>/dev/null; do sleep 0.1; done
 }
 
 PROMPT="Use /pairingbuddy:code to execute the plan at: ${PLAN_FILE}"
 
+mkdir -p .pairingbuddy
+
 start_renderer
 trap cleanup EXIT SIGTERM SIGINT
 
-claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
+claude "${CLAUDE_ARGS[@]}" -- "$PROMPT" > .pairingbuddy/solo-session.json
 CLAUDE_EXIT=$?
 
 if [[ $CLAUDE_EXIT -eq 0 ]]; then
