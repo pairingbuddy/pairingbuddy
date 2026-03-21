@@ -224,13 +224,11 @@ def test_returns_null_when_state_files_have_no_file_path(solo_tmp_path):
     )
 
 
-def test_status_shows_file_line_when_file_path_available(solo_tmp_path, plan_env):
-    """Scenario: solo-status-includes-file-line.
+def test_status_no_file_line_in_new_format(solo_tmp_path, plan_env):
+    """Scenario: solo-status-format.
 
-    Test Case: status-shows-file-line-when-file-path-available
-
-    A 'File: <path>' line appears in solo-status when a file path is found in
-    state files.
+    The new status format does not include a 'File:' line (removed in format rework).
+    File path is still tracked in the progress log.
     """
     current_batch_file = solo_tmp_path / ".pairingbuddy" / "current-batch.json"
     current_batch_file.write_text(
@@ -250,8 +248,8 @@ def test_status_shows_file_line_when_file_path_available(solo_tmp_path, plan_env
     )
 
     status_lines = _read_status_lines(solo_tmp_path)
-    assert any("File:" in line and "tests/test_status.py" in line for line in status_lines), (
-        f"Expected 'File: tests/test_status.py' in solo-status, got: {status_lines}"
+    assert not any("File:" in line for line in status_lines), (
+        f"Expected no 'File:' line in solo-status (removed in rework), got: {status_lines}"
     )
 
 
@@ -274,40 +272,29 @@ def test_status_omits_file_line_when_no_file_path(solo_tmp_path, plan_env):
     )
 
 
-def test_status_file_line_position_after_agent_line(solo_tmp_path, plan_env):
-    """Scenario: solo-status-includes-file-line.
+def test_agent_line_follows_progress_bar(solo_tmp_path, plan_env):
+    """Scenario: solo-status-format.
 
-    Test Case: status-file-line-position-after-agent-line
-
-    In the known-progress format the lines are ordered:
-    index 0: progress bar, index 1: Agent:, index 2: Task:, index 3: File:
+    The Agent: line immediately follows the [N/M] progress bar line.
     """
-    current_batch_file = solo_tmp_path / ".pairingbuddy" / "current-batch.json"
-    current_batch_file.write_text(
-        json.dumps(
-            {
-                "batch": [
-                    {"test_file": "tests/test_position.py", "test_function": "test_position"},
-                ]
-            }
-        )
-    )
-
     run_hook(
         plan_env,
-        stdin_payload=_task_stdin(agent_name="test-agent", description="positioning the task"),
+        stdin_payload=_task_stdin(agent_name="test-agent"),
         cwd=str(solo_tmp_path),
     )
 
     status_lines = _read_status_lines(solo_tmp_path)
-    assert len(status_lines) >= 4, (
-        f"Expected at least 4 lines in solo-status, got {len(status_lines)}: {status_lines}"
+    bar_index = next(
+        (i for i, line in enumerate(status_lines) if re.match(r"\[\d+/\d+\]", line.strip())),
+        None,
     )
-    assert "Agent:" in status_lines[1], (
-        f"Expected 'Agent:' on line 2 (index 1), got: {status_lines}"
+    assert bar_index is not None, f"Expected a '[N/M]' progress bar line, got: {status_lines}"
+    assert bar_index + 1 < len(status_lines), (
+        f"Expected a line after the progress bar, got: {status_lines}"
     )
-    assert "Task:" in status_lines[2], f"Expected 'Task:' on line 3 (index 2), got: {status_lines}"
-    assert "File:" in status_lines[3], f"Expected 'File:' on line 4 (index 3), got: {status_lines}"
+    assert "Agent:" in status_lines[bar_index + 1], (
+        f"Expected 'Agent:' after progress bar, got: {status_lines}"
+    )
 
 
 def test_log_line_includes_file_path_when_available(solo_tmp_path, plan_env):

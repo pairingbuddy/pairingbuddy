@@ -39,10 +39,9 @@ def _run_with_plan(tmp_path, checked: int, unchecked: int) -> str:
 
 
 def test_status_uses_bracket_nm_format(known_progress_status):
-    """The first line of solo-status uses '[N/M]' bracket notation instead of 'Progress: N/M'."""
-    first_line = known_progress_status.splitlines()[0]
-    assert first_line.startswith("[3/7]"), (
-        f"Expected first line to start with '[3/7]', got: {first_line!r}"
+    """solo-status contains a '[N/M]' bracket notation line."""
+    assert "[3/7]" in known_progress_status, (
+        f"Expected '[3/7]' in solo-status, got: {known_progress_status!r}"
     )
 
 
@@ -57,19 +56,23 @@ def test_status_contains_block_characters(known_progress_status):
 
 
 def test_status_contains_percentage(known_progress_status):
-    """The first line ends with a percentage value reflecting completion ratio."""
-    first_line = known_progress_status.splitlines()[0]
-    assert "43%" in first_line, f"Expected '43%' in first line of solo-status, got: {first_line!r}"
-
-
-def test_agent_name_on_second_line(known_progress_status):
-    """The agent name appears on the second line as 'Agent: <name>', after progress bar."""
-    lines = known_progress_status.splitlines()
-    assert len(lines) >= 2, (
-        f"Expected at least 2 lines in solo-status, got: {known_progress_status!r}"
+    """solo-status contains a percentage value reflecting completion ratio."""
+    assert "43%" in known_progress_status, (
+        f"Expected '43%' in solo-status, got: {known_progress_status!r}"
     )
-    assert lines[1].startswith("Agent:"), (
-        f"Expected second line to start with 'Agent:', got: {lines[1]!r}"
+
+
+def test_agent_name_after_progress_bar(known_progress_status):
+    """The agent name appears on the line after the progress bar line."""
+    lines = known_progress_status.splitlines()
+    bar_index = next(
+        (i for i, line in enumerate(lines) if line.strip().startswith("[")),
+        None,
+    )
+    assert bar_index is not None, f"Expected a '[N/M]' progress bar line, got: {lines!r}"
+    assert bar_index + 1 < len(lines), f"Expected a line after the progress bar, got: {lines!r}"
+    assert lines[bar_index + 1].startswith("Agent:"), (
+        f"Expected 'Agent:' after progress bar, got: {lines[bar_index + 1]!r}"
     )
 
 

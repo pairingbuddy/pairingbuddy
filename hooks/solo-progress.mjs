@@ -44,15 +44,27 @@ function findPlanPath() {
 
 const BAR_WIDTH = 30;
 
-function findFirstUncheckedTask(planPath) {
+function stripMarkdown(text) {
+  return text.replace(/[*`]/g, "");
+}
+
+function readPlanTasks(planPath) {
   try {
     const content = readFileSync(planPath, "utf8");
     const lines = content.split("\n");
+    const tasks = [];
     for (const line of lines) {
-      const match = line.match(/^\s*- \[ \] (.+)/);
-      if (match) return match[1].trim();
+      const checkedMatch = line.match(/^\s*- \[x\] (.+)/);
+      if (checkedMatch) {
+        tasks.push({ text: stripMarkdown(checkedMatch[1].trim()), checked: true });
+        continue;
+      }
+      const uncheckedMatch = line.match(/^\s*- \[ \] (.+)/);
+      if (uncheckedMatch) {
+        tasks.push({ text: stripMarkdown(uncheckedMatch[1].trim()), checked: false });
+      }
     }
-    return null;
+    return tasks;
   } catch (err) {
     if (err.code === "ENOENT") return null;
     throw err;
@@ -112,29 +124,42 @@ const CYAN = useColor ? "\x1b[36m" : "";
 const BOLD_WHITE = useColor ? "\x1b[1;37m" : "";
 const RESET = useColor ? "\x1b[0m" : "";
 
-function formatStatus(counts, agentName, currentFile, taskDescription, firstUncheckedTask) {
+function formatTaskList(planTasks) {
+  let foundCurrent = false;
+  return planTasks.map((task) => {
+    if (task.checked) {
+      return `✓ ${task.text}`;
+    }
+    if (!foundCurrent) {
+      foundCurrent = true;
+      return `→ ${BOLD_WHITE}${task.text}${RESET}`;
+    }
+    return `○ ${task.text}`;
+  }).join("\n");
+}
+
+function formatStatus(counts, agentName, currentFile, taskDescription, planTasks) {
   // Intentionally different formats by design: when progress is known the status
-  // file shows a rich multi-line display (progress bar + separate Agent line),
+  // file shows a rich multi-line display (task list + progress bar + agent line),
   // while the unknown-progress case uses a compact single-line fallback.
-  const planLine = firstUncheckedTask ? `\nPlan: ${BOLD_WHITE}${firstUncheckedTask}${RESET}` : "";
   if (counts !== null) {
     const percentage = counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0;
     const filled = counts.total > 0 ? Math.round((counts.completed / counts.total) * BAR_WIDTH) : 0;
     const empty = BAR_WIDTH - filled;
     const filledBar = `${GREEN}${"\u2588".repeat(filled)}${RESET}`;
     const emptyBar = `${DARK_GRAY}${"\u2591".repeat(empty)}${RESET}`;
-    const fileLine = currentFile ? `\nFile: ${currentFile}` : "";
-    const taskLine = taskDescription ? `\nTask: ${taskDescription}` : "";
-    return `[${counts.completed}/${counts.total}] ${filledBar}${emptyBar} ${percentage}%\nAgent: ${CYAN}${agentName}${RESET}${taskLine}${fileLine}${planLine}\n`;
+    const taskListPart = (planTasks && planTasks.length > 0) ? formatTaskList(planTasks) + "\n\n" : "";
+    const descriptionLine = taskDescription ? `\n  ${taskDescription}` : "";
+    return `${taskListPart}[${counts.completed}/${counts.total}] ${filledBar}${emptyBar} ${percentage}%\nAgent: ${CYAN}${agentName}${RESET}${descriptionLine}\n`;
   }
-  const taskPart = taskDescription ? ` Task: ${taskDescription}` : "";
-  return `[?/?] Agent: ${CYAN}${agentName}${RESET}${taskPart}${planLine}\n`;
+  const descriptionLine = taskDescription ? `\n  ${taskDescription}` : "";
+  return `[?/?] Agent: ${CYAN}${agentName}${RESET}${descriptionLine}\n`;
 }
 
-function writeStatusFile(counts, agentName, currentFile, taskDescription, firstUncheckedTask) {
+function writeStatusFile(counts, agentName, currentFile, taskDescription, planTasks) {
   const pairingbuddyDir = join(process.cwd(), ".pairingbuddy");
   if (!existsSync(pairingbuddyDir)) return;
-  const statusContent = formatStatus(counts, agentName, currentFile, taskDescription, firstUncheckedTask);
+  const statusContent = formatStatus(counts, agentName, currentFile, taskDescription, planTasks);
   const statusPath = join(pairingbuddyDir, "solo-status");
   writeFileSync(statusPath, statusContent);
 }
@@ -154,9 +179,9 @@ function appendProgressLog(counts, agentName, currentFile, taskDescription) {
 const planPath = findPlanPath();
 const counts = planPath ? countCheckboxes(planPath) : null;
 const currentFile = findCurrentFile();
-const firstUncheckedTask = planPath ? findFirstUncheckedTask(planPath) : null;
+const planTasks = planPath ? readPlanTasks(planPath) : null;
 
-writeStatusFile(counts, agentName, currentFile, taskDescription, firstUncheckedTask);
+writeStatusFile(counts, agentName, currentFile, taskDescription, planTasks);
 appendProgressLog(counts, agentName, currentFile, taskDescription);
 
 } catch (err) {

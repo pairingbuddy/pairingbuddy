@@ -51,10 +51,10 @@ def test_status_file_created_in_pairingbuddy_dir(solo_status_file):
 
 
 def test_status_file_contains_agent_name(solo_status_file):
-    """Written status file contains agent name from tool_input.subagent_type."""
+    """Written status file contains agent name and indented description."""
     content = solo_status_file.read_text()
     assert "Agent: implement-tests" in content
-    assert "Task: implementing the test suite" in content
+    assert "  implementing the test suite" in content
 
 
 def test_status_file_contains_progress_line(solo_status_file):
