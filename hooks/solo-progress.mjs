@@ -10,11 +10,13 @@ const isSoloMode =
   process.env.PAIRINGBUDDY_SOLO !== "false" &&
   process.env.PAIRINGBUDDY_SOLO !== "";
 
-const input = JSON.parse(readFileSync("/dev/stdin", "utf8"));
-
 if (!isSoloMode) {
   process.exit(0);
 }
+
+try {
+
+const input = JSON.parse(readFileSync("/dev/stdin", "utf8"));
 
 if (input.tool_name !== "Agent") {
   process.exit(0);
@@ -127,3 +129,13 @@ const currentFile = findCurrentFile();
 
 writeStatusFile(counts, agentName, currentFile);
 appendProgressLog(counts, agentName, currentFile);
+
+} catch (err) {
+  const pairingbuddyDir = join(process.cwd(), ".pairingbuddy");
+  if (existsSync(pairingbuddyDir)) {
+    const timestamp = new Date().toISOString();
+    const errorLogPath = join(pairingbuddyDir, "solo-progress-errors.log");
+    appendFileSync(errorLogPath, `${timestamp} ${err.message}\n`);
+  }
+  process.exit(0);
+}
