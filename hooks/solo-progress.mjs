@@ -2,7 +2,7 @@
 // Solo progress tracker — records tool use activity during solo mode sessions.
 // Triggered by PostToolUse. No-ops when PAIRINGBUDDY_SOLO is not set or false.
 
-import { readFileSync, writeFileSync, appendFileSync } from "fs";
+import { readFileSync, writeFileSync, appendFileSync, existsSync } from "fs";
 import { join, resolve } from "path";
 
 const isSoloMode =
@@ -60,37 +60,70 @@ function countCheckboxes(planPath) {
   }
 }
 
-function formatStatus(counts, agentName) {
+function readFirstTestFile(filePath, arrayKey) {
+  try {
+    const data = JSON.parse(readFileSync(filePath, "utf8"));
+    if (data[arrayKey] && data[arrayKey].length > 0 && data[arrayKey][0].test_file) {
+      return data[arrayKey][0].test_file;
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
+  return null;
+}
+
+function findCurrentFile() {
+  const pairingbuddyDir = join(process.cwd(), ".pairingbuddy");
+
+  // Try current-batch.json first
+  const fromBatch = readFirstTestFile(join(pairingbuddyDir, "current-batch.json"), "batch");
+  if (fromBatch) return fromBatch;
+
+  // Fall back to tests.json
+  const fromTests = readFirstTestFile(join(pairingbuddyDir, "tests.json"), "tests");
+  if (fromTests) return fromTests;
+
+  return null;
+}
+
+function formatStatus(counts, agentName, currentFile) {
   // Intentionally different formats by design: when progress is known the status
   // file shows a rich multi-line display (progress bar + separate Agent line),
   // while the unknown-progress case uses a compact single-line fallback.
   if (counts !== null) {
     const percentage = counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0;
-    const filled = Math.round(percentage / BAR_WIDTH);
+    const filled = counts.total > 0 ? Math.round((counts.completed / counts.total) * BAR_WIDTH) : 0;
     const empty = BAR_WIDTH - filled;
     const filledBar = "\u2588".repeat(filled);
     const emptyBar = "\u2591".repeat(empty);
-    return `[${counts.completed}/${counts.total}] ${filledBar}${emptyBar} ${percentage}%\nAgent: ${agentName}\n`;
+    const fileLine = currentFile ? `\nFile: ${currentFile}` : "";
+    return `[${counts.completed}/${counts.total}] ${filledBar}${emptyBar} ${percentage}%\nAgent: ${agentName}${fileLine}\n`;
   }
   return `[?/?] Agent: ${agentName}\n`;
 }
 
-function writeStatusFile(counts, agentName) {
-  const statusContent = formatStatus(counts, agentName);
-  const statusPath = join(process.cwd(), ".pairingbuddy", "solo-status");
+function writeStatusFile(counts, agentName, currentFile) {
+  const pairingbuddyDir = join(process.cwd(), ".pairingbuddy");
+  if (!existsSync(pairingbuddyDir)) return;
+  const statusContent = formatStatus(counts, agentName, currentFile);
+  const statusPath = join(pairingbuddyDir, "solo-status");
   writeFileSync(statusPath, statusContent);
 }
 
-function appendProgressLog(counts, agentName) {
+function appendProgressLog(counts, agentName, currentFile) {
+  const pairingbuddyDir = join(process.cwd(), ".pairingbuddy");
+  if (!existsSync(pairingbuddyDir)) return;
   const timestamp = new Date().toISOString();
   const progressTag = counts ? `[${counts.completed}/${counts.total}]` : '[?/?]';
-  const logLine = `${timestamp} ${progressTag} ${agentName}\n`;
-  const logPath = join(process.cwd(), ".pairingbuddy", "solo-progress.log");
+  const filePart = currentFile ? ` ${currentFile}` : "";
+  const logLine = `${timestamp} ${progressTag} ${agentName}${filePart}\n`;
+  const logPath = join(pairingbuddyDir, "solo-progress.log");
   appendFileSync(logPath, logLine);
 }
 
 const planPath = findPlanPath();
 const counts = planPath ? countCheckboxes(planPath) : null;
+const currentFile = findCurrentFile();
 
-writeStatusFile(counts, agentName);
-appendProgressLog(counts, agentName);
+writeStatusFile(counts, agentName, currentFile);
+appendProgressLog(counts, agentName, currentFile);

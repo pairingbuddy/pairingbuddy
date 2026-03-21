@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `hooks/solo-progress.mjs`: extracts current file path from state files (`current-batch.json`, `tests.json`) and shows it in `solo-status` and progress log
 - Solo Buddy: autonomous execution mode via `scripts/solo-buddy.sh`
   - Shell script entry point with `claude -p`, env var signal, API key safety (unsets `ANTHROPIC_API_KEY` by default)
   - Guardian hook Solo mode: halved injection cadence (2.5 min), Solo constraint prompt on SessionStart
@@ -22,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `hooks/solo-progress.mjs`: exits cleanly when `.pairingbuddy/` directory is absent (ENOENT fix)
+- `hooks/solo-progress.mjs`: progress bar calculation no longer coupled to `BAR_WIDTH=10`
 - `solo-buddy.sh` `require_positive_number`: tightened validation regex to reject all zero representations (`0`, `00`, `0.0`, `0.00`, etc.) that previously passed as valid positive numbers
 - `solo-buddy.sh`: removed dead-code `STATUS_FILE` default (`${STATUS_FILE:-.pairingbuddy/solo-status}`) that was unreachable under `set -u`
 - `solo-buddy.sh`: added `sleep 0.1` in cleanup spin loop to avoid busy-waiting while the renderer process exits
