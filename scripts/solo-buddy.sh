@@ -20,7 +20,7 @@ set -euo pipefail
 MAX_RETRIES=5
 USE_API_KEY=false
 STATUS_FILE=".pairingbuddy/solo-status"
-RENDER_INTERVAL=5
+RENDER_INTERVAL=1
 
 # Build claude invocation
 CLAUDE_ARGS=(-p --dangerously-skip-permissions --output-format json)
