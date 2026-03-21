@@ -22,7 +22,7 @@ def _make_plan_markdown(checked: int, unchecked: int) -> str:
 
 
 def _task_stdin(agent_name: str = "test-agent") -> dict:
-    return {"tool_name": "Task", "tool_input": {"description": agent_name}}
+    return {"tool_name": "Agent", "tool_input": {"subagent_type": agent_name}}
 
 
 def _read_log_lines(tmp_path) -> list[str]:

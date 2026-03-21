@@ -10,14 +10,14 @@ from tests.conftest import HOOK_PATH
 
 
 def run_hook_with_task(tmpdir: str, agent_description: str) -> subprocess.CompletedProcess:
-    """Run the solo-progress.mjs hook as a subprocess simulating a Task tool call in solo mode."""
+    """Run the solo-progress.mjs hook as a subprocess simulating an Agent tool call in solo mode."""
     pairingbuddy_dir = Path(tmpdir) / ".pairingbuddy"
     pairingbuddy_dir.mkdir(exist_ok=True)
 
     stdin_payload = {
-        "tool_name": "Task",
+        "tool_name": "Agent",
         "tool_input": {
-            "description": agent_description,
+            "subagent_type": agent_description,
         },
     }
 
@@ -37,7 +37,7 @@ def run_hook_with_task(tmpdir: str, agent_description: str) -> subprocess.Comple
 
 @pytest.fixture
 def solo_status_file():
-    """Run the hook with a Task tool call and return the path to the written status file."""
+    """Run the hook with an Agent tool call and return the path to the written status file."""
     with tempfile.TemporaryDirectory() as tmpdir:
         agent_description = "implement-tests"
         run_hook_with_task(tmpdir, agent_description)
@@ -50,7 +50,7 @@ def test_status_file_created_in_pairingbuddy_dir(solo_status_file):
 
 
 def test_status_file_contains_agent_name(solo_status_file):
-    """Written status file contains agent name from tool_input.description."""
+    """Written status file contains agent name from tool_input.subagent_type."""
     content = solo_status_file.read_text()
     assert "Agent: implement-tests" in content
 

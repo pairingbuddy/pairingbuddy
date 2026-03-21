@@ -14,7 +14,7 @@ def test_no_stdout_when_solo_disabled():
 
 
 def test_no_stdout_when_non_task_tool():
-    """stdout is empty when hook exits early because tool_name is not 'Task'"""
+    """stdout is empty when hook exits early because tool_name is not 'Agent'"""
     stdin_payload = {"tool_name": "Read", "tool_input": {"path": "some/file.py"}}
 
     result = run_hook(
@@ -32,8 +32,8 @@ def test_no_stdout_when_writing_status():
         pairingbuddy_dir.mkdir()
 
         stdin_payload = {
-            "tool_name": "Task",
-            "tool_input": {"description": "write-tests"},
+            "tool_name": "Agent",
+            "tool_input": {"subagent_type": "write-tests"},
         }
 
         result = run_hook(

@@ -21,7 +21,7 @@ def _make_plan_markdown(checked: int, unchecked: int) -> str:
 
 
 def _task_stdin(agent_name: str = "test-agent") -> dict:
-    return {"tool_name": "Task", "tool_input": {"description": agent_name}}
+    return {"tool_name": "Agent", "tool_input": {"subagent_type": agent_name}}
 
 
 def _read_log_lines(tmp_path) -> list[str]:
@@ -90,7 +90,7 @@ def test_log_line_has_nm_bracket_notation(solo_tmp_path, plan_env):
 def test_log_line_has_agent_name(solo_tmp_path):
     """Scenario: log-line-format-with-progress | Test Case: log-line-has-agent-name
 
-    The log line contains the agent name from tool_input.description.
+    The log line contains the agent name from tool_input.subagent_type.
     """
     agent_name = "my-special-agent"
 
@@ -189,7 +189,7 @@ def test_no_log_when_not_solo_mode(solo_tmp_path):
 def test_no_log_for_non_task_tool(solo_tmp_path):
     """Scenario: solo-mode-guard | Test Case: no-log-for-non-task-tool
 
-    When the tool_name is not 'Task' (e.g. 'Write'), solo-progress.log is not written to.
+    When the tool_name is not 'Agent' (e.g. 'Write'), solo-progress.log is not written to.
     """
     stdin_payload = {"tool_name": "Read", "tool_input": {"path": "some/file.py"}}
 

@@ -54,7 +54,7 @@ def base_env_vars():
 @pytest.fixture
 def stdin_payload():
     """Return a standard stdin payload for triggering the hook."""
-    return {"tool_name": "Task", "tool_input": {"description": "test-agent"}}
+    return {"tool_name": "Agent", "tool_input": {"subagent_type": "test-agent"}}
 
 
 def test_plan_path_from_env_var(tmp_path, pairingbuddy_dir, base_env_vars, stdin_payload):

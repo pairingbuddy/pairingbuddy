@@ -29,7 +29,7 @@ def known_progress_status(tmp_path_factory):
         "PAIRINGBUDDY_SOLO": "true",
         "PAIRINGBUDDY_PLAN_PATH": str(plan_file),
     }
-    stdin_payload = {"tool_name": "Task", "tool_input": {"description": "test-agent"}}
+    stdin_payload = {"tool_name": "Agent", "tool_input": {"subagent_type": "test-agent"}}
     run_hook(env_vars, stdin_payload=stdin_payload, cwd=str(tmp_path))
     return (tmp_path / ".pairingbuddy" / "solo-status").read_text()
 
@@ -43,6 +43,6 @@ def unknown_progress_status(tmp_path_factory):
     tmp_path = tmp_path_factory.mktemp("unknown_progress")
     (tmp_path / ".pairingbuddy").mkdir(exist_ok=True)
     env_vars = {"PAIRINGBUDDY_SOLO": "true"}
-    stdin_payload = {"tool_name": "Task", "tool_input": {"description": "test-agent"}}
+    stdin_payload = {"tool_name": "Agent", "tool_input": {"subagent_type": "test-agent"}}
     run_hook(env_vars, stdin_payload=stdin_payload, cwd=str(tmp_path))
     return (tmp_path / ".pairingbuddy" / "solo-status").read_text()

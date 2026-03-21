@@ -30,7 +30,7 @@ def _run_with_plan(tmp_path, checked: int, unchecked: int) -> str:
         "PAIRINGBUDDY_SOLO": "true",
         "PAIRINGBUDDY_PLAN_PATH": str(plan_file),
     }
-    stdin_payload = {"tool_name": "Task", "tool_input": {"description": "test-agent"}}
+    stdin_payload = {"tool_name": "Agent", "tool_input": {"subagent_type": "test-agent"}}
     run_hook(env_vars, stdin_payload=stdin_payload, cwd=str(tmp_path))
     return (tmp_path / ".pairingbuddy" / "solo-status").read_text()
 
