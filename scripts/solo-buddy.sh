@@ -46,7 +46,7 @@ require_positive_integer() {
 require_positive_number() {
     local flag="$1"
     local value="$2"
-    if ! [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]] || [[ "$value" == "0" ]] || [[ "$value" == "0.0" ]]; then
+    if ! [[ "$value" =~ ^(0*[1-9][0-9]*([.][0-9]+)?|0+[.][0-9]*[1-9][0-9]*)$ ]]; then
         echo "Error: $flag requires a positive number, got: $value" >&2
         exit 1
     fi
@@ -162,7 +162,7 @@ export PAIRINGBUDDY_SOLO=true
 export PAIRINGBUDDY_SOLO_MAX_RETRIES="$MAX_RETRIES"
 
 render_status() {
-    local status_file="${STATUS_FILE:-.pairingbuddy/solo-status}"
+    local status_file="$STATUS_FILE"
     echo "----------------------------------------"
     if [[ -f "$status_file" ]]; then
         cat "$status_file"
@@ -183,9 +183,15 @@ start_renderer() {
     RENDERER_PID=$!
 }
 
+cleanup() {
+    kill "$RENDERER_PID" 2>/dev/null || true
+    while kill -0 "$RENDERER_PID" 2>/dev/null; do sleep 0.1; done
+}
+
 PROMPT="Use /pairingbuddy:code to execute the plan at: ${PLAN_FILE}"
 
 start_renderer
+trap cleanup EXIT SIGTERM SIGINT
 
 claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
 CLAUDE_EXIT=$?

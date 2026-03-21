@@ -36,9 +36,15 @@ def build_render_status_script(script: str, tmpdir: str) -> str:
     Uses awk to extract the function definition and eval to load it, then
     changes into tmpdir before invoking render_status.  The ``set +e`` guard
     keeps the subprocess from aborting when the script does not exist yet.
+
+    STATUS_FILE is set to the expected path inside tmpdir so that the function
+    works correctly when called in isolation (outside of the full script context
+    where STATUS_FILE is assigned at the top level).
     """
+    status_file_path = f"{tmpdir}/.pairingbuddy/solo-status"
     return f"""
 set +e
+STATUS_FILE={status_file_path!r}
 if grep -q 'render_status()' {script!r} 2>/dev/null; then
     eval "$(awk '/^render_status\\(\\)[ \\t]*\\{{/,/^\\}}/' {script!r})"
 fi
