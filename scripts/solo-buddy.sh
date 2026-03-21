@@ -19,6 +19,8 @@ set -euo pipefail
 
 MAX_RETRIES=5
 USE_API_KEY=false
+STATUS_FILE=".pairingbuddy/solo-status"
+RENDER_INTERVAL=5
 
 # Build claude invocation
 CLAUDE_ARGS=(-p --dangerously-skip-permissions --output-format json)
@@ -159,7 +161,31 @@ fi
 export PAIRINGBUDDY_SOLO=true
 export PAIRINGBUDDY_SOLO_MAX_RETRIES="$MAX_RETRIES"
 
+render_status() {
+    local status_file="${STATUS_FILE:-.pairingbuddy/solo-status}"
+    echo "----------------------------------------"
+    if [[ -f "$status_file" ]]; then
+        cat "$status_file"
+    else
+        echo "Waiting for first agent..."
+    fi
+}
+
+start_renderer() {
+    # Redirect to /dev/tty so the renderer writes directly to the terminal
+    # even when stdout is captured (e.g. during tests).
+    local tty_out="/dev/tty"
+    [[ -w "$tty_out" ]] || tty_out="/dev/null"
+    while true; do
+        render_status
+        sleep "$RENDER_INTERVAL"
+    done >"$tty_out" 2>"$tty_out" &
+    RENDERER_PID=$!
+}
+
 PROMPT="Use /pairingbuddy:code to execute the plan at: ${PLAN_FILE}"
+
+start_renderer
 
 claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
 CLAUDE_EXIT=$?

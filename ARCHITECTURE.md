@@ -954,6 +954,8 @@ Solo sessions run unattended, so real-time progress visibility is essential. A d
 
 **Terminal renderer:**
 - `solo-buddy.sh` starts a background process that polls `solo-status` and renders it in the terminal
+- Output is written to `/dev/tty` so it remains visible even when `claude -p` stdout is redirected
+- Polling interval and status file path are configured via `RENDER_INTERVAL` and `STATUS_FILE` constants
 - The renderer cleans up gracefully when the solo session ends (no orphan processes)
 
 **Design constraints:**
