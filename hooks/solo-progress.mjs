@@ -130,13 +130,13 @@ function formatTaskList(planTasks) {
   let foundCurrent = false;
   return planTasks.map((task) => {
     if (task.checked) {
-      return `${GREEN}✓ ${task.text}${RESET}`;
+      return `  ${GREEN}✓${RESET} ${task.text}`;
     }
     if (!foundCurrent) {
       foundCurrent = true;
-      return `${CYAN}→ ${task.text}${RESET}`;
+      return `  ${CYAN}→${RESET} ${BOLD_WHITE}${task.text}${RESET}`;
     }
-    return `${DARK_GRAY}○ ${task.text}${RESET}`;
+    return `  ${DIM}○ ${task.text}${RESET}`;
   }).join("\n");
 }
 
@@ -153,7 +153,7 @@ function formatStatus(counts, agentName, currentFile, taskDescription, planTasks
     const percentagePart = `${percentage > 0 ? BOLD : ""}${percentage}%${percentage > 0 ? RESET : ""}`;
     const taskListPart = (planTasks && planTasks.length > 0) ? formatTaskList(planTasks) + "\n\n" : "";
     const descriptionLine = taskDescription ? `\n${DIM}  ${taskDescription}${RESET}` : "";
-    return `${taskListPart}[${counts.completed}/${counts.total}] ${filledBar}${emptyBar} ${percentagePart}\n${DIM}Agent: ${agentName}${RESET}${descriptionLine}\n`;
+    return `${taskListPart}[${counts.completed}/${counts.total}] ${filledBar}${emptyBar} ${percentagePart}\nAgent: ${DIM}${agentName}${RESET}${descriptionLine}\n`;
   }
   const descriptionLine = taskDescription ? `\n  ${taskDescription}` : "";
   return `[?/?] Agent: ${CYAN}${agentName}${RESET}${descriptionLine}\n`;

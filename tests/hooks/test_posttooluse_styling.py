@@ -66,10 +66,12 @@ def stdin_payload():
 class TestTaskListColors:
     """Tests for task list color styling per spec."""
 
-    def test_completed_task_green(self, tmp_path, pairingbuddy_dir, base_env_vars, stdin_payload):
-        """Completed tasks show green (\x1b[32m) before ✓ symbol AND text.
+    def test_completed_task_green_symbol_only(
+        self, tmp_path, pairingbuddy_dir, base_env_vars, stdin_payload
+    ):
+        """Green applies to ✓ symbol only, task text is normal white.
 
-        The entire completed task line (symbol + text) should be wrapped in green.
+        Format: GREEN ✓ RESET text
         """
         plan_file = tmp_path / "plan.md"
         plan_file.write_text(_make_plan_markdown(checked=2, unchecked=1))
@@ -79,24 +81,21 @@ class TestTaskListColors:
 
         status = _solo_status_content(tmp_path)
 
-        # Verify green ANSI code (\x1b[32m) appears before the checkmark
-        assert re.search(r"\x1b\[32m.*✓", status), (
-            f"Expected green ANSI code (\\x1b[32m) before completed task ✓, got: {status!r}"
-        )
-        # Verify the task text "Completed task 1" appears in the status
-        assert "Completed task 1" in status, (
-            f"Expected 'Completed task 1' text in status, got: {status!r}"
-        )
-        # Verify both completed tasks are green (per-line match, no DOTALL)
-        green_count = len(re.findall(r"\x1b\[32m[^\n]*✓[^\n]*Completed task", status))
-        assert green_count >= 2, (
-            f"Expected at least 2 green completed tasks, found: {green_count} in {status!r}"
-        )
+        # Green wraps only ✓, then RESET appears before task text
+        completed_lines = [ln for ln in status.splitlines() if "Completed task" in ln]
+        assert len(completed_lines) >= 2, f"Expected 2 completed task lines, got: {status!r}"
+        for ln in completed_lines:
+            # Pattern: GREEN ✓ RESET <text>
+            assert re.search(r"\x1b\[32m[^C]*✓[^C]*\x1b\[0m", ln), (
+                f"Expected green ✓ then reset before text, got: {ln!r}"
+            )
 
-    def test_active_task_cyan(self, tmp_path, pairingbuddy_dir, base_env_vars, stdin_payload):
-        """Active (first incomplete) task is wrapped in cyan (\x1b[36m).
+    def test_active_task_cyan_symbol_bold_white_text(
+        self, tmp_path, pairingbuddy_dir, base_env_vars, stdin_payload
+    ):
+        """Cyan applies to → only, task text is bold white.
 
-        The entire active task line (spinner + text) should be wrapped in cyan.
+        Format: CYAN → RESET BOLD_WHITE text RESET
         """
         plan_file = tmp_path / "plan.md"
         plan_file.write_text(_make_plan_markdown(checked=1, unchecked=2))
@@ -106,10 +105,20 @@ class TestTaskListColors:
 
         status = _solo_status_content(tmp_path)
 
-        # Verify cyan ANSI code (\x1b[36m) appears on the active task line
-        # The active task is "Incomplete task 1" (first unchecked)
-        assert re.search(r"\x1b\[36m.*Incomplete task 1", status, re.DOTALL), (
-            f"Expected cyan ANSI code (\\x1b[36m) before active task, got: {status!r}"
+        # Find the active task line
+        active_line = next(
+            (ln for ln in status.splitlines() if "Incomplete task 1" in ln),
+            None,
+        )
+        assert active_line is not None, (
+            f"Expected active task line with 'Incomplete task 1', got: {status!r}"
+        )
+        # Cyan wraps only → then reset, then bold white wraps text
+        assert re.search(r"\x1b\[36m[^\x1b]*→[^\x1b]*\x1b\[0m", active_line), (
+            f"Expected cyan → then reset, got: {active_line!r}"
+        )
+        assert re.search(r"\x1b\[1;37m[^\x1b]*Incomplete task 1", active_line), (
+            f"Expected bold white before task text, got: {active_line!r}"
         )
 
     def test_pending_task_dim(self, tmp_path, pairingbuddy_dir, base_env_vars, stdin_payload):
@@ -134,11 +143,8 @@ class TestTaskListColors:
             f"Expected dim ANSI code before pending task 3, got: {status!r}"
         )
 
-    def test_active_task_arrow_cyan(self, tmp_path, pairingbuddy_dir, base_env_vars, stdin_payload):
-        """Active task → arrow is also cyan colored (part of the cyan line).
-
-        The → and task text should both be inside the cyan escape code.
-        """
+    def test_task_list_indented(self, tmp_path, pairingbuddy_dir, base_env_vars, stdin_payload):
+        """Each task line is indented with leading spaces before the symbol."""
         plan_file = tmp_path / "plan.md"
         plan_file.write_text(_make_plan_markdown(checked=1, unchecked=2))
         env_vars = {**base_env_vars, "PAIRINGBUDDY_PLAN_PATH": str(plan_file)}
@@ -147,11 +153,13 @@ class TestTaskListColors:
 
         status = _solo_status_content(tmp_path)
 
-        # The → should be present and wrapped in cyan
-        assert "→" in status, f"Expected → on active task, got: {status!r}"
-        assert re.search(r"\x1b\[36m[^\x1b]*→", status), (
-            f"Expected → inside cyan escape, got: {status!r}"
-        )
+        # Find task lines (contain ✓, →, or ○)
+        task_lines = [ln for ln in status.splitlines() if any(s in ln for s in ("✓", "→", "○"))]
+        assert len(task_lines) >= 3, f"Expected at least 3 task lines, got: {status!r}"
+        for ln in task_lines:
+            # Strip ANSI codes to check raw indentation
+            raw = re.sub(r"\x1b\[[0-9;]*m", "", ln)
+            assert raw.startswith("  "), f"Expected task line to start with 2 spaces, got: {raw!r}"
 
 
 # ============================================================================
@@ -249,10 +257,12 @@ class TestProgressBarColors:
 class TestAgentLineDim:
     """Tests for agent line dim formatting per spec."""
 
-    def test_agent_line_dim(self, tmp_path, pairingbuddy_dir, base_env_vars, stdin_payload):
-        """Agent: line is wrapped in dim (\x1b[2m).
+    def test_agent_name_dim_label_normal(
+        self, tmp_path, pairingbuddy_dir, base_env_vars, stdin_payload
+    ):
+        """'Agent:' label is normal white, agent name is dim.
 
-        The entire "Agent: name" line should be wrapped in dim ANSI code.
+        Format: Agent: DIM name RESET
         """
         plan_file = tmp_path / "plan.md"
         plan_file.write_text(_make_plan_markdown(checked=2, unchecked=2))
@@ -262,13 +272,15 @@ class TestAgentLineDim:
 
         status = _solo_status_content(tmp_path)
 
-        # Verify dim code (\x1b[2m) appears and wraps the Agent: line
-        # The Agent line should start with or contain the dim code
         lines = status.splitlines()
         agent_line = next((ln for ln in lines if "Agent:" in ln), None)
         assert agent_line is not None, f"Expected 'Agent:' line in: {status!r}"
 
-        # The agent line should be wrapped in dim formatting
-        assert re.search(r"\x1b\[2m.*Agent:", agent_line), (
-            f"Expected dim ANSI code (\\x1b[2m) before 'Agent:' line, got: {agent_line!r}"
+        # Dim should appear AFTER "Agent:" (wrapping the name, not the label)
+        assert re.search(r"Agent:.*\x1b\[2m", agent_line), (
+            f"Expected dim after 'Agent:' label, got: {agent_line!r}"
+        )
+        # "Agent:" itself should NOT be preceded by dim
+        assert not re.search(r"\x1b\[2m[^\x1b]*Agent:", agent_line), (
+            f"'Agent:' label should not be dim, got: {agent_line!r}"
         )

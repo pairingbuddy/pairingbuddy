@@ -311,11 +311,12 @@ class TestDescriptionIndentedNoLabel:
 
         status = _solo_status_content(tmp_path)
         lines = status.splitlines()
-        # No line should be indented with spaces (task symbols use different chars, not spaces)
-        indented_lines = [ln for ln in lines if ln.startswith("  ")]
-        assert not indented_lines, (
-            f"Expected no indented description lines when no description, got: {indented_lines!r}"
-        )
+        # Strip ANSI codes, then check for indented lines that aren't task symbols
+        task_symbols = ("✓", "→", "○")
+        for ln in lines:
+            raw = re.sub(r"\x1b\[[0-9;]*m", "", ln)
+            if raw.startswith("  ") and not any(s in raw for s in task_symbols):
+                raise AssertionError(f"Unexpected indented line (no description expected): {ln!r}")
 
     def test_description_indented_in_unknown_format(
         self, tmp_path, pairingbuddy_dir, base_env_vars, stdin_payload
