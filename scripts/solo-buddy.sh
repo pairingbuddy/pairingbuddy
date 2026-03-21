@@ -254,6 +254,7 @@ stop_caffeinate() {
 }
 
 cleanup() {
+    stop_caffeinate
     if [[ "$FINAL_RENDERED" == "true" ]]; then
         : # Final render already done; skip to avoid overwriting final status
     else
@@ -261,7 +262,6 @@ cleanup() {
     fi
     kill "$RENDERER_PID" 2>/dev/null || true
     while kill -0 "$RENDERER_PID" 2>/dev/null; do sleep 0.1; done
-    stop_caffeinate
 }
 
 clear_terminal() {
