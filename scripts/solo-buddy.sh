@@ -172,6 +172,7 @@ fi
 
 LAST_RENDER_LINES=0
 SPINNER_INDEX=0
+FINAL_RENDERED=""
 
 render_status() {
     # Braille spinner character set: ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏
@@ -253,7 +254,11 @@ stop_caffeinate() {
 }
 
 cleanup() {
-    render_status
+    if [[ "$FINAL_RENDERED" == "true" ]]; then
+        : # Final render already done; skip to avoid overwriting final status
+    else
+        render_status
+    fi
     kill "$RENDERER_PID" 2>/dev/null || true
     while kill -0 "$RENDERER_PID" 2>/dev/null; do sleep 0.1; done
     stop_caffeinate
@@ -319,6 +324,17 @@ write_final_status() {
     local task_lines=()
     local first_incomplete=true
 
+    # ANSI color codes gated by FORCE_COLOR
+    local green="" cyan="" dim="" bold="" bold_white="" reset=""
+    if [[ "${FORCE_COLOR:-}" == "1" ]]; then
+        green=$'\033[32m'
+        cyan=$'\033[36m'
+        dim=$'\033[2m'
+        bold=$'\033[1m'
+        bold_white=$'\033[1;37m'
+        reset=$'\033[0m'
+    fi
+
     if [[ -f "$PLAN_FILE" ]]; then
         while IFS= read -r line || [[ -n "$line" ]]; do
             if [[ "$line" =~ ^\-\ \[x\]\ (.*)$ ]]; then
@@ -327,7 +343,7 @@ write_final_status() {
                 task_text="${task_text//\*\*/}"
                 task_text="${task_text//\*/}"
                 task_text="${task_text//\`/}"
-                task_lines+=("✓ ${task_text}")
+                task_lines+=("  ${green}✓${reset} ${task_text}")
                 completed=$(( completed + 1 ))
                 total=$(( total + 1 ))
             elif [[ "$line" =~ ^\-\ \[\ \]\ (.*)$ ]]; then
@@ -336,10 +352,10 @@ write_final_status() {
                 task_text="${task_text//\*/}"
                 task_text="${task_text//\`/}"
                 if [[ "$first_incomplete" == "true" ]]; then
-                    task_lines+=("→ ${task_text}")
+                    task_lines+=("  ${cyan}→${reset} ${bold_white}${task_text}${reset}")
                     first_incomplete=false
                 else
-                    task_lines+=("○ ${task_text}")
+                    task_lines+=("  ${dim}○ ${task_text}${reset}")
                 fi
                 total=$(( total + 1 ))
             fi
@@ -356,17 +372,25 @@ write_final_status() {
     fi
     local empty=$(( bar_width - filled ))
 
-    local bar=""
+    local filled_str="" empty_str=""
     local i=0
     while [[ $i -lt $filled ]]; do
-        bar="${bar}█"
+        filled_str="${filled_str}█"
         i=$(( i + 1 ))
     done
     i=0
     while [[ $i -lt $empty ]]; do
-        bar="${bar}░"
+        empty_str="${empty_str}░"
         i=$(( i + 1 ))
     done
+    local bar="${cyan}${filled_str}${reset}${dim}${empty_str}${reset}"
+
+    local pct_str
+    if [[ "$percent" -gt 0 ]]; then
+        pct_str="${bold}${percent}%${reset}"
+    else
+        pct_str="${percent}%"
+    fi
 
     # Footer message
     local footer
@@ -377,11 +401,9 @@ write_final_status() {
     fi
 
     # Build header (matching print_header format, with FORCE_COLOR-gated ANSI)
-    local yellow="" dim="" reset=""
+    local yellow=""
     if [[ "${FORCE_COLOR:-}" == "1" ]]; then
         yellow=$'\033[33m'
-        dim=$'\033[2m'
-        reset=$'\033[0m'
     fi
 
     # Write to STATUS_FILE
@@ -397,7 +419,7 @@ write_final_status() {
             done
             printf '\n'
         fi
-        printf '[%d/%d] %s %d%%\n' "$completed" "$total" "$bar" "$percent"
+        printf '[%d/%d] %s %s\n' "$completed" "$total" "$bar" "$pct_str"
         printf '%s\n' "$footer"
     } > "$STATUS_FILE"
 }
@@ -414,7 +436,13 @@ trap cleanup EXIT SIGTERM SIGINT
 claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
 CLAUDE_EXIT=$?
 
+# Stop the renderer before writing final status
+kill "$RENDERER_PID" 2>/dev/null || true
+while kill -0 "$RENDERER_PID" 2>/dev/null; do sleep 0.1; done
+
 write_final_status
+render_status
+FINAL_RENDERED=true
 
 PR_URL=""
 PR_ERROR=""
