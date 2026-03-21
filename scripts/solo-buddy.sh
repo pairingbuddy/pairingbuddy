@@ -163,6 +163,13 @@ export PAIRINGBUDDY_SOLO_MAX_RETRIES="$MAX_RETRIES"
 export PAIRINGBUDDY_PLAN_PATH="$PLAN_FILE"
 export FORCE_COLOR=1
 
+BRANCH=$(git branch --show-current)
+
+if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
+    echo "Error: refusing to run Solo Buddy on $BRANCH — switch to a feature branch" >&2
+    exit 1
+fi
+
 LAST_RENDER_LINES=0
 SPINNER_INDEX=0
 
@@ -327,8 +334,6 @@ write_final_status() {
 }
 
 PROMPT="Use /pairingbuddy:code to execute the plan at: ${PLAN_FILE}"
-
-BRANCH=$(git branch --show-current)
 
 mkdir -p .pairingbuddy
 clear_terminal
