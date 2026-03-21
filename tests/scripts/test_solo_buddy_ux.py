@@ -2,8 +2,7 @@
 
 Scenarios covered:
 - final-status-on-completion: cleanup() calls render_status before kill to display final status
-- json-output-redirected-to-file: claude stdout is redirected to .pairingbuddy/solo-session.json
-- plan-task-shown-in-status (shell parts): render_status spinner and character handling
+- render-status-spinner: braille spinner and TTY-aware rendering
 """
 
 import os
@@ -156,108 +155,6 @@ def script_content_from_path(path: str) -> str:
     """Read and return the content of the script at *path*."""
     with open(path) as f:
         return f.read()
-
-
-class TestJsonOutputRedirectedToFile:
-    """Tests for claude stdout redirection to .pairingbuddy/solo-session.json (scenario 2)."""
-
-    def test_claude_stdout_redirected_to_file(self, script_content):
-        """claude invocation redirects stdout to .pairingbuddy/solo-session.json (structural)."""
-        # Find the line(s) that invoke the claude command (not inside a function)
-        lines = script_content.splitlines()
-        in_function = False
-        claude_lines = []
-        for line in lines:
-            stripped = line.strip()
-            if re.match(r"^\w.*\(\)\s*\{", stripped):
-                in_function = True
-                continue
-            if in_function and stripped == "}":
-                in_function = False
-                continue
-            if not in_function and re.search(r"\bclaude\b", line):
-                claude_lines.append(line)
-
-        assert claude_lines, "solo-buddy.sh must invoke claude in the main script body"
-
-        # At least one claude invocation line must redirect stdout to solo-session.json
-        redirected = any(
-            re.search(r">\s*.pairingbuddy/solo-session\.json", line) for line in claude_lines
-        )
-        assert redirected, (
-            "claude invocation must redirect stdout to .pairingbuddy/solo-session.json; "
-            f"found claude lines: {claude_lines!r}"
-        )
-
-    def test_exit_code_captured_after_redirect(self, script_content):
-        """CLAUDE_EXIT=$? still works after stdout redirect (structural)."""
-        # Find the region around the claude invocation (main body, not in functions)
-        lines = script_content.splitlines()
-        in_function = False
-        main_lines = []
-        for line in lines:
-            stripped = line.strip()
-            if re.match(r"^\w.*\(\)\s*\{", stripped):
-                in_function = True
-                continue
-            if in_function and stripped == "}":
-                in_function = False
-                continue
-            if not in_function:
-                main_lines.append(line)
-
-        main_body = "\n".join(main_lines)
-
-        # CLAUDE_EXIT=$? must be present after a redirected claude invocation
-        assert re.search(r"CLAUDE_EXIT=\$\?", main_body), (
-            "script must capture CLAUDE_EXIT=$? after the claude invocation"
-        )
-
-        # Verify the claude invocation with redirect comes before CLAUDE_EXIT capture
-        claude_redirect_pos = -1
-        exit_capture_pos = -1
-        for i, line in enumerate(main_lines):
-            if re.search(r"\bclaude\b", line) and re.search(
-                r">\s*.pairingbuddy/solo-session\.json", line
-            ):
-                claude_redirect_pos = i
-            if re.search(r"CLAUDE_EXIT=\$\?", line):
-                exit_capture_pos = i
-
-        assert claude_redirect_pos != -1, "claude invocation with stdout redirect must be present"
-        assert exit_capture_pos != -1, "CLAUDE_EXIT=$? capture must be present"
-        assert claude_redirect_pos < exit_capture_pos, (
-            "CLAUDE_EXIT=$? must follow the redirected claude invocation"
-        )
-
-    def test_json_file_path_uses_pairingbuddy_dir(self, script_content):
-        """redirect target is .pairingbuddy/solo-session.json not other paths (structural)."""
-        # Extract main body (outside functions)
-        lines = script_content.splitlines()
-        in_function = False
-        main_lines = []
-        for line in lines:
-            stripped = line.strip()
-            if re.match(r"^\w.*\(\)\s*\{", stripped):
-                in_function = True
-                continue
-            if in_function and stripped == "}":
-                in_function = False
-                continue
-            if not in_function:
-                main_lines.append(line)
-
-        main_body = "\n".join(main_lines)
-
-        # The redirect must use exactly .pairingbuddy/solo-session.json
-        assert re.search(r">\s*\.pairingbuddy/solo-session\.json", main_body), (
-            "stdout redirect must target .pairingbuddy/solo-session.json specifically"
-        )
-
-        # Must NOT redirect to a temp file or other path
-        assert not re.search(r">\s*/tmp/", main_body), (
-            "stdout redirect must not use /tmp; use .pairingbuddy/solo-session.json"
-        )
 
 
 class TestRenderStatusSpinner:

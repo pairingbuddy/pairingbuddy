@@ -237,7 +237,7 @@ mkdir -p .pairingbuddy
 start_renderer
 trap cleanup EXIT SIGTERM SIGINT
 
-claude "${CLAUDE_ARGS[@]}" -- "$PROMPT" > .pairingbuddy/solo-session.json
+claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
 CLAUDE_EXIT=$?
 
 if [[ $CLAUDE_EXIT -eq 0 ]]; then
