@@ -183,7 +183,7 @@ render_status() {
     if [[ -f "$status_file" ]]; then
         content=$(cat "$status_file")
     else
-        content="Initializing autonomous execution..."
+        content="→ Initializing autonomous execution..."
     fi
 
     # Advance spinner using a file to persist state across subshell calls
@@ -195,13 +195,13 @@ render_status() {
         idx=$(cat "$spinner_index_file" 2>/dev/null || echo 0)
     fi
     local spinner_char="${spinner_chars[$idx]}"
+    content="${content//→/$spinner_char}"
     local next_idx=$(( (idx + 1) % spinner_count ))
     printf '%d' "$next_idx" > "$spinner_index_file"
 
-    # Count lines in new content (spinner line + content lines)
+    # Count lines in new content
     local new_lines
     new_lines=$(printf '%s\n' "$content" | wc -l | tr -d ' ')
-    new_lines=$(( new_lines + 1 ))
 
     # Move cursor up and erase previous output using ANSI escape codes (TTY only)
     if [[ "$LAST_RENDER_LINES" -gt 0 ]] && [[ -t 1 ]]; then
@@ -212,8 +212,7 @@ render_status() {
         done
     fi
 
-    # Print spinner and status content
-    printf '%s\n' "$spinner_char"
+    # Print status content with embedded spinner
     printf '%s\n' "$content"
 
     LAST_RENDER_LINES=$new_lines

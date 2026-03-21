@@ -178,6 +178,11 @@ class TestRenderStatusSpinner:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Call render_status twice and capture the output of each call
             # The spinner character should differ between calls
+            status_dir = os.path.join(tmpdir, ".pairingbuddy")
+            os.makedirs(status_dir)
+            status_file = os.path.join(status_dir, "solo-status")
+            with open(status_file, "w") as f:
+                f.write("→ some task")
             status_file_path = f"{tmpdir}/.pairingbuddy/solo-status"
             bash_code = f"""
 set +e
