@@ -160,15 +160,36 @@ fi
 
 export PAIRINGBUDDY_SOLO=true
 export PAIRINGBUDDY_SOLO_MAX_RETRIES="$MAX_RETRIES"
+export PAIRINGBUDDY_PLAN_PATH="$PLAN_FILE"
+
+LAST_RENDER_LINES=0
 
 render_status() {
     local status_file="$STATUS_FILE"
-    echo "----------------------------------------"
+    local content
     if [[ -f "$status_file" ]]; then
-        cat "$status_file"
+        content=$(cat "$status_file")
     else
-        echo "Waiting for first agent..."
+        content="Waiting for first agent..."
     fi
+
+    # Count lines in new content
+    local new_lines
+    new_lines=$(printf '%s\n' "$content" | wc -l | tr -d ' ')
+
+    # Move cursor up and erase previous output using ANSI escape codes
+    if [[ "$LAST_RENDER_LINES" -gt 0 ]]; then
+        local n=0
+        while [[ $n -lt $LAST_RENDER_LINES ]]; do
+            printf "\033[1A\033[2K"
+            n=$(( n + 1 ))
+        done
+    fi
+
+    # Print status content
+    printf '%s\n' "$content"
+
+    LAST_RENDER_LINES=$new_lines
 }
 
 start_renderer() {

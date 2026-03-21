@@ -164,3 +164,64 @@ class TestRendererIntegration:
         assert re.search(r"\bsleep\b", function_body), (
             "start_renderer must include a sleep call for the render loop interval"
         )
+
+
+class TestRenderStatusAnsiUpdate:
+    """Tests for ANSI escape code updates in render_status."""
+
+    def test_render_status_uses_ansi_cursor_up(self, script_content):
+        """render_status function body contains ANSI cursor-up escape sequence."""
+        function_body = extract_shell_function(script_content, "render_status")
+        assert function_body, "render_status function must exist in the script"
+        # ANSI cursor-up: ESC[<n>A — matches \\033[...A or \\e[...A or literal ESC
+        assert re.search(r"(\\033|\\e|\x1b)\[[\d;]*A", function_body), (
+            "render_status must use ANSI cursor-up escape sequence (e.g. \\033[<n>A)"
+        )
+
+    def test_render_status_uses_ansi_clear_line(self, script_content):
+        """render_status function body contains ANSI clear-line escape sequence."""
+        function_body = extract_shell_function(script_content, "render_status")
+        assert function_body, "render_status function must exist in the script"
+        # ANSI erase line: ESC[2K or ESC[K
+        assert re.search(r"(\\033|\\e|\x1b)\[[\d;]*K", function_body), (
+            "render_status must use ANSI clear-line escape sequence (e.g. \\033[2K)"
+        )
+
+    def test_render_status_no_separator_line(self, script_content):
+        """render_status does NOT print the old separator '---...' line."""
+        function_body = extract_shell_function(script_content, "render_status")
+        assert function_body, "render_status function must exist in the script"
+        assert not re.search(r"echo\s+['\"][-]{3,}", function_body), (
+            "render_status must not print separator lines like '---...'"
+        )
+
+    def test_render_status_still_displays_file_contents(self, script_path):
+        """Still outputs status file contents when file exists (behavioral test)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            status_dir = os.path.join(tmpdir, ".pairingbuddy")
+            os.makedirs(status_dir)
+            status_file = os.path.join(status_dir, "solo-status")
+            expected_content = "Agent 3/5: implement-tests\nStatus: Running"
+            with open(status_file, "w") as f:
+                f.write(expected_content)
+
+            bash_code = build_render_status_script(script_path, tmpdir)
+            result = subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            assert expected_content in result.stdout
+
+    def test_render_status_still_shows_waiting_when_no_file(self, script_path):
+        """Still outputs waiting message when no file (behavioral test)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bash_code = build_render_status_script(script_path, tmpdir)
+            result = subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            assert "waiting" in result.stdout.lower()
