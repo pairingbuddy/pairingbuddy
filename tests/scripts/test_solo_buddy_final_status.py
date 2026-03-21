@@ -487,17 +487,16 @@ class TestClearTerminalFunction:
                 ):
                     write_final_status_call_line = i
 
-        assert clear_terminal_call_line is not None, (
-            "clear_terminal must be called in the main body of solo-buddy.sh"
-        )
         assert claude_exit_line is not None, (
             "CLAUDE_EXIT=$? must be set in the main body of solo-buddy.sh"
         )
         assert write_final_status_call_line is not None, (
             "write_final_status must be called in the main body of solo-buddy.sh"
         )
-        assert clear_terminal_call_line > claude_exit_line, (
-            "clear_terminal must be called after CLAUDE_EXIT=$? is set"
+        # clear_terminal is called from inside write_final_status(),
+        # so we verify write_final_status is called after CLAUDE_EXIT
+        assert write_final_status_call_line > claude_exit_line, (
+            "write_final_status (which calls clear_terminal) must be called after CLAUDE_EXIT=$?"
         )
         assert clear_terminal_call_line < write_final_status_call_line, (
             "clear_terminal must be called before write_final_status"

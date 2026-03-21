@@ -240,7 +240,17 @@ clear_terminal() {
     return 0
 }
 
+print_header() {
+    local header
+    header="$(printf 'Pairing Buddy \xe2\x80\x94 Solo Mode\nPlan: %s\nBranch: %s\n' "$PLAN_FILE" "$BRANCH")"
+    if (printf '%s\n' "$header" > /dev/tty) 2>/dev/null; then
+        return 0
+    fi
+    printf '%s\n' "$header"
+}
+
 write_final_status() {
+    clear_terminal
     local completed=0
     local total=0
     local task_lines=()
@@ -318,15 +328,17 @@ write_final_status() {
 
 PROMPT="Use /pairingbuddy:code to execute the plan at: ${PLAN_FILE}"
 
-mkdir -p .pairingbuddy
+BRANCH=$(git branch --show-current)
 
+mkdir -p .pairingbuddy
+clear_terminal
+print_header
 start_renderer
 trap cleanup EXIT SIGTERM SIGINT
 
 claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
 CLAUDE_EXIT=$?
 
-clear_terminal
 write_final_status
 
 if [[ $CLAUDE_EXIT -eq 0 ]]; then
