@@ -230,6 +230,23 @@ cleanup() {
     while kill -0 "$RENDERER_PID" 2>/dev/null; do sleep 0.1; done
 }
 
+write_final_status() {
+    local completed=0
+    local incomplete=0
+    if [[ -f "$PLAN_FILE" ]]; then
+        completed=$(grep -c '^\- \[x\]' "$PLAN_FILE" 2>/dev/null) || completed=0
+        incomplete=$(grep -c '^\- \[ \]' "$PLAN_FILE" 2>/dev/null) || incomplete=0
+    fi
+    local total=$(( completed + incomplete ))
+    local message
+    if [[ "$CLAUDE_EXIT" -eq 0 ]]; then
+        message="Session complete: ${completed}/${total} tasks completed"
+    else
+        message="Session interrupted: ${completed}/${total} tasks completed"
+    fi
+    printf '%s\n' "$message" > "$STATUS_FILE"
+}
+
 PROMPT="Use /pairingbuddy:code to execute the plan at: ${PLAN_FILE}"
 
 mkdir -p .pairingbuddy
@@ -239,6 +256,8 @@ trap cleanup EXIT SIGTERM SIGINT
 
 claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
 CLAUDE_EXIT=$?
+
+write_final_status
 
 if [[ $CLAUDE_EXIT -eq 0 ]]; then
     BRANCH=$(git branch --show-current)
