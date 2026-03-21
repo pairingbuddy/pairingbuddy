@@ -434,3 +434,281 @@ class TestEdgeCases:
             assert re.search(r"0\s*/\s*0", content), (
                 "Status file must contain '0/0' for an empty plan file"
             )
+
+
+class TestClearTerminalFunction:
+    """Tests for clear_terminal() function (scenario 2)."""
+
+    def test_clear_terminal_function_defined(self, script_content):
+        """clear_terminal() function exists in script."""
+        assert "clear_terminal()" in script_content, (
+            "clear_terminal function must be defined in solo-buddy.sh"
+        )
+
+    def test_clear_terminal_uses_ansi_and_dev_tty(self, script_content):
+        """clear_terminal uses ANSI clear-screen and references /dev/tty."""
+        function_body = extract_shell_function(script_content, "clear_terminal")
+        assert function_body, "clear_terminal() function must be defined in the script"
+        assert r"\033[2J" in function_body or "\033[2J" in function_body, (
+            "clear_terminal must use ANSI escape \\033[2J to clear the screen"
+        )
+        assert r"\033[H" in function_body or "\033[H" in function_body, (
+            "clear_terminal must use ANSI escape \\033[H to move cursor to home position"
+        )
+        assert "/dev/tty" in function_body, (
+            "clear_terminal must reference /dev/tty to write directly to the terminal"
+        )
+
+    def test_clear_terminal_called_after_claude_exit(self, script_content):
+        """clear_terminal is called after CLAUDE_EXIT=$?, before write_final_status."""
+        lines = script_content.splitlines()
+
+        in_function = False
+        claude_exit_line = None
+        clear_terminal_call_line = None
+        write_final_status_call_line = None
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if re.match(r"^\w+\(\)\s*\{", stripped):
+                in_function = True
+                continue
+            if in_function and stripped == "}":
+                in_function = False
+                continue
+            if not in_function:
+                if re.search(r"CLAUDE_EXIT=\$\?", line):
+                    claude_exit_line = i
+                if re.search(r"\bclear_terminal\b", line) and "clear_terminal()" not in line:
+                    clear_terminal_call_line = i
+                if (
+                    re.search(r"\bwrite_final_status\b", line)
+                    and "write_final_status()" not in line
+                ):
+                    write_final_status_call_line = i
+
+        assert clear_terminal_call_line is not None, (
+            "clear_terminal must be called in the main body of solo-buddy.sh"
+        )
+        assert claude_exit_line is not None, (
+            "CLAUDE_EXIT=$? must be set in the main body of solo-buddy.sh"
+        )
+        assert write_final_status_call_line is not None, (
+            "write_final_status must be called in the main body of solo-buddy.sh"
+        )
+        assert clear_terminal_call_line > claude_exit_line, (
+            "clear_terminal must be called after CLAUDE_EXIT=$? is set"
+        )
+        assert clear_terminal_call_line < write_final_status_call_line, (
+            "clear_terminal must be called before write_final_status"
+        )
+
+    def test_clear_terminal_graceful_when_no_tty(self, script_path):
+        """clear_terminal exits gracefully when /dev/tty is unavailable."""
+        bash_code = f"""
+set +e
+if grep -q 'clear_terminal()' {script_path!r} 2>/dev/null; then
+    eval "$(awk '/^clear_terminal\\(\\)[ \\t]*\\{{/,/^\\}}/' {script_path!r})"
+fi
+# Simulate unavailable /dev/tty by redirecting it to /dev/null via env override
+# The function should complete without error even without a real tty
+clear_terminal 2>/dev/null
+echo "EXIT:$?"
+"""
+        result = subprocess.run(
+            ["bash", "-c", bash_code],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert "EXIT:0" in result.stdout, (
+            "clear_terminal must exit with code 0 even when /dev/tty is not a real TTY; "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+
+
+class TestWriteFinalStatusFormattedOutput:
+    """Tests for formatted output in write_final_status (scenario 3)."""
+
+    def test_task_list_with_symbols(self, script_path):
+        """Status output uses ✓ for completed and ○ for incomplete tasks."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("- [x] Task 1\n- [ ] Task 2\n- [ ] Task 3\n")
+
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"), exist_ok=True)
+            bash_code = build_write_final_status_script(script_path, tmpdir, plan_file)
+            subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            status_file = os.path.join(tmpdir, ".pairingbuddy", "solo-status")
+            assert os.path.exists(status_file), "write_final_status must create the status file"
+            content = Path(status_file).read_text()
+            assert "✓" in content, "Status file must use ✓ to mark completed tasks"
+            assert "○" in content, "Status file must use ○ to mark remaining incomplete tasks"
+
+    def test_current_task_arrow(self, script_path):
+        """First incomplete task marked with → in status output."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("- [x] Task 1\n- [ ] Task 2\n- [ ] Task 3\n")
+
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"), exist_ok=True)
+            bash_code = build_write_final_status_script(script_path, tmpdir, plan_file)
+            subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            status_file = os.path.join(tmpdir, ".pairingbuddy", "solo-status")
+            assert os.path.exists(status_file), "write_final_status must create the status file"
+            content = Path(status_file).read_text()
+            assert "→" in content, (
+                "Status file must use → to mark the first incomplete (current) task"
+            )
+
+    def test_progress_bar_present(self, script_path):
+        """Status output contains progress bar with block characters (█ and ░)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("- [x] Task 1\n- [ ] Task 2\n")
+
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"), exist_ok=True)
+            bash_code = build_write_final_status_script(script_path, tmpdir, plan_file)
+            subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            status_file = os.path.join(tmpdir, ".pairingbuddy", "solo-status")
+            assert os.path.exists(status_file), "write_final_status must create the status file"
+            content = Path(status_file).read_text()
+            assert "\u2588" in content, (
+                "Status file must contain █ (U+2588) for progress bar filled portion"
+            )
+            assert "\u2591" in content, (
+                "Status file must contain ░ (U+2591) for progress bar empty portion"
+            )
+
+    def test_session_complete_message(self, script_path):
+        """Footer says 'Session complete' and shows formatted task list on exit code 0."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("- [x] Task 1\n- [x] Task 2\n")
+
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"), exist_ok=True)
+            status_file_path = os.path.join(tmpdir, ".pairingbuddy", "solo-status")
+            bash_code = f"""
+set +e
+STATUS_FILE={status_file_path!r}
+PLAN_FILE={plan_file!r}
+CLAUDE_EXIT=0
+if grep -q 'write_final_status()' {script_path!r} 2>/dev/null; then
+    eval "$(awk '/^write_final_status\\(\\)[ \\t]*\\{{/,/^\\}}/' {script_path!r})"
+fi
+write_final_status
+"""
+            subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            assert os.path.exists(status_file_path), (
+                "write_final_status must create the status file"
+            )
+            content = Path(status_file_path).read_text()
+            assert "Session complete" in content, (
+                "Status file must contain 'Session complete' when CLAUDE_EXIT=0"
+            )
+            # The formatted output must include task symbols (✓ for completed tasks)
+            assert "✓" in content, "Formatted status must include ✓ symbols for completed tasks"
+
+    def test_session_interrupted_message(self, script_path):
+        """Footer says 'Session interrupted' and shows formatted task list on non-zero exit."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("- [x] Task 1\n- [ ] Task 2\n")
+
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"), exist_ok=True)
+            status_file_path = os.path.join(tmpdir, ".pairingbuddy", "solo-status")
+            bash_code = f"""
+set +e
+STATUS_FILE={status_file_path!r}
+PLAN_FILE={plan_file!r}
+CLAUDE_EXIT=1
+if grep -q 'write_final_status()' {script_path!r} 2>/dev/null; then
+    eval "$(awk '/^write_final_status\\(\\)[ \\t]*\\{{/,/^\\}}/' {script_path!r})"
+fi
+write_final_status
+"""
+            subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            assert os.path.exists(status_file_path), (
+                "write_final_status must create the status file"
+            )
+            content = Path(status_file_path).read_text()
+            assert "Session interrupted" in content, (
+                "Status file must contain 'Session interrupted' when CLAUDE_EXIT is non-zero"
+            )
+            assert "→" in content, "Formatted status must include → for current task"
+
+    def test_progress_bar_full_when_all_complete(self, script_path):
+        """Progress bar shows 100% (all █) when all tasks checked."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("- [x] Task 1\n- [x] Task 2\n- [x] Task 3\n")
+
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"), exist_ok=True)
+            bash_code = build_write_final_status_script(script_path, tmpdir, plan_file)
+            subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            status_file = os.path.join(tmpdir, ".pairingbuddy", "solo-status")
+            assert os.path.exists(status_file), "write_final_status must create the status file"
+            content = Path(status_file).read_text()
+            assert "\u2588" in content, "Status file must contain █ in the progress bar"
+            assert "\u2591" not in content, (
+                "Progress bar must show all █ (no ░) when all tasks are complete"
+            )
+
+    def test_progress_bar_partial(self, script_path):
+        """Progress bar shows partial completion (e.g., 50% for 2/4 tasks)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("- [x] Task 1\n- [x] Task 2\n- [ ] Task 3\n- [ ] Task 4\n")
+
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"), exist_ok=True)
+            bash_code = build_write_final_status_script(script_path, tmpdir, plan_file)
+            subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+
+            status_file = os.path.join(tmpdir, ".pairingbuddy", "solo-status")
+            assert os.path.exists(status_file), "write_final_status must create the status file"
+            content = Path(status_file).read_text()
+            assert "\u2588" in content, (
+                "Status file must contain █ for the completed portion of the progress bar"
+            )
+            assert "\u2591" in content, "Status must contain ░ for incomplete bar portion"

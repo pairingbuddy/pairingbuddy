@@ -23,7 +23,7 @@ STATUS_FILE=".pairingbuddy/solo-status"
 RENDER_INTERVAL=0.08
 
 # Build claude invocation
-CLAUDE_ARGS=(-p --dangerously-skip-permissions --output-format json)
+CLAUDE_ARGS=(-p --dangerously-skip-permissions --output-format text)
 
 require_arg() {
     local flag="$1"
@@ -215,12 +215,15 @@ render_status() {
 start_renderer() {
     # Redirect to /dev/tty so the renderer writes directly to the terminal
     # even when stdout is captured (e.g. during tests).
-    local tty_out="/dev/tty"
-    [[ -w "$tty_out" ]] || tty_out="/dev/null"
+    # Test with actual write — [-w] can pass even when device is not configured.
+    local tty_out="/dev/null"
+    if (printf '' > /dev/tty) 2>/dev/null; then
+        tty_out="/dev/tty"
+    fi
     while true; do
         render_status
         sleep "$RENDER_INTERVAL"
-    done >"$tty_out" 2>"$tty_out" &
+    done >"$tty_out" 2>/dev/null &
     RENDERER_PID=$!
 }
 
@@ -230,21 +233,87 @@ cleanup() {
     while kill -0 "$RENDERER_PID" 2>/dev/null; do sleep 0.1; done
 }
 
+clear_terminal() {
+    if (printf '' > /dev/tty) 2>/dev/null; then
+        printf '\033[2J\033[H' > /dev/tty 2>/dev/null || true
+    fi
+    return 0
+}
+
 write_final_status() {
     local completed=0
-    local incomplete=0
+    local total=0
+    local task_lines=()
+    local first_incomplete=true
+
     if [[ -f "$PLAN_FILE" ]]; then
-        completed=$(grep -c '^\- \[x\]' "$PLAN_FILE" 2>/dev/null) || completed=0
-        incomplete=$(grep -c '^\- \[ \]' "$PLAN_FILE" 2>/dev/null) || incomplete=0
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ "$line" =~ ^\-\ \[x\]\ (.*)$ ]]; then
+                local task_text="${BASH_REMATCH[1]}"
+                # Strip markdown: **, *, `
+                task_text="${task_text//\*\*/}"
+                task_text="${task_text//\*/}"
+                task_text="${task_text//\`/}"
+                task_lines+=("✓ ${task_text}")
+                completed=$(( completed + 1 ))
+                total=$(( total + 1 ))
+            elif [[ "$line" =~ ^\-\ \[\ \]\ (.*)$ ]]; then
+                local task_text="${BASH_REMATCH[1]}"
+                task_text="${task_text//\*\*/}"
+                task_text="${task_text//\*/}"
+                task_text="${task_text//\`/}"
+                if [[ "$first_incomplete" == "true" ]]; then
+                    task_lines+=("→ ${task_text}")
+                    first_incomplete=false
+                else
+                    task_lines+=("○ ${task_text}")
+                fi
+                total=$(( total + 1 ))
+            fi
+        done < "$PLAN_FILE"
     fi
-    local total=$(( completed + incomplete ))
-    local message
+
+    # Build progress bar
+    local bar_width=30
+    local filled=0
+    local percent=0
+    if [[ "$total" -gt 0 ]]; then
+        filled=$(( completed * bar_width / total ))
+        percent=$(( completed * 100 / total ))
+    fi
+    local empty=$(( bar_width - filled ))
+
+    local bar=""
+    local i=0
+    while [[ $i -lt $filled ]]; do
+        bar="${bar}█"
+        i=$(( i + 1 ))
+    done
+    i=0
+    while [[ $i -lt $empty ]]; do
+        bar="${bar}░"
+        i=$(( i + 1 ))
+    done
+
+    # Footer message
+    local footer
     if [[ "$CLAUDE_EXIT" -eq 0 ]]; then
-        message="Session complete: ${completed}/${total} tasks completed"
+        footer="Session complete"
     else
-        message="Session interrupted: ${completed}/${total} tasks completed"
+        footer="Session interrupted"
     fi
-    printf '%s\n' "$message" > "$STATUS_FILE"
+
+    # Write to STATUS_FILE
+    {
+        if [[ ${#task_lines[@]} -gt 0 ]]; then
+            for tl in "${task_lines[@]}"; do
+                printf '%s\n' "$tl"
+            done
+            printf '\n'
+        fi
+        printf '[%d/%d] %s %d%%\n' "$completed" "$total" "$bar" "$percent"
+        printf '%s\n' "$footer"
+    } > "$STATUS_FILE"
 }
 
 PROMPT="Use /pairingbuddy:code to execute the plan at: ${PLAN_FILE}"
@@ -257,6 +326,7 @@ trap cleanup EXIT SIGTERM SIGINT
 claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
 CLAUDE_EXIT=$?
 
+clear_terminal
 write_final_status
 
 if [[ $CLAUDE_EXIT -eq 0 ]]; then

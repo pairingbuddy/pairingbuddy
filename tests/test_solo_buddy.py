@@ -132,14 +132,14 @@ def test_invokes_with_dangerously_skip_permissions(plan_file, fake_claude):
     assert "--dangerously-skip-permissions" in args
 
 
-def test_invokes_with_json_output_format(plan_file, fake_claude):
-    """the script passes --output-format json"""
+def test_invokes_with_text_output_format(plan_file, fake_claude):
+    """the script passes --output-format text"""
     _run_script([str(plan_file)], fake_claude=fake_claude)
 
     args = fake_claude["args_file"].read_text().splitlines()
     assert "--output-format" in args
     output_format_index = args.index("--output-format")
-    assert args[output_format_index + 1] == "json"
+    assert args[output_format_index + 1] == "text"
 
 
 def test_prompt_includes_plan_path(plan_file, fake_claude):
