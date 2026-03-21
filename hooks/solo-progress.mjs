@@ -122,19 +122,21 @@ const GREEN = useColor ? "\x1b[32m" : "";
 const DARK_GRAY = useColor ? "\x1b[90m" : "";
 const CYAN = useColor ? "\x1b[36m" : "";
 const BOLD_WHITE = useColor ? "\x1b[1;37m" : "";
+const BOLD = useColor ? "\x1b[1m" : "";
 const RESET = useColor ? "\x1b[0m" : "";
+const DIM = useColor ? "\x1b[2m" : "";
 
 function formatTaskList(planTasks) {
   let foundCurrent = false;
   return planTasks.map((task) => {
     if (task.checked) {
-      return `✓ ${task.text}`;
+      return `${GREEN}✓ ${task.text}${RESET}`;
     }
     if (!foundCurrent) {
       foundCurrent = true;
-      return `→ ${BOLD_WHITE}${task.text}${RESET}`;
+      return `${CYAN}→ ${task.text}${RESET}`;
     }
-    return `○ ${task.text}`;
+    return `${DARK_GRAY}○ ${task.text}${RESET}`;
   }).join("\n");
 }
 
@@ -146,11 +148,12 @@ function formatStatus(counts, agentName, currentFile, taskDescription, planTasks
     const percentage = counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0;
     const filled = counts.total > 0 ? Math.round((counts.completed / counts.total) * BAR_WIDTH) : 0;
     const empty = BAR_WIDTH - filled;
-    const filledBar = `${GREEN}${"\u2588".repeat(filled)}${RESET}`;
+    const filledBar = `${CYAN}${"\u2588".repeat(filled)}${RESET}`;
     const emptyBar = `${DARK_GRAY}${"\u2591".repeat(empty)}${RESET}`;
+    const percentagePart = `${percentage > 0 ? BOLD : ""}${percentage}%${percentage > 0 ? RESET : ""}`;
     const taskListPart = (planTasks && planTasks.length > 0) ? formatTaskList(planTasks) + "\n\n" : "";
-    const descriptionLine = taskDescription ? `\n  ${taskDescription}` : "";
-    return `${taskListPart}[${counts.completed}/${counts.total}] ${filledBar}${emptyBar} ${percentage}%\nAgent: ${CYAN}${agentName}${RESET}${descriptionLine}\n`;
+    const descriptionLine = taskDescription ? `\n${DIM}  ${taskDescription}${RESET}` : "";
+    return `${taskListPart}[${counts.completed}/${counts.total}] ${filledBar}${emptyBar} ${percentagePart}\n${DIM}Agent: ${agentName}${RESET}${descriptionLine}\n`;
   }
   const descriptionLine = taskDescription ? `\n  ${taskDescription}` : "";
   return `[?/?] Agent: ${CYAN}${agentName}${RESET}${descriptionLine}\n`;
