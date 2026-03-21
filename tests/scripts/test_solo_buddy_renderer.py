@@ -98,7 +98,7 @@ class TestRenderStatusFunction:
                 text=True,
             )
 
-            assert "waiting" in result.stdout.lower()
+            assert "initializing" in result.stdout.lower()
 
 
 class TestStartRendererFunction:
@@ -224,4 +224,4 @@ class TestRenderStatusAnsiUpdate:
                 text=True,
             )
 
-            assert "waiting" in result.stdout.lower()
+            assert "initializing" in result.stdout.lower()
