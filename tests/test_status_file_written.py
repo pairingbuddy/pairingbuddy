@@ -56,6 +56,6 @@ def test_status_file_contains_agent_name(solo_status_file):
 
 
 def test_status_file_contains_progress_line(solo_status_file):
-    """Written status file contains the second line 'Progress: (tracking not yet enabled)'"""
+    """Written status file contains the placeholder '[?/?]' when no plan is available."""
     content = solo_status_file.read_text()
-    assert "Progress: (tracking not yet enabled)" in content
+    assert "[?/?]" in content

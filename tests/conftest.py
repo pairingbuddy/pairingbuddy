@@ -3,6 +3,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 HOOK_PATH = Path(__file__).parent.parent / "hooks" / "solo-progress.mjs"
 
 
@@ -27,3 +29,9 @@ def run_hook(
         env=env,
         cwd=cwd,
     )
+
+
+@pytest.fixture
+def run_hook_fixture():
+    """Pytest fixture that exposes run_hook as a callable."""
+    return run_hook
