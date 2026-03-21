@@ -16,11 +16,11 @@ if (!isSoloMode) {
   process.exit(0);
 }
 
-if (input.tool_name !== "Task") {
+if (input.tool_name !== "Agent") {
   process.exit(0);
 }
 
-const agentName = (input.tool_input && input.tool_input.description) || "unknown";
+const agentName = (input.tool_input && input.tool_input.subagent_type) || "unknown";
 
 function findPlanPath() {
   if (process.env.PAIRINGBUDDY_PLAN_PATH) {
