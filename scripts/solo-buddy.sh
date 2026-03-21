@@ -247,12 +247,24 @@ clear_terminal() {
 }
 
 print_header() {
+    local yellow="" dim="" reset=""
+    if [[ "${FORCE_COLOR:-}" == "1" ]]; then
+        yellow=$'\033[33m'
+        dim=$'\033[2m'
+        reset=$'\033[0m'
+    fi
     local header
-    header="$(printf 'Pairing Buddy \xe2\x80\x94 Solo Mode\nPlan: %s\nBranch: %s\n' "$PLAN_FILE" "$BRANCH")"
-    if (printf '%s\n' "$header" > /dev/tty) 2>/dev/null; then
+    local header
+    header="$(printf '%s⚡%s Pairing Buddy — Solo Mode\n\nPlan: %s%s%s\nBranch: %s%s%s' \
+        "$yellow" "$reset" \
+        "$dim" "$PLAN_FILE" "$reset" \
+        "$dim" "$BRANCH" "$reset")"
+    # Trailing blank line for spacing before task list
+    header="${header}"$'\n'
+    if (printf '%s\n\n' "$header" > /dev/tty) 2>/dev/null; then
         return 0
     fi
-    printf '%s\n' "$header"
+    printf '%s\n\n' "$header"
 }
 
 print_exit_summary() {

@@ -49,6 +49,7 @@ def build_print_header_script(script: str, tmpdir: str, plan_file: str, branch: 
 set +e
 PLAN_FILE={plan_file!r}
 BRANCH={branch!r}
+export FORCE_COLOR="${{FORCE_COLOR:-}}"
 if grep -q 'print_header()' {script!r} 2>/dev/null; then
     eval "$(awk '/^print_header\\(\\)[ \\t]*\\{{/,/^\\}}/' {script!r})"
 fi
@@ -287,3 +288,81 @@ class TestPrintHeaderBehavioral:
                 "print_header must exit with code 0 even when /dev/tty is not available; "
                 f"stdout={result.stdout!r} stderr={result.stderr!r}"
             )
+
+
+class TestPrintHeaderStyling:
+    """Tests for header visual styling."""
+
+    def _run_header(self, script_path, force_color=True):
+        """Helper: run print_header and return stdout."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("- [ ] Task 1\n")
+            env_patch = "export FORCE_COLOR=1" if force_color else ""
+            bash_code = f"""
+set +e
+PLAN_FILE={plan_file!r}
+BRANCH='feature/test-branch'
+{env_patch}
+script={script_path!r}
+if grep -q 'print_header()' "$script" 2>/dev/null; then
+    eval "$(awk '/^print_header\\(\\)[ \\t]*\\{{/,/^\\}}/' "$script")"
+fi
+print_header
+"""
+            result = subprocess.run(
+                ["bash", "-c", bash_code],
+                capture_output=True,
+                text=True,
+            )
+            return result.stdout
+
+    def test_title_has_lightning_bolt(self, script_path):
+        """Title line contains ⚡ icon."""
+        output = self._run_header(script_path)
+        assert "⚡" in output, f"Expected ⚡ in title, got: {output!r}"
+
+    def test_lightning_bolt_yellow(self, script_path):
+        """⚡ is wrapped in yellow ANSI (\\x1b[33m)."""
+        output = self._run_header(script_path, force_color=True)
+        assert re.search(r"\x1b\[33m[^\x1b]*⚡", output), (
+            f"Expected yellow ANSI before ⚡, got: {output!r}"
+        )
+
+    def test_blank_line_after_title(self, script_path):
+        """Blank line separates title from Plan/Branch."""
+        output = self._run_header(script_path, force_color=False)
+        lines = output.splitlines()
+        assert len(lines) >= 4, f"Expected >= 4 lines, got: {lines!r}"
+        # Title is line 0, line 1 should be blank
+        assert lines[1].strip() == "", f"Expected blank line after title, got: {lines!r}"
+
+    def test_plan_value_dim(self, script_path):
+        """Plan: value is dim (\\x1b[2m)."""
+        output = self._run_header(script_path, force_color=True)
+        plan_line = next((ln for ln in output.splitlines() if "Plan:" in ln), None)
+        assert plan_line is not None, f"Expected Plan: line, got: {output!r}"
+        assert re.search(r"Plan:.*\x1b\[2m", plan_line), (
+            f"Expected dim after Plan: label, got: {plan_line!r}"
+        )
+
+    def test_branch_value_dim(self, script_path):
+        """Branch: value is dim (\\x1b[2m)."""
+        output = self._run_header(script_path, force_color=True)
+        branch_line = next((ln for ln in output.splitlines() if "Branch:" in ln), None)
+        assert branch_line is not None, f"Expected Branch: line, got: {output!r}"
+        assert re.search(r"Branch:.*\x1b\[2m", branch_line), (
+            f"Expected dim after Branch: label, got: {branch_line!r}"
+        )
+
+    def test_blank_line_after_branch(self, script_path):
+        """Blank line after Branch (before task list)."""
+        output = self._run_header(script_path, force_color=False)
+        lines = output.splitlines()
+        branch_idx = next((i for i, ln in enumerate(lines) if "Branch:" in ln), None)
+        assert branch_idx is not None, f"Expected Branch: line, got: {lines!r}"
+        assert branch_idx + 1 < len(lines), f"Expected line after Branch:, got: {lines!r}"
+        assert lines[branch_idx + 1].strip() == "", (
+            f"Expected blank line after Branch:, got: {lines!r}"
+        )
