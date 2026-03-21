@@ -5,8 +5,8 @@
 #
 # Options:
 #   -n <retries>          Max retries (default: 5)
-#   --max-turns <n>       Pass --max-turns to claude
-#   --max-budget-usd <n>  Pass --max-budget-usd to claude
+#   --max-turns <n>       Pass --max-turns to the AI session
+#   --max-budget-usd <n>  Pass --max-budget-usd to the AI session
 #   --plugin-dir <path>   Use a specific plugin directory instead of installed plugin
 #   --use-api-key         Use ANTHROPIC_API_KEY for billing (default: unset to use subscription)
 #   -h, --help            Show this help and exit
@@ -22,7 +22,7 @@ USE_API_KEY=false
 STATUS_FILE=".pairingbuddy/solo-status"
 RENDER_INTERVAL=0.08
 
-# Build claude invocation
+# Build invocation arguments
 CLAUDE_ARGS=(-p --dangerously-skip-permissions --output-format text)
 
 require_arg() {
@@ -237,10 +237,26 @@ start_renderer() {
     RENDERER_PID=$!
 }
 
+CAFFEINATE_PID=""
+
+start_caffeinate() {
+    if [[ "$(uname)" == "Darwin" ]]; then
+        caffeinate -s &
+        CAFFEINATE_PID=$!
+    fi
+}
+
+stop_caffeinate() {
+    if [[ -n "$CAFFEINATE_PID" ]]; then
+        kill "$CAFFEINATE_PID" 2>/dev/null || true
+    fi
+}
+
 cleanup() {
     render_status
     kill "$RENDERER_PID" 2>/dev/null || true
     while kill -0 "$RENDERER_PID" 2>/dev/null; do sleep 0.1; done
+    stop_caffeinate
 }
 
 clear_terminal() {
@@ -392,6 +408,7 @@ mkdir -p .pairingbuddy
 clear_terminal
 print_header
 start_renderer
+start_caffeinate
 trap cleanup EXIT SIGTERM SIGINT
 
 claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
