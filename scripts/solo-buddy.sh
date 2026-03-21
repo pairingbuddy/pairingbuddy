@@ -166,14 +166,24 @@ CLAUDE_EXIT=$?
 
 if [[ $CLAUDE_EXIT -eq 0 ]]; then
     BRANCH=$(git branch --show-current)
-    PR_TITLE=$(sanitize_branch_name "$BRANCH")
-    REPORT_FILE=".pairingbuddy/SOLO_BUDDY_REPORT.md"
-    if [[ -f "$REPORT_FILE" ]]; then
-        gh pr create --title "$PR_TITLE" --body-file "$REPORT_FILE" || \
-            echo "Warning: gh pr create failed" >&2
+
+    # Never push to main/master
+    if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
+        echo "Warning: refusing to push/create PR on $BRANCH" >&2
     else
-        gh pr create --title "$PR_TITLE" || \
-            echo "Warning: gh pr create failed" >&2
+        # Push branch to remote first (gh pr create needs it)
+        git push -u origin "$BRANCH" 2>/dev/null || \
+            echo "Warning: git push failed" >&2
+
+        PR_TITLE=$(sanitize_branch_name "$BRANCH")
+        REPORT_FILE=".pairingbuddy/SOLO_BUDDY_REPORT.md"
+        if [[ -f "$REPORT_FILE" ]]; then
+            gh pr create --title "$PR_TITLE" --body-file "$REPORT_FILE" || \
+                echo "Warning: gh pr create failed" >&2
+        else
+            gh pr create --title "$PR_TITLE" || \
+                echo "Warning: gh pr create failed" >&2
+        fi
     fi
 fi
 

@@ -147,9 +147,12 @@ pairingbuddy/
 ├── hooks/                        # Claude Code hooks
 │   ├── hooks.json               # Hook registration (SessionStart, PostToolUse)
 │   ├── session-start.mjs        # Injects using-pairingbuddy skill at session start
-│   └── guardian.mjs             # Session drift guardian (time-based workflow reminder)
+│   ├── guardian.mjs             # Session drift guardian (time-based workflow reminder)
+│   └── solo-progress.mjs       # Solo mode progress tracker (async PostToolUse hook)
 └── .pairingbuddy/                # Runtime state (gitignored)
     ├── *.json                    # TDD state files during workflow
+    ├── solo-status               # Solo mode current progress (plain text, overwritten)
+    ├── solo-progress.log         # Solo mode progress history (append-only, timestamped)
     ├── hooks/                    # Hook state (injection timestamps per session)
     ├── plan/                     # Planning state (isolated from /code cleanup)
     │   ├── plan-config.json      # Persists across plans
@@ -932,6 +935,31 @@ Four components are Solo-aware:
 ### Report
 
 Solo sessions produce `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally — header at session start, task entry after each completion, stopped entry when blocked. The `_update_solo_report` function in the workflow pseudocode ensures report generation is a first-class workflow step.
+
+### Observability
+
+Solo sessions run unattended, so real-time progress visibility is essential. A dedicated async PostToolUse hook (`hooks/solo-progress.mjs`) tracks agent transitions and task completion:
+
+**How it works:**
+- Filters for Task tool invocations only (ignores Read, Write, Bash, etc.)
+- Extracts the agent/subagent name from `tool_input`
+- Reads plan MD checkboxes to determine task progress (N of M)
+- Writes a multi-line status block to `.pairingbuddy/solo-status` (overwritten each update):
+  ```
+  [3/7] ████████░░░░░░░░░░░░ 43%
+  Stage: implement-tests
+  File: src/hooks/solo-progress.mjs
+  ```
+- Appends timestamped entries to `.pairingbuddy/solo-progress.log` for post-session analysis
+
+**Terminal renderer:**
+- `solo-buddy.sh` starts a background process that polls `solo-status` and renders it in the terminal
+- The renderer cleans up gracefully when the solo session ends (no orphan processes)
+
+**Design constraints:**
+- Hook is async (non-blocking) to avoid slowing down Claude Code
+- No-op when `PAIRINGBUDDY_SOLO` is not set (zero impact on interactive sessions)
+- Follows the same pattern as `guardian.mjs` (PostToolUse hook, environment-aware behavior)
 
 ### Key Design Properties
 
