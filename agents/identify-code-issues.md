@@ -164,6 +164,13 @@ Do NOT create any other files. No /tmp files, no markdown files, no text files. 
 - Report issues in test code (that's for identify-test-issues)
 - Suggest features not required by tests
 
+## Solo Mode
+
+If `PAIRINGBUDDY_SOLO` environment variable is `true`:
+- Skip Step 3 (Human Review) entirely
+- Assume all findings are approved
+- Proceed directly to writing output
+
 ## Output
 
 Writes to `.pairingbuddy/code-issues.json`:

@@ -81,6 +81,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   classify-task:
@@ -138,6 +139,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   create-test-placeholders:
@@ -180,6 +182,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   implement-tests:
@@ -267,6 +270,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   refactor-tests:
@@ -327,6 +331,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   refactor-code:
@@ -390,6 +395,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   run-all-tests:
@@ -449,6 +455,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   commit-changes:
@@ -508,6 +515,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   setup-spike:
@@ -541,6 +549,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   explore-spike-unit:
@@ -581,6 +590,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   document-spike:
@@ -614,6 +624,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   # ---------------------------------------------------------------------------
@@ -652,6 +663,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   solidify-architecture:
@@ -685,6 +697,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   decompose-tracer-bullets:
@@ -721,6 +734,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   sequence-tasks:
@@ -760,6 +774,7 @@ agents:
         content: workflow_step3_human_review
       - heading: "### Step 4: Output"
         content: workflow_step4_output
+      - heading: "## Solo Mode"
       - heading: "## Output"
 
   # ---------------------------------------------------------------------------

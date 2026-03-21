@@ -180,6 +180,13 @@ After human approval:
 
 Do NOT create any other files. No /tmp files, no extra markdown files, no text files. Write the documentation where the human specifies and record the path in spike-summary.json.
 
+## Solo Mode
+
+If `PAIRINGBUDDY_SOLO` environment variable is `true`:
+- Skip Step 3 (Human Review) entirely
+- Assume all findings are approved
+- Proceed directly to writing output
+
 ## Output
 
 Writes to `.pairingbuddy/spike-summary.json`:

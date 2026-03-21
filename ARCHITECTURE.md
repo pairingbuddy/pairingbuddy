@@ -28,6 +28,7 @@
   - [Skills](#skills)
   - [JSON Schemas](#json-schemas)
 - [Extensibility](#extensibility)
+- [Solo Mode](#solo-mode)
   - [Design for Extension](#design-for-extension)
   - [Adding Language/Framework Support](#adding-languageframework-support)
   - [Future Extensions](#future-extensions)
@@ -146,9 +147,12 @@ pairingbuddy/
 ├── hooks/                        # Claude Code hooks
 │   ├── hooks.json               # Hook registration (SessionStart, PostToolUse)
 │   ├── session-start.mjs        # Injects using-pairingbuddy skill at session start
-│   └── guardian.mjs             # Session drift guardian (time-based workflow reminder)
+│   ├── guardian.mjs             # Session drift guardian (time-based workflow reminder)
+│   └── solo-progress.mjs       # Solo mode progress tracker (async PostToolUse hook)
 └── .pairingbuddy/                # Runtime state (gitignored)
     ├── *.json                    # TDD state files during workflow
+    ├── solo-status               # Solo mode current progress (plain text, overwritten)
+    ├── solo-progress.log         # Solo mode progress history (append-only, timestamped)
     ├── hooks/                    # Hook state (injection timestamps per session)
     ├── plan/                     # Planning state (isolated from /code cleanup)
     │   ├── plan-config.json      # Persists across plans
@@ -908,6 +912,63 @@ At the start of each task, the orchestrator runs `_cleanup_state_files()` to del
 - Stale state from previous tasks can cause incorrect behavior (e.g., old spike files causing confusion)
 - Test configuration is project-specific, not task-specific - human validates once, reuses many times
 - Human guidance with `persistent: true` captures operational knowledge that applies across tasks
+
+---
+
+## Solo Mode
+
+Solo Buddy is an autonomous execution mode where Pairing Buddy executes a pre-established plan without human interaction.
+
+### Entry Point
+
+`scripts/solo-buddy.sh` launches a `claude -p` session with `PAIRINGBUDDY_SOLO=true`. The script unsets `ANTHROPIC_API_KEY` by default to prevent unexpected API billing (use `--use-api-key` to opt in). The prompt tells Claude to use `/pairingbuddy:code` to execute the plan.
+
+### How It Works
+
+Four components are Solo-aware:
+
+1. **Shell script** (`scripts/solo-buddy.sh`) — Sets env var, invokes `claude -p --dangerously-skip-permissions --output-format json`. On success, creates a GitHub PR via `gh pr create` using the sanitized branch name as the title and `SOLO_BUDDY_REPORT.md` as the body when present
+2. **Guardian hook** (`hooks/guardian.mjs`) — Detects `PAIRINGBUDDY_SOLO`, injects Solo constraint prompt on SessionStart, uses halved injection interval (2.5 min) and short Solo reminder for PostToolUse
+3. **15 agents** — Agents with AskUserQuestion (Step 3 Human Review) check `PAIRINGBUDDY_SOLO` and skip review, assuming approval
+4. **Coding orchestrator** (`skills/coding/SKILL.md`) — `_ask_human` auto-returns `true` in Solo mode. Solo Mode section defines strict scope, sequential execution, resource exhaustion before stopping, bug handling, quality compliance, report generation, and push-to-remote
+
+### Report
+
+Solo sessions produce `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally — header at session start, task entry after each completion, stopped entry when blocked. The `_update_solo_report` function in the workflow pseudocode ensures report generation is a first-class workflow step.
+
+### Observability
+
+Solo sessions run unattended, so real-time progress visibility is essential. A dedicated async PostToolUse hook (`hooks/solo-progress.mjs`) tracks agent transitions and task completion:
+
+**How it works:**
+- Filters for Task tool invocations only (ignores Read, Write, Bash, etc.)
+- Extracts the agent/subagent name from `tool_input`
+- Reads plan MD checkboxes to determine task progress (N of M)
+- Writes a multi-line status block to `.pairingbuddy/solo-status` (overwritten each update):
+  ```
+  [3/7] ████████░░░░░░░░░░░░ 43%
+  Stage: implement-tests
+  File: src/hooks/solo-progress.mjs
+  ```
+- Appends timestamped entries to `.pairingbuddy/solo-progress.log` for post-session analysis
+
+**Terminal renderer:**
+- `solo-buddy.sh` starts a background process that polls `solo-status` and renders it in the terminal
+- Output is written to `/dev/tty` so it remains visible even when `claude -p` stdout is redirected
+- Polling interval and status file path are configured via `RENDER_INTERVAL` and `STATUS_FILE` constants
+- The renderer cleans up gracefully when the solo session ends (no orphan processes)
+
+**Design constraints:**
+- Hook is async (non-blocking) to avoid slowing down Claude Code
+- No-op when `PAIRINGBUDDY_SOLO` is not set (zero impact on interactive sessions)
+- Follows the same pattern as `guardian.mjs` (PostToolUse hook, environment-aware behavior)
+
+### Key Design Properties
+
+- **No workflow pseudocode changes** — Solo behavior comes from `_ask_human` auto-yes and the Solo Mode instructions section
+- **Sequential execution** — on task failure, the session stops (no skip-ahead)
+- **No revert on stop** — uncommitted changes stay as-is for human review
+- **Never pushes to main/master** — only pushes to the branch the human set up
 
 ---
 

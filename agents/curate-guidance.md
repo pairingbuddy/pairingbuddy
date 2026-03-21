@@ -223,6 +223,13 @@ After approval:
 }
 ```
 
+## Solo Mode
+
+If `PAIRINGBUDDY_SOLO` environment variable is `true`:
+- Skip Step 3 (Human Review) entirely
+- Assume all findings are approved
+- Proceed directly to writing output
+
 ## Output
 
 Writes to `.pairingbuddy/human-guidance.json`:

@@ -148,6 +148,13 @@ After approval, write output using this procedure for EACH output file listed in
 
 Do NOT create any other files. No /tmp files, no markdown files, no text files, no logs. Your sole output is the JSON file specified in the Output section.
 
+## Solo Mode
+
+If `PAIRINGBUDDY_SOLO` environment variable is `true`:
+- Skip Step 3 (Human Review) entirely
+- Assume all findings are approved
+- Proceed directly to writing output
+
 ## Output
 
 Writes to `.pairingbuddy/plan/plan-requirements.json`:

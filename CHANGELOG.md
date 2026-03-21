@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `hooks/solo-progress.mjs`: extracts current file path from state files (`current-batch.json`, `tests.json`) and shows it in `solo-status` and progress log
+- Solo Buddy: autonomous execution mode via `scripts/solo-buddy.sh`
+  - Shell script entry point with `claude -p`, env var signal, API key safety (unsets `ANTHROPIC_API_KEY` by default)
+  - Guardian hook Solo mode: halved injection cadence (2.5 min), Solo constraint prompt on SessionStart
+  - 15 agents with Solo Mode section: skip Step 3 Human Review when `PAIRINGBUDDY_SOLO=true`
+  - Coding orchestrator Solo mode: `_ask_human` auto-yes, strict scope, sequential execution, resource exhaustion before stopping, bug handling, quality compliance
+  - `SOLO_BUDDY_REPORT.md` incremental report generation
+  - Background terminal renderer: polls `solo-status` and displays live progress bar via `/dev/tty`, configurable via `STATUS_FILE`/`RENDER_INTERVAL` constants
+  - Graceful renderer cleanup via `trap cleanup EXIT SIGTERM SIGINT` — no orphan processes after `solo-buddy.sh` exits
+  - Push-to-remote on session completion (never pushes to main/master)
+  - GitHub PR creation on success via `gh pr create`: branch name used as title (e.g. `feature/foo` → `Foo`), `SOLO_BUDDY_REPORT.md` used as PR body when present
+
+### Fixed
+
+- `hooks/solo-progress.mjs`: exits cleanly when `.pairingbuddy/` directory is absent (ENOENT fix)
+- `hooks/solo-progress.mjs`: progress bar calculation no longer coupled to `BAR_WIDTH=10`
+- `solo-buddy.sh` `require_positive_number`: tightened validation regex to reject all zero representations (`0`, `00`, `0.0`, `0.00`, etc.) that previously passed as valid positive numbers
+- `solo-buddy.sh`: removed dead-code `STATUS_FILE` default (`${STATUS_FILE:-.pairingbuddy/solo-status}`) that was unreachable under `set -u`
+- `solo-buddy.sh`: added `sleep 0.1` in cleanup spin loop to avoid busy-waiting while the renderer process exits
+
 ## [0.6.0] - 2026-03-15
 
 ### Added

@@ -208,6 +208,13 @@ After approval, write output using this procedure for EACH output file listed in
 
 Do NOT create any other files. No /tmp files, no markdown files, no text files.
 
+## Solo Mode
+
+If `PAIRINGBUDDY_SOLO` environment variable is `true`:
+- Skip Step 3 (Human Review) entirely
+- Assume all findings are approved
+- Proceed directly to writing output
+
 ## Output
 
 Updates `.pairingbuddy/tests.json` (reconciliation - may rename, move, or remove entries to match actual test files).

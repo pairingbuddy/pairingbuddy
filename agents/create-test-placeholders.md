@@ -217,6 +217,13 @@ After approval, for each test_case to process:
 
 Do NOT create files anywhere else. No /tmp files, no markdown files, no files outside the test directory.
 
+## Solo Mode
+
+If `PAIRINGBUDDY_SOLO` environment variable is `true`:
+- Skip Step 3 (Human Review) entirely
+- Assume all findings are approved
+- Proceed directly to writing output
+
 ## Output
 
 Appends to `.pairingbuddy/tests.json`:
