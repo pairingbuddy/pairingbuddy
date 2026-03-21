@@ -174,6 +174,13 @@ In addition, you may create or update architecture documents as directed by the 
 
 Do NOT create any other files. No /tmp files, no text files, no logs. Your sole state output is the JSON file specified in the Output section.
 
+## Solo Mode
+
+If `PAIRINGBUDDY_SOLO` environment variable is `true`:
+- Skip Step 3 (Human Review) entirely
+- Assume all findings are approved
+- Proceed directly to writing output
+
 ## Output
 
 Writes to `.pairingbuddy/plan/plan-architecture.json`:

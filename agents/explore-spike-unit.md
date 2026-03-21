@@ -226,6 +226,13 @@ When appending to spike-findings.json:
 
 Your role is exploration through CODE. Documentation comes later via `document-spike`.
 
+## Solo Mode
+
+If `PAIRINGBUDDY_SOLO` environment variable is `true`:
+- Skip Step 3 (Human Review) entirely
+- Assume all findings are approved
+- Proceed directly to writing output
+
 ## Output
 
 Appends to `.pairingbuddy/spike-findings.json`:
