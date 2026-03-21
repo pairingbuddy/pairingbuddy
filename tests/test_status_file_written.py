@@ -18,6 +18,7 @@ def run_hook_with_task(tmpdir: str, agent_description: str) -> subprocess.Comple
         "tool_name": "Agent",
         "tool_input": {
             "subagent_type": agent_description,
+            "description": "implementing the test suite",
         },
     }
 
@@ -53,6 +54,7 @@ def test_status_file_contains_agent_name(solo_status_file):
     """Written status file contains agent name from tool_input.subagent_type."""
     content = solo_status_file.read_text()
     assert "Agent: implement-tests" in content
+    assert "Task: implementing the test suite" in content
 
 
 def test_status_file_contains_progress_line(solo_status_file):

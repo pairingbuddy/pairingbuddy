@@ -133,11 +133,12 @@ def test_skips_non_agent_tool_events_task(solo_tmp_path):
 def test_agent_name_from_subagent_type(solo_tmp_path, plan_env):
     """Scenario: agent-name-extraction | Test Case: agent-name-from-subagent-type
 
-    The agent name written to status file and log comes from tool_input.subagent_type,
-    not tool_input.description.
+    The agent name written to the log comes from tool_input.subagent_type.
+    The task description written to the log comes from tool_input.description.
+    Both appear in the log line.
     """
     agent_name = "my-special-agent"
-    description = "this should be ignored"
+    description = "this should appear in log"
 
     run_hook(
         plan_env,
@@ -156,8 +157,8 @@ def test_agent_name_from_subagent_type(solo_tmp_path, plan_env):
     assert agent_name in log_content, (
         f"Expected agent name '{agent_name}' (from subagent_type) in log"
     )
-    assert description not in log_content, (
-        f"Should not use description '{description}' from tool_input"
+    assert description in log_content, (
+        f"Expected description '{description}' from tool_input in log"
     )
 
 

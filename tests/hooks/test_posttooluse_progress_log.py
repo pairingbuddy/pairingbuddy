@@ -20,8 +20,11 @@ def _make_plan_markdown(checked: int, unchecked: int) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _task_stdin(agent_name: str = "test-agent") -> dict:
-    return {"tool_name": "Agent", "tool_input": {"subagent_type": agent_name}}
+def _task_stdin(agent_name: str = "test-agent", description: str | None = None) -> dict:
+    tool_input: dict = {"subagent_type": agent_name}
+    if description is not None:
+        tool_input["description"] = description
+    return {"tool_name": "Agent", "tool_input": tool_input}
 
 
 def _read_log_lines(tmp_path) -> list[str]:
@@ -103,6 +106,25 @@ def test_log_line_has_agent_name(solo_tmp_path):
     log_content = "\n".join(_read_log_lines(solo_tmp_path))
     assert agent_name in log_content, (
         f"Expected agent name '{agent_name}' in solo-progress.log, got: {log_content!r}"
+    )
+
+
+def test_log_line_has_task_description(solo_tmp_path):
+    """Scenario: log-line-format-with-progress | Test Case: log-line-has-task-description
+
+    The log line contains the task description from tool_input.description.
+    """
+    task_description = "running the integration tests"
+
+    run_hook(
+        {"PAIRINGBUDDY_SOLO": "true"},
+        stdin_payload=_task_stdin(description=task_description),
+        cwd=str(solo_tmp_path),
+    )
+
+    log_content = "\n".join(_read_log_lines(solo_tmp_path))
+    assert task_description in log_content, (
+        f"Expected task description '{task_description}' in solo-progress.log, got: {log_content!r}"
     )
 
 

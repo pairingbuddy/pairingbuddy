@@ -23,6 +23,7 @@ if (input.tool_name !== "Agent") {
 }
 
 const agentName = (input.tool_input && input.tool_input.subagent_type) || "unknown";
+const taskDescription = (input.tool_input && input.tool_input.description) || null;
 
 function findPlanPath() {
   if (process.env.PAIRINGBUDDY_PLAN_PATH) {
@@ -41,7 +42,7 @@ function findPlanPath() {
   return null;
 }
 
-const BAR_WIDTH = 10;
+const BAR_WIDTH = 30;
 
 function countCheckboxes(planPath) {
   try {
@@ -88,7 +89,7 @@ function findCurrentFile() {
   return null;
 }
 
-function formatStatus(counts, agentName, currentFile) {
+function formatStatus(counts, agentName, currentFile, taskDescription) {
   // Intentionally different formats by design: when progress is known the status
   // file shows a rich multi-line display (progress bar + separate Agent line),
   // while the unknown-progress case uses a compact single-line fallback.
@@ -99,26 +100,29 @@ function formatStatus(counts, agentName, currentFile) {
     const filledBar = "\u2588".repeat(filled);
     const emptyBar = "\u2591".repeat(empty);
     const fileLine = currentFile ? `\nFile: ${currentFile}` : "";
-    return `[${counts.completed}/${counts.total}] ${filledBar}${emptyBar} ${percentage}%\nAgent: ${agentName}${fileLine}\n`;
+    const taskLine = taskDescription ? `\nTask: ${taskDescription}` : "";
+    return `[${counts.completed}/${counts.total}] ${filledBar}${emptyBar} ${percentage}%\nAgent: ${agentName}${taskLine}${fileLine}\n`;
   }
-  return `[?/?] Agent: ${agentName}\n`;
+  const taskPart = taskDescription ? ` Task: ${taskDescription}` : "";
+  return `[?/?] Agent: ${agentName}${taskPart}\n`;
 }
 
-function writeStatusFile(counts, agentName, currentFile) {
+function writeStatusFile(counts, agentName, currentFile, taskDescription) {
   const pairingbuddyDir = join(process.cwd(), ".pairingbuddy");
   if (!existsSync(pairingbuddyDir)) return;
-  const statusContent = formatStatus(counts, agentName, currentFile);
+  const statusContent = formatStatus(counts, agentName, currentFile, taskDescription);
   const statusPath = join(pairingbuddyDir, "solo-status");
   writeFileSync(statusPath, statusContent);
 }
 
-function appendProgressLog(counts, agentName, currentFile) {
+function appendProgressLog(counts, agentName, currentFile, taskDescription) {
   const pairingbuddyDir = join(process.cwd(), ".pairingbuddy");
   if (!existsSync(pairingbuddyDir)) return;
   const timestamp = new Date().toISOString();
   const progressTag = counts ? `[${counts.completed}/${counts.total}]` : '[?/?]';
+  const taskPart = taskDescription ? ` ${taskDescription}` : "";
   const filePart = currentFile ? ` ${currentFile}` : "";
-  const logLine = `${timestamp} ${progressTag} ${agentName}${filePart}\n`;
+  const logLine = `${timestamp} ${progressTag} ${agentName}${taskPart}${filePart}\n`;
   const logPath = join(pairingbuddyDir, "solo-progress.log");
   appendFileSync(logPath, logLine);
 }
@@ -127,8 +131,8 @@ const planPath = findPlanPath();
 const counts = planPath ? countCheckboxes(planPath) : null;
 const currentFile = findCurrentFile();
 
-writeStatusFile(counts, agentName, currentFile);
-appendProgressLog(counts, agentName, currentFile);
+writeStatusFile(counts, agentName, currentFile, taskDescription);
+appendProgressLog(counts, agentName, currentFile, taskDescription);
 
 } catch (err) {
   const pairingbuddyDir = join(process.cwd(), ".pairingbuddy");

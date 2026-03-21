@@ -21,8 +21,11 @@ def _make_plan_markdown(checked: int, unchecked: int) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _task_stdin(agent_name: str = "test-agent") -> dict:
-    return {"tool_name": "Agent", "tool_input": {"subagent_type": agent_name}}
+def _task_stdin(agent_name: str = "test-agent", description: str | None = None) -> dict:
+    tool_input: dict = {"subagent_type": agent_name}
+    if description is not None:
+        tool_input["description"] = description
+    return {"tool_name": "Agent", "tool_input": tool_input}
 
 
 def _read_log_lines(tmp_path) -> list[str]:
@@ -276,8 +279,8 @@ def test_status_file_line_position_after_agent_line(solo_tmp_path, plan_env):
 
     Test Case: status-file-line-position-after-agent-line
 
-    The 'File:' line appears on the third line, immediately after the 'Agent:' line
-    in the known-progress format.
+    In the known-progress format the lines are ordered:
+    index 0: progress bar, index 1: Agent:, index 2: Task:, index 3: File:
     """
     current_batch_file = solo_tmp_path / ".pairingbuddy" / "current-batch.json"
     current_batch_file.write_text(
@@ -292,18 +295,19 @@ def test_status_file_line_position_after_agent_line(solo_tmp_path, plan_env):
 
     run_hook(
         plan_env,
-        stdin_payload=_task_stdin(agent_name="test-agent"),
+        stdin_payload=_task_stdin(agent_name="test-agent", description="positioning the task"),
         cwd=str(solo_tmp_path),
     )
 
     status_lines = _read_status_lines(solo_tmp_path)
-    assert len(status_lines) >= 3, (
-        f"Expected at least 3 lines in solo-status, got {len(status_lines)}: {status_lines}"
+    assert len(status_lines) >= 4, (
+        f"Expected at least 4 lines in solo-status, got {len(status_lines)}: {status_lines}"
     )
     assert "Agent:" in status_lines[1], (
         f"Expected 'Agent:' on line 2 (index 1), got: {status_lines}"
     )
-    assert "File:" in status_lines[2], f"Expected 'File:' on line 3 (index 2), got: {status_lines}"
+    assert "Task:" in status_lines[2], f"Expected 'Task:' on line 3 (index 2), got: {status_lines}"
+    assert "File:" in status_lines[3], f"Expected 'File:' on line 4 (index 3), got: {status_lines}"
 
 
 def test_log_line_includes_file_path_when_available(solo_tmp_path, plan_env):
