@@ -40,6 +40,7 @@ skills:
           - heading: "### State File Management"
           - heading: "### Human Checkpoints"
           - heading: "### Plan Execution Mode"
+          - heading: "### Resume and Plan Modifications"
           - heading: "### Error Handling"
 
   # ---------------------------------------------------------------------------

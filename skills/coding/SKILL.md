@@ -90,7 +90,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_mark_task_complete(plan_path, task_index)` | Update `- [ ]` to `- [x]` in the MD file for the given task index |
 | `_hydrate_claude_tasks(plan_tasks)` | Create Claude Code Tasks (TaskCreate) for all plan tasks, marking completed ones. Provides in-session visibility. |
 | `_update_claude_task(task_id)` | Mark a Claude Code Task as completed (TaskUpdate) |
-| `_update_solo_report(event, details)` | **Solo mode only.** Write or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file with header), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
+| `_update_solo_report(event, details)` | **Solo mode only.** Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file if absent, **appends session separator if file exists** — never overwrites), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
 
 These functions handle coordination, human interaction, and control flow that doesn't belong in agents.
 
@@ -311,6 +311,18 @@ When the task description references a plan MD file (produced by `/pairingbuddy:
 
 **Note:** Claude Code Tasks are session-scoped (they don't persist across sessions). The MD checkboxes are the durable source of truth. Claude Code Tasks are hydrated fresh each session from the MD state.
 
+### Resume and Plan Modifications
+
+Sessions may be interrupted and resumed. The plan MD checkboxes are the sole source of truth — on resume, the orchestrator reads them and continues from the first unchecked task.
+
+**Plan modifications between sessions:** The human may modify the plan MD between runs:
+- **Add** new unchecked tasks (at the end or between existing tasks)
+- **Remove** unchecked tasks that are no longer needed
+- **Modify** unchecked task descriptions
+- **Do not modify** checked tasks — they represent completed work with committed code
+
+The orchestrator reads the plan fresh each session, so modifications take effect immediately.
+
 ### Error Handling
 
 1. If agent returns error or invalid output → stop and report
@@ -357,20 +369,33 @@ Before stopping a Solo session due to a failure or ambiguity (not on normal comp
 - No `git checkout .`, `git clean`, or any form of revert
 
 **Report generation**
-Create `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally:
+Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally:
 
-1. **At session start** (after first task begins), create the report with header:
-   ```markdown
-   # Solo Buddy Report
+1. **At session start** (after first task begins):
+   - **If the report does NOT exist**, create it with header:
+     ```markdown
+     # Solo Buddy Report
 
-   - **Plan:** <path to plan file>
-   - **Branch:** <current git branch name>
-   - **Started:** <ISO 8601 timestamp>
-   - **Tasks completed:** 0 of N
-   - **Status:** in_progress
+     - **Plan:** <path to plan file>
+     - **Branch:** <current git branch name>
+     - **Started:** <ISO 8601 timestamp>
+     - **Tasks completed:** 0 of N
+     - **Status:** in_progress
 
-   ## Tasks
-   ```
+     ## Tasks
+     ```
+   - **If the report ALREADY exists** (resume), append a session separator:
+     ```markdown
+
+     ---
+
+     ## Session resumed
+
+     - **Resumed:** <ISO 8601 timestamp>
+     - **Tasks remaining:** X of Y unchecked
+     - **Status:** in_progress
+     ```
+     Do NOT overwrite existing content. Preserve all previous session entries, task records, and stop reasons.
 
 2. **After each task completes**, append a task entry:
    ```markdown
