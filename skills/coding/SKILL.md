@@ -90,7 +90,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_mark_task_complete(plan_path, task_index)` | Update `- [ ]` to `- [x]` in the MD file for the given task index |
 | `_hydrate_claude_tasks(plan_tasks)` | Create Claude Code Tasks (TaskCreate) for all plan tasks, marking completed ones. Provides in-session visibility. |
 | `_update_claude_task(task_id)` | Mark a Claude Code Task as completed (TaskUpdate) |
-| `_update_solo_report(event, details)` | **Solo mode only.** Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file if absent, **appends session separator if file exists** — never overwrites), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
+| `_update_solo_report(event, details)` | **Solo mode only.** Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file if absent; on resume, **reconciles** existing entries against the current plan — drops entries for removed tasks, reorders to match plan, then appends session separator), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
 
 These functions handle coordination, human interaction, and control flow that doesn't belong in agents.
 
@@ -384,7 +384,12 @@ Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally:
 
      ## Tasks
      ```
-   - **If the report ALREADY exists** (resume), append a session separator:
+   - **If the report ALREADY exists** (resume), reconcile then append:
+     1. Read the current plan MD to get the current task list (by title)
+     2. Parse existing report task entries (`### Task N: <title>`)
+     3. **Drop** entries whose task title no longer appears in the current plan (removed/replaced tasks)
+     4. **Reorder** remaining entries to match the current plan's task order
+     5. Rewrite the report with: preserved header, reconciled task entries, then append session separator:
      ```markdown
 
      ---
@@ -395,7 +400,7 @@ Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally:
      - **Tasks remaining:** X of Y unchecked
      - **Status:** in_progress
      ```
-     Do NOT overwrite existing content. Preserve all previous session entries, task records, and stop reasons.
+     Task matching uses the task title text (after `- [x]` or `- [ ]` in the plan, after `### Task N:` in the report). This ensures the report always reflects the current plan — no stale entries from previous plan versions.
 
 2. **After each task completes**, append a task entry:
    ```markdown
