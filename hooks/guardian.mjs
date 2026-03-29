@@ -72,8 +72,13 @@ if (shouldInject) {
 
 // Always update tool info and write state
 state.lastTool = lastTool;
-state.lastAgent = lastAgent;
-state.lastDescription = lastDescription;
+// Only update agent info when tool is Agent — preserve previous values for other tools
+if (lastAgent !== null) {
+  state.lastAgent = lastAgent;
+}
+if (lastDescription !== null) {
+  state.lastDescription = lastDescription;
+}
 
 mkdirSync(stateDir, { recursive: true });
 writeFileSync(stateFile, JSON.stringify(state, null, 2));

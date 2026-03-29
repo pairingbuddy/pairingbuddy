@@ -128,40 +128,60 @@ class TestGuardianAgentInfo:
             f"got {state.get('lastDescription')}"
         )
 
-    def test_guardian_lastagent_null_for_non_agent_tool(self, tmp_path):
-        """guardian.mjs sets lastAgent to null when tool is not Agent.
+    def test_guardian_preserves_lastagent_for_non_agent_tool(self, tmp_path):
+        """guardian.mjs preserves previous lastAgent when tool is not Agent.
 
-        With tool_name: "Bash", the session file should contain lastAgent: null.
+        First call with Agent sets lastAgent, second call with Bash preserves it.
         """
+        # First call: set agent info
+        _run_guardian_with_tool_info(
+            tmp_path,
+            session_id="test-preserve-agent",
+            tool_name="Agent",
+            tool_input={
+                "subagent_type": "pairingbuddy:implement-tests",
+                "description": "Implement tests",
+            },
+            elapsed_ms=300_000,
+        )
+        # Second call: non-Agent tool, no elapsed_ms so it reads existing state
         output, session_file = _run_guardian_with_tool_info(
             tmp_path,
-            session_id="test-lastagent-null",
+            session_id="test-preserve-agent",
             tool_name="Bash",
-            elapsed_ms=1000,
         )
 
-        assert session_file.exists(), f"Expected session file at {session_file}"
         state = json.loads(session_file.read_text())
-        assert state.get("lastAgent") is None, (
-            f"Expected lastAgent=null for non-Agent tool, got {state.get('lastAgent')}"
+        assert state.get("lastAgent") == "pairingbuddy:implement-tests", (
+            f"Expected lastAgent preserved, got {state.get('lastAgent')}"
         )
 
-    def test_guardian_lastdescription_null_for_non_agent_tool(self, tmp_path):
-        """guardian.mjs sets lastDescription to null when tool is not Agent.
+    def test_guardian_preserves_lastdescription_for_non_agent_tool(self, tmp_path):
+        """guardian.mjs preserves previous lastDescription when tool is not Agent.
 
-        With tool_name: "Write", the session file should contain lastDescription: null.
+        First call with Agent sets lastDescription, second call with Write preserves it.
         """
+        # First call: set agent info
+        _run_guardian_with_tool_info(
+            tmp_path,
+            session_id="test-preserve-desc",
+            tool_name="Agent",
+            tool_input={
+                "subagent_type": "pairingbuddy:implement-tests",
+                "description": "Implement tests",
+            },
+            elapsed_ms=300_000,
+        )
+        # Second call: non-Agent tool, no elapsed_ms so it reads existing state
         output, session_file = _run_guardian_with_tool_info(
             tmp_path,
-            session_id="test-lastdescription-null",
+            session_id="test-preserve-desc",
             tool_name="Write",
-            elapsed_ms=1000,
         )
 
-        assert session_file.exists(), f"Expected session file at {session_file}"
         state = json.loads(session_file.read_text())
-        assert state.get("lastDescription") is None, (
-            f"Expected lastDescription=null for non-Agent tool, got {state.get('lastDescription')}"
+        assert state.get("lastDescription") == "Implement tests", (
+            f"Expected lastDescription preserved, got {state.get('lastDescription')}"
         )
 
     def test_guardian_agent_info_written_when_no_injection(self, tmp_path):
