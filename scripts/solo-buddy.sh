@@ -200,6 +200,7 @@ render_status() {
         reset=$'\033[0m'
     fi
 
+    local NL=$'\n'
     local content=""
 
     # Read plan file for task list and progress
@@ -235,9 +236,9 @@ render_status() {
         # Build task list
         if [[ ${#task_lines[@]} -gt 0 ]]; then
             for tl in "${task_lines[@]}"; do
-                content="${content}${tl}\n"
+                content="${content}${tl}${NL}"
             done
-            content="${content}\n"
+            content="${content}${NL}"
         fi
 
         # Progress bar
@@ -254,7 +255,7 @@ render_status() {
         while [[ $i -lt $empty ]]; do empty_str="${empty_str}░"; i=$(( i + 1 )); done
         local pct_str="${percent}%"
         if [[ "$percent" -gt 0 ]]; then pct_str="${bold}${percent}%${reset}"; fi
-        content="${content}[${completed}/${total}] ${cyan}${filled_str}${reset}${dim}${empty_str}${reset} ${pct_str}\n"
+        content="${content}[${completed}/${total}] ${cyan}${filled_str}${reset}${dim}${empty_str}${reset} ${pct_str}${NL}"
     fi
 
     # Read agent info from guardian session file
@@ -267,25 +268,23 @@ render_status() {
     fi
 
     if [[ -n "$agent_name" ]]; then
-        content="${content}Agent: ${dim}${agent_name}${reset}\n"
+        content="${content}Agent: ${dim}${agent_name}${reset}${NL}"
         if [[ -n "$agent_desc" ]]; then
-            content="${content}${dim}  ${agent_desc}${reset}\n"
+            content="${content}${dim}  ${agent_desc}${reset}${NL}"
         fi
     fi
 
     # Fallback if nothing to display
     if [[ -z "$content" ]]; then
-        content="  ${cyan}→${reset} ${bold_white:-}Initializing autonomous execution...${reset:-}\n"
+        content="  ${cyan}→${reset} ${bold_white:-}Initializing autonomous execution...${reset:-}${NL}"
     fi
 
     # Replace → with spinner char
     content="${content//→/$spinner_char}"
 
     # Print with ANSI cursor management
-    local rendered
-    rendered=$(printf '%s' "$content")
     local new_lines
-    new_lines=$(printf '%s' "$rendered" | wc -l | tr -d ' ')
+    new_lines=$(printf '%s' "$content" | wc -l | tr -d ' ')
 
     if [[ "$LAST_RENDER_LINES" -gt 0 ]] && [[ -t 1 ]]; then
         local n=0
@@ -295,7 +294,7 @@ render_status() {
         done
     fi
 
-    printf '%s' "$rendered"
+    printf '%s' "$content"
     LAST_RENDER_LINES=$new_lines
 }
 
