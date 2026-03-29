@@ -175,40 +175,118 @@ SPINNER_INDEX=0
 FINAL_RENDERED=""
 
 render_status() {
-    # Braille spinner character set: ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏
     local spinner_chars=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
     local spinner_count=${#spinner_chars[@]}
 
-    local status_file="$STATUS_FILE"
-    local content
-    if [[ -f "$status_file" ]]; then
-        content=$(cat "$status_file")
-    else
-        if [[ "${FORCE_COLOR:-}" == "1" ]]; then
-            content=$'\033[36m→\033[0m \033[1mInitializing autonomous execution...\033[0m'
-        else
-            content="→ Initializing autonomous execution..."
-        fi
-    fi
-
-    # Advance spinner using a file to persist state across subshell calls
-    local spinner_index_file
-    spinner_index_file="$(dirname "$status_file")/.solo-spinner-index"
-    mkdir -p "$(dirname "$spinner_index_file")" 2>/dev/null || true
+    # Advance spinner
+    local spinner_index_file=".pairingbuddy/.solo-spinner-index"
+    mkdir -p .pairingbuddy 2>/dev/null || true
     local idx=0
     if [[ -f "$spinner_index_file" ]]; then
         idx=$(cat "$spinner_index_file" 2>/dev/null || echo 0)
     fi
     local spinner_char="${spinner_chars[$idx]}"
-    content="${content//→/$spinner_char}"
     local next_idx=$(( (idx + 1) % spinner_count ))
     printf '%d' "$next_idx" > "$spinner_index_file"
 
-    # Count lines in new content
-    local new_lines
-    new_lines=$(printf '%s\n' "$content" | wc -l | tr -d ' ')
+    # ANSI colors
+    local green="" cyan="" dim="" bold="" bold_white="" reset=""
+    if [[ "${FORCE_COLOR:-}" == "1" ]]; then
+        green=$'\033[32m'
+        cyan=$'\033[36m'
+        dim=$'\033[2m'
+        bold=$'\033[1m'
+        bold_white=$'\033[1;37m'
+        reset=$'\033[0m'
+    fi
 
-    # Move cursor up and erase previous output using ANSI escape codes (TTY only)
+    local content=""
+
+    # Read plan file for task list and progress
+    if [[ -f "$PLAN_FILE" ]]; then
+        local completed=0 total=0
+        local task_lines=()
+        local first_incomplete=true
+
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ "$line" =~ ^\-\ \[x\]\ (.*)$ ]]; then
+                local task_text="${BASH_REMATCH[1]}"
+                task_text="${task_text//\*\*/}"
+                task_text="${task_text//\*/}"
+                task_text="${task_text//\`/}"
+                task_lines+=("  ${green}✓${reset} ${task_text}")
+                completed=$(( completed + 1 ))
+                total=$(( total + 1 ))
+            elif [[ "$line" =~ ^\-\ \[\ \]\ (.*)$ ]]; then
+                local task_text="${BASH_REMATCH[1]}"
+                task_text="${task_text//\*\*/}"
+                task_text="${task_text//\*/}"
+                task_text="${task_text//\`/}"
+                if [[ "$first_incomplete" == "true" ]]; then
+                    task_lines+=("  ${cyan}→${reset} ${bold_white}${task_text}${reset}")
+                    first_incomplete=false
+                else
+                    task_lines+=("  ${dim}○ ${task_text}${reset}")
+                fi
+                total=$(( total + 1 ))
+            fi
+        done < "$PLAN_FILE"
+
+        # Build task list
+        if [[ ${#task_lines[@]} -gt 0 ]]; then
+            for tl in "${task_lines[@]}"; do
+                content="${content}${tl}\n"
+            done
+            content="${content}\n"
+        fi
+
+        # Progress bar
+        local bar_width=30 filled=0 percent=0
+        if [[ "$total" -gt 0 ]]; then
+            filled=$(( completed * bar_width / total ))
+            percent=$(( completed * 100 / total ))
+        fi
+        local empty=$(( bar_width - filled ))
+        local filled_str="" empty_str=""
+        local i=0
+        while [[ $i -lt $filled ]]; do filled_str="${filled_str}█"; i=$(( i + 1 )); done
+        i=0
+        while [[ $i -lt $empty ]]; do empty_str="${empty_str}░"; i=$(( i + 1 )); done
+        local pct_str="${percent}%"
+        if [[ "$percent" -gt 0 ]]; then pct_str="${bold}${percent}%${reset}"; fi
+        content="${content}[${completed}/${total}] ${cyan}${filled_str}${reset}${dim}${empty_str}${reset} ${pct_str}\n"
+    fi
+
+    # Read agent info from guardian session file
+    local agent_name="" agent_desc=""
+    local hooks_file
+    hooks_file=$(ls -t .pairingbuddy/hooks/*.json 2>/dev/null | head -1 || true)
+    if [[ -n "$hooks_file" && -f "$hooks_file" ]]; then
+        agent_name=$(grep -o '"lastAgent"[[:space:]]*:[[:space:]]*"[^"]*"' "$hooks_file" 2>/dev/null | sed 's/.*: *"//;s/"$//' || true)
+        agent_desc=$(grep -o '"lastDescription"[[:space:]]*:[[:space:]]*"[^"]*"' "$hooks_file" 2>/dev/null | sed 's/.*: *"//;s/"$//' || true)
+    fi
+
+    if [[ -n "$agent_name" ]]; then
+        content="${content}Agent: ${dim}${agent_name}${reset}\n"
+        if [[ -n "$agent_desc" ]]; then
+            content="${content}${dim}  ${agent_desc}${reset}\n"
+        fi
+    fi
+
+    # Fallback if nothing to display
+    if [[ -z "$content" ]]; then
+        content="  ${cyan}→${reset} ${bold_white:-}Initializing autonomous execution...${reset:-}\n"
+    fi
+
+    # Replace → with spinner char
+    content="${content//→/$spinner_char}"
+
+    # Print with ANSI cursor management
+    local rendered
+    rendered=$(printf '%s' "$content")
+    local new_lines
+    new_lines=$(printf '%s' "$rendered" | wc -l | tr -d ' ')
+
     if [[ "$LAST_RENDER_LINES" -gt 0 ]] && [[ -t 1 ]]; then
         local n=0
         while [[ $n -lt $LAST_RENDER_LINES ]]; do
@@ -217,9 +295,7 @@ render_status() {
         done
     fi
 
-    # Print status content with embedded spinner
-    printf '%s\n' "$content"
-
+    printf '%s' "$rendered"
     LAST_RENDER_LINES=$new_lines
 }
 

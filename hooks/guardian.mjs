@@ -36,6 +36,17 @@ const forceInject = process.argv[2] === "always";
 const stateDir = join(process.cwd(), ".pairingbuddy", "hooks");
 const stateFile = join(stateDir, `${sessionId}.json`);
 
+// Extract tool info from input
+const lastTool = input.tool_name || null;
+const lastAgent =
+  input.tool_name === "Agent" && input.tool_input && input.tool_input.subagent_type
+    ? input.tool_input.subagent_type
+    : null;
+const lastDescription =
+  input.tool_name === "Agent" && input.tool_input && input.tool_input.description
+    ? input.tool_input.description
+    : null;
+
 // Read existing state
 let state = { lastInjection: null, trigger: null };
 try {
@@ -51,8 +62,6 @@ let injectedContent = "";
 if (shouldInject) {
   state.lastInjection = now.toISOString();
   state.trigger = forceInject ? "compact" : "timer";
-  mkdirSync(stateDir, { recursive: true });
-  writeFileSync(stateFile, JSON.stringify(state, null, 2));
 
   if (isSoloMode) {
     injectedContent = REMINDER + "\n" + SOLO_ADDITIONS;
@@ -60,6 +69,14 @@ if (shouldInject) {
     injectedContent = REMINDER;
   }
 }
+
+// Always update tool info and write state
+state.lastTool = lastTool;
+state.lastAgent = lastAgent;
+state.lastDescription = lastDescription;
+
+mkdirSync(stateDir, { recursive: true });
+writeFileSync(stateFile, JSON.stringify(state, null, 2));
 
 console.log(
   JSON.stringify({

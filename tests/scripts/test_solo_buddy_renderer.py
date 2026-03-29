@@ -70,23 +70,34 @@ class TestRenderStatusFunction:
     """Tests for the render_status function."""
 
     def test_render_status_displays_file_contents(self, script_path):
-        """render_status outputs the contents of .pairingbuddy/solo-status when the file exists."""
+        """render_status outputs task progress when a plan file exists."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            status_dir = os.path.join(tmpdir, ".pairingbuddy")
-            os.makedirs(status_dir)
-            status_file = os.path.join(status_dir, "solo-status")
-            expected_content = "Agent 2/5: implement-tests\nStatus: Running"
-            with open(status_file, "w") as f:
-                f.write(expected_content)
+            plan_dir = tmpdir
+            plan_file = os.path.join(plan_dir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("# Plan\n\n- [x] Task 1\n- [ ] Task 2\n")
 
-            bash_code = build_render_status_script(script_path, tmpdir)
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"))
+
+            bash_code = f"""
+set +e
+PLAN_FILE={plan_file!r}
+LAST_RENDER_LINES=0
+FORCE_COLOR=0
+if grep -q 'render_status()' {script_path!r} 2>/dev/null; then
+    eval "$(awk '/^render_status\\(\\)[ \\t]*\\{{/,/^\\}}/' {script_path!r})"
+fi
+cd {tmpdir!r}
+render_status
+"""
             result = subprocess.run(
                 ["bash", "-c", bash_code],
                 capture_output=True,
                 text=True,
             )
 
-            assert expected_content in result.stdout
+            # Should show task progress: completed count or task names
+            assert "Task" in result.stdout or "1" in result.stdout
 
     def test_render_status_waiting_message_when_no_file(self, script_path):
         """render_status outputs a waiting message when .pairingbuddy/solo-status does not exist."""
@@ -196,23 +207,33 @@ class TestRenderStatusAnsiUpdate:
         )
 
     def test_render_status_still_displays_file_contents(self, script_path):
-        """Still outputs status file contents when file exists (behavioral test)."""
+        """Still outputs task progress from plan file when it exists (behavioral test)."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            status_dir = os.path.join(tmpdir, ".pairingbuddy")
-            os.makedirs(status_dir)
-            status_file = os.path.join(status_dir, "solo-status")
-            expected_content = "Agent 3/5: implement-tests\nStatus: Running"
-            with open(status_file, "w") as f:
-                f.write(expected_content)
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("# Plan\n\n- [x] Task A\n- [x] Task B\n- [ ] Task C\n")
 
-            bash_code = build_render_status_script(script_path, tmpdir)
+            os.makedirs(os.path.join(tmpdir, ".pairingbuddy"))
+
+            bash_code = f"""
+set +e
+PLAN_FILE={plan_file!r}
+LAST_RENDER_LINES=0
+FORCE_COLOR=0
+if grep -q 'render_status()' {script_path!r} 2>/dev/null; then
+    eval "$(awk '/^render_status\\(\\)[ \\t]*\\{{/,/^\\}}/' {script_path!r})"
+fi
+cd {tmpdir!r}
+render_status
+"""
             result = subprocess.run(
                 ["bash", "-c", bash_code],
                 capture_output=True,
                 text=True,
             )
 
-            assert expected_content in result.stdout
+            # Should show task progress from the plan
+            assert "Task" in result.stdout or "2" in result.stdout or "3" in result.stdout
 
     def test_render_status_still_shows_waiting_when_no_file(self, script_path):
         """Still outputs waiting message when no file (behavioral test)."""

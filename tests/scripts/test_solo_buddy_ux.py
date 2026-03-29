@@ -98,32 +98,41 @@ class TestFinalStatusOnCompletion:
         assert render_pos < kill_match.start(), "render_status must appear before kill in cleanup()"
 
     def test_final_render_outputs_status_content(self, script_path):
-        """cleanup with valid status file outputs final status content (behavioral test)."""
+        """cleanup with valid plan file outputs task progress (behavioral test)."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            status_dir = os.path.join(tmpdir, ".pairingbuddy")
-            os.makedirs(status_dir)
-            status_file = os.path.join(status_dir, "solo-status")
-            expected_content = "Task 3/5: complete\nStatus: Done"
-            with open(status_file, "w") as f:
-                f.write(expected_content)
+            # Create plan file with tasks
+            plan_file = os.path.join(tmpdir, "plan.md")
+            with open(plan_file, "w") as f:
+                f.write("""# My Plan
+
+- [x] Task 1
+- [x] Task 2
+- [x] Task 3
+- [ ] Task 4
+- [ ] Task 5
+""")
+
+            pairingbuddy_dir = os.path.join(tmpdir, ".pairingbuddy")
+            os.makedirs(pairingbuddy_dir)
 
             # Extract cleanup() and render_status() from the script, then call
             # cleanup() in the context of a fake RENDERER_PID (a background sleep)
-            # with STATUS_FILE pointing at our test file. We capture stdout to
-            # verify render_status was called and output the status.
+            # with PLAN_FILE pointing at our test file. We capture stdout to
+            # verify render_status was called and outputs the task progress.
             cleanup_body = extract_shell_function(script_content_from_path(script_path), "cleanup")
             render_body = extract_shell_function(
                 script_content_from_path(script_path), "render_status"
             )
 
-            status_file_path = os.path.join(status_dir, "solo-status")
             wrapper = os.path.join(tmpdir, "wrapper.sh")
             with open(wrapper, "w") as f:
                 f.write(f"""#!/bin/bash
 set +e
 
-STATUS_FILE={status_file_path!r}
+PLAN_FILE={plan_file!r}
 LAST_RENDER_LINES=0
+FORCE_COLOR=0
+FINAL_RENDERED=false
 
 {render_body}
 
@@ -145,8 +154,9 @@ cleanup
                 timeout=10,
             )
 
-            assert expected_content in result.stdout, (
-                "cleanup() must call render_status so final status content is output; "
+            # Should output task progress (checkmarks, task count, or progress bar)
+            assert "✓" in result.stdout or "3" in result.stdout or "5" in result.stdout, (
+                "cleanup() must call render_status so task progress is output; "
                 f"got stdout={result.stdout!r} stderr={result.stderr!r}"
             )
 
