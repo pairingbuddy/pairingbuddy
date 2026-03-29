@@ -938,30 +938,42 @@ Solo sessions produce `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally — hea
 
 ### Observability
 
-Solo sessions run unattended, so real-time progress visibility is essential. A dedicated async PostToolUse hook (`hooks/solo-progress.mjs`) tracks agent transitions and task completion:
+Solo sessions run unattended, so real-time progress visibility is essential. Two mechanisms provide observability:
 
-**How it works:**
-- Filters for Task tool invocations only (ignores Read, Write, Bash, etc.)
-- Extracts the agent/subagent name from `tool_input`
-- Reads plan MD checkboxes to determine task progress (N of M)
-- Writes a multi-line status block to `.pairingbuddy/solo-status` (overwritten each update):
-  ```
-  [3/7] ████████░░░░░░░░░░░░ 43%
-  Stage: implement-tests
-  File: src/hooks/solo-progress.mjs
-  ```
-- Appends timestamped entries to `.pairingbuddy/solo-progress.log` for post-session analysis
+**Guardian-based tracking (primary, reliable):**
+- The guardian hook (`hooks/guardian.mjs`) writes agent info to its session file (`.pairingbuddy/hooks/{sessionId}.json`) on every PostToolUse call: `lastTool`, `lastAgent`, `lastDescription`
+- The terminal renderer reads this file directly to show the current agent
+
+**Progress hook (secondary, append-only log):**
+- `hooks/solo-progress.mjs` filters for Agent tool invocations and appends timestamped entries to `.pairingbuddy/solo-progress.log` for post-session analysis
+- This hook can be unreliable (PostToolUse hooks may stop firing after screen lock or VPN disruption), so the terminal display does not depend on it
 
 **Terminal renderer:**
-- `solo-buddy.sh` starts a background process that polls `solo-status` and renders it in the terminal
-- Output is written to `/dev/tty` so it remains visible even when `claude -p` stdout is redirected
-- Polling interval and status file path are configured via `RENDER_INTERVAL` and `STATUS_FILE` constants
+- `solo-buddy.sh` starts a background process that builds the display by reading source-of-truth files directly:
+  - Plan MD file → checkbox count for progress bar and task list
+  - `.pairingbuddy/task.json` → current task description
+  - Guardian session file → current agent name and proof of life
+- Renders a styled display with colored progress bar, task list (✓ done, → current, ○ pending), spinner on active task, and agent name
+- Output is written to `/dev/tty` so it remains visible even when `claude -p` stdout is captured
 - The renderer cleans up gracefully when the solo session ends (no orphan processes)
+- On completion, displays final status with 100% progress bar and PR/report links
 
 **Design constraints:**
-- Hook is async (non-blocking) to avoid slowing down Claude Code
+- Terminal display is independent of the solo-progress hook — it reads source files directly via the shell renderer
+- Guardian file write is wrapped in try/catch to never affect prompt injection reliability
 - No-op when `PAIRINGBUDDY_SOLO` is not set (zero impact on interactive sessions)
-- Follows the same pattern as `guardian.mjs` (PostToolUse hook, environment-aware behavior)
+
+### macOS Sleep Prevention
+
+Solo Buddy uses `caffeinate -s` to prevent macOS from suspending the process when the screen locks. Without it, macOS App Nap freezes the terminal process entirely. Claude Code's built-in `caffeinate -i` only prevents idle sleep, not display/system sleep triggered by screen lock. The caffeinate process is cleaned up via the exit trap.
+
+### Operational Notes
+
+- **macOS only** — Solo Buddy currently only works on macOS (caffeinate, /dev/tty assumptions)
+- **VPN interference** — VPN causes sessions to terminate after 1-4 tasks due to connection timeouts. Disable VPN before running. Without VPN, 29-task plans complete in a single session
+- **Output format** — Must use `--output-format json`. The `text` format causes early session termination after 1 task
+- **API key safety** — The script unsets `ANTHROPIC_API_KEY` by default. If present in the environment, it silently overrides Max/Pro subscription billing. Use `--use-api-key` only for explicit API billing
+- **Session resumability** — Plan MD checkboxes are the durable state. Restarting the script picks up from the first unchecked task. The report preserves entries from previous sessions and reconciles against the current plan
 
 ### Key Design Properties
 

@@ -9,25 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `hooks/solo-progress.mjs`: extracts current file path from state files (`current-batch.json`, `tests.json`) and shows it in `solo-status` and progress log
 - Solo Buddy: autonomous execution mode via `scripts/solo-buddy.sh`
   - Shell script entry point with `claude -p`, env var signal, API key safety (unsets `ANTHROPIC_API_KEY` by default)
-  - Guardian hook Solo mode: halved injection cadence (2.5 min), Solo constraint prompt on SessionStart
+  - Guardian hook Solo mode: halved injection cadence (2 min), Solo constraint prompt on SessionStart
   - 15 agents with Solo Mode section: skip Step 3 Human Review when `PAIRINGBUDDY_SOLO=true`
   - Coding orchestrator Solo mode: `_ask_human` auto-yes, strict scope, sequential execution, resource exhaustion before stopping, bug handling, quality compliance
-  - `SOLO_BUDDY_REPORT.md` incremental report generation
-  - Background terminal renderer: polls `solo-status` and displays live progress bar via `/dev/tty`, configurable via `STATUS_FILE`/`RENDER_INTERVAL` constants
-  - Graceful renderer cleanup via `trap cleanup EXIT SIGTERM SIGINT` — no orphan processes after `solo-buddy.sh` exits
-  - Push-to-remote on session completion (never pushes to main/master)
-  - GitHub PR creation on success via `gh pr create`: branch name used as title (e.g. `feature/foo` → `Foo`), `SOLO_BUDDY_REPORT.md` used as PR body when present
+  - `SOLO_BUDDY_REPORT.md` incremental report generation with session resumability
+  - Push-to-remote and GitHub PR creation on success via `gh pr create`
+- Solo Buddy observability
+  - Live terminal renderer: styled progress bar, task list (✓/→/○), spinner on active task, colored agent names
+  - Guardian-based agent tracking: guardian writes `lastAgent`/`lastTool`/`lastDescription` to session file on every tool call
+  - Renderer reads source files directly (plan MD, task.json, guardian session file) — independent of hook reliability
+  - `hooks/solo-progress.mjs`: append-only progress log for post-session analysis
+  - Final 100% status display on completion with PR/report links
+- `caffeinate -s` sleep prevention for macOS (prevents App Nap/system sleep during unattended runs)
+- Report reconciliation on resume: preserves entries from previous sessions, drops stale entries for tasks removed from plan, maintains correct ordering
+- Branch guard: refuses to push/create PR on main/master
 
 ### Fixed
 
-- `hooks/solo-progress.mjs`: exits cleanly when `.pairingbuddy/` directory is absent (ENOENT fix)
-- `hooks/solo-progress.mjs`: progress bar calculation no longer coupled to `BAR_WIDTH=10`
-- `solo-buddy.sh` `require_positive_number`: tightened validation regex to reject all zero representations (`0`, `00`, `0.0`, `0.00`, etc.) that previously passed as valid positive numbers
-- `solo-buddy.sh`: removed dead-code `STATUS_FILE` default (`${STATUS_FILE:-.pairingbuddy/solo-status}`) that was unreachable under `set -u`
-- `solo-buddy.sh`: added `sleep 0.1` in cleanup spin loop to avoid busy-waiting while the renderer process exits
+- `hooks/solo-progress.mjs`: exits cleanly when `.pairingbuddy/` directory is absent
+- `solo-buddy.sh`: `stop_caffeinate` runs first in cleanup to prevent orphan processes
+- `solo-buddy.sh`: `require_positive_number` rejects all zero representations
+- `solo-buddy.sh`: push branch before `gh pr create` to avoid interactive prompt in headless mode
+- Output format set to `json` — `text` format causes early session termination
 
 ## [0.6.0] - 2026-03-15
 

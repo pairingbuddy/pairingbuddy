@@ -60,6 +60,44 @@ Creates production-ready design systems with three-tiered token architecture:
 5. **Critique** — Evaluate using 6-pass UX analysis framework
 6. **Validate** — Check structural correctness of all artifacts
 
+### Solo Mode
+
+```bash
+./scripts/solo-buddy.sh [OPTIONS] <plan_file>
+```
+
+Autonomous execution: Solo Buddy runs a plan file without human interaction, using the full TDD workflow for each task. Currently **macOS only**.
+
+```bash
+# Basic usage
+cd your-project
+solo-buddy.sh --plugin-dir /path/to/pairingbuddy plan.md
+
+# With options
+solo-buddy.sh -n 3 --max-turns 200 --plugin-dir /path/to/pairingbuddy plan.md
+```
+
+| Option | Description |
+|--------|-------------|
+| `-n <retries>` | Max retries per task (default: 5) |
+| `--max-turns <n>` | Limit Claude's turns |
+| `--max-budget-usd <n>` | Set a spending cap |
+| `--plugin-dir <path>` | Use a specific plugin directory |
+| `--use-api-key` | Bill to API key instead of Max/Pro subscription |
+
+**What it does:**
+- Executes each plan task through the full TDD workflow (classify, enumerate, implement tests, implement code, refactor, commit)
+- Shows live terminal progress: task list with checkmarks, progress bar, current agent, spinner
+- Creates a GitHub PR on completion with the report as the body
+- Prevents macOS sleep with `caffeinate -s`
+- Resumes from where it left off (plan checkboxes are the durable state)
+
+**Important operational notes:**
+
+- **VPN:** Disable your VPN before running. VPN interference causes sessions to terminate after 1-4 tasks. Without VPN, 29-task plans complete in a single ~2 hour session.
+- **API key safety:** The script unsets `ANTHROPIC_API_KEY` by default to prevent unexpected API billing. Use `--use-api-key` only if you explicitly want API billing instead of your Max/Pro subscription.
+- **Output format:** The script uses `--output-format json` internally. Do not change this to `text` — it causes early session termination.
+
 ## Documentation
 
 - [Architecture](./ARCHITECTURE.md) - Design philosophy and system structure

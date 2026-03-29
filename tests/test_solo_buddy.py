@@ -60,14 +60,40 @@ exit 0
 
 
 @pytest.fixture
-def plan_file(tmp_path):
-    """Creates a minimal plan file for tests that need a valid plan."""
-    path = tmp_path / "plan.md"
+def git_repo(tmp_path):
+    """Creates a git repository on a non-main branch for tests."""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "feature/test-branch"],
+        cwd=repo_dir,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=repo_dir,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=repo_dir,
+        capture_output=True,
+        check=True,
+    )
+    return repo_dir
+
+
+@pytest.fixture
+def plan_file(git_repo):
+    """Creates a minimal plan file inside the git repo."""
+    path = git_repo / "plan.md"
     path.write_text("# My plan")
     return path
 
 
-def _run_script(args, fake_claude=None, env=None):
+def _run_script(args, fake_claude=None, env=None, cwd=None):
     """Run solo-buddy.sh with optional fake claude on PATH."""
     script_env = os.environ.copy()
     if fake_claude:
@@ -80,6 +106,7 @@ def _run_script(args, fake_claude=None, env=None):
         capture_output=True,
         text=True,
         env=script_env,
+        cwd=cwd,
     )
 
 
@@ -105,9 +132,9 @@ def test_nonexistent_plan_file_exits_nonzero(tmp_path):
     assert "not found" in result.stderr
 
 
-def test_valid_plan_file_accepted(plan_file, fake_claude):
+def test_valid_plan_file_accepted(plan_file, fake_claude, git_repo):
     """calling script with an existing file does not exit early with a validation error"""
-    result = _run_script([str(plan_file)], fake_claude=fake_claude)
+    result = _run_script([str(plan_file)], fake_claude=fake_claude, cwd=git_repo)
 
     assert result.returncode == 0
 
@@ -116,25 +143,25 @@ def test_valid_plan_file_accepted(plan_file, fake_claude):
 # The script constructs the correct claude CLI invocation
 
 
-def test_invokes_with_print_flag(plan_file, fake_claude):
+def test_invokes_with_print_flag(plan_file, fake_claude, git_repo):
     """the script invokes claude with -p or --print"""
-    _run_script([str(plan_file)], fake_claude=fake_claude)
+    _run_script([str(plan_file)], fake_claude=fake_claude, cwd=git_repo)
 
     args = fake_claude["args_file"].read_text().splitlines()
     assert "-p" in args or "--print" in args
 
 
-def test_invokes_with_dangerously_skip_permissions(plan_file, fake_claude):
+def test_invokes_with_dangerously_skip_permissions(plan_file, fake_claude, git_repo):
     """the script passes --dangerously-skip-permissions"""
-    _run_script([str(plan_file)], fake_claude=fake_claude)
+    _run_script([str(plan_file)], fake_claude=fake_claude, cwd=git_repo)
 
     args = fake_claude["args_file"].read_text().splitlines()
     assert "--dangerously-skip-permissions" in args
 
 
-def test_invokes_with_json_output_format(plan_file, fake_claude):
+def test_invokes_with_json_output_format(plan_file, fake_claude, git_repo):
     """the script passes --output-format json"""
-    _run_script([str(plan_file)], fake_claude=fake_claude)
+    _run_script([str(plan_file)], fake_claude=fake_claude, cwd=git_repo)
 
     args = fake_claude["args_file"].read_text().splitlines()
     assert "--output-format" in args
@@ -142,9 +169,9 @@ def test_invokes_with_json_output_format(plan_file, fake_claude):
     assert args[output_format_index + 1] == "json"
 
 
-def test_prompt_includes_plan_path(plan_file, fake_claude):
+def test_prompt_includes_plan_path(plan_file, fake_claude, git_repo):
     """the prompt passed to claude contains 'Execute the plan at:' and the plan file path"""
-    _run_script([str(plan_file)], fake_claude=fake_claude)
+    _run_script([str(plan_file)], fake_claude=fake_claude, cwd=git_repo)
 
     args_text = fake_claude["args_file"].read_text()
     assert "/pairingbuddy:code" in args_text
@@ -156,9 +183,9 @@ def test_prompt_includes_plan_path(plan_file, fake_claude):
 # The script sets the PAIRINGBUDDY_SOLO environment variable
 
 
-def test_sets_pairingbuddy_solo_true(plan_file, fake_claude):
+def test_sets_pairingbuddy_solo_true(plan_file, fake_claude, git_repo):
     """PAIRINGBUDDY_SOLO=true is set in the claude subprocess environment"""
-    _run_script([str(plan_file)], fake_claude=fake_claude)
+    _run_script([str(plan_file)], fake_claude=fake_claude, cwd=git_repo)
 
     env_text = fake_claude["env_file"].read_text()
     assert "PAIRINGBUDDY_SOLO=true" in env_text
@@ -168,16 +195,16 @@ def test_sets_pairingbuddy_solo_true(plan_file, fake_claude):
 # The -n flag controls max retries with a default of 5
 
 
-def test_default_retries_is_five(plan_file, fake_claude):
+def test_default_retries_is_five(plan_file, fake_claude, git_repo):
     """when -n is not specified, script runs successfully with default retries"""
-    result = _run_script([str(plan_file)], fake_claude=fake_claude)
+    result = _run_script([str(plan_file)], fake_claude=fake_claude, cwd=git_repo)
 
     assert result.returncode == 0
 
 
-def test_custom_retries_accepted(plan_file, fake_claude):
+def test_custom_retries_accepted(plan_file, fake_claude, git_repo):
     """when -n 3 is specified, the flag is accepted without error"""
-    result = _run_script(["-n", "3", str(plan_file)], fake_claude=fake_claude)
+    result = _run_script(["-n", "3", str(plan_file)], fake_claude=fake_claude, cwd=git_repo)
 
     assert result.returncode == 0
 
@@ -186,12 +213,13 @@ def test_custom_retries_accepted(plan_file, fake_claude):
 # The script unsets ANTHROPIC_API_KEY by default to prevent unexpected API billing
 
 
-def test_api_key_unset_by_default(plan_file, fake_claude):
+def test_api_key_unset_by_default(plan_file, fake_claude, git_repo):
     """ANTHROPIC_API_KEY is NOT present in the claude subprocess environment by default"""
     _run_script(
         [str(plan_file)],
         fake_claude=fake_claude,
         env={"ANTHROPIC_API_KEY": "sk-test-key-should-be-removed"},
+        cwd=git_repo,
     )
 
     env_text = fake_claude["env_file"].read_text()
@@ -199,12 +227,13 @@ def test_api_key_unset_by_default(plan_file, fake_claude):
     assert "ANTHROPIC_API_KEY" not in env_text
 
 
-def test_api_key_preserved_with_use_api_key_flag(plan_file, fake_claude):
+def test_api_key_preserved_with_use_api_key_flag(plan_file, fake_claude, git_repo):
     """ANTHROPIC_API_KEY IS present when --use-api-key is passed"""
     _run_script(
         ["--use-api-key", str(plan_file)],
         fake_claude=fake_claude,
         env={"ANTHROPIC_API_KEY": "sk-test-key-should-be-kept"},
+        cwd=git_repo,
     )
 
     env_text = fake_claude["env_file"].read_text()
