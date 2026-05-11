@@ -57,6 +57,20 @@ This improves testability and reusability.
 - `Fixed a bug.` (not imperative, has period)
 - `refactored the email validation logic to use a separate class and improved the error handling` (too long)
 
+### What Not to Include
+
+Some things should never appear in a commit message. They add noise without adding signal.
+
+- **No AI co-author trailers** — do not add `Co-Authored-By: Claude ...` or any
+  similar attribution. Commits are authored by the human running the work.
+- **No auto-formatting noise** — don't list lint cleanup, whitespace, or
+  formatting fixes as separate bullets. If they're incidental to a real change,
+  they belong inside that change, not as their own line.
+- **No "tests pass" notes** — passing tests are the default state of a commit
+  and don't need to be mentioned. Only call out test state when it's *not* the
+  default: tests skipped, tests failing, or coverage temporarily reduced —
+  those are useful signals for reviewers.
+
 ### When to Commit
 
 **Do commit when:**

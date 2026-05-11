@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Report reconciliation on resume: preserves entries from previous sessions, drops stale entries for tasks removed from plan, maintains correct ordering
 - Branch guard: refuses to push/create PR on main/master
 
+### Changed
+
+- `committing-changes` skill: added "What Not to Include" section covering no AI co-author trailers, no auto-formatting noise, and no "tests pass" notes (only call out skipped/failing tests)
+
 ### Fixed
 
 - `hooks/solo-progress.mjs`: exits cleanly when `.pairingbuddy/` directory is absent
