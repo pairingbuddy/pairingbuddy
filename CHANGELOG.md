@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-31
+
 ### Added
 
 - Solo Buddy: autonomous execution mode via `scripts/solo-buddy.sh`
@@ -21,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Guardian-based agent tracking: guardian writes `lastAgent`/`lastTool`/`lastDescription` to session file on every tool call
   - Renderer reads source files directly (plan MD, task.json, guardian session file) — independent of hook reliability
   - `hooks/solo-progress.mjs`: append-only progress log for post-session analysis
+  - Current test file surfaced in `solo-status` and the progress log, read from `current-batch.json` with `tests.json` as fallback
   - Final 100% status display on completion with PR/report links
 - `caffeinate -s` sleep prevention for macOS (prevents App Nap/system sleep during unattended runs)
 - Report reconciliation on resume: preserves entries from previous sessions, drops stale entries for tasks removed from plan, maintains correct ordering
