@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pairing Buddy — Workflow Visualizer</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg-card: #161b22;
+      --bg-el: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --dim: #484f58;
+      --c-cyan: #39c0d1;
+      --c-magenta: #d468a0;
+      --c-yellow: #e6b330;
+      --c-red: #e5534b;
+      --c-green: #3fb950;
+      --c-blue: #58a6ff;
+      --c-system: #6e7681;
+      --c-human: #f0883e;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      font-size: 14px; line-height: 1.5;
+    }
+    a { color: var(--c-blue); }
+
+    /* ── Header ── */
+    .site-header { padding: 28px 32px 24px; border-bottom: 1px solid var(--border); }
+    .site-header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; margin: 0 0 6px; }
+    .site-header .subtitle { color: var(--muted); font-size: 13px; margin: 0; }
+
+    /* ── Legend ── */
+    .legend {
+      display: flex; flex-wrap: wrap; gap: 20px;
+      margin-top: 18px; padding: 14px 18px;
+      background: var(--bg-el); border-radius: 8px;
+      border: 1px solid var(--border); max-width: 900px;
+    }
+    .legend-group { display: flex; flex-direction: column; gap: 6px; }
+    .legend-group-title {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.7px; color: var(--dim);
+    }
+    .legend-items { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+    .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+    .l-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+    /* ── Tabs ── */
+    .tabs-nav {
+      display: flex; border-bottom: 1px solid var(--border);
+      padding: 0 32px; overflow-x: auto; gap: 0;
+    }
+    .tab-btn {
+      padding: 12px 18px; font-size: 13px; font-weight: 500;
+      color: var(--muted); background: transparent; border: none;
+      border-bottom: 2px solid transparent; cursor: pointer;
+      white-space: nowrap; transition: all 0.15s; font-family: inherit;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--text); border-bottom-color: var(--c-blue); }
+
+    /* ── Content ── */
+    .content { padding: 32px; max-width: 860px; }
+    .workflow { display: none; }
+    .workflow.active { display: block; }
+    .workflow-header { margin-bottom: 28px; }
+    .workflow-header h2 { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+    .workflow-header p { font-size: 13px; color: var(--muted); margin: 0; max-width: 640px; }
+
+    /* ── Nodes ── */
+    .node {
+      display: flex; align-items: stretch;
+      width: 100%; max-width: 640px;
+    }
+    .node-accent { width: 4px; border-radius: 4px 0 0 4px; flex-shrink: 0; }
+    .node-inner {
+      flex: 1; padding: 10px 14px;
+      border: 1px solid; border-left: none;
+      border-radius: 0 6px 6px 0;
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .node-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .node-name {
+      font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
+      font-size: 12.5px; font-weight: 600;
+    }
+    .node-desc { font-size: 12px; color: var(--muted); }
+    .node-note { font-size: 11px; color: var(--dim); font-style: italic; }
+    .node-io {
+      font-size: 11px; color: var(--dim);
+      font-family: 'SF Mono','Consolas','Menlo',monospace;
+      white-space: pre-wrap; word-break: break-all;
+    }
+    .badges { display: flex; gap: 5px; flex-wrap: wrap; }
+    .badge {
+      font-size: 10px; font-weight: 600; padding: 2px 7px;
+      border-radius: 8px; border: 1px solid;
+    }
+
+    /* Color variants */
+    .cyan  .node-accent { background: var(--c-cyan); }
+    .cyan  .node-inner  { background: rgba(57,192,209,.05); border-color: rgba(57,192,209,.28); }
+    .cyan  .node-name   { color: var(--c-cyan); }
+
+    .magenta .node-accent { background: var(--c-magenta); }
+    .magenta .node-inner  { background: rgba(212,104,160,.05); border-color: rgba(212,104,160,.28); }
+    .magenta .node-name   { color: var(--c-magenta); }
+
+    .yellow .node-accent { background: var(--c-yellow); }
+    .yellow .node-inner  { background: rgba(230,179,48,.05); border-color: rgba(230,179,48,.28); }
+    .yellow .node-name   { color: var(--c-yellow); }
+
+    .red  .node-accent { background: var(--c-red); }
+    .red  .node-inner  { background: rgba(229,83,75,.06); border-color: rgba(229,83,75,.28); }
+    .red  .node-name   { color: var(--c-red); }
+
+    .green .node-accent { background: var(--c-green); }
+    .green .node-inner  { background: rgba(63,185,80,.05); border-color: rgba(63,185,80,.28); }
+    .green .node-name   { color: var(--c-green); }
+
+    .blue .node-accent { background: var(--c-blue); }
+    .blue .node-inner  { background: rgba(88,166,255,.05); border-color: rgba(88,166,255,.28); }
+    .blue .node-name   { color: var(--c-blue); }
+
+    .sys .node-accent { background: var(--c-system); }
+    .sys .node-inner  { background: rgba(110,118,129,.05); border-color: rgba(110,118,129,.22); border-style: dashed; }
+    .sys .node-name   { color: var(--c-system); }
+
+    .hcp .node-accent { background: var(--c-human); }
+    .hcp .node-inner  { background: rgba(240,136,62,.06); border-color: rgba(240,136,62,.32); }
+    .hcp .node-name   { color: var(--c-human); }
+
+    .stp .node-accent { background: var(--c-red); }
+    .stp .node-inner  { background: rgba(229,83,75,.08); border-color: rgba(229,83,75,.36); }
+    .stp .node-name   { color: var(--c-red); }
+
+    /* Badges */
+    .bm-haiku  { color:var(--c-cyan);    border-color:rgba(57,192,209,.35);  background:rgba(57,192,209,.08);  }
+    .bm-sonnet { color:var(--c-green);   border-color:rgba(63,185,80,.35);   background:rgba(63,185,80,.08);   }
+    .bm-opus   { color:var(--c-magenta); border-color:rgba(212,104,160,.35); background:rgba(212,104,160,.08); }
+    .bh        { color:var(--c-human);   border-color:rgba(240,136,62,.35);  background:rgba(240,136,62,.08);  }
+    .bp        { color:var(--muted);     border-color:var(--border);         background:transparent;           }
+
+    /* Connectors */
+    .conn { width: 2px; height: 18px; background: var(--border); margin-left: 20px; }
+
+    /* Blocks (loop / condition) */
+    .blk { margin-left: 22px; position: relative; }
+    .blk::before {
+      content: ''; position: absolute;
+      left: 0; top: 0; bottom: 0; width: 2px;
+    }
+    .blk.loop::before   { background: rgba(88,166,255,.45); }
+    .blk.cond::before   { background: rgba(110,118,129,.3); }
+    .blk-lbl-wrap { padding-left: 20px; margin-bottom: 10px; }
+    .blk-lbl {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.6px; padding: 3px 10px; border-radius: 4px;
+      display: inline-block; border: 1px solid;
+    }
+    .loop .blk-lbl { color: var(--c-blue);   border-color: rgba(88,166,255,.3);   background: rgba(88,166,255,.08);  }
+    .cond .blk-lbl { color: var(--c-system); border-color: rgba(110,118,129,.25); background: rgba(110,118,129,.08); }
+    .blk-body { padding-left: 20px; }
+
+    /* Parallel note */
+    .parallel-note {
+      margin: 0 0 0 4px;
+      padding: 8px 14px;
+      background: rgba(88,166,255,.06);
+      border: 1px solid rgba(88,166,255,.2);
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      max-width: 620px;
+    }
+    .parallel-note strong { color: var(--c-blue); }
+  </style>
+</head>
+<body>
+
+<header class="site-header">
+  <h1>Pairing Buddy — Agent Workflow Visualizer</h1>
+  <p class="subtitle">Select a task type to see every agent the orchestrator invokes, in order, with branching and loops.</p>
+  <div class="legend">
+    <div class="legend-group">
+      <div class="legend-group-title">Agent color = workflow phase</div>
+      <div class="legend-items">
+        <div class="legend-item"><div class="l-dot" style="background:#39c0d1"></div>Cyan — Setup / Classification / Docs</div>
+        <div class="legend-item"><div class="l-dot" style="background:#d468a0"></div>Magenta — Analysis / Verify / Commit</div>
+        <div class="legend-item"><div class="l-dot" style="background:#e6b330"></div>Yellow — Issue Detection / Placeholders</div>
+        <div class="legend-item"><div class="l-dot" style="background:#e5534b"></div>Red — RED phase (failing tests)</div>
+        <div class="legend-item"><div class="l-dot" style="background:#3fb950"></div>Green — GREEN phase (passing code)</div>
+        <div class="legend-item"><div class="l-dot" style="background:#58a6ff"></div>Blue — REFACTOR / Exploration</div>
+        <div class="legend-item"><div class="l-dot" style="background:#6e7681;border:1px dashed #6e7681"></div>Dashed — Orchestrator action (no agent)</div>
+      </div>
+    </div>
+    <div class="legend-group">
+      <div class="legend-group-title">Badges &amp; symbols</div>
+      <div class="legend-items">
+        <div class="legend-item"><span class="badge bh">👤 HUMAN REVIEW</span>&nbsp;Agent pauses for approval; loops until approved</div>
+        <div class="legend-item"><span class="badge bm-haiku">HAIKU</span><span class="badge bm-sonnet">SONNET</span><span class="badge bm-opus">OPUS</span>&nbsp;Model used</div>
+        <div class="legend-item">↺ Blue border = loop block &nbsp;|&nbsp; Gray border = conditional block</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs-nav">
+  <button class="tab-btn active"  data-target="new-feature">🆕 New Feature</button>
+  <button class="tab-btn"         data-target="bug-fix">🐛 Bug Fix</button>
+  <button class="tab-btn"         data-target="refactoring">♻️ Refactoring</button>
+  <button class="tab-btn"         data-target="config-change">⚙️ Config Change</button>
+  <button class="tab-btn"         data-target="spike">🔬 Spike</button>
+  <button class="tab-btn"         data-target="design-ux">🎨 Design UX</button>
+</nav>
+
+<div class="content">
+  <div id="new-feature"   class="workflow active"></div>
+  <div id="bug-fix"       class="workflow"></div>
+  <div id="refactoring"   class="workflow"></div>
+  <div id="config-change" class="workflow"></div>
+  <div id="spike"         class="workflow"></div>
+  <div id="design-ux"     class="workflow"></div>
+</div>
+
+<script>
+// ── Agent metadata ────────────────────────────────────────────────────────────
+const A = {
+  'curate-guidance': {
+    color:'cyan', model:'sonnet', phase:'PRE', hr:true,
+    desc:'Review &amp; curate persistent guidance from previous sessions. Offers to add new entries. Entries with <code>persistent:true</code> survive cleanup and carry forward.',
+    reads:'human-guidance.json (opt), task.json (opt)',
+    writes:'human-guidance.json'
+  },
+  'classify-task': {
+    color:'cyan', model:'haiku', phase:'PRE',
+    desc:'Classify the task as <b>new_feature</b>, <b>bug_fix</b>, <b>refactoring</b>, <b>config_change</b>, or <b>spike</b> based on the task description.',
+    reads:'task.json, human-guidance.json (opt)',
+    writes:'task-classification.json'
+  },
+  'enumerate-scenarios-and-test-cases': {
+    color:'magenta', model:'sonnet', phase:'PRE', hr:true,
+    desc:'Analyze requirements and produce a hierarchical Scenario → Test Case tree. Each scenario is a feature area; each test case is a specific verifiable condition.',
+    reads:'task.json, test-config.json, human-guidance.json (opt)',
+    writes:'scenarios.json'
+  },
+  'create-test-placeholders': {
+    color:'yellow', model:'haiku', phase:'PRE', hr:true,
+    desc:'Create test files with <code>TODO</code> placeholder functions — one per test case. Idempotent: skips existing tests, only adds gaps from coverage report.',
+    reads:'scenarios.json, test-config.json, tests.json (opt), coverage-report.json (opt), human-guidance.json (opt)',
+    writes:'tests.json'
+  },
+  'implement-tests': {
+    color:'red', model:'sonnet', phase:'RED',
+    desc:'Replace the current placeholder with a real failing test. Verifies the test fails for the <em>right</em> reason (feature missing, not syntax error).',
+    reads:'current-batch.json, test-config.json, human-guidance.json (opt)',
+    writes:'test-state.json'
+  },
+  'implement-code': {
+    color:'green', model:'sonnet', phase:'GREEN',
+    desc:'Write the <em>minimum</em> production code needed to make the failing test pass. No gold-plating or refactoring here.',
+    reads:'test-state.json, test-config.json, human-guidance.json (opt)',
+    writes:'code-state.json'
+  },
+  'identify-test-issues': {
+    color:'yellow', model:'opus', phase:'REFACTOR', hr:true,
+    desc:'Review all test files for quality issues: FIRST principles, naming, structure, independence, and test smells.',
+    reads:'tests.json, test-config.json, human-guidance.json (opt)',
+    writes:'test-issues.json'
+  },
+  'refactor-tests': {
+    color:'magenta', model:'sonnet', phase:'REFACTOR',
+    desc:'Apply test quality fixes identified by identify-test-issues. Runs tests after each change to confirm they still pass.',
+    reads:'test-issues.json, test-config.json, human-guidance.json (opt)',
+    writes:'files-changed.json'
+  },
+  'identify-code-issues': {
+    color:'yellow', model:'opus', phase:'REFACTOR', hr:true,
+    desc:'Review new production code for SOLID violations, code smells, and Clean Code issues.',
+    reads:'code-state.json, test-config.json, human-guidance.json (opt)',
+    writes:'code-issues.json'
+  },
+  'refactor-code': {
+    color:'blue', model:'sonnet', phase:'REFACTOR',
+    desc:'Apply code quality fixes identified by identify-code-issues. Keeps tests green throughout.',
+    reads:'code-issues.json, test-config.json, human-guidance.json (opt)',
+    writes:'files-changed.json'
+  },
+  'verify-test-coverage': {
+    color:'magenta', model:'sonnet', phase:'VERIFY', hr:true,
+    desc:'Reconcile implemented tests against the scenario tree. Identifies uncovered scenarios and test cases.',
+    reads:'scenarios.json, tests.json, test-config.json, human-guidance.json (opt)',
+    writes:'coverage-report.json'
+  },
+  'run-all-tests': {
+    color:'green', model:'haiku', phase:'VERIFY',
+    desc:'Execute the full test suite and capture aggregate pass/fail status.',
+    reads:'test-config.json, human-guidance.json (opt)',
+    writes:'all-tests-results.json'
+  },
+  'update-documentation': {
+    color:'cyan', model:'sonnet', phase:'DOCS', hr:true,
+    desc:'Analyze changed files, determine what documentation needs updating, and apply the changes.',
+    reads:'files-changed.json, doc-config.json, task.json, human-guidance.json (opt)',
+    writes:'docs-updated.json'
+  },
+  'commit-changes': {
+    color:'magenta', model:'haiku', phase:'COMMIT',
+    desc:'Stage all changed files and create a descriptive git commit.',
+    reads:'files-changed.json, human-guidance.json (opt)',
+    writes:'commit-result.json'
+  },
+  'scope-refactoring': {
+    color:'cyan', model:'sonnet', phase:'REFACTOR', hr:true,
+    desc:'Translate the user\'s refactoring intent into a scoped list of code and test issues. Avoids running identify-* agents globally (which would report every issue in the codebase).',
+    reads:'task.json, test-config.json, human-guidance.json (opt)',
+    writes:'code-issues.json, test-issues.json'
+  },
+  'setup-spike': {
+    color:'cyan', model:'sonnet', phase:'SPIKE', hr:true,
+    desc:'Clarify the spike goal, break it into exploration units, and specify the language/runtime configuration for each unit.',
+    reads:'task.json, human-guidance.json (opt)',
+    writes:'spike-config.json, spike-questions.json'
+  },
+  'explore-spike-unit': {
+    color:'blue', model:'opus', phase:'SPIKE', hr:true,
+    desc:'Execute one exploration unit: write &amp; run throwaway code, measure results, and append findings. Each unit accumulates into spike-findings.json.',
+    reads:'spike-config.json, spike-questions.json, current-unit.json, spike-findings.json (opt), human-guidance.json (opt)',
+    writes:'spike-findings.json'
+  },
+  'document-spike': {
+    color:'green', model:'sonnet', phase:'SPIKE', hr:true,
+    desc:'Aggregate all unit findings into a structured summary document. Human specifies the output file location.',
+    reads:'spike-config.json, spike-findings.json, human-guidance.json (opt)',
+    writes:'spike-summary.json'
+  },
+  'design-ux-explorer': {
+    color:'cyan', model:'opus', phase:'DESIGN',
+    desc:'Establish domain grounding: analyze the product space, target users, interaction context, and design intent from the brief.',
+    reads:'direction.json (opt)',
+    writes:'domain-spec.json'
+  },
+  'design-ux-architect': {
+    color:'magenta', model:'opus', phase:'DESIGN',
+    desc:'Make strategic design decisions: layout patterns, color strategy, typography, spacing scale, and component architecture.',
+    reads:'direction.json, domain-spec.json, critique.json (opt), existing design-decisions.json (opt)',
+    writes:'design-decisions.json'
+  },
+  'design-ux-token-generator': {
+    color:'green', model:'sonnet', phase:'DESIGN',
+    desc:'Generate the three-tier token architecture: brand.json → alias.json → mapped.json, plus tokens.css and tailwind.config.js.',
+    reads:'design-decisions.json',
+    writes:'tokens-generated.json, tokens/, tokens.css, tailwind.config.js'
+  },
+  'design-ux-visual-builder': {
+    color:'blue', model:'opus', phase:'DESIGN',
+    desc:'Build preview.html (component showcase) and example.html (real UI screen). Uses Playwright MCP for visual feedback if available.',
+    reads:'design-decisions.json, domain-spec.json, critique.json (opt), config.json (opt), experience.json (opt)',
+    writes:'config.json, preview.html, example.html'
+  },
+  'design-ux-validator': {
+    color:'green', model:'sonnet', phase:'DESIGN',
+    desc:'Structural validation gate: checks all required artifacts exist and are well-formed before allowing critique.',
+    reads:'direction.json (opt), domain-spec.json (opt), config.json (opt)',
+    writes:'validation.json (ready_for_critique: true/false)'
+  },
+  'design-ux-critic': {
+    color:'yellow', model:'opus', phase:'DESIGN',
+    desc:'6-pass UX critique framework. Each issue gets a <code>change_level</code>: <b>domain</b> (re-explore), <b>strategic</b> (re-architect), or <b>tactical</b> (visual fix only).',
+    reads:'direction.json, domain-spec.json, config.json (opt), experience.json (opt)',
+    writes:'critique.json'
+  },
+  'design-ux-gallery-generator': {
+    color:'cyan', model:'sonnet', phase:'DESIGN',
+    desc:'Generate a web-hostable gallery: index.html (exploration cards), comparison.html (side-by-side), and Playwright screenshots.',
+    reads:'session.json (all explorations)',
+    writes:'gallery-output.json, index.html, comparison.html, screenshots/'
+  },
+};
+
+// ── Render helpers ────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&(?!amp;|lt;|gt;|quot;|#)/g, '&amp;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function nodeHTML(color, nameHTML, descHTML, badges, ioText, noteText) {
+  return `<div class="node ${color}">
+    <div class="node-accent"></div>
+    <div class="node-inner">
+      <div class="node-header"><span class="node-name">${nameHTML}</span></div>
+      <div class="node-desc">${descHTML}</div>
+      <div class="badges">${badges}</div>
+      <div class="node-io">${ioText}</div>
+      ${noteText ? `<div class="node-note">ℹ ${noteText}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function agentNode(name, note) {
+  const a = A[name];
+  const modelBadge = `<span class="badge bm-${a.model}">${a.model.toUpperCase()}</span>`;
+  const phaseBadge = `<span class="badge bp">${a.phase}</span>`;
+  const hrBadge    = a.hr ? `<span class="badge bh">👤 Human Review</span>` : '';
+  const io = `reads: ${a.reads}\nwrites: ${a.writes}`;
+  return nodeHTML(a.color, esc(name), a.desc, modelBadge + phaseBadge + hrBadge, io, note || '');
+}
+
+function sysNode(name, desc) {
+  return nodeHTML('sys', `⚙ ${esc(name)}`, esc(desc), '', '', '');
+}
+
+function hcpNode(desc) {
+  return nodeHTML('hcp', '👤 Human Checkpoint', esc(desc), '', '', '');
+}
+
+function stpNode(desc) {
+  return nodeHTML('stp', '⛔ Stop', esc(desc), '', '', '');
+}
+
+function conn() { return '<div class="conn"></div>'; }
+
+function loop(label, inner) {
+  return `<div class="blk loop">
+    <div class="blk-lbl-wrap"><span class="blk-lbl">↺ ${esc(label)}</span></div>
+    <div class="blk-body">${inner}</div>
+  </div>`;
+}
+
+function cond(label, inner) {
+  return `<div class="blk cond">
+    <div class="blk-lbl-wrap"><span class="blk-lbl">IF ${esc(label)}</span></div>
+    <div class="blk-body">${inner}</div>
+  </div>`;
+}
+
+function wrap(html) { return `<div class="node-wrap">${html}</div>`; }
+
+// ── Shared preamble (every coding workflow starts the same) ───────────────────
+function preamble(extraNote) {
+  return (
+    wrap(agentNode('curate-guidance')) +
+    conn() +
+    wrap(sysNode('Cleanup State Files',
+      'Delete all .pairingbuddy/*.json EXCEPT: test-config.json, doc-config.json, human-guidance.json. ' +
+      'Prevents stale state from previous tasks affecting the current run.')) +
+    conn() +
+    wrap(agentNode('classify-task', extraNote || ''))
+  );
+}
+
+// Shared tail (all coding types except spike end this way)
+function tail() {
+  return (
+    conn() +
+    wrap(agentNode('run-all-tests')) +
+    conn() +
+    cond('tests fail',
+      wrap(stpNode('Stop: Final verification failed — tests not passing'))) +
+    conn() +
+    wrap(agentNode('update-documentation')) +
+    conn() +
+    wrap(hcpNode('Human asked: "All tests pass. Commit changes?" — YES commits, NO ends workflow.')) +
+    conn() +
+    cond('human approves commit',
+      wrap(agentNode('commit-changes')))
+  );
+}
+
+// ── Workflow definitions ──────────────────────────────────────────────────────
+const WORKFLOWS = {
+  'new-feature': {
+    title: 'New Feature Workflow',
+    desc: 'Full TDD cycle: enumerate scenarios → create placeholders → RED-GREEN-REFACTOR per test → verify coverage (with loop) → final run → commit.',
+    html() {
+      const innerLoop =
+        wrap(agentNode('implement-tests')) +
+        conn() +
+        wrap(agentNode('implement-code')) +
+        conn() +
+        wrap(agentNode('identify-test-issues')) +
+        conn() +
+        cond('test issues found', wrap(agentNode('refactor-tests'))) +
+        conn() +
+        wrap(agentNode('identify-code-issues')) +
+        conn() +
+        cond('code issues found', wrap(agentNode('refactor-code')));
+
+      const coverageLoop =
+        wrap(agentNode('create-test-placeholders', 'Idempotent — skips existing tests, adds only new gaps from coverage-report')) +
+        conn() +
+        loop('For each pending test', innerLoop) +
+        conn() +
+        wrap(agentNode('verify-test-coverage')) +
+        conn() +
+        cond('coverage gaps found',
+          wrap(hcpNode('Human asked: "Coverage gaps found. Implement missing tests?" — YES loops back, NO exits.')));
+
+      return (
+        preamble() +
+        conn() +
+        wrap(agentNode('enumerate-scenarios-and-test-cases')) +
+        conn() +
+        loop('Coverage Loop — repeats while gaps exist and human approves', coverageLoop) +
+        tail()
+      );
+    }
+  },
+
+  'bug-fix': {
+    title: 'Bug Fix Workflow',
+    desc: 'Regression-first: enumerate what breaks → create placeholder → write a test that reproduces the bug (RED) → fix code to pass (GREEN) → final run → commit.',
+    html() {
+      const forEachTest =
+        wrap(agentNode('implement-tests', 'Test MUST fail — it reproduces the existing bug')) +
+        conn() +
+        wrap(agentNode('implement-code', 'The fix makes the regression test pass'));
+
+      return (
+        preamble() +
+        conn() +
+        wrap(agentNode('enumerate-scenarios-and-test-cases', 'Describes the bug: what currently fails and what should succeed')) +
+        conn() +
+        wrap(agentNode('create-test-placeholders')) +
+        conn() +
+        loop('For each test', forEachTest) +
+        tail()
+      );
+    }
+  },
+
+  'refactoring': {
+    title: 'Refactoring Workflow',
+    desc: 'Safety-first: verify tests pass → scope issues to the task intent → refactor → verify tests still pass.',
+    html() {
+      return (
+        preamble() +
+        conn() +
+        wrap(agentNode('run-all-tests', 'Pre-check: all tests must pass before any refactoring begins')) +
+        conn() +
+        cond('tests fail',
+          wrap(stpNode('Stop: Cannot refactor — tests must pass first'))) +
+        conn() +
+        wrap(agentNode('scope-refactoring',
+          'Uses task intent to scope issues instead of identify-* agents (which would report ALL issues in a large codebase)')) +
+        conn() +
+        cond('code issues found', wrap(agentNode('refactor-code'))) +
+        conn() +
+        cond('test issues found', wrap(agentNode('refactor-tests'))) +
+        conn() +
+        wrap(agentNode('run-all-tests', 'Post-check: verify refactoring did not break any tests')) +
+        conn() +
+        cond('tests fail',
+          wrap(stpNode('Stop: Refactoring broke tests'))) +
+        conn() +
+        wrap(agentNode('update-documentation')) +
+        conn() +
+        wrap(hcpNode('Human asked: "All tests pass. Commit changes?"')) +
+        conn() +
+        cond('human approves commit', wrap(agentNode('commit-changes')))
+      );
+    }
+  },
+
+  'config-change': {
+    title: 'Config Change Workflow',
+    desc: 'Minimal path: classify → orchestrator edits config directly (no agent) → verify tests still pass → commit.',
+    html() {
+      return (
+        preamble() +
+        conn() +
+        wrap(sysNode('Orchestrator Makes Change Directly',
+          'No agent is invoked. Claude (in the main orchestrator context) edits the configuration file(s) as described by the task.')) +
+        tail()
+      );
+    }
+  },
+
+  'spike': {
+    title: 'Spike Workflow',
+    desc: 'Exploratory coding without TDD: answer questions, compare approaches, or evaluate technologies. Produces a structured findings document. run-all-tests and commit are skipped.',
+    html() {
+      const unitLoop =
+        wrap(agentNode('explore-spike-unit', 'Writes &amp; runs throwaway code; appends findings to spike-findings.json')) +
+        conn() +
+        wrap(hcpNode('Human asked: "Unit explored. Continue to next unit?" — NO stops early, YES advances to next unit.'));
+
+      return (
+        preamble('Classifies task as spike — entirely skips TDD workflow') +
+        conn() +
+        wrap(agentNode('setup-spike', 'Defines exploration units; each unit can have its own language/runtime config')) +
+        conn() +
+        loop('For each pending exploration unit', unitLoop) +
+        conn() +
+        wrap(agentNode('document-spike', 'Aggregates all findings into a structured summary; human specifies output location')) +
+        conn() +
+        wrap(stpNode('Spike complete. (run-all-tests and commit-changes are NOT run in spike mode.)'))
+      );
+    }
+  },
+
+  'design-ux': {
+    title: 'Design UX Workflow',
+    desc: 'Creates production-ready design systems with three-tier tokens, HTML previews, and iterative UX critique. Each exploration is isolated; multiple explorations can run in parallel.',
+    html() {
+      const genLoop =
+        cond('domain issues found in critique',
+          wrap(agentNode('design-ux-explorer', 'Re-run to refine domain understanding'))) +
+        conn() +
+        cond('first iteration OR domain/strategic issues in critique',
+          wrap(agentNode('design-ux-architect')) +
+          conn() +
+          wrap(agentNode('design-ux-token-generator', 'Outputs: brand.json → alias.json → mapped.json + tokens.css + tailwind.config.js'))) +
+        conn() +
+        wrap(agentNode('design-ux-visual-builder', 'Always runs. Uses Playwright MCP for visual screenshots if configured.')) +
+        conn() +
+        wrap(agentNode('design-ux-validator')) +
+        conn() +
+        cond('not ready_for_critique (structural validation failed)',
+          wrap(sysNode('Continue Loop', 'Skip critique this iteration, return to top of generation loop.'))) +
+        conn() +
+        wrap(agentNode('design-ux-critic', 'Issues classified by change_level: domain | strategic | tactical')) +
+        conn() +
+        wrap(hcpNode('Human asked: "Continue, adjust, or done?" — "done" exits the loop.'));
+
+      return (
+        wrap(sysNode('Setup: Ask Name &amp; Output Path',
+          'Orchestrator asks for an exploration name (e.g. "horizon") and an artifact output path. ' +
+          'Creates .pairingbuddy/design-ux/{name}/ state folder and writes direction.json. ' +
+          'Multiple explorations can run in parallel — each has its own isolated state.')) +
+        conn() +
+        wrap(agentNode('design-ux-explorer', 'First pass: establishes domain grounding from direction.json')) +
+        conn() +
+        `<div class="parallel-note">
+          <strong>Parallel exploration supported:</strong> run multiple explorations concurrently
+          with separate <code>{name}</code> parameters. Each runs the full pipeline below independently.
+        </div>` +
+        conn() +
+        loop('Generation Loop (bounded by max_iterations)', genLoop) +
+        conn() +
+        wrap(agentNode('design-ux-gallery-generator',
+          'Runs after all explorations complete. Generates web-hostable index.html + comparison.html across all explorations.'))
+      );
+    }
+  }
+};
+
+// ── Render all workflows ──────────────────────────────────────────────────────
+Object.entries(WORKFLOWS).forEach(([id, wf]) => {
+  const el = document.getElementById(id);
+  el.innerHTML = `
+    <div class="workflow-header">
+      <h2>${wf.title}</h2>
+      <p>${wf.desc}</p>
+    </div>
+    <div class="flow">${wf.html()}</div>
+  `;
+});
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.workflow').forEach(w => w.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.target).classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+});
+</script>
+</body>
+</html>
