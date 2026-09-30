@@ -16,7 +16,10 @@ if (!isSoloMode) {
 
 try {
 
-const input = JSON.parse(readFileSync("/dev/stdin", "utf8"));
+// Stream fd 0: Claude Code hands hooks a UNIX socket on Linux, where open("/dev/stdin") fails with ENXIO.
+let rawInput = "";
+for await (const chunk of process.stdin) rawInput += chunk;
+const input = JSON.parse(rawInput);
 
 if (input.tool_name !== "Agent") {
   process.exit(0);

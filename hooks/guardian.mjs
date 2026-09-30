@@ -30,7 +30,16 @@ const SOLO_ADDITIONS = [
 
 const isSoloMode = process.env.PAIRINGBUDDY_SOLO === "true";
 
-const input = JSON.parse(readFileSync("/dev/stdin", "utf8"));
+// Stream fd 0: Claude Code hands hooks a UNIX socket on Linux, where open("/dev/stdin") fails with ENXIO.
+let rawInput = "";
+for await (const chunk of process.stdin) rawInput += chunk;
+let input;
+try {
+  input = JSON.parse(rawInput);
+} catch {
+  // A missed reminder is harmless; a hook error on every tool call is not.
+  process.exit(0);
+}
 const sessionId = input.session_id || "unknown";
 const forceInject = process.argv[2] === "always";
 const stateDir = join(process.cwd(), ".pairingbuddy", "hooks");

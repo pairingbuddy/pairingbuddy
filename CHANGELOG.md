@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- PostToolUse hooks (`guardian.mjs`, `solo-progress.mjs`) failed on every tool call on Linux with `ENXIO: no such device or address, open '/dev/stdin'`: Claude Code passes hook stdin as a UNIX socket there, which cannot be opened by path. Both hooks now stream fd 0, and `guardian.mjs` exits cleanly on empty or malformed input (#4)
+
 ## [0.7.0] - 2026-07-31
 
 ### Added
