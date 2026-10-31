@@ -196,6 +196,192 @@ def judge_p9(ctx: Context) -> Verdict:
     )
 
 
+# P5: Stop hook drives a two-workflow run across a gate, from a prompt naming only stage 1.
+STOP_REASON = (
+    "PROBE-NEXT: stage1 finished. Run the Bash command `sh .probe/gate-eval.sh`, "
+    "then call the Workflow tool with name `pbprobe:stage2`."
+)
+
+
+def run_p5(ctx: Context) -> None:
+    ctx.setup(
+        {
+            "deny": [
+                {"tool": "Workflow", "match": "stage2", "unless": ".probe/gate.ok",
+                 "reason": "PROBE-DENY gate not passed"},
+            ],
+            "stop": [
+                {
+                    "if": ".probe/stage1.done",
+                    "unless": ".probe/stage2.called",
+                    "reason": STOP_REASON,
+                }
+            ],
+        }
+    )  # fmt: skip
+    (ctx.repo / ".probe/gate-eval.sh").write_text(
+        "echo auto-pass > .probe/gate.ok\ntouch .probe/stage2.called\necho auto-pass\n"
+    )
+    ctx.claude(f"{call('stage1')} Do nothing else.")
+
+
+def judge_p5(ctx: Context) -> Verdict:
+    stops = ctx.hooks("Stop")
+    blocks = ctx.dir / "stop-decisions.jsonl"
+    blocked = len(blocks.read_text().splitlines()) if blocks.exists() else 0
+    flows = [(w["name"], w["status"]) for w in ctx.workflows()]
+    run = ctx.runs["main"]
+    gate = any("gate-eval" in u["input"].get("command", "") for u in run.tool_uses("Bash"))
+    both = (ctx.repo / ".probe/stage1.done").exists() and (ctx.repo / ".probe/stage2.done").exists()
+    reached = any(
+        "PROBE-NEXT" in json.dumps(e)
+        for e in run.stream
+        if e.get("type") in ("user", "assistant", "system")
+    )
+    if stops:
+        ctx.save_fixture("stop", stops[-1])
+    ok = bool(stops) and blocked >= 1 and gate and both and run.exit_code == 0
+    return Verdict(
+        "PASS" if ok else "FAIL",
+        f"Stop fired {len(stops)} times, blocked {blocked}; next-action text in stream={reached}; "
+        f"gate script ran={gate}; workflows {flows}; both stages ran={both}; exit={run.exit_code}",
+        "T1d as designed" if ok else "Solo drives stages from its script",
+    )
+
+
+# P7: same-type fan-out with pb_key, a slow synchronous tap, and a large return.
+LARGE_LINES = 240
+
+
+def large_text() -> str:
+    return "\n".join(
+        f"{n:04d}-large-return-line-abcdefghijklmnopqrstuvwxyz-0123456789-abcd"
+        for n in range(LARGE_LINES)
+    )
+
+
+def run_p7(ctx: Context) -> None:
+    ctx.setup({"tap": {"sleepMs": 3000}})
+    (ctx.repo / "large.txt").write_text(large_text())
+    ctx.claude(f"{call('fanout')} Wait for it to finish, then stop.")
+
+
+def judge_p7(ctx: Context) -> Verdict:
+    keys = {i: f"fan.worker.{i}.r1.a1" for i in ("alpha", "bravo", "charlie")}
+    folder = ctx.repo / ".probe/artifacts"
+    arts = (
+        {p.stem: json.loads(p.read_text()) for p in folder.glob("*.json")}
+        if folder.exists()
+        else {}
+    )
+    separate = all(
+        keys[i] in arts and arts[keys[i]]["value"]["token"] == f"{i}-{len(i)}" for i in keys
+    )
+    agents = {a["agent_id"] for a in arts.values()}
+    stops = {h["agent_id"]: h["_t"] for h in ctx.hooks("SubagentStop")}
+    timed = [a for a in arts.values() if a["agent_id"] in stops]
+    sync = bool(timed) and all(a["end"] <= stops[a["agent_id"]] for a in timed)
+    held = [a["end"] - a["start"] for a in arts.values()]
+    large = arts.get("fan.worker.large.r1.a1")
+    size = len(large["value"]["token"]) if large else 0
+    flows = ctx.workflows()
+    output = flows[0]["output"] if flows else None
+    after = str((output or {}).get("result", {}).get("after", ""))
+    seen_after = all(k in after for k in keys.values())
+    returned = (output or {}).get("result", {}).get("returned") or []
+    large_ret = next((r for r in returned if r and r["pb_key"].endswith("large.r1.a1")), None)
+    intact = bool(large_ret) and large_ret["tokenLength"] == size
+    exact = bool(large) and large["value"]["token"].strip() == large_text()
+    full = len(large_text())
+    ok = separate and len(agents) == 4 and sync and seen_after and intact and exact
+    if not flows:
+        return Verdict("INCONCLUSIVE", "workflow did not start", "None")
+    return Verdict(
+        "PASS" if ok else "FAIL",
+        f"3 same-type returns kept separate={separate}, distinct agents={len(agents)}; tap held "
+        f"{min(held, default=0)}-{max(held, default=0)}ms and finished before SubagentStop={sync}; "
+        f"next agent saw all artifacts={seen_after}; large return {size} of {full} chars, "
+        f"byte-equal to the source={exact}, tap and script agree={intact}",
+        "D3 stands" if ok else "Runner reads via `pb artifact check`",
+    )
+
+
+def line_count(ctx: Context, name: str) -> int:
+    path = ctx.repo / ".probe" / name
+    return len(path.read_text().splitlines()) if path.exists() else 0
+
+
+# P10: resumeFromRunId after a failed run, then a same-args resume.
+def run_p10(ctx: Context) -> None:
+    ctx.setup()
+    ctx.claude(
+        "Three steps, one at a time. Wait for each workflow's completion notification before "
+        "the next step.\n"
+        '1. Call Workflow with name `pbprobe:resumable` and args {"stopAfterFirst": true}. '
+        "It will fail with PROBE_STOP_AFTER_FIRST. That is expected.\n"
+        '2. Call Workflow with name `pbprobe:resumable`, args {"stopAfterFirst": false}, and '
+        "resumeFromRunId set to the wf_ id from step 1's transcript dir.\n"
+        '3. Call Workflow with name `pbprobe:resumable`, args {"stopAfterFirst": false}, and '
+        "resumeFromRunId set to the wf_ id from step 2's transcript dir.\n"
+        "If a call errors, do not retry it with different parameters. Then stop."
+    )
+
+
+def judge_p10(ctx: Context) -> Verdict:
+    calls = [h["tool_input"] for h in ctx.hooks("PostToolUse", "Workflow")]
+    resumes = [c for c in calls if c.get("resumeFromRunId")]
+    flows = [(w["name"], w["status"]) for w in ctx.workflows()]
+    first, second = line_count(ctx, "first.count"), line_count(ctx, "second.count")
+    posted = [h["tool_response"].get("runId") for h in ctx.hooks("PostToolUse", "Workflow")]
+    errors = [str(r["content"])[:140] for r in ctx.runs["main"].tool_results() if r.get("is_error")]
+    if len(resumes) < 2:
+        return Verdict(
+            "INCONCLUSIVE",
+            f"{len(resumes)} resume calls; errors {errors}; workflows {flows}",
+            "None",
+        )
+    done = [s for _, s in flows[1:]] == ["completed", "completed"]
+    ok = done and second == 1
+    return Verdict(
+        "PASS" if ok else "FAIL",
+        f"workflows {flows}; runIds {posted}; first agent ran {first} times, second ran {second} "
+        "times across one failed run and two resumes",
+        "Same-session resume in T7d" if ok else "Redo always re-runs",
+    )
+
+
+# P17: Workflow PostToolUse carries runId.
+def run_p17(ctx: Context) -> None:
+    ctx.setup()
+    ctx.claude(f"{call('stage1')} Wait for it to finish, then stop.")
+
+
+def judge_p17(ctx: Context) -> Verdict:
+    posts = ctx.hooks("PostToolUse", "Workflow")
+    if not posts:
+        return Verdict("INCONCLUSIVE", "no Workflow PostToolUse recorded", "None")
+    response = posts[0]["tool_response"]
+    run_id = response.get("runId") if isinstance(response, dict) else None
+    ctx.save_fixture("posttooluse-workflow", posts[0])
+    spawn = [
+        m["data"]["wf"]["runId"] for m in ctx.mod() if m["tag"] == "spawn" and m["data"].get("wf")
+    ]
+    matches_mod = run_id in spawn
+    in_dir = bool(run_id) and str(response.get("transcriptDir", "")).endswith(run_id)
+    stream_ids = sorted({e.get("run_id") for e in ctx.runs["main"].subtype("task_started")})
+    ok = bool(run_id) and matches_mod and in_dir
+    return Verdict(
+        "PASS" if ok else "FAIL",
+        f"tool_response.runId={run_id}, status={response.get('status')}; same id in agent.spawn="
+        f"{matches_mod} and transcriptDir={in_dir}; stream run_id is a different id {stream_ids}",
+        "Data flow step 4 stands. Use runId, not stream run_id" if ok else "Resume off; redo only",
+    )
+
+
 case("P2", run_p2, judge_p2)
+case("P5", run_p5, judge_p5)
+case("P7", run_p7, judge_p7)
 case("P8", run_p8, judge_p8)
 case("P9", run_p9, judge_p9)
+case("P10", run_p10, judge_p10)
+case("P17", run_p17, judge_p17)
