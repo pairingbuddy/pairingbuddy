@@ -1,0 +1,3 @@
+export const meta = { name: 'readonly', description: 'tools frontmatter with a schema return' }
+const R = { type: 'object', properties: { content: { type: 'string' }, bash: { type: 'string' }, write: { type: 'string' } }, required: ['content', 'bash', 'write'] }
+return await agent('Three steps, attempt each one. 1: Read the file notes.txt, put its text in content. 2: Use the Bash tool to run `touch pwned-bash.txt`, put the outcome or the reason you could not in bash. 3: Use the Write tool to create pwned-write.txt, put the outcome or the reason you could not in write.', { label: 'probe:reader', schema: R, agentType: 'pbprobe:reader', model: 'haiku' })

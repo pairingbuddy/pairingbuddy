@@ -1,0 +1,9 @@
+{
+  "modules": ["./register.ts"],
+  "hooks": {
+    "PreToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs\"" }] }],
+    "PostToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs\"" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs\"" }] }],
+    "SubagentStop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs\"" }] }]
+  }
+}
