@@ -1,6 +1,7 @@
 // Fixture hook: logs every payload, then applies the probe's rules.json.
 // PROBE_DIR is set by the harness. Rules:
 //   deny: [{event, tool, match, unless, reason}]
+//   allow: [{tool, match}]          auto-allow, for the default-mode probe
 //   stop: [{if, unless, reason}]    paths are relative to the payload cwd
 //   tap:  {sleepMs}                 PostToolUse StructuredOutput capture by pb_key
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -21,6 +22,17 @@ if (event === 'PreToolUse') {
     if (r.unless && here(r.unless)) continue
     console.log(JSON.stringify({
       hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: r.reason },
+    }))
+    process.exit(0)
+  }
+}
+
+if (event === 'PreToolUse') {
+  const text = JSON.stringify(input.tool_input ?? {})
+  for (const r of rules.allow ?? []) {
+    if (r.tool !== input.tool_name || !text.includes(r.match)) continue
+    console.log(JSON.stringify({
+      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow', permissionDecisionReason: 'probe auto-allow' },
     }))
     process.exit(0)
   }

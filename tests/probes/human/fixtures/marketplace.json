@@ -1,0 +1,8 @@
+{
+  "name": "pbprobe-local",
+  "owner": { "name": "probe" },
+  "plugins": [
+    { "name": "pbprobe", "source": "./pbprobe", "description": "T0 fixture plugin" },
+    { "name": "pbhookonly", "source": "./pbhookonly", "description": "T0 hook-only fixture" }
+  ]
+}
