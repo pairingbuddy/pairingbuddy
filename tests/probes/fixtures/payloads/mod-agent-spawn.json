@@ -1,0 +1,10 @@
+{
+  "type": "pbprobe:echoer",
+  "desc": "stage:env",
+  "wf": {
+    "runId": "wf_b1c5d427-908",
+    "agentIndex": 1
+  },
+  "model": "haiku",
+  "promptHead": "Run `printenv CLAUDE_PLUGIN_ROOT` (root), then `pwd` (pwd), "
+}

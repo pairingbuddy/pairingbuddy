@@ -1,10 +1,12 @@
 """T0 probe definitions: each pairs a run with a judge that reads only the recording."""
 
 import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
-from harness import Context
+from harness import Context, git
 
 
 @dataclass
@@ -378,10 +380,292 @@ def judge_p17(ctx: Context) -> Verdict:
     )
 
 
+# P6, auto part: permission_mode under skip-permissions.
+def run_p6(ctx: Context) -> None:
+    ctx.setup()
+    ctx.claude(
+        f"Run the Bash command `echo hi`. Then {call('stage1')} Wait for it to finish, then stop.",
+        mode=None,
+        flags=("--dangerously-skip-permissions",),
+    )
+
+
+def judge_p6(ctx: Context) -> Verdict:
+    hooks = [h for h in ctx.hooks() if "permission_mode" in h]
+    main = sorted({h["permission_mode"] for h in hooks if not h.get("agent_id")})
+    agents = sorted({h["permission_mode"] for h in hooks if h.get("agent_id")})
+    missing = [h["hook_event_name"] for h in ctx.hooks() if "permission_mode" not in h]
+    if not main:
+        return Verdict("INCONCLUSIVE", "no main-context payload", "None")
+    ok = main == ["bypassPermissions"]
+    return Verdict(
+        "PASS" if ok else "FAIL",
+        f"main-context permission_mode {main}, workflow-agent permission_mode {agents}, "
+        f"payloads missing the key {sorted(set(missing))}. Mode switch is the human part, not run",
+        "D13 stands for this mode; mode switch awaits the human probe"
+        if ok
+        else "Solo uses its env var",
+    )
+
+
+# P11: CLAUDE_PLUGIN_ROOT in a command body.
+def run_p11(ctx: Context) -> None:
+    ctx.setup()
+    ctx.claude("/pbprobe:where")
+
+
+def judge_p11(ctx: Context) -> Verdict:
+    root = str(ctx.plugin)
+    run = ctx.runs["main"]
+    bash = [u["input"].get("command", "") for u in run.tool_uses("Bash")]
+    flows = [u["input"] for u in run.tool_uses("Workflow")]
+    if not bash and not flows:
+        return Verdict("INCONCLUSIVE", "model made neither call", "None")
+    in_bash = any(root in c for c in bash)
+    literal = any("CLAUDE_PLUGIN_ROOT" in c for c in bash)
+    in_args = any((f.get("args") or {}).get("pluginRoot") == root for f in flows)
+    marker = any("PB-PROBE-MARKER" in str(r.get("content")) for r in run.tool_results())
+    ok = in_bash and in_args and marker and not literal
+    return Verdict(
+        "PASS" if ok else "FAIL",
+        f"expanded path in Bash text={in_bash}, literal variable left={literal}; marker file read="
+        f"{marker}; expanded path in Workflow args={in_args}",
+        "Thin commands" if ok else "Move it to the skill",
+    )
+
+
+# P14: --output-format json with an async workflow, and budget.spent() with no target.
+BUDGET_PROMPT = (
+    f"{call('budget')} Wait for its completion notification. Then read its output file and print "
+    "its result field as JSON, then stop."
+)
+
+
+def run_p14(ctx: Context) -> None:
+    ctx.setup()
+    ctx.claude(BUDGET_PROMPT, label="json", fmt="json")
+    ctx.claude(BUDGET_PROMPT, label="stream")
+
+
+def judge_p14(ctx: Context) -> Verdict:
+    final = ctx.runs["json"]
+    results = final.results()
+    if not results:
+        return Verdict(
+            "INCONCLUSIVE", f"json run gave no result object, exit={final.exit_code}", "None"
+        )
+    last = results[-1]
+    text = str(last.get("result", ""))
+    json_has_result = '"spent"' in text
+    stream = ctx.workflows()
+    output = (stream[-1]["output"] or {}) if stream else {}
+    value = output.get("result") or {}
+    total = (value.get("before") or {}).get("total")
+    before = (value.get("before") or {}).get("spent")
+    after = (value.get("after") or {}).get("spent")
+    numeric = isinstance(before, int | float) and isinstance(after, int | float)
+    grew = numeric and after > before
+    usage = [m["data"].get("usage") or {} for m in ctx.mod() if m["tag"] == "turn.complete"]
+    agent_turns = [m for m in ctx.mod() if m["tag"] == "turn.complete" and m["data"].get("agentId")]
+    model_usage = (
+        ctx.runs["stream"].results()[-1].get("modelUsage", {})
+        if ctx.runs["stream"].results()
+        else {}
+    )
+    ok = json_has_result and grew
+    return Verdict(
+        "PASS" if ok else "FAIL",
+        f"json run: {len(results)} result object(s), final text held the workflow result="
+        f"{json_has_result}, total_cost_usd={last.get('total_cost_usd')}; budget.total={total}, "
+        f"spent before={before}, after={after}; output totalTokens={output.get('totalTokens')}; "
+        f"mod turns={len(usage)}, agent turns={len(agent_turns)}; modelUsage output tokens="
+        f"{ {k: v.get('outputTokens') for k, v in model_usage.items()} }",
+        "Report as designed" if ok else "Stream-json; spend unknown",
+    )
+
+
+# P15: publish path under -p, against a local bare remote and a gh shim.
+GH_SHIM = """#!/bin/sh
+printf '%s\\n' "$*" >> "$PROBE_DIR/gh.log"
+echo "https://example.invalid/shim/pull/1"
+"""
+P15_LIMITS = (
+    "Local bare remote and gh shim: NOT proven: GitHub auth or network for push, real gh auth, a "
+    "real PR being created, branch protection or remote hooks"
+)
+
+
+def run_p15(ctx: Context) -> None:
+    ctx.setup()
+    remote = ctx.dir / "remote.git"
+    git(ctx.dir, "init", "-q", "--bare", "-b", "main", str(remote))
+    git(ctx.repo, "add", "notes.txt", ".gitignore")
+    git(ctx.repo, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "base")
+    git(ctx.repo, "remote", "add", "origin", str(remote))
+    git(ctx.repo, "push", "-q", "-u", "origin", "main")
+    shim = ctx.dir / "shim"
+    shim.mkdir()
+    (shim / "gh").write_text(GH_SHIM)
+    (shim / "gh").chmod(0o755)
+    empty_gh = ctx.dir / "gh-config"
+    empty_gh.mkdir()
+    ctx.claude(
+        "Run these Bash commands in order, one at a time, and report each outcome. Do not work "
+        "around a failure.\n1. `git checkout -b probe/publish`\n2. `echo x > pub.txt && git add "
+        "pub.txt`\n3. `git commit -m 'probe: publish'`\n4. `git push -u origin probe/publish`\n"
+        "5. `gh pr create --title T --body B --base main --head probe/publish`",
+        env={"PATH": f"{shim}:{os.environ['PATH']}", "GH_CONFIG_DIR": str(empty_gh)},
+    )
+
+
+def judge_p15(ctx: Context) -> Verdict:
+    remote = ctx.dir / "remote.git"
+    refs = git(remote, "for-each-ref", "--format=%(refname)")
+    pushed = "refs/heads/probe/publish" in refs
+    gh_log = ctx.dir / "gh.log"
+    gh_log_text = gh_log.read_text() if gh_log.exists() else ""
+    gh_call = " ".join(line for line in gh_log_text.splitlines() if line.startswith("pr create"))
+    signed = False
+    if pushed:
+        status = git(remote, "log", "-1", "--format=%G?", "refs/heads/probe/publish").strip()
+        signed = status == "G"
+    errors = [str(r["content"])[:160] for r in ctx.runs["main"].tool_results() if r.get("is_error")]
+    ok = pushed and signed and "pr create" in gh_call
+    return Verdict(
+        "PASS" if ok else "FAIL",
+        f"push reached the local bare remote={pushed}; commit has a good signature from the "
+        f"user's inherited SSH signer={signed}; gh shim got [{gh_call}]; tool errors {errors}. "
+        f"{P15_LIMITS}",
+        "T3b as designed, GitHub leg unproven" if ok else "Solo publishes from its script",
+    )
+
+
+# P16: which mechanism beats a pinned agent model.
+P16_VARIANTS = {
+    "baseline": ({}, ""),
+    "subagent-env": ({"CLAUDE_CODE_SUBAGENT_MODEL": "haiku"}, ""),
+    "default-env": (
+        {
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-haiku-5-5",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-haiku-5-5",
+        },
+        "",
+    ),
+    "mod-rewrite": ({}, "haiku"),
+}
+P16_PROMPT = (
+    f"{call('pinned')} Wait for it to finish. Then use the Agent tool once with subagent_type "
+    "`pbprobe:pinned-opus` and prompt `Reply ok`. Then stop."
+)
+
+
+def run_p16(ctx: Context) -> None:
+    ctx.dir.mkdir(parents=True, exist_ok=True)
+    for name, (env, rewrite) in P16_VARIANTS.items():
+        child = Context(f"P16-{name}", ctx.dir / name)
+        child.setup(rewrite_model=rewrite)
+        child.claude(P16_PROMPT, env=env)
+
+
+def judge_p16(ctx: Context) -> Verdict:
+    parts = []
+    cheap = []
+    for name in P16_VARIANTS:
+        child = Context(f"P16-{name}", ctx.dir / name)
+        child.load()
+        stops = child.hooks("SubagentStop")
+        kinds = {h["agent_id"]: h.get("agent_type") for h in stops}
+        models = child.transcript_models()
+        seen = {f"{kinds.get(a, a)}": sorted(m) for a, m in models.items()}
+        usage = (
+            child.runs["main"].results()[-1].get("modelUsage", {})
+            if child.runs["main"].results()
+            else {}
+        )
+        parts.append(f"{name}: agents {seen}, session models {sorted(usage)}")
+        if (
+            models
+            and len(models) >= 3
+            and all(all("haiku" in x for x in m) for m in models.values())
+        ):
+            cheap.append(name)
+    native = [c for c in cheap if c not in ("baseline", "mod-rewrite")]
+    chosen = "baseline" if "baseline" in cheap else (native[0] if native else None)
+    if chosen:
+        result, change = "PASS", f"Smoke design fixed: use {chosen}"
+    elif cheap:
+        result, change = "FAIL", "Test-only mod rewriting `model`, per the spike"
+    else:
+        result, change = (
+            "FAIL",
+            "No mechanism forced a cheap model in this run; re-plan smoke spend",
+        )
+    return Verdict(
+        result, f"all pinned agents ran cheap under {cheap}. " + "; ".join(parts), change
+    )
+
+
+# U1-U8: spike checks on the installed version.
+def run_u(ctx: Context) -> None:
+    ctx.setup()
+    ctx.claude(
+        "Make these Workflow calls in order, one at a time, waiting for each completion "
+        "notification. A failure does not stop the sequence. Do not retry anything.\n"
+        "1. name `pbprobe:u-importer`\n2. name `pbprobe:modgated`\n3. name `pbprobe:u-env`\n"
+        "4. name `pbprobe:u-probe`\nThen stop."
+    )
+
+
+def judge_u(ctx: Context) -> Verdict:
+    run = ctx.runs["main"]
+    flows = {w["name"]: w for w in ctx.workflows()}
+    errors = [str(r["content"]) for r in run.tool_results() if r.get("is_error")]
+    env_out = ((flows.get("u-env") or {}).get("output") or {}).get("result") or {}
+    probe_out = ((flows.get("u-probe") or {}).get("output") or {}).get("result") or {}
+    mod = ctx.mod()
+    spawn = next((m["data"] for m in mod if m["tag"] == "spawn"), {})
+    tools = {m["data"]["tool"] for m in mod if m["tag"] == "tool"}
+    agent_turn = any(
+        m["tag"] == "turn.complete" and m["data"].get("agentId") and m["data"].get("usage")
+        for m in mod
+    )
+    post = ctx.hooks("PostToolUse")
+    results = {
+        "U1": any("gate not approved" in e for e in errors)
+        and "denied by a plugin" in str(probe_out.get("deniedError")),
+        "U2": (ctx.repo / "ledger-probe.txt").exists(),
+        "U3": bool(spawn.get("wf")) and "StructuredOutput" in tools and agent_turn,
+        "U4": (probe_out.get("plugin") or {}).get("word") == "PERSIMMON-41"
+        and (probe_out.get("plain") or {}).get("word") == "none",
+        "U5": any(h.get("agent_id") and h.get("agent_type") for h in post)
+        and bool(ctx.hooks("SubagentStop")),
+        "U6": run.exit_code == 0 and len(run.results()) >= 1 and "u-probe" in flows,
+        "U7": any("u-importer" in e and "not found" in e for e in errors)
+        and (probe_out.get("child") or {}).get("fromChild") is True,
+        "U8": bool(env_out.get("wrote")) and "denied" not in str(env_out.get("wrote")).lower(),
+    }
+    ctx.save_fixture("mod-agent-spawn", spawn)
+    root = str(env_out.get("root"))[:80]
+    changed = [k for k, v in results.items() if not v]
+    summary = " ".join(f"{k}={'same' if v else 'CHANGED'}" for k, v in results.items())
+    return Verdict(
+        "PASS" if not changed else "FAIL",
+        f"{summary}; CLAUDE_PLUGIN_ROOT in agent Bash: {root}; agent pwd is the repo="
+        f"{Path(str(env_out.get('pwd'))).name == 'repo'}",
+        "Spike results stand on this version" if not changed else f"Review {changed}",
+    )
+
+
 case("P2", run_p2, judge_p2)
 case("P5", run_p5, judge_p5)
+case("P6", run_p6, judge_p6)
 case("P7", run_p7, judge_p7)
 case("P8", run_p8, judge_p8)
 case("P9", run_p9, judge_p9)
 case("P10", run_p10, judge_p10)
+case("P11", run_p11, judge_p11)
+case("P14", run_p14, judge_p14)
+case("P15", run_p15, judge_p15)
+case("P16", run_p16, judge_p16)
 case("P17", run_p17, judge_p17)
+case("U", run_u, judge_u)
