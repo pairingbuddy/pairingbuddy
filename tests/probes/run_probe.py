@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Run a named T0 probe and append its result row.
 
-    PROBE_RECORDINGS=<dir> python3 tests/probes/run_probe.py P1
-    python3 tests/probes/run_probe.py --list
-    python3 tests/probes/run_probe.py P1 --judge <recording dir>   (no model calls)
-    python3 tests/probes/run_probe.py P1 --no-row                  (print the verdict only)
+    PROBE_RECORDINGS=<dir> uv run python tests/probes/run_probe.py P1
+    uv run python tests/probes/run_probe.py --list
+    uv run python tests/probes/run_probe.py P1 --judge <recording dir>   (no model calls)
+    uv run python tests/probes/run_probe.py P1 --no-row                  (print the verdict only)
 
 A crash in a probe raises and writes no row: that is a harness bug, not a result.
 """

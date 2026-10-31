@@ -7,7 +7,7 @@ The lab holds a local marketplace and its own `CLAUDE_CONFIG_DIR`, so your real 
 ## Setup
 
 ```sh
-python3 tests/probes/human/lab.py setup P12
+uv run python tests/probes/human/lab.py setup P12
 ```
 
 Paste the line it prints. It adds the marketplace, installs two fixture plugins, then starts a session.
@@ -25,7 +25,7 @@ Paste the line it prints. It adds the marketplace, installs two fixture plugins,
 4. Type `/exit`.
 
 ```sh
-python3 tests/probes/human/lab.py show P12
+uv run python tests/probes/human/lab.py show P12
 ```
 
 ## Observe

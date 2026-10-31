@@ -5,7 +5,7 @@ Decides whether the tap can record gates. About 3 minutes.
 ## Setup
 
 ```sh
-python3 tests/probes/human/lab.py setup P3
+uv run python tests/probes/human/lab.py setup P3
 ```
 
 Paste the line it prints.
@@ -22,7 +22,7 @@ Paste the line it prints.
 3. Type `/exit`.
 
 ```sh
-python3 tests/probes/human/lab.py show P3
+uv run python tests/probes/human/lab.py show P3
 ```
 
 ## Observe

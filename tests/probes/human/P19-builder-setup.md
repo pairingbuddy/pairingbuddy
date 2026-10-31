@@ -7,13 +7,13 @@ Uses the B-old checkout from Task 2. About 6 minutes.
 This reads your real install and changes nothing. It makes one small Haiku call from a temp repo.
 
 ```sh
-python3 tests/probes/human/lab.py setup P19 --b-old <path to B-old>
+uv run python tests/probes/human/lab.py setup P19 --b-old <path to B-old>
 ```
 
 Paste the line it prints. It records and exits by itself.
 
 ```sh
-python3 tests/probes/human/lab.py show P19
+uv run python tests/probes/human/lab.py show P19
 ```
 
 ### Observe
@@ -33,7 +33,7 @@ If the list is clean but `hooks started` shows the same hook twice, say so.
 No new run. This reads the P12 lab, where `pbhookonly` has only a `hooks.json` with `modules` and a shell hook.
 
 ```sh
-python3 tests/probes/human/lab.py show P12
+uv run python tests/probes/human/lab.py show P12
 ```
 
 ### PASS

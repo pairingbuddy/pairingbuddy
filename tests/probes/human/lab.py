@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Set up and read back a human probe lab.
 
-    python3 tests/probes/human/lab.py setup P3
-    python3 tests/probes/human/lab.py show P3
+    uv run python tests/probes/human/lab.py setup P3
+    uv run python tests/probes/human/lab.py show P3
 
 `setup` builds a temp repo and a private copy of the fixtures, writes start.sh and
 prints the line to paste. `show` prints what the latest lab recorded, scrubbed, ready

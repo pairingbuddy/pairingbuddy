@@ -7,7 +7,7 @@ The fixture hook denies any Bash call containing `pb-bang`, so a `!` command tha
 ## Setup
 
 ```sh
-python3 tests/probes/human/lab.py setup P4
+uv run python tests/probes/human/lab.py setup P4
 ```
 
 Paste the line it prints.
@@ -33,7 +33,7 @@ Paste the line it prints.
 3. Type `/exit`.
 
 ```sh
-python3 tests/probes/human/lab.py show P4
+uv run python tests/probes/human/lab.py show P4
 ```
 
 ## Observe

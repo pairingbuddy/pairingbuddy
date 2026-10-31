@@ -7,7 +7,7 @@ Four checks in one session: `import` of shared code, `$.fs` polling, toast and s
 ## Setup
 
 ```sh
-python3 tests/probes/human/lab.py setup P20
+uv run python tests/probes/human/lab.py setup P20
 ```
 
 Copy the printed path. Then start the session under `script`, replacing `<start.sh>`:
@@ -44,7 +44,7 @@ script -q /tmp/pb-p20.typescript sh <start.sh>
 5. Type `/exit`. Then:
 
    ```sh
-   python3 tests/probes/human/lab.py show P20
+   uv run python tests/probes/human/lab.py show P20
    grep -a -c 'shared-node import ok' /tmp/pb-p20.typescript
    ```
 

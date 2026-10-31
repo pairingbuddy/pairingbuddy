@@ -5,7 +5,7 @@ The skip-permissions half passed under `-p`. This is the switch by hand. About 4
 ## Setup
 
 ```sh
-python3 tests/probes/human/lab.py setup P6
+uv run python tests/probes/human/lab.py setup P6
 ```
 
 Paste the line it prints. The session starts in default mode.
@@ -28,7 +28,7 @@ Paste the line it prints. The session starts in default mode.
 4. Type `/exit`.
 
 ```sh
-python3 tests/probes/human/lab.py show P6
+uv run python tests/probes/human/lab.py show P6
 ```
 
 ## Observe

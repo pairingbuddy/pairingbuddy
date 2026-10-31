@@ -5,7 +5,7 @@ Two sessions from one lab. About 8 minutes. Only you can see dialogs here, so co
 ## Setup
 
 ```sh
-python3 tests/probes/human/lab.py setup P18
+uv run python tests/probes/human/lab.py setup P18
 ```
 
 Note the printed line. You paste it twice.
@@ -37,7 +37,7 @@ Call the Workflow tool with name `pbprobe:open`, then stop.
 Note whether a dialog appeared. Type `/exit`.
 
 ```sh
-python3 tests/probes/human/lab.py show P18
+uv run python tests/probes/human/lab.py show P18
 ```
 
 ## PASS

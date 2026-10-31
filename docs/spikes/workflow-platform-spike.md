@@ -26,7 +26,7 @@ Not tested: an interactive session, and a marketplace-installed plugin.
 ## T0 probe results
 
 Raw recordings stay outside the repo, in the directory `PROBE_RECORDINGS` named for
-that run. Run a probe with `python3 tests/probes/run_probe.py <ID>`. A re-run adds a
+that run. Run a probe with `uv run python tests/probes/run_probe.py <ID>`. A re-run adds a
 row, and the latest row for a probe stands.
 
 | Probe | Claude Code | Date | Who | Result | Evidence | Recording | Resulting change |
