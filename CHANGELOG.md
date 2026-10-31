@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - T0 platform probes in `tests/probes/`: a re-runnable harness, fixture plugin and captured hook payload fixtures, with results recorded in `docs/spikes/workflow-platform-spike.md`
+- Runbooks and fixtures for the T0 human probes in `tests/probes/human/`
 
 ## [0.7.0] - 2026-07-31
 
