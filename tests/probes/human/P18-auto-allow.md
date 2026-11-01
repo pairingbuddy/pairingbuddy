@@ -12,13 +12,13 @@ Note the printed line. You paste it twice.
 
 ## Part A: hook auto-allow
 
-Paste the line, then paste this prompt:
+Paste the line, then type:
 
 ```
-Call the Workflow tool with name `pbprobe:runner-allow`. Wait for it to finish, then stop.
+/pbprobe:runner-allow
 ```
 
-Note whether a dialog appeared for each of: the Workflow call, `echo pb-runner-cmd`, `echo pb-control-cmd`. Approve what appears. Type `/exit`.
+Note whether a dialog appeared for each of: the Workflow call, `touch .probe/pb-runner-cmd`, `touch .probe/pb-control-cmd`. Approve what appears. Type `/exit`.
 
 ## Part B: allowed-tools
 
@@ -28,10 +28,10 @@ Paste the line again. Type:
 /pbprobe:allowed
 ```
 
-Note whether a Workflow dialog appeared. Then paste this control:
+Note whether a Workflow dialog appeared. Then type this control:
 
 ```
-Call the Workflow tool with name `pbprobe:open`, then stop.
+/pbprobe:open
 ```
 
 Note whether a dialog appeared. Type `/exit`.

@@ -8,10 +8,10 @@ Two sessions. About 8 minutes.
 uv run python tests/probes/human/lab.py setup P13A
 ```
 
-Paste the line it prints, then paste this prompt:
+Paste the line it prints, then type:
 
 ```
-Call the Workflow tool with name `pbprobe:stage1`. Wait for it to finish, then stop.
+/pbprobe:stage1
 ```
 
 Approve every dialog, once each, and count them. Note what each one asked. If nothing has moved for 2 minutes, write that down. Type `/exit` when it is done.
@@ -27,6 +27,8 @@ This runs in the lab's temp repo, with a prompt that does nothing else.
 ```sh
 uv run python tests/probes/human/lab.py setup P13B
 ```
+
+Accepting the skip-permissions warning writes `skipDangerousModePermissionPrompt: true` to `~/.claude/settings.json`. Remove that line afterwards.
 
 Paste the line it prints, accept the skip-permissions warning if shown, then paste this prompt:
 

@@ -10,7 +10,7 @@ Eight probes need a person at an interactive session. Allow about 50 minutes for
 
 Each runbook has the same shape. `lab.py setup` prints one `sh .../start.sh` line. Paste that line, follow the steps, exit the session, then run `lab.py show`. Paste the `show` output back with the one thing the runbook asks for. Only you see dialogs, so note them as they happen.
 
-Nothing here changes this worktree, the installed plugin or your user settings. P12 uses a throwaway `CLAUDE_CONFIG_DIR` inside its lab, so it asks you to log in once.
+Nothing here changes this worktree, the installed plugin or your user settings, except P13 part B, whose runbook names the one line to remove. P12 uses a throwaway `CLAUDE_CONFIG_DIR` inside its lab, so it asks you to log in once.
 
 ## Order
 
