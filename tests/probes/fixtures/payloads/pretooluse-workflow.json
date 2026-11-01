@@ -1,0 +1,21 @@
+{
+  "_t": 1793449905714,
+  "session_id": "f89ce607-ee9f-4173-8ff1-1a92892b0209",
+  "transcript_path": "/home/user/.claude/projects/encoded-project/f89ce607-ee9f-4173-8ff1-1a92892b0209.jsonl",
+  "cwd": "/tmp/probe/repo",
+  "prompt_id": "f9e1f577-c5fc-4b28-9f3d-473d88a7aab7",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "low"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Workflow",
+  "tool_input": {
+    "name": "pbprobe:gated",
+    "args": {
+      "pluginRoot": "/x",
+      "attempt": 1
+    }
+  },
+  "tool_use_id": "toolu_01MDWRnrQ68D8ukatfKpLQvG"
+}

@@ -1,0 +1,20 @@
+{
+  "_t": 1793450053465,
+  "session_id": "4c9089b3-8a53-4d21-8f7d-824575fc164c",
+  "transcript_path": "/home/user/.claude/projects/encoded-project/4c9089b3-8a53-4d21-8f7d-824575fc164c.jsonl",
+  "cwd": "/tmp/probe/repo",
+  "prompt_id": "769cdc2f-a632-4468-be6e-a9eed4749a08",
+  "permission_mode": "auto",
+  "agent_id": "ae9b08d0bd414b410",
+  "agent_type": "pbprobe:echoer",
+  "effort": {
+    "level": "low"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "echo pb-allow",
+    "description": "Echo pb-allow"
+  },
+  "tool_use_id": "toolu_01M3ZyqHBzgPPPABWNmMx8oF"
+}

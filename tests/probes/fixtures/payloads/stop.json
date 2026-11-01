@@ -1,0 +1,16 @@
+{
+  "_t": 1793450137004,
+  "session_id": "8e1e3c11-4e75-4c79-aad5-83a1957d5f14",
+  "transcript_path": "/home/user/.claude/projects/encoded-project/8e1e3c11-4e75-4c79-aad5-83a1957d5f14.jsonl",
+  "cwd": "/tmp/probe/repo",
+  "prompt_id": "f970901f-b82a-4af7-8fd6-0aa8217b401c",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "low"
+  },
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "The `pbprobe:stage2` workflow finished. It ran one agent, which returned `\"done\"` with no errors and no empty results.",
+  "background_tasks": [],
+  "session_crons": []
+}

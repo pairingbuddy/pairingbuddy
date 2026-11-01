@@ -1,0 +1,29 @@
+{
+  "_t": 1793450081830,
+  "session_id": "c5990cf0-b08a-4f0b-b44e-0a07c1ce733f",
+  "transcript_path": "/home/user/.claude/projects/encoded-project/c5990cf0-b08a-4f0b-b44e-0a07c1ce733f.jsonl",
+  "cwd": "/tmp/probe/repo",
+  "prompt_id": "eba11be3-1f75-4e68-b074-c642c38ef594",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "low"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Workflow",
+  "tool_input": {
+    "name": "pbprobe:stage1",
+    "script": "export const meta = { name: 'stage1', description: 'First stage' }\nreturn await agent('Run the Bash command `touch .probe/stage1.done`, then reply done.', { label: 'stage:one', agentType: 'pbprobe:echoer', model: 'haiku' })\n"
+  },
+  "tool_response": {
+    "status": "async_launched",
+    "taskId": "whnn2ziw2",
+    "taskType": "local_workflow",
+    "workflowName": "stage1",
+    "runId": "wf_e86eab30-6a7",
+    "summary": "First stage",
+    "transcriptDir": "/home/user/.claude/projects/encoded-project/c5990cf0-b08a-4f0b-b44e-0a07c1ce733f/subagents/workflows/wf_e86eab30-6a7",
+    "scriptPath": "/home/user/.claude/projects/encoded-project/c5990cf0-b08a-4f0b-b44e-0a07c1ce733f/workflows/scripts/stage1-wf_e86eab30-6a7.js"
+  },
+  "tool_use_id": "toolu_01FBZNVD2nkRQegKMppyYNpf",
+  "duration_ms": 4
+}
