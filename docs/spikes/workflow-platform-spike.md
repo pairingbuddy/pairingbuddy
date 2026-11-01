@@ -45,11 +45,22 @@ row, and the latest row for a probe stands.
 | P15 | 2.1.316 | 2026-10-31 | auto | PASS | push reached the local bare remote=True; commit has a good signature from the user's inherited SSH signer=True; gh shim got [pr create --title T --body B]; tool errors []. Local bare remote and gh shim: NOT proven: GitHub auth or network for push, real gh auth, a real PR being created, branch protection or remote hooks | `$PROBE_RECORDINGS/P15/20261031-134707` | T3b as designed, GitHub leg unproven |
 | P16 | 2.1.316 | 2026-10-31 | auto | PASS | all pinned agents ran cheap under ['default-env', 'mod-rewrite']. baseline: agents {'pbprobe:pinned-opus': ['claude-opus-5-5'], 'pbprobe:pinned-sonnet': ['claude-sonnet-5-5']}, session models ['claude-haiku-5-5', 'claude-opus-5-5', 'claude-sonnet-5-5']; subagent-env: agents {'pbprobe:pinned-opus': ['claude-opus-5-5'], 'pbprobe:pinned-sonnet': ['claude-sonnet-5-5']}, session models ['claude-haiku-5-5', 'claude-opus-5-5', 'claude-sonnet-5-5']; default-env: agents {'pbprobe:pinned-sonnet': ['claude-haiku-5-5'], 'pbprobe:pinned-opus': ['claude-haiku-5-5']}, session models ['claude-haiku-5-5']; mod-rewrite: agents {'pbprobe:pinned-sonnet': ['claude-haiku-5-5'], 'pbprobe:pinned-opus': ['claude-haiku-5-5']}, session models ['claude-haiku-5-5'] | `$PROBE_RECORDINGS/P16/20261031-134554` | Smoke design fixed: use default-env |
 | U | 2.1.316 | 2026-10-31 | auto | PASS | U1=same U2=same U3=same U4=same U5=same U6=same U7=same U8=same; CLAUDE_PLUGIN_ROOT in agent Bash: Exit code 1, no output (CLAUDE_PLUGIN_ROOT is not set in this environment); agent pwd is the repo=True | `$PROBE_RECORDINGS/U/20261031-134526` | Spike results stand on this version |
+| P3 | 2.1.316 | 2026-10-31 | human | PASS | Dialog appeared; PostToolUse response held answers {"Approve this stage?": "redo"} | `human/P3/20261031-181900` | Tap records gate answers |
+| P4 | 2.1.316 | 2026-10-31 | human | PASS | `!echo pb-bang` ran, `!pwd` was the lab repo, no PreToolUse line for either; model control denied. A `!` command starts a model turn and the model sees its output | `human/P4/20261031-182202` | D4 stands |
+| P6 | 2.1.316 | 2026-10-31 | human | PASS | before-switch mode=default, after-switch mode=auto, switched by Shift+Tab. Covers both parts with the auto row | `human/P6/20261031-184034` | D13 stands, mode read per call |
+| P13A | 2.1.316 | 2026-10-31 | human | PASS | Via `/pbprobe:stage1`: 2 dialogs, Workflow then the agent's Bash, labelled with the workflow name; no stall; stage1.done present. A first run with a prompt naming the Workflow tool did no work and reported completed, see notes | `human/P13A/20261031-184653`, first run `human/P13A/20261031-184329` | Default mode supported. Stage results are verified, never inferred from workflow status |
+| P13B | 2.1.316 | 2026-11-01 | human | PASS | Workflow and Bash both denied with PROBE-DENY, mode=bypassPermissions, no markers | `human/P13B/20261101-091237` | Hooks hold under skip-permissions |
+| P18A | 2.1.316 | 2026-11-01 | human | PASS | Workflow dialog yes, `touch .probe/pb-runner-cmd` no dialog, `touch .probe/pb-control-cmd` dialog yes | `human/P18/20261101-091845` | Runner auto-allow stands |
+| P18B | 2.1.316 | 2026-11-01 | human | FAIL | `/pbprobe:allowed` showed the Workflow dialog despite `allowed-tools: Workflow(pbprobe:*)`; the human reported a dialog on the control too | `human/P18/20261101-092049` | Recommend auto mode. In manual mode the human approves each workflow start. Drop `allowed-tools` from the thin commands |
+| P12 | 2.1.316 | 2026-11-01 | human | PASS | mod.jsonl 7 lines including spawn for stage:one, shell hooks alongside, marketplace install from a local marketplace, stage1.done present | `human/P12/20261101-092406` | Mod ships in this plugin |
+| P19 | 2.1.316 | 2026-11-01 | human | PASS | Part 1: one pairingbuddy entry, the builder at 0.7.0, no errors. Part 2: hookonly-mod.log `mod loaded`, hookonly-shell.jsonl has lines. Start command: `claude --plugin-dir /Users/alberto/src/pairingbuddy/pairingbuddy-builder` | `human/P19/20261101-092922` | Builder needs no marketplace disable |
+| P20 | 2.1.316 | 2026-11-01 | human | FAIL (toast only) | Import PASS. Polling PASS, pane updated by itself over two cycles. Sound PASS, heard. Toast FAIL: logged sent twice, human watched and saw none. Capture not tested: `script` skipped, `screencapture` needs a terminal restart, human screenshots used | `human/P20/20261101-093019` | Alerts rely on sound and pane. T4a captures frames with human screenshots until a tool is granted |
 <!-- probe-results-end -->
 
 Scope of the auto probes: each run used `--setting-sources project,local` and
 `--strict-mcp-config`, so installed plugins and user settings were not loaded. Human
-probes (P3, P4, P6 mode switch, P12, P13, P18, P19, P20) are separate and not run here.
+probes (P3, P4, P6 mode switch, P12, P13, P18, P19, P20) ran in interactive sessions,
+and their Recording paths are under the lab directory, not `$PROBE_RECORDINGS`.
 
 ### Notes from the recordings
 
@@ -79,3 +90,23 @@ probes (P3, P4, P6 mode switch, P12, P13, P18, P19, P20) are separate and not ru
   `result` event (P1, and the `--output-format json` run in P14). Others gave two or three.
 - U1-U8: no result changed on 2.1.316. `CLAUDE_PLUGIN_ROOT` is still unset in a workflow
   agent's Bash, and workflow agents still run from the session's working directory.
+
+### Notes from the human probes
+
+- P13A: each workflow agent receives the triggering prompt as a `[Workflow harness — user
+  request]` block, marked "where the computed task conflicts with this request, this
+  request wins". The script's prompt follows as text with no user authority. The auto
+  probes carried the same block and those agents did the script's task. In the first
+  P13A run the prompt named the Workflow tool, so the agent looked for that tool, failed,
+  skipped `touch`, and the workflow still ended `completed`. Following the script is
+  therefore model judgement.
+- P13A: the same run with `/pbprobe:stage1` worked, and so did P12, so runbooks start
+  workflows by slash command. An unexplained `true` Bash call from the main context
+  errored in that run and changed nothing.
+- P4, P20: a pasted `!...` line is sent to the model as a prompt, and under auto mode the
+  model ran it as a normal Bash call. Only a typed `!` enters shell mode.
+- P18: `echo` gets no dialog in default mode, so controls use `touch`.
+- P13B: accepting the skip-permissions warning wrote `skipDangerousModePermissionPrompt`
+  to `~/.claude/settings.json`. It was removed after the run.
+- P20: the mod reacts to a change of state, so repeating the same value does nothing. A
+  workflow that spawns no agents shows a hollow bar in the footer.

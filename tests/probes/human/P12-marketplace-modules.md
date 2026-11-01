@@ -16,10 +16,10 @@ Paste the line it prints. It adds the marketplace, installs two fixture plugins,
 
 1. Finish first-run prompts, and run `/login` if asked. Trust the folder if asked.
 2. Type `/exit`, then paste the same `sh` line again. It reports the plugins as already present, which is fine, and this session keeps your login.
-3. Paste this prompt:
+3. Type this, and approve any dialog once:
 
    ```
-   Call the Workflow tool with name `pbprobe:stage1`. Wait for it to finish, then stop.
+   /pbprobe:stage1
    ```
 
 4. Type `/exit`.
