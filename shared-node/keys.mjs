@@ -2,9 +2,11 @@
 // No imports, no Node APIs. Each export sits alone at the start of a line
 // (`export function ...`) so a bundler can inline this file by stripping `export `.
 
+const KEY_TOKEN = /^[a-z0-9_-]{1,64}$/;
+
 function requireKeyToken(name, value) {
-  if (typeof value !== "string" || value === "" || value.includes(".") || /\s/.test(value)) {
-    throw new Error(`key ${name} must be a non-empty string without "." or whitespace: ${JSON.stringify(value)}`);
+  if (typeof value !== "string" || !KEY_TOKEN.test(value)) {
+    throw new Error(`key ${name} must be a non-empty string of at most 64 lowercase letters, digits, "-" or "_": ${JSON.stringify(value)}`);
   }
   return value;
 }
@@ -28,7 +30,7 @@ export function buildKey({ stage, role, item, round, attempt }) {
 }
 
 export function parseKey(text) {
-  const match = /^([^.\s]+)\.([^.\s]+)\.([^.\s]+)\.r([1-9]\d*)\.a([1-9]\d*)$/.exec(String(text));
+  const match = /^([a-z0-9_-]{1,64})\.([a-z0-9_-]{1,64})\.([a-z0-9_-]{1,64})\.r([1-9]\d*)\.a([1-9]\d*)$/.exec(String(text));
   if (!match) throw new Error(`malformed key: ${JSON.stringify(text)}`);
   const [, stage, role, item, round, attempt] = match;
   return { stage, role, item: item === "-" ? null : item, round: Number(round), attempt: Number(attempt) };

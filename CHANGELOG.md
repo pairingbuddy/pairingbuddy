@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Workflow bundler `scripts/build-workflows.mjs`: bundles stage modules from `workflows-src/` into `workflows/`, with a `--check` mode that fails on drift between committed output and source
 - Workflow control-flow harness `tests/js/harness.mjs`, run through `tests/test_js_suite.py` under `uv run pytest`
 - Run ledger with stage keys and workflow labels, and the `pb run open` command to open a run
+- Tap hook `hooks/tap.mjs`: captures agent returns into run state, and does nothing outside a run
 
 ## [0.7.0] - 2026-07-31
 

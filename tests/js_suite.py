@@ -11,6 +11,7 @@ JS_TEST_FILES = [
     "tests/js/keys-labels.test.mjs",
     "tests/js/ledger.test.mjs",
     "tests/js/pb-run-open.test.mjs",
+    "tests/js/tap.test.mjs",
 ]
 
 

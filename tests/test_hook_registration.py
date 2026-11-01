@@ -23,3 +23,19 @@ def test_registered_in_hooks_json():
         assert hook["type"] == "command", (
             f"solo-progress.mjs entry must have type 'command', got {hook['type']!r}"
         )
+
+
+def test_tap_registered_in_hooks_json():
+    """hooks.json contains a PostToolUse entry that invokes tap.mjs for StructuredOutput|Workflow"""
+    hooks_data = json.loads(HOOKS_JSON.read_text())
+
+    entries = [
+        entry
+        for entry in hooks_data["hooks"]["PostToolUse"]
+        if any("tap.mjs" in hook["command"] for hook in entry["hooks"])
+    ]
+
+    assert len(entries) == 1, "PostToolUse must contain one entry for tap.mjs"
+    assert entries[0]["matcher"] == "StructuredOutput|Workflow"
+    for hook in entries[0]["hooks"]:
+        assert hook["type"] == "command"

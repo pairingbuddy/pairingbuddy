@@ -210,3 +210,17 @@ test("keys-and-labels-still-reject-bad-parts-when-concatenated", () => {
   assert.throws(() => sut.parseKey("x.tdd.implement-tests.t3.r1.a1"), "parseKey still strict");
   assert.throws(() => sut.parseLabel("pb1  tdd RED implement-tests t3 r1"), "parseLabel still strict");
 });
+
+test("key-parts-restricted-to-lowercase-safe-characters", () => {
+  const ok = { stage: "tdd", role: "implement-tests", item: "t3", round: 1, attempt: 1 };
+
+  assert.equal(buildKey({ ...ok, item: "a_b-9" }), "tdd.implement-tests.a_b-9.r1.a1", "underscore, hyphen and digits are allowed");
+  for (const bad of ["T1", "src/foo", "a:b", "é", "x".repeat(65)]) {
+    assert.throws(() => buildKey({ ...ok, item: bad }), `buildKey must reject item ${JSON.stringify(bad)}`);
+    assert.throws(() => buildKey({ ...ok, stage: bad }), `buildKey must reject stage ${JSON.stringify(bad)}`);
+    assert.throws(() => buildKey({ ...ok, role: bad }), `buildKey must reject role ${JSON.stringify(bad)}`);
+    assert.throws(() => parseKey(`tdd.implement-tests.${bad}.r1.a1`), /malformed key/, `parseKey must reject ${JSON.stringify(bad)}`);
+  }
+  const longest = "x".repeat(64);
+  assert.equal(parseKey(buildKey({ ...ok, item: longest })).item, longest, "64 characters is allowed");
+});
