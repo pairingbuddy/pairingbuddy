@@ -6,7 +6,12 @@ import signal
 import subprocess
 from pathlib import Path
 
-JS_TEST_FILES = ["tests/js/harness.test.mjs"]
+JS_TEST_FILES = [
+    "tests/js/harness.test.mjs",
+    "tests/js/keys-labels.test.mjs",
+    "tests/js/ledger.test.mjs",
+    "tests/js/pb-run-open.test.mjs",
+]
 
 
 def _failed(command, stderr, stdout=""):
