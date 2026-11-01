@@ -1,0 +1,1 @@
+{ "name": "pbmod", "version": "0.0.1", "description": "Fixture mod for probe P20", "types": "./types/index.d.ts" }

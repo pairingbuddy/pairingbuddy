@@ -1,0 +1,6 @@
+{
+  "modules": ["./register.ts"],
+  "hooks": {
+    "PostToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "cat >> \"$PROBE_DIR/hookonly-shell.jsonl\"; echo >> \"$PROBE_DIR/hookonly-shell.jsonl\"" }] }]
+  }
+}
