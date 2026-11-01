@@ -68,7 +68,8 @@ pairingbuddy/
 ### Testing
 - Tests validate structure and contracts, not agent behavior
 - Agent behavior is LLM-driven and not deterministically testable
-- All tests are parameterized over config files
+- Structural tests are parameterized over config files
+- Workflow control flow is tested by the JS harness `tests/js/harness.mjs`, run through `tests/test_js_suite.py`
 
 ## When Modifying
 
