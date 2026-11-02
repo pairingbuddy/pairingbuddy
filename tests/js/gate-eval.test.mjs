@@ -7,8 +7,11 @@
 //   first ask:           {ok, result:"needs-human", gate, reason, question, humanCommand}
 //   tap recorded nothing:{ok, result:"needs-human-command", gate, reason, humanCommand}
 //   question:            {question:"Approve <gate>?", header:"PB gate: <gate>", options:[{label,...}] approve|redo|stop, multiSelect:false}
-//   humanCommand:        !node <absolute path>/pb.mjs human approve <gate>
+//   humanCommand:        !cd <run root> && node <absolute path>/pb.mjs human approve <gate>
+//   answered redo:       the gate record and the stage's done state go, so no gate is due and the stage re-runs at attempt+1
+//   answered stop:       {ok, result:"answered", gate, answer:"stop", reason, humanCommand}, with ledger.stop set
 // All three exit 0. No gate due, or a broken ledger, exits 1. Any argument exits 2.
+import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -147,11 +150,11 @@ function assertAutoPassed(repo, output, gate = TASK_END) {
 
 // Built on the human P3 recording (pb-probes/human/P3/20261031-181900/hooks.jsonl, scrubbed into the payload
 // fixtures). Only session, cwd, the question and the answer are filled in by the test; the recording's question
-// was "Approve this stage?".
-function recordedAnswer(repo, { header, question }, answer, { over = {}, toolResponse } = {}) {
+// was "Approve this stage?", and a gate question must match what the CLI emitted, options included.
+function recordedAnswer(repo, gateQuestion, answer, { over = {}, toolResponse } = {}) {
   const recorded = fixture("posttooluse-askuserquestion.json");
-  const questions = recorded.tool_input.questions.map((asked) => ({ ...asked, question, header }));
-  const answered = { ...recorded.tool_input, questions, answers: { [question]: answer } };
+  const questions = recorded.tool_input.questions.map((asked) => ({ ...asked, ...gateQuestion }));
+  const answered = { ...recorded.tool_input, questions, answers: { [gateQuestion.question]: answer } };
   return {
     ...recorded, session_id: SESSION, cwd: repo.dir,
     tool_input: answered, tool_response: toolResponse === undefined ? answered : toolResponse,
@@ -464,6 +467,32 @@ describe("always-stop conditions", () => {
   }
 });
 
+// ---------- a gate question is the emitted question ----------
+
+const OPTION_CHANGES = {
+  relabelled: (q) => ({ ...q, options: q.options.map((o) => (o.label === "stop" ? { ...o, label: "halt" } : o)) }),
+  "with a reworded description": (q) => ({ ...q, options: q.options.map((o) => (o.label === "approve" ? { ...o, description: "Discard the failing run and restart; nothing is passed." } : o)) }),
+  "with the descriptions swapped": (q) => {
+    const [approve, redo, stop] = q.options;
+    return { ...q, options: [{ ...approve, description: stop.description }, redo, { ...stop, description: approve.description }] };
+  },
+  reordered: (q) => ({ ...q, options: [...q.options].reverse() }),
+  "with an option dropped": (q) => ({ ...q, options: q.options.slice(0, 2) }),
+  "with an option added": (q) => ({ ...q, options: [...q.options, { label: "later", description: "Decide later." }] }),
+  "with an extra field": (q) => ({ ...q, options: q.options.map((o) => ({ ...o, preview: "Passing is safe." })) }),
+};
+
+const ALTERED_QUESTIONS = [
+  ...Object.entries(OPTION_CHANGES).map(([label, change]) => ({ name: `a question with options ${label}`, altered: (q) => [change(q)] })),
+  { name: "a question with other text", altered: (q) => [{ ...q, question: "Shall I go on?" }] },
+  { name: "a question with another gate's header", altered: (q) => [{ ...q, header: "PB gate: G:publish" }] },
+  { name: "a multi-select question", altered: (q) => [{ ...q, multiSelect: true }] },
+  { name: "a question with no multiSelect", altered: ({ multiSelect: _dropped, ...q }) => [q] },
+  { name: "a question followed by a decoy", altered: (q) => [q, { ...q, question: "Anything else?", header: "Other" }] },
+  { name: "a question after a decoy", altered: (q) => [{ ...q, question: "Anything else?", header: "Other" }, q] },
+  { name: "the question asked twice", altered: (q) => [q, q] },
+];
+
 // ---------- a model cannot supply the policy ----------
 
 describe("a model cannot supply the policy", () => {
@@ -527,6 +556,64 @@ describe("a model cannot supply the policy", () => {
     assertNotDenied(runGate(repo, recordedQuestion(repo)));
   });
 
+  test("the emitted question, exactly, is not denied", () => {
+    const { repo, asked } = askedRepo();
+
+    assertNotDenied(runGate(repo, recordedQuestion(repo, { questions: [asked.question] })));
+  });
+
+  for (const { name, altered } of ALTERED_QUESTIONS) {
+    test(`${name} is denied at PreToolUse, stating the right question`, () => {
+      const { repo, asked } = askedRepo();
+      const before = readFileSync(repo.ledgerPath, "utf8");
+
+      const result = runGate(repo, recordedQuestion(repo, { questions: altered(asked.question) }));
+
+      assertDenied(result, new RegExp(JSON.stringify(asked.question).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      assert.equal(readFileSync(repo.ledgerPath, "utf8"), before, "a deny records nothing");
+    });
+
+    test(`${name} records nothing through the tap, and needsHuman stays`, () => {
+      const { repo, asked } = askedRepo();
+      const payload = recordedAnswer(repo, asked.question, "approve");
+      const questions = altered(asked.question);
+      payload.tool_input = { ...payload.tool_input, questions };
+      payload.tool_response = { ...payload.tool_response, questions };
+
+      runTap(repo, payload);
+
+      assertNoRecord(repo);
+      assert.equal(repo.ledger().needsHuman?.gate, TASK_END);
+    });
+  }
+
+  test("a question that is no gate's is left alone while a gate waits", () => {
+    const { repo } = askedRepo();
+    const recorded = fixture("pretooluse-askuserquestion.json").tool_input.questions[0];
+
+    assertNotDenied(runGate(repo, recordedQuestion(repo, { questions: [{ ...recorded, question: "Which name?", header: "Naming" }] })));
+  });
+
+  test("a gate question over a broken ledger keeps to the recovery route", () => {
+    const { repo, asked } = askedRepo();
+    writeFileSync(repo.ledgerPath, "{");
+
+    assertNotDenied(runGate(repo, recordedQuestion(repo, { questions: [{ ...asked.question, header: "PB gate: other" }] })));
+  });
+
+  test("a decoy question in the same call does not pass the tap, whichever comes first", () => {
+    const { repo, asked } = askedRepo();
+    const decoy = { ...asked.question, question: "Anything else?", header: "Other" };
+    for (const questions of [[asked.question, decoy], [decoy, asked.question]]) {
+      const payload = recordedAnswer(repo, asked.question, "approve");
+      payload.tool_response = { ...payload.tool_response, questions };
+
+      runTap(repo, payload);
+
+      assertNoRecord(repo);
+    }
+  });
+
   test("gate.mjs is wired to see AskUserQuestion", () => {
     const hooks = JSON.parse(readFileSync(join(ROOT, "hooks", "hooks.json"), "utf8")).hooks.PreToolUse;
     const entry = hooks.find((h) => h.hooks.some((hook) => hook.command.includes("gate.mjs")));
@@ -554,7 +641,7 @@ describe("needs-human output", () => {
 
     const { humanCommand } = gateEval(repo);
 
-    assert.equal(humanCommand, `!node ${join(ROOT, "cli", "pb.mjs")} human approve ${TASK_END}`);
+    assert.equal(humanCommand, `!cd ${repo.dir} && node ${join(ROOT, "cli", "pb.mjs")} human approve ${TASK_END}`);
   });
 
   test("writes needsHuman with the gate, the reason and a seq from this write", () => {
@@ -595,17 +682,25 @@ describe("the tap records AskUserQuestion answers", () => {
     assert.equal(ledger.needsHuman, null);
   });
 
-  for (const answer of ["redo", "stop"]) {
-    test(`a ${answer} records that answer, and is not an approval`, () => {
-      const { repo, asked } = askedRepo();
+  test("a stop records that answer, and is not an approval", () => {
+    const { repo, asked } = askedRepo();
 
-      runTap(repo, recordedAnswer(repo, asked.question, answer));
+    runTap(repo, recordedAnswer(repo, asked.question, "stop"));
 
-      const ledger = repo.ledger();
-      assert.deepEqual([ledger.gates[TASK_END]?.source, ledger.gates[TASK_END]?.answer], ["human", answer]);
-      assert.equal(ledger.needsHuman, null);
-    });
-  }
+    const ledger = repo.ledger();
+    assert.deepEqual([ledger.gates[TASK_END]?.source, ledger.gates[TASK_END]?.answer], ["human", "stop"]);
+    assert.equal(ledger.needsHuman, null);
+  });
+
+  test("a redo clears the gate record, and is not an approval", () => {
+    const { repo, asked } = askedRepo();
+
+    runTap(repo, recordedAnswer(repo, asked.question, "redo"));
+
+    const ledger = repo.ledger();
+    assert.equal(Object.hasOwn(ledger.gates, TASK_END), false);
+    assert.equal(ledger.needsHuman, null);
+  });
 
   test("after an approve no gate is due", () => {
     const { repo, asked } = askedRepo();
@@ -652,6 +747,262 @@ describe("the tap records AskUserQuestion answers", () => {
 
     assertNoRecord(repo);
   });
+});
+
+// ---------- what an answer does ----------
+
+const attemptCall = (repo, stage, attempt) => {
+  const call = stageCall(repo, stage);
+  return { ...call, tool_input: { ...call.tool_input, args: { ...call.tool_input.args, attempt } } };
+};
+
+function answeredRepo(answer) {
+  const { repo, asked } = askedRepo({ plugin: makePlugin(), ledger: oneGateDoneLedger() });
+  runTap(repo, recordedAnswer(repo, asked.question, answer));
+  return repo;
+}
+
+describe("a human's redo reopens the stage", () => {
+  test("the stage's done state goes and needsHuman clears", () => {
+    const repo = answeredRepo("redo");
+
+    const ledger = repo.ledger();
+    assert.equal(ledger.stages.some(({ name, status }) => name === FIRST && status === "done"), false);
+    assert.equal(ledger.stage.status === "done", false, "the current stage no longer reads as done");
+    assert.equal(ledger.stop, null, "a redo is no stop");
+  });
+
+  test("the same stage restarts at attempt + 1, through the real gate", () => {
+    const repo = answeredRepo("redo");
+
+    assertNotDenied(runGate(repo, attemptCall(repo, FIRST, 2)));
+
+    assert.deepEqual([repo.ledger().stage.name, repo.ledger().stage.attempt, repo.ledger().stage.status], [FIRST, 2, "active"]);
+  });
+
+  test("the old attempt is denied, naming the right one", () => {
+    const repo = answeredRepo("redo");
+
+    assertDenied(runGate(repo, attemptCall(repo, FIRST, 1)), /Use attempt 2/);
+  });
+
+  test("the finished redo brings the same gate due again", () => {
+    const repo = answeredRepo("redo");
+    runGate(repo, attemptCall(repo, FIRST, 2));
+    updateLedger(repo.ledgerPath, (ledger) => ({ ...ledger, stage: { ...ledger.stage, status: "done" }, stages: doneStages(FIRST) }));
+
+    assertAsks(gateEval(repo), G_FIRST);
+  });
+
+  test("gate eval names the restart instead of a bare refusal", () => {
+    const repo = answeredRepo("redo");
+
+    const result = runPb(repo);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /no gate is due/);
+    assert.match(result.stderr, new RegExp(`${FIRST}[^\\n]*attempt 2`));
+  });
+
+  test("a direct pipeline Agent call names the restart", () => {
+    const repo = answeredRepo("redo");
+    const call = { ...mainBash(repo, "ls", "default"), tool_name: "Agent", tool_input: { subagent_type: "pairingbuddy:apply-config-change", description: "x", prompt: "x" } };
+
+    assertDenied(runGate(repo, call), new RegExp(`pairingbuddy:${FIRST}`));
+  });
+});
+
+describe("a human's stop sets ledger.stop", () => {
+  const stopped = () => answeredRepo("stop");
+
+  test("the stop names the gate and carries this write's seq", () => {
+    const repo = stopped();
+
+    const ledger = repo.ledger();
+    assert.match(ledger.stop?.reason, new RegExp(G_FIRST));
+    assert.equal(ledger.stop.seq, ledger.seq);
+    assert.deepEqual(ledger.gates[G_FIRST], { source: "human", answer: "stop" });
+  });
+
+  test("gate eval reports the answer and the way on, rather than refusing", () => {
+    const repo = stopped();
+
+    const output = JSON.parse(runPb(repo).stdout);
+
+    assert.equal(output.result, "answered");
+    assert.equal(output.gate, G_FIRST);
+    assert.equal(output.answer, "stop");
+    assert.match(output.humanCommand, new RegExp(`human approve ${G_FIRST}$`));
+    assert.equal(repo.ledger().gates[G_FIRST].answer, "stop", "reporting it changes nothing");
+  });
+
+  test("a Workflow deny names the human's way on, not gate eval", () => {
+    const repo = stopped();
+    const result = runGate(repo, nextStageCall(repo));
+
+    assertDenied(result, /human/);
+    const reason = decisionOf(result).permissionDecisionReason;
+    assert.match(reason, /stop/);
+    assert.match(reason, new RegExp(`human approve ${G_FIRST}`));
+    assert.doesNotMatch(reason, /gate eval/);
+    assert.doesNotMatch(reason, /abandon/i);
+  });
+
+  test("restarting the stopped stage gets the same deny, not 'next stage'", () => {
+    const repo = stopped();
+
+    assertDenied(runGate(repo, stageCall(repo, FIRST)), new RegExp(`human approve ${G_FIRST}`));
+  });
+
+  test("on the last gate the deny names the way on, not 'all stages are done'", () => {
+    const { repo, asked } = askedRepo();
+    runTap(repo, recordedAnswer(repo, asked.question, "stop"));
+
+    const result = runGate(repo, stageCall(repo, CONFIG));
+
+    assertDenied(result, new RegExp(`human approve ${TASK_END}`));
+    assert.doesNotMatch(decisionOf(result).permissionDecisionReason, /are done/);
+  });
+
+  test("a direct pipeline Agent call names the human's way on", () => {
+    const repo = stopped();
+    const call = { ...mainBash(repo, "ls", "default"), tool_name: "Agent", tool_input: { subagent_type: "pairingbuddy:apply-config-change", description: "x", prompt: "x" } };
+
+    assertDenied(runGate(repo, call), new RegExp(`human approve ${G_FIRST}`));
+  });
+
+  test("an inline script's deny names the human's way on", () => {
+    const repo = stopped();
+    const call = { ...stageCall(repo, FIRST), tool_input: { script: "pairingbuddy:x" } };
+
+    assertDenied(runGate(repo, call), new RegExp(`human approve ${G_FIRST}`));
+  });
+
+  test("the human's approve clears the stop and opens the next stage", () => {
+    const repo = stopped();
+
+    const result = runPb(repo, ["human", "approve", G_FIRST]);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(repo.ledger().stop, null);
+    assert.deepEqual(repo.ledger().gates[G_FIRST], { source: "human-cli", answer: "approve" });
+    assertNotDenied(runGate(repo, nextStageCall(repo)));
+  });
+
+  test("a stop the gate answer did not set survives an approve", () => {
+    const stop = { reason: "agent-budget", seq: 0 };
+    const repo = makeRepo({ ledger: { stop } });
+
+    assert.equal(runPb(repo, ["human", "approve", TASK_END]).code, 0);
+
+    assert.deepEqual(repo.ledger().stop, stop);
+  });
+});
+
+// ---------- a stale mode cannot decide ----------
+
+describe("pb gate eval needs the policy recorded first", () => {
+  function heldLock(repo) {
+    const lock = `${repo.ledgerPath}.lock`;
+    writeFileSync(lock, "live writer");
+    return lock;
+  }
+
+  test("a held lock with a changed mode denies the Bash call, and the auto stays unused", () => {
+    const repo = makeRepo({ ledger: { policy: { mode: "auto", source: "permission_mode" } } });
+    const lock = heldLock(repo);
+
+    const result = runGate(repo, mainBash(repo, evalCommand(repo), "default"));
+
+    assertDenied(result, /policy/);
+    rmSync(lock);
+    assert.equal(repo.ledger().policy.mode, "auto", "nothing was written");
+  });
+
+  test("a chained eval is covered too", () => {
+    const repo = makeRepo({ ledger: { policy: { mode: "auto", source: "permission_mode" } } });
+    heldLock(repo);
+
+    assertDenied(runGate(repo, mainBash(repo, `true && (${evalCommand(repo)})`, "default")), /policy/);
+  });
+
+  test("a held lock with no change to record costs nothing", () => {
+    const repo = makeRepo({ ledger: { owner: { sessionId: SESSION, lastSeen: null }, policy: { mode: "default", source: "permission_mode" } } });
+    heldLock(repo);
+
+    assertNotDenied(runGate(repo, mainBash(repo, evalCommand(repo), "default")));
+  });
+
+  test("any other Bash call stays lenient over a held lock", () => {
+    const repo = makeRepo({ ledger: { policy: { mode: "auto", source: "permission_mode" } } });
+    heldLock(repo);
+
+    assertNotDenied(runGate(repo, mainBash(repo, "ls", "default")));
+  });
+
+  for (const [label, corrupt] of [
+    ["a hand edit", (text) => text.replace('"task": "Task 26"', '"task": "Edited"')],
+    ["corrupt JSON", () => "{"],
+  ]) {
+    test(`${label} reaches the CLI's own refusal`, () => {
+      const repo = makeRepo();
+      writeFileSync(repo.ledgerPath, corrupt(readFileSync(repo.ledgerPath, "utf8")));
+
+      assertNotDenied(runGate(repo, mainBash(repo, evalCommand(repo), "default")));
+    });
+  }
+});
+
+// ---------- a sha mismatch points at the way out ----------
+
+describe("a sha mismatch names pb human accept", () => {
+  const edited = (ledger) => {
+    const repo = makeRepo({ ledger });
+    writeFileSync(repo.ledgerPath, readFileSync(repo.ledgerPath, "utf8").replace('"task": "Task 26"', '"task": "Edited"'));
+    return repo;
+  };
+  const acceptPattern = (repo) => new RegExp(`!cd ${repo.dir} && node \\S*pb\\.mjs human accept`);
+
+  test("gate eval refuses cleanly with the command", () => {
+    const repo = edited();
+
+    const result = runPb(repo);
+
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /sha mismatch/);
+    assert.match(result.stderr, acceptPattern(repo));
+    assert.doesNotMatch(result.stderr, /unexpected failure/);
+  });
+
+  test("the command it prints works, and eval runs again", () => {
+    const repo = edited();
+    const [command] = /!cd .*$/m.exec(runPb(repo).stderr);
+
+    const accepted = spawnSync("sh", ["-c", command.slice(1)], { cwd: makeDir("gate-eval-outside-"), env: baseEnv(repo.plugin), encoding: "utf8" });
+
+    assert.equal(accepted.status, 0, accepted.stderr);
+    assert.equal(runPb(repo).code, 0);
+  });
+
+  const DENIED_TOOLS = [
+    ["Workflow", (repo) => stageCall(repo, CONFIG)],
+    ["Write", (repo) => ({ ...mainBash(repo, "ls", "default"), tool_name: "Write", tool_input: { file_path: join(repo.dir, "x.txt"), content: "x" } })],
+    ["Edit", (repo) => ({ ...mainBash(repo, "ls", "default"), tool_name: "Edit", tool_input: { file_path: join(repo.dir, "x.txt"), old_string: "a", new_string: "b" } })],
+    ["Agent", (repo) => ({ ...mainBash(repo, "ls", "default"), tool_name: "Agent", tool_input: { subagent_type: "general-purpose", description: "x", prompt: "x" } })],
+  ];
+  for (const [tool, call] of DENIED_TOOLS) {
+    test(`a ${tool} deny carries the same command, with no gate error wrapper`, () => {
+      const repo = edited();
+
+      const result = runGate(repo, call(repo));
+
+      assertDenied(result, acceptPattern(repo));
+      assert.match(decisionOf(result).permissionDecisionReason, /sha mismatch/);
+      assert.doesNotMatch(decisionOf(result).permissionDecisionReason, /Gate error/);
+      assert.doesNotMatch(decisionOf(result).permissionDecisionReason, /abandon/i);
+    });
+  }
 });
 
 // ---------- the tap recorded nothing ----------
@@ -702,12 +1053,12 @@ describe("a needs-human gate needs a human source", () => {
     assert.equal(repo.ledger().stage.name, SECOND);
   });
 
-  for (const answer of ["redo", "stop"]) {
+  for (const [answer, reason] of [["redo", new RegExp(`next stage is pairingbuddy:${FIRST}`)], ["stop", new RegExp(G_FIRST)]]) {
     test(`a tap ${answer} does not open the next stage`, () => {
       const { repo, asked } = askedRepo({ plugin: makePlugin(), ledger: oneGateDoneLedger() });
       runTap(repo, recordedAnswer(repo, asked.question, answer));
 
-      assertDenied(runGate(repo, nextStageCall(repo)), new RegExp(G_FIRST));
+      assertDenied(runGate(repo, nextStageCall(repo)), reason);
     });
   }
 

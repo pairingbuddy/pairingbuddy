@@ -8,6 +8,8 @@ import {
 export const LEDGER_VERSION = 1;
 export const STALE_LOCK_MS = 30_000;
 export const LOCK_TIMEOUT_MS = 5_000;
+// A file's timestamp can run a tick ahead of Date.now(), so a fresh lock must not read as one from the future.
+const FUTURE_SLACK_MS = 1_000;
 
 const HEX64 = /^[0-9a-f]{64}$/;
 // Shape only, so a well-shaped impossible date stays readable and the gate can treat it as expired.
@@ -188,6 +190,9 @@ function ageMs(path) {
   }
 }
 
+// A lock from the future never ages, so it counts as stale: clock skew or a touch must not wedge a run.
+const isStale = (age, staleMs) => age !== null && (age > staleMs || age < -FUTURE_SLACK_MS);
+
 function readTextOrNull(path) {
   try {
     return readFileSync(path, "utf8");
@@ -228,16 +233,14 @@ function clearStaleLock(lock, staleMs) {
     createOwned(guard, token);
   } catch (e) {
     if (e.code !== "EEXIST") throw e;
-    const guardAge = ageMs(guard);
-    if (guardAge !== null && guardAge > staleMs) {
+    if (isStale(ageMs(guard), staleMs)) {
       unlinkQuietly(guard);
       return true;
     }
     return false;
   }
   try {
-    const age = ageMs(lock);
-    if (age !== null && age > staleMs) unlinkQuietly(lock);
+    if (isStale(ageMs(lock), staleMs)) unlinkQuietly(lock);
     return true;
   } finally {
     removeIfOwned(guard, token);
@@ -254,7 +257,7 @@ function acquireLock(lock, token, { staleMs, timeoutMs, deadline }) {
     }
     const age = ageMs(lock);
     if (age === null) continue;
-    if (age > staleMs && clearStaleLock(lock, staleMs)) continue;
+    if (isStale(age, staleMs) && clearStaleLock(lock, staleMs)) continue;
     if (Date.now() >= deadline) {
       throw new Error(`could not take the ledger lock ${lock} within ${timeoutMs}ms (held by a live writer)`);
     }

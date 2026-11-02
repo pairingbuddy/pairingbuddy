@@ -3,20 +3,23 @@
 // Node built-ins only.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { blockingGate, gatesFor } from "./gates.mjs";
-import { readLedger, updateLedger } from "./ledger.mjs";
+import { answeredGate, blockingGate, gateQuestion, gatesFor, isGateQuestionCall } from "./gates.mjs";
+import { LedgerShaMismatch, readLedger, updateLedger } from "./ledger.mjs";
+import { bindSession, sessionsDirectory } from "./run-root.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, pipelineAgents, startLeaseSecondsLeft } from "./stages.mjs";
-import { pbInvocations } from "./shell-calls.mjs";
-import { VERB_CLASSES, classOf, matchVerb } from "./verbs.mjs";
+import { disguisesPb, pbInvocations } from "./shell-calls.mjs";
+import { VERB_CLASSES, classOf, humanCommand, matchVerb, shaMismatchRemedy } from "./verbs.mjs";
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 const PREFIX = "pairingbuddy:";
 const EXPECTED_FIELDS = ["session_id", "cwd", "tool_name", "permission_mode"];
 const AGENT_PAIR = ["agent_id", "agent_type"];
 const PROTECTED_CONFIGS = ["test-config.json", "git-config.json"];
+const SETTINGS_FILES = ["settings.json", "settings.local.json"];
+const GATE_HEADER_START = "PB gate:";
 const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\](.*)$/gm;
 const RUNNER_AGENT = `${PREFIX}runner`;
 const RUNNER_COMMANDS = [...VERB_CLASSES.runner, "test --full"].map((args) => `node ${join(PLUGIN_ROOT, "cli", "pb.mjs")} ${args}`);
@@ -55,13 +58,19 @@ function assertNoDrift(payload) {
 
 const isWithin = (path, dir) => path === dir || path.startsWith(`${dir}${sep}`);
 
-function assertNotProtected(root, targets) {
+// Any .claude/ counts, the user's own included: each one's settings can set a hook's environment. A file that does
+// not exist yet keeps the letter case it was asked for, which a case-insensitive filesystem ignores.
+const isClaudeSettings = (path) => basename(dirname(path)).toLowerCase() === ".claude" && SETTINGS_FILES.includes(basename(path).toLowerCase());
+
+function assertNotProtected(root, targets, canonicalPath) {
   const stateDir = join(root, ".pairingbuddy");
   const runDir = join(stateDir, "run");
   for (const target of targets) {
     if (isWithin(target, runDir)) throw new Denied(`${target} is inside .pairingbuddy/run, which is denied during a run.`);
     const config = PROTECTED_CONFIGS.find((name) => target === join(stateDir, name));
     if (config !== undefined) throw new Denied(`${config} cannot change during a run: ${target}.`);
+    if (isClaudeSettings(target)) throw new Denied(`.claude/settings files can set the gate policy, so they cannot change during a run: ${target}.`);
+    if (isWithin(target, canonicalPath(sessionsDirectory()))) throw new Denied(`${target} binds a session to its run, which is denied during a run.`);
   }
 }
 
@@ -69,8 +78,9 @@ function assertNotProtected(root, targets) {
 
 const checkboxes = (text) => [...text.matchAll(CHECKBOX)].map(([, mark, label]) => ({ ticked: mark !== " ", label: label.trim() }));
 
-// Drops the boxes both sides share, so a moved line is no change. What is left pairs up in order, which
-// lets a relabelled box keep its state; a box with no partner was deleted, or added if the new side has it.
+// Drops the boxes both sides share, so a moved line is no change. A title still on both sides then has a different
+// tick, since the title is what names a task (D12). What is left pairs up in order, which lets a relabelled box
+// keep its state; a box with no partner was deleted, or added if the new side has it.
 function changesCheckbox(oldText, newText) {
   const added = checkboxes(newText);
   const removed = checkboxes(oldText).filter(({ ticked, label }) => {
@@ -79,6 +89,7 @@ function changesCheckbox(oldText, newText) {
     added.splice(index, 1);
     return false;
   });
+  if (removed.some(({ label }) => added.some((box) => box.label === label))) return true;
   return removed.some(({ ticked }, i) => added[i]?.ticked !== ticked) || added.slice(removed.length).some((box) => box.ticked);
 }
 
@@ -110,7 +121,8 @@ function checkPlanChange({ root, ledger, targets, canonicalPath, payload }, plan
 
 // ---------- gate policy ----------
 
-// The env var is read here and never by the CLI: a hook's environment is out of a model's reach.
+// The env var is read here and never by the CLI, because a Bash call's environment does not reach a hook. Claude's
+// settings files do set it, so the Write tools cannot touch them during a run. Section 8 accepts a Bash edit of one.
 function observedPolicy({ permission_mode: mode }) {
   return process.env[POLICY_ENV] === "auto" ? { mode: "auto", source: POLICY_ENV } : { mode, source: "permission_mode" };
 }
@@ -124,19 +136,37 @@ function withPolicy(ledger, payload) {
   return unchanged || !speaksForRun(ledger, payload) ? ledger : { ...ledger, policy };
 }
 
-// Reads first, so that an unchanged mode costs no write.
-function recordPolicy(ledgerPath, payload) {
-  if (!existsSync(ledgerPath)) return;
-  const ledger = readLedger(ledgerPath);
-  if (withPolicy(ledger, payload) !== ledger) updateLedger(ledgerPath, (current) => withPolicy(current, payload));
+function withOwner(ledger, { agent_id: agentId, session_id: sessionId }) {
+  if (agentId !== undefined || ledger.owner.sessionId !== null) return ledger;
+  return { ...ledger, owner: { sessionId, lastSeen: new Date().toISOString() } };
 }
 
-// A ledger problem must not take these tools away from the recovery route.
-function recordPolicyIfPossible(ledgerPath, payload) {
+const withSession = (ledger, payload) => withPolicy(withOwner(ledger, payload), payload);
+
+// Reads first, so that a call with nothing new costs no write.
+function recordSession(ledgerPath, ledger, payload) {
+  if (withSession(ledger, payload) !== ledger) updateLedger(ledgerPath, (current) => withSession(current, payload));
+}
+
+function readableLedger(ledgerPath) {
   try {
-    recordPolicy(ledgerPath, payload);
+    return existsSync(ledgerPath) ? readLedger(ledgerPath) : null;
   } catch {
-    // The CLI refuses a broken ledger with its own error.
+    return null;
+  }
+}
+
+const invokesGateEval = ({ tool_name: tool, tool_input: toolInput }) => tool === "Bash" && pbInvocations(toolInput.command).some((words) => matchVerb(words) === "gate eval");
+
+// A ledger problem must not take these tools away from the recovery route, and the CLI refuses a broken ledger with
+// its own error. A failed write only matters to gate eval, which would decide on the mode this call failed to record.
+function recordSessionIfPossible(ledgerPath, payload) {
+  const ledger = readableLedger(ledgerPath);
+  if (ledger === null) return;
+  try {
+    recordSession(ledgerPath, ledger, payload);
+  } catch (e) {
+    if (invokesGateEval(payload)) throw new Denied(`The gate policy could not be recorded, so pb gate eval would decide on a stale mode. Try again: ${e.message}`);
   }
 }
 
@@ -192,12 +222,22 @@ function activeDenial(stage, ledger) {
   return `Stage ${name} is active at attempt ${attempt} with no recorded run, so it may never have started. Restart ${workflowName(name)} at attempt ${attempt} before starting ${called}.`;
 }
 
+// The real next step when a human's answer has halted the run, or null.
+function answeredStep(ledger, { gates, root }) {
+  const gate = answeredGate(gates, ledger);
+  if (gate === undefined) return null;
+  const stopped = ledger.stop === null ? "" : ` The run stopped: ${ledger.stop.reason}.`;
+  return `Gate ${gate.name} was answered ${gate.answer}.${stopped} Only the human can go on from here: ask them to type ${humanCommand(root, `approve ${gate.name}`)} at the prompt.`;
+}
+
 function stageDenial(stage, ledger, graph, toolInput, scripts) {
   const called = workflowName(stage);
   if (isStageActive(ledger)) {
     const activeProblem = activeDenial(stage, ledger);
     if (activeProblem) return activeProblem;
   }
+  const halted = answeredStep(ledger, graph);
+  if (halted) return `Stage order: ${called} cannot start now. ${halted}`;
   const next = nextStage(graph, ledger);
   if (next === undefined) return `Stage order: ${called} cannot start now. All stages for ${graph.taskType} are done.`;
   if (stage !== next) return `Stage order: ${called} cannot start now. The next stage is ${workflowName(next)}.`;
@@ -217,12 +257,14 @@ function startStage(ledgerPath, stage, graph, payload, scripts) {
   updateLedger(ledgerPath, (ledger) => {
     const reason = stageDenial(stage, ledger, graph, toolInput, scripts);
     if (reason) throw new Denied(reason);
-    return { ...withPolicy(ledger, payload), stage: { name: stage, status: "active", runId: null, attempt: toolInput.args.attempt, startedAt: new Date().toISOString() } };
+    return { ...withSession(ledger, payload), stage: { name: stage, status: "active", runId: null, attempt: toolInput.args.attempt, startedAt: new Date().toISOString() } };
   });
 }
 
 function runPosition(ledger, graph) {
   if (isStageActive(ledger)) return `Stage ${ledger.stage.name} is active at attempt ${ledger.stage.attempt}.`;
+  const halted = answeredStep(ledger, graph);
+  if (halted) return halted;
   const next = nextStage(graph, ledger);
   if (next === undefined) return `All stages for ${graph.taskType} are done.`;
   return `The next stage is ${workflowName(next)}: call it by name.`;
@@ -255,7 +297,7 @@ function agentDenial(agent, ledger, graph) {
   }
   const next = nextStage(graph, ledger);
   const remedy = next === undefined ? `All stages for ${graph.taskType} are done.` : `Start the workflow ${workflowName(next)} instead.`;
-  return `Direct Agent call for ${agent} is denied during this run. ${remedy}`;
+  return `Direct Agent call for ${agent} is denied during this run. ${answeredStep(ledger, graph) ?? remedy}`;
 }
 
 function checkAgent({ ledger, graph, payload: { agent_id: agentId, tool_input: toolInput } }) {
@@ -290,12 +332,23 @@ function checkBash({ tool_input: toolInput, agent_type: agentType }) {
   if (wrongVerb !== undefined) {
     throw new Denied(`pb ${wrongVerb} belongs to ${VERB_OWNERS[classOf(wrongVerb)]}, so this caller cannot run it.`);
   }
+  if (disguisesPb(command)) {
+    throw new Denied("pb takes literal words: nothing a shell expands ($, a backtick, {, a backslash, ?, *, [) may follow its name, xargs may not feed it, and pb.mjs takes no other letter case.");
+  }
 }
 
 // ---------- AskUserQuestion ----------
 
-function checkQuestion({ tool_input: toolInput }) {
+const asksGate = (gate, question) => question?.question === gateQuestion(gate).question || (typeof question?.header === "string" && question.header.startsWith(GATE_HEADER_START));
+
+function checkQuestion({ tool_input: toolInput }, ledgerPath) {
   if (toolInput?.answers !== undefined) throw new Denied("AskUserQuestion cannot carry its own answers: only a human answers a question.");
+  const gate = readableLedger(ledgerPath)?.needsHuman?.gate;
+  const questions = toolInput?.questions;
+  if (gate === undefined || !Array.isArray(questions) || !questions.some((question) => asksGate(gate, question))) return;
+  if (!isGateQuestionCall(gate, questions)) {
+    throw new Denied(`Gate ${gate} takes one question, exactly as pb gate eval gave it, with nothing else in the call: ${JSON.stringify(gateQuestion(gate))}`);
+  }
 }
 
 const isRunnerCommand = ({ tool_name: tool, agent_type: agentType, tool_input: toolInput }) =>
@@ -312,29 +365,40 @@ const LEDGER_CHECKS = {
 
 const NO_LEDGER_CHECKS = { Bash: checkBash, AskUserQuestion: checkQuestion };
 
-function checkRun(root, { payload, targets, canonicalPath }) {
-  assertNotProtected(root, targets);
+function checkLedgerRun(root, { payload, targets, canonicalPath }) {
   const ledgerPath = join(root, ".pairingbuddy", "run", "task", "ledger.json");
   // Before the ledger: a unit run has none, and a ledger problem must not take these from the recovery route.
   if (Object.hasOwn(NO_LEDGER_CHECKS, payload.tool_name)) {
-    NO_LEDGER_CHECKS[payload.tool_name](payload);
-    recordPolicyIfPossible(ledgerPath, payload);
+    NO_LEDGER_CHECKS[payload.tool_name](payload, ledgerPath);
+    recordSessionIfPossible(ledgerPath, payload);
     return;
   }
   if (!existsSync(ledgerPath)) return;
   const ledger = readLedger(ledgerPath);
   const contract = loadStages(PLUGIN_ROOT);
-  const graph = { ...graphFor(contract, ledger.taskType), gates: gatesFor(contract, ledger.taskType) };
+  const graph = { ...graphFor(contract, ledger.taskType), gates: gatesFor(contract, ledger.taskType), root };
   if (Object.hasOwn(LEDGER_CHECKS, payload.tool_name)) {
     LEDGER_CHECKS[payload.tool_name]({ root, ledgerPath, ledger, graph, payload, targets, canonicalPath });
   }
   // A Workflow records with its stage start, and any other workflow leaves the run untouched.
-  if (payload.tool_name !== "Workflow") recordPolicy(ledgerPath, payload);
+  if (payload.tool_name !== "Workflow") recordSession(ledgerPath, ledger, payload);
 }
 
-// Returns the reason for an explicit allow, or null to add no decision.
-export function checkCall({ runRoots, payload, targets, canonicalPath }) {
+function checkRun(root, context) {
+  assertNotProtected(root, context.targets, context.canonicalPath);
+  try {
+    checkLedgerRun(root, context);
+  } catch (e) {
+    if (e instanceof LedgerShaMismatch) throw new Denied(shaMismatchRemedy(e.message, root));
+    throw e;
+  }
+}
+
+// Returns the reason for an explicit allow, or null to add no decision. sessionRoot is the run the session's own
+// position gave, cwd or pointer; a run reached only through a target path does not bind it.
+export function checkCall({ runRoots, sessionRoot, payload, targets, canonicalPath }) {
   assertNoDrift(payload);
+  if (sessionRoot !== null && payload.agent_id === undefined) bindSession(payload.session_id, sessionRoot);
   for (const root of runRoots) checkRun(root, { payload, targets, canonicalPath });
   return isRunnerCommand(payload) ? AUTO_ALLOW_REASON : null;
 }

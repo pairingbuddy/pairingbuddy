@@ -5,6 +5,7 @@
 // This wrapper imports only built-ins and loads everything else dynamically, so that a failed import can
 // still deny, and so that a call outside a run costs little more than Node's startup.
 import { existsSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 const TARGET_KEYS = { Write: "file_path", Edit: "file_path", NotebookEdit: "notebook_path" };
@@ -85,6 +86,16 @@ function nearestRunDirectory(start) {
   }
 }
 
+// Used only when run-root.mjs cannot load, and for the same reason: its only result is a deny.
+function pointedRunDirectory(sessionId) {
+  try {
+    const root = readFileSync(join(tmpdir(), "pairingbuddy-sessions", basename(sessionId)), "utf8");
+    return existsSync(join(root, ".pairingbuddy", "run")) ? root : null;
+  } catch {
+    return null;
+  }
+}
+
 // The tool may collapse a `..` before following links, or the filesystem may do it after, so both readings count.
 function targetPaths(payload, cwd) {
   const key = TARGET_KEYS[payload?.tool_name];
@@ -102,9 +113,10 @@ function decide(permissionDecision, permissionDecisionReason) {
 
 // A failed import is held back, not thrown here: only the walk can say whether this call is inside a run.
 let findRunRoot = nearestRunDirectory;
+let findSessionRoot = (cwd, sessionId) => nearestRunDirectory(cwd) ?? pointedRunDirectory(sessionId);
 let importFailure = null;
 try {
-  ({ findRunRoot } = await import("../shared-node/run-root.mjs"));
+  ({ findRunRoot, findSessionRoot } = await import("../shared-node/run-root.mjs"));
 } catch (e) {
   importFailure = e;
 }
@@ -118,13 +130,14 @@ function addRunRoot(start) {
 try {
   const payload = readPayload();
   const cwd = canonicalPath(workingDirectory(payload));
-  addRunRoot(cwd);
+  const sessionRoot = findSessionRoot(cwd, payload?.session_id);
+  if (sessionRoot !== null) runRoots.add(sessionRoot);
   const targets = targetPaths(payload, cwd);
   targets.forEach(addRunRoot);
   if (runRoots.size > 0) {
     if (importFailure !== null) throw importFailure;
     const { checkCall } = await import("../shared-node/gate-rules.mjs");
-    const allowReason = checkCall({ runRoots: [...runRoots], payload, targets, canonicalPath });
+    const allowReason = checkCall({ runRoots: [...runRoots], sessionRoot, payload, targets, canonicalPath });
     if (allowReason !== null) decide("allow", allowReason);
   }
 } catch (e) {

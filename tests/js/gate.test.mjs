@@ -1,3 +1,4 @@
+import "./isolated-tmpdir.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
@@ -923,6 +924,7 @@ test("the gate's matcher also covers Write, Edit and NotebookEdit", () => {
 const RUN_PATTERN = /\.pairingbuddy\/run/;
 const TEST_CONFIG_PATTERN = /test-config\.json/;
 const GIT_CONFIG_PATTERN = /git-config\.json/;
+const SETTINGS_PATTERN = /\.claude\/settings/;
 
 const PROTECTED_PATHS = [
   [".pairingbuddy/run/task/ledger.json", RUN_PATTERN],
@@ -932,6 +934,8 @@ const PROTECTED_PATHS = [
   [".pairingbuddy/run/pr-body.md", RUN_PATTERN],
   [".pairingbuddy/test-config.json", TEST_CONFIG_PATTERN],
   [".pairingbuddy/git-config.json", GIT_CONFIG_PATTERN],
+  [".claude/settings.json", SETTINGS_PATTERN],
+  [".claude/settings.local.json", SETTINGS_PATTERN],
 ];
 
 for (const [toolName, call] of FILE_TOOLS) {
@@ -947,6 +951,34 @@ for (const [toolName, call] of FILE_TOOLS) {
         assertAllowed(await runGate(call(repo.dir, join(repo.dir, path))));
       }));
   }
+}
+
+for (const [label, path] of [
+  ["user-level settings, which set a hook's environment too", (home) => join(home, ".claude", "settings.json")],
+  ["another letter case of a file that does not exist yet", (home) => join(home, ".claude", "Settings.Local.JSON")],
+  ["another letter case of the directory", (home) => join(home, ".CLAUDE", "settings.json")],
+]) {
+  test(`Write to ${label} is denied during a run`, () =>
+    withRepo({}, (repo) => withElsewhere((home) => {
+      mkdirSync(join(home, ".claude"));
+
+      return assertDeniedNamingWithoutWrite(repo, writeCall(repo.dir, path(home)), SETTINGS_PATTERN);
+    })));
+}
+
+test("a symlink to .claude/settings.local.json is denied during a run", () =>
+  withRepo({}, (repo) => {
+    mkdirSync(join(repo.dir, ".claude"));
+    symlinkSync(join(repo.dir, ".claude", "settings.local.json"), join(repo.dir, "notes.json"));
+
+    return assertDeniedNamingWithoutWrite(repo, writeCall(repo.dir, "notes.json"), SETTINGS_PATTERN);
+  }));
+
+for (const path of [".claude/agents/x.md", ".claude/settings.json.bak", "claude/settings.json", "settings.json"]) {
+  test(`Write to ${path} is allowed during a run`, () =>
+    withRepo({}, async (repo) => {
+      assertAllowed(await runGate(writeCall(repo.dir, path)));
+    }));
 }
 
 test("a publish unit with no task ledger still counts as run state and protects the run directory", () =>
@@ -1122,6 +1154,34 @@ test("an Edit turning a box into a plain list item in the plan is denied during 
 
 test("a Write adding a ticked box to the plan is denied during a run", () =>
   withPlanRepo((repo) => assertDeniedNamingWithoutWrite(repo, writeCall(repo.dir, PLAN, `${PLAN_TEXT}\n- [x] Task 3\n`), CHECKBOX_PATTERN)));
+
+test("a Write swapping the ticks between two titles is denied during a run", () =>
+  withPlanRepo((repo) => {
+    writeFileSync(join(repo.dir, PLAN), "- [ ] Task A\n- [x] Task B\n");
+
+    return assertDeniedNamingWithoutWrite(repo, writeCall(repo.dir, PLAN, "- [ ] Task B\n- [x] Task A\n"), CHECKBOX_PATTERN);
+  }));
+
+test("an Edit swapping the labels of two boxes is denied during a run", () =>
+  withPlanRepo((repo) => {
+    writeFileSync(join(repo.dir, PLAN), "- [ ] Task A\n- [x] Task B\n");
+
+    return assertDeniedNamingWithoutWrite(repo, editCall(repo.dir, PLAN, "- [ ] Task A\n- [x] Task B", "- [ ] Task B\n- [x] Task A"), CHECKBOX_PATTERN);
+  }));
+
+test("a tick moved onto a title that has a twin is denied during a run", () =>
+  withPlanRepo((repo) => {
+    writeFileSync(join(repo.dir, PLAN), "- [ ] Twin\n- [ ] Twin\n- [x] Other\n");
+
+    return assertDeniedNamingWithoutWrite(repo, writeCall(repo.dir, PLAN, "- [x] Twin\n- [ ] Twin\n- [ ] Other\n"), CHECKBOX_PATTERN);
+  }));
+
+test("two boxes swapping places, each keeping its tick, is allowed during a run", () =>
+  withPlanRepo(async (repo) => {
+    writeFileSync(join(repo.dir, PLAN), "- [ ] Task A\n- [x] Task B\n");
+
+    assertAllowed(await runGate(writeCall(repo.dir, PLAN, "- [x] Task B\n- [ ] Task A\n")));
+  }));
 
 const TICK = ["- [ ] Task 1", "- [x] Task 1"];
 

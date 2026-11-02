@@ -6,6 +6,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 // The shared-node modules load inside the try so a packaging failure cannot make the hook exit non-zero.
 
 function logError(taskDir, message) {
@@ -58,18 +59,20 @@ function tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, toolInpu
   if (mismatch !== null) logError(taskDir, `workflow mismatch: ${JSON.stringify(toolInput?.name)} for stage ${mismatch}`);
 }
 
-function recordAnswer(ledger, gateAnswer, toolResponse) {
+function withAnswer({ gateAnswer, gatesFor, loadStages, recordAnswer }, ledger, toolResponse) {
   const gate = ledger.needsHuman?.gate;
   const answer = gate === undefined ? null : gateAnswer(gate, toolResponse);
   if (answer === null) return ledger;
-  return { ...ledger, needsHuman: null, gates: { ...ledger.gates, [gate]: { source: "human", answer } } };
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url));
+  return recordAnswer(ledger, gate, answer, gatesFor(loadStages(pluginRoot), ledger.taskType));
 }
 
 // Only tool_response counts: it holds what the human chose, and tool_input is the model's.
-function tapQuestion({ gateAnswer, readLedger, updateLedger }, ledgerPath, toolResponse) {
+function tapQuestion(modules, ledgerPath, toolResponse) {
+  const { readLedger, updateLedger } = modules;
   const ledger = readLedger(ledgerPath);
-  if (recordAnswer(ledger, gateAnswer, toolResponse) !== ledger) {
-    updateLedger(ledgerPath, (current) => recordAnswer(current, gateAnswer, toolResponse));
+  if (withAnswer(modules, ledger, toolResponse) !== ledger) {
+    updateLedger(ledgerPath, (current) => withAnswer(modules, current, toolResponse));
   }
 }
 
@@ -88,13 +91,14 @@ function tapRun(modules, root, input) {
 }
 
 try {
-  const { gateAnswer } = await import("../shared-node/gates.mjs");
+  const { gateAnswer, gatesFor, recordAnswer } = await import("../shared-node/gates.mjs");
   const { parseKey } = await import("../shared-node/keys.mjs");
   const { readLedger, updateLedger } = await import("../shared-node/ledger.mjs");
-  const { findRunRoot } = await import("../shared-node/run-root.mjs");
+  const { findSessionRoot } = await import("../shared-node/run-root.mjs");
+  const { loadStages } = await import("../shared-node/stages.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
-  const root = findRunRoot(input.cwd);
-  if (root !== null) tapRun({ gateAnswer, parseKey, readLedger, updateLedger }, root, input);
+  const root = findSessionRoot(input.cwd, input.session_id);
+  if (root !== null) tapRun({ gateAnswer, gatesFor, loadStages, parseKey, readLedger, recordAnswer, updateLedger }, root, input);
 } catch {
   // not a run situation
 }

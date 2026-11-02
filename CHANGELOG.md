@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Gate hook fails closed: during a run it denies `Write`, `Edit` and `NotebookEdit` on `.pairingbuddy/run/**`, `test-config.json` and `git-config.json`, denies plan checkbox changes, and denies on any hook error and on platform drift in the payload. It finds run state by walking up from the cwd and the target path, with no git call, and its rules moved to `shared-node/gate-rules.mjs`. An empty `.pairingbuddy/run/` no longer stops that walk, and `hooks/tap.mjs` now uses the same `shared-node/run-root.mjs` walk instead of `git rev-parse`, so a git repo nested inside a run reaches the run
 - CLI verb table `shared-node/verbs.mjs`, used by `cli/pb.mjs` and the gate. The gate now covers `Bash`: during a run it denies `pb human` in any command text, denies a verb from the wrong caller class, and auto-allows the runner's exact CLI command
 - `pb human approve <gate>` and `pb human accept`, reachable only by a human `!`. `approve` passes the due or pending gate with `source: human-cli`, and refuses a ledger with a SHA mismatch, pointing to `accept`. `accept` re-signs a hand-edited ledger that is otherwise well-formed and records it in the new optional ledger field `acceptances`
+- Run binding: the gate claims `ledger.owner` for the first main-context session it sees in a run, and writes a session pointer under `<os.tmpdir()>/pairingbuddy-sessions/`. `gate.mjs` and `tap.mjs` read it when the walk from the cwd finds nothing, so every rule holds after `cd /tmp`. The printed `!` commands start with `cd <run root> &&`
+- Gate answers take effect: `redo` clears the gate record and the stage's done state so the stage restarts at the next attempt, `stop` sets `ledger.stop`, and `pb human approve` also passes a gate answered either way, clearing the stop
+
+### Changed
+
+- A gate question must equal the question `pb gate eval` emitted, alone in its call, at PreToolUse and in the tap. Plan checkboxes compare by task title. `pb gate eval` through the gate denies when the policy cannot be recorded. A SHA mismatch names the `!... human accept` command from the CLI and from hook denies. During a run, `Write`, `Edit` and `NotebookEdit` are denied on `.claude/settings.json` and `.claude/settings.local.json`, and any `pb` or `pb.mjs` text with a shell expansion or glob after the name, an `xargs` feeding `pb` or `pb.mjs`, or another letter case of `pb.mjs`, is denied. A lock file with a future mtime counts as stale
 
 ## [0.7.0] - 2026-07-31
 

@@ -10,6 +10,16 @@ const PB_NAMES = new Set(["pb", "pb.mjs"]);
 const ASSIGNMENT = /^[A-Za-z_]\w*=/;
 const WRAPPER_OPTION = /^(?:-.*|\d[\d.]*[smhd]?)$/;
 const SHELL_C_FLAG = /^-[a-z]*c[a-z]*$/;
+// What a shell drops from a word, which may sit between any two letters of the name.
+const QUOTING = String.raw`(?:\\\n|['"\\])*`;
+const NAME_START = String.raw`(?<![\w.-])`;
+const NAME_END = String.raw`(?![\w./-])`;
+const PB_FILE_LETTERS = ["\\.", "m", "j", "s"].join(QUOTING);
+const PB_FILE_ANY_CASE = new RegExp(`${NAME_START}p${QUOTING}b${QUOTING}${PB_FILE_LETTERS}${NAME_END}`, "gi");
+const PB_FILE_END = `${QUOTING}${PB_FILE_LETTERS}`;
+// Either the whole file name or none of it, so the backslash in `pb\.mjs` cannot read as text after a bare pb.
+const PB_THEN_EXPANSION = new RegExp(`${NAME_START}p${QUOTING}b(?:${PB_FILE_END}|(?!${PB_FILE_END}))${NAME_END}[^;|&\\n)]*[$\`{\\\\?*\\[]`);
+const QUOTING_CHARACTERS = /\\\n|['"\\]/g;
 
 const baseName = (word) => word.slice(word.lastIndexOf("/") + 1);
 
@@ -118,6 +128,29 @@ function innerScript([head, ...rest]) {
   if (!SHELLS.has(baseName(head))) return undefined;
   const flag = rest.findIndex((word) => SHELL_C_FLAG.test(word));
   return flag === -1 ? undefined : rest[flag + 1];
+}
+
+// True when xargs supplies a pb's words from its input, which no reading of the text can see.
+function xargsFeedsPb(command) {
+  const { commands, substitutions } = parse(command);
+  const scripts = [...substitutions];
+  for (const words of commands) {
+    const run = fromCommandWord(words);
+    if (run.length === 0) continue;
+    const wrappers = words.slice(0, words.length - run.length);
+    if (wrappers.some((word) => baseName(word) === "xargs") && run.some((word) => PB_NAMES.has(baseName(word)))) return true;
+    const script = innerScript(run);
+    if (script !== undefined) scripts.push(script);
+  }
+  return scripts.some(xargsFeedsPb);
+}
+
+// True for a pb name the literal readings cannot be trusted with, which may be a mere mention: text in the same simple
+// command that the shell rewrites after the name, an xargs that feeds it, or a spelling of pb.mjs that only a case-insensitive filesystem finds.
+// Every verb takes fixed words, so a real call needs neither.
+export function disguisesPb(command) {
+  if (PB_THEN_EXPANSION.test(command) || xargsFeedsPb(command)) return true;
+  return [...command.matchAll(PB_FILE_ANY_CASE)].some(([name]) => name.replace(QUOTING_CHARACTERS, "") !== "pb.mjs");
 }
 
 // The words after each pb or pb.mjs that a shell would run, in a compound, a subshell, a substitution, `sh -c` or eval.

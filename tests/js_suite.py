@@ -15,6 +15,7 @@ JS_TEST_FILES = [
     "tests/js/ledger.test.mjs",
     "tests/js/pb-human.test.mjs",
     "tests/js/pb-run-open.test.mjs",
+    "tests/js/session-binding.test.mjs",
     "tests/js/tap.test.mjs",
     "tests/js/verbs.test.mjs",
 ]
@@ -38,7 +39,7 @@ def _problem_with_run(files, stdout):
     return None
 
 
-def run_node_tests(files, cwd, timeout=60):
+def run_node_tests(files, cwd, timeout=120):
     command = ["node", "--test", "--test-reporter=tap", *files]
     if not files:
         return _failed(command, "No JS test files listed")

@@ -1,3 +1,4 @@
+import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -90,9 +91,9 @@ after(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 });
 
-function bashCall(command, { agentType, cwd = RUN_REPO, toolInput = { command, description: "run it" } } = {}) {
+function bashCall(command, { agentType, cwd = RUN_REPO, session, toolInput = { command, description: "run it" } } = {}) {
   const base = agentType === undefined ? fixture("pretooluse-workflow.json") : { ...fixture("pretooluse-workflow-agent-bash.json"), agent_type: agentType };
-  return { ...base, cwd, permission_mode: "default", tool_name: "Bash", tool_input: toolInput };
+  return { ...base, ...(session && { session_id: session }), cwd, permission_mode: "default", tool_name: "Bash", tool_input: toolInput };
 }
 
 function runGate(payload, { gate = GATE } = {}) {
@@ -302,6 +303,93 @@ describe("a real pb invocation keeps its deny", IN_PARALLEL, () => {
   }
 });
 
+// Some rows name a verb an earlier rule already denies: what matters is that none gets through.
+const ANY_PB_RULE = /literal|human alone|belongs to/;
+const LITERAL_RULE = /literal/;
+const GATE_ARG = "G:task-end";
+
+// All of these ran for real before: the shell rebuilds `human`, or macOS's filesystem ignores the case.
+const DISGUISED = [
+  ["another letter case of pb.mjs", `node cli/PB.mjs human approve ${GATE_ARG}`],
+  ["another letter case, one letter", "node cli/pB.mjs status"],
+  ["the extension in capitals", "node cli/pb.MJS status"],
+  ["a capitalised name alone", "ls cli/Pb.mjs"],
+  ["another letter case with quotes in it", `node cli/P"B".mjs human approve ${GATE_ARG}`],
+  ["a substitution", `node cli/pb.mjs $(echo human) approve ${GATE_ARG}`],
+  ["backticks", `node cli/pb.mjs \`echo human\` approve ${GATE_ARG}`],
+  ["a variable", `V=human; node cli/pb.mjs $V approve ${GATE_ARG}`],
+  ["a quoted variable", `node cli/pb.mjs "$V" approve ${GATE_ARG}`],
+  ["ANSI-C quoting", `node cli/pb.mjs $'\\x68uman' approve ${GATE_ARG}`],
+  ["an empty expansion inside the word", `node cli/pb.mjs hu\${Z}man approve ${GATE_ARG}`],
+  ["brace expansion", `node cli/pb.mjs {human,} approve ${GATE_ARG}`],
+  ["IFS glued to the name", `node cli/pb.mjs\${IFS}human approve ${GATE_ARG}`],
+  ["a variable glued to the name", `node cli/pb.mjs$X approve ${GATE_ARG}`],
+  ["a backslash inside the verb's second word", "node cli/pb.mjs run op\\en"],
+  ["a line continuation before the verb", `node cli/pb.mjs \\\nhuman approve ${GATE_ARG}`],
+  ["a bare pb with a substitution", `pb $(echo human) approve ${GATE_ARG}`],
+  ["a quoted name with an expansion", `node "cli/pb.mjs" $(echo human) approve ${GATE_ARG}`],
+  ["a name broken by quotes with an expansion", `node cli/p"b".mjs $(echo human) approve ${GATE_ARG}`],
+  ["a name broken by a backslash with an expansion", `node cli/p\\b.mjs $(echo human) approve ${GATE_ARG}`],
+  ["xargs feeding pb.mjs through node", `echo human approve ${GATE_ARG} | xargs node cli/pb.mjs`],
+  ["xargs feeding a bare pb", `echo gate eval | xargs pb`],
+  ["xargs with options before the pb", "echo human | xargs -n 1 node cli/pb.mjs"],
+  ["xargs with a replacement word before the pb", "echo human | xargs -I X node cli/pb.mjs X approve"],
+  ["xargs after a wrapper", "echo human | env xargs pb"],
+  ["xargs inside sh -c", `sh -c 'echo human | xargs pb'`],
+  ["xargs inside a substitution", "echo $(echo human | xargs pb)"],
+  ["a ? in the word", `node cli/pb.mjs hum?n approve ${GATE_ARG}`],
+  ["a * in the word", `node cli/pb.mjs hu* approve ${GATE_ARG}`],
+  ["a [ in the word", `node cli/pb.mjs hu[m]an approve ${GATE_ARG}`],
+  ["a glob on a bare pb", `pb hum?n approve ${GATE_ARG}`],
+  ["a mention with an expansion", "echo pb.mjs $(whoami)"],
+  ["a mention in a grep", "grep -n pb.mjs $FILE"],
+];
+
+describe("pb takes literal words", IN_PARALLEL, () => {
+  for (const { caller, agentType } of CALLERS) {
+    for (const [shape, command] of DISGUISED) {
+      test(`${caller} using ${shape} is denied`, async () => {
+        const result = await runGate(bashCall(command, { agentType }));
+
+        assert.match(denialReason(result), ANY_PB_RULE);
+      });
+    }
+  }
+});
+
+const LITERAL_COMMANDS = [
+  `${PB} gate eval`,
+  `${PB} gate eval | jq '{gate: .gate}'`,
+  `${PB} gate eval | jq '.x'`,
+  `${PB} gate eval | jq '.[0]?'`,
+  "ls | xargs wc -l",
+  "ls *.md; ls cli/pb.mjs",
+  `${PB} gate eval; echo "exit $?"`,
+  `${PB} gate eval && echo $HOME`,
+  `echo $HOME; ${PB} gate eval`,
+  `RESULT=$(${PB} gate eval)`,
+  "grep -n 'pb\\.mjs' hooks/gate.mjs",
+  "ls cli/pb.mjs",
+  "cat tests/js/pb-human.test.mjs $FILE",
+  "cat docs/pb/notes.md $FILE",
+  "node tools/pbx.mjs $(whoami)",
+  "echo $PB",
+];
+
+test("the deny for a rebuilt word states the rule", async () => {
+  assert.match(denialReason(await runGate(bashCall(`node cli/pb.mjs $(echo human) approve ${GATE_ARG}`))), LITERAL_RULE);
+  assert.match(denialReason(await runGate(bashCall(`node cli/pb.mjs hum?n approve ${GATE_ARG}`))), LITERAL_RULE);
+  assert.match(denialReason(await runGate(bashCall(`echo human approve ${GATE_ARG} | xargs node cli/pb.mjs`))), LITERAL_RULE);
+});
+
+describe("a literal pb stays untouched", IN_PARALLEL, () => {
+  for (const command of LITERAL_COMMANDS) {
+    test(`the main context running ${command}`, async () => {
+      assertSilent(await runGate(bashCall(command, { agentType: undefined })));
+    });
+  }
+});
+
 const UNRELATED_COMMANDS = ["uv run pytest", "ls human", "echo human approve", "grep -rn approve src", "git log --oneline", "pb humanize", "node tools/pbx.mjs human approve"];
 
 describe("commands that are not pb human stay untouched", IN_PARALLEL, () => {
@@ -381,6 +469,9 @@ describe("deny messages do not advertise pb human abandon", IN_PARALLEL, () => {
   }
 });
 
+// The fixture's own session is bound to RUN_REPO by the tests above, and a bound session is in that run from any cwd.
+const NEVER_IN_A_RUN = "never-in-a-run";
+
 describe("what counts as a run", IN_PARALLEL, () => {
   test("a unit run with no task ledger still denies pb human", async () => {
     const dir = makeRepo();
@@ -393,7 +484,7 @@ describe("what counts as a run", IN_PARALLEL, () => {
   });
 
   test("outside a run a human verb gets no decision", async () => {
-    const result = await runGate(bashCall(HUMAN, { cwd: makeRepo() }));
+    const result = await runGate(bashCall(HUMAN, { cwd: makeRepo(), session: NEVER_IN_A_RUN }));
 
     assertSilent(result);
   });
@@ -409,7 +500,7 @@ describe("what counts as a run", IN_PARALLEL, () => {
     mkdirSync(join(plugin, "hooks"));
     copyFileSync(GATE, join(plugin, "hooks", "gate.mjs"));
 
-    const result = await runGate(bashCall("uv run pytest", { cwd: makeRepo() }), { gate: join(plugin, "hooks", "gate.mjs") });
+    const result = await runGate(bashCall("uv run pytest", { cwd: makeRepo(), session: NEVER_IN_A_RUN }), { gate: join(plugin, "hooks", "gate.mjs") });
 
     assertSilent(result);
   });

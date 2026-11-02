@@ -58,6 +58,16 @@ export function graphFor(contract, taskType) {
 
 export const isStageActive = (ledger) => ledger.stage.status === "active";
 
+// The status of a stage a human sent back. It is not done, so it is next again, and it is not active,
+// so it re-runs at the following attempt.
+export const REDO_STATUS = "redo";
+
+export const withStageStatus = (ledger, name, status) => ({
+  ...ledger,
+  stages: ledger.stages.map((stage) => (stage.name === name ? { ...stage, status } : stage)),
+  stage: ledger.stage.name === name ? { ...ledger.stage, status } : ledger.stage,
+});
+
 // Active with no runId: the gate marked the stage, but no run was recorded. The start may have failed, so it can be retried.
 export const isStageUnstarted = (ledger) => isStageActive(ledger) && ledger.stage.runId === null;
 

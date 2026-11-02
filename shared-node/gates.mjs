@@ -3,8 +3,9 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
-import { graphFor } from "./stages.mjs";
+import { REDO_STATUS, graphFor, withStageStatus } from "./stages.mjs";
 
 const HUMAN_SOURCES = ["human", "human-cli"];
 const REPORT_LISTS = ["survivors", "gaps", "uncovered", "unrefuted"];
@@ -47,6 +48,18 @@ export function dueGate(gates, ledger) {
   const done = doneStages(ledger);
   return gates.find(({ name, stage }) => done.has(stage) && !Object.hasOwn(ledger.gates, name));
 }
+
+// The gate a human answered with something other than approve, with that answer. It stands until they approve it.
+export function answeredGate(gates, ledger) {
+  if (ledger.needsHuman !== null) return undefined;
+  const gate = blockingGate(gates, ledger);
+  if (gate === undefined || !Object.hasOwn(ledger.gates, gate.name)) return undefined;
+  const { source, answer } = ledger.gates[gate.name];
+  return HUMAN_SOURCES.includes(source) ? { ...gate, answer } : undefined;
+}
+
+// The gate of a stage sent back by redo and not restarted yet. A redo leaves no gate record, so the stage holds this.
+export const reopenedGate = (gates, { stage }) => (stage.status === REDO_STATUS ? gates.find((gate) => gate.stage === stage.name) : undefined);
 
 // ---------- always-stop conditions ----------
 
@@ -115,10 +128,35 @@ function policyReason({ policy: { mode } }) {
 // Why this gate must ask a human, or null when it passes under the recorded policy.
 export const askReason = (ledger, gate, root) => stopReason(ledger, root) ?? CLASS_REASONS[gate.class] ?? policyReason(ledger);
 
+// A model writes the dialog, so its words are the human's only when they are the words the CLI emitted, alone in
+// the call. Otherwise it could put "approve" on a description that says something else.
+export const isGateQuestionCall = (gate, questions) => Array.isArray(questions) && questions.length === 1 && isDeepStrictEqual(questions[0], gateQuestion(gate));
+
 // The approve, redo or stop that a finished AskUserQuestion gave this gate, or null.
 export function gateAnswer(gate, toolResponse) {
-  const asked = toolResponse?.questions;
-  if (!Array.isArray(asked) || !asked.some((q) => q?.header === gateHeader(gate) && q?.question === gateQuestionText(gate))) return null;
+  if (!isGateQuestionCall(gate, toolResponse?.questions)) return null;
   const answer = toolResponse.answers?.[gateQuestionText(gate)];
   return GATE_OPTIONS.some(({ label }) => label === answer) ? answer : null;
+}
+
+// A redo sends the stage back and leaves no record, so the gate comes due again when the stage finishes.
+function reopenStage(ledger, name, gates) {
+  const { [name]: _cleared, ...kept } = ledger.gates;
+  return withStageStatus({ ...ledger, gates: kept }, gates.find((gate) => gate.name === name).stage, REDO_STATUS);
+}
+
+// What a human's answer to the asking gate does to the ledger.
+export function recordAnswer(ledger, name, answer, gates) {
+  const asked = { ...ledger, needsHuman: null };
+  if (answer === "redo") return reopenStage(asked, name, gates);
+  const recorded = { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer } } };
+  return answer === "stop" ? { ...recorded, stop: { reason: `the human answered stop at ${name}`, seq: ledger.seq + 1 } } : recorded;
+}
+
+// A human's way past any answer: it undoes a redo that has not restarted, and the stop this gate's answer set.
+export function recordApproval(ledger, name, gates) {
+  const reopened = reopenedGate(gates, ledger);
+  const restored = reopened?.name === name ? withStageStatus(ledger, reopened.stage, "done") : ledger;
+  const stoppedHere = Object.hasOwn(ledger.gates, name) && ledger.gates[name].answer === "stop";
+  return { ...restored, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: { source: "human-cli", answer: "approve" } } };
 }

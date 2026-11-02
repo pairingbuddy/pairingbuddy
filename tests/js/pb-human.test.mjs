@@ -8,6 +8,7 @@
 //   oldSha is the sha the file carried. newSha is the sha of the content as edited, before the acceptance is
 //   added: the ledger's own sha covers the acceptance, so it cannot appear inside what it signs.
 // A refusal exits 1, bad arguments exit 2, and neither changes a byte of the ledger.
+import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -130,6 +131,21 @@ function stageCall(repo, stage) {
   };
 }
 
+function gateAnswerPayload(repo, gate, answer) {
+  const recorded = fixture("posttooluse-askuserquestion.json");
+  const text = `Approve ${gate}?`;
+  const question = {
+    question: text, header: `PB gate: ${gate}`, multiSelect: false,
+    options: [
+      { label: "approve", description: "Approve this gate and let the run continue." },
+      { label: "redo", description: "Redo the stage before this gate." },
+      { label: "stop", description: "Stop here." },
+    ],
+  };
+  const response = { ...recorded.tool_input, questions: [question], answers: { [text]: answer } };
+  return { ...recorded, session_id: SESSION, cwd: repo.dir, tool_input: response, tool_response: response };
+}
+
 function askedRepo(opts) {
   const repo = makeRepo(opts);
   const asked = succeeded(pb(repo, "gate", "eval"));
@@ -196,11 +212,11 @@ describe("pb human approve passes a gate", () => {
 
   test("a gate needing a human through the printed command works as printed", () => {
     const { repo, asked } = askedRepo();
-    const [, ...words] = asked.humanCommand.split(" ");
+    assert.ok(asked.humanCommand.includes(CLI), "the command names this CLI");
 
-    assert.equal(words[0], CLI, "the command names this CLI");
-    succeeded(pb(repo, ...words.slice(1)));
+    const result = spawnSync("sh", ["-c", asked.humanCommand.slice(1)], { cwd: makeDir("pb-human-elsewhere-"), env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN }, encoding: "utf8" });
 
+    assert.equal(result.status, 0, result.stderr);
     assert.equal(repo.ledger().gates[G_FIRST]?.source, "human-cli");
   });
 
@@ -221,6 +237,47 @@ describe("pb human approve passes a gate", () => {
 
     assert.deepEqual(repo.ledger().gates.other, { source: "auto" });
     assert.deepEqual(repo.ledger().commits, ["abc"]);
+  });
+});
+
+describe("pb human approve is the way out of a redo or a stop", () => {
+  for (const answer of ["redo", "stop"]) {
+    test(`a record of ${answer} is replaced by the approval`, () => {
+      const repo = makeRepo({ ledger: { gates: { [G_FIRST]: { source: "human", answer } } } });
+
+      succeeded(approve(repo, G_FIRST));
+
+      assert.deepEqual(repo.ledger().gates[G_FIRST], { source: "human-cli", answer: "approve" });
+    });
+  }
+
+  test("a stop the gate's answer set is cleared", () => {
+    const repo = makeRepo({ ledger: { gates: { [G_FIRST]: { source: "human", answer: "stop" } }, stop: { reason: `the human answered stop at ${G_FIRST}`, seq: 1 } } });
+
+    succeeded(approve(repo, G_FIRST));
+
+    assert.equal(repo.ledger().stop, null);
+  });
+
+  test("a gate answered redo can still be approved before the stage restarts, and the stage reads done again", () => {
+    const { repo } = askedRepo();
+    const tapped = spawnSync(process.execPath, [join(PLUGIN, "hooks", "tap.mjs")], { cwd: repo.dir, input: JSON.stringify(gateAnswerPayload(repo, G_FIRST, "redo")), env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN }, encoding: "utf8" });
+    assert.equal(tapped.status, 0, tapped.stderr);
+    assert.equal(Object.hasOwn(repo.ledger().gates, G_FIRST), false, "the redo cleared the record");
+
+    succeeded(approve(repo, G_FIRST));
+
+    assert.deepEqual(repo.ledger().gates[G_FIRST], { source: "human-cli", answer: "approve" });
+    assert.equal(repo.ledger().stage.status, "done");
+    assert.ok(repo.ledger().stages.some(({ name, status }) => name === FIRST && status === "done"));
+    const result = runGate(repo, stageCall(repo, SECOND));
+    assert.notEqual(decisionOf(result)?.permissionDecision, "deny", result.stdout);
+  });
+
+  test("once the redo has restarted the stage, its gate is no longer the human's to pass", () => {
+    const repo = makeRepo({ ledger: { stage: { name: FIRST, status: "active", runId: "wf_2", attempt: 2, startedAt: null }, stages: [{ name: FIRST, status: "redo" }] } });
+
+    assertRefuses(repo, () => approve(repo, G_FIRST), /G:first/);
   });
 });
 
@@ -256,13 +313,6 @@ describe("pb human approve refuses a gate that is neither due nor pending", () =
     succeeded(approve(repo, G_FIRST));
     assertRefuses(repo, () => approve(repo, G_FIRST), /G:first/);
   });
-
-  for (const answer of ["redo", "stop"]) {
-    test(`a gate the human answered ${answer}`, () => {
-      const repo = makeRepo({ ledger: { gates: { [G_FIRST]: { source: "human", answer } } } });
-      assertRefuses(repo, () => approve(repo, G_FIRST), /G:first/);
-    });
-  }
 
   test("an auto pass is not overwritten", () => {
     const repo = makeRepo({ ledger: { gates: { [G_FIRST]: { source: "auto" } } } });
