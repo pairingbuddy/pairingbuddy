@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Runner Result",
+  "description": "Return of the runner agent: the pb key it was given and the CLI's exit code and output, relayed unchanged. Evidence lives in the ledger, written by the CLI",
+  "type": "object",
+  "required": ["pb_key", "cli_exit_code", "cli_output"],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "cli_exit_code": {
+      "type": "integer",
+      "description": "Exit code of the pb command itself: 0 when the run was recorded, not when the tests passed"
+    },
+    "cli_output": {
+      "type": "string",
+      "description": "What the pb command printed, unchanged"
+    }
+  },
+  "additionalProperties": false
+}

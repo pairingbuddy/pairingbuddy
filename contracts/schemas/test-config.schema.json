@@ -36,6 +36,17 @@
             "type": "array",
             "items": { "type": "string" },
             "description": "Args appended after test path"
+          },
+          "failure_exit_codes": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 1 },
+            "minItems": 1,
+            "description": "Exit codes that count as RED. Default [1]"
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "pb test kills the process group after this long. Default 540"
           }
         },
         "additionalProperties": false

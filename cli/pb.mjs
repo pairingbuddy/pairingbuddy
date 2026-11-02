@@ -9,6 +9,7 @@ import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion,
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { REDO_STATUS, loadStages, nextAttempt } from "../shared-node/stages.mjs";
+import { TestRunRefused, fullSuitePlans, readTestConfig, runPlan, runRecord, selectedPlans } from "../shared-node/test-run.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy } from "../shared-node/verbs.mjs";
 
 export { KINDS };
@@ -166,24 +167,50 @@ function humanAccept(args) {
   return { ok: true, ...acceptLedger(runLedgerPath().path) };
 }
 
-export const VERBS = { "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept };
+function isFullRun(args) {
+  if (args.length === 0) return false;
+  if (args.length === 1 && args[0] === "--full") return true;
+  throw new UsageError("usage: pb test [--full]");
+}
 
-function runVerb(name, args) {
+function testPlans(full, config, root, stage) {
+  if (full) return { key: "full", plans: fullSuitePlans(config), selection: {} };
+  const { plans, testIds } = selectedPlans(config, join(root, ".pairingbuddy", "run", "task", "artifacts"), stage);
+  return { key: "selected", plans, selection: { tests: testIds } };
+}
+
+// Takes no selector: a model must not choose what RED is recorded for. A run that happened exits 0 whatever the
+// tests did, because exit 1 here means a refusal.
+async function runTests(args) {
+  const full = isFullRun(args);
+  const { root, path } = runLedgerPath();
+  const { configHash, stage } = readLedger(path);
+  const { key, plans, selection } = testPlans(full, readTestConfig(root, configHash), root, stage);
+  const runs = [];
+  for (const plan of plans) runs.push(await runPlan(plan, root));
+  const record = { ...runRecord(plans, runs, stage), ...selection };
+  updateLedger(path, (ledger) => ({ ...ledger, tests: { ...ledger.tests, [key]: record } }));
+  return { ok: true, key, ...record };
+}
+
+export const VERBS = { "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept, test: runTests };
+
+async function runVerb(name, args) {
   try {
-    return VERBS[name](args);
+    return await VERBS[name](args);
   } catch (e) {
     if (e instanceof LedgerShaMismatch) throw new Refusal(shaMismatchRemedy(e.message, findRunRoot(process.cwd())));
     throw e;
   }
 }
 
-function main(argv) {
+async function main(argv) {
   const name = matchVerb(argv);
   if (!Object.hasOwn(VERBS, name)) {
     const known = Object.keys(VERBS).filter((verb) => !VERB_CLASSES.human.includes(verb));
     throw new UsageError(`unknown verb: ${argv.slice(0, 2).join(" ") || "(none)"}. Known: ${known.join(", ")}`);
   }
-  console.log(JSON.stringify(runVerb(name, argv.slice(name.split(" ").length))));
+  console.log(JSON.stringify(await runVerb(name, argv.slice(name.split(" ").length))));
 }
 
 function isEntryPoint() {
@@ -196,9 +223,9 @@ function isEntryPoint() {
 
 if (isEntryPoint()) {
   try {
-    main(process.argv.slice(2));
+    await main(process.argv.slice(2));
   } catch (e) {
-    const expected = e instanceof Refusal || e instanceof UsageError || e instanceof LedgerRefused;
+    const expected = e instanceof Refusal || e instanceof UsageError || e instanceof LedgerRefused || e instanceof TestRunRefused;
     console.error(`pb: ${expected ? e.message : `unexpected failure: ${e.message}`}`);
     process.exit(e instanceof UsageError ? 2 : 1);
   }

@@ -41,7 +41,9 @@ Also reads `.pairingbuddy/test-config.json`:
       "command": "string (full invocation including wrapper and runner)",
       "test_directory": "string (where these tests live)",
       "file_pattern": "string (glob pattern for test files)",
-      "run_args": ["array of strings appended after test path"]
+      "run_args": ["array of strings appended after test path"],
+      "failure_exit_codes": ["optional array of integers (exit codes that count as RED, default [1])"],
+      "timeout_seconds": "optional number (pb test kills the process group after this long, default 540)"
     }
   },
   "default_runner": "string (runner ID to use when not specified)"
