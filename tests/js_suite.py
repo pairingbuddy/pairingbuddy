@@ -8,6 +8,7 @@ from pathlib import Path
 
 JS_TEST_FILES = [
     "tests/js/code-config.test.mjs",
+    "tests/js/gate.test.mjs",
     "tests/js/harness.test.mjs",
     "tests/js/keys-labels.test.mjs",
     "tests/js/ledger.test.mjs",

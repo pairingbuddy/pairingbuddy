@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Run ledger with stage keys and workflow labels, and the `pb run open` command to open a run
 - Tap hook `hooks/tap.mjs`: captures agent returns into run state, and does nothing outside a run
 - Added the `apply-config-change` agent and the direct `code-config` workflow stage (`workflows-src/stages/code-config.mjs`, built to `workflows/code-config.js`). The bundler inlines shared-node modules via `// pb-inline-module PATH`.
+- Gate hook `hooks/gate.mjs` with the stage graph `contracts/stages.json`: during a run it enforces stage order, one active stage, `attempt`, `pluginRoot` and the built bundle, and denies a main-context `Agent` call for a pipeline agent. A stage must be called as `pairingbuddy:<stage>`, a stage with no built bundle or a `scriptPath` the hook cannot read is denied, and an active stage with no recorded `runId` can be restarted at the same attempt once its 120-second start lease, counted from the new ledger field `stage.startedAt`, has expired
 
 ## [0.7.0] - 2026-07-31
 

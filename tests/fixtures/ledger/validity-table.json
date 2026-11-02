@@ -24,7 +24,8 @@
       "name": "intake",
       "status": "active",
       "runId": "r1",
-      "attempt": 1
+      "attempt": 1,
+      "startedAt": "2026-11-02T12:00:00.000Z"
     },
     "stages": [
       {
@@ -50,6 +51,11 @@
     {"name": "taskType-null", "set": {"taskType": null}},
     {"name": "stage-runId-null", "set": {"stage.runId": null}},
     {"name": "stage-attempt-zero", "set": {"stage.attempt": 0}},
+    {"name": "stage-startedAt-null", "set": {"stage.startedAt": null}},
+    {"name": "stage-startedAt-absent", "remove": ["stage.startedAt"]},
+    {"name": "stage-startedAt-no-fraction", "set": {"stage.startedAt": "2026-11-02T12:00:00Z"}},
+    {"name": "stage-startedAt-offset", "set": {"stage.startedAt": "2026-11-02T12:00:00+01:00"}},
+    {"name": "stage-startedAt-iso-shaped-impossible-date", "set": {"stage.startedAt": "2026-13-45T25:61:00.000Z"}},
     {"name": "seq-zero", "set": {"seq": 0}},
     {"name": "sha-lowercase-hex", "set": {"sha": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}},
     {"name": "configHash-lowercase-hex", "set": {"configHash": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"}},
@@ -152,6 +158,15 @@
     {"name": "stage.attempt-bad-str-3-1", "set": {"stage.attempt": "1"}},
     {"name": "stage.attempt-bad-int-2--1", "set": {"stage.attempt": -1}},
     {"name": "stage.attempt-bad-float-3-1.5", "set": {"stage.attempt": 1.5}},
+    {"name": "stage.startedAt-bad-int-1-5", "set": {"stage.startedAt": 5}},
+    {"name": "stage.startedAt-bad-bool", "set": {"stage.startedAt": true}},
+    {"name": "stage.startedAt-bad-object", "set": {"stage.startedAt": {}}},
+    {"name": "stage.startedAt-bad-empty", "set": {"stage.startedAt": ""}},
+    {"name": "stage.startedAt-bad-word", "set": {"stage.startedAt": "yesterday"}},
+    {"name": "stage.startedAt-bad-date-only", "set": {"stage.startedAt": "2026-11-02"}},
+    {"name": "stage.startedAt-bad-no-zone", "set": {"stage.startedAt": "2026-11-02T12:00:00"}},
+    {"name": "stage.startedAt-bad-epoch-string", "set": {"stage.startedAt": "1793620800000"}},
+    {"name": "stage.startedAt-bad-trailing-text", "set": {"stage.startedAt": "2026-11-02T12:00:00Z later"}},
     {"name": "stages.0.name-bad-int-1-5", "set": {"stages.0.name": 5}},
     {"name": "stages.0.status-bad-int-1-5", "set": {"stages.0.status": 5}},
     {"name": "spend.agents-bad-str-3-1", "set": {"spend.agents": "1"}},

@@ -75,7 +75,7 @@ function runOpen(args) {
       owner: { sessionId: null, lastSeen: null },
       task: "", plan: { path: "", title: "" }, configHash,
       policy: { mode: "", source: "" },
-      stage: { name: "", status: "", runId: null, attempt: 0 },
+      stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null },
       stages: [], gates: {}, tests: {}, commits: [], retries: {},
       spend: { agents: 0, tokens: 0 }, stop: null, needsHuman: null,
     });

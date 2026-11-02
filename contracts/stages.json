@@ -1,0 +1,28 @@
+{
+  "v": 1,
+  "defaultTaskType": "config_change",
+  "gateClasses": {
+    "continue": { "auto": "passes when evidence is complete and no stop condition applies" },
+    "conditional": { "auto": "passes only when the classifier reports certain" },
+    "decide": { "auto": "always asks the human" }
+  },
+  "taskTypes": {
+    "config_change": {
+      "nodes": [
+        {
+          "name": "code-config",
+          "gate": null,
+          "evidence": ["artifact:apply-config-change", "checkpoint"]
+        },
+        {
+          "name": "code-safety-net",
+          "gate": "G:task-end",
+          "evidence": ["artifact:update-documentation", "tests:full"]
+        }
+      ],
+      "gates": {
+        "G:task-end": { "class": "continue" }
+      }
+    }
+  }
+}

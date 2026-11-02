@@ -1,8 +1,10 @@
-"""Integration check: the built code-config workflow, started by slash command, really changes
-the file, and its return lands through the tap.
+"""Integration check: the built code-config workflow, started by slash command, passes the gate,
+really changes the file, and its return lands through the tap.
 
 A workflow's `completed` status proves nothing (T0 outcome, P13A), so the checks are on the
-effects: the changed file, the artifact, the runId the tap stores and an empty tap error log.
+effects: the changed file, the artifact, the active stage the gate marks, the runId the tap stores
+and an empty tap error log. A main context that calls the agent directly gets a deny, so it must
+recover by starting the workflow; if it does not, the file stays unchanged and this check fails.
 
 Skipped by default because it spends money on a real `claude -p` run. Enable with
 PB_INTEGRATION=1 and a `claude` binary on PATH. Agent models are pinned to haiku.
@@ -18,7 +20,6 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "cli" / "pb.mjs"
-LEDGER = REPO_ROOT / "shared-node" / "ledger.mjs"
 BUDGET_USD = "0.50"
 PB_KEY = "code-config.apply-config-change.-.r1.a1"
 
@@ -55,9 +56,7 @@ def clean_env():
     return env | {"ANTHROPIC_DEFAULT_OPUS_MODEL": haiku, "ANTHROPIC_DEFAULT_SONNET_MODEL": haiku}
 
 
-@pytest.mark.integration
-@requires_opt_in
-def test_code_config_stage_changes_the_file_and_lands_artifact_through_tap(tmp_path):
+def open_run_repo(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "feature")
@@ -78,22 +77,11 @@ def test_code_config_stage_changes_the_file_and_lands_artifact_through_tap(tmp_p
         capture_output=True,
         text=True,
     )
-    task_dir = repo / ".pairingbuddy" / "run" / "task"
-    setup = (
-        f"import {{ updateLedger }} from {json.dumps(LEDGER.as_uri())};"
-        f"updateLedger({json.dumps(str(task_dir / 'ledger.json'))}, (l) => ({{ ...l, "
-        "stage: { name: 'code-config', status: 'running', runId: null, attempt: 1 } }));"
-    )
-    subprocess.run(
-        ["node", "--input-type=module", "-e", setup], check=True, capture_output=True, text=True
-    )
+    return repo, repo / ".pairingbuddy" / "run" / "task"
 
-    task = {
-        "description": "Set feature.enabled to true in settings.json",
-        "context": "config change only",
-    }
-    prompt = workflow_prompt({"attempt": 1, "pluginRoot": str(REPO_ROOT), "task": task})
-    run = subprocess.run(
+
+def run_claude(repo, prompt, *output_args):
+    return subprocess.run(
         [
             "claude",
             "-p",
@@ -111,8 +99,7 @@ def test_code_config_stage_changes_the_file_and_lands_artifact_through_tap(tmp_p
             "auto",
             "--max-budget-usd",
             BUDGET_USD,
-            "--output-format",
-            "text",
+            *output_args,
         ],
         cwd=repo,
         env=clean_env(),
@@ -122,12 +109,29 @@ def test_code_config_stage_changes_the_file_and_lands_artifact_through_tap(tmp_p
         timeout=600,
     )
 
+
+@pytest.mark.integration
+@requires_opt_in
+def test_code_config_stage_changes_the_file_and_lands_artifact_through_tap(tmp_path):
+    repo, task_dir = open_run_repo(tmp_path)
+
+    task = {
+        "description": "Set feature.enabled to true in settings.json",
+        "context": "config change only",
+    }
+    prompt = workflow_prompt({"attempt": 1, "pluginRoot": str(REPO_ROOT), "task": task})
+    run = run_claude(repo, prompt, "--output-format", "text")
+
     output = f"stdout:\n{run.stdout}\nstderr:\n{run.stderr}"
     assert run.returncode == 0, output
     assert json.loads((repo / "settings.json").read_text())["feature"]["enabled"] is True, output
     tap_errors = task_dir / "tap-errors.log"
     assert not tap_errors.exists() or tap_errors.read_text() == "", tap_errors.read_text()
-    assert isinstance(json.loads((task_dir / "ledger.json").read_text())["stage"]["runId"], str), (
+    stage = json.loads((task_dir / "ledger.json").read_text())["stage"]
+    assert (stage["name"], stage["status"], stage["attempt"]) == ("code-config", "active", 1), (
+        f"the gate marks the stage active when it allows the Workflow call\n{output}"
+    )
+    assert isinstance(stage["runId"], str), (
         f"the tap sets runId only for the matching Workflow call\n{output}"
     )
     artifact = task_dir / "artifacts" / f"{PB_KEY}.json"
@@ -136,3 +140,24 @@ def test_code_config_stage_changes_the_file_and_lands_artifact_through_tap(tmp_p
     assert landed["pb_key"] == PB_KEY, output
     assert landed["ambiguity"] == "", output
     assert "settings.json" in landed["files_changed"], output
+
+
+@pytest.mark.integration
+@requires_opt_in
+def test_direct_pipeline_agent_call_is_denied_by_the_real_hook(tmp_path):
+    repo, task_dir = open_run_repo(tmp_path)
+
+    prompt = (
+        "Call the Agent tool with subagent_type pairingbuddy:apply-config-change and ask it to "
+        "set feature.enabled to true in settings.json."
+    )
+    run = run_claude(repo, prompt, "--output-format", "stream-json", "--verbose")
+
+    output = f"stdout:\n{run.stdout}\nstderr:\n{run.stderr}"
+    assert "Direct Agent call for" in run.stdout, f"the gate must deny the call\n{output}"
+    assert "Start the workflow pairingbuddy:code-config instead." in run.stdout, output
+    artifact = task_dir / "artifacts" / f"{PB_KEY}.json"
+    stage = json.loads((task_dir / "ledger.json").read_text())["stage"]
+    assert not artifact.exists() or isinstance(stage["runId"], str), (
+        f"an agent result may land only through a started workflow\n{output}"
+    )

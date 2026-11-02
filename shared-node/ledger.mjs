@@ -10,6 +10,8 @@ export const STALE_LOCK_MS = 30_000;
 export const LOCK_TIMEOUT_MS = 5_000;
 
 const HEX64 = /^[0-9a-f]{64}$/;
+// Shape only, so a well-shaped impossible date stays readable and the gate can treat it as expired.
+const ISO_TIMESTAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
 export const KINDS = ["code", "plan"];
 const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman"];
 
@@ -60,16 +62,18 @@ const isCount = (v) => Number.isInteger(v) && v >= 0;
 const isString = (v) => typeof v === "string";
 const isNullableString = (v) => v === null || typeof v === "string";
 const isNonEmptyString = (v) => typeof v === "string" && v !== "";
+const isNullableTimestamp = (v) => v === null || (typeof v === "string" && ISO_TIMESTAMP.test(v));
 
-function checkObject(value, path, shape, errors, { closed = true } = {}) {
+function checkObject(value, path, shape, errors, { closed = true, optional = [] } = {}) {
   if (!isObject(value)) {
     errors.push({ path, message: "must be an object" });
     return;
   }
   for (const [key, [test, message]] of Object.entries(shape)) {
     const child = path ? `${path}.${key}` : key;
-    if (!Object.hasOwn(value, key)) errors.push({ path: child, message: "is required" });
-    else if (!test(value[key])) errors.push({ path: child, message: `must be ${message}` });
+    if (!Object.hasOwn(value, key)) {
+      if (!optional.includes(key)) errors.push({ path: child, message: "is required" });
+    } else if (!test(value[key])) errors.push({ path: child, message: `must be ${message}` });
   }
   if (closed) {
     for (const key of Object.keys(value)) {
@@ -122,7 +126,8 @@ export function validateLedger(ledger) {
       case "stage":
         checkObject(ledger.stage, "stage", {
           name: [isString, "a string"], status: [isString, "a string"], runId: [isNullableString, "a string or null"], attempt: [isCount, "a non-negative integer"],
-        }, errors);
+          startedAt: [isNullableTimestamp, "an ISO 8601 timestamp or null"],
+        }, errors, { optional: ["startedAt"] });
         break;
       case "stages":
         if (Array.isArray(ledger.stages)) {
