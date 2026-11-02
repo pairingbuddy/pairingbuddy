@@ -1,17 +1,21 @@
 #!/usr/bin/env node
 // pb: deterministic workflow CLI. Verbs live in the VERBS table; later tasks add more.
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { KINDS, LEDGER_VERSION, writeLedger } from "../shared-node/ledger.mjs";
+import { askReason, dueGate, fileHash, gateQuestion, gatesFor } from "../shared-node/gates.mjs";
+import { KINDS, LEDGER_VERSION, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
+import { findRunRoot } from "../shared-node/run-root.mjs";
+import { loadStages } from "../shared-node/stages.mjs";
 import { VERB_CLASSES, matchVerb } from "../shared-node/verbs.mjs";
 
 export { KINDS };
 
 const PROTECTED_BRANCHES = ["main", "master"];
+const CLI_PATH = fileURLToPath(import.meta.url);
+const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 class UsageError extends Error {}
 class Refusal extends Error {}
@@ -51,7 +55,7 @@ function runOpen(args) {
 
   const configPath = join(root, ".pairingbuddy", "test-config.json");
   if (!existsSync(configPath)) throw new Refusal(`missing ${configPath}`);
-  const configHash = createHash("sha256").update(readFileSync(configPath)).digest("hex");
+  const configHash = fileHash(configPath);
 
   const runRoot = join(root, ".pairingbuddy", "run");
   const dir = join(runRoot, "task");
@@ -87,7 +91,43 @@ function runOpen(args) {
   return { ok: true, kind, branch, runDir: dir };
 }
 
-export const VERBS = { "run open": runOpen };
+const humanCommand = (gate) => `!node ${CLI_PATH} human approve ${gate}`;
+
+function runLedgerPath() {
+  const root = findRunRoot(process.cwd());
+  const path = root === null ? null : join(root, ".pairingbuddy", "run", "task", "ledger.json");
+  if (path === null || !existsSync(path)) throw new Refusal("no run here");
+  return { root, path };
+}
+
+function recordAuto(ledger, gate) {
+  return { ...ledger, gates: { ...ledger.gates, [gate]: { source: "auto" } } };
+}
+
+// Takes no arguments: the gate comes from the ledger, and the policy from what the gate hook recorded.
+function gateEval(args) {
+  if (args.length > 0) throw new UsageError("usage: pb gate eval");
+  const { root, path } = runLedgerPath();
+  const { needsHuman } = readLedger(path);
+  if (needsHuman !== null) {
+    const { gate, reason } = needsHuman;
+    return { ok: true, result: "needs-human-command", gate, reason, humanCommand: humanCommand(gate) };
+  }
+  const contract = loadStages(PLUGIN_ROOT);
+  let gate;
+  let reason;
+  updateLedger(path, (ledger) => {
+    const due = dueGate(gatesFor(contract, ledger.taskType), ledger);
+    if (due === undefined) throw new Refusal("no gate is due");
+    gate = due.name;
+    reason = askReason(ledger, due, root);
+    return reason === null ? recordAuto(ledger, gate) : { ...ledger, needsHuman: { gate, reason, seq: ledger.seq + 1 } };
+  });
+  if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto" };
+  return { ok: true, result: "needs-human", gate, reason, question: gateQuestion(gate), humanCommand: humanCommand(gate) };
+}
+
+export const VERBS = { "run open": runOpen, "gate eval": gateEval };
 
 function main(argv) {
   const name = matchVerb(argv);

@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { blockingGate, gatesFor } from "./gates.mjs";
 import { readLedger, updateLedger } from "./ledger.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, pipelineAgents, startLeaseSecondsLeft } from "./stages.mjs";
 import { pbInvocations } from "./shell-calls.mjs";
@@ -22,6 +23,7 @@ const RUNNER_COMMANDS = [...VERB_CLASSES.runner, "test --full"].map((args) => `n
 const AUTO_ALLOW_REASON = "Runner CLI command, auto-allowed by the Pairing Buddy gate.";
 const SHELL_QUOTING = /\\\n|\$(?=['"])|['"\\]/g;
 const PB_CALL = /(?<![\w.-])pb(?:\.mjs)?(?=\s+([\w.-]+)(?:\s+([\w.-]+))?)/g;
+const POLICY_ENV = "PAIRINGBUDDY_GATE_POLICY";
 const VERB_OWNERS = { runner: "the runner agent", main: "the main context" };
 
 const workflowName = (stage) => `${PREFIX}${stage}`;
@@ -106,6 +108,38 @@ function checkPlanChange({ root, ledger, targets, canonicalPath, payload }, plan
   }
 }
 
+// ---------- gate policy ----------
+
+// The env var is read here and never by the CLI: a hook's environment is out of a model's reach.
+function observedPolicy({ permission_mode: mode }) {
+  return process.env[POLICY_ENV] === "auto" ? { mode: "auto", source: POLICY_ENV } : { mode, source: "permission_mode" };
+}
+
+const speaksForRun = ({ owner }, { agent_id: agentId, session_id: sessionId }) =>
+  agentId === undefined && (owner.sessionId === null || owner.sessionId === sessionId);
+
+function withPolicy(ledger, payload) {
+  const policy = observedPolicy(payload);
+  const unchanged = policy.mode === ledger.policy.mode && policy.source === ledger.policy.source;
+  return unchanged || !speaksForRun(ledger, payload) ? ledger : { ...ledger, policy };
+}
+
+// Reads first, so that an unchanged mode costs no write.
+function recordPolicy(ledgerPath, payload) {
+  if (!existsSync(ledgerPath)) return;
+  const ledger = readLedger(ledgerPath);
+  if (withPolicy(ledger, payload) !== ledger) updateLedger(ledgerPath, (current) => withPolicy(current, payload));
+}
+
+// A ledger problem must not take these tools away from the recovery route.
+function recordPolicyIfPossible(ledgerPath, payload) {
+  try {
+    recordPolicy(ledgerPath, payload);
+  } catch {
+    // The CLI refuses a broken ledger with its own error.
+  }
+}
+
 // ---------- Workflow ----------
 
 function readTextOrNull(path) {
@@ -167,6 +201,8 @@ function stageDenial(stage, ledger, graph, toolInput, scripts) {
   const next = nextStage(graph, ledger);
   if (next === undefined) return `Stage order: ${called} cannot start now. All stages for ${graph.taskType} are done.`;
   if (stage !== next) return `Stage order: ${called} cannot start now. The next stage is ${workflowName(next)}.`;
+  const gate = blockingGate(graph.gates, ledger);
+  if (gate !== undefined) return `Stage order: ${called} cannot start now. Gate ${gate.name} has not passed: run pb gate eval, and a human must approve it if it asks.`;
   if (!existsSync(bundlePath(stage))) return `Cannot start ${called}: its built bundle ${bundlePath(stage)} is missing.`;
   const argsProblem = argsDenial(called, nextAttempt(ledger, stage), toolInput);
   if (argsProblem) return argsProblem;
@@ -176,11 +212,12 @@ function stageDenial(stage, ledger, graph, toolInput, scripts) {
   return null;
 }
 
-function startStage(ledgerPath, stage, graph, toolInput, scripts) {
+function startStage(ledgerPath, stage, graph, payload, scripts) {
+  const { tool_input: toolInput } = payload;
   updateLedger(ledgerPath, (ledger) => {
     const reason = stageDenial(stage, ledger, graph, toolInput, scripts);
     if (reason) throw new Denied(reason);
-    return { ...ledger, stage: { name: stage, status: "active", runId: null, attempt: toolInput.args.attempt, startedAt: new Date().toISOString() } };
+    return { ...withPolicy(ledger, payload), stage: { name: stage, status: "active", runId: null, attempt: toolInput.args.attempt, startedAt: new Date().toISOString() } };
   });
 }
 
@@ -191,11 +228,12 @@ function runPosition(ledger, graph) {
   return `The next stage is ${workflowName(next)}: call it by name.`;
 }
 
-function checkWorkflow({ ledgerPath, ledger, graph, payload: { tool_input: toolInput, cwd } }) {
+function checkWorkflow({ ledgerPath, ledger, graph, payload }) {
+  const { tool_input: toolInput, cwd } = payload;
   const scripts = suppliedScripts(toolInput, cwd);
   const stage = calledStage(toolInput);
   if (stage !== undefined) {
-    startStage(ledgerPath, stage, graph, toolInput, scripts);
+    startStage(ledgerPath, stage, graph, payload, scripts);
     return;
   }
   const misnamed = misnamedStage(toolInput, scripts, graph);
@@ -254,6 +292,12 @@ function checkBash({ tool_input: toolInput, agent_type: agentType }) {
   }
 }
 
+// ---------- AskUserQuestion ----------
+
+function checkQuestion({ tool_input: toolInput }) {
+  if (toolInput?.answers !== undefined) throw new Denied("AskUserQuestion cannot carry its own answers: only a human answers a question.");
+}
+
 const isRunnerCommand = ({ tool_name: tool, agent_type: agentType, tool_input: toolInput }) =>
   tool === "Bash" && agentType === RUNNER_AGENT && RUNNER_COMMANDS.includes(toolInput.command);
 
@@ -266,20 +310,26 @@ const LEDGER_CHECKS = {
   Edit: (context) => checkPlanChange(context, editedPlan),
 };
 
+const NO_LEDGER_CHECKS = { Bash: checkBash, AskUserQuestion: checkQuestion };
+
 function checkRun(root, { payload, targets, canonicalPath }) {
   assertNotProtected(root, targets);
-  // Before the ledger: a unit run has none, and a ledger problem must not take Bash away from the recovery route.
-  if (payload.tool_name === "Bash") {
-    checkBash(payload);
+  const ledgerPath = join(root, ".pairingbuddy", "run", "task", "ledger.json");
+  // Before the ledger: a unit run has none, and a ledger problem must not take these from the recovery route.
+  if (Object.hasOwn(NO_LEDGER_CHECKS, payload.tool_name)) {
+    NO_LEDGER_CHECKS[payload.tool_name](payload);
+    recordPolicyIfPossible(ledgerPath, payload);
     return;
   }
-  const ledgerPath = join(root, ".pairingbuddy", "run", "task", "ledger.json");
   if (!existsSync(ledgerPath)) return;
   const ledger = readLedger(ledgerPath);
-  const graph = graphFor(loadStages(PLUGIN_ROOT), ledger.taskType);
+  const contract = loadStages(PLUGIN_ROOT);
+  const graph = { ...graphFor(contract, ledger.taskType), gates: gatesFor(contract, ledger.taskType) };
   if (Object.hasOwn(LEDGER_CHECKS, payload.tool_name)) {
     LEDGER_CHECKS[payload.tool_name]({ root, ledgerPath, ledger, graph, payload, targets, canonicalPath });
   }
+  // A Workflow records with its stage start, and any other workflow leaves the run untouched.
+  if (payload.tool_name !== "Workflow") recordPolicy(ledgerPath, payload);
 }
 
 // Returns the reason for an explicit allow, or null to add no decision.

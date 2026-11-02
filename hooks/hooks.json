@@ -26,7 +26,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Workflow|Agent|Write|Edit|NotebookEdit|Bash",
+        "matcher": "Workflow|Agent|Write|Edit|NotebookEdit|Bash|AskUserQuestion",
         "hooks": [
           {
             "type": "command",
@@ -46,6 +46,15 @@
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/solo-progress.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/tap.mjs"
           }
         ]
       },

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Tap: records StructuredOutput returns as run artifacts and stores the Workflow runId in the ledger.
+// Tap: records StructuredOutput returns as run artifacts, stores the Workflow runId in the ledger, and
+// records a human's AskUserQuestion answer to the gate that is asking.
 // Never blocks a tool: every path exits 0 and nothing is printed.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -57,6 +58,21 @@ function tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, toolInpu
   if (mismatch !== null) logError(taskDir, `workflow mismatch: ${JSON.stringify(toolInput?.name)} for stage ${mismatch}`);
 }
 
+function recordAnswer(ledger, gateAnswer, toolResponse) {
+  const gate = ledger.needsHuman?.gate;
+  const answer = gate === undefined ? null : gateAnswer(gate, toolResponse);
+  if (answer === null) return ledger;
+  return { ...ledger, needsHuman: null, gates: { ...ledger.gates, [gate]: { source: "human", answer } } };
+}
+
+// Only tool_response counts: it holds what the human chose, and tool_input is the model's.
+function tapQuestion({ gateAnswer, readLedger, updateLedger }, ledgerPath, toolResponse) {
+  const ledger = readLedger(ledgerPath);
+  if (recordAnswer(ledger, gateAnswer, toolResponse) !== ledger) {
+    updateLedger(ledgerPath, (current) => recordAnswer(current, gateAnswer, toolResponse));
+  }
+}
+
 function tapRun(modules, root, input) {
   const { parseKey, readLedger, updateLedger } = modules;
   const taskDir = join(root, ".pairingbuddy", "run", "task");
@@ -65,18 +81,20 @@ function tapRun(modules, root, input) {
   try {
     if (input.tool_name === "StructuredOutput") tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, input.tool_input);
     else if (input.tool_name === "Workflow") tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, input.tool_input, input.tool_response);
+    else if (input.tool_name === "AskUserQuestion" && input.agent_id === undefined) tapQuestion(modules, ledgerPath, input.tool_response);
   } catch (e) {
     logError(taskDir, `error: ${e?.message ?? e}`);
   }
 }
 
 try {
+  const { gateAnswer } = await import("../shared-node/gates.mjs");
   const { parseKey } = await import("../shared-node/keys.mjs");
   const { readLedger, updateLedger } = await import("../shared-node/ledger.mjs");
   const { findRunRoot } = await import("../shared-node/run-root.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
   const root = findRunRoot(input.cwd);
-  if (root !== null) tapRun({ parseKey, readLedger, updateLedger }, root, input);
+  if (root !== null) tapRun({ gateAnswer, parseKey, readLedger, updateLedger }, root, input);
 } catch {
   // not a run situation
 }

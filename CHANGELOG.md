@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `pb gate eval` with the gate policy (D4, D13): `hooks/gate.mjs` records `permission_mode`, or Solo's `PAIRINGBUDDY_GATE_POLICY=auto`, into the ledger when it changes, `continue` gates pass under `auto` with `source: auto`, and every other mode and each always-stop condition asks with the `PB gate: <name>` question. `hooks/tap.mjs` records the human's answer, a second eval with no answer prints the `!` command, stage order refuses a gate without an approval, and an `AskUserQuestion` carrying its own answers is denied. Rules live in `shared-node/gates.mjs`
 - T0 platform probes in `tests/probes/`: a re-runnable harness, fixture plugin and captured hook payload fixtures, with results recorded in `docs/spikes/workflow-platform-spike.md`
 - Runbooks and fixtures for the T0 human probes in `tests/probes/human/`
 - Workflow bundler `scripts/build-workflows.mjs`: bundles stage modules from `workflows-src/` into `workflows/`, with a `--check` mode that fails on drift between committed output and source

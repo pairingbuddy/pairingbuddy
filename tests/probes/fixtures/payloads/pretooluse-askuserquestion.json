@@ -1,0 +1,35 @@
+{
+  "session_id": "session-id",
+  "cwd": "/tmp/probe/repo",
+  "prompt_id": "7dfec558-5760-4b3e-b013-483d00ea8cb8",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "Approve this stage?",
+        "header": "PB gate: probe",
+        "options": [
+          {
+            "label": "approve",
+            "description": "Approve this stage and let the run continue."
+          },
+          {
+            "label": "redo",
+            "description": "Redo this stage."
+          },
+          {
+            "label": "stop",
+            "description": "Stop here."
+          }
+        ],
+        "multiSelect": false
+      }
+    ]
+  },
+  "tool_use_id": "toolu_01Wo1fnAGu9bKMhw4SDAjxG7"
+}
