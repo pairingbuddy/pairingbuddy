@@ -72,6 +72,11 @@
     "gates": { "type": "object" },
     "tests": { "type": "object" },
     "commits": { "type": "array", "items": { "type": "string" } },
+    "checkpoints": {
+      "description": "Each pb checkpoint that went through, a step with no change included. May be absent.",
+      "type": "array",
+      "items": { "type": "object" }
+    },
     "retries": { "type": "object" },
     "spend": {
       "type": "object",
@@ -120,6 +125,20 @@
         "properties": {
           "oldSha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "newSha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "seq": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "configAcceptances": {
+      "description": "Each changed test-config a human accepted with pb human accept, oldest first. May be absent. oldHash is the configHash the run held, newHash the one it holds from then on, and seq the seq the acceptance wrote.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["oldHash", "newHash", "seq"],
+        "properties": {
+          "oldHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "newHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "seq": { "type": "integer", "minimum": 0 }
         }
       }

@@ -15,11 +15,12 @@ const HEX64 = /^[0-9a-f]{64}$/;
 // Shape only, so a well-shaped impossible date stays readable and the gate can treat it as expired.
 const ISO_TIMESTAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
 export const KINDS = ["code", "plan"];
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
 export class LedgerShaMismatch extends Error {}
+export class NoHandEdit extends LedgerRefused {}
 
 // ---------- canonical JSON and sha ----------
 
@@ -116,7 +117,9 @@ export function validateLedger(ledger) {
     stop: [() => true, ""],
     needsHuman: [() => true, ""],
     acceptances: [Array.isArray, "an array"],
-  }, errors, { optional: ["acceptances"] });
+    configAcceptances: [Array.isArray, "an array"],
+    checkpoints: [Array.isArray, "an array"],
+  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
@@ -155,6 +158,13 @@ export function validateLedger(ledger) {
         if (Array.isArray(ledger.acceptances)) {
           ledger.acceptances.forEach((a, i) => checkObject(a, `acceptances.${i}`, {
             oldSha: [isSha, "64 lowercase hex characters"], newSha: [isSha, "64 lowercase hex characters"], seq: [isCount, "a non-negative integer"],
+          }, errors));
+        }
+        break;
+      case "configAcceptances":
+        if (Array.isArray(ledger.configAcceptances)) {
+          ledger.configAcceptances.forEach((a, i) => checkObject(a, `configAcceptances.${i}`, {
+            oldHash: [isSha, "64 lowercase hex characters"], newHash: [isSha, "64 lowercase hex characters"], seq: [isCount, "a non-negative integer"],
           }, errors));
         }
         break;
@@ -383,7 +393,7 @@ export function acceptLedger(path, opts = {}) {
   return withLock(path, opts, (assertOwned) => {
     const edited = readEdited(path);
     const newSha = computeSha(edited);
-    if (edited.sha === newSha) throw new LedgerRefused(`ledger ${path} has no sha mismatch, so there is nothing to accept`);
+    if (edited.sha === newSha) throw new NoHandEdit(`ledger ${path} has no sha mismatch, so there is nothing to accept`);
     const acceptance = { oldSha: edited.sha, newSha, seq: edited.seq + 1 };
     const acceptances = [...(edited.acceptances ?? []), acceptance];
     writeLocked(path, { ...edited, acceptances }, edited.seq, assertOwned);

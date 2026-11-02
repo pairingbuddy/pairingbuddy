@@ -10,7 +10,7 @@ import { readLedger, validateLedger } from "../../shared-node/ledger.mjs";
 
 const PB = new URL("../../cli/pb.mjs", import.meta.url).pathname;
 const LEDGER_MODULE = new URL("../../shared-node/ledger.mjs", import.meta.url).href;
-const CONFIG = '{"default_runner": "pytest"}\n';
+const CONFIG = `${JSON.stringify({ runners: { pytest: { command: "pytest", test_directory: "tests", run_args: [] } }, default_runner: "pytest" })}\n`;
 
 function git(cwd, ...args) {
   const r = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -75,7 +75,7 @@ test("open-creates-run-task-layout", (t) => {
 
 test("open-hashes-test-config", (t) => {
   const first = makeRepo(t);
-  const second = makeRepo(t, { config: '{"default_runner": "other"}\n' });
+  const second = makeRepo(t, { config: `${CONFIG}\n` });
 
   assert.equal(open(first).status, 0);
   assert.equal(open(second).status, 0);
@@ -186,6 +186,22 @@ test("refuses-second-open", (t) => {
   assertCleanRefusal(r, /active|already/i);
   assert.deepEqual(readFileSync(ledgerPath(root)), before, "existing ledger unchanged");
 });
+
+for (const [name, config, pattern] of [
+  ["no-run-args", JSON.stringify({ runners: { fake: { command: "x", test_directory: "tests" } }, default_runner: "fake" }), /run_args/],
+  ["a-default-runner-that-is-not-configured", JSON.stringify({ runners: { fake: { command: "x", test_directory: "tests", run_args: [] } }, default_runner: "nope" }), /runner nope/],
+  ["a-second-runner-that-is-broken", JSON.stringify({ runners: { fake: { command: "x", test_directory: "tests", run_args: [] }, other: { command: "", test_directory: "tests", run_args: [] } }, default_runner: "fake" }), /runner other/],
+  ["invalid-json", "{not json", /not valid JSON/],
+  ["no-runners", "{}", /runner/],
+]) {
+  test(`refuses-test-config-with-${name}-before-any-run-exists`, (t) => {
+    const dir = makeRepo(t, { config });
+
+    assertCleanRefusal(open(dir), pattern);
+
+    assert.equal(existsSync(runDir(dir)), false, "a refused open leaves no run behind");
+  });
+}
 
 test("refuses-missing-test-config", (t) => {
   const root = makeRepo(t, { config: null });

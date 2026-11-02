@@ -463,7 +463,7 @@ describe("the tap uses the same lookup", () => {
   test("a structured return from outside lands in the run's artifacts", () => {
     const { repo, session, outside } = boundRepo({ stage: { name: CONFIG, status: "active", runId: "wf_1", attempt: 1, startedAt: null } });
     const pbKey = buildKey({ stage: CONFIG, role: "worker", item: "t1", round: 1, attempt: 1 });
-    const payload = { ...fixture("posttooluse-structuredoutput.json"), session_id: session, cwd: outside, tool_input: { pb_key: pbKey } };
+    const payload = { ...fixture("posttooluse-structuredoutput.json"), agent_type: "pairingbuddy:worker", session_id: session, cwd: outside, tool_input: { pb_key: pbKey } };
 
     runTap(payload);
 
