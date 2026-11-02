@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Smoke S1 in `tests/smoke/`: a sample repo and a capped `claude -p --plugin-dir` runner on a cheap model with a clean env, asserting stage order, one commit, the gate source and a refused `pb stage finish`, outside pytest and `pb test --full`. The sample-task spike is recorded in `docs/spikes/workflow-platform-spike.md`
 - `code-safety-net` stage (Section 4), lens-free for now: `update-documentation`, then the runner running `pb checkpoint --step docs`, `pb test --full` and `pb stage finish`. `code-config` now also ends with the runner, and the runner takes a list of commands. `stages.json` requires `checkpoint:docs`, which a no-change docs step satisfies
 - `pb task end` (D12, D16): refuses an unfinished stage, a stop, an unpassed gate or a dirty tree, in that order and with the remaining files listed, ticks the plan box by title when the run has a plan, and removes `run/task/` alone. `shared-node/plan-boxes.mjs` holds the only checkbox writer
 - `update-documentation` follows the one input rule: a `<paths>` block in the prompt means no human review and a StructuredOutput return with `pb_key`, `commit_subject` and `files_changed`, and no block means the legacy files

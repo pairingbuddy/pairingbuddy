@@ -110,3 +110,67 @@ and their Recording paths are under the lab directory, not `$PROBE_RECORDINGS`.
   to `~/.claude/settings.json`. It was removed after the run.
 - P20: the mod reacts to a change of state, so repeating the same value does nothing. A
   workflow that spawns no agents shows a hollow bar in the footer.
+
+## T1c smoke spike
+
+Question: which minimal sample task makes a cheap model finish S1 reliably within the cap?
+Claude Code 2.1.316, 2026-11-02, Haiku through P16's `default-env`. Run it with
+`uv run python -m tests.smoke.spike --record-dir <dir>`, and S1 alone with
+`uv run python -m tests.smoke.s1`. Each run is two `claude -p` processes, one per stage, then
+`pb gate eval`, `pb task end` and the model-free evidence check.
+
+**Winner: `value`, "Change port from 8080 to 9090 in app.ini". It is now S1's default.** That is a
+tie-break, not a reliability result: all three tasks went 5 of 5, and `value` won on mean cost by
+$0.0004, which is inside the run-to-run spread. No task was shown to be more reliable than another.
+
+| Task | Passed | Mean s | Max s | Mean $ | Max $ |
+|---|---|---|---|---|---|
+| value | 5 of 5 | 41.6 | 44.8 | 0.012613 | 0.013599 |
+| flag | 5 of 5 | 42.7 | 46.4 | 0.012994 | 0.014040 |
+| add-key | 5 of 5 | 52.9 | 86.1 | 0.013515 | 0.015874 |
+
+Reliability: 15 of 15 runs passed, with no failures to report and no cap hit. That sample is small:
+it puts the true pass rate above about 82% at 95% confidence pooled, and only above about 55% for
+one task, so it does not yet show that S1 never flakes. All 15 ran in five rounds of three parallel
+runs. The early stop did not fire, because no task failed. The spike cost $0.1956 of the $5 limit;
+the session's total, with one first S1 and two cap checks, was about $0.215.
+
+| Round | Task | Result | code-config s | code-safety-net s | Total s | Cost $ |
+|---|---|---|---|---|---|---|
+| 1 | add-key | PASS | 20.7 | 22.6 | 43.3 | 0.012425 |
+| 2 | add-key | PASS | 16.6 | 20.1 | 36.7 | 0.011818 |
+| 3 | add-key | PASS | 18.0 | 68.1 | 86.1 | 0.014039 |
+| 4 | add-key | PASS | 16.2 | 33.9 | 50.1 | 0.015874 |
+| 5 | add-key | PASS | 20.0 | 28.3 | 48.3 | 0.013420 |
+| 1 | flag | PASS | 16.1 | 27.0 | 43.1 | 0.012884 |
+| 2 | flag | PASS | 15.9 | 24.9 | 40.8 | 0.012995 |
+| 3 | flag | PASS | 16.9 | 24.9 | 41.8 | 0.012996 |
+| 4 | flag | PASS | 20.7 | 20.5 | 41.2 | 0.012054 |
+| 5 | flag | PASS | 23.4 | 23.0 | 46.4 | 0.014040 |
+| 1 | value | PASS | 21.1 | 23.7 | 44.8 | 0.013599 |
+| 2 | value | PASS | 17.1 | 23.6 | 40.7 | 0.012314 |
+| 3 | value | PASS | 17.4 | 22.5 | 39.9 | 0.012607 |
+| 4 | value | PASS | 17.4 | 26.6 | 44.0 | 0.012899 |
+| 5 | value | PASS | 17.1 | 21.4 | 38.5 | 0.011648 |
+
+- Cost covers the workflow agents. On the first S1 run, output tokens summed across the main and
+  agent transcripts equal `modelUsage` exactly (2158 and 2431), and Haiku was the only model in all
+  15 runs. Time is the two `claude -p` calls only, not the free evidence check.
+- The spike's per-run cap was its share of the spend limit, $1.50 or just under, not $3. The dearest
+  run spent $0.016, so this changed nothing.
+- `--max-budget-usd` overshoots and can report success. A plain prompt capped at $0.0001 spent
+  $0.0015, then gave `subtype: error_max_budget_usd`, `terminal_reason: budget_exhausted` and exit 1.
+  A real `code-config` stage capped at $0.005 spent $0.0052, the workflow ended `stopped`, its commit
+  had already landed, and the result still said `success` and `completed`. So the runner also fails
+  any run whose reported spend reaches the cap. A cap is a stop signal, not a hard ceiling.
+- The S1 cap of $3 covers the whole smoke run, so the second stage gets what the first left. A run
+  uses about 0.5% of it, which is the T1c figure for the human's cap decision.
+- 8 of the 15 runs had a failed Bash call in the main context, and none failed for it. Unasked, the
+  model checks its result with Bash after the workflow returns, and rebuilds the repo path wrongly,
+  often from the transcript directory's mangled name. These were all 9 tool errors in the spike.
+- In `add-key` run 1 a fallback `cd` landed in this worktree, the plugin under test, and ran
+  read-only git commands there. Nothing changed, but nothing confines a smoke run's Bash to the
+  sample repo.
+- 16 of the 30 stage starts went through the Skill tool first and 14 went straight to Workflow. Both
+  reached the same gate. No run called a pipeline agent directly, the failure seen in Task 22.
+- Not covered: `/pairingbuddy:code` routing, which S1 reaches in a later task.
