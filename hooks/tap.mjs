@@ -32,6 +32,11 @@ function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, tool
     logError(taskDir, `attempt mismatch: key ${pbKey}`);
     return;
   }
+  // A key at the attempt that pb stage fail just closed still matches it. A done stage takes returns: its last runner's lands after finish.
+  if (stage.status === "failed") {
+    logError(taskDir, `voided attempt: key ${pbKey}`);
+    return;
+  }
   const dir = join(taskDir, "artifacts");
   mkdirSync(dir, { recursive: true });
   const temp = join(dir, `.${pbKey}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);

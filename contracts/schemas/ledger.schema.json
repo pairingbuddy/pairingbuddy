@@ -72,6 +72,11 @@
     "gates": { "type": "object" },
     "tests": { "type": "object" },
     "commits": { "type": "array", "items": { "type": "string" } },
+    "checkpoints": {
+      "description": "Each pb checkpoint that went through, a step with no change included. May be absent.",
+      "type": "array",
+      "items": { "type": "object" }
+    },
     "retries": { "type": "object" },
     "spend": {
       "type": "object",

@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { REDO_STATUS, graphFor, withStageStatus } from "./stages.mjs";
+import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus } from "./stages.mjs";
 
 const HUMAN_SOURCES = ["human", "human-cli"];
 const REPORT_LISTS = ["survivors", "gaps", "uncovered", "unrefuted"];
@@ -73,11 +73,15 @@ function parsedOrNull(path) {
 
 const isReport = (report) => report !== null && typeof report === "object" && REPORT_LISTS.every((key) => report[key] === undefined || Array.isArray(report[key]));
 
+// A report carries its stage and attempt, and one with no stamp keeps counting, since nothing shows it is stale.
+const isVoidedReport = (report, ledger) => typeof report.stage === "string" && isVoidedAttempt(ledger, report.stage, report.attempt);
+
 // A report that cannot be read stops too: it may be hiding any of these.
-function reportStop(path) {
+function reportStop(path, ledger) {
   if (!existsSync(path)) return null;
   const report = parsedOrNull(path);
   if (!isReport(report)) return `${path} cannot be read`;
+  if (isVoidedReport(report, ledger)) return null;
   const { survivors = [], gaps = [], uncovered = [], unrefuted = [] } = report;
   if (survivors.some((finding) => finding?.class === "decide")) return "a decide finding survived";
   if (gaps.length > 0) return `coverage gaps remain: ${gaps.length}`;
@@ -86,9 +90,14 @@ function reportStop(path) {
   return null;
 }
 
-function ambiguityStop(dir) {
+function isVoidedReturn(file, ledger) {
+  const key = returnFileKey(file);
+  return key !== null && isVoidedAttempt(ledger, key.stage, key.attempt);
+}
+
+function ambiguityStop(dir, ledger) {
   if (!existsSync(dir)) return null;
-  for (const file of readdirSync(dir).filter((name) => name.endsWith(".json") && !name.startsWith(".")).sort()) {
+  for (const file of readdirSync(dir).filter((name) => name.endsWith(".json") && !name.startsWith(".") && !isVoidedReturn(name, ledger)).sort()) {
     const artifact = parsedOrNull(join(dir, file));
     if (artifact === null) return `the return ${file} cannot be read`;
     const { ambiguity = null } = artifact;
@@ -110,7 +119,7 @@ function configStop({ configHash }, root) {
 function stopReason(ledger, root) {
   const taskDir = join(root, ".pairingbuddy", "run", "task");
   if (ledger.stop !== null) return `the run stopped: ${ledger.stop.reason}`;
-  return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(join(taskDir, "artifacts")) ?? reportStop(join(taskDir, "report.json"));
+  return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(join(taskDir, "artifacts"), ledger) ?? reportStop(join(taskDir, "report.json"), ledger);
 }
 
 // ---------- the decision ----------

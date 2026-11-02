@@ -3,10 +3,26 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { checkpointSteps } from "./checkpoint.mjs";
+import { parseKey } from "./keys.mjs";
+
 // How long a stage marked active with no recorded run holds off another start.
 export const START_LEASE_SECONDS = 120;
 
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+
+const EVIDENCE_TESTS = ["full", "selected"];
+const EVIDENCE_ROLE = /^[a-z0-9_-]{1,64}$/;
+
+// artifact:<role>, checkpoint:<step> or tests:<run>. Each is checked by stage finish, at the attempt it finishes.
+function isEvidence(entry) {
+  if (typeof entry !== "string") return false;
+  const [kind, name, ...rest] = entry.split(":");
+  if (rest.length > 0) return false;
+  if (kind === "artifact") return EVIDENCE_ROLE.test(name ?? "");
+  if (kind === "checkpoint") return checkpointSteps().includes(name);
+  return kind === "tests" && EVIDENCE_TESTS.includes(name);
+}
 
 function nodeProblems(taskType, graph, classes) {
   if (!isObject(graph)) return [`${taskType}: has no nodes`];
@@ -22,6 +38,7 @@ function nodeProblems(taskType, graph, classes) {
     seen.add(node.name);
     if (typeof node.name !== "string" || node.name === "") problems.push(`${taskType}: a node has no name`);
     if (!Array.isArray(node.evidence)) problems.push(`${taskType}: node ${node.name} has no evidence list`);
+    else for (const entry of node.evidence.filter((item) => !isEvidence(item))) problems.push(`${taskType}: node ${node.name} has unknown evidence ${JSON.stringify(entry)}`);
     if (node.gate !== null && !Object.hasOwn(gates, node.gate)) problems.push(`${taskType}: node ${node.name} names unknown gate ${node.gate}`);
   }
   if (seen.size === 0) problems.push(`${taskType}: has no nodes`);
@@ -56,11 +73,21 @@ export function graphFor(contract, taskType) {
   return { taskType: name, stages: contract.taskTypes[name].nodes.map((node) => node.name) };
 }
 
+export function evidenceFor(contract, taskType, stage) {
+  const { taskType: name } = graphFor(contract, taskType);
+  const node = contract.taskTypes[name].nodes.find((candidate) => candidate.name === stage);
+  if (node === undefined) throw new Error(`stage ${stage} is not in the ${name} graph`);
+  return node.evidence;
+}
+
 export const isStageActive = (ledger) => ledger.stage.status === "active";
 
 // The status of a stage a human sent back. It is not done, so it is next again, and it is not active,
 // so it re-runs at the following attempt.
 export const REDO_STATUS = "redo";
+
+// The status pb stage fail leaves. It is not done either, and its attempt is void from that moment.
+export const FAILED_STATUS = "failed";
 
 export const withStageStatus = (ledger, name, status) => ({
   ...ledger,
@@ -88,6 +115,23 @@ export function nextStage(graph, ledger) {
 export function nextAttempt(ledger, stage) {
   if (ledger.stage.name !== stage) return 1;
   return isStageUnstarted(ledger) ? ledger.stage.attempt : ledger.stage.attempt + 1;
+}
+
+// What a file in artifacts/ is filed under, or null for a name that is no key.
+export function returnFileKey(file) {
+  try {
+    return parseKey(file.replace(/\.json$/, ""));
+  } catch {
+    return null;
+  }
+}
+
+// True for what a later attempt overtook, or an attempt that failed. The last attempt of a stage stands while the
+// stage is active, done or sent back, since a human can undo a redo. A stage the ledger never ran voids nothing.
+export function isVoidedAttempt(ledger, stage, attempt) {
+  const current = ledger.stage.name === stage ? ledger.stage : undefined;
+  const standing = Math.max(current?.attempt ?? 0, ...ledger.stages.filter(({ name }) => name === stage).map((entry) => entry.attempt ?? 0));
+  return attempt < standing || (attempt === standing && current?.status === FAILED_STATUS);
 }
 
 export function pipelineAgents(pluginRoot) {

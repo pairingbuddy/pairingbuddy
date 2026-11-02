@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isCheckpointCall } from "./checkpoint.mjs";
+import { isCheckpointCall, isKey } from "./checkpoint.mjs";
 import { answeredGate, blockingGate, gateQuestion, gatesFor, isGateQuestionCall } from "./gates.mjs";
 import { LedgerShaMismatch, readLedger, updateLedger } from "./ledger.mjs";
 import { bindSession, sessionsDirectory } from "./run-root.mjs";
@@ -26,6 +26,7 @@ const RUNNER_AGENT = `${PREFIX}runner`;
 const PB_COMMAND = `node ${join(PLUGIN_ROOT, "cli", "pb.mjs")}`;
 const RUNNER_COMMANDS = [...VERB_CLASSES.runner, "test --full"].map((args) => `${PB_COMMAND} ${args}`);
 const CHECKPOINT_START = `${PB_COMMAND} checkpoint --step `;
+const ARTIFACT_CHECK_START = `${PB_COMMAND} artifact check `;
 const AUTO_ALLOW_REASON = "Runner CLI command, auto-allowed by the Pairing Buddy gate.";
 const SHELL_QUOTING = /\\\n|\$(?=['"])|['"\\]/g;
 const PB_CALL = /(?<![\w.-])pb(?:\.mjs)?(?=\s+([\w.-]+)(?:\s+([\w.-]+))?)/g;
@@ -361,8 +362,10 @@ function isCheckpointCommand(command) {
   return words.length === 3 && words[1] === "--from" && isCheckpointCall(words[0], words[2]);
 }
 
+const isArtifactCheckCommand = (command) => command.startsWith(ARTIFACT_CHECK_START) && isKey(command.slice(ARTIFACT_CHECK_START.length));
+
 const isRunnerCommand = ({ tool_name: tool, agent_type: agentType, tool_input: toolInput }) =>
-  tool === "Bash" && agentType === RUNNER_AGENT && (RUNNER_COMMANDS.includes(toolInput.command) || isCheckpointCommand(toolInput.command));
+  tool === "Bash" && agentType === RUNNER_AGENT && (RUNNER_COMMANDS.includes(toolInput.command) || isCheckpointCommand(toolInput.command) || isArtifactCheckCommand(toolInput.command));
 
 // ---------- entry ----------
 

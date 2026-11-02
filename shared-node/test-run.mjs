@@ -6,7 +6,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { constants } from "node:os";
 import { join } from "node:path";
 
-import { parseKey } from "./keys.mjs";
+import { returnFileKey } from "./stages.mjs";
 
 // Under the Bash tool's 10-minute cap, so pb gets to record the timeout before the tool kills it.
 const DEFAULT_TIMEOUT_SECONDS = 540;
@@ -102,19 +102,11 @@ export function fullSuitePlans(config) {
 
 // ---------- the tests artifact ----------
 
-function keyOf(file) {
-  try {
-    return parseKey(file.replace(/\.json$/, ""));
-  } catch {
-    return null;
-  }
-}
-
 // The latest return of this attempt's own stage, so a redo cannot run a list from before it.
 function latestTestsFile(dir, { name, attempt }) {
   const found = readdirSync(dir)
     .filter((file) => file.endsWith(".json"))
-    .map((file) => ({ file, key: keyOf(file) }))
+    .map((file) => ({ file, key: returnFileKey(file) }))
     .filter(({ key }) => key?.stage === name && key.attempt === attempt && key.role === TESTS_ROLE && key.item === null)
     .sort((a, b) => b.key.round - a.key.round);
   if (found.length === 0) throw new TestRunRefused(`no tests artifact for stage ${name || "(none)"} at attempt ${attempt}, so there is nothing to select`);

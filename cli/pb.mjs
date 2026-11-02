@@ -5,11 +5,13 @@ import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { CheckpointRefused, CheckpointStopped, assertCurrentKey, checkpointSteps, commitPaths, isCheckpointCall, isProtectedBranch, planCommit } from "../shared-node/checkpoint.mjs";
+import { CheckpointRefused, CheckpointStopped, assertCurrentKey, checkpointSteps, commitPaths, isCheckpointCall, isKey, isProtectedBranch, planCommit } from "../shared-node/checkpoint.mjs";
 import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
-import { REDO_STATUS, loadStages, nextAttempt } from "../shared-node/stages.mjs";
+import { parseKey } from "../shared-node/keys.mjs";
+import { buildReport, closeStage, finishProblems, readReportOf, readReturn, returnsAt, spendTotals, writeReport } from "../shared-node/stage-run.mjs";
+import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, fullSuitePlans, readTestConfig, runPlan, runRecord, selectedPlans } from "../shared-node/test-run.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy } from "../shared-node/verbs.mjs";
 
@@ -99,6 +101,10 @@ function runLedgerPath() {
   if (path === null || !existsSync(path)) throw new Refusal("no run here");
   return { root, path };
 }
+
+const taskDirOf = (root) => join(root, ".pairingbuddy", "run", "task");
+const artifactsDirOf = (root) => join(taskDirOf(root), "artifacts");
+const reportPathOf = (root) => join(taskDirOf(root), "report.json");
 
 function recordAuto(ledger, gate) {
   return { ...ledger, gates: { ...ledger.gates, [gate]: { source: "auto" } } };
@@ -223,6 +229,12 @@ function commitOrStop(root, path, plan) {
   }
 }
 
+// The evidence for stage finish, so a step with no change counts as done too.
+function withCheckpoint(ledger, record) {
+  const { name: stage, attempt } = ledger.stage;
+  return { ...ledger, checkpoints: [...(ledger.checkpoints ?? []), { ...record, stage, attempt }] };
+}
+
 // Every check comes before the tests, and a step with no change runs none.
 async function checkpoint(args) {
   const { step, key } = parseCheckpoint(args);
@@ -233,14 +245,120 @@ async function checkpoint(args) {
   const branch = currentBranch();
   if (isProtectedBranch(branch)) throw new Refusal(`refusing to commit on protected branch ${branch}`);
   const plan = planCommit(root, join(root, ".pairingbuddy", "run", "task", "artifacts"), step, key);
-  if (plan === null) return { ok: true, step, key, committed: false };
+  if (plan === null) {
+    updateLedger(path, (current) => withCheckpoint(current, { step, key, committed: false, sha: null }));
+    return { ok: true, step, key, committed: false };
+  }
   await requirePassingTests(root, path, ledger);
   const { sha, hookRetried } = commitOrStop(root, path, plan);
-  updateLedger(path, (current) => ({ ...current, commits: [...current.commits, sha] }));
+  updateLedger(path, (current) => withCheckpoint({ ...current, commits: [...current.commits, sha] }, { step, key, committed: true, sha }));
   return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
 }
 
-export const VERBS = { "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept, test: runTests, checkpoint };
+function assertNoArgs(args, verb) {
+  if (args.length > 0) throw new UsageError(`usage: pb ${verb}`);
+}
+
+function assertStageActive(ledger, verb) {
+  if (!isStageActive(ledger)) throw new Refusal(`no stage is active, so there is nothing to ${verb}`);
+}
+
+// Takes the stage from the ledger, because a model must not name what it is proving. A call on no active stage changes
+// nothing, so that a runner orphaned by stage fail cannot halt the run. Missing evidence stops it, and stage fail clears that.
+function stageFinish(args) {
+  assertNoArgs(args, "stage finish");
+  const { root, path } = runLedgerPath();
+  const contract = loadStages(PLUGIN_ROOT);
+  const artifactsDir = artifactsDirOf(root);
+  let missing = null;
+  let finished;
+  updateLedger(path, (ledger) => {
+    assertStageActive(ledger, "finish");
+    if (ledger.stop !== null) throw new Refusal(`the run has stopped: ${ledger.stop.reason}`);
+    const { name, attempt } = ledger.stage;
+    const problems = finishProblems(contract, ledger, artifactsDir);
+    if (problems.length > 0) {
+      missing = `stage ${name} cannot finish at attempt ${attempt}: ${problems.join("; ")}`;
+      return { ...ledger, stop: { reason: missing, seq: ledger.seq + 1 } };
+    }
+    const report = buildReport(ledger, artifactsDir);
+    writeReport(reportPathOf(root), report);
+    finished = { stage: name, attempt, agents: report.spend.agents };
+    return closeStage(ledger, "done", report.spend.agents);
+  });
+  if (missing !== null) throw new Refusal(`${missing}. The run stopped: pb stage fail clears it`);
+  return { ok: true, ...finished, report: reportPathOf(root) };
+}
+
+// A human's stop is the human's to lift. Only a stop the run itself raised clears here.
+function assertNotHumanStop(ledger, root) {
+  const answered = answeredGate(gatesFor(loadStages(PLUGIN_ROOT), ledger.taskType), ledger);
+  if (answered?.answer !== "stop") return;
+  throw new Refusal(`the human answered stop at ${answered.name}. Only the human can go on: ask them to type ${approveCommand(root, answered.name)}`);
+}
+
+function stageFail(args) {
+  assertNoArgs(args, "stage fail");
+  const { root, path } = runLedgerPath();
+  let failed;
+  updateLedger(path, (ledger) => {
+    assertStageActive(ledger, "fail");
+    assertNotHumanStop(ledger, root);
+    const { name, attempt } = ledger.stage;
+    const clearedStop = ledger.stop?.reason ?? null;
+    const closed = closeStage(ledger, FAILED_STATUS, returnsAt(artifactsDirOf(root), ledger.stage).length, clearedStop === null ? {} : { clearedStop });
+    failed = { stage: name, attempt, nextAttempt: nextAttempt(closed, name), clearedStop };
+    return { ...closed, stop: null };
+  });
+  return { ok: true, ...failed };
+}
+
+function stageReport(args) {
+  assertNoArgs(args, "stage report");
+  const { root, path } = runLedgerPath();
+  const { stage, gates } = readLedger(path);
+  const report = readReportOf(reportPathOf(root), stage);
+  if (report === null) throw new Refusal(`no report for ${stage.name || "(no stage)"} at attempt ${stage.attempt}: the stage is ${stage.status || "not started"}`);
+  return { ok: true, report, gates };
+}
+
+function parseArtifactKey(args) {
+  if (args.length !== 1 || !isKey(args[0])) throw new UsageError("usage: pb artifact check <key>");
+  return args[0];
+}
+
+function artifactCheck(args) {
+  const key = parseArtifactKey(args);
+  const { root, path } = runLedgerPath();
+  const { stage, attempt } = parseKey(key);
+  if (isVoidedAttempt(readLedger(path), stage, attempt)) throw new Refusal(`the return ${key} is void: its attempt failed or a later one replaced it`);
+  const artifactsDir = artifactsDirOf(root);
+  const file = join(artifactsDir, `${key}.json`);
+  if (!existsSync(file)) throw new Refusal(`no return for ${key}`);
+  const artifact = readReturn(artifactsDir, key);
+  if (artifact === null) throw new Refusal(`the return ${file} cannot be read`);
+  return { ok: true, key, path: file, artifact };
+}
+
+function nextStep(contract, ledger) {
+  if (isStageActive(ledger)) return null;
+  const stage = nextStage(graphFor(contract, ledger.taskType), ledger);
+  return stage === undefined ? null : { stage, attempt: nextAttempt(ledger, stage) };
+}
+
+function status(args) {
+  assertNoArgs(args, "status");
+  const { root, path } = runLedgerPath();
+  const ledger = readLedger(path);
+  const contract = loadStages(PLUGIN_ROOT);
+  const { stage, stop, needsHuman } = ledger;
+  return { ok: true, stage, next: nextStep(contract, ledger), stop, needsHuman, spend: spendTotals(ledger, artifactsDirOf(root), contract.maxAgents) };
+}
+
+export const VERBS = {
+  "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept, test: runTests, checkpoint,
+  "stage finish": stageFinish, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status,
+};
 
 async function runVerb(name, args) {
   try {

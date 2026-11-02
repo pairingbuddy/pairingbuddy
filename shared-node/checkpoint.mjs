@@ -28,7 +28,7 @@ export const isProtectedBranch = (branch) => PROTECTED_BRANCHES.includes(branch.
 
 export const checkpointSteps = () => Object.keys(STEPS);
 
-function isKey(text) {
+export function isKey(text) {
   try {
     parseKey(text);
     return true;

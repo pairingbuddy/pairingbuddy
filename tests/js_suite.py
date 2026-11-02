@@ -16,6 +16,7 @@ JS_TEST_FILES = [
     "tests/js/pb-checkpoint.test.mjs",
     "tests/js/pb-human.test.mjs",
     "tests/js/pb-run-open.test.mjs",
+    "tests/js/pb-stage.test.mjs",
     "tests/js/pb-test.test.mjs",
     "tests/js/session-binding.test.mjs",
     "tests/js/tap.test.mjs",

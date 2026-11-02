@@ -15,7 +15,7 @@ const HEX64 = /^[0-9a-f]{64}$/;
 // Shape only, so a well-shaped impossible date stays readable and the gate can treat it as expired.
 const ISO_TIMESTAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
 export const KINDS = ["code", "plan"];
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "checkpoints"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -116,7 +116,8 @@ export function validateLedger(ledger) {
     stop: [() => true, ""],
     needsHuman: [() => true, ""],
     acceptances: [Array.isArray, "an array"],
-  }, errors, { optional: ["acceptances"] });
+    checkpoints: [Array.isArray, "an array"],
+  }, errors, { optional: ["acceptances", "checkpoints"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
