@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { CheckpointRefused, CheckpointStopped, assertCurrentKey, checkpointSteps, commitPaths, isCheckpointCall, isProtectedBranch, planCommit } from "../shared-node/checkpoint.mjs";
 import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
@@ -14,7 +15,6 @@ import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy } from "../sha
 
 export { KINDS };
 
-const PROTECTED_BRANCHES = ["main", "master"];
 const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 class UsageError extends Error {}
@@ -51,7 +51,7 @@ function runOpen(args) {
   const kind = parseKind(args);
   const root = toplevel();
   const branch = currentBranch();
-  if (PROTECTED_BRANCHES.includes(branch.toLowerCase())) throw new Refusal(`refusing to open a run on protected branch ${branch}`);
+  if (isProtectedBranch(branch)) throw new Refusal(`refusing to open a run on protected branch ${branch}`);
 
   const configPath = join(root, ".pairingbuddy", "test-config.json");
   if (!existsSync(configPath)) throw new Refusal(`missing ${configPath}`);
@@ -167,6 +167,12 @@ function humanAccept(args) {
   return { ok: true, ...acceptLedger(runLedgerPath().path) };
 }
 
+async function suiteRecord(plans, root, stage) {
+  const runs = [];
+  for (const plan of plans) runs.push(await runPlan(plan, root));
+  return runRecord(plans, runs, stage);
+}
+
 function isFullRun(args) {
   if (args.length === 0) return false;
   if (args.length === 1 && args[0] === "--full") return true;
@@ -186,14 +192,55 @@ async function runTests(args) {
   const { root, path } = runLedgerPath();
   const { configHash, stage } = readLedger(path);
   const { key, plans, selection } = testPlans(full, readTestConfig(root, configHash), root, stage);
-  const runs = [];
-  for (const plan of plans) runs.push(await runPlan(plan, root));
-  const record = { ...runRecord(plans, runs, stage), ...selection };
+  const record = { ...(await suiteRecord(plans, root, stage)), ...selection };
   updateLedger(path, (ledger) => ({ ...ledger, tests: { ...ledger.tests, [key]: record } }));
   return { ok: true, key, ...record };
 }
 
-export const VERBS = { "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept, test: runTests };
+function parseCheckpoint(args) {
+  const [stepFlag, step, fromFlag, key] = args;
+  if (args.length !== 4 || stepFlag !== "--step" || fromFlag !== "--from" || !isCheckpointCall(step, key)) {
+    throw new UsageError(`usage: pb checkpoint --step ${checkpointSteps().join("|")} --from <key>`);
+  }
+  return { step, key };
+}
+
+// A failed run is evidence, so it lands in the ledger before the refusal.
+async function requirePassingTests(root, path, { configHash, stage }) {
+  const plans = fullSuitePlans(readTestConfig(root, configHash));
+  const record = await suiteRecord(plans, root, stage);
+  updateLedger(path, (ledger) => ({ ...ledger, tests: { ...ledger.tests, checkpoint: record } }));
+  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed: exit codes ${record.runs.map(({ exitCode }) => exitCode).join(", ")}`);
+}
+
+function commitOrStop(root, path, plan) {
+  try {
+    return commitPaths(root, plan);
+  } catch (e) {
+    if (!(e instanceof CheckpointStopped)) throw e;
+    updateLedger(path, (ledger) => ({ ...ledger, stop: { reason: e.message, seq: ledger.seq + 1 } }));
+    throw new Refusal(`the run stopped: ${e.message}`);
+  }
+}
+
+// Every check comes before the tests, and a step with no change runs none.
+async function checkpoint(args) {
+  const { step, key } = parseCheckpoint(args);
+  const { root, path } = runLedgerPath();
+  const ledger = readLedger(path);
+  if (ledger.stop !== null) throw new Refusal(`the run has stopped: ${ledger.stop.reason}`);
+  assertCurrentKey(step, key, ledger);
+  const branch = currentBranch();
+  if (isProtectedBranch(branch)) throw new Refusal(`refusing to commit on protected branch ${branch}`);
+  const plan = planCommit(root, join(root, ".pairingbuddy", "run", "task", "artifacts"), step, key);
+  if (plan === null) return { ok: true, step, key, committed: false };
+  await requirePassingTests(root, path, ledger);
+  const { sha, hookRetried } = commitOrStop(root, path, plan);
+  updateLedger(path, (current) => ({ ...current, commits: [...current.commits, sha] }));
+  return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
+}
+
+export const VERBS = { "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept, test: runTests, checkpoint };
 
 async function runVerb(name, args) {
   try {
@@ -225,7 +272,7 @@ if (isEntryPoint()) {
   try {
     await main(process.argv.slice(2));
   } catch (e) {
-    const expected = e instanceof Refusal || e instanceof UsageError || e instanceof LedgerRefused || e instanceof TestRunRefused;
+    const expected = e instanceof Refusal || e instanceof UsageError || e instanceof LedgerRefused || e instanceof TestRunRefused || e instanceof CheckpointRefused;
     console.error(`pb: ${expected ? e.message : `unexpected failure: ${e.message}`}`);
     process.exit(e instanceof UsageError ? 2 : 1);
   }

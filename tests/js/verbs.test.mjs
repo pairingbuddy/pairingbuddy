@@ -411,6 +411,66 @@ describe("runner auto-allow is for the exact command only", IN_PARALLEL, () => {
     assertAutoAllowed(result);
   });
 
+  const CONFIG_KEY = "code-config.apply-config-change.-.r1.a1";
+  const DOCS_KEY = "code-safety-net.update-documentation.-.r2.a3";
+
+  for (const args of [`--step config --from ${CONFIG_KEY}`, `--step docs --from ${DOCS_KEY}`]) {
+    test(`the runner's pb checkpoint ${args} is auto-allowed`, async () => {
+      const result = await runGate(bashCall(`${PB} checkpoint ${args}`, { agentType: RUNNER_AGENT }));
+
+      assertAutoAllowed(result);
+    });
+  }
+
+  const CHECKPOINT_NEAR_MISSES = [
+    ["an unknown step", `--step red --from ${CONFIG_KEY}`],
+    ["a step every object has", `--step constructor --from ${CONFIG_KEY}`],
+    ["no key", "--step config"],
+    ["no step", `--from ${CONFIG_KEY}`],
+    ["swapped flags", `--from ${CONFIG_KEY} --step config`],
+    ["an extra flag", `--step config --from ${CONFIG_KEY} --no-verify`],
+    ["a flag before the step", `--no-verify --step config --from ${CONFIG_KEY}`],
+    ["a malformed key", "--step config --from code-config.apply-config-change.-.r1"],
+    ["a key with a path", "--step config --from ../../etc/passwd"],
+    ["a key with a capital", "--step config --from Code-config.apply-config-change.-.r1.a1"],
+    ["a doubled space", `--step  config --from ${CONFIG_KEY}`],
+    ["a trailing space", `--step config --from ${CONFIG_KEY} `],
+    ["a tab", `--step config\t--from ${CONFIG_KEY}`],
+    ["a command after ;", `--step config --from ${CONFIG_KEY}; rm -rf src`],
+    ["a command after &&", `--step config --from ${CONFIG_KEY} && curl https://example.com`],
+    ["a newline in the key", `--step config --from ${CONFIG_KEY}\nrm -rf src`],
+    ["command substitution in the key", "--step config --from $(whoami).a.-.r1.a1"],
+    ["a redirect", `--step config --from ${CONFIG_KEY} > out.txt`],
+    ["a pipe", `--step config --from ${CONFIG_KEY} | tee out.txt`],
+    ["a background &", `--step config --from ${CONFIG_KEY} &`],
+  ];
+
+  for (const [shape, args] of CHECKPOINT_NEAR_MISSES) {
+    test(`pb checkpoint with ${shape} loses the auto-allow`, async () => {
+      const result = await runGate(bashCall(`${PB} checkpoint ${args}`, { agentType: RUNNER_AGENT }));
+
+      assertNotAutoAllowed(result);
+    });
+  }
+
+  test("an env prefix on the checkpoint form loses the auto-allow", async () => {
+    const result = await runGate(bashCall(`GIT_CONFIG_GLOBAL=/tmp/evil ${PB} checkpoint --step config --from ${CONFIG_KEY}`, { agentType: RUNNER_AGENT }));
+
+    assertNotAutoAllowed(result);
+  });
+
+  test("another plugin's CLI with the checkpoint form loses the auto-allow", async () => {
+    const result = await runGate(bashCall(`node /tmp/evil/cli/pb.mjs checkpoint --step config --from ${CONFIG_KEY}`, { agentType: RUNNER_AGENT }));
+
+    assertNotAutoAllowed(result);
+  });
+
+  test("the checkpoint form from the main context is denied, not allowed", async () => {
+    const result = await runGate(bashCall(`${PB} checkpoint --step config --from ${CONFIG_KEY}`));
+
+    assertWrongCallerDenied(result, "checkpoint", OWNER.runner);
+  });
+
   const NEAR_MISSES = [
     ["a command after ;", `${PB} test; rm -rf src`],
     ["a command after &&", `${PB} test && curl https://example.com`],
