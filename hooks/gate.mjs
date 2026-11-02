@@ -1,155 +1,97 @@
 #!/usr/bin/env node
-// Gate: PreToolUse enforcement of the stage graph. With no run state it allows everything silently.
-// An allow prints nothing; a deny exits 0 with the JSON form on stdout.
-import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+// Gate: PreToolUse enforcement during a run. With no run state it allows everything silently.
+// An allow prints nothing; a deny exits 0 with the JSON form on stdout. Any error with run state denies.
+// This wrapper imports only built-ins and loads everything else dynamically, so that a failed import can
+// still deny, and so that a call outside a run costs little more than Node's startup.
+import { existsSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
-import { readLedger, updateLedger } from "../shared-node/ledger.mjs";
-import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, pipelineAgents, startLeaseSecondsLeft } from "../shared-node/stages.mjs";
+const TARGET_KEYS = { Write: "file_path", Edit: "file_path", NotebookEdit: "notebook_path" };
+const MAX_SYMLINKS = 40;
+const ABSENT_CODES = ["ENOENT", "ENOTDIR"];
 
-const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
-const PREFIX = "pairingbuddy:";
-
-const workflowName = (stage) => `${PREFIX}${stage}`;
-const bundlePath = (stage) => join(PLUGIN_ROOT, "workflows", `${stage}.js`);
-const sha256 = (text) => createHash("sha256").update(text).digest("hex");
-
-// Thrown inside updateLedger so that a deny leaves the ledger unwritten.
-class Denied extends Error {}
-
-function runLedgerPath(cwd) {
-  let top;
+function readlinkOrNull(path) {
   try {
-    top = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return readlinkSync(path);
+  } catch (e) {
+    if (e.code === "EINVAL" || ABSENT_CODES.includes(e.code)) return null;
+    throw e;
+  }
+}
+
+// realpath of the deepest part that exists, which on a case-insensitive filesystem also fixes the letter case.
+function withRealCase(path) {
+  const missing = [];
+  for (let current = path; ; current = dirname(current)) {
+    try {
+      return join(realpathSync.native(current), ...missing);
+    } catch (e) {
+      if (!ABSENT_CODES.includes(e.code)) throw e;
+      missing.unshift(basename(current));
+    }
+  }
+}
+
+// Follows symlinks one segment at a time, so that it works for paths that do not exist yet and for dangling links.
+function canonicalPath(path) {
+  const pending = path.split(sep).reverse();
+  let current = sep;
+  let links = 0;
+  while (pending.length > 0) {
+    const segment = pending.pop();
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      current = dirname(current);
+      continue;
+    }
+    const next = join(current, segment);
+    const link = readlinkOrNull(next);
+    if (link === null) {
+      current = next;
+      continue;
+    }
+    links += 1;
+    if (links > MAX_SYMLINKS) throw new Error(`too many symlinks in ${path}`);
+    if (isAbsolute(link)) current = sep;
+    pending.push(...link.split(sep).reverse());
+  }
+  return withRealCase(current);
+}
+
+function readPayload() {
+  try {
+    const payload = JSON.parse(readFileSync(0, "utf8"));
+    return payload !== null && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
   } catch {
     return null;
   }
-  const path = join(top, ".pairingbuddy", "run", "task", "ledger.json");
-  return existsSync(path) ? path : null;
 }
 
-function readTextOrNull(path) {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return null;
+function isDirectory(path) {
+  return statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
+}
+
+// A malformed payload, or a cwd that is not there, falls back to the hook's own cwd.
+function workingDirectory(payload) {
+  return typeof payload?.cwd === "string" && isAbsolute(payload.cwd) && isDirectory(payload.cwd) ? payload.cwd : process.cwd();
+}
+
+// Used only when run-root.mjs cannot load. Any run/ counts, empty or not, because the only result is a deny.
+function nearestRunDirectory(start) {
+  for (let dir = start; ; dir = dirname(dir)) {
+    if (existsSync(join(dir, ".pairingbuddy", "run"))) return dir;
+    if (dir === dirname(dir)) return null;
   }
 }
 
-// Every script the call supplies, with null for a scriptPath that cannot be read.
-function suppliedScripts(toolInput, cwd) {
-  const scripts = [];
-  if (typeof toolInput.script === "string") scripts.push(toolInput.script);
-  if (typeof toolInput.scriptPath === "string") scripts.push(readTextOrNull(resolve(cwd, toolInput.scriptPath)));
-  return scripts;
-}
-
-function matchesBundle(stage, scripts) {
-  const bundle = readTextOrNull(bundlePath(stage));
-  return bundle !== null && scripts.every((script) => script !== null && sha256(script) === sha256(bundle));
-}
-
-function calledStage(toolInput) {
-  const { name } = toolInput;
-  return typeof name === "string" && name.startsWith(PREFIX) ? name.slice(PREFIX.length) : undefined;
-}
-
-// A stage reached any way but by its pairingbuddy: name. The tap would not recognise it, so it would run with no runId.
-function misnamedStage(toolInput, scripts, graph) {
-  if (graph.stages.includes(toolInput.name)) return toolInput.name;
-  if (scripts.length === 0) return undefined;
-  return graph.stages.find((stage) => matchesBundle(stage, scripts));
-}
-
-function argsDenial(called, attempt, { args }) {
-  if (args?.attempt !== attempt) return `Wrong attempt for ${called}: got ${JSON.stringify(args?.attempt)}. Use attempt ${attempt}.`;
-  if (args?.pluginRoot !== PLUGIN_ROOT) return `Wrong pluginRoot for ${called}: got ${JSON.stringify(args?.pluginRoot)}. Use pluginRoot ${PLUGIN_ROOT}.`;
-  return null;
-}
-
-function activeDenial(stage, ledger) {
-  const { name, attempt } = ledger.stage;
-  const called = workflowName(stage);
-  const wait = `Stage ${name} is active at attempt ${attempt}. Wait for it to finish before starting ${called}.`;
-  if (!isStageUnstarted(ledger)) return wait;
-  const seconds = startLeaseSecondsLeft(ledger.stage, Date.now());
-  if (seconds > 0) return `${wait} It has no recorded run yet: ${seconds} seconds remain on its start lease.`;
-  if (name === stage) return null;
-  return `Stage ${name} is active at attempt ${attempt} with no recorded run, so it may never have started. Restart ${workflowName(name)} at attempt ${attempt} before starting ${called}.`;
-}
-
-function stageDenial(stage, ledger, graph, toolInput, scripts) {
-  const called = workflowName(stage);
-  if (isStageActive(ledger)) {
-    const activeProblem = activeDenial(stage, ledger);
-    if (activeProblem) return activeProblem;
-  }
-  const next = nextStage(graph, ledger);
-  if (next === undefined) return `Stage order: ${called} cannot start now. All stages for ${graph.taskType} are done.`;
-  if (stage !== next) return `Stage order: ${called} cannot start now. The next stage is ${workflowName(next)}.`;
-  if (!existsSync(bundlePath(stage))) return `Cannot start ${called}: its built bundle ${bundlePath(stage)} is missing.`;
-  const argsProblem = argsDenial(called, nextAttempt(ledger, stage), toolInput);
-  if (argsProblem) return argsProblem;
-  if (scripts.length > 0 && !matchesBundle(stage, scripts)) {
-    return `Script for ${called} does not match the built bundle ${bundlePath(stage)}. Call ${called} by name with no script.`;
-  }
-  return null;
-}
-
-function startStage(ledgerPath, stage, graph, toolInput, scripts) {
-  updateLedger(ledgerPath, (ledger) => {
-    const reason = stageDenial(stage, ledger, graph, toolInput, scripts);
-    if (reason) throw new Denied(reason);
-    return { ...ledger, stage: { name: stage, status: "active", runId: null, attempt: toolInput.args.attempt, startedAt: new Date().toISOString() } };
-  });
-}
-
-function runPosition(ledger, graph) {
-  if (isStageActive(ledger)) return `Stage ${ledger.stage.name} is active at attempt ${ledger.stage.attempt}.`;
-  const next = nextStage(graph, ledger);
-  if (next === undefined) return `All stages for ${graph.taskType} are done.`;
-  return `The next stage is ${workflowName(next)}: call it by name.`;
-}
-
-function checkWorkflow(ledgerPath, { tool_input: toolInput, cwd }) {
-  const ledger = readLedger(ledgerPath);
-  const graph = graphFor(loadStages(PLUGIN_ROOT), ledger.taskType);
-  const scripts = suppliedScripts(toolInput, cwd);
-  const stage = calledStage(toolInput);
-  if (stage !== undefined) {
-    startStage(ledgerPath, stage, graph, toolInput, scripts);
-    return;
-  }
-  const misnamed = misnamedStage(toolInput, scripts, graph);
-  if (misnamed !== undefined) {
-    throw new Denied(`Stage ${misnamed} cannot run under another name or none. Call ${workflowName(misnamed)} by name.`);
-  }
-  if (scripts.includes(null)) throw new Denied(`Script file ${toolInput.scriptPath} could not be read. ${runPosition(ledger, graph)}`);
-  if (scripts.some((script) => script.includes(PREFIX))) {
-    throw new Denied(`Inline script containing ${PREFIX} is denied. ${runPosition(ledger, graph)}`);
-  }
-}
-
-function agentDenial(agent, ledger) {
-  if (isStageActive(ledger)) {
-    const { name } = ledger.stage;
-    return `Direct Agent call for ${agent} is denied during stage ${name}. Start the workflow ${workflowName(name)} instead.`;
-  }
-  const graph = graphFor(loadStages(PLUGIN_ROOT), ledger.taskType);
-  const next = nextStage(graph, ledger);
-  const remedy = next === undefined ? `All stages for ${graph.taskType} are done.` : `Start the workflow ${workflowName(next)} instead.`;
-  return `Direct Agent call for ${agent} is denied during this run. ${remedy}`;
-}
-
-function checkAgent(ledgerPath, { agent_id: agentId, tool_input: toolInput }) {
-  const agent = toolInput.subagent_type;
-  if (agentId !== undefined || typeof agent !== "string") return;
-  const bare = agent.startsWith(PREFIX) ? agent.slice(PREFIX.length) : agent;
-  if (!pipelineAgents(PLUGIN_ROOT).has(bare)) return;
-  throw new Denied(agentDenial(agent, readLedger(ledgerPath)));
+// The tool may collapse a `..` before following links, or the filesystem may do it after, so both readings count.
+function targetPaths(payload, cwd) {
+  const key = TARGET_KEYS[payload?.tool_name];
+  if (key === undefined) return [];
+  const path = payload.tool_input?.[key];
+  if (typeof path !== "string" || path === "") throw new Error(`${payload.tool_name} has no usable ${key}`);
+  const followed = isAbsolute(path) ? path : `${cwd}${sep}${path}`;
+  return [...new Set([canonicalPath(followed), canonicalPath(resolve(cwd, path))])];
 }
 
 function deny(reason) {
@@ -157,15 +99,32 @@ function deny(reason) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput }));
 }
 
-const CHECKS = { Workflow: checkWorkflow, Agent: checkAgent };
+// A failed import is held back, not thrown here: only the walk can say whether this call is inside a run.
+let findRunRoot = nearestRunDirectory;
+let importFailure = null;
+try {
+  ({ findRunRoot } = await import("../shared-node/run-root.mjs"));
+} catch (e) {
+  importFailure = e;
+}
 
-const payload = JSON.parse(readFileSync(0, "utf8"));
-const ledgerPath = runLedgerPath(payload.cwd);
-if (ledgerPath !== null && Object.hasOwn(CHECKS, payload.tool_name)) {
-  try {
-    CHECKS[payload.tool_name](ledgerPath, payload);
-  } catch (e) {
-    if (!(e instanceof Denied)) throw e;
-    deny(e.message);
+const runRoots = new Set();
+function addRunRoot(start) {
+  const root = findRunRoot(start);
+  if (root !== null) runRoots.add(root);
+}
+
+try {
+  const payload = readPayload();
+  const cwd = canonicalPath(workingDirectory(payload));
+  addRunRoot(cwd);
+  const targets = targetPaths(payload, cwd);
+  targets.forEach(addRunRoot);
+  if (runRoots.size > 0) {
+    if (importFailure !== null) throw importFailure;
+    const { checkCall } = await import("../shared-node/gate-rules.mjs");
+    checkCall({ runRoots: [...runRoots], payload, targets, canonicalPath });
   }
+} catch (e) {
+  if (runRoots.size > 0) deny(e.gateDenial ? e.message : `Gate error during a run, so the call is denied: ${e?.message ?? e}`);
 }

@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
@@ -118,11 +118,13 @@ async function withPlugin(opts, fn) {
 }
 
 // pluginRoot null leaves CLAUDE_PLUGIN_ROOT unset. processCwd is the hook's own cwd, payload.cwd by default.
-function runGate(payload, { pluginRoot = ROOT, processCwd = payload.cwd } = {}) {
+// A string payload goes to stdin as it is. gate and path swap the hook file and the PATH it sees.
+function runGate(payload, { pluginRoot = ROOT, processCwd = payload.cwd, gate = GATE, path = process.env.PATH } = {}) {
   const { CLAUDE_PLUGIN_ROOT: _inherited, ...env } = process.env;
   if (pluginRoot !== null) env.CLAUDE_PLUGIN_ROOT = pluginRoot;
+  env.PATH = path;
   return new Promise((resolve, reject) => {
-    const child = spawn("node", [GATE], {
+    const child = spawn(process.execPath, [gate], {
       cwd: processCwd,
       env,
       stdio: ["pipe", "pipe", "pipe"],
@@ -134,7 +136,7 @@ function runGate(payload, { pluginRoot = ROOT, processCwd = payload.cwd } = {}) 
     child.on("error", reject);
     child.on("close", (code) => resolve({ code, stdout, stderr }));
     child.stdin.on("error", () => {});
-    child.stdin.end(JSON.stringify(payload));
+    child.stdin.end(typeof payload === "string" ? payload : JSON.stringify(payload));
   });
 }
 
@@ -845,3 +847,639 @@ test("pipelineAgents reads only the agents section", () =>
 
     assert.deepEqual([...pipelineAgents(pluginRoot)], ["real-agent"]);
   }));
+
+// ---------- Task 24 helpers ----------
+// Deny reasons here are matched on the fact they must name, so wording stays with the gate.
+
+const fileCall = (cwd, toolName, toolInput) => ({ ...fixture("pretooluse-workflow.json"), cwd, tool_name: toolName, tool_input: toolInput });
+const writeCall = (cwd, filePath, content = "x\n") => fileCall(cwd, "Write", { file_path: filePath, content });
+const editCall = (cwd, filePath, oldString = "old", newString = "new", extra = {}) =>
+  fileCall(cwd, "Edit", { file_path: filePath, old_string: oldString, new_string: newString, replace_all: false, ...extra });
+
+function asSubagent(payload) {
+  const { agent_id, agent_type } = fixture("pretooluse-workflow-agent-bash.json");
+  return { ...payload, agent_id, agent_type };
+}
+
+function assertDeniedNaming(result, pattern) {
+  assert.equal(result.code, 0, `the JSON deny form needs exit 0, a crash fails open; stderr: ${result.stderr}`);
+  assert.notEqual(result.stdout, "", "expected a deny, got a silent allow");
+  const { hookEventName, permissionDecision, permissionDecisionReason: reason } = JSON.parse(result.stdout).hookSpecificOutput;
+  assert.equal(hookEventName, "PreToolUse");
+  assert.equal(permissionDecision, "deny");
+  assert.match(reason, pattern);
+}
+
+async function assertDeniedNamingWithoutWrite(repo, payload, pattern, gateOptions) {
+  const before = readFileSync(repo.ledgerPath, "utf8");
+
+  const result = await runGate(payload, gateOptions);
+
+  assertDeniedNaming(result, pattern);
+  assert.equal(readFileSync(repo.ledgerPath, "utf8"), before, "a deny leaves the ledger untouched");
+}
+
+function touch(dir, relative, text = "old\n") {
+  const path = join(dir, relative);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, text);
+  return path;
+}
+
+function makeSubdir(repo, relative = "src/deep") {
+  const path = join(repo.dir, relative);
+  mkdirSync(path, { recursive: true });
+  return path;
+}
+
+async function withElsewhere(fn) {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "gate-elsewhere-")));
+  try {
+    await fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const notebookCall = (cwd, notebookPath) => fileCall(cwd, "NotebookEdit", { notebook_path: notebookPath, new_source: "x", edit_mode: "replace" });
+
+const FILE_TOOLS = [["Write", writeCall], ["Edit", editCall], ["NotebookEdit", notebookCall]];
+
+// ---------- Task 24 registration ----------
+
+test("the gate's matcher also covers Write, Edit and NotebookEdit", () => {
+  const { hooks } = JSON.parse(readFileSync(join(ROOT, "hooks", "hooks.json"), "utf8"));
+  const [entry] = hooks.PreToolUse.filter((e) => e.hooks.some((h) => h.command.includes("hooks/gate.mjs")));
+
+  const matches = (tool) => new RegExp(`^(?:${entry.matcher || ".*"})$`).test(tool);
+
+  assert.ok(matches("Write"), "the matcher must cover Write");
+  assert.ok(matches("Edit"), "the matcher must cover Edit");
+  assert.ok(matches("NotebookEdit"), "the matcher must cover NotebookEdit");
+});
+
+// ---------- protected paths ----------
+
+const RUN_PATTERN = /\.pairingbuddy\/run/;
+const TEST_CONFIG_PATTERN = /test-config\.json/;
+const GIT_CONFIG_PATTERN = /git-config\.json/;
+
+const PROTECTED_PATHS = [
+  [".pairingbuddy/run/task/ledger.json", RUN_PATTERN],
+  [".pairingbuddy/run/task/artifacts/apply.json", RUN_PATTERN],
+  [".pairingbuddy/run/task/report.json", RUN_PATTERN],
+  [".pairingbuddy/run/unit.json", RUN_PATTERN],
+  [".pairingbuddy/run/pr-body.md", RUN_PATTERN],
+  [".pairingbuddy/test-config.json", TEST_CONFIG_PATTERN],
+  [".pairingbuddy/git-config.json", GIT_CONFIG_PATTERN],
+];
+
+for (const [toolName, call] of FILE_TOOLS) {
+  for (const [path, pattern] of PROTECTED_PATHS) {
+    test(`${toolName} to ${path} is denied during a run`, () =>
+      withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, call(repo.dir, join(repo.dir, path)), pattern)));
+
+    test(`${toolName} to ${path} is denied for a subagent during a run`, () =>
+      withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, asSubagent(call(repo.dir, join(repo.dir, path))), pattern)));
+
+    test(`${toolName} to ${path} is allowed outside a run`, () =>
+      withRepo({ ledger: null }, async (repo) => {
+        assertAllowed(await runGate(call(repo.dir, join(repo.dir, path))));
+      }));
+  }
+}
+
+test("a publish unit with no task ledger still counts as run state and protects the run directory", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    const unit = touch(repo.dir, ".pairingbuddy/run/unit.json", "{}\n");
+
+    assertDeniedNaming(await runGate(writeCall(repo.dir, unit)), RUN_PATTERN);
+  }));
+
+// ---------- path tricks ----------
+
+// Each builder returns the cwd and file_path of the call, after making any links it needs.
+const PATH_TRICKS = [
+  ["a path relative to the cwd", ({ dir }) => [dir, ".pairingbuddy/run/task/ledger.json"], RUN_PATTERN],
+  ["a dotted path with doubled slashes", ({ dir }) => [dir, "./.pairingbuddy//run/./task/ledger.json"], RUN_PATTERN],
+  ["a relative path climbing out of a subdirectory", (repo) => [makeSubdir(repo), "../../.pairingbuddy/run/task/ledger.json"], RUN_PATTERN],
+  ["an absolute path with .. segments", (repo) => [repo.dir, `${makeSubdir(repo)}/../../.pairingbuddy/run/unit.json`], RUN_PATTERN],
+  ["a .. through a directory that does not exist", ({ dir }) => [dir, `${dir}/nope/nada/../../.pairingbuddy/run/unit.json`], RUN_PATTERN],
+  ["a new file in a new directory under the run dir", ({ dir }) => [dir, ".pairingbuddy/run/task/artifacts/new/thing.json"], RUN_PATTERN],
+  ["a relative path to a config file through ..", (repo) => [makeSubdir(repo), "../../.pairingbuddy/../.pairingbuddy/git-config.json"], GIT_CONFIG_PATTERN],
+  ["a symlink to the ledger file", ({ dir, ledgerPath }) => {
+    symlinkSync(ledgerPath, join(dir, "notes.json"));
+    return [dir, join(dir, "notes.json")];
+  }, RUN_PATTERN],
+  ["a relative symlink to the ledger file", ({ dir }) => {
+    symlinkSync(".pairingbuddy/run/task/ledger.json", join(dir, "notes.json"));
+    return [dir, "notes.json"];
+  }, RUN_PATTERN],
+  ["a chain of symlinks to the ledger file", ({ dir, ledgerPath }) => {
+    symlinkSync(ledgerPath, join(dir, "first.json"));
+    symlinkSync(join(dir, "first.json"), join(dir, "second.json"));
+    return [dir, join(dir, "second.json")];
+  }, RUN_PATTERN],
+  ["a symlinked directory leading into the run dir", ({ dir }) => {
+    symlinkSync(join(dir, ".pairingbuddy", "run"), join(dir, "state"));
+    return [dir, "state/task/ledger.json"];
+  }, RUN_PATTERN],
+  ["a new file beneath a symlinked directory", ({ dir }) => {
+    symlinkSync(join(dir, ".pairingbuddy", "run"), join(dir, "state"));
+    return [dir, "state/task/new.json"];
+  }, RUN_PATTERN],
+  ["a symlink to the .pairingbuddy directory", ({ dir }) => {
+    symlinkSync(join(dir, ".pairingbuddy"), join(dir, "pb"));
+    return [dir, "pb/run/unit.json"];
+  }, RUN_PATTERN],
+  ["a dangling symlink to a new file in the run dir", ({ dir }) => {
+    symlinkSync(join(dir, ".pairingbuddy", "run", "task", "new.json"), join(dir, "dangling.json"));
+    return [dir, "dangling.json"];
+  }, RUN_PATTERN],
+  ["a symlink to test-config.json", ({ dir }) => {
+    const config = touch(dir, ".pairingbuddy/test-config.json");
+    symlinkSync(config, join(dir, "harmless.json"));
+    return [dir, "harmless.json"];
+  }, TEST_CONFIG_PATTERN],
+  ["a symlink outside the repo pointing into the run dir", ({ ledgerPath }, elsewhere) => {
+    symlinkSync(ledgerPath, join(elsewhere, "notes.json"));
+    return [elsewhere, join(elsewhere, "notes.json")];
+  }, RUN_PATTERN],
+  ["a symlinked alias of the repo as both cwd and path", ({ dir }, elsewhere) => {
+    const alias = join(elsewhere, "alias");
+    symlinkSync(dir, alias);
+    return [alias, join(alias, ".pairingbuddy/run/unit.json")];
+  }, RUN_PATTERN],
+  ["a .. taken after a symlinked directory", ({ dir }) => {
+    symlinkSync(join(dir, ".pairingbuddy", "run", "task", "artifacts"), join(dir, "out"));
+    mkdirSync(join(dir, ".pairingbuddy", "run", "task", "artifacts"));
+    return [dir, "out/../ledger.json"];
+  }, RUN_PATTERN],
+  ["an absolute path into the run dir from a cwd outside the repo", ({ ledgerPath }, elsewhere) => [elsewhere, ledgerPath], RUN_PATTERN],
+];
+
+for (const [toolName, call] of FILE_TOOLS) {
+  for (const [label, build, pattern] of PATH_TRICKS) {
+    test(`${toolName} through ${label} is denied during a run`, () =>
+      withElsewhere((elsewhere) =>
+        withRepo({}, (repo) => {
+          const [cwd, filePath] = build(repo, elsewhere);
+
+          return assertDeniedNamingWithoutWrite(repo, call(cwd, filePath), pattern);
+        })));
+  }
+}
+
+const CASE_INSENSITIVE_FS = existsSync(join(ROOT, "HOOKS", "GATE.MJS"));
+
+test("Write with another letter case of the run dir is denied on a case-insensitive filesystem", { skip: !CASE_INSENSITIVE_FS }, () =>
+  withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, writeCall(repo.dir, ".PairingBuddy/RUN/task/ledger.json"), RUN_PATTERN)));
+
+// ---------- paths left open during a run ----------
+
+for (const [toolName, call] of FILE_TOOLS) {
+  for (const path of [
+    "src/app.py",
+    ".pairingbuddy/task.json",
+    ".pairingbuddy/human-guidance.json",
+    ".pairingbuddy/run.json",
+    ".pairingbuddy/runner/notes.json",
+    "docs/run/notes.md",
+    "docs/test-config.json",
+  ]) {
+    test(`${toolName} to ${path} is allowed during a run`, () =>
+      withRepo({}, async (repo) => {
+        assertAllowed(await runGate(call(repo.dir, path)));
+      }));
+  }
+
+  test(`${toolName} outside the repo is allowed during a run`, () =>
+    withElsewhere((elsewhere) =>
+      withRepo({}, async (repo) => {
+        assertAllowed(await runGate(call(repo.dir, join(elsewhere, "scratch.txt"))));
+      })));
+}
+
+// ---------- plan checkboxes ----------
+
+const PLAN = "docs/plans/plan.md";
+const PLAN_TEXT = "# Plan\n\n- [ ] Task 1\n\n  Some notes.\n\n- [x] Task 2\n\n  - [ ] Sub step\n";
+const CHECKBOX_PATTERN = /checkbox/;
+
+function planLedger(path = PLAN) {
+  return { ...makeLedger(), plan: { path, title: "Plan" } };
+}
+
+async function withPlanRepo(fn, planPath = () => PLAN) {
+  const repo = makeRepo({ ledger: null });
+  try {
+    mkdirSync(dirname(repo.ledgerPath), { recursive: true });
+    writeLedger(repo.ledgerPath, planLedger(planPath(repo.dir)));
+    touch(repo.dir, PLAN, PLAN_TEXT);
+    await fn(repo);
+  } finally {
+    repo.cleanup();
+  }
+}
+
+for (const [label, oldString, newString, extra] of [
+  ["ticking a box", "- [ ] Task 1", "- [x] Task 1"],
+  ["ticking a box with an edit that cuts the marker in half", " ] Task 1", "x] Task 1"],
+  ["ticking a box with an edit of the brackets alone", "[ ] Task 1", "[x] Task 1"],
+  ["unticking a box", "- [x] Task 2", "- [ ] Task 2"],
+  ["ticking a box with a capital X", "- [ ] Task 1", "- [X] Task 1"],
+  ["ticking an indented box", "  - [ ] Sub step", "  - [x] Sub step"],
+  ["ticking every open box with replace_all", "- [ ]", "- [x]", { replace_all: true }],
+  ["swapping two boxes so the counts stay equal", "- [ ] Task 1\n\n  Some notes.\n\n- [x] Task 2", "- [x] Task 1\n\n  Some notes.\n\n- [ ] Task 2"],
+]) {
+  test(`a main-context Edit ${label} in the plan is denied during a run`, () =>
+    withPlanRepo((repo) => assertDeniedNamingWithoutWrite(repo, editCall(repo.dir, PLAN, oldString, newString, extra), CHECKBOX_PATTERN)));
+}
+
+for (const [label, content] of [
+  ["ticking a box", PLAN_TEXT.replace("- [ ] Task 1", "- [x] Task 1")],
+  ["ticking a box alongside a prose change", PLAN_TEXT.replace("- [ ] Task 1", "- [x] Task 1").replace("Some notes.", "Other notes.")],
+  ["swapping two boxes so the counts stay equal", PLAN_TEXT.replace("- [ ] Task 1", "- [x] Task 1").replace("- [x] Task 2", "- [ ] Task 2")],
+]) {
+  test(`a main-context Write ${label} in the plan is denied during a run`, () =>
+    withPlanRepo((repo) => assertDeniedNamingWithoutWrite(repo, writeCall(repo.dir, PLAN, content), CHECKBOX_PATTERN)));
+}
+
+for (const [label, oldString] of [
+  ["an open box line", "- [ ] Task 1\n"],
+  ["a ticked box line", "- [x] Task 2\n"],
+  ["an indented box line", "  - [ ] Sub step\n"],
+]) {
+  test(`a main-context Edit deleting ${label} from the plan is denied during a run`, () =>
+    withPlanRepo((repo) => assertDeniedNamingWithoutWrite(repo, editCall(repo.dir, PLAN, oldString, ""), CHECKBOX_PATTERN)));
+}
+
+test("a main-context Write dropping a box line from the plan is denied during a run", () =>
+  withPlanRepo((repo) => assertDeniedNamingWithoutWrite(repo, writeCall(repo.dir, PLAN, PLAN_TEXT.replace("- [ ] Task 1\n", "")), CHECKBOX_PATTERN)));
+
+test("an Edit turning a box into a plain list item in the plan is denied during a run", () =>
+  withPlanRepo((repo) => assertDeniedNamingWithoutWrite(repo, editCall(repo.dir, PLAN, "- [ ] Task 1", "- Task 1"), CHECKBOX_PATTERN)));
+
+test("a Write adding a ticked box to the plan is denied during a run", () =>
+  withPlanRepo((repo) => assertDeniedNamingWithoutWrite(repo, writeCall(repo.dir, PLAN, `${PLAN_TEXT}\n- [x] Task 3\n`), CHECKBOX_PATTERN)));
+
+const TICK = ["- [ ] Task 1", "- [x] Task 1"];
+
+for (const [label, build] of [
+  ["an absolute path", ({ dir }) => [dir, join(dir, PLAN)]],
+  ["a relative path climbing out of a subdirectory", (repo) => [makeSubdir(repo), `../../${PLAN}`]],
+  ["a path with .. segments", ({ dir }) => [dir, "docs/plans/../plans/plan.md"]],
+  ["a symlink to the plan", ({ dir }) => {
+    symlinkSync(join(dir, PLAN), join(dir, "todo.md"));
+    return [dir, "todo.md"];
+  }],
+  ["a symlinked directory holding the plan", ({ dir }) => {
+    symlinkSync(join(dir, "docs", "plans"), join(dir, "plans"));
+    return [dir, "plans/plan.md"];
+  }],
+]) {
+  test(`a checkbox change reaching the plan through ${label} is denied during a run`, () =>
+    withPlanRepo((repo) => {
+      const [cwd, filePath] = build(repo);
+
+      return assertDeniedNamingWithoutWrite(repo, editCall(cwd, filePath, ...TICK), CHECKBOX_PATTERN);
+    }));
+}
+
+test("a checkbox change is denied when the ledger holds the plan path as absolute", () =>
+  withPlanRepo((repo) => assertDeniedNamingWithoutWrite(repo, editCall(repo.dir, PLAN, ...TICK), CHECKBOX_PATTERN), (dir) => join(dir, PLAN)));
+
+test("a subagent's checkbox change in the plan is denied during a run", () =>
+  withPlanRepo((repo) => assertDeniedNamingWithoutWrite(repo, asSubagent(editCall(repo.dir, PLAN, ...TICK)), CHECKBOX_PATTERN)));
+
+test("a plan the hook cannot read denies an Edit, since old and new text cannot be compared", () =>
+  withPlanRepo((repo) => {
+    chmodSync(join(repo.dir, PLAN), 0o000);
+
+    return assertDeniedNamingWithoutWrite(repo, editCall(repo.dir, PLAN, "Some notes.", "Other notes."), /./);
+  }));
+
+for (const [label, payload] of [
+  ["an Edit of prose in the plan", (cwd) => editCall(cwd, PLAN, "Some notes.", "Other notes.")],
+  ["an Edit of a checkbox label that keeps its state", (cwd) => editCall(cwd, PLAN, "- [ ] Task 1", "- [ ] Task 1: renamed")],
+  ["a Write of the plan that keeps every box", (cwd) => writeCall(cwd, PLAN, PLAN_TEXT.replace("Some notes.", "Other notes."))],
+  ["a Write adding an open box to the plan", (cwd) => writeCall(cwd, PLAN, `${PLAN_TEXT}\n- [ ] Task 3\n`)],
+  ["a Write moving a box line within the plan", (cwd) => writeCall(cwd, PLAN, `# Plan\n\n- [x] Task 2\n\n  - [ ] Sub step\n\n- [ ] Task 1\n\n  Some notes.\n`)],
+  ["an Edit of a box between the two spellings of a tick", (cwd) => editCall(cwd, PLAN, "- [x] Task 2", "- [X] Task 2")],
+  ["a tick in another markdown file", (cwd) => editCall(cwd, "docs/other.md", ...TICK)],
+]) {
+  test(`${label} is allowed during a run`, () =>
+    withPlanRepo(async (repo) => {
+      touch(repo.dir, "docs/other.md", PLAN_TEXT);
+
+      assertAllowed(await runGate(payload(repo.dir)));
+    }));
+}
+
+test("a run with no plan path leaves markdown checkboxes alone", () =>
+  withRepo({}, async (repo) => {
+    touch(repo.dir, PLAN, PLAN_TEXT);
+
+    assertAllowed(await runGate(editCall(repo.dir, PLAN, ...TICK)));
+  }));
+
+test("a checkbox change is allowed outside a run", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    touch(repo.dir, PLAN, PLAN_TEXT);
+
+    assertAllowed(await runGate(editCall(repo.dir, PLAN, ...TICK)));
+  }));
+
+// ---------- fail closed ----------
+
+const CALLS_DURING_A_RUN = [
+  ["a Workflow stage call", (cwd) => stageCall(cwd, CONFIG)],
+  ["an Agent call for a non-pipeline agent", (cwd) => agentCall(cwd, "general-purpose")],
+  ["a Write to an open path", (cwd) => writeCall(cwd, "src/app.py")],
+  ["an Edit of an open path", (cwd) => editCall(cwd, "src/app.py")],
+  ["a NotebookEdit of an open path", (cwd) => notebookCall(cwd, "src/app.ipynb")],
+];
+
+const handEdited = (text) => text.replace('"task": "Task 23"', '"task": "Task 99"');
+
+for (const [corruption, corrupt, pattern] of [
+  ["invalid JSON", () => '{"v":1,', /not valid JSON/],
+  ["an empty file", () => "", /not valid JSON/],
+  ["an unsupported version", () => '{"v":2}', /unsupported version/],
+  ["a hand edit", handEdited, /sha mismatch/],
+]) {
+  for (const [label, call] of CALLS_DURING_A_RUN) {
+    test(`a ledger holding ${corruption} denies ${label}`, () =>
+      withRepo({}, async (repo) => {
+        writeFileSync(repo.ledgerPath, corrupt(readFileSync(repo.ledgerPath, "utf8")));
+
+        assertDeniedNaming(await runGate(call(repo.dir)), pattern);
+      }));
+  }
+}
+
+test("a ledger path that is a directory denies a Write", () =>
+  withRepo({}, async (repo) => {
+    rmSync(repo.ledgerPath);
+    mkdirSync(repo.ledgerPath);
+
+    assertDeniedNaming(await runGate(writeCall(repo.dir, "src/app.py")), /cannot read ledger/);
+  }));
+
+for (const [label, call] of [
+  ["a Workflow stage call", (cwd) => stageCall(cwd, CONFIG)],
+  ["an Agent call for a pipeline agent", (cwd) => agentCall(cwd, "pairingbuddy:apply-config-change")],
+  ["a Write to an open path", (cwd) => writeCall(cwd, "src/app.py")],
+]) {
+  test(`an unknown task type denies ${label}`, () =>
+    withRepo({ ledger: { ...makeLedger(), taskType: "nope" } }, async (repo) => {
+      assertDeniedNaming(await runGate(call(repo.dir)), /no stage graph for task type nope/);
+    }));
+}
+
+const LONG_AGO = new Date("2026-01-01T00:00:00.000Z");
+
+test("a stale lock that cannot be cleared denies a stage start", () =>
+  withRepo({}, async (repo) => {
+    const lock = `${repo.ledgerPath}.lock`;
+    writeFileSync(lock, "dead-owner");
+    utimesSync(lock, LONG_AGO, LONG_AGO);
+    chmodSync(dirname(repo.ledgerPath), 0o555);
+    try {
+      assertDeniedNaming(await runGate(stageCall(repo.dir, CONFIG)), /EACCES/);
+    } finally {
+      chmodSync(dirname(repo.ledgerPath), 0o755);
+    }
+  }));
+
+test("a stale lock that can be cleared lets a stage start", () =>
+  withRepo({}, async (repo) => {
+    const lock = `${repo.ledgerPath}.lock`;
+    writeFileSync(lock, "dead-owner");
+    utimesSync(lock, LONG_AGO, LONG_AGO);
+
+    assertAllowed(await runGate(stageCall(repo.dir, CONFIG)));
+  }));
+
+const INVALID_CONTRACT = () => {
+  const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
+  contract.taskTypes.config_change.nodes.push(null);
+  return contract;
+};
+
+test("an invalid stage contract denies a stage call during a run", () =>
+  withPlugin({ contract: INVALID_CONTRACT() }, (pluginRoot) =>
+    withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, stageCall(repo.dir, CONFIG, { pluginRoot, attempt: 1 }), /is invalid/, { pluginRoot }))));
+
+test("a plugin root with no contracts denies a stage call during a run", () =>
+  withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, stageCall(repo.dir, CONFIG), /ENOENT/, { pluginRoot: "/nonexistent/plugin" })));
+
+test("a missing agent config denies a direct Agent call during a run", () =>
+  withPlugin({}, (pluginRoot) =>
+    withRepo({}, (repo) => {
+      rmSync(join(pluginRoot, "contracts", "agent-config.yaml"));
+
+      return assertDeniedNamingWithoutWrite(repo, agentCall(repo.dir, "pairingbuddy:apply-config-change"), /ENOENT/, { pluginRoot });
+    })));
+
+test("an invalid stage contract allows silently with no run state", () =>
+  withPlugin({ contract: INVALID_CONTRACT() }, (pluginRoot) =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertAllowed(await runGate(stageCall(repo.dir, CONFIG, { pluginRoot, attempt: 1 }), { pluginRoot }));
+    })));
+
+const BAD_TOOL_INPUTS = [
+  ["a Workflow call with no tool_input", (cwd) => ({ ...workflowCall(cwd, {}), tool_input: undefined })],
+  ["a Workflow call with a null tool_input", (cwd) => workflowCall(cwd, null)],
+  ["an Agent call with no tool_input", (cwd) => ({ ...agentCall(cwd, "x"), tool_input: undefined })],
+  ["a Write with no tool_input", (cwd) => fileCall(cwd, "Write", undefined)],
+  ["a Write with no file_path", (cwd) => fileCall(cwd, "Write", { content: "x" })],
+  ["a Write with a non-string file_path", (cwd) => fileCall(cwd, "Write", { file_path: 7, content: "x" })],
+  ["an Edit with no file_path", (cwd) => fileCall(cwd, "Edit", { old_string: "a", new_string: "b" })],
+  ["a NotebookEdit with no notebook_path", (cwd) => fileCall(cwd, "NotebookEdit", { new_source: "x" })],
+];
+
+for (const [label, call] of BAD_TOOL_INPUTS) {
+  test(`${label} denies during a run`, () =>
+    withRepo({}, async (repo) => {
+      assertDeniedNaming(await runGate(call(repo.dir)), /./);
+    }));
+
+  test(`${label} allows silently with no run state`, () =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertAllowed(await runGate(call(repo.dir)));
+    }));
+}
+
+test("a checkbox change with no new_string on the plan denies during a run", () =>
+  withPlanRepo((repo) => assertDeniedNamingWithoutWrite(repo, fileCall(repo.dir, "Edit", { file_path: PLAN, old_string: "- [ ] Task 1" }), /./)));
+
+for (const [label, stdin] of [
+  ["malformed JSON", "{not json"],
+  ["an empty payload", ""],
+  ["a null payload", "null"],
+  ["an array payload", "[]"],
+]) {
+  test(`${label} on stdin denies from a cwd inside a run`, () =>
+    withRepo({}, async (repo) => {
+      assertDeniedNaming(await runGate(stdin, { processCwd: repo.dir }), /./);
+    }));
+
+  test(`${label} on stdin allows silently with no run state`, () =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertAllowed(await runGate(stdin, { processCwd: repo.dir }));
+    }));
+}
+
+// A copy of the hook with no shared-node beside it, so its own imports fail.
+async function withBrokenGate(fn) {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "gate-broken-")));
+  try {
+    mkdirSync(join(dir, "hooks"));
+    copyFileSync(GATE, join(dir, "hooks", "gate.mjs"));
+    await fn(join(dir, "hooks", "gate.mjs"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("a hook whose imports fail denies during a run", () =>
+  withBrokenGate((gate) =>
+    withRepo({}, async (repo) => {
+      assertDeniedNaming(await runGate(writeCall(repo.dir, "src/app.py"), { gate }), /./);
+    })));
+
+test("a hook whose imports fail allows silently with no run state", () =>
+  withBrokenGate((gate) =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertAllowed(await runGate(writeCall(repo.dir, "src/app.py"), { gate }));
+    })));
+
+test("a hook whose imports fail denies a write into a run from outside it", () =>
+  withBrokenGate((gate) =>
+    withRepo({}, async (repo) => {
+      const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), "gate-elsewhere-")));
+      try {
+        assertDeniedNaming(await runGate(writeCall(elsewhere, repo.ledgerPath), { gate }), /./);
+      } finally {
+        rmSync(elsewhere, { recursive: true, force: true });
+      }
+    })));
+
+test("a hook missing only the run-root module denies during a run", async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "gate-partial-")));
+  try {
+    mkdirSync(join(dir, "hooks"));
+    copyFileSync(GATE, join(dir, "hooks", "gate.mjs"));
+    cpSync(join(ROOT, "shared-node"), join(dir, "shared-node"), { recursive: true });
+    cpSync(join(ROOT, "contracts"), join(dir, "contracts"), { recursive: true });
+    rmSync(join(dir, "shared-node", "run-root.mjs"), { force: true });
+    await withRepo({}, async (repo) => {
+      assertDeniedNaming(await runGate(writeCall(repo.dir, "src/app.py"), { gate: join(dir, "hooks", "gate.mjs") }), /./);
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an empty run directory does not hide the run above it", () =>
+  withRepo({}, async (repo) => {
+    const nested = join(repo.dir, "vendor", "lib");
+    mkdirSync(join(nested, ".pairingbuddy", "run"), { recursive: true });
+
+    // An Agent call has no target path, so only the walk from the cwd can reach the run.
+    await assertDeniedNamingWithoutWrite(repo, agentCall(nested, "pairingbuddy:apply-config-change"), /Direct Agent call/);
+  }));
+
+test("an empty run directory with nothing above it allows silently", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    mkdirSync(join(repo.dir, ".pairingbuddy", "run"), { recursive: true });
+
+    assertAllowed(await runGate(writeCall(repo.dir, "src/app.py")));
+  }));
+
+const NO_GIT_PATH = "/nonexistent/bin";
+
+test("git being unavailable does not hide run state", () =>
+  withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, writeCall(repo.dir, repo.ledgerPath), RUN_PATTERN, { path: NO_GIT_PATH })));
+
+test("git being unavailable allows silently with no run state", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    assertAllowed(await runGate(writeCall(repo.dir, "src/app.py"), { path: NO_GIT_PATH }));
+  }));
+
+// ---------- drift: missing fields ----------
+
+const without = (payload, field) => {
+  const { [field]: _dropped, ...rest } = payload;
+  return rest;
+};
+
+for (const field of ["session_id", "cwd", "tool_name", "permission_mode"]) {
+  for (const [label, call] of CALLS_DURING_A_RUN) {
+    test(`a missing ${field} denies ${label} during a run`, () =>
+      withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, without(call(repo.dir), field), new RegExp(field), { processCwd: repo.dir })));
+
+    test(`a null ${field} denies ${label} during a run`, () =>
+      withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, { ...call(repo.dir), [field]: null }, new RegExp(field), { processCwd: repo.dir })));
+  }
+
+  test(`a missing ${field} allows silently with no run state`, () =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertAllowed(await runGate(without(writeCall(repo.dir, "src/app.py"), field), { processCwd: repo.dir }));
+    }));
+}
+
+test("a payload cwd that does not exist still denies from a hook cwd inside a run", () =>
+  withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, writeCall("/nonexistent/place", repo.ledgerPath), RUN_PATTERN, { processCwd: repo.dir })));
+
+// ---------- drift: agent fields ----------
+
+const SUBAGENT = fixture("pretooluse-workflow-agent-bash.json");
+const AGENT_PAIR_PATTERN = /agent_id|agent_type/;
+
+for (const [label, call] of CALLS_DURING_A_RUN) {
+  test(`agent_id without agent_type denies ${label} during a run`, () =>
+    withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, { ...call(repo.dir), agent_id: SUBAGENT.agent_id }, AGENT_PAIR_PATTERN)));
+
+  test(`agent_type without agent_id denies ${label} during a run`, () =>
+    withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, { ...call(repo.dir), agent_type: SUBAGENT.agent_type }, AGENT_PAIR_PATTERN)));
+
+  for (const renamed of ["agentId", "subagent_id", "parent_agent_id", "agent_name", "AGENT_ID", "Agent_Id"]) {
+    test(`a renamed agent_id ${renamed} denies ${label} during a run`, () =>
+      withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, { ...call(repo.dir), [renamed]: SUBAGENT.agent_id }, new RegExp(renamed))));
+  }
+}
+
+test("a renamed agent_id on a pipeline Agent call denies as drift, not as a main-context call", () =>
+  withRepo({}, (repo) =>
+    assertDeniedNamingWithoutWrite(repo, { ...agentCall(repo.dir, "pairingbuddy:apply-config-change"), subagent_id: SUBAGENT.agent_id }, /subagent_id/)));
+
+test("an unknown agent key beside a complete pair denies during a run", () =>
+  withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, { ...asSubagent(writeCall(repo.dir, "src/app.py")), agent_name: "x" }, /agent_name/)));
+
+test("a complete agent pair is allowed on an open path during a run", () =>
+  withRepo({}, async (repo) => {
+    assertAllowed(await runGate(asSubagent(writeCall(repo.dir, "src/app.py"))));
+  }));
+
+test("an unknown top-level key with no agent in it is allowed during a run", () =>
+  withRepo({}, async (repo) => {
+    assertAllowed(await runGate({ ...writeCall(repo.dir, "src/app.py"), brand_new_field: 1 }));
+  }));
+
+test("a tool_input key containing agent is not drift", () =>
+  withRepo({}, async (repo) => {
+    assertAllowed(await runGate(fileCall(repo.dir, "Write", { file_path: "src/app.py", content: "x", agent_note: "y" })));
+  }));
+
+for (const [label, drift] of [
+  ["agent_id without agent_type", { agent_id: SUBAGENT.agent_id }],
+  ["agent_type without agent_id", { agent_type: SUBAGENT.agent_type }],
+  ["a renamed agent_id", { subagent_id: SUBAGENT.agent_id }],
+]) {
+  test(`${label} allows silently with no run state`, () =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertAllowed(await runGate({ ...writeCall(repo.dir, "src/app.py"), ...drift }));
+    }));
+}
