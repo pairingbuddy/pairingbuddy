@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Recovery drill in `tests/drills/`: `force_wedge.mjs` forces each wedged run on demand, one flag per wedge, on a throwaway clone it made itself, and refuses this worktree or any other repo. `CONTRIBUTING.md` gains the recovery recipe, one section per wedge, and `tests/drills/test_wedges.py` runs each recipe's commands against its forced wedge
 - Smoke S1 in `tests/smoke/`: a sample repo and a capped `claude -p --plugin-dir` runner on a cheap model with a clean env, asserting stage order, one commit, the gate source and a refused `pb stage finish`, outside pytest and `pb test --full`. The sample-task spike is recorded in `docs/spikes/workflow-platform-spike.md`
 - `code-safety-net` stage (Section 4), lens-free for now: `update-documentation`, then the runner running `pb checkpoint --step docs`, `pb test --full` and `pb stage finish`. `code-config` now also ends with the runner, and the runner takes a list of commands. `stages.json` requires `checkpoint:docs`, which a no-change docs step satisfies
 - `pb task end` (D12, D16): refuses an unfinished stage, a stop, an unpassed gate or a dirty tree, in that order and with the remaining files listed, ticks the plan box by title when the run has a plan, and removes `run/task/` alone. `shared-node/plan-boxes.mjs` holds the only checkbox writer

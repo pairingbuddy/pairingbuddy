@@ -144,6 +144,163 @@ After creating a release in this repo, update the marketplace:
 1. Update version in `pairingbuddy-marketplace/.claude-plugin/marketplace.json`
 2. Commit and push to marketplace repo
 
+## Recovering a wedged run
+
+Each section below says what you see, then what to type. These steps are for a human. Do not hand them to a model: `pb human` commands are refused from a model, and deleting run state by hand ends the run.
+
+To practise on a throwaway clone, force a wedge and follow its section:
+
+```
+node tests/drills/force_wedge.mjs --list
+node tests/drills/force_wedge.mjs --stranded-stage
+```
+
+The script makes a clone with no remote and prints its path, the `claude --plugin-dir` line to start a session there, and the `export` line for `ROOT` and `PLUGIN`. It refuses this repo and any repo it did not make. `--clone <path>` resets one of its own clones and forces another wedge there.
+
+### Before you start
+
+Work in a separate terminal, where no hook runs. Set `ROOT` to the worktree that holds the run and `PLUGIN` to the checkout the session was started with, then:
+
+```bash
+pb() { node "$PLUGIN/cli/pb.mjs" "$@"; }
+cd "$ROOT"
+```
+
+Typed at the Claude prompt with a leading `!`, a command also skips the hooks. Each `!` line is its own shell, so write it out in full: `!cd <ROOT> && node <PLUGIN>/cli/pb.mjs status`.
+
+### gate.mjs crash or throw
+
+**What you see:** every Write, Edit, Bash, Workflow and Agent call is denied with `Gate error during a run, so the call is denied: ...`. The model cannot fix this, since its Bash is denied too.
+
+Restore the plugin's code:
+
+```bash
+git -C "$PLUGIN" status --short
+git -C "$PLUGIN" checkout -- hooks shared-node
+pb status
+```
+
+If the bad code is committed in `$PLUGIN`, move the pin back instead: see Back-out in the plan.
+
+### gate.mjs parse failure
+
+**What you see:** each tool call reports a hook error with a `SyntaxError`, and the tool may still run. The hook exits 1 with no decision, so a parse failure is not a deny. Treat the run as ungated from that moment, and stop the session before doing anything else.
+
+```bash
+git -C "$PLUGIN" status --short
+git -C "$PLUGIN" checkout -- hooks
+git -C "$ROOT" status --short
+git -C "$ROOT" log --oneline -5
+pb status
+```
+
+The last three show what ran while nothing was gated. If `pb status` reports a SHA mismatch, go to that section.
+
+### Stranded active stage
+
+**What you see:** the next stage is denied with `Stage <name> is active at attempt <n>. Wait for it to finish`, and nothing is running. `pb status` shows the stage as active.
+
+```bash
+pb status
+pb stage fail
+```
+
+Then start the same stage again, at the attempt `stage fail` printed as `nextAttempt`. Late returns from the dead attempt are voided. A stage with no recorded run also clears this way, or after its 120-second start lease the gate lets it restart at the same attempt.
+
+### Killed session mid-stage
+
+**What you see:** the session is gone and the stage is active. `pb stage fail` may refuse with `could not take the ledger lock`, because a write died under the lock. The lock goes stale after 30 seconds and the next writer clears it, so do not delete it.
+
+```bash
+sleep 31
+pb stage fail
+git -C "$ROOT" status --short
+```
+
+The status line lists what the killed stage left behind. Delete what you do not want by hand, because `pb task end` refuses a dirty tree. Commits the stage already made stay on the branch. Then start a new session and restart the stage at `nextAttempt`.
+
+### Killed session at a gate
+
+**What you see:** `pb status` shows `needsHuman` with a gate, and `pb stage fail` refuses or finds no stage to fail. Only a human can pass a gate. The same command undoes a human's `stop` or `redo` answer at a gate, and `pb stage fail` refuses to lift a human's `stop`.
+
+```bash
+pb status
+pb human approve G:task-end
+pb status
+```
+
+Use the gate `pb status` names, in place of `G:task-end`.
+
+### Ledger SHA mismatch
+
+**What you see:** `pb` refuses with `sha mismatch: the file was edited outside deterministic code`, and the gate denies Write, Edit and Workflow with the same text. Bash stays open so that the route out works.
+
+Look at `.pairingbuddy/run/task/ledger.json`. If you accept the edit:
+
+```bash
+pb human accept
+pb status
+```
+
+If the file is not well-formed, `pb human accept` refuses: fix it by hand and run it again. If it cannot be fixed, delete the run as in "A run with no unit".
+
+### Second session in the same worktree
+
+**What you see:** nothing warns you. The second session can call tools, but it does not own the run: its permission mode is not recorded, `pb run open` refuses with `a run is already active`, and a stage the first session holds denies the next one. Adopting a run explicitly does not exist yet.
+
+If the first session is still working, close the second one, and that is the whole recovery.
+
+To move the run to the second session, close the first one, then void its attempt and clear the owner by hand. The next call from the second session claims the run:
+
+```bash
+pb stage fail
+node -e 'const fs = require("fs"); const path = process.argv[1]; const ledger = JSON.parse(fs.readFileSync(path, "utf8")); fs.writeFileSync(path, JSON.stringify({ ...ledger, owner: { sessionId: null, lastSeen: null } }, null, 2) + "\n");' "$ROOT/.pairingbuddy/run/task/ledger.json"
+pb human accept
+pb status
+```
+
+Leave out `pb stage fail` when no stage is active.
+
+### A run with no unit
+
+**What you see:** a run you want to drop. `pb task end` refuses with `is not finished, so the task cannot end`, and `pb human abandon` fails with `unknown verb`, because it does not exist until T3a. This is the exposure of dogfood runs before then.
+
+There is no CLI route, so a human deletes the run state by hand. The branch and its commits stay. `.pairingbuddy/test-config.json` and `git-config.json` are outside `run/` and stay too:
+
+```bash
+git -C "$ROOT" log --oneline -5
+git -C "$ROOT" status --short
+rm -rf "$ROOT/.pairingbuddy/run"
+```
+
+### Broken CLI
+
+**What you see:** every `pb` call dies with a `SyntaxError` or `unexpected failure`. If the fault is in `shared-node/`, the gate also denies every call, as it does for a crash.
+
+Restore the code first, which keeps the run:
+
+```bash
+git -C "$PLUGIN" status --short
+git -C "$PLUGIN" checkout -- cli shared-node
+pb status
+```
+
+If the code is committed that way and no good checkout is at hand, a human deletes the run state by hand. With the run gone the gate has nothing to enforce, broken or not. Then move the pin back, see Back-out in the plan:
+
+```bash
+rm -rf "$ROOT/.pairingbuddy/run"
+```
+
+### Not verified without a live session
+
+`tests/drills/test_wedges.py` runs the commands above against each forced wedge, with the hooks called directly. These parts need a person and a real session, which Task 36 of the plan covers:
+
+- How a deny or a hook error looks at the prompt, and that a hook exiting 1 lets the tool run. The fail-open reading of a parse failure comes from the architecture, not from a test.
+- That a running session picks up restored hook files with no restart.
+- The `!` route at the prompt. The tests run the same commands in a plain shell.
+- Killing a real session. The drill kills a ledger writer under the lock, so a Workflow that outlives its session has not been seen.
+- Two real sessions at once. The drill sends a second session id to the hooks.
+
 ## Code Style
 
 - **Agents**: Define WHAT, not HOW (language-agnostic)
