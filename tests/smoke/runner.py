@@ -4,7 +4,7 @@
 not touched, and `--setting-sources project,local` keeps user settings and installed plugins out of
 the run. The env mechanism for a cheap model is P16's: `--model` does not override an agent's pin.
 
-The spend cap covers a whole smoke run, so a stage after the first gets what is left of it.
+The spend cap covers a whole smoke run, however many sessions it takes.
 """
 
 import json
@@ -72,6 +72,7 @@ def claude_command(prompt: str, budget_usd: float) -> list[str]:
         "--max-budget-usd", str(budget_usd),
         "--output-format", "stream-json",
         "--verbose",
+        "--include-hook-events",
     ]  # fmt: skip
 
 

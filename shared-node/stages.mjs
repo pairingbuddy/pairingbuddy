@@ -73,6 +73,9 @@ export function graphFor(contract, taskType) {
   return { taskType: name, stages: contract.taskTypes[name].nodes.map((node) => node.name) };
 }
 
+// Every stage of every task type.
+export const allStages = (contract) => Object.values(contract.taskTypes).flatMap((graph) => graph.nodes.map((node) => node.name));
+
 export function evidenceFor(contract, taskType, stage) {
   const { taskType: name } = graphFor(contract, taskType);
   const node = contract.taskTypes[name].nodes.find((candidate) => candidate.name === stage);

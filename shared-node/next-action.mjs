@@ -20,7 +20,7 @@ export function runStatus(contract, ledger, artifactsDir) {
   return { stage, next: nextStep(contract, ledger), stop, needsHuman, spend: spendTotals(ledger, artifactsDir, contract.maxAgents) };
 }
 
-// The full args, because a workflow started without them refuses and strands its stage active, where no Stop hook speaks.
+// The full args, because the gate denies a start without them.
 function startAction({ stage, attempt }, pluginRoot) {
   const args = `{"attempt":${attempt},"pluginRoot":${JSON.stringify(pluginRoot)},"task":{"description":"<this task>"}}`;
   return `Start the workflow pairingbuddy:${stage} by name with the args ${args}.`;

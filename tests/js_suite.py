@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 JS_TEST_FILES = [
+    "tests/js/code-command.test.mjs",
     "tests/js/code-config.test.mjs",
     "tests/js/code-router.test.mjs",
     "tests/js/code-safety-net.test.mjs",

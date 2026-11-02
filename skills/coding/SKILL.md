@@ -139,9 +139,6 @@ if _detect_plan_file(task):
 
 # Normal (non-plan) execution continues below
 
-# Curate guidance from previous session (always runs - handles review and bootstrap)
-human_guidance = curate_guidance(human_guidance, task)
-
 # Clean up stale state files from previous task (MANDATORY - do not skip)
 _cleanup_state_files()
 
@@ -153,6 +150,10 @@ task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refact
 if task_type in MIGRATED_TYPES and not _is_solo():
     _run_new_path(task)
     _stop("Task complete.")
+
+# Curate guidance from previous session (handles review and bootstrap). It waits on a human, so it
+# comes after the router: a migrated type stops at its gates instead.
+human_guidance = curate_guidance(human_guidance, task)
 
 if task_type == "new_feature":
     # Full TDD workflow with coverage verification loop
@@ -304,11 +305,11 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 ### State File Management
 
 1. At cycle start, verify `.pairingbuddy/` is in `.gitignore`
-2. Invoke `curate_guidance` agent (before cleanup):
+2. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json`, `doc-config.json`, and `human-guidance.json`
+3. For a type that stays on the old path, invoke `curate_guidance` agent (after classification):
    - If `human-guidance.json` has entries: review/curate existing guidance
    - If empty or missing: offer to add new persistent guidance
    - Approved entries get `"persistent": true` flag
-3. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json`, `doc-config.json`, and `human-guidance.json`
 4. If `human-guidance.json` doesn't exist after curation, initialize with `{"guidance": []}`
 5. Keep files after run for human review
 

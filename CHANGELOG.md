@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- With no run state, `hooks/gate.mjs` denies a Workflow call naming a stage, or carrying a built-bundle copy, and points at `/pairingbuddy:code`, which opens the run. The stage names come from `contracts/stages.json`, read for Workflow calls only, and every other call stays silently allowed. If the contract or its loader fails, `pairingbuddy:` names are denied. Stage `meta` descriptions now say they are internal, and `commands/plan.md` and `commands/design-ux.md` name their skills in full
+- Smoke S1 now runs `/pairingbuddy:code <task>` in one `claude -p` session on a branch made from main, and also asserts that run state is gone and, with no model, that out-of-order calls are denied. Per-run results are in `docs/spikes/workflow-platform-spike.md`
 - Stop hook `hooks/stop.mjs` (D13): in every mode, with no stage active, it tells the model the next action through the block form probe P5 recorded. One action is told once per session and a chain of changing actions has a ceiling, so a turn cannot loop. SessionStart reports open run state, the compact hook injects `pb status` and the next action in place of the guardian reminder, the guardian reminder is reworded while run state exists, and `pb run open` names the stop when it refuses the next task.
 - Migrated-types router in `skills/coding/SKILL.md` (Section 7): `/pairingbuddy:code` sends a `config_change` to the workflow stages, and every other type, plan task and Solo run stays on the old path with no run state. `pb run open` takes `taskType` from `.pairingbuddy/task-classification.json`, and refuses a type with no stage graph, a malformed file, and Solo. `commands/code.md` passes the plugin root and the human's text as data, with no `allowed-tools`
 - Recovery drill in `tests/drills/`: `force_wedge.mjs` forces each wedged run on demand, one flag per wedge, on a throwaway clone it made itself, and refuses this worktree or any other repo. `CONTRIBUTING.md` gains the recovery recipe, one section per wedge, and `tests/drills/test_wedges.py` runs each recipe's commands against its forced wedge
@@ -36,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `commands/code.md` names `pairingbuddy:coding` and its path, and warns off itself and the stages, because "the coding skill" sent every S1 session to the command itself
+- `curate_guidance` runs after the migrated-types router, on the old path too, because it waits on a human and ended a headless run before a run opened
+- The gate denies a stage start with no `task`, where the stage used to refuse inside the workflow and strand itself active. `pluginRoot` was already denied
 - `hooks/gate-boot.mjs` is now the registered PreToolUse command. It imports `gate.mjs` dynamically, so a syntax error there denies during a run and names the recovery, instead of failing open. A syntax error in `gate-boot.mjs` itself still fails open. `force_wedge.mjs` gains `--gate-boot-parse`, and `--gate-parse` now denies
 - `pb checkpoint --step config` takes no change only from a return with an empty `files_changed` and a non-empty `ambiguity`, which the task-end gate then asks about. A return listing a file that did not change, an empty one with no ambiguity, or no return at all refuses and stops the run, so a refused edit can no longer leave `code-config` done. A no-change docs step stays valid
 - The active-stage deny says that a stranded stage is cleared by the human running `pb stage fail`

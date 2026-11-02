@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Gate: PreToolUse enforcement during a run, loaded by gate-boot.mjs. With no run state it allows everything silently.
+// Gate: PreToolUse enforcement during a run, loaded by gate-boot.mjs. With no run state it allows everything silently,
+// except a Workflow call that would start a stage of this plugin: a stage has only ever run inside a run.
 // An allow prints nothing, unless it is the runner's exact command; a decision exits 0 with the JSON form on stdout.
 // Any error with run state denies.
 // This wrapper imports only built-ins and loads everything else dynamically, so that a failed import can
@@ -10,6 +11,7 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 const TARGET_KEYS = { Write: "file_path", Edit: "file_path", NotebookEdit: "notebook_path" };
 const MAX_SYMLINKS = 40;
+const PLUGIN_PREFIX = "pairingbuddy:";
 const ABSENT_CODES = ["ENOENT", "ENOTDIR"];
 
 function readlinkOrNull(path) {
@@ -111,6 +113,17 @@ function decide(permissionDecision, permissionDecisionReason) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput }));
 }
 
+// With no run a failure allows, except on this plugin's own names: nothing can then say one of them is not a stage.
+async function denyStageWithNoRun(toolInput, cwd) {
+  try {
+    const { stageWithNoRun } = await import("../shared-node/stage-calls.mjs");
+    const stage = stageWithNoRun(toolInput, cwd);
+    if (stage !== undefined) decide("deny", `Stage ${stage} cannot start with no run open. Use /pairingbuddy:code, which opens the run.`);
+  } catch (e) {
+    if (toolInput.name?.startsWith?.(PLUGIN_PREFIX)) decide("deny", `Gate error with no run open: cannot tell whether ${toolInput.name} is a stage, so the call is denied: ${e?.message ?? e}`);
+  }
+}
+
 // A failed import is held back, not thrown here: only the walk can say whether this call is inside a run.
 let findRunRoot = nearestRunDirectory;
 let findSessionRoot = (cwd, sessionId) => nearestRunDirectory(cwd) ?? pointedRunDirectory(sessionId);
@@ -139,6 +152,8 @@ try {
     const { checkCall } = await import("../shared-node/gate-rules.mjs");
     const allowReason = checkCall({ runRoots: [...runRoots], sessionRoot, payload, targets, canonicalPath });
     if (allowReason !== null) decide("allow", allowReason);
+  } else if (payload?.tool_name === "Workflow") {
+    await denyStageWithNoRun(payload.tool_input ?? {}, cwd);
   }
 } catch (e) {
   if (runRoots.size > 0) decide("deny", e.gateDenial ? e.message : `Gate error during a run, so the call is denied: ${e?.message ?? e}`);

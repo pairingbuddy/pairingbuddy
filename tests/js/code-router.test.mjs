@@ -208,6 +208,18 @@ test("the router runs after the plan loop has left, after classification, and be
   assert.ok(router < oldBranches, "a migrated type never falls into the old branches");
 });
 
+// curate_guidance waits on a human. Ahead of the router it ended 2 of 5 S1 sessions before a run opened.
+test("guidance curation comes after the router, and still before the old branches", () => {
+  const code = pseudocode();
+  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
+  const curated = code.indexOf("human_guidance = curate_guidance(human_guidance, task)", planEnd);
+  const router = code.indexOf("if task_type in MIGRATED_TYPES and not _is_solo():");
+  const oldBranches = code.indexOf('if task_type == "new_feature":');
+
+  assert.ok(router < curated, "a migrated type meets no human checkpoint before its run");
+  assert.ok(curated < oldBranches, "the old path still curates its guidance");
+});
+
 test("a run opens only inside the router, and the plan loop says it stays old", () => {
   const code = pseudocode();
 
