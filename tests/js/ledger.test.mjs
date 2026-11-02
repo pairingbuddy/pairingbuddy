@@ -267,6 +267,46 @@ test("stale-lock-recovered", () => {
   });
 });
 
+test("lock-with-a-future-mtime-counts-as-stale", () => {
+  inTempDir((dir, path) => {
+    writeLedger(path, baseLedger());
+    const lock = `${path}.lock`;
+    writeFileSync(lock, "clock skew");
+    ageLock(lock, -3600);
+
+    const written = writeLedger(path, readLedger(path), { timeoutMs: 2000 });
+
+    assert.equal(written.seq, 2, "a lock from the future cannot hold the ledger");
+    assert.deepEqual(readdirSync(dir), ["ledger.json"], "the lock is gone");
+  });
+});
+
+test("takeover-guard-with-a-future-mtime-counts-as-stale", () => {
+  inTempDir((dir, path) => {
+    writeLedger(path, baseLedger());
+    const lock = `${path}.lock`;
+    writeFileSync(lock, "dead writer");
+    ageLock(lock, 3600);
+    writeFileSync(`${lock}.takeover`, "clock skew");
+    ageLock(`${lock}.takeover`, -3600);
+
+    const written = writeLedger(path, readLedger(path), { timeoutMs: 2000 });
+
+    assert.equal(written.seq, 2);
+    assert.deepEqual(readdirSync(dir), ["ledger.json"]);
+  });
+});
+
+test("lock-a-moment-ahead-of-the-clock-is-still-a-live-writer", () => {
+  inTempDir((_dir, path) => {
+    writeLedger(path, baseLedger());
+    writeFileSync(`${path}.lock`, "live writer");
+    ageLock(`${path}.lock`, -0.2);
+
+    assert.throws(() => writeLedger(path, readLedger(path), { timeoutMs: 100 }), /within 100ms/, "file timestamps can run a tick ahead of Date.now()");
+  });
+});
+
 test("fresh-lock-is-not-stale-under-the-option", () => {
   inTempDir((_dir, path) => {
     writeLedger(path, baseLedger());

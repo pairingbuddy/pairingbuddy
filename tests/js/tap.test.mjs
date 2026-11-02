@@ -1,3 +1,4 @@
+import "./isolated-tmpdir.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
@@ -159,6 +160,30 @@ test("subdirectory cwd resolves to the repo toplevel", () =>
     assert.equal(res.code, 0);
     assert.equal(JSON.parse(readFileSync(repo.artifact(k), "utf8")).answer, 1);
     assert.equal(existsSync(join(sub, ".pairingbuddy")), false);
+  }));
+
+test("a git repo nested inside a run writes to the run above it", () =>
+  withRepo({}, async (repo) => {
+    const nested = join(repo.dir, "vendor", "lib");
+    mkdirSync(nested, { recursive: true });
+    execFileSync("git", ["init", "-q"], { cwd: nested });
+    const k = key();
+
+    const res = await runTap(structured(nested, k, { answer: 3 }));
+
+    assert.equal(res.code, 0);
+    assert.equal(JSON.parse(readFileSync(repo.artifact(k), "utf8")).answer, 3);
+    assert.equal(existsSync(join(nested, ".pairingbuddy")), false);
+  }));
+
+test("a run outside any git repo is still found", () =>
+  withRepo({ git: false }, async (repo) => {
+    const k = key();
+
+    const res = await runTap(structured(repo.dir, k, { answer: 4 }));
+
+    assert.equal(res.code, 0);
+    assert.equal(JSON.parse(readFileSync(repo.artifact(k), "utf8")).answer, 4);
   }));
 
 test("linked worktree writes to its own run state only", async () => {

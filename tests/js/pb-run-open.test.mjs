@@ -70,6 +70,7 @@ test("open-creates-run-task-layout", (t) => {
   const ledger = readLedger(ledgerPath(root));
   assert.equal(validateLedger(ledger).valid, true, "ledger validates");
   assert.equal(ledger.kind, "code", "ledger records the kind");
+  assert.equal(ledger.stage.startedAt, null, "no stage has started");
 });
 
 test("open-hashes-test-config", (t) => {

@@ -26,7 +26,7 @@ def test_registered_in_hooks_json():
 
 
 def test_tap_registered_in_hooks_json():
-    """hooks.json contains a PostToolUse entry that invokes tap.mjs for StructuredOutput|Workflow"""
+    """hooks.json contains a PostToolUse entry that invokes tap.mjs for its recorded tools"""
     hooks_data = json.loads(HOOKS_JSON.read_text())
 
     entries = [
@@ -35,7 +35,26 @@ def test_tap_registered_in_hooks_json():
         if any("tap.mjs" in hook["command"] for hook in entry["hooks"])
     ]
 
-    assert len(entries) == 1, "PostToolUse must contain one entry for tap.mjs"
-    assert entries[0]["matcher"] == "StructuredOutput|Workflow"
+    assert sorted(entry["matcher"] for entry in entries) == [
+        "AskUserQuestion",
+        "StructuredOutput|Workflow",
+    ], "PostToolUse must route exactly these tools to tap.mjs"
+    for entry in entries:
+        for hook in entry["hooks"]:
+            assert hook["type"] == "command"
+
+
+def test_gate_registered_in_hooks_json():
+    """hooks.json contains one PreToolUse entry that invokes gate.mjs for its gated tools"""
+    hooks_data = json.loads(HOOKS_JSON.read_text())
+
+    entries = [
+        entry
+        for entry in hooks_data["hooks"]["PreToolUse"]
+        if any("gate.mjs" in hook["command"] for hook in entry["hooks"])
+    ]
+
+    assert len(entries) == 1, "PreToolUse must contain one entry for gate.mjs"
+    assert entries[0]["matcher"] == "Workflow|Agent|Write|Edit|NotebookEdit|Bash|AskUserQuestion"
     for hook in entries[0]["hooks"]:
         assert hook["type"] == "command"

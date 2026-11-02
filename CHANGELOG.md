@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `pb gate eval` with the gate policy (D4, D13): `hooks/gate.mjs` records `permission_mode`, or Solo's `PAIRINGBUDDY_GATE_POLICY=auto`, into the ledger when it changes, `continue` gates pass under `auto` with `source: auto`, and every other mode and each always-stop condition asks with the `PB gate: <name>` question. `hooks/tap.mjs` records the human's answer, a second eval with no answer prints the `!` command, stage order refuses a gate without an approval, and an `AskUserQuestion` carrying its own answers is denied. Rules live in `shared-node/gates.mjs`
 - T0 platform probes in `tests/probes/`: a re-runnable harness, fixture plugin and captured hook payload fixtures, with results recorded in `docs/spikes/workflow-platform-spike.md`
 - Runbooks and fixtures for the T0 human probes in `tests/probes/human/`
 - Workflow bundler `scripts/build-workflows.mjs`: bundles stage modules from `workflows-src/` into `workflows/`, with a `--check` mode that fails on drift between committed output and source
@@ -16,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Run ledger with stage keys and workflow labels, and the `pb run open` command to open a run
 - Tap hook `hooks/tap.mjs`: captures agent returns into run state, and does nothing outside a run
 - Added the `apply-config-change` agent and the direct `code-config` workflow stage (`workflows-src/stages/code-config.mjs`, built to `workflows/code-config.js`). The bundler inlines shared-node modules via `// pb-inline-module PATH`.
+- Gate hook `hooks/gate.mjs` with the stage graph `contracts/stages.json`: during a run it enforces stage order, one active stage, `attempt`, `pluginRoot` and the built bundle, and denies a main-context `Agent` call for a pipeline agent. A stage must be called as `pairingbuddy:<stage>`, a stage with no built bundle or a `scriptPath` the hook cannot read is denied, and an active stage with no recorded `runId` can be restarted at the same attempt once its 120-second start lease, counted from the new ledger field `stage.startedAt`, has expired
+- Gate hook fails closed: during a run it denies `Write`, `Edit` and `NotebookEdit` on `.pairingbuddy/run/**`, `test-config.json` and `git-config.json`, denies plan checkbox changes, and denies on any hook error and on platform drift in the payload. It finds run state by walking up from the cwd and the target path, with no git call, and its rules moved to `shared-node/gate-rules.mjs`. An empty `.pairingbuddy/run/` no longer stops that walk, and `hooks/tap.mjs` now uses the same `shared-node/run-root.mjs` walk instead of `git rev-parse`, so a git repo nested inside a run reaches the run
+- CLI verb table `shared-node/verbs.mjs`, used by `cli/pb.mjs` and the gate. The gate now covers `Bash`: during a run it denies `pb human` in any command text, denies a verb from the wrong caller class, and auto-allows the runner's exact CLI command
+- `pb human approve <gate>` and `pb human accept`, reachable only by a human `!`. `approve` passes the due or pending gate with `source: human-cli`, and refuses a ledger with a SHA mismatch, pointing to `accept`. `accept` re-signs a hand-edited ledger that is otherwise well-formed and records it in the new optional ledger field `acceptances`
+- Run binding: the gate claims `ledger.owner` for the first main-context session it sees in a run, and writes a session pointer under `<os.tmpdir()>/pairingbuddy-sessions/`. `gate.mjs` and `tap.mjs` read it when the walk from the cwd finds nothing, so every rule holds after `cd /tmp`. The printed `!` commands start with `cd <run root> &&`
+- Gate answers take effect: `redo` clears the gate record and the stage's done state so the stage restarts at the next attempt, `stop` sets `ledger.stop`, and `pb human approve` also passes a gate answered either way, clearing the stop
+
+### Changed
+
+- A gate question must equal the question `pb gate eval` emitted, alone in its call, at PreToolUse and in the tap. Plan checkboxes compare by task title. `pb gate eval` through the gate denies when the policy cannot be recorded. A SHA mismatch names the `!... human accept` command from the CLI and from hook denies. During a run, `Write`, `Edit` and `NotebookEdit` are denied on `.claude/settings.json` and `.claude/settings.local.json`, and any `pb` or `pb.mjs` text with a shell expansion or glob after the name, an `xargs` feeding `pb` or `pb.mjs`, or another letter case of `pb.mjs`, is denied. A lock file with a future mtime counts as stale
 
 ## [0.7.0] - 2026-07-31
 
