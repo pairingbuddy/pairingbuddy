@@ -5,7 +5,8 @@
 // Output contract: a commit prints {ok, step, key, committed: true, sha, message, paths, hookRetried}, and no change
 // prints {ok, step, key, committed: false}. Both exit 0. A refusal exits 1 and commits nothing, except that an attempt
 // ending during the commit itself leaves that commit listed in ledger.commits and no evidence. A stop exits 1 and sets
-// ledger.stop. Bad arguments exit 2.
+// ledger.stop. Bad arguments exit 2. The config step takes no change only from a return with an empty list and a
+// non-empty ambiguity, and stops on any other return that changed nothing. The docs step takes no change as it is.
 import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -296,11 +297,12 @@ describe("only listed paths are staged", IN_PARALLEL, () => {
     assert.deepEqual(repo.committed(), ["--all"]);
   });
 
-  test("a listed path that did not change is skipped beside one that did", () => {
-    const repo = changedRepo();
-    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: ["a.txt", "b.txt", "never-existed.txt"] }));
+  test("a docs path that did not change is skipped beside one that did", () => {
+    const repo = docsRepo();
+    repo.write("a.txt", "changed\n");
+    writeArtifact(repo, DOCS_KEY, docsArtifact({ files_changed: ["a.txt", "b.txt", "never-existed.txt"] }));
 
-    const result = checkpoint(repo);
+    const result = checkpoint(repo, docsArgs);
 
     assert.deepEqual(repo.committed(), ["a.txt"]);
     assert.deepEqual(result.paths, ["a.txt"]);
@@ -329,10 +331,15 @@ describe("only listed paths are staged", IN_PARALLEL, () => {
   });
 });
 
-describe("no change makes no commit", IN_PARALLEL, () => {
-  test("listed paths that did not change commit nothing and run no tests", () => {
-    const repo = makeRepo();
-    writeArtifact(repo, CONFIG_KEY, configArtifact());
+const OPEN_QUESTION = "Which file did the task mean?";
+const docsRepo = (over = {}) => makeRepo({ stage: DOCS_STAGE, ...over });
+const docsArgs = ["--step", "docs", "--from", DOCS_KEY];
+const docsArtifact = (over = {}) => ({ pb_key: DOCS_KEY, ambiguity: "", commit_subject: "note a", files_changed: ["a.txt"], ...over });
+
+describe("the config step must prove a no-change", IN_PARALLEL, () => {
+  test("an empty list with an ambiguity commits nothing and runs no tests", () => {
+    const repo = changedRepo();
+    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: [], ambiguity: OPEN_QUESTION }));
     const seed = repo.head();
 
     const result = checkpoint(repo);
@@ -341,15 +348,85 @@ describe("no change makes no commit", IN_PARALLEL, () => {
     assert.equal(repo.head(), seed);
     assert.deepEqual(repo.ledger().commits, []);
     assert.equal(repo.testRuns(), 0);
+    assert.equal(repo.ledger().stop, null);
+    assert.deepEqual(repo.ledger().checkpoints.map(({ committed }) => committed), [false]);
   });
 
-  test("an empty list commits nothing", () => {
+  const STOPS = [
+    ["a listed file that did not change", configArtifact(), /a\.txt/],
+    ["a listed file that did not change, with an ambiguity", configArtifact({ ambiguity: OPEN_QUESTION }), /a\.txt/],
+    ["a listed file that never existed", configArtifact({ files_changed: ["never-existed.txt"] }), /never-existed\.txt/],
+    ["an empty list with no ambiguity", configArtifact({ files_changed: [] }), /ambiguity/],
+    ["an empty list with a blank ambiguity", configArtifact({ files_changed: [], ambiguity: "  \n" }), /ambiguity/],
+    ["an empty list with a non-string ambiguity", configArtifact({ files_changed: [], ambiguity: true }), /ambiguity/],
+    ["an empty list with no ambiguity field", { pb_key: CONFIG_KEY, commit_subject: "set a", files_changed: [] }, /ambiguity/],
+    ["a null return", "null", /return/],
+    ["a return that is not JSON", "{nope", /return/],
+  ];
+
+  for (const [name, artifact, pattern] of STOPS) {
+    test(`${name} refuses and stops the run`, () => {
+      const repo = makeRepo();
+      writeArtifact(repo, CONFIG_KEY, artifact);
+
+      assertStops(repo, pattern);
+      assert.deepEqual(repo.ledger().checkpoints ?? [], [], "no evidence is recorded");
+      assert.equal(repo.testRuns(), 0, "a stop here runs no tests");
+    });
+  }
+
+  test("no return at all refuses and stops the run", () => {
+    const repo = makeRepo();
+
+    assertStops(repo, /return/);
+  });
+
+  test("a return listing a changed file and an unchanged one stops, and commits neither", () => {
     const repo = changedRepo();
-    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: [] }));
+    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: ["a.txt", "b.txt"] }));
+
+    assertStops(repo, /b\.txt/);
+    assert.equal(repo.staged(), "");
+  });
+
+  test("the stop tells the runner's reader the way out", () => {
+    const repo = makeRepo();
+    writeArtifact(repo, CONFIG_KEY, configArtifact());
+
+    assert.match(pb(repo, configArgs()).stderr, /pb stage fail/);
+  });
+
+  test("a stop raised by a key whose attempt is over does not reach the ledger", () => {
+    const repo = makeRepo({ ledger: { stage: { name: CONFIG_STAGE, status: "active", runId: "wf_1", attempt: ATTEMPT + 1, startedAt: null } } });
+    writeArtifact(repo, CONFIG_KEY, configArtifact());
+
+    assertRefuses(repo, /attempt/);
+  });
+});
+
+describe("no change makes no commit", IN_PARALLEL, () => {
+  test("a docs step listing paths that did not change commits nothing and runs no tests", () => {
+    const repo = docsRepo();
+    writeArtifact(repo, DOCS_KEY, docsArtifact());
     const seed = repo.head();
 
-    assert.equal(checkpoint(repo).committed, false);
+    const result = checkpoint(repo, docsArgs);
+
+    assert.equal(result.committed, false);
     assert.equal(repo.head(), seed);
+    assert.deepEqual(repo.ledger().commits, []);
+    assert.equal(repo.ledger().stop, null);
+    assert.equal(repo.testRuns(), 0);
+  });
+
+  test("a docs step with an empty list and no ambiguity commits nothing", () => {
+    const repo = docsRepo();
+    writeArtifact(repo, DOCS_KEY, docsArtifact({ files_changed: [] }));
+    const seed = repo.head();
+
+    assert.equal(checkpoint(repo, docsArgs).committed, false);
+    assert.equal(repo.head(), seed);
+    assert.equal(repo.ledger().stop, null);
   });
 
   test("a redo of a committed step is a no-change", () => {
@@ -364,7 +441,7 @@ describe("no change makes no commit", IN_PARALLEL, () => {
 
   test("the unchanged artifact need not have a usable subject when it asks for nothing", () => {
     const repo = makeRepo();
-    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: [], commit_subject: "" }));
+    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: [], commit_subject: "", ambiguity: OPEN_QUESTION }));
 
     assert.equal(checkpoint(repo).committed, false);
   });
@@ -551,15 +628,15 @@ describe("refused keys", IN_PARALLEL, () => {
     assertRefuses(repo, /role|step/, configArgs(other));
   });
 
-  test("a key with no artifact is refused", () => {
-    assertRefuses(makeRepo(), /artifact/);
+  test("a docs key with no artifact is refused", () => {
+    assertRefuses(docsRepo(), /artifact/, docsArgs);
   });
 
-  test("an artifact that is not JSON is refused", () => {
-    const repo = changedRepo();
-    writeArtifact(repo, CONFIG_KEY, "{nope");
+  test("a docs artifact that is not JSON is refused", () => {
+    const repo = docsRepo();
+    writeArtifact(repo, DOCS_KEY, "{nope");
 
-    assertRefuses(repo, /artifact/);
+    assertRefuses(repo, /artifact/, docsArgs);
   });
 
   test("an artifact that names another key is refused", () => {

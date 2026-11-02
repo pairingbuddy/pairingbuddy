@@ -18,7 +18,7 @@ import { loadStages, pipelineAgents, validateStages } from "../../shared-node/st
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CLI = join(ROOT, "cli", "pb.mjs");
-const GATE = join(ROOT, "hooks", "gate.mjs");
+const GATE = join(ROOT, "hooks", "gate-boot.mjs");
 const TAP = join(ROOT, "hooks", "tap.mjs");
 const CONFIG = "code-config";
 const NET = "code-safety-net";
@@ -365,15 +365,50 @@ describe("stage finish", IN_PARALLEL, () => {
     assert.deepEqual([report.stage, report.attempt, report.runId], [CONFIG, ATTEMPT, "wf_1"]);
   });
 
-  test("a checkpoint with no change is evidence too", () => {
+  test("a config checkpoint with no change is evidence when the return says why", () => {
     const repo = makeRepo();
-    writeReturn(repo, CONFIG_KEY);
+    writeReturn(repo, CONFIG_KEY, { files_changed: [], ambiguity: "Which file did the task mean?" });
     assert.equal(ok(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY).committed, false);
 
     ok(repo, "stage", "finish");
 
     assert.deepEqual(repo.report().ran.checkpoints.map(({ committed }) => committed), [false]);
+    assert.equal(repo.ledger().stage.status, "done");
   });
+
+  test("a docs checkpoint with no change is evidence as it stands", () => {
+    const repo = makeRepo({ stage: activeStage(NET), ledger: { stages: [{ name: CONFIG, status: "done", attempt: 1 }], tests: { full: fullRun() } } });
+    writeReturn(repo, DOCS_KEY, { files_changed: [] });
+    assert.equal(ok(repo, "checkpoint", "--step", "docs", "--from", DOCS_KEY).committed, false);
+
+    ok(repo, "stage", "finish");
+
+    assert.equal(repo.ledger().stage.status, "done");
+  });
+
+  for (const [name, arrange] of [
+    ["a return listing a file the refused edit never changed", (repo) => writeReturn(repo, CONFIG_KEY)],
+    ["a return saying nothing about its empty list", (repo) => writeReturn(repo, CONFIG_KEY, { files_changed: [] })],
+    ["no return at all", () => {}],
+  ]) {
+    test(`${name} leaves code-config short of done until stage fail clears it`, () => {
+      const repo = makeRepo();
+      arrange(repo);
+
+      const refused = pb(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY);
+
+      assert.equal(refused.code, 1, refused.stdout);
+      assert.notEqual(repo.ledger().stop, null, "the run stopped");
+      assertRefused(pb(repo, "stage", "finish"), /stopped/);
+      assert.equal(repo.ledger().stage.status, "active");
+      assert.deepEqual(repo.ledger().stages.filter(({ status }) => status === "done"), []);
+
+      ok(repo, "stage", "fail");
+
+      assert.equal(repo.ledger().stop, null);
+      assert.equal(repo.ledger().stage.status, "failed");
+    });
+  }
 
   test("takes the stage from the ledger, so it takes no argument", () => {
     for (const args of [["--stage", NET], [CONFIG], ["--attempt", "1"]]) {
@@ -746,7 +781,7 @@ function restartAtTwo(repo, plugin, stage, role) {
   assert.equal(startStage(repo, plugin, stage, 2).kind, "none");
   recordRun(repo, stage, 2, "wf_2");
   const pbKey = key(stage, role, 2);
-  deliverReturn(repo, pbKey, { commit_subject: "", files_changed: [] });
+  deliverReturn(repo, pbKey, { commit_subject: "", files_changed: [], ambiguity: stage === CONFIG ? "Nothing is left to do at this attempt." : "" });
   return pbKey;
 }
 
@@ -857,7 +892,7 @@ describe("a return counts only from the agent its key names", IN_PARALLEL, () =>
   test("the named agent's return is captured and carries the stage to its finish", () => {
     const repo = makeRepo();
 
-    deliverReturn(repo, CONFIG_KEY, { commit_subject: "", files_changed: [] });
+    deliverReturn(repo, CONFIG_KEY, { commit_subject: "", files_changed: [], ambiguity: "Which file did the task mean?" });
     ok(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY);
 
     ok(repo, "stage", "finish");

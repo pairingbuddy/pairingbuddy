@@ -11,6 +11,7 @@ import { writeLedger } from "../../shared-node/ledger.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const GATE = join(ROOT, "hooks", "gate.mjs");
+const BOOT = join(ROOT, "hooks", "gate-boot.mjs");
 const CLI = join(ROOT, "cli", "pb.mjs");
 const VERBS_MODULE = join(ROOT, "shared-node", "verbs.mjs");
 const PAYLOADS = join(ROOT, "tests", "probes", "fixtures", "payloads");
@@ -96,7 +97,7 @@ function bashCall(command, { agentType, cwd = RUN_REPO, session, toolInput = { c
   return { ...base, ...(session && { session_id: session }), cwd, permission_mode: "default", tool_name: "Bash", tool_input: toolInput };
 }
 
-function runGate(payload, { gate = GATE, pluginRoot = ROOT } = {}) {
+function runGate(payload, { gate = BOOT, pluginRoot = ROOT } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [gate], {
       cwd: payload.cwd,
@@ -415,6 +416,21 @@ const DISGUISED = [
   ["a glob on a bare pb", `pb hum?n approve ${GATE_ARG}`],
   ["a mention with an expansion", "echo pb.mjs $(whoami)"],
   ["a mention in a grep", "grep -n pb.mjs $FILE"],
+  ["a bare pb after a wrapper", "timeout 5 pb hum?n approve"],
+  ["a bare pb after sudo", "sudo pb $(echo human) approve"],
+  ["a bare pb after an assignment", "V=1 pb $V"],
+  ["a bare pb after a keyword", "if pb $V; then :; fi"],
+  ["a bare pb in a compound", "true && pb $V"],
+  ["a bare pb in a subshell", "(pb $V)"],
+  ["a bare pb by path", "/opt/bin/pb $V"],
+  ["a bare pb inside sh -c", `sh -c 'pb $(echo human) approve'`],
+  ["a bare pb inside eval", `eval 'pb $V'`],
+  ["a bare pb in a substitution", "echo $(pb $V)"],
+  ["a bare pb in backticks", "echo `pb $V`"],
+  ["pb.mjs under a wrapper no list knows", "caffeinate node cli/pb.mjs $(echo human) approve"],
+  ["pb.mjs under a wrapper option no list knows", "sudo -u me node cli/pb.mjs $V"],
+  ["a quoted pb.mjs under a wrapper no list knows", `caffeinate node "cli/pb.mjs" $V`],
+  ["pb.mjs inside find -exec", `find . -exec node cli/pb.mjs {} +`],
 ];
 
 describe("pb takes literal words", IN_PARALLEL, () => {
@@ -446,6 +462,20 @@ const LITERAL_COMMANDS = [
   "cat docs/pb/notes.md $FILE",
   "node tools/pbx.mjs $(whoami)",
   "echo $PB",
+  `find .pairingbuddy -type f | head; for f in $(find ...); do echo "## $f"; cat "$f"; done`,
+  `find .pairingbuddy -type f | head; for f in $(find .pairingbuddy -type f); do echo "## $f"; cat "$f"; done`,
+  `for f in pb $(find .pairingbuddy -type f); do echo "## $f"; cat "$f"; done`,
+  "find .pairingbuddy -name pb -type f -exec cat {} +",
+  "grep -rIl pb .pairingbuddy/*",
+  `grep -rIl "pb " . --include=*.mjs`,
+  `grep -rIl 'pb stage fail' .pairingbuddy/*`,
+  `grep -rIl "pb.mjs" .pairingbuddy/*`,
+  `grep -rIl 'pb\\.mjs' .pairingbuddy/*`,
+  "ls pb $HOME",
+  "cat /opt/pb $FILE",
+  "echo pb $HOME",
+  `echo "pb.mjs $HOME"`,
+  `node "$PLUGIN/cli/pb.mjs" status`,
 ];
 
 test("the deny for a rebuilt word states the rule", async () => {
@@ -645,9 +675,10 @@ describe("what counts as a run", IN_PARALLEL, () => {
   test("outside a run Bash loads nothing beyond the wrapper, which keeps latency near 50 ms", async () => {
     const plugin = makeDir("verbs-plugin-");
     mkdirSync(join(plugin, "hooks"));
+    copyFileSync(BOOT, join(plugin, "hooks", "gate-boot.mjs"));
     copyFileSync(GATE, join(plugin, "hooks", "gate.mjs"));
 
-    const result = await runGate(bashCall("uv run pytest", { cwd: makeRepo(), session: NEVER_IN_A_RUN }), { gate: join(plugin, "hooks", "gate.mjs") });
+    const result = await runGate(bashCall("uv run pytest", { cwd: makeRepo(), session: NEVER_IN_A_RUN }), { gate: join(plugin, "hooks", "gate-boot.mjs") });
 
     assertSilent(result);
   });
@@ -672,7 +703,7 @@ describe("a Bash call with no usable command fails closed during a run", IN_PARA
 test("the gate's PreToolUse matcher covers Bash", () => {
   const { hooks } = JSON.parse(readFileSync(join(ROOT, "hooks", "hooks.json"), "utf8"));
 
-  const entry = hooks.PreToolUse.find(({ hooks: list }) => list.some(({ command }) => command.includes("hooks/gate.mjs")));
+  const entry = hooks.PreToolUse.find(({ hooks: list }) => list.some(({ command }) => command.includes("hooks/gate-boot.mjs")));
 
   assert.ok(new RegExp(`^(?:${entry.matcher})$`).test("Bash"), `matcher ${entry.matcher} must cover Bash`);
 });

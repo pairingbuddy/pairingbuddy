@@ -217,7 +217,7 @@ function argsDenial(called, attempt, { args }) {
 function activeDenial(stage, ledger) {
   const { name, attempt } = ledger.stage;
   const called = workflowName(stage);
-  const wait = `Stage ${name} is active at attempt ${attempt}. Wait for it to finish before starting ${called}.`;
+  const wait = `Stage ${name} is active at attempt ${attempt}. Wait for it to finish before starting ${called}. A stranded stage is cleared by the human running pb stage fail.`;
   if (!isStageUnstarted(ledger)) return wait;
   const seconds = startLeaseSecondsLeft(ledger.stage, Date.now());
   if (seconds > 0) return `${wait} It has no recorded run yet: ${seconds} seconds remain on its start lease.`;
