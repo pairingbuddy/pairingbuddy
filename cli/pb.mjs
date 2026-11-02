@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { KINDS, LEDGER_VERSION, writeLedger } from "../shared-node/ledger.mjs";
+import { VERB_CLASSES, matchVerb } from "../shared-node/verbs.mjs";
 
 export { KINDS };
 
@@ -86,13 +87,15 @@ function runOpen(args) {
   return { ok: true, kind, branch, runDir: dir };
 }
 
-const VERBS = { "run open": runOpen };
+export const VERBS = { "run open": runOpen };
 
 function main(argv) {
-  const key = `${argv[0] ?? ""} ${argv[1] ?? ""}`.trim();
-  const verb = Object.hasOwn(VERBS, key) ? VERBS[key] : undefined;
-  if (!verb) throw new UsageError(`unknown verb: ${argv.slice(0, 2).join(" ") || "(none)"}. Known: ${Object.keys(VERBS).join(", ")}`);
-  console.log(JSON.stringify(verb(argv.slice(2))));
+  const name = matchVerb(argv);
+  if (!Object.hasOwn(VERBS, name)) {
+    const known = Object.keys(VERBS).filter((verb) => !VERB_CLASSES.human.includes(verb));
+    throw new UsageError(`unknown verb: ${argv.slice(0, 2).join(" ") || "(none)"}. Known: ${known.join(", ")}`);
+  }
+  console.log(JSON.stringify(VERBS[name](argv.slice(name.split(" ").length))));
 }
 
 function isEntryPoint() {

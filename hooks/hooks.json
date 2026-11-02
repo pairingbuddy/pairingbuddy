@@ -26,7 +26,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Workflow|Agent|Write|Edit|NotebookEdit",
+        "matcher": "Workflow|Agent|Write|Edit|NotebookEdit|Bash",
         "hooks": [
           {
             "type": "command",

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Gate: PreToolUse enforcement during a run. With no run state it allows everything silently.
-// An allow prints nothing; a deny exits 0 with the JSON form on stdout. Any error with run state denies.
+// An allow prints nothing, unless it is the runner's exact command; a decision exits 0 with the JSON form on stdout.
+// Any error with run state denies.
 // This wrapper imports only built-ins and loads everything else dynamically, so that a failed import can
 // still deny, and so that a call outside a run costs little more than Node's startup.
 import { existsSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
@@ -94,8 +95,8 @@ function targetPaths(payload, cwd) {
   return [...new Set([canonicalPath(followed), canonicalPath(resolve(cwd, path))])];
 }
 
-function deny(reason) {
-  const hookSpecificOutput = { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason };
+function decide(permissionDecision, permissionDecisionReason) {
+  const hookSpecificOutput = { hookEventName: "PreToolUse", permissionDecision, permissionDecisionReason };
   process.stdout.write(JSON.stringify({ hookSpecificOutput }));
 }
 
@@ -123,8 +124,9 @@ try {
   if (runRoots.size > 0) {
     if (importFailure !== null) throw importFailure;
     const { checkCall } = await import("../shared-node/gate-rules.mjs");
-    checkCall({ runRoots: [...runRoots], payload, targets, canonicalPath });
+    const allowReason = checkCall({ runRoots: [...runRoots], payload, targets, canonicalPath });
+    if (allowReason !== null) decide("allow", allowReason);
   }
 } catch (e) {
-  if (runRoots.size > 0) deny(e.gateDenial ? e.message : `Gate error during a run, so the call is denied: ${e?.message ?? e}`);
+  if (runRoots.size > 0) decide("deny", e.gateDenial ? e.message : `Gate error during a run, so the call is denied: ${e?.message ?? e}`);
 }

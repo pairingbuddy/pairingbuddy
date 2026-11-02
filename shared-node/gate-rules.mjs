@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 
 import { readLedger, updateLedger } from "./ledger.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, pipelineAgents, startLeaseSecondsLeft } from "./stages.mjs";
+import { pbInvocations } from "./shell-calls.mjs";
+import { VERB_CLASSES, classOf, matchVerb } from "./verbs.mjs";
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 const PREFIX = "pairingbuddy:";
@@ -15,6 +17,12 @@ const EXPECTED_FIELDS = ["session_id", "cwd", "tool_name", "permission_mode"];
 const AGENT_PAIR = ["agent_id", "agent_type"];
 const PROTECTED_CONFIGS = ["test-config.json", "git-config.json"];
 const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\](.*)$/gm;
+const RUNNER_AGENT = `${PREFIX}runner`;
+const RUNNER_COMMANDS = [...VERB_CLASSES.runner, "test --full"].map((args) => `node ${join(PLUGIN_ROOT, "cli", "pb.mjs")} ${args}`);
+const AUTO_ALLOW_REASON = "Runner CLI command, auto-allowed by the Pairing Buddy gate.";
+const SHELL_QUOTING = /\\\n|\$(?=['"])|['"\\]/g;
+const PB_CALL = /(?<![\w.-])pb(?:\.mjs)?(?=\s+([\w.-]+)(?:\s+([\w.-]+))?)/g;
+const VERB_OWNERS = { runner: "the runner agent", main: "the main context" };
 
 const workflowName = (stage) => `${PREFIX}${stage}`;
 const bundlePath = (stage) => join(PLUGIN_ROOT, "workflows", `${stage}.js`);
@@ -220,6 +228,35 @@ function checkAgent({ ledger, graph, payload: { agent_id: agentId, tool_input: t
   throw new Denied(agentDenial(agent, ledger, graph));
 }
 
+// ---------- Bash ----------
+
+// The words after each pb in the text, wherever it sits, a mere mention included: conservative for the pb human rule.
+// With the quoting gone a quoted word reads like a plain one. This sees only the text: a script file hides its calls.
+function pbMentions(command) {
+  return [...command.replace(SHELL_QUOTING, "").matchAll(PB_CALL)].map(([, verb, argument]) => [verb, argument].filter(Boolean));
+}
+
+const callerClass = (agentType) => {
+  if (agentType === undefined) return "main";
+  return agentType === RUNNER_AGENT ? "runner" : "subagent";
+};
+
+function checkBash({ tool_input: toolInput, agent_type: agentType }) {
+  const command = toolInput?.command;
+  if (!isFilledString(command)) throw new Denied("Bash call has no usable command.");
+  if (pbMentions(command).some(([word]) => word === "human")) {
+    throw new Denied("pb human commands are for the human alone. Ask the human to type the command, with its leading !, at the prompt: a pasted ! line reaches the model.");
+  }
+  const caller = callerClass(agentType);
+  const wrongVerb = pbInvocations(command).map(matchVerb).find((verb) => verb !== undefined && classOf(verb) !== caller);
+  if (wrongVerb !== undefined) {
+    throw new Denied(`pb ${wrongVerb} belongs to ${VERB_OWNERS[classOf(wrongVerb)]}, so this caller cannot run it.`);
+  }
+}
+
+const isRunnerCommand = ({ tool_name: tool, agent_type: agentType, tool_input: toolInput }) =>
+  tool === "Bash" && agentType === RUNNER_AGENT && RUNNER_COMMANDS.includes(toolInput.command);
+
 // ---------- entry ----------
 
 const LEDGER_CHECKS = {
@@ -231,6 +268,11 @@ const LEDGER_CHECKS = {
 
 function checkRun(root, { payload, targets, canonicalPath }) {
   assertNotProtected(root, targets);
+  // Before the ledger: a unit run has none, and a ledger problem must not take Bash away from the recovery route.
+  if (payload.tool_name === "Bash") {
+    checkBash(payload);
+    return;
+  }
   const ledgerPath = join(root, ".pairingbuddy", "run", "task", "ledger.json");
   if (!existsSync(ledgerPath)) return;
   const ledger = readLedger(ledgerPath);
@@ -240,7 +282,9 @@ function checkRun(root, { payload, targets, canonicalPath }) {
   }
 }
 
+// Returns the reason for an explicit allow, or null to add no decision.
 export function checkCall({ runRoots, payload, targets, canonicalPath }) {
   assertNoDrift(payload);
   for (const root of runRoots) checkRun(root, { payload, targets, canonicalPath });
+  return isRunnerCommand(payload) ? AUTO_ALLOW_REASON : null;
 }
