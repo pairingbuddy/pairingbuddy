@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // Forces one wedged run on demand, for the recovery drill. Only ever touches a throwaway clone it made itself, so that
 // a human can recover with the recipe in CONTRIBUTING.md without risking a real worktree.
-// The run state comes from the clone's own hooks and CLI, so a wedge is the state those really leave.
+// The session works in the clone and loads the plugin from a checkout beside it, because Claude Code treats every path
+// inside an inline --plugin-dir as sensitive, and auto mode then fails an in-repo Write with no verdict.
+// The run state comes from that checkout's own hooks and CLI, so a wedge is the state those really leave.
 // Node built-ins only.
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, sep } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { shellWord } from "../../shared-node/shell-word.mjs";
@@ -30,6 +32,8 @@ function git(cwd, ...args) {
 }
 
 // ---------- the throwaway clone ----------
+
+const pluginOf = (clone) => join(dirname(clone), "plugin");
 
 function readMarker(clone) {
   try {
@@ -58,13 +62,15 @@ function assertThrowaway(path) {
 
 // With no remote, nothing the drill does can reach the repo it came from.
 function makeClone() {
-  const parent = realpathSync(tmpdir());
-  if (isWithin(parent, SOURCE)) throw new Refused(`refusing to make a clone at ${parent}: it is inside the repo this script belongs to`);
-  const clone = mkdtempSync(join(parent, "pb-drill-"));
+  const temp = realpathSync(tmpdir());
+  if (isWithin(temp, SOURCE)) throw new Refused(`refusing to make a clone at ${temp}: it is inside the repo this script belongs to`);
+  const parent = mkdtempSync(join(temp, "pb-drill-"));
+  const clone = join(parent, "repo");
   git(parent, "clone", "--quiet", "--no-hardlinks", SOURCE, clone);
   git(clone, "remote", "remove", "origin");
   git(clone, "checkout", "--quiet", "-b", "drill");
   writeFileSync(join(clone, MARKER), clone);
+  git(clone, "worktree", "add", "--quiet", "--detach", pluginOf(clone));
   return clone;
 }
 
@@ -72,6 +78,8 @@ function resetClone(path) {
   const clone = assertThrowaway(path);
   git(clone, "reset", "--quiet", "--hard");
   git(clone, "clean", "-fdxq");
+  git(pluginOf(clone), "reset", "--quiet", "--hard");
+  git(pluginOf(clone), "clean", "-fdxq");
   return clone;
 }
 
@@ -81,7 +89,7 @@ const ledgerPathOf = (clone) => join(clone, ".pairingbuddy", "run", "task", "led
 const sessionOf = (clone, name) => `${basename(clone)}-${name}`;
 
 function hook(clone, name, payload) {
-  const result = spawnSync("node", [join(clone, "hooks", name)], { input: JSON.stringify(payload), cwd: clone, env: { ...childEnv(), CLAUDE_PLUGIN_ROOT: clone }, encoding: "utf8" });
+  const result = spawnSync("node", [join(pluginOf(clone), "hooks", name)], { input: JSON.stringify(payload), cwd: clone, env: { ...childEnv(), CLAUDE_PLUGIN_ROOT: pluginOf(clone) }, encoding: "utf8" });
   if (result.status !== 0 || result.stdout.includes('"deny"')) throw new Error(`${name} refused the drill's setup: ${result.stdout}${result.stderr}`);
 }
 
@@ -90,7 +98,7 @@ function gateCall(clone, session, tool, toolInput) {
 }
 
 function pb(clone, ...args) {
-  const result = spawnSync("node", [join(clone, "cli", "pb.mjs"), ...args], { cwd: clone, env: childEnv(), encoding: "utf8" });
+  const result = spawnSync("node", [join(pluginOf(clone), "cli", "pb.mjs"), ...args], { cwd: clone, env: childEnv(), encoding: "utf8" });
   if (result.status !== 0) throw new Error(`pb ${args.join(" ")} failed in the drill's setup: ${result.stderr}`);
   return JSON.parse(result.stdout);
 }
@@ -105,12 +113,12 @@ function openRun(clone) {
 // As far as the tap recording a run: from here only the stage itself would finish it.
 function startStage(clone) {
   openRun(clone);
-  const toolInput = { name: `pairingbuddy:${STAGE}`, args: { pluginRoot: clone, attempt: 1 } };
+  const toolInput = { name: `pairingbuddy:${STAGE}`, args: { pluginRoot: pluginOf(clone), attempt: 1 } };
   gateCall(clone, "first", "Workflow", toolInput);
   hook(clone, "tap.mjs", { session_id: sessionOf(clone, "first"), cwd: clone, tool_name: "Workflow", tool_input: toolInput, tool_response: { runId: "wf_drill" } });
 }
 
-const importLedger = (clone) => import(pathToFileURL(join(clone, "shared-node", "ledger.mjs")).href);
+const importLedger = (clone) => import(pathToFileURL(join(pluginOf(clone), "shared-node", "ledger.mjs")).href);
 
 // ---------- what each wedge does ----------
 
@@ -122,22 +130,22 @@ function insertBefore(path, anchor, text) {
 
 function forceGateThrow(clone) {
   startStage(clone);
-  insertBefore(join(clone, "hooks", "gate.mjs"), "  if (runRoots.size > 0) {\n", '  if (runRoots.size > 0) throw new Error("drill: forced gate throw");\n');
+  insertBefore(join(pluginOf(clone), "hooks", "gate.mjs"), "  if (runRoots.size > 0) {\n", '  if (runRoots.size > 0) throw new Error("drill: forced gate throw");\n');
 }
 
 function forceGateParse(clone) {
   startStage(clone);
-  appendFileSync(join(clone, "hooks", "gate.mjs"), SYNTAX_ERROR);
+  appendFileSync(join(pluginOf(clone), "hooks", "gate.mjs"), SYNTAX_ERROR);
 }
 
 function forceGateBootParse(clone) {
   startStage(clone);
-  appendFileSync(join(clone, "hooks", "gate-boot.mjs"), SYNTAX_ERROR);
+  appendFileSync(join(pluginOf(clone), "hooks", "gate-boot.mjs"), SYNTAX_ERROR);
 }
 
 // A ledger writer killed under the lock, as a session killed mid-write leaves it. The lock is stale after STALE_LOCK_MS.
 function killLockHolder(clone) {
-  const moduleUrl = pathToFileURL(join(clone, "shared-node", "ledger.mjs")).href;
+  const moduleUrl = pathToFileURL(join(pluginOf(clone), "shared-node", "ledger.mjs")).href;
   const hold = `import(${JSON.stringify(moduleUrl)}).then(({ updateLedger }) => updateLedger(${JSON.stringify(ledgerPathOf(clone))}, () => {
     require("node:fs").writeSync(1, "held\\n");
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
@@ -176,7 +184,7 @@ function forceShaMismatch(clone) {
 
 function forceBrokenCli(clone) {
   startStage(clone);
-  appendFileSync(join(clone, "shared-node", "run-root.mjs"), SYNTAX_ERROR);
+  appendFileSync(join(pluginOf(clone), "shared-node", "run-root.mjs"), SYNTAX_ERROR);
 }
 
 const WEDGES = {
@@ -247,21 +255,23 @@ function parseArgs(argv) {
 
 function report(clone, wedge) {
   const word = shellWord(clone);
+  const plugin = shellWord(pluginOf(clone));
   const { recipe, sees } = WEDGES[wedge];
   console.log(`Drill clone: ${clone}
+Plugin: ${pluginOf(clone)}
 Subject: ${git(clone, "rev-parse", "HEAD")} (committed code only)
 Forced wedge: ${wedge}
 What you see: ${sees}
 Recipe: CONTRIBUTING.md, "${recipe}"
 
 Start the session with:
-cd ${word} && claude --plugin-dir ${word}
+cd ${word} && claude --plugin-dir ${plugin}
 
 For the recipe's commands, in a separate terminal:
-export ROOT=${word} PLUGIN=${word}
+export ROOT=${word} PLUGIN=${plugin}
 
 Delete the clone when you are done:
-rm -rf ${word}`);
+rm -rf ${shellWord(dirname(clone))}`);
 }
 
 async function main(argv) {

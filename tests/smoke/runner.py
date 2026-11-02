@@ -103,7 +103,16 @@ def check_finished(results: list[dict], code: int, stderr: str) -> None:
         raise SmokeError(f"result error {results[-1].get('subtype')}")
 
 
+def refuse_repo_inside_plugin(repo: Path) -> None:
+    """Auto mode fails an in-repo Write with no verdict when the cwd is inside `--plugin-dir`."""
+    if repo.resolve().is_relative_to(REPO_ROOT):
+        raise SmokeError(
+            f"{repo} is inside the --plugin-dir {REPO_ROOT}: use a directory outside it"
+        )
+
+
 def spawn(repo: Path, prompt: str, budget: Budget, record: Path) -> subprocess.CompletedProcess:
+    refuse_repo_inside_plugin(repo)
     try:
         return subprocess.run(
             claude_command(prompt, round(budget.remaining, 6)),

@@ -55,17 +55,21 @@ def force(tmp_path, wedge):
     return Path(re.search(r"^Drill clone: (.+)$", result.stdout, re.M)[1])
 
 
+def plugin_of(clone):
+    return clone.parent / "plugin"
+
+
 def ledger_of(clone):
     return json.loads((clone / LEDGER).read_text())
 
 
 def hook(clone, tmp_path, name, payload):
     return subprocess.run(
-        ["node", str(clone / "hooks" / name)],
+        ["node", str(plugin_of(clone) / "hooks" / name)],
         input=json.dumps(payload),
         capture_output=True,
         text=True,
-        env=clean_env(tmp_path, CLAUDE_PLUGIN_ROOT=str(clone)),
+        env=clean_env(tmp_path, CLAUDE_PLUGIN_ROOT=str(plugin_of(clone))),
         cwd=clone,
     )
 
@@ -96,7 +100,7 @@ def bash_call(clone, tmp_path, **kwargs):
 def workflow_call(clone, tmp_path, stage, attempt, **kwargs):
     tool_input = {
         "name": f"pairingbuddy:{stage}",
-        "args": {"pluginRoot": str(clone), "attempt": attempt},
+        "args": {"pluginRoot": str(plugin_of(clone)), "attempt": attempt},
     }
     return gate_call(clone, tmp_path, "Workflow", tool_input, **kwargs)
 
@@ -114,7 +118,7 @@ def assert_allowed(result):
 
 def pb(clone, tmp_path, *args):
     return subprocess.run(
-        ["node", str(clone / "cli" / "pb.mjs"), *args],
+        ["node", str(plugin_of(clone) / "cli" / "pb.mjs"), *args],
         capture_output=True,
         text=True,
         env=clean_env(tmp_path),
@@ -138,7 +142,7 @@ def run_recipe(clone, tmp_path, text):
         ["bash", "-c", f"set -euo pipefail\n{setup}\n{text}"],
         capture_output=True,
         text=True,
-        env=clean_env(tmp_path, ROOT=str(clone), PLUGIN=str(clone)),
+        env=clean_env(tmp_path, ROOT=str(clone), PLUGIN=str(plugin_of(clone))),
         cwd=tmp_path,
     )
 
@@ -166,7 +170,8 @@ class TestScriptOutput:
 
         assert result.returncode == 0, result.stderr
         clone = re.search(r"^Drill clone: (.+)$", result.stdout, re.M)[1]
-        assert f"cd {clone} && claude --plugin-dir {clone}\n" in result.stdout
+        plugin = plugin_of(Path(clone))
+        assert f"cd {clone} && claude --plugin-dir {plugin}\n" in result.stdout
         assert f'Recipe: CONTRIBUTING.md, "{WEDGES[wedge]}"' in result.stdout
         assert (Path(clone) / ".git").is_dir()
 

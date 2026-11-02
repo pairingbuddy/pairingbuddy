@@ -8,6 +8,7 @@ from pathlib import Path
 
 JS_TEST_FILES = [
     "tests/js/code-config.test.mjs",
+    "tests/js/code-router.test.mjs",
     "tests/js/code-safety-net.test.mjs",
     "tests/js/gate-eval.test.mjs",
     "tests/js/gate.test.mjs",
@@ -55,6 +56,7 @@ def run_node_tests(files, cwd, timeout=120):
     proc = subprocess.Popen(
         command,
         cwd=cwd,
+        env={k: v for k, v in os.environ.items() if k != "PAIRINGBUDDY_SOLO"},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Migrated-types router in `skills/coding/SKILL.md` (Section 7): `/pairingbuddy:code` sends a `config_change` to the workflow stages, and every other type, plan task and Solo run stays on the old path with no run state. `pb run open` takes `taskType` from `.pairingbuddy/task-classification.json`, and refuses a type with no stage graph, a malformed file, and Solo. `commands/code.md` passes the plugin root and the human's text as data, with no `allowed-tools`
 - Recovery drill in `tests/drills/`: `force_wedge.mjs` forces each wedged run on demand, one flag per wedge, on a throwaway clone it made itself, and refuses this worktree or any other repo. `CONTRIBUTING.md` gains the recovery recipe, one section per wedge, and `tests/drills/test_wedges.py` runs each recipe's commands against its forced wedge
 - Smoke S1 in `tests/smoke/`: a sample repo and a capped `claude -p --plugin-dir` runner on a cheap model with a clean env, asserting stage order, one commit, the gate source and a refused `pb stage finish`, outside pytest and `pb test --full`. The sample-task spike is recorded in `docs/spikes/workflow-platform-spike.md`
 - `code-safety-net` stage (Section 4), lens-free for now: `update-documentation`, then the runner running `pb checkpoint --step docs`, `pb test --full` and `pb stage finish`. `code-config` now also ends with the runner, and the runner takes a list of commands. `stages.json` requires `checkpoint:docs`, which a no-change docs step satisfies

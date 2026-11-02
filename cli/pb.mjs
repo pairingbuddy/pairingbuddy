@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // pb: deterministic workflow CLI. Verbs live in the VERBS table; later tasks add more.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,13 +45,35 @@ function parseKind(args) {
   return kind;
 }
 
+function readClassification(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    if (e.code === "ENOENT") return null;
+    throw new Refusal(`${path} is not valid JSON, so no run was opened`);
+  }
+}
+
+// The old path's classify-task writes this file until T7. No file means a run opened before classification.
+// A type with no stage graph is an old-path run, and an old-path run has no run state.
+function classifiedTaskType(root) {
+  const path = join(root, ".pairingbuddy", "task-classification.json");
+  if (!existsSync(path)) return null;
+  const type = readClassification(path)?.task_type;
+  if (typeof type !== "string") throw new Refusal(`${path} has no task_type string, so no run was opened`);
+  if (!Object.hasOwn(loadStages(PLUGIN_ROOT).taskTypes, type)) throw new Refusal(`task type ${type} has no stage graph, so it stays on the old path and no run was opened`);
+  return type;
+}
+
 function runOpen(args) {
   const kind = parseKind(args);
+  if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Refusal("Solo stays on the old path until T10, so no run was opened");
   const root = toplevel();
   const branch = currentBranch(root);
   if (isProtectedBranch(branch)) throw new Refusal(`refusing to open a run on protected branch ${branch}`);
 
   const configHash = validatedConfigHash(root);
+  const taskType = kind === "code" ? classifiedTaskType(root) : null;
 
   const runRoot = join(root, ".pairingbuddy", "run");
   const dir = join(runRoot, "task");
@@ -72,7 +94,7 @@ function runOpen(args) {
   try {
     mkdirSync(join(dir, "artifacts"));
     writeLedger(join(dir, "ledger.json"), {
-      v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType: null,
+      v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType,
       owner: { sessionId: null, lastSeen: null },
       task: "", plan: { path: "", title: "" }, configHash,
       policy: { mode: "", source: "" },
