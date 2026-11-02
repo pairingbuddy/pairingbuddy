@@ -2,9 +2,11 @@
 // Session drift guardian — re-injects workflow reminder based on elapsed time.
 // Triggered by PostToolUse (timer-based) and SessionStart:compact (always inject).
 // Pass "always" as argv[2] to force injection (used after compaction).
+// With run state the reminder is reworded, and after compaction `pb status` and the next action replace it.
 
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { join } from "path";
+import { dirname, isAbsolute, join } from "path";
+import { fileURLToPath } from "url";
 
 const INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
 const SOLO_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
@@ -18,6 +20,14 @@ const REMINDER = [
   "You are not allowed to skip steps, and you MUST use the subagents.",
   "Do not waste context window here for work that should be done in those subagents.",
   "No task is too small or simple to skip the workflow. Do not rationalize efficiency, speed, or simplicity as reasons to bypass subagents.",
+  GUARDIAN_CLOSE,
+].join("\n");
+
+const RUN_REMINDER = [
+  GUARDIAN_OPEN,
+  "A Pairing Buddy run is open, and its stages do the work.",
+  "Start each stage as its workflow, and take every result from pb status, never from a workflow's reported status.",
+  "Do not do a stage's work here, and do not go past a gate or a stop.",
   GUARDIAN_CLOSE,
 ].join("\n");
 
@@ -58,16 +68,30 @@ const last = state.lastInjection ? new Date(state.lastInjection) : new Date(0);
 const intervalMs = isSoloMode ? SOLO_INTERVAL_MS : INTERVAL_MS;
 const shouldInject = forceInject || (now - last >= intervalMs);
 
+// Looked up only when something is injected, so a call between injections pays nothing. A failed lookup keeps the
+// plain reminder, because this hook must not cost a tool call.
+async function runReminder() {
+  try {
+    const cwd = typeof input.cwd === "string" && isAbsolute(input.cwd) ? input.cwd : process.cwd();
+    const { findSessionRoot } = await import("../shared-node/run-root.mjs");
+    const root = findSessionRoot(cwd, sessionId);
+    if (root === null) return REMINDER;
+    if (!forceInject) return RUN_REMINDER;
+    const { readRun, runReport } = await import("../shared-node/next-action.mjs");
+    const plugin = dirname(dirname(fileURLToPath(import.meta.url)));
+    return [GUARDIAN_OPEN, runReport(readRun(plugin, root)), GUARDIAN_CLOSE].join("\n");
+  } catch {
+    return REMINDER;
+  }
+}
+
 let injectedContent = "";
 if (shouldInject) {
   state.lastInjection = now.toISOString();
   state.trigger = forceInject ? "compact" : "timer";
 
-  if (isSoloMode) {
-    injectedContent = REMINDER + "\n" + SOLO_ADDITIONS;
-  } else {
-    injectedContent = REMINDER;
-  }
+  const reminder = await runReminder();
+  injectedContent = isSoloMode ? reminder + "\n" + SOLO_ADDITIONS : reminder;
 }
 
 // Always update tool info and write state

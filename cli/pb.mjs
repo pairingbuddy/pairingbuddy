@@ -11,7 +11,8 @@ import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, ac
 import { PlanRefused, tickPlanBox } from "../shared-node/plan-boxes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
-import { buildReport, closeStage, finishProblems, readReportOf, readReturn, returnsAt, spendTotals, writeReport } from "../shared-node/stage-run.mjs";
+import { runStatus } from "../shared-node/next-action.mjs";
+import { buildReport, closeStage, finishProblems, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, fullSuitePlans, readTestConfig, runPlan, runRecord, selectedPlans, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
@@ -65,10 +66,24 @@ function classifiedTaskType(root) {
   return type;
 }
 
+// A task that ends removes run/task and a stopped one cannot end, so a stop stands in the way of any next open. It is
+// looked for from the cwd too, because a repository nested under the run has a toplevel of its own. An unreadable
+// ledger is not read as a stop: the claim in runOpen refuses that.
+function assertNotStopped(root) {
+  let stop;
+  try {
+    ({ stop } = readLedger(join(findRunRoot(process.cwd()) ?? root, ".pairingbuddy", "run", "task", "ledger.json")));
+  } catch {
+    return;
+  }
+  if (stop !== null) throw new Refusal(`the run has stopped, so no next task can open: ${stop.reason}`);
+}
+
 function runOpen(args) {
   const kind = parseKind(args);
   if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Refusal("Solo stays on the old path until T10, so no run was opened");
   const root = toplevel();
+  assertNotStopped(root);
   const branch = currentBranch(root);
   if (isProtectedBranch(branch)) throw new Refusal(`refusing to open a run on protected branch ${branch}`);
 
@@ -427,19 +442,10 @@ function artifactCheck(args) {
   return { ok: true, key, path: file, artifact };
 }
 
-function nextStep(contract, ledger) {
-  if (isStageActive(ledger)) return null;
-  const stage = nextStage(graphFor(contract, ledger.taskType), ledger);
-  return stage === undefined ? null : { stage, attempt: nextAttempt(ledger, stage) };
-}
-
 function status(args) {
   assertNoArgs(args, "status");
   const { root, path } = runLedgerPath();
-  const ledger = readLedger(path);
-  const contract = loadStages(PLUGIN_ROOT);
-  const { stage, stop, needsHuman } = ledger;
-  return { ok: true, stage, next: nextStep(contract, ledger), stop, needsHuman, spend: spendTotals(ledger, artifactsDirOf(root), contract.maxAgents) };
+  return { ok: true, ...runStatus(loadStages(PLUGIN_ROOT), readLedger(path), artifactsDirOf(root)) };
 }
 
 function assertTaskFinished(ledger) {

@@ -21,6 +21,7 @@ JS_TEST_FILES = [
     "tests/js/pb-stage.test.mjs",
     "tests/js/pb-task-end.test.mjs",
     "tests/js/pb-test.test.mjs",
+    "tests/js/run-hooks.test.mjs",
     "tests/js/session-binding.test.mjs",
     "tests/js/tap.test.mjs",
     "tests/js/verbs.test.mjs",

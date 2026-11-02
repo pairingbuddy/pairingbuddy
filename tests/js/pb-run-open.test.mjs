@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { readLedger, validateLedger } from "../../shared-node/ledger.mjs";
+import { readLedger, validateLedger, writeLedger } from "../../shared-node/ledger.mjs";
 
 const PB = new URL("../../cli/pb.mjs", import.meta.url).pathname;
 const LEDGER_MODULE = new URL("../../shared-node/ledger.mjs", import.meta.url).href;
@@ -360,4 +360,47 @@ test("eight-concurrent-opens-give-exactly-one-winner", async (t) => {
     assert.equal(ledger.seq, 1, `round ${round}: the winner's ledger was written once and never overwritten`);
     assert.deepEqual(readdirSync(runDir(root)).sort(), ["artifacts", "ledger.json"], `round ${round}: losers left nothing behind`);
   }
+});
+
+function stopRun(root, stop = { reason: "the commit hook refused", seq: 1 }) {
+  const path = ledgerPath(root);
+  writeLedger(path, { ...readLedger(path), stop });
+}
+
+test("refuses the next task after a stop, naming the stop", (t) => {
+  const repo = makeRepo(t);
+  assert.equal(open(repo).status, 0);
+  stopRun(repo);
+  const before = readFileSync(ledgerPath(repo), "utf8");
+  assertCleanRefusal(open(repo), /the run has stopped.*the commit hook refused/);
+  assert.equal(readFileSync(ledgerPath(repo), "utf8"), before, "a refused open changes nothing");
+});
+
+test("the stop is the refusal even when the config would refuse too", (t) => {
+  const repo = makeRepo(t);
+  assert.equal(open(repo).status, 0);
+  stopRun(repo);
+  writeFileSync(join(repo, ".pairingbuddy", "test-config.json"), "{");
+  assertCleanRefusal(open(repo), /the run has stopped/);
+});
+
+test("a stop refuses from a subdirectory and from a repository nested under the run", (t) => {
+  const repo = makeRepo(t);
+  assert.equal(open(repo).status, 0);
+  stopRun(repo);
+  const sub = join(repo, "sub");
+  mkdirSync(sub);
+  assertCleanRefusal(open(sub), /the run has stopped/);
+  const nested = join(repo, "nested");
+  mkdirSync(join(nested, ".pairingbuddy"), { recursive: true });
+  git(nested, "init", "-q", "-b", "feature/y");
+  git(nested, "-c", "user.email=t@example.com", "-c", "user.name=T", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "init");
+  writeFileSync(join(nested, ".pairingbuddy", "test-config.json"), CONFIG);
+  assertCleanRefusal(open(nested), /the run has stopped/);
+});
+
+test("with no stop an open run keeps its own refusal", (t) => {
+  const repo = makeRepo(t);
+  assert.equal(open(repo).status, 0);
+  assertCleanRefusal(open(repo), /a run is already active/);
 });
