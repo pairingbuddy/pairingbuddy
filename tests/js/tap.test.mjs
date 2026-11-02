@@ -98,7 +98,7 @@ function workflow(cwd, { name = `pairingbuddy:${STAGE}`, attempt = ATTEMPT, runI
 
 function makeCommittedRepo() {
   const repo = makeRepo();
-  const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo.dir, stdio: "ignore" });
+  const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], { cwd: repo.dir, stdio: "ignore" });
   writeFileSync(join(repo.dir, "f.txt"), "x");
   git("add", "f.txt");
   git("commit", "-q", "-m", "init");

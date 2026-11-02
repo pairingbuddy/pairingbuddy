@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Workflow control-flow harness `tests/js/harness.mjs`, run through `tests/test_js_suite.py` under `uv run pytest`
 - Run ledger with stage keys and workflow labels, and the `pb run open` command to open a run
 - Tap hook `hooks/tap.mjs`: captures agent returns into run state, and does nothing outside a run
+- Added the `apply-config-change` agent and the direct `code-config` workflow stage (`workflows-src/stages/code-config.mjs`, built to `workflows/code-config.js`). The bundler inlines shared-node modules via `// pb-inline-module PATH`.
 
 ## [0.7.0] - 2026-07-31
 

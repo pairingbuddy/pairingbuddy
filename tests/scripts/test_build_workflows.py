@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from tests.scripts.bundler_helpers import (
+    BUILD_SCRIPT,
     FIXTURE_ROOT,
     REPO_ROOT,
     assert_clean_failure,
@@ -231,3 +232,251 @@ def test_build_refuses_misplaced_inline_directive(fixture_tree, tmp_path, relati
 
     assert_clean_failure(result, Path(relative_path).name)
     assert_nothing_written(out)
+
+
+MODULE_SOURCE = "export function twice(n) {\n  return n * 2;\n}\n\nexport const LIMIT = 3;\n"
+
+
+def add_module(fixture_tree, source=MODULE_SOURCE, name="mod.mjs"):
+    """Write a module under the fixture tree's shared-node/ and return its relative path."""
+    directory = fixture_tree / "shared-node"
+    directory.mkdir(exist_ok=True)
+    (directory / name).write_text(source)
+    return f"shared-node/{name}"
+
+
+def declare_modules(fixture_tree, *paths):
+    """Append one pb-inline-module directive per path to the trivial stage."""
+    stage = fixture_tree / "workflows-src" / "stages" / "trivial.mjs"
+    lines = "".join(f"\n// pb-inline-module {path}" for path in paths)
+    stage.write_text(stage.read_text() + lines + "\n")
+
+
+def test_module_directive_inlines_module_body(fixture_tree, tmp_path):
+    # test_case_id: inlines-keys-and-labels
+    out = tmp_path / "out"
+    declare_modules(fixture_tree, add_module(fixture_tree))
+
+    built = build_trivial_stage(fixture_tree, out).read_text()
+
+    assert "function twice(n) {\n  return n * 2;\n}" in built, "the module body must be inlined"
+    assert "const LIMIT = 3;" in built, "every export of the module must be inlined"
+    assert "pb-inline-module" not in built, "the directive line must be removed from the output"
+
+
+def test_module_export_keyword_is_stripped(fixture_tree, tmp_path):
+    # test_case_id: export-keyword-stripped
+    out = tmp_path / "out"
+    declare_modules(fixture_tree, add_module(fixture_tree))
+
+    built = build_trivial_stage(fixture_tree, out).read_text()
+
+    exports = re.findall(r"^export .*$", built, re.MULTILINE)
+    assert exports == [exports[0]] and exports[0].startswith("export const meta"), (
+        f"only the meta may keep export: {exports}"
+    )
+
+
+def test_real_shared_node_modules_inline_into_code_config(tmp_path):
+    # test_case_id: inlines-keys-and-labels
+    out = tmp_path / "out"
+
+    result = run_build(REPO_ROOT / "workflows-src", out, REPO_ROOT)
+
+    assert result.returncode == 0, result.stderr
+    built = (out / "code-config.js").read_text()
+    for name in ("keys.mjs", "labels.mjs"):
+        source = (REPO_ROOT / "shared-node" / name).read_text()
+        body = re.sub(r"^export ", "", source, flags=re.MULTILINE).strip()
+        assert body in built, f"{name} body must be inlined with export stripped"
+    assert len(re.findall(r"^export ", built, re.MULTILINE)) == 1, "only meta may keep export"
+
+
+def test_committed_code_config_matches_a_fresh_build():
+    # test_case_id: built-output-passes-compile-checks
+    result = run_node([BUILD_SCRIPT, "--check"])
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_build_fails_when_module_path_missing(fixture_tree, tmp_path):
+    # test_case_id: build-refuses-malformed-inline-directive
+    out = tmp_path / "out"
+    declare_modules(fixture_tree, "shared-node/absent.mjs")
+
+    result = run_build(fixture_tree / "workflows-src", out, fixture_tree)
+
+    assert_clean_failure(result, "trivial.mjs")
+    assert "shared-node/absent.mjs" in result.stderr, "the message must name the missing path"
+    assert_nothing_written(out)
+
+
+def test_build_refuses_module_inlined_twice(fixture_tree, tmp_path):
+    # test_case_id: build-refuses-malformed-inline-directive
+    out = tmp_path / "out"
+    path = add_module(fixture_tree)
+    declare_modules(fixture_tree, path, path)
+
+    result = run_build(fixture_tree / "workflows-src", out, fixture_tree)
+
+    assert_clean_failure(result, "trivial.mjs")
+    assert "more than once" in result.stderr
+    assert_nothing_written(out)
+
+
+MODULE_FAILURES = [
+    pytest.param("export function broken( {\n", id="syntax-error"),
+    pytest.param("import x from 'y';\nexport const a = 1;\n", id="import-statement"),
+    pytest.param("const a = 1;\nexport { a };\n", id="braced-export-left-behind"),
+    pytest.param("const a = 1;\nexport {a};\n", id="braced-export-no-space"),
+    pytest.param("const a = 1;\nexport\n{ a };\n", id="braced-export-split-over-lines"),
+    pytest.param("export * from './other.mjs';\n", id="star-export"),
+    pytest.param("export default 1;\n", id="default-export"),
+    pytest.param("  export const a = 1;\n", id="indented-export"),
+]
+
+
+@pytest.mark.parametrize("source", MODULE_FAILURES)
+def test_build_refuses_module_that_does_not_compile(fixture_tree, tmp_path, source):
+    # test_case_id: built-output-passes-compile-checks
+    out = tmp_path / "out"
+    declare_modules(fixture_tree, add_module(fixture_tree, source, "bad.mjs"))
+
+    result = run_build(fixture_tree / "workflows-src", out, fixture_tree)
+
+    assert_clean_failure(result, "bad.mjs")
+    assert_nothing_written(out)
+
+
+def test_braced_export_failure_says_what_is_wrong(fixture_tree, tmp_path):
+    # test_case_id: built-output-passes-compile-checks
+    out = tmp_path / "out"
+    source = "const a = 1;\nexport { a };\n"
+    declare_modules(fixture_tree, add_module(fixture_tree, source, "bad.mjs"))
+
+    result = run_build(fixture_tree / "workflows-src", out, fixture_tree)
+
+    assert_clean_failure(result, "bad.mjs")
+    assert "export" in result.stderr, "the message must name the leftover export"
+
+
+def add_shared(fixture_tree, name, source):
+    """Write one more shared source file under the fixture tree."""
+    (fixture_tree / "workflows-src" / "shared" / name).write_text(source)
+
+
+def add_to_stage(fixture_tree, source):
+    """Append source to the trivial stage body."""
+    stage = fixture_tree / "workflows-src" / "stages" / "trivial.mjs"
+    stage.write_text(stage.read_text() + "\n" + source)
+
+
+DUPLICATE_DECLARATIONS = [
+    pytest.param("function helper() {\n  return 1;\n}\n", id="function"),
+    pytest.param("async function helper() {\n  return 1;\n}\n", id="async-function"),
+    pytest.param("function* helper() {\n  yield 1;\n}\n", id="generator"),
+    pytest.param("export function helper() {\n  return 1;\n}\n", id="exported-function"),
+    pytest.param("const helper = 1;\n", id="const"),
+    pytest.param("let helper = 1;\n", id="let"),
+    pytest.param("var helper = 1;\n", id="var"),
+    pytest.param("class helper {}\n", id="class"),
+]
+
+
+@pytest.mark.parametrize("declaration", DUPLICATE_DECLARATIONS)
+def test_build_refuses_a_name_declared_by_two_modules(fixture_tree, tmp_path, declaration):
+    # test_case_id: built-output-passes-compile-checks
+    out = tmp_path / "out"
+    first = add_module(fixture_tree, "function helper() {\n  return 2;\n}\n", "first.mjs")
+    second = add_module(fixture_tree, declaration, "second.mjs")
+    declare_modules(fixture_tree, first, second)
+
+    result = run_build(fixture_tree / "workflows-src", out, fixture_tree)
+
+    assert_clean_failure(result, "first.mjs")
+    assert "second.mjs" in result.stderr, "the message must name both sources"
+    assert "helper" in result.stderr, "the message must name the duplicate"
+    assert_nothing_written(out)
+
+
+def test_build_refuses_a_module_redeclaring_a_shared_function(fixture_tree, tmp_path):
+    # test_case_id: built-output-passes-compile-checks
+    out = tmp_path / "out"
+    add_shared(fixture_tree, "zhelper.mjs", "function helper() {\n  return 1;\n}\n")
+    source = "function helper() {\n  return 2;\n}\n"
+    declare_modules(fixture_tree, add_module(fixture_tree, source))
+
+    result = run_build(fixture_tree / "workflows-src", out, fixture_tree)
+
+    assert_clean_failure(result, "zhelper.mjs")
+    assert "mod.mjs" in result.stderr, "the message must name both sources"
+    assert_nothing_written(out)
+
+
+def test_build_refuses_a_stage_redeclaring_a_module_function(fixture_tree, tmp_path):
+    # test_case_id: built-output-passes-compile-checks
+    out = tmp_path / "out"
+    source = "function helper() {\n  return 2;\n}\n"
+    declare_modules(fixture_tree, add_module(fixture_tree, source))
+    add_to_stage(fixture_tree, "function helper() {\n  return 3;\n}\n")
+
+    result = run_build(fixture_tree / "workflows-src", out, fixture_tree)
+
+    assert_clean_failure(result, "trivial.mjs")
+    assert "mod.mjs" in result.stderr, "the message must name both sources"
+    assert_nothing_written(out)
+
+
+def test_build_refuses_two_shared_files_declaring_one_function(fixture_tree, tmp_path):
+    # test_case_id: built-output-passes-compile-checks
+    out = tmp_path / "out"
+    add_shared(fixture_tree, "ahelper.mjs", "function helper() {\n  return 1;\n}\n")
+    add_shared(fixture_tree, "zhelper.mjs", "function helper() {\n  return 2;\n}\n")
+
+    result = run_build(fixture_tree / "workflows-src", out, fixture_tree)
+
+    assert_clean_failure(result, "ahelper.mjs")
+    assert "zhelper.mjs" in result.stderr, "the message must name both sources"
+    assert_nothing_written(out)
+
+
+def test_build_allows_a_nested_name_matching_a_module_function(fixture_tree, tmp_path):
+    # test_case_id: built-output-passes-compile-checks
+    out = tmp_path / "out"
+    source = "export function outer() {\n  function helper() {}\n  return helper;\n}\n"
+    other = "export function helper() {\n  return 2;\n}\n"
+    declare_modules(
+        fixture_tree, add_module(fixture_tree, source), add_module(fixture_tree, other, "b.mjs")
+    )
+
+    build_trivial_stage(fixture_tree, out)
+
+
+def test_build_refuses_dynamic_import_in_module(fixture_tree, tmp_path):
+    # test_case_id: built-output-passes-compile-checks
+    out = tmp_path / "out"
+    source = "export async function load() {\n  return import('x');\n}\n"
+    declare_modules(fixture_tree, add_module(fixture_tree, source, "dyn.mjs"))
+
+    result = run_build(fixture_tree / "workflows-src", out, fixture_tree)
+
+    assert_clean_failure(result, "dyn.mjs")
+    assert "dynamic import" in result.stderr
+    assert_nothing_written(out)
+
+
+def test_stage_without_directive_stays_golden_when_shared_node_exists(fixture_tree, tmp_path):
+    # test_case_id: existing-stage-output-unchanged
+    out = tmp_path / "out"
+    add_module(fixture_tree)
+
+    built = build_trivial_stage(fixture_tree, out)
+
+    assert built.read_bytes() == (FIXTURE_ROOT / "expected" / "trivial.js").read_bytes()
+
+
+def test_coding_skill_does_not_route_to_code_config():
+    # test_case_id: coding-skill-unchanged
+    skill = (REPO_ROOT / "skills" / "coding" / "SKILL.md").read_text()
+
+    assert "code-config" not in skill, "no task type may route to code-config yet"

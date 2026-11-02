@@ -41,6 +41,7 @@
     "./agents/brainstorm-requirements.md",
     "./agents/solidify-architecture.md",
     "./agents/decompose-tracer-bullets.md",
-    "./agents/sequence-tasks.md"
+    "./agents/sequence-tasks.md",
+    "./agents/apply-config-change.md"
   ]
 }

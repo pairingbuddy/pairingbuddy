@@ -77,16 +77,30 @@ const rejectInlineDirective = (source, path) => {
 };
 
 const sharedDir = join(src, 'shared');
-const sharedCode = listModules(sharedDir)
-  .map((name) => {
-    const path = join(sharedDir, name);
-    const source = readFileSync(path, 'utf8');
-    compile(source, path);
-    rejectDynamicImport(source, path);
-    rejectInlineDirective(source, path);
-    return source.trim();
-  })
-  .join('\n\n');
+const sharedSources = listModules(sharedDir).map((name) => {
+  const path = join(sharedDir, name);
+  const source = readFileSync(path, 'utf8');
+  compile(source, path);
+  rejectDynamicImport(source, path);
+  rejectInlineDirective(source, path);
+  return { path, source: source.trim() };
+});
+const sharedCode = sharedSources.map(({ source }) => source).join('\n\n');
+
+const TOP_LEVEL_NAME = /^(?:(?:async\s+)?function\*?\s*([\w$]+)|(?:const|let|var|class)\s+([\w$]+))/gm;
+
+// A repeated function declaration compiles and the last one silently wins, so names are compared
+// across every source that ends up in one built script.
+const rejectDuplicateNames = (sources) => {
+  const owners = new Map();
+  for (const { path, source } of sources) {
+    for (const [, functionName, otherName] of source.matchAll(TOP_LEVEL_NAME)) {
+      const name = functionName ?? otherName;
+      if (owners.has(name)) fail(`duplicate top-level name "${name}" in ${owners.get(name)} and ${path}`);
+      owners.set(name, path);
+    }
+  }
+};
 
 const META_START = 'export const meta = {';
 const META_END = '};';
@@ -116,14 +130,45 @@ const readJson = (path, file) => {
   }
 };
 
-// Replaces each "// pb-inline NAME PATH" line with a JSON constant declaration.
-const extractInlineJson = (source, file) => {
-  const declarations = [...source.matchAll(INLINE_DIRECTIVE)].map(([, name, path]) => {
+const MODULE_DIRECTIVE = /^\/\/ pb-inline-module (\S+)[ \t]*$\n?/gm;
+const NON_DECLARATION_EXPORT = /^export\s*[{*]/m;
+
+// Reads a shared-node module for inlining: "export " is stripped from line starts, so the module
+// must compile as a plain function body (no import, no remaining export statement).
+const readModule = (path, file) => {
+  const modulePath = join(root, path);
+  let source;
+  try {
+    source = readFileSync(modulePath, 'utf8');
+  } catch (error) {
+    fail(`${join(stagesDir, file)}: cannot inline module "${path}": ${error.message}`);
+  }
+  // Stripping "export " from these would leave code that can still compile, such as a bare block.
+  if (NON_DECLARATION_EXPORT.test(source)) {
+    fail(`${modulePath}: export must prefix a declaration, "export {" and "export *" cannot be inlined`);
+  }
+  const inlined = source.replace(/^export /gm, '').trim();
+  compile(inlined, modulePath);
+  rejectDynamicImport(inlined, modulePath);
+  return { path: modulePath, source: inlined };
+};
+
+// Replaces each "// pb-inline NAME PATH" line with a JSON constant declaration, and each
+// "// pb-inline-module PATH" line with the module's source (export stripped, each module once).
+const extractInlineSources = (source, file) => {
+  const seen = new Set();
+  const modules = [...source.matchAll(MODULE_DIRECTIVE)].map(([, path]) => {
+    if (seen.has(path)) fail(`${join(stagesDir, file)}: module "${path}" is inlined more than once`);
+    seen.add(path);
+    return readModule(path, file);
+  });
+  const withoutModules = source.replace(MODULE_DIRECTIVE, '');
+  const declarations = [...withoutModules.matchAll(INLINE_DIRECTIVE)].map(([, name, path]) => {
     return `const ${name} = ${readJson(path, file)};`;
   });
-  const body = source.replace(INLINE_DIRECTIVE, '').replace(/^\n+/, '');
+  const body = withoutModules.replace(INLINE_DIRECTIVE, '').replace(/^\n+/, '');
   rejectInlineDirective(body, join(stagesDir, file));
-  return { declarations, body };
+  return { declarations, modules, body };
 };
 
 const GUARD = 'if (args === undefined) return { started: false };';
@@ -134,11 +179,13 @@ const bundle = (stageSource, file) => {
     fail(`${join(stagesDir, file)}: cannot find the meta statement (must start with "${META_START}" and end with "${META_END}")`);
   }
   const meta = stageSource.slice(0, metaEnd);
-  const { declarations, body } = extractInlineJson(stageSource.slice(metaEnd), file);
+  const { declarations, modules, body } = extractInlineSources(stageSource.slice(metaEnd), file);
   const path = join(stagesDir, file);
   compile(body, path);
   rejectDynamicImport(body, path);
-  const bundled = [meta, GUARD, declarations.join('\n'), sharedCode, body].filter(Boolean).join('\n\n');
+  rejectDuplicateNames([...sharedSources, ...modules, { path, source: [...declarations, body].join('\n') }]);
+  const moduleCode = modules.map(({ source }) => source).join('\n\n');
+  const bundled = [meta, GUARD, declarations.join('\n'), sharedCode, moduleCode, body].filter(Boolean).join('\n\n');
   compile(bundled.replace(META_START, 'const meta = {'), path);
   return bundled;
 };
