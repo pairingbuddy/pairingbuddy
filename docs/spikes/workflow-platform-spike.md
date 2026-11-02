@@ -174,3 +174,158 @@ the session's total, with one first S1 and two cap checks, was about $0.215.
 - 16 of the 30 stage starts went through the Skill tool first and 14 went straight to Workflow. Both
   reached the same gate. No run called a pipeline agent directly, the failure seen in Task 22.
 - Not covered: `/pairingbuddy:code` routing, which S1 reaches in a later task.
+
+## T1c lens spend spike
+
+Question: what does one lens plus one refuter cost on a real diff, and what does that imply across
+the D8 lens map? Claude Code 2.1.316, 2026-11-02. The lens map names no model, so every run used the
+session default, `claude-opus-5-5`, and `costBasis` was `list`. The script was throwaway and is not in
+the repo. Total spend was $4.21: $4.20 across the 8 agents below and under $0.01 on 3 Haiku flag
+checks. The caps summed to $7.89, and no run reached its cap.
+
+**Headline: on Opus 5.5 a lens costs $0.57 to $1.07 and a refuter $0.23 to $0.38. A lens took 69 to
+175 s, a refuter 30 to 37 s. A new_feature task projects to $6 to $37 of review spend, and most of the
+high figure is fix-round re-audits and per-cycle TDD lenses, not refuters.**
+
+### What was measured
+
+Each run was one `claude -p` process with stdin from `/dev/null`, `--tools Read,Grep,Glob`,
+`--json-schema`, `--setting-sources project,local`, `--strict-mcp-config`,
+`--no-session-persistence` and `--max-budget-usd`. Runs went one at a time, each lens followed by one
+refuter on its top finding. They ran on `git archive` copies of the diff's head commit, so files
+matched the diff and nothing ran in the repo. Each brief pointed at a `subject.diff` on disk, as
+`pb snapshot` will, and opened with an authority block.
+
+| Diff | Source | Size |
+|---|---|---|
+| big | `git diff feature/deterministic-workflows...t1a-stage-runs` | 55 files, 5,832 lines, 231 KB |
+| small | commit `8fa501d`, the tap hook | 8 files, 690 lines, 28 KB |
+
+Two lenses were used: `code`, and `corpus` (misalignment) with CLAUDE.md, ARCHITECTURE.md,
+CONTRIBUTING.md and `contracts/agent-config.yaml` as its corpus. Lenses were capped at 5 findings.
+
+| Run | Input | Output | of it thinking | Cache write | Cache read | Cost $ | Wall s | Tool calls | Result |
+|---|---|---|---|---|---|---|---|---|---|
+| small code lens | 10 | 6,706 | 3,551 | 51,489 | 99,541 | 0.5660 | 69.2 | 18 | 1 finding, as text |
+| small code refuter | 8 | 3,193 | 390 | 20,143 | 33,647 | 0.2318 | 30.1 | 11 | stands |
+| small corpus lens | 12 | 7,330 | 2,171 | 53,713 | 143,185 | 0.6050 | 69.4 | 24 | 3 findings |
+| small corpus refuter | 8 | 3,416 | 892 | 37,339 | 73,216 | 0.3817 | 35.0 | 11 | refuted |
+| big code lens | 12 | 16,538 | 10,449 | 87,685 | 212,339 | 1.0748 | 175.3 | 27 | 5 findings |
+| big code refuter | 10 | 3,628 | 1,176 | 21,081 | 48,491 | 0.2509 | 34.9 | 13 | stands |
+| big corpus lens | 12 | 8,893 | 2,865 | 74,118 | 229,204 | 0.8167 | 89.8 | 20 | 5 findings |
+| big corpus refuter | 8 | 4,064 | 880 | 23,204 | 43,548 | 0.2757 | 36.9 | 17 | stands |
+| **Total, 8 agents** | 80 | 53,768 | 22,374 | 368,772 | 883,171 | 4.2025 | 540.6 | | |
+
+- Cost split: cache writes 70%, output 26%, cache reads 4%. A least-squares fit over the 8 runs gives
+  $20, $8 and $0.20 per MTok with zero residual. That is $20 output and $0.20 cache read as published,
+  and every cache write was the 1-hour kind, at twice the $4 input rate.
+- An 8x larger diff cost a lens 1.4x to 1.9x. Lenses read what they need, with paged reads of the
+  diff, so cost does not follow diff size. Refuter cost barely moved with diff size.
+- `small code lens` was the first run. It used `--agent`, which drops StructuredOutput, so it returned
+  JSON as text. Its token figures stand; its refuter took the finding parsed from that text. The other
+  7 runs used plain `--tools`, which keeps StructuredOutput. A `--agent` session's lack of
+  StructuredOutput says nothing about workflow `agent()` calls, where P8 showed it present.
+- Read-only held: no Write, Edit or Bash ran. Two agents attempted `Bash` with `true`, got `No such
+  tool available`, and carried on, like the unexplained `true` call in P13A.
+- Cross-run caching was negligible: about 2,900 tokens read on the first turn of some runs, 0 on others.
+
+### `budget.spent()` against total cost
+
+No workflow ran, so `budget.spent()` itself was not called. The comparison uses summed
+`output_tokens`, which is what P14 says it counts, and P14 also says it includes main-loop output.
+
+| Measure | Value |
+|---|---|
+| Output tokens, 8 agents | 53,768 |
+| All tokens, including cache | 1,305,791 |
+| Output share of tokens | 4.1% |
+| Output share of cost | 26% |
+| Cost per 1,000 output tokens | $0.065 to $0.112, $0.078 overall |
+
+So a D9 stage figure taken from `budget.spent()` sees a quarter of the money and 4% of the tokens. The
+ratio moved 1.7x between runs, and a run that reads more than it writes looks cheapest. It can be
+used as a rough activity signal, not converted to dollars. Dollars need per-agent `usage` from the mod
+or `total_cost_usd`, and the report label D9 calls for should say "output tokens only".
+
+### Projection across the lens map
+
+Unit prices, all Opus 5.5 at list. "Measured" is the range above, "guess" had no run behind it.
+
+| Unit | Low $ | High $ | Basis |
+|---|---|---|---|
+| Lens | 0.57 | 1.07 | measured, lowest and highest lens |
+| Refuter | 0.23 | 0.38 | measured, lowest and highest refuter |
+| Re-audit lens, on a fix diff | - | 0.60 | small-diff lens; fix diffs are likely smaller |
+| Synthesizer, bias check | 0.23 | 0.60 | guess, bounded by refuter and small lens |
+| Fix agent | - | 1.07 | guess, priced as the dearest lens |
+| Triage, per cycle | 0.23 | 0.38 | guess, priced as a refuter |
+| TDD lens, per cycle | - | 0.60 | guess, low case runs none |
+
+- Low: every lens runs once, one refuter per lens, no fix round, triage picks no TDD lens.
+- High: every fix round used, each one a fix agent plus all lenses again; `maxRefuters` reached and
+  treated as per stage, so re-audits add no refuters; synthesizer and bias check rerun each round.
+- `new_feature` and `bug_fix` run 2 cycles low and 8 high, with 2 TDD lenses per cycle high.
+- Design critique runs 1 iteration low and 3 high.
+
+| Stage | Agents low, high | Low $ | High $ | Share of high that is re-audit |
+|---|---|---|---|---|
+| intake | 0 | 0 | 0 | |
+| plan-requirements | 14, 36 | 5.26 | 23.16 | 40% |
+| plan-architecture | 12, 33 | 4.46 | 20.89 | 39% |
+| plan-tracers | 11, 30 | 4.23 | 19.09 | 43% |
+| plan-sequence | 0 | 0 | 0 | |
+| scenarios | 8, 20 | 3.20 | 13.50 | 51% |
+| tdd, each green-to-refactor | 1, 3 | 0.23 | 1.58 | |
+| refactor-scope | 1 | 0.57 | 1.07 | |
+| refactor-apply | 0 | 0 | 0 | |
+| config | 0 | 0 | 0 | |
+| safety-net, new_feature and bug_fix | 6, 17 | 2.40 | 11.23 | 51% |
+| safety-net, refactoring | 6, 17 | 2.40 | 11.23 | 51% |
+| safety-net, config_change | 4, 7 | 1.60 | 5.17 | 44% |
+| spike-unit | 0 | 0 | 0 | |
+| spike-document | 1, 3 | 0.57 | 2.74 | 61% |
+| pr-draft | 0 | 0 | 0 | |
+| design-domain, design-gallery | 0 | 0 | 0 | |
+| design-build critique, per run | 6, 18 | 3.42 | 19.26 | |
+
+| Roll-up | Low $ | High $ |
+|---|---|---|
+| Planning, once per plan | 13.95 | 63.14 |
+| Task: new_feature or bug_fix | 6.06 | 37.37 |
+| Task: refactoring | 2.97 | 12.30 |
+| Task: config_change | 1.60 | 5.17 |
+| PR: 2 new_feature tasks, the median PR in this plan | 12.12 | 74.74 |
+| PR: 5 new_feature tasks | 30.30 | 186.85 |
+| PR: 11 new_feature tasks, this plan's largest | 66.66 | 411.07 |
+
+These figures are lens spend only. The producing agents, such as implement-code and the test agents,
+come on top. This plan has 42 PRs and 138 tasks, median 2 per PR.
+
+### Where the projection is weak
+
+- 8 runs, 4 of each role, one each per diff and lens. The low and high unit prices are the extremes of
+  a tiny sample, not a confidence interval. Rerunning would move them.
+- Plan stages are the largest rows and nothing was measured on them. Their subject is a document, not
+  a diff, and they read corpus differently. The prices are borrowed from code review.
+- Synthesizer, bias check, triage, fix agents and TDD-cycle lenses were not run. Those guesses carry
+  most of the high side: re-audits with their fix agents alone are 39 to 51% of the high figure for the
+  stages with refuters.
+- A green-to-refactor diff is far smaller than the small diff, so 0.60 is likely high. The floor is
+  unknown.
+- Low is optimistic on refuters. Two of the three schema-bound lenses hit the 5-finding limit, so 6
+  lenses could offer 30 findings against a cap of 10. Low is also no fix rounds at all, which real work
+  will rarely see.
+- High is a stack of worst cases, unlikely to land on one task. Treat it as a bound, not a forecast.
+  No central estimate is offered, because no run supports one.
+- Lens briefs here were two sentences, and real briefs and schemas will be longer. These runs replaced
+  the system prompt, loaded project settings only, and ran serially outside a workflow, so workflow
+  agent overhead is unmeasured. Whether workflow agents get the 1-hour cache is also unmeasured; at the
+  5-minute write price of $5 per MTok these 8 runs would cost $1.11 less, or 26%.
+- Default effort applied, and thinking was 42% of output, so a different effort changes cost directly.
+- Findings were not graded. This spike measures spend only, so it says nothing about whether a
+  cheaper model or fewer lenses would keep the value.
+- The same tokens repriced are indicative only, since a cheaper model behaves differently: $2.19 on
+  Sonnet 5.5, or 52%. Haiku 5.5 at about $0.11 assumes $0.20 1-hour write and $0.01 read, not published
+  in the source used, and contexts past 100K tokens pay five times the Haiku rate.
+- The smoke caps of $3 and $6 are not directly tested here. Smoke forces Haiku through P16, so this
+  Opus data does not bear on them, but a Haiku lens run has never been measured.
