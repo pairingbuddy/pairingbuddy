@@ -1,0 +1,405 @@
+// Task 31: pb task end. Every test drives the real CLI, and the real gate where it matters, as subprocesses in a temp
+// git repo with a real ledger.
+//
+// Output contract: a task that ends prints one JSON object with ok: true and exits 0. A refusal exits 1, prints nothing
+// to stdout and changes nothing. Bad arguments exit 2.
+import "./isolated-tmpdir.mjs";
+import { after, describe, test } from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+
+const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
+const CLI = join(ROOT, "cli", "pb.mjs");
+const CONFIG = "code-config";
+const NET = "code-safety-net";
+const GATE = "G:task-end";
+const ISOLATED_GIT = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+const TEST_CONFIG = { source_directory: ".", runners: { fake: { name: "fake", command: "node fake.mjs", test_directory: "tests", file_pattern: "*.mjs", run_args: [] } }, default_runner: "fake" };
+const IN_PARALLEL = { concurrency: 8 };
+
+const tempDirs = [];
+after(() => {
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+function makeDir(prefix) {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+  tempDirs.push(dir);
+  return dir;
+}
+
+const NO_HOME = makeDir("pb-no-home-");
+const env = (extra = {}) => ({ ...process.env, ...ISOLATED_GIT, HOME: NO_HOME, XDG_CONFIG_HOME: NO_HOME, CLAUDE_PLUGIN_ROOT: ROOT, ...extra });
+const git = (dir, ...args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: env(), stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+const DONE_STAGES = [{ name: CONFIG, status: "done", attempt: 1 }, { name: NET, status: "done", attempt: 1 }];
+const FINISHED = {
+  stage: { name: NET, status: "done", runId: "wf_2", attempt: 1, startedAt: null },
+  stages: DONE_STAGES,
+  gates: { [GATE]: { source: "auto" } },
+};
+
+function makeRepo({ ledger = FINISHED, tracked = {} } = {}) {
+  const dir = makeDir("pb-task-end-");
+  git(dir, "init", "-q", "-b", "feature");
+  git(dir, "config", "user.name", "Test");
+  git(dir, "config", "user.email", "test@example.com");
+  writeFileSync(join(dir, ".gitignore"), ".pairingbuddy/\n");
+  writeFileSync(join(dir, "a.txt"), "a\n");
+  writeFileSync(join(dir, "fake.mjs"), "");
+  for (const [path, text] of Object.entries(tracked)) writeFileSync(join(dir, path), text);
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "seed");
+  const taskDir = join(dir, ".pairingbuddy", "run", "task");
+  mkdirSync(join(taskDir, "artifacts"), { recursive: true });
+  writeFileSync(join(dir, ".pairingbuddy", "run", ".gitignore"), "*\n");
+  const configText = JSON.stringify(TEST_CONFIG);
+  writeFileSync(join(dir, ".pairingbuddy", "test-config.json"), configText);
+  writeFileSync(join(dir, ".pairingbuddy", "human-guidance.json"), "{}\n");
+  const ledgerPath = join(taskDir, "ledger.json");
+  writeLedger(ledgerPath, {
+    v: 1, seq: 0, sha: "0".repeat(64), kind: "code", taskType: "config_change",
+    owner: { sessionId: null, lastSeen: null }, task: "Task 31", plan: { path: "", title: "" },
+    configHash: createHash("sha256").update(configText).digest("hex"), policy: { mode: "auto", source: "permission_mode" },
+    stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null }, stages: [], gates: {}, tests: {}, commits: [], retries: {}, spend: { agents: 0, tokens: 0 }, stop: null, needsHuman: null,
+    ...ledger,
+  });
+  return { dir, taskDir, ledgerPath, ledger: () => readLedger(ledgerPath) };
+}
+
+const pb = (repo, ...args) => spawnSync("node", [CLI, ...args], { cwd: repo.dir, encoding: "utf8", env: env() });
+const taskEnd = (repo) => pb(repo, "task", "end");
+
+function ok(repo) {
+  const result = taskEnd(repo);
+  assert.equal(result.status, 0, result.stderr);
+  return JSON.parse(result.stdout);
+}
+
+function assertRefused(result, pattern, code = 1) {
+  assert.equal(result.status, code, result.stdout);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, pattern);
+}
+
+function assertRunKept(repo) {
+  assert.ok(existsSync(repo.ledgerPath), "the ledger stays");
+  assert.ok(existsSync(join(repo.taskDir, "artifacts")), "the returns stay");
+}
+
+describe("a finished task ends", IN_PARALLEL, () => {
+  test("run/task goes, and everything around it stays", () => {
+    const repo = makeRepo();
+
+    const printed = ok(repo);
+
+    assert.equal(printed.ok, true);
+    assert.equal(existsSync(repo.taskDir), false, "run/task is removed");
+    assert.ok(existsSync(join(repo.dir, ".pairingbuddy", "run", ".gitignore")), "run/ itself stays");
+    assert.ok(existsSync(join(repo.dir, ".pairingbuddy", "test-config.json")), "project config stays");
+    assert.ok(existsSync(join(repo.dir, ".pairingbuddy", "human-guidance.json")), "human guidance stays");
+    assert.equal(git(repo.dir, "status", "--porcelain"), "");
+  });
+});
+
+describe("a dirty tree is refused, with the list, and nothing moves", IN_PARALLEL, () => {
+  function dirtied() {
+    const repo = makeRepo({ tracked: { "b.txt": "b\n", "c.txt": "c\n" } });
+    writeFileSync(join(repo.dir, "a.txt"), "changed\n");
+    writeFileSync(join(repo.dir, "b.txt"), "staged\n");
+    git(repo.dir, "add", "b.txt");
+    rmSync(join(repo.dir, "c.txt"));
+    writeFileSync(join(repo.dir, "new.txt"), "new\n");
+    return repo;
+  }
+
+  test("every remaining file is listed", () => {
+    const repo = dirtied();
+
+    const result = taskEnd(repo);
+
+    assertRefused(result, /dirty/);
+    for (const path of ["a.txt", "b.txt", "c.txt", "new.txt"]) assert.ok(result.stderr.includes(path), `${path} is listed`);
+  });
+
+  test("the run and the files stay exactly as they were", () => {
+    const repo = dirtied();
+    const before = git(repo.dir, "status", "--porcelain");
+    const ledgerBytes = readFileSync(repo.ledgerPath, "utf8");
+
+    taskEnd(repo);
+
+    assertRunKept(repo);
+    assert.equal(readFileSync(repo.ledgerPath, "utf8"), ledgerBytes);
+    assert.equal(git(repo.dir, "status", "--porcelain"), before, "nothing is stashed, staged or removed");
+    assert.equal(readFileSync(join(repo.dir, "new.txt"), "utf8"), "new\n");
+    assert.equal(git(repo.dir, "stash", "list"), "");
+  });
+
+  test("ignored files are not leftovers", () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo.dir, ".pairingbuddy", "notes.json"), "{}\n");
+
+    ok(repo);
+  });
+});
+
+describe("gates and stages come first", IN_PARALLEL, () => {
+  const stageAt = (name, status) => ({ name, status, runId: "wf_2", attempt: 1, startedAt: null });
+
+  for (const [name, ledger, pattern] of [
+    ["no stage has run", { stage: stageAt("", ""), stages: [], gates: {} }, /code-config.*not done|not finished/],
+    ["config is done and safety-net never ran", { stage: stageAt(CONFIG, "done"), stages: [DONE_STAGES[0]], gates: {} }, /code-safety-net/],
+    ["safety-net is active", { stage: stageAt(NET, "active"), stages: [DONE_STAGES[0]], gates: {} }, /code-safety-net/],
+    ["safety-net failed", { stage: stageAt(NET, "failed"), stages: [DONE_STAGES[0], { ...DONE_STAGES[1], status: "failed" }], gates: {} }, /code-safety-net/],
+    ["a human sent safety-net back", { stage: stageAt(NET, "redo"), stages: [DONE_STAGES[0], { ...DONE_STAGES[1], status: "redo" }], gates: {} }, /code-safety-net/],
+  ]) {
+    test(`refused when ${name}`, () => {
+      const repo = makeRepo({ ledger });
+
+      assertRefused(taskEnd(repo), pattern);
+      assertRunKept(repo);
+    });
+  }
+
+  for (const [name, ledger, pattern] of [
+    ["the gate has not been evaluated", { ...FINISHED, gates: {} }, /G:task-end/],
+    ["the gate waits for a human", { ...FINISHED, gates: {}, needsHuman: { gate: GATE, reason: "the gate policy is default, not auto", seq: 1 } }, /G:task-end/],
+    ["a human answered stop", { ...FINISHED, gates: { [GATE]: { source: "human", answer: "stop" } }, stop: { reason: "the human answered stop at G:task-end", seq: 1 } }, /stop/],
+    ["the run has stopped", { ...FINISHED, stop: { reason: "the commit could not be signed", seq: 1 } }, /could not be signed/],
+  ]) {
+    test(`refused when ${name}`, () => {
+      const repo = makeRepo({ ledger });
+
+      assertRefused(taskEnd(repo), pattern);
+      assertRunKept(repo);
+    });
+  }
+
+  test("a human approval counts as passing the gate", () => {
+    const repo = makeRepo({ ledger: { ...FINISHED, gates: { [GATE]: { source: "human-cli", answer: "approve" } } } });
+
+    ok(repo);
+  });
+
+  test("an unpassed gate is reported before a dirty tree", () => {
+    const repo = makeRepo({ ledger: { ...FINISHED, gates: {} } });
+    writeFileSync(join(repo.dir, "leftover.txt"), "x\n");
+
+    const result = taskEnd(repo);
+
+    assertRefused(result, /G:task-end/);
+    assert.ok(!result.stderr.includes("leftover.txt"), "the gate speaks first");
+  });
+
+  test("an unfinished stage is reported before the gate", () => {
+    const repo = makeRepo({ ledger: { stage: stageAt(NET, "active"), stages: [DONE_STAGES[0]], gates: {} } });
+
+    const result = taskEnd(repo);
+
+    assertRefused(result, /code-safety-net/);
+    assert.ok(!result.stderr.includes("G:task-end"), "the stage speaks first");
+  });
+
+  test("a hand-edited ledger is refused", () => {
+    const repo = makeRepo();
+    writeFileSync(repo.ledgerPath, readFileSync(repo.ledgerPath, "utf8").replace('"task": "Task 31"', '"task": "Edited"'));
+
+    assertRefused(taskEnd(repo), /human accept/);
+    assertRunKept(repo);
+  });
+
+  test("no run here", () => {
+    const dir = makeDir("pb-no-run-");
+    git(dir, "init", "-q", "-b", "feature");
+
+    assertRefused(pb({ dir }, "task", "end"), /no run here/);
+  });
+
+  test("arguments are refused", () => {
+    const repo = makeRepo();
+
+    assertRefused(pb(repo, "task", "end", "--force"), /usage: pb task end/, 2);
+    assertRunKept(repo);
+  });
+});
+
+const PLAN_PATH = "plan.md";
+const TITLE = "Task 2: The second task";
+const PLAN_TEXT = ["# Plan", "", "- [x] **Task 1: The first task**", "", "  **Goal:** done.", "", `- [ ] **${TITLE}**`, "", "- [ ] **Task 3: The third task**", ""].join("\n");
+const planLedger = (title = TITLE, path = PLAN_PATH) => ({ ...FINISHED, plan: { path, title } });
+const planOf = (repo) => readFileSync(join(repo.dir, PLAN_PATH), "utf8");
+const untouchedPlanRepo = (ledger = planLedger(), text = PLAN_TEXT) => makeRepo({ ledger, tracked: { [PLAN_PATH]: text } });
+
+describe("the plan checkbox", IN_PARALLEL, () => {
+  test("the box with this title is ticked, and nothing else in the plan changes", () => {
+    const repo = untouchedPlanRepo();
+
+    const printed = ok(repo);
+
+    assert.equal(planOf(repo), PLAN_TEXT.replace(`- [ ] **${TITLE}**`, `- [x] **${TITLE}**`));
+    assert.deepEqual(printed.plan, { path: PLAN_PATH, title: TITLE, ticked: true });
+    assert.equal(existsSync(repo.taskDir), false);
+  });
+
+  test("a title with no bold still matches", () => {
+    const repo = untouchedPlanRepo(planLedger("Plain"), "- [ ] Plain\n- [ ] Other\n");
+
+    ok(repo);
+
+    assert.equal(planOf(repo), "- [x] Plain\n- [ ] Other\n");
+  });
+
+  test("a title holding regex characters is taken literally", () => {
+    const title = "Task (1): a.b*";
+    const repo = untouchedPlanRepo(planLedger(title), `- [ ] **Task (1): aXbbb**\n- [ ] **${title}**\n`);
+
+    ok(repo);
+
+    assert.equal(planOf(repo), `- [ ] **Task (1): aXbbb**\n- [x] **${title}**\n`);
+  });
+
+  test("a box already ticked is left alone, so a repeat after a crash still ends the task", () => {
+    const text = PLAN_TEXT.replace(`- [ ] **${TITLE}**`, `- [x] **${TITLE}**`);
+    const repo = untouchedPlanRepo(planLedger(), text);
+
+    const printed = ok(repo);
+
+    assert.equal(planOf(repo), text);
+    assert.equal(printed.plan.ticked, false);
+    assert.equal(existsSync(repo.taskDir), false);
+  });
+
+  test("no plan writes nothing about one", () => {
+    const repo = makeRepo({ tracked: { [PLAN_PATH]: PLAN_TEXT } });
+
+    const printed = ok(repo);
+
+    assert.equal(planOf(repo), PLAN_TEXT);
+    assert.equal(printed.plan, null);
+  });
+
+  for (const [name, repoOf, pattern] of [
+    ["no box has the title", () => untouchedPlanRepo(planLedger("Task 9: Gone")), /Task 9: Gone/],
+    ["two boxes have the title", () => untouchedPlanRepo(planLedger(), `${PLAN_TEXT}- [ ] **${TITLE}**\n`), /2 boxes/],
+    ["the plan file is gone", () => makeRepo({ ledger: planLedger() }), /plan\.md/],
+    ["the plan is outside the repo", () => makeRepo({ ledger: planLedger(TITLE, "../plan.md") }), /outside the repo/],
+  ]) {
+    test(`refused when ${name}, with the run kept`, () => {
+      const repo = repoOf();
+
+      assertRefused(taskEnd(repo), pattern);
+      assertRunKept(repo);
+    });
+  }
+
+  test("a dirty tree leaves the box unticked", () => {
+    const repo = untouchedPlanRepo();
+    writeFileSync(join(repo.dir, "leftover.txt"), "x\n");
+
+    assertRefused(taskEnd(repo), /leftover\.txt/);
+    assert.equal(planOf(repo), PLAN_TEXT);
+  });
+
+  test("an unpassed gate leaves the box unticked", () => {
+    const repo = untouchedPlanRepo({ ...planLedger(), gates: {} });
+
+    assertRefused(taskEnd(repo), /G:task-end/);
+    assert.equal(planOf(repo), PLAN_TEXT);
+  });
+});
+
+describe("pb task end is the only checkbox writer", IN_PARALLEL, () => {
+  const GATE_HOOK = join(ROOT, "hooks", "gate.mjs");
+  const SOURCE_DIRS = ["cli", "hooks", "shared-node"];
+  const WRITER = "shared-node/plan-boxes.mjs";
+
+  function gateCall(repo, payload) {
+    const input = JSON.stringify({ session_id: "s1", cwd: repo.dir, permission_mode: "auto", ...payload });
+    return JSON.parse(spawnSync("node", [GATE_HOOK], { input, encoding: "utf8", env: env() }).stdout || "{}").hookSpecificOutput;
+  }
+
+  const tickingWrite = (repo) => ({ tool_name: "Write", tool_input: { file_path: join(repo.dir, PLAN_PATH), content: PLAN_TEXT.replace(`- [ ] **${TITLE}**`, `- [x] **${TITLE}**`) } });
+
+  test("the gate denies a tool that ticks the box, and pb task end ticks it", () => {
+    const repo = untouchedPlanRepo();
+
+    assert.equal(gateCall(repo, tickingWrite(repo)).permissionDecision, "deny");
+    assert.equal(planOf(repo), PLAN_TEXT);
+
+    ok(repo);
+
+    assert.match(planOf(repo), /- \[x\] \*\*Task 2/);
+  });
+
+  test("the gate denies a subagent too", () => {
+    const repo = untouchedPlanRepo();
+
+    assert.equal(gateCall(repo, { ...tickingWrite(repo), agent_id: "a1", agent_type: "pairingbuddy:apply-config-change" }).permissionDecision, "deny");
+  });
+
+  test("the runner cannot end a task", () => {
+    const repo = untouchedPlanRepo();
+    const payload = { tool_name: "Bash", tool_input: { command: `node ${CLI} task end` }, agent_id: "a1", agent_type: "pairingbuddy:runner" };
+
+    const decision = gateCall(repo, payload);
+
+    assert.equal(decision.permissionDecision, "deny");
+    assert.match(decision.permissionDecisionReason, /main context/);
+  });
+
+  test("only the plan-box module ticks, and only pb task end calls it", () => {
+    const sources = SOURCE_DIRS.flatMap((dir) => readdirSync(join(ROOT, dir)).filter((name) => name.endsWith(".mjs")).map((name) => `${dir}/${name}`));
+    const callers = sources.filter((path) => path !== WRITER && readFileSync(join(ROOT, path), "utf8").includes("tickPlanBox("));
+
+    assert.deepEqual(callers, ["cli/pb.mjs"]);
+    const cli = readFileSync(CLI, "utf8");
+    assert.equal(cli.split("tickPlanBox(").length - 1, 1, "one call site");
+    assert.match(cli, /function tickedPlan[^]*tickPlanBox\([^]*function taskEnd/, "it sits in the task end path");
+  });
+});
+
+describe("the real verbs carry a no-change docs step to the end", () => {
+  const key = (stage, role) => `${stage}.${role}.-.r1.a1`;
+  const CONFIG_KEY = key(CONFIG, "apply-config-change");
+  const DOCS_KEY = key(NET, "update-documentation");
+
+  const writeReturn = (repo, pbKey, fields) => writeFileSync(join(repo.taskDir, "artifacts", `${pbKey}.json`), JSON.stringify({ pb_key: pbKey, ...fields }));
+
+  function run(repo, ...args) {
+    const result = pb(repo, ...args);
+    assert.equal(result.status, 0, `${args.join(" ")}: ${result.stderr}`);
+    return JSON.parse(result.stdout);
+  }
+
+  test("one commit, a passed gate and a clean end", () => {
+    const repo = makeRepo({ ledger: { stage: { name: CONFIG, status: "active", runId: "wf_1", attempt: 1, startedAt: null } } });
+    const before = git(repo.dir, "rev-list", "--count", "HEAD");
+    writeFileSync(join(repo.dir, "a.txt"), "changed\n");
+    writeReturn(repo, CONFIG_KEY, { ambiguity: "", commit_subject: "set a", files_changed: ["a.txt"] });
+
+    assert.equal(run(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY).committed, true);
+    run(repo, "stage", "finish");
+
+    const ledger = repo.ledger();
+    writeLedger(repo.ledgerPath, { ...ledger, stage: { name: NET, status: "active", runId: "wf_2", attempt: 1, startedAt: null } });
+    writeReturn(repo, DOCS_KEY, { commit_subject: "", files_changed: [] });
+
+    assert.equal(run(repo, "checkpoint", "--step", "docs", "--from", DOCS_KEY).committed, false);
+    run(repo, "test", "--full");
+    run(repo, "stage", "finish");
+    assert.equal(run(repo, "gate", "eval").result, "auto-pass");
+    run(repo, "task", "end");
+
+    assert.equal(existsSync(repo.taskDir), false);
+    assert.equal(Number(git(repo.dir, "rev-list", "--count", "HEAD")) - Number(before), 1);
+    assert.equal(git(repo.dir, "log", "-1", "--format=%s"), "chore: set a");
+  });
+});

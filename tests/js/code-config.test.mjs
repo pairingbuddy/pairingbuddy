@@ -8,12 +8,14 @@ import { runScript } from "./harness.mjs";
 // Control-flow tests for the built code-config stage. The agent is a recording stand-in.
 const STAGE = fileURLToPath(new URL("../../workflows/code-config.js", import.meta.url));
 const CONTRACT = new URL("../../contracts/schemas/apply-config-change-result.schema.json", import.meta.url);
+const RUNNER_CONTRACT = new URL("../../contracts/schemas/runner-result.schema.json", import.meta.url);
+const PLUGIN_ROOT = "/plugins/pairingbuddy";
 
 test("code-config-spawns-the-agent-once-with-label-and-key", async () => {
   const answer = { pb_key: "code-config.apply-config-change.-.r1.a2", ambiguity: "", commit_subject: "chore: set x", files_changed: ["a.json"] };
-  const { calls, result } = await runScript(STAGE, { args: { attempt: 2, task: { description: "set x" } }, agent: async () => answer });
+  const { calls, result } = await runScript(STAGE, { args: { attempt: 2, pluginRoot: PLUGIN_ROOT, task: { description: "set x" } }, agent: async () => answer });
 
-  assert.equal(calls.length, 1, "the stage spawns exactly one agent");
+  assert.equal(calls.filter(({ opts }) => opts.agentType === "pairingbuddy:apply-config-change").length, 1, "the stage spawns the agent exactly once");
   assert.equal(calls[0].opts.agentType, "pairingbuddy:apply-config-change");
   assert.equal(calls[0].opts.label, "pb1 code-config - apply-config-change - r1");
   assert.deepEqual(calls[0].opts.schema.properties.pb_key.enum, ["code-config.apply-config-change.-.r1.a2"]);
@@ -32,7 +34,7 @@ const KEY_FOR_ATTEMPT = (attempt) => `code-config.apply-config-change.-.r1.a${at
 const ANSWER = { pb_key: "x", ambiguity: "", commit_subject: "chore: x", files_changed: [] };
 
 async function runWith(args) {
-  return runScript(STAGE, { args, agent: async () => ANSWER });
+  return runScript(STAGE, { args: { pluginRoot: PLUGIN_ROOT, ...args }, agent: async () => ANSWER });
 }
 
 test("code-config-label-is-built-by-build-label", async () => {
@@ -118,9 +120,9 @@ test("code-config-escapes-the-task-when-it-is-an-object", async () => {
 });
 
 for (const [name, args] of [
-  ["missing", { attempt: 1 }],
-  ["null", { attempt: 1, task: null }],
-  ["empty-string", { attempt: 1, task: "" }],
+  ["missing", { attempt: 1, pluginRoot: PLUGIN_ROOT }],
+  ["null", { attempt: 1, pluginRoot: PLUGIN_ROOT, task: null }],
+  ["empty-string", { attempt: 1, pluginRoot: PLUGIN_ROOT, task: "" }],
 ]) {
   test(`code-config-${name}-task-returns-not-started-without-agent`, async () => {
     const { calls, result, phases } = await runScript(STAGE, { args, agent: async () => { throw new Error("agent called"); } });
@@ -151,3 +153,45 @@ test("code-config-schema-refuses-absolute-paths-in-files-changed", async () => {
   assert.match("settings.json", pattern);
   assert.match("config/app.json", pattern);
 });
+
+test("code-config-ends-with-the-runner", async () => {
+  const { calls, phases, result } = await runWith({ attempt: 2, task: "t" });
+
+  assert.deepEqual(calls.map(({ opts }) => opts.agentType), ["pairingbuddy:apply-config-change", "pairingbuddy:runner"]);
+  assert.deepEqual(phases, ["apply-config-change", "runner"]);
+  assert.equal(calls[1].opts.label, "pb1 code-config - runner - r1");
+  assert.equal(result.runner.pbKey, "code-config.runner.-.r1.a2");
+});
+
+test("code-config-runner-gets-the-checkpoint-then-stage-finish-exactly", async () => {
+  const { calls } = await runWith({ attempt: 2, task: "t" });
+
+  const prompt = calls[1].prompt;
+  const commands = prompt.slice(prompt.indexOf("<commands>\n") + "<commands>\n".length, prompt.indexOf("\n</commands>")).split("\n");
+  assert.deepEqual(commands, [
+    `node ${PLUGIN_ROOT}/cli/pb.mjs checkpoint --step config --from code-config.apply-config-change.-.r1.a2`,
+    `node ${PLUGIN_ROOT}/cli/pb.mjs stage finish`,
+  ]);
+  assert.ok(prompt.includes("Return pb_key exactly as: code-config.runner.-.r1.a2"), "prompt names the expected key");
+});
+
+test("code-config-runner-schema-is-the-contract-with-the-key-pinned", async () => {
+  const contract = JSON.parse(readFileSync(RUNNER_CONTRACT, "utf8"));
+  const { calls } = await runWith({ attempt: 2, task: "t" });
+
+  const schema = calls[1].opts.schema;
+  assert.deepEqual(schema.properties.pb_key.enum, ["code-config.runner.-.r1.a2"]);
+  const { enum: pinned, ...pbKey } = schema.properties.pb_key;
+  assert.deepEqual({ ...schema, properties: { ...schema.properties, pb_key: pbKey } }, contract);
+});
+
+for (const [name, pluginRoot] of [["missing", undefined], ["null", null], ["empty-string", ""]]) {
+  test(`code-config-${name}-plugin-root-returns-not-started-without-agent`, async () => {
+    const { calls, result, phases } = await runScript(STAGE, { args: { attempt: 1, task: "t", pluginRoot }, agent: async () => { throw new Error("agent called"); } });
+
+    assert.equal(result.started, false);
+    assert.match(result.reason, /pluginRoot/, "the reason names the missing root");
+    assert.equal(calls.length, 0, "no agent is spawned");
+    assert.deepEqual(phases, [], "no phase starts");
+  });
+}

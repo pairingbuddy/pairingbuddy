@@ -59,6 +59,9 @@ function statusEntries(root, paths = []) {
 
 const dirtyInWorktree = (root) => statusEntries(root).filter(({ worktree }) => worktree !== " ").map(({ path }) => path);
 
+// Every path a commit has not taken, staged, changed, deleted or new. Ignored files are no one's leftovers.
+export const remainingFiles = (root) => statusEntries(root).map(({ path }) => path);
+
 const stage = (root, paths) => literalGit(root, "add", "--", ...paths);
 
 // ---------- the key ----------
@@ -86,7 +89,7 @@ function readArtifact(artifactsDir, key) {
 
 // ---------- paths ----------
 
-const isOutside = (path) => path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
+export const isOutside = (path) => path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
 
 function assertNotRefusedDirectory(path, listed) {
   const segments = path.split(sep).map((segment) => segment.toLowerCase());

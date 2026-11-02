@@ -5,9 +5,10 @@ import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { CheckpointRefused, CheckpointStopped, assertCurrentKey, checkpointSteps, commitPaths, isCheckpointCall, isKey, isProtectedBranch, planCommit } from "../shared-node/checkpoint.mjs";
+import { CheckpointRefused, CheckpointStopped, assertCurrentKey, checkpointSteps, commitPaths, isCheckpointCall, isKey, isProtectedBranch, planCommit, remainingFiles } from "../shared-node/checkpoint.mjs";
 import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
+import { PlanRefused, tickPlanBox } from "../shared-node/plan-boxes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
 import { buildReport, closeStage, finishProblems, readReportOf, readReturn, returnsAt, spendTotals, writeReport } from "../shared-node/stage-run.mjs";
@@ -355,9 +356,40 @@ function status(args) {
   return { ok: true, stage, next: nextStep(contract, ledger), stop, needsHuman, spend: spendTotals(ledger, artifactsDirOf(root), contract.maxAgents) };
 }
 
+function assertTaskFinished(ledger) {
+  const contract = loadStages(PLUGIN_ROOT);
+  const unfinished = isStageActive(ledger) ? ledger.stage.name : nextStage(graphFor(contract, ledger.taskType), ledger);
+  if (unfinished !== undefined) throw new Refusal(`stage ${unfinished} is not finished, so the task cannot end`);
+  if (ledger.stop !== null) throw new Refusal(`the run has stopped: ${ledger.stop.reason}`);
+  const gate = blockingGate(gatesFor(contract, ledger.taskType), ledger);
+  if (gate !== undefined) throw new Refusal(`gate ${gate.name} has not passed, so the task cannot end. Run pb gate eval.`);
+}
+
+function assertCleanTree(root) {
+  const remaining = remainingFiles(root);
+  if (remaining.length > 0) throw new Refusal(`the tree is dirty, so the task cannot end. Commit or remove these, nothing was touched: ${remaining.join(", ")}`);
+}
+
+function tickedPlan(root, { path, title }) {
+  return path === "" ? null : { path, title, ticked: tickPlanBox(root, { path, title }) };
+}
+
+// Removes run/task only. The refusals all come first, so a refused call changes nothing.
+function taskEnd(args) {
+  assertNoArgs(args, "task end");
+  const { root, path } = runLedgerPath();
+  const ledger = readLedger(path);
+  assertTaskFinished(ledger);
+  assertCleanTree(root);
+  const plan = tickedPlan(root, ledger.plan);
+  const dir = taskDirOf(root);
+  rmSync(dir, { recursive: true });
+  return { ok: true, removed: dir, plan };
+}
+
 export const VERBS = {
   "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept, test: runTests, checkpoint,
-  "stage finish": stageFinish, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status,
+  "stage finish": stageFinish, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd,
 };
 
 async function runVerb(name, args) {
@@ -390,7 +422,7 @@ if (isEntryPoint()) {
   try {
     await main(process.argv.slice(2));
   } catch (e) {
-    const expected = e instanceof Refusal || e instanceof UsageError || e instanceof LedgerRefused || e instanceof TestRunRefused || e instanceof CheckpointRefused;
+    const expected = e instanceof Refusal || e instanceof UsageError || e instanceof LedgerRefused || e instanceof TestRunRefused || e instanceof CheckpointRefused || e instanceof PlanRefused;
     console.error(`pb: ${expected ? e.message : `unexpected failure: ${e.message}`}`);
     process.exit(e instanceof UsageError ? 2 : 1);
   }

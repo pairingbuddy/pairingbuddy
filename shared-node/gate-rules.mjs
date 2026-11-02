@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { isCheckpointCall, isKey } from "./checkpoint.mjs";
 import { answeredGate, blockingGate, gateQuestion, gatesFor, isGateQuestionCall } from "./gates.mjs";
 import { LedgerShaMismatch, readLedger, updateLedger } from "./ledger.mjs";
+import { checkboxes } from "./plan-boxes.mjs";
 import { bindSession, sessionsDirectory } from "./run-root.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, pipelineAgents, startLeaseSecondsLeft } from "./stages.mjs";
 import { disguisesPb, pbInvocations } from "./shell-calls.mjs";
@@ -21,7 +22,6 @@ const AGENT_PAIR = ["agent_id", "agent_type"];
 const PROTECTED_CONFIGS = ["test-config.json", "git-config.json"];
 const SETTINGS_FILES = ["settings.json", "settings.local.json"];
 const GATE_HEADER_START = "PB gate:";
-const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\](.*)$/gm;
 const RUNNER_AGENT = `${PREFIX}runner`;
 const PB_COMMAND = `node ${join(PLUGIN_ROOT, "cli", "pb.mjs")}`;
 const RUNNER_COMMANDS = [...VERB_CLASSES.runner, "test --full"].map((args) => `${PB_COMMAND} ${args}`);
@@ -79,8 +79,6 @@ function assertNotProtected(root, targets, canonicalPath) {
 }
 
 // ---------- plan checkboxes ----------
-
-const checkboxes = (text) => [...text.matchAll(CHECKBOX)].map(([, mark, label]) => ({ ticked: mark !== " ", label: label.trim() }));
 
 // Drops the boxes both sides share, so a moved line is no change. A title still on both sides then has a different
 // tick, since the title is what names a task (D12). What is left pairs up in order, which lets a relabelled box

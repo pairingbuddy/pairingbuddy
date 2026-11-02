@@ -1,5 +1,6 @@
-"""Integration check: the built code-config workflow, started by slash command, passes the gate,
-really changes the file, and its return lands through the tap.
+"""Integration check: the built stages, started by slash command, pass the gate, really change the
+file, and land their returns through the tap. The end-to-end check runs config then safety-net, with
+`pb gate eval` and `pb task end`, and asserts the one commit and the removed run/task.
 
 A workflow's `completed` status proves nothing (T0 outcome, P13A), so the checks are on the
 effects: the changed file, the artifact, the active stage the gate marks, the runId the tap stores
@@ -22,6 +23,21 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CLI = REPO_ROOT / "cli" / "pb.mjs"
 BUDGET_USD = "0.50"
 PB_KEY = "code-config.apply-config-change.-.r1.a1"
+DOCS_KEY = "code-safety-net.update-documentation.-.r1.a1"
+PASSING_TESTS = {
+    "source_directory": ".",
+    "runners": {
+        "node": {
+            "name": "node",
+            "command": "node check.mjs",
+            "test_directory": ".",
+            "file_pattern": "check.mjs",
+            "run_args": [],
+        }
+    },
+    "default_runner": "node",
+}
+NO_DOCS = {"in_repo_docs": [], "external_docs": [], "last_verified": "2026-01-01T00:00:00Z"}
 
 requires_opt_in = pytest.mark.skipif(
     os.environ.get("PB_INTEGRATION") != "1" or shutil.which("claude") is None,
@@ -34,9 +50,9 @@ def git(repo, *args):
     subprocess.run(command, check=True, capture_output=True, text=True)
 
 
-def workflow_prompt(args):
+def workflow_prompt(args, stage="code-config"):
     """The slash command that starts the workflow. The runtime parses the JSON into its args."""
-    return f"/pairingbuddy:code-config {json.dumps(args)}"
+    return f"/pairingbuddy:{stage} {json.dumps(args)}"
 
 
 def test_workflow_is_started_by_slash_command_without_naming_the_tool():
@@ -56,14 +72,17 @@ def clean_env():
     return env | {"ANTHROPIC_DEFAULT_OPUS_MODEL": haiku, "ANTHROPIC_DEFAULT_SONNET_MODEL": haiku}
 
 
-def open_run_repo(tmp_path):
+def open_run_repo(tmp_path, test_config=None, doc_config=None):
     repo = tmp_path / "repo"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "feature")
     git(repo, "config", "user.email", "integration@example.invalid")
     git(repo, "config", "user.name", "integration")
     (repo / ".pairingbuddy").mkdir()
-    (repo / ".pairingbuddy" / "test-config.json").write_text("{}")
+    (repo / ".pairingbuddy" / "test-config.json").write_text(json.dumps(test_config or {}))
+    if doc_config is not None:
+        (repo / ".pairingbuddy" / "doc-config.json").write_text(json.dumps(doc_config))
+    (repo / "check.mjs").write_text("process.exit(0);\n")
     (repo / "settings.json").write_text(
         json.dumps({"feature": {"enabled": False}}, indent=2) + "\n"
     )
@@ -113,7 +132,7 @@ def run_claude(repo, prompt, *output_args):
 @pytest.mark.integration
 @requires_opt_in
 def test_code_config_stage_changes_the_file_and_lands_artifact_through_tap(tmp_path):
-    repo, task_dir = open_run_repo(tmp_path)
+    repo, task_dir = open_run_repo(tmp_path, PASSING_TESTS)
 
     task = {
         "description": "Set feature.enabled to true in settings.json",
@@ -128,8 +147,8 @@ def test_code_config_stage_changes_the_file_and_lands_artifact_through_tap(tmp_p
     tap_errors = task_dir / "tap-errors.log"
     assert not tap_errors.exists() or tap_errors.read_text() == "", tap_errors.read_text()
     stage = json.loads((task_dir / "ledger.json").read_text())["stage"]
-    assert (stage["name"], stage["status"], stage["attempt"]) == ("code-config", "active", 1), (
-        f"the gate marks the stage active when it allows the Workflow call\n{output}"
+    assert (stage["name"], stage["status"], stage["attempt"]) == ("code-config", "done", 1), (
+        f"the gate marks the stage active, and the runner's stage finish closes it\n{output}"
     )
     assert isinstance(stage["runId"], str), (
         f"the tap sets runId only for the matching Workflow call\n{output}"
@@ -140,6 +159,63 @@ def test_code_config_stage_changes_the_file_and_lands_artifact_through_tap(tmp_p
     assert landed["pb_key"] == PB_KEY, output
     assert landed["ambiguity"] == "", output
     assert "settings.json" in landed["files_changed"], output
+
+
+def pb(repo, *args):
+    run = subprocess.run(
+        ["node", str(CLI), *args], cwd=repo, env=clean_env(), capture_output=True, text=True
+    )
+    assert run.returncode == 0, f"pb {' '.join(args)}: {run.stdout}{run.stderr}"
+    return json.loads(run.stdout)
+
+
+def commit_subjects(repo):
+    log = ["git", "-C", str(repo), "log", "--format=%s"]
+    return subprocess.run(log, check=True, capture_output=True, text=True).stdout.split("\n")[:-1]
+
+
+def run_stage(repo, stage, task):
+    args = {"attempt": 1, "pluginRoot": str(REPO_ROOT), "task": task}
+    run = run_claude(repo, workflow_prompt(args, stage), "--output-format", "text")
+    output = f"{stage}\nstdout:\n{run.stdout}\nstderr:\n{run.stderr}"
+    assert run.returncode == 0, output
+    return output
+
+
+def assert_stage_done(task_dir, stage, output):
+    ledger = json.loads((task_dir / "ledger.json").read_text())
+    tap_log = task_dir / "tap-errors.log"
+    assert not tap_log.exists() or tap_log.read_text() == "", tap_log.read_text()
+    assert ledger["stop"] is None, f"{ledger['stop']}\n{output}"
+    done = [entry["name"] for entry in ledger["stages"] if entry["status"] == "done"]
+    assert stage in done, f"the runner's stage finish must close {stage}: {ledger}\n{output}"
+    return ledger
+
+
+@pytest.mark.integration
+@requires_opt_in
+def test_both_stages_run_end_to_end_to_one_commit_and_no_run_state(tmp_path):
+    repo, task_dir = open_run_repo(tmp_path, PASSING_TESTS, NO_DOCS)
+    task = {"description": "Set feature.enabled to true in settings.json"}
+
+    output = run_stage(repo, "code-config", task)
+    assert json.loads((repo / "settings.json").read_text())["feature"]["enabled"] is True, output
+    assert_stage_done(task_dir, "code-config", output)
+
+    output = run_stage(repo, "code-safety-net", task)
+    ledger = assert_stage_done(task_dir, "code-safety-net", output)
+    assert ledger["tests"]["full"]["passed"] is True, output
+    docs = [entry for entry in ledger["checkpoints"] if entry["step"] == "docs"]
+    assert docs and docs[0]["key"] == DOCS_KEY and docs[0]["committed"] is False, ledger
+
+    gate = pb(repo, "gate", "eval")
+    assert (gate["result"], gate["gate"], gate["source"]) == ("auto-pass", "G:task-end", "auto")
+    pb(repo, "task", "end")
+
+    assert not task_dir.exists(), "pb task end removes run/task"
+    subjects = commit_subjects(repo)
+    assert len(subjects) == 2 and subjects[0].startswith("chore: "), subjects
+    assert subjects[1] == "init", subjects
 
 
 @pytest.mark.integration

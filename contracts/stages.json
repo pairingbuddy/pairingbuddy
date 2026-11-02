@@ -18,7 +18,7 @@
         {
           "name": "code-safety-net",
           "gate": "G:task-end",
-          "evidence": ["artifact:update-documentation", "tests:full"]
+          "evidence": ["artifact:update-documentation", "checkpoint:docs", "tests:full"]
         }
       ],
       "gates": {

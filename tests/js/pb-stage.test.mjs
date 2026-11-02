@@ -45,7 +45,7 @@ function makeDir(prefix) {
 const NO_HOME = makeDir("pb-no-home-");
 const env = (extra = {}) => ({ ...process.env, ...ISOLATED_GIT, HOME: NO_HOME, XDG_CONFIG_HOME: NO_HOME, CLAUDE_PLUGIN_ROOT: ROOT, ...extra });
 
-// A plugin holding a bundle for each stage, because the real one has none for safety-net until Task 31.
+// A plugin of its own, so that a test can start a stage with no real agents behind its bundle.
 function makePlugin() {
   const dir = makeDir("pb-plugin-");
   cpSync(join(ROOT, "contracts"), join(dir, "contracts"), { recursive: true });
@@ -155,6 +155,8 @@ const fullRun = (over = {}) => ({ stage: NET, attempt: ATTEMPT, passed: true, re
 
 // ---------- the contract ----------
 
+const docsCheckpoint = { step: "docs", key: DOCS_KEY, committed: false, sha: null, stage: NET, attempt: ATTEMPT };
+
 describe("evidence entries are machine-checked", () => {
   const withEvidence = (entry) => {
     const contract = structuredClone(loadStages(ROOT));
@@ -254,6 +256,12 @@ describe("stage finish refuses without its evidence, and leaves a stop", IN_PARA
     writeReturn(repo, DOCS_KEY);
     return repo;
   };
+
+  test("no docs checkpoint", () => {
+    const repo = makeRepo({ stage: activeStage(NET), ledger: { tests: { full: fullRun() } } });
+    writeReturn(repo, DOCS_KEY);
+    assertStops(repo, /checkpoint:docs/);
+  });
 
   test("no full suite", () => assertStops(docsRepo(), /tests:full/));
 
@@ -580,7 +588,7 @@ describe("a failed attempt stays void", IN_PARALLEL, () => {
 
 describe("the report states what ran and what was not covered", IN_PARALLEL, () => {
   test("what ran", () => {
-    const repo = makeRepo({ stage: activeStage(NET), ledger: { tests: { full: fullRun() } } });
+    const repo = makeRepo({ stage: activeStage(NET), ledger: { checkpoints: [docsCheckpoint], tests: { full: fullRun() } } });
     writeReturn(repo, DOCS_KEY);
     ok(repo, "stage", "finish");
 
@@ -592,7 +600,7 @@ describe("the report states what ran and what was not covered", IN_PARALLEL, () 
   });
 
   test("a test run from an earlier attempt is not reported as run", () => {
-    const repo = makeRepo({ stage: activeStage(NET), ledger: { tests: { full: fullRun(), selected: fullRun({ attempt: 1 }) } } });
+    const repo = makeRepo({ stage: activeStage(NET), ledger: { checkpoints: [docsCheckpoint], tests: { full: fullRun(), selected: fullRun({ attempt: 1 }) } } });
     writeReturn(repo, DOCS_KEY);
     ok(repo, "stage", "finish");
     assert.deepEqual(repo.report().ran.tests.map(({ key: name }) => name), ["full"]);
@@ -617,7 +625,7 @@ describe("the report states what ran and what was not covered", IN_PARALLEL, () 
   });
 
   test("a stage that ran the full suite does not claim otherwise, and says what exit codes cannot show", () => {
-    const repo = makeRepo({ stage: activeStage(NET), ledger: { tests: { full: fullRun() } } });
+    const repo = makeRepo({ stage: activeStage(NET), ledger: { checkpoints: [docsCheckpoint], tests: { full: fullRun() } } });
     writeReturn(repo, DOCS_KEY);
     ok(repo, "stage", "finish");
     const { notCovered } = repo.report();
@@ -626,7 +634,7 @@ describe("the report states what ran and what was not covered", IN_PARALLEL, () 
   });
 
   test("what the returns found reaches the keys the gate reads, and open doubts are listed", () => {
-    const repo = makeRepo({ stage: activeStage(NET), ledger: { tests: { full: fullRun() } } });
+    const repo = makeRepo({ stage: activeStage(NET), ledger: { checkpoints: [docsCheckpoint], tests: { full: fullRun() } } });
     writeReturn(repo, DOCS_KEY, { ambiguity: "which file?", gaps: ["g1"], survivors: [{ class: "decide" }], refuted: [{ id: "f1" }], uncovered: ["lens-a"], unrefuted: [{ severity: "high" }] });
     ok(repo, "stage", "finish");
 

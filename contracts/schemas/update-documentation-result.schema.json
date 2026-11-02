@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Update Documentation Result",
+  "description": "Return of the update-documentation agent when its prompt gives paths: the pb key it was given, the proposed commit subject and the docs it changed, which pb checkpoint reads. An empty list means no change",
+  "type": "object",
+  "required": ["pb_key", "commit_subject", "files_changed"],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "commit_subject": {
+      "type": "string",
+      "description": "Proposed commit subject line, or an empty string when nothing changed"
+    },
+    "files_changed": {
+      "type": "array",
+      "description": "Repo-relative paths of files the agent modified",
+      "items": { "type": "string", "pattern": "^(?!/)" }
+    }
+  },
+  "additionalProperties": false
+}

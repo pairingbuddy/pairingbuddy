@@ -14,6 +14,11 @@ Ensure documentation stays in sync with code changes. Analyzes what was modified
 
 ## Input
 
+The one input rule decides what you read and write:
+
+- With a `<paths>` block in the prompt: read only what the paths name, plus the `<task>` in the prompt, and return your Output as StructuredOutput. `doc_config` is the doc config, which may be missing. `returns_dir` holds the JSON returns of this task's earlier agents, and the `files_changed` lists there say what the task changed. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below, apart from `.pairingbuddy/human-guidance.json`.
+- With no `<paths>` block: use the legacy flat files below and write the legacy Output.
+
 Reads from `.pairingbuddy/files-changed.json`:
 
 ```json
@@ -83,6 +88,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 2: Main Work
 
+With a `<paths>` block: skip bootstrapping, and treat a missing doc config as no configured docs. Work only on the in-repo docs the config lists. With nothing to update, change nothing and return an empty `files_changed`.
+
 1. **Bootstrap doc-config.json** (if needed)
    a. Check if `.pairingbuddy/doc-config.json` exists
    b. If missing or human says outdated: ask for doc locations, write config
@@ -104,6 +111,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 4. **Make changes iteratively with human review**
 
 ### Step 3: Human Review
+
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the task-end gate. Make only minimal changes the task clearly calls for.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -150,6 +159,8 @@ Should I proceed with this approach?"
 
 ### Step 4: Output
 
+With a `<paths>` block: make the updates, do not commit, write no `.pairingbuddy/` file, and return the Output below as your StructuredOutput. The rest of this step is for the legacy branch.
+
 **MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
 
 After approval, write output using this procedure for EACH output file listed in the Output section:
@@ -180,6 +191,8 @@ After approval:
 
 ### File Creation Restrictions
 
+With a `<paths>` block, you may write only to the in-repo docs the config lists. With no `<paths>` block:
+
 **You may ONLY write to:**
 - `.pairingbuddy/doc-config.json` (bootstrap or update)
 - `.pairingbuddy/docs-updated.json` (output)
@@ -200,6 +213,18 @@ If `PAIRINGBUDDY_SOLO` environment variable is `true`:
 - Proceed directly to writing output
 
 ## Output
+
+With a `<paths>` block, return the result as your StructuredOutput with exactly these fields, and write no output file:
+
+```json
+{
+  "pb_key": "string (copied exactly from the prompt)",
+  "commit_subject": "string (proposed commit subject line, or empty string when nothing changed)",
+  "files_changed": ["string (repo-relative path of each modified file, never absolute)"]
+}
+```
+
+With no `<paths>` block:
 
 Writes to `.pairingbuddy/doc-config.json` (bootstrap or when human adds new doc locations):
 

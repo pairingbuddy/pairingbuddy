@@ -477,6 +477,9 @@ agents:
       docs_updated:
         schema: docs-updated.schema.json
         file: .pairingbuddy/docs-updated.json
+      update_documentation_result:
+        schema: update-documentation-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Input"
