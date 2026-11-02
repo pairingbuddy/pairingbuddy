@@ -109,6 +109,20 @@
           }
         }
       ]
+    },
+    "acceptances": {
+      "description": "Each hand edit a human accepted with pb human accept, oldest first. May be absent. oldSha is the sha the edited file carried; newSha is the sha of the content as edited, before the acceptance was added; seq is the seq the acceptance wrote.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["oldSha", "newSha", "seq"],
+        "properties": {
+          "oldSha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "newSha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "seq": { "type": "integer", "minimum": 0 }
+        }
+      }
     }
   }
 }

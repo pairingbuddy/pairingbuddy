@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { askReason, dueGate, fileHash, gateQuestion, gatesFor } from "../shared-node/gates.mjs";
-import { KINDS, LEDGER_VERSION, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
+import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { loadStages } from "../shared-node/stages.mjs";
 import { VERB_CLASSES, matchVerb } from "../shared-node/verbs.mjs";
@@ -91,7 +91,8 @@ function runOpen(args) {
   return { ok: true, kind, branch, runDir: dir };
 }
 
-const humanCommand = (gate) => `!node ${CLI_PATH} human approve ${gate}`;
+const humanCommand = (verb) => `!node ${CLI_PATH} human ${verb}`;
+const approveCommand = (gate) => humanCommand(`approve ${gate}`);
 
 function runLedgerPath() {
   const root = findRunRoot(process.cwd());
@@ -111,7 +112,7 @@ function gateEval(args) {
   const { needsHuman } = readLedger(path);
   if (needsHuman !== null) {
     const { gate, reason } = needsHuman;
-    return { ok: true, result: "needs-human-command", gate, reason, humanCommand: humanCommand(gate) };
+    return { ok: true, result: "needs-human-command", gate, reason, humanCommand: approveCommand(gate) };
   }
   const contract = loadStages(PLUGIN_ROOT);
   let gate;
@@ -124,10 +125,42 @@ function gateEval(args) {
     return reason === null ? recordAuto(ledger, gate) : { ...ledger, needsHuman: { gate, reason, seq: ledger.seq + 1 } };
   });
   if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto" };
-  return { ok: true, result: "needs-human", gate, reason, question: gateQuestion(gate), humanCommand: humanCommand(gate) };
+  return { ok: true, result: "needs-human", gate, reason, question: gateQuestion(gate), humanCommand: approveCommand(gate) };
 }
 
-export const VERBS = { "run open": runOpen, "gate eval": gateEval };
+// While a gate is pending it is the only one a human can pass: the next gate stays behind it.
+function awaitedGate(ledger) {
+  if (ledger.needsHuman !== null) return ledger.needsHuman.gate;
+  return dueGate(gatesFor(loadStages(PLUGIN_ROOT), ledger.taskType), ledger)?.name;
+}
+
+function recordApproval(ledger, gate) {
+  const awaited = awaitedGate(ledger);
+  if (gate !== awaited) {
+    throw new Refusal(`gate ${gate} is neither due nor pending. ${awaited === undefined ? "No gate is waiting." : `Gate ${awaited} is waiting.`}`);
+  }
+  return { ...ledger, needsHuman: null, gates: { ...ledger.gates, [gate]: { source: "human-cli", answer: "approve" } } };
+}
+
+function humanApprove(args) {
+  if (args.length !== 1) throw new UsageError("usage: pb human approve <gate>");
+  const [gate] = args;
+  const { path } = runLedgerPath();
+  try {
+    updateLedger(path, (ledger) => recordApproval(ledger, gate));
+  } catch (e) {
+    if (e instanceof LedgerShaMismatch) throw new Refusal(`${e.message}. Check the edit, then type ${humanCommand("accept")}`);
+    throw e;
+  }
+  return { ok: true, gate, source: "human-cli" };
+}
+
+function humanAccept(args) {
+  if (args.length > 0) throw new UsageError("usage: pb human accept");
+  return { ok: true, ...acceptLedger(runLedgerPath().path) };
+}
+
+export const VERBS = { "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept };
 
 function main(argv) {
   const name = matchVerb(argv);
@@ -150,7 +183,8 @@ if (isEntryPoint()) {
   try {
     main(process.argv.slice(2));
   } catch (e) {
-    console.error(`pb: ${e instanceof Refusal || e instanceof UsageError ? e.message : `unexpected failure: ${e.message}`}`);
+    const expected = e instanceof Refusal || e instanceof UsageError || e instanceof LedgerRefused;
+    console.error(`pb: ${expected ? e.message : `unexpected failure: ${e.message}`}`);
     process.exit(e instanceof UsageError ? 2 : 1);
   }
 }

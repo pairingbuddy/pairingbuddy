@@ -13,7 +13,11 @@ const HEX64 = /^[0-9a-f]{64}$/;
 // Shape only, so a well-shaped impossible date stays readable and the gate can treat it as expired.
 const ISO_TIMESTAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
 export const KINDS = ["code", "plan"];
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances"];
+
+// A ledger the CLI reports as a refusal rather than a crash.
+export class LedgerRefused extends Error {}
+export class LedgerShaMismatch extends Error {}
 
 // ---------- canonical JSON and sha ----------
 
@@ -60,6 +64,7 @@ function computeSha(ledger) {
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const isCount = (v) => Number.isInteger(v) && v >= 0;
 const isString = (v) => typeof v === "string";
+const isSha = (v) => isString(v) && HEX64.test(v);
 const isNullableString = (v) => v === null || typeof v === "string";
 const isNonEmptyString = (v) => typeof v === "string" && v !== "";
 const isNullableTimestamp = (v) => v === null || (typeof v === "string" && ISO_TIMESTAMP.test(v));
@@ -91,13 +96,13 @@ export function validateLedger(ledger) {
   checkObject(ledger, "", {
     v: [(x) => x === LEDGER_VERSION, `${LEDGER_VERSION}`],
     seq: [isCount, "a non-negative integer"],
-    sha: [(x) => isString(x) && HEX64.test(x), "64 lowercase hex characters"],
+    sha: [isSha, "64 lowercase hex characters"],
     kind: [(x) => KINDS.includes(x), `one of ${KINDS.join(", ")}`],
     taskType: [isNullableString, "a string or null"],
     owner: [() => true, ""],
     task: [isString, "a string"],
     plan: [() => true, ""],
-    configHash: [(x) => isString(x) && HEX64.test(x), "64 lowercase hex characters"],
+    configHash: [isSha, "64 lowercase hex characters"],
     policy: [() => true, ""],
     stage: [() => true, ""],
     stages: [Array.isArray, "an array"],
@@ -108,7 +113,8 @@ export function validateLedger(ledger) {
     spend: [() => true, ""],
     stop: [() => true, ""],
     needsHuman: [() => true, ""],
-  }, errors);
+    acceptances: [Array.isArray, "an array"],
+  }, errors, { optional: ["acceptances"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
@@ -142,6 +148,13 @@ export function validateLedger(ledger) {
         break;
       case "needsHuman":
         checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"] }, errors);
+        break;
+      case "acceptances":
+        if (Array.isArray(ledger.acceptances)) {
+          ledger.acceptances.forEach((a, i) => checkObject(a, `acceptances.${i}`, {
+            oldSha: [isSha, "64 lowercase hex characters"], newSha: [isSha, "64 lowercase hex characters"], seq: [isCount, "a non-negative integer"],
+          }, errors));
+        }
         break;
       default:
         break;
@@ -298,7 +311,7 @@ export function readLedger(path) {
     throw new Error(`ledger ${path} is invalid: ${e.message}`);
   }
   if (ledger.sha !== computeSha(ledger)) {
-    throw new Error(`ledger ${path} sha mismatch: the file was edited outside deterministic code`);
+    throw new LedgerShaMismatch(`ledger ${path} sha mismatch: the file was edited outside deterministic code`);
   }
   const { valid, errors } = validateLedger(ledger);
   if (!valid) throw new Error(`ledger ${path} is invalid: ${describeErrors(errors)}`);
@@ -346,5 +359,31 @@ export function updateLedger(path, fn, opts = {}) {
     const disk = readLedger(path);
     const diskSeq = disk.seq;
     return writeLocked(path, fn(disk), diskSeq, assertOwned);
+  });
+}
+
+function readEdited(path) {
+  try {
+    const ledger = parseLedgerFile(path);
+    assertJsonValue(ledger, "ledger");
+    const { valid, errors } = validateLedger(ledger);
+    if (!valid) throw new Error(`ledger ${path} is invalid: ${describeErrors(errors)}`);
+    return ledger;
+  } catch (e) {
+    throw new LedgerRefused(`${e.message}. Only a well-formed ledger can be accepted: fix the file by hand first`);
+  }
+}
+
+// Re-signs a hand-edited ledger and records that it did. The ledger's own sha covers the acceptance, so
+// newSha cannot be that sha: it is the sha of the content as edited, before the acceptance went in.
+export function acceptLedger(path, opts = {}) {
+  return withLock(path, opts, (assertOwned) => {
+    const edited = readEdited(path);
+    const newSha = computeSha(edited);
+    if (edited.sha === newSha) throw new LedgerRefused(`ledger ${path} has no sha mismatch, so there is nothing to accept`);
+    const acceptance = { oldSha: edited.sha, newSha, seq: edited.seq + 1 };
+    const acceptances = [...(edited.acceptances ?? []), acceptance];
+    writeLocked(path, { ...edited, acceptances }, edited.seq, assertOwned);
+    return acceptance;
   });
 }
