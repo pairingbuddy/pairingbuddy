@@ -5,8 +5,8 @@ if (args === undefined) return { started: false };
 const RESULT_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Apply Config Change Result","description":"Return of the apply-config-change agent: the pb key it was given, any open ambiguity, the proposed commit subject and the files it changed","type":"object","required":["pb_key","ambiguity","commit_subject","files_changed"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question the task left unresolved, or an empty string"},"commit_subject":{"type":"string","description":"Proposed commit subject line for the change"},"files_changed":{"type":"array","description":"Repo-relative paths of files the agent modified","items":{"type":"string","pattern":"^(?!/)"}}},"additionalProperties":false};
 const RUNNER_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Runner Result","description":"Return of the runner agent: the pb key it was given and the CLI's last exit code and its output, relayed unchanged. Evidence lives in the ledger, written by the CLI","type":"object","required":["pb_key","cli_exit_code","cli_output"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"cli_exit_code":{"type":"integer","description":"Exit code of the last pb command run: 0 when it was recorded, not when the tests passed"},"cli_output":{"type":"string","description":"What each pb command printed, unchanged, in order"}},"additionalProperties":false};
 
-// What every stage does alike. RUNNER_SCHEMA comes from the stage's own pb-inline line, and buildKey and buildLabel
-// from its pb-inline-module lines.
+// What every stage does alike. RUNNER_SCHEMA comes from the stage's own pb-inline line, and buildKey, buildLabel and
+// shellWord from its pb-inline-module lines.
 
 const isMissing = (value) => value === undefined || value === null || value === '';
 
@@ -24,7 +24,7 @@ const pinnedKey = (schema, pbKey) => ({
 // The serialized task cannot end its block or start a line of its own.
 const taskBlock = () => ['<task>', JSON.stringify(args.task).replace(/</g, '\\u003c'), '</task>'];
 
-const pbCommand = (words) => `node ${args.pluginRoot}/cli/pb.mjs ${words}`;
+const pbCommand = (words) => `node ${shellWord(`${args.pluginRoot}/cli/pb.mjs`)} ${words}`;
 
 // The stage's last step. The CLI commits and proves the evidence, so the runner only runs the words it is given.
 async function runCommands(stage, commands) {
@@ -110,6 +110,12 @@ function parseLabel(text) {
   const [, stage, phase, role, item, round] = match;
   return { stage, phase: phase === "-" ? null : phase, role, item: item === "-" ? null : item, round: Number(round) };
 }
+
+// One shell word for a path or an argument, unchanged when a shell would read it as it stands. Workflow bundles inline
+// this file, so it imports nothing.
+const SHELL_SAFE = /^[\w@%+=:,./-]+$/;
+
+const shellWord = (word) => (SHELL_SAFE.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`);
 
 const missing = missingArgument();
 if (missing !== null) return missing;

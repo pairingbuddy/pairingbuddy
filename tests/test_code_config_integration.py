@@ -79,7 +79,8 @@ def open_run_repo(tmp_path, test_config=None, doc_config=None):
     git(repo, "config", "user.email", "integration@example.invalid")
     git(repo, "config", "user.name", "integration")
     (repo / ".pairingbuddy").mkdir()
-    (repo / ".pairingbuddy" / "test-config.json").write_text(json.dumps(test_config or {}))
+    config_text = json.dumps(test_config or PASSING_TESTS)
+    (repo / ".pairingbuddy" / "test-config.json").write_text(config_text)
     if doc_config is not None:
         (repo / ".pairingbuddy" / "doc-config.json").write_text(json.dumps(doc_config))
     (repo / "check.mjs").write_text("process.exit(0);\n")

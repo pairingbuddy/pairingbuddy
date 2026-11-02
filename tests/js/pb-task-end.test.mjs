@@ -8,7 +8,7 @@ import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,12 +46,12 @@ const FINISHED = {
   gates: { [GATE]: { source: "auto" } },
 };
 
-function makeRepo({ ledger = FINISHED, tracked = {} } = {}) {
+function makeRepo({ ledger = FINISHED, tracked = {}, ignored = ".pairingbuddy/\n" } = {}) {
   const dir = makeDir("pb-task-end-");
   git(dir, "init", "-q", "-b", "feature");
   git(dir, "config", "user.name", "Test");
   git(dir, "config", "user.email", "test@example.com");
-  writeFileSync(join(dir, ".gitignore"), ".pairingbuddy/\n");
+  writeFileSync(join(dir, ".gitignore"), ignored);
   writeFileSync(join(dir, "a.txt"), "a\n");
   writeFileSync(join(dir, "fake.mjs"), "");
   for (const [path, text] of Object.entries(tracked)) writeFileSync(join(dir, path), text);
@@ -148,6 +148,137 @@ describe("a dirty tree is refused, with the list, and nothing moves", IN_PARALLE
     writeFileSync(join(repo.dir, ".pairingbuddy", "notes.json"), "{}\n");
 
     ok(repo);
+  });
+
+  test("the state directory is no leftover in a repo that neither ignores nor tracks it", () => {
+    const repo = makeRepo({ ignored: "" });
+
+    ok(repo);
+
+    assert.equal(existsSync(repo.taskDir), false);
+  });
+
+  test("a changed tracked file in the state directory is no leftover either", () => {
+    const repo = makeRepo({ ignored: "" });
+    git(repo.dir, "add", "-f", ".pairingbuddy/human-guidance.json");
+    git(repo.dir, "commit", "-q", "-m", "track guidance");
+    writeFileSync(join(repo.dir, ".pairingbuddy", "human-guidance.json"), '{"more":1}\n');
+
+    ok(repo);
+  });
+
+  test("a file beside the state directory still counts", () => {
+    const repo = makeRepo({ ignored: "" });
+    writeFileSync(join(repo.dir, ".pairingbuddy-notes"), "x\n");
+
+    assertRefused(taskEnd(repo), /\.pairingbuddy-notes/);
+    assertRunKept(repo);
+  });
+});
+
+describe("what the ledger recorded must still stand", IN_PARALLEL, () => {
+  const headOf = (repo) => git(repo.dir, "rev-parse", "HEAD");
+
+  function committed(repo, text = "committed\n") {
+    writeFileSync(join(repo.dir, "a.txt"), text);
+    git(repo.dir, "commit", "-q", "-am", "a checkpoint");
+    return headOf(repo);
+  }
+
+  const withLedger = (repo, fields) => writeLedger(repo.ledgerPath, { ...repo.ledger(), ...fields });
+
+  test("a commit that left HEAD's history is refused by name, and the record stays", () => {
+    const repo = makeRepo();
+    const lost = committed(repo);
+    withLedger(repo, { commits: [lost] });
+    git(repo.dir, "reset", "-q", "--hard", "HEAD~1");
+
+    assertRefused(taskEnd(repo), new RegExp(lost));
+    assertRunKept(repo);
+  });
+
+  test("only the missing commits are named", () => {
+    const repo = makeRepo();
+    const kept = committed(repo, "kept\n");
+    const lost = committed(repo, "lost\n");
+    withLedger(repo, { commits: [kept, lost] });
+    git(repo.dir, "reset", "-q", "--hard", "HEAD~1");
+
+    const result = taskEnd(repo);
+
+    assertRefused(result, new RegExp(lost));
+    assert.ok(!result.stderr.includes(kept), "a commit still on HEAD is not named");
+  });
+
+  test("a commit git no longer knows counts as missing", () => {
+    const repo = makeRepo();
+    const gone = "0123456789abcdef0123456789abcdef01234567";
+    withLedger(repo, { commits: [gone] });
+
+    assertRefused(taskEnd(repo), new RegExp(gone));
+  });
+
+  test("commits still on HEAD pass, with later commits on top", () => {
+    const repo = makeRepo();
+    const kept = committed(repo);
+    withLedger(repo, { commits: [kept] });
+    committed(repo, "later\n");
+
+    ok(repo);
+  });
+
+  const greenRun = (head, over = {}) => ({ stage: NET, attempt: 1, passed: true, red: false, runs: [], head, ...over });
+
+  test("a commit after the green run is refused, naming both, what a human can type, and nothing moves", () => {
+    const repo = makeRepo();
+    const tested = headOf(repo);
+    withLedger(repo, { tests: { full: greenRun(tested) } });
+    const moved = committed(repo);
+
+    const result = taskEnd(repo);
+
+    assertRefused(result, new RegExp(`${tested}.*${moved}`));
+    assert.match(result.stderr, /test --full/);
+    assertRunKept(repo);
+  });
+
+  test("the suite a human re-runs on the new HEAD lets the task end", () => {
+    const repo = makeRepo({ ledger: FINISHED });
+    withLedger(repo, { tests: { full: greenRun(headOf(repo)) } });
+    committed(repo);
+    assertRefused(taskEnd(repo), /test --full/);
+
+    assert.equal(pb(repo, "test", "--full").status, 0);
+
+    ok(repo);
+  });
+
+  test("a failed run on the current HEAD is refused", () => {
+    const repo = makeRepo();
+    withLedger(repo, { tests: { full: greenRun(headOf(repo), { passed: false }) } });
+
+    assertRefused(taskEnd(repo), /full suite/);
+    assertRunKept(repo);
+  });
+
+  test("the green run's own HEAD passes", () => {
+    const repo = makeRepo();
+    withLedger(repo, { tests: { full: greenRun(headOf(repo)) } });
+
+    ok(repo);
+  });
+
+  test("the commit check comes before the dirty tree, so a reset is named first", () => {
+    const repo = makeRepo();
+    const lost = committed(repo);
+    withLedger(repo, { commits: [lost] });
+    git(repo.dir, "reset", "-q", "--hard", "HEAD~1");
+    writeFileSync(join(repo.dir, "leftover.txt"), "x\n");
+
+    const result = taskEnd(repo);
+
+    assertRefused(result, new RegExp(lost));
+    assert.ok(!result.stderr.includes("leftover.txt"));
   });
 });
 
@@ -299,6 +430,20 @@ describe("the plan checkbox", IN_PARALLEL, () => {
       assertRunKept(repo);
     });
   }
+
+  test("a plan linked to a file outside the repo is refused, and that file is left alone", () => {
+    const outside = join(makeDir("pb-plan-outside-"), "plan.md");
+    writeFileSync(outside, PLAN_TEXT);
+    const repo = makeRepo({ ledger: planLedger() });
+    symlinkSync(outside, join(repo.dir, PLAN_PATH));
+    git(repo.dir, "add", PLAN_PATH);
+    git(repo.dir, "commit", "-q", "-m", "link the plan");
+
+    assertRefused(taskEnd(repo), /symlink/);
+
+    assertRunKept(repo);
+    assert.equal(readFileSync(outside, "utf8"), PLAN_TEXT);
+  });
 
   test("a dirty tree leaves the box unticked", () => {
     const repo = untouchedPlanRepo();

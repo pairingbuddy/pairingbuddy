@@ -11,7 +11,8 @@ const STEPS = {
   config: { type: "chore", role: "apply-config-change" },
   docs: { type: "docs", role: "update-documentation" },
 };
-const REFUSED_DIRECTORIES = [".pairingbuddy", ".git"];
+const STATE_DIRECTORY = ".pairingbuddy";
+const REFUSED_DIRECTORIES = [STATE_DIRECTORY, ".git"];
 const TYPE_PREFIX = /^(?:feat|fix|docs|chore|test|refactor|style|perf|ci|build|revert)(?:\([^)]*\))?!?:\s*/i;
 const BREAKS_LINE = /[\p{Cc}\p{Zl}\p{Zp}]/u;
 // Git writes the commit only after every hook has passed, so this line can only mean signing or the object store.
@@ -59,10 +60,27 @@ function statusEntries(root, paths = []) {
 
 const dirtyInWorktree = (root) => statusEntries(root).filter(({ worktree }) => worktree !== " ").map(({ path }) => path);
 
-// Every path a commit has not taken, staged, changed, deleted or new. Ignored files are no one's leftovers.
-export const remainingFiles = (root) => statusEntries(root).map(({ path }) => path);
+// Every path a commit has not taken, staged, changed, deleted or new. Ignored files are no one's leftovers, and the
+// state directory is pb's own: a repo need not ignore it, and no checkpoint may stage it.
+export const remainingFiles = (root) => statusEntries(root).map(({ path }) => path).filter((path) => !path.startsWith(`${STATE_DIRECTORY}/`));
+
+const stagedPaths = (root) => statusEntries(root).filter(({ index }) => index !== " " && index !== "?").map(({ path }) => path);
 
 const stage = (root, paths) => literalGit(root, "add", "--", ...paths);
+
+// The branch checked out at the run root, or null for a detached HEAD.
+export function branchOf(root) {
+  const { status, stdout } = runGit(root, ["symbolic-ref", "-q", "HEAD"]);
+  return status === 0 ? stdout.trim().replace(/^refs\/heads\//, "") : null;
+}
+
+// The commit at the run root, or null in a repo with none yet.
+export function headOf(root) {
+  const { status, stdout } = runGit(root, ["rev-parse", "-q", "--verify", "HEAD"]);
+  return status === 0 ? stdout.trim() : null;
+}
+
+export const isOnHead = (root, sha) => runGit(root, ["merge-base", "--is-ancestor", sha, "HEAD"]).status === 0;
 
 // ---------- the key ----------
 
@@ -150,7 +168,7 @@ function commitMessage(step, subject) {
 // ---------- the plan ----------
 
 function assertNothingElseStaged(root, listed) {
-  const stray = statusEntries(root).filter(({ index, path }) => index !== " " && index !== "?" && !listed.includes(path)).map(({ path }) => path);
+  const stray = stagedPaths(root).filter((path) => !listed.includes(path));
   if (stray.length > 0) throw new CheckpointRefused(`changes outside the list are staged, so the commit would carry them: ${stray.join(", ")}`);
 }
 
@@ -161,6 +179,8 @@ export function planCommit(root, artifactsDir, step, key) {
   if (listed.length === 0) return null;
   const paths = [...new Set(statusEntries(root, listed).map(({ path }) => path))];
   if (paths.length === 0) return null;
+  const swept = paths.find((path) => !listed.includes(path));
+  if (swept !== undefined) throw new CheckpointRefused(`${swept} is not listed: a listed path matched it, so that path is a directory that is gone. List its files.`);
   const message = commitMessage(step, artifact.commit_subject);
   assertNothingElseStaged(root, listed);
   return { paths, message };
@@ -172,9 +192,29 @@ const failureText = ({ stderr, stdout, error }) => (stderr || stdout || error?.m
 
 const lastLine = (text) => text.trim().split("\n").at(-1);
 
+// Test code ran in the repo after the plan was made, and `git commit` takes the whole index, so this looks again.
+function assertNotMoved(root, { branch, head }) {
+  const branchNow = branchOf(root);
+  if (branchNow !== branch) throw new CheckpointStopped(`the branch moved from ${branch} to ${branchNow ?? "a detached HEAD"} while the tests ran, so nothing was committed`);
+  const headNow = headOf(root);
+  if (headNow !== head) throw new CheckpointStopped(`HEAD moved from ${head} to ${headNow} while the tests ran, so nothing was committed`);
+}
+
+function stageExactly(root, paths) {
+  try {
+    stage(root, paths);
+  } catch (e) {
+    if (e instanceof CheckpointRefused) throw new CheckpointStopped(`the listed paths changed while the tests ran, so nothing was committed: ${e.message}`);
+    throw e;
+  }
+  const staged = stagedPaths(root);
+  const differ = [...staged.filter((path) => !paths.includes(path)), ...paths.filter((path) => !staged.includes(path))];
+  if (differ.length > 0) throw new CheckpointStopped(`the staged paths are not the listed ones, so nothing was committed: ${differ.join(", ")}`);
+}
+
 // LANGUAGE alone, so the words of git's own error stay English and a hook keeps the human's locale.
-function tryCommit(root, message) {
-  const result = runGit(root, ["commit", "-q", "-m", message], { env: { ...process.env, LANGUAGE: "C" }, timeout: COMMIT_TIMEOUT_MS });
+function tryCommit(root, message, timeout) {
+  const result = runGit(root, ["commit", "-q", "-m", message], { env: { ...process.env, LANGUAGE: "C" }, timeout });
   if (result.status !== 0 && lastLine(result.stderr ?? "") === WRITE_FAILED) throw new CheckpointStopped(`the commit could not be signed: ${failureText(result)}`);
   return result;
 }
@@ -196,14 +236,16 @@ function retryPaths(root, before, failed) {
   return checkedHookChanges(root, changed);
 }
 
-export function commitPaths(root, { paths, message }) {
-  stage(root, paths);
+export function commitPaths(root, plan, timeout = COMMIT_TIMEOUT_MS) {
+  const { paths, message } = plan;
+  assertNotMoved(root, plan);
+  stageExactly(root, paths);
   const before = dirtyInWorktree(root);
-  const first = tryCommit(root, message);
+  const first = tryCommit(root, message, timeout);
   const hookRetried = first.status !== 0;
   if (hookRetried) {
     stage(root, retryPaths(root, before, first));
-    const second = tryCommit(root, message);
+    const second = tryCommit(root, message, timeout);
     if (second.status !== 0) throw new CheckpointStopped(`the commit failed after one retry: ${failureText(second)}`);
   }
   return { sha: git(root, "rev-parse", "HEAD").trim(), hookRetried };

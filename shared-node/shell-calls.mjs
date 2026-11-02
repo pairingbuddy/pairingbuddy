@@ -1,11 +1,15 @@
 // Finds real pb invocations in a Bash command by reading its shell structure: quoting, simple commands and
 // the command word of each. This sees only the text: a script file or a line piped into sh hides its calls.
 // Node built-ins only.
+import { matchVerb } from "./verbs.mjs";
+
 const SEPARATORS = new Set([";", "&", "|", "(", ")", "\n"]);
 const REDIRECTS = new Set(["<", ">"]);
 const KEYWORDS = new Set(["if", "then", "elif", "else", "while", "until", "do", "!", "{"]);
 const WRAPPERS = new Set(["env", "command", "exec", "nohup", "time", "timeout", "nice", "sudo", "xargs", "node"]);
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
+// Commands whose arguments are text, so a word there is a mention and runs nothing.
+const TEXT_COMMANDS = new Set(["echo", "printf", "grep", "egrep", "fgrep", "rg", "ag", "ack"]);
 const PB_NAMES = new Set(["pb", "pb.mjs"]);
 const ASSIGNMENT = /^[A-Za-z_]\w*=/;
 const WRAPPER_OPTION = /^(?:-.*|\d[\d.]*[smhd]?)$/;
@@ -83,6 +87,8 @@ function parse(text) {
       word ??= "";
     } else if (quote === '"') {
       word += char;
+    } else if (char === "#" && word === null) {
+      while (i + 1 < text.length && text[i + 1] !== "\n") i += 1;
     } else if (char === "'") {
       quote = "'";
       word ??= "";
@@ -122,12 +128,16 @@ function fromCommandWord(words) {
   return words.slice(i);
 }
 
-// The command text that a shell or eval will parse again, or undefined for any other command.
-function innerScript([head, ...rest]) {
+// The command text that a shell or eval will parse again, or undefined for any other command. The shell can sit in any
+// position, since a wrapper this file does not know, or `find -exec`, runs the rest of its words.
+function innerScript(run) {
+  const [head, ...rest] = run;
   if (head === "eval") return rest.join(" ");
-  if (!SHELLS.has(baseName(head))) return undefined;
-  const flag = rest.findIndex((word) => SHELL_C_FLAG.test(word));
-  return flag === -1 ? undefined : rest[flag + 1];
+  if (TEXT_COMMANDS.has(baseName(head))) return undefined;
+  const shell = run.findIndex((word) => SHELLS.has(baseName(word)));
+  if (shell === -1) return undefined;
+  const flag = run.slice(shell + 1).findIndex((word) => SHELL_C_FLAG.test(word));
+  return flag === -1 ? undefined : run[shell + flag + 2];
 }
 
 // True when xargs supplies a pb's words from its input, which no reading of the text can see.
@@ -153,15 +163,36 @@ export function disguisesPb(command) {
   return [...command.matchAll(PB_FILE_ANY_CASE)].some(([name]) => name.replace(QUOTING_CHARACTERS, "") !== "pb.mjs");
 }
 
-// The words after each pb or pb.mjs that a shell would run, in a compound, a subshell, a substitution, `sh -c` or eval.
-export function pbInvocations(command) {
+const isPbName = (word) => PB_NAMES.has(baseName(word));
+
+// Where pb runs in a simple command: as its command word, or anywhere else when a known verb follows the name, since
+// no list of wrappers is complete. Each is {before, after}, the words on either side of the name.
+function callsIn(words) {
+  const run = fromCommandWord(words);
+  if (run.length === 0) return [];
+  const start = words.length - run.length;
+  const isCall = (word, i) => {
+    if (!isPbName(word)) return false;
+    return i === start || (!TEXT_COMMANDS.has(baseName(run[0])) && i > start && matchVerb(words.slice(i + 1, i + 3)) !== undefined);
+  };
+  return words.flatMap((word, i) => (isCall(word, i) ? [{ before: words.slice(0, i), after: words.slice(i + 1, i + 3) }] : []));
+}
+
+// Every call a shell would make, in a compound, a subshell, a substitution, `sh -c` or eval.
+function pbCalls(command) {
   const { commands, substitutions } = parse(command);
   const scripts = [...substitutions];
-  const calls = [];
-  for (const words of commands.map(fromCommandWord).filter((words) => words.length > 0)) {
-    if (PB_NAMES.has(baseName(words[0]))) calls.push(words.slice(1, 3));
-    const script = innerScript(words);
+  for (const run of commands.map(fromCommandWord).filter((words) => words.length > 0)) {
+    const script = innerScript(run);
     if (script !== undefined) scripts.push(script);
   }
-  return [...calls, ...scripts.flatMap(pbInvocations)];
+  return [...commands.flatMap(callsIn), ...scripts.flatMap(pbCalls)];
 }
+
+// The words after each pb or pb.mjs that a shell would run.
+export const pbInvocations = (command) => pbCalls(command).map(({ after }) => after);
+
+const setsEnvironment = (word) => ASSIGNMENT.test(word) || baseName(word) === "env";
+
+// True when a pb call runs under an assignment or the env command in its own simple command.
+export const pbWithEnvironment = (command) => pbCalls(command).some(({ before }) => before.some(setsEnvironment));

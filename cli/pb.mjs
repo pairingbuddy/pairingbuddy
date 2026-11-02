@@ -5,16 +5,16 @@ import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { CheckpointRefused, CheckpointStopped, assertCurrentKey, checkpointSteps, commitPaths, isCheckpointCall, isKey, isProtectedBranch, planCommit, remainingFiles } from "../shared-node/checkpoint.mjs";
+import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, headOf, isCheckpointCall, isKey, isOnHead, isProtectedBranch, planCommit, remainingFiles } from "../shared-node/checkpoint.mjs";
 import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
-import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
+import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { PlanRefused, tickPlanBox } from "../shared-node/plan-boxes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
 import { buildReport, closeStage, finishProblems, readReportOf, readReturn, returnsAt, spendTotals, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, nextAttempt, nextStage } from "../shared-node/stages.mjs";
-import { TestRunRefused, fullSuitePlans, readTestConfig, runPlan, runRecord, selectedPlans } from "../shared-node/test-run.mjs";
-import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy } from "../shared-node/verbs.mjs";
+import { TestRunRefused, fullSuitePlans, readTestConfig, runPlan, runRecord, selectedPlans, validatedConfigHash } from "../shared-node/test-run.mjs";
+import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
 
@@ -23,24 +23,19 @@ const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url));
 class UsageError extends Error {}
 class Refusal extends Error {}
 
-function git(...args) {
-  return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-}
-
 function toplevel() {
   try {
-    return git("rev-parse", "--show-toplevel");
+    return execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   } catch {
     throw new Refusal("no git repository here");
   }
 }
 
-function currentBranch() {
-  try {
-    return git("symbolic-ref", "-q", "HEAD").replace(/^refs\/heads\//, "");
-  } catch {
-    throw new Refusal("no branch checked out (detached HEAD)");
-  }
+// Of the run root, which a nested repository's cwd is not.
+function currentBranch(root) {
+  const branch = branchOf(root);
+  if (branch === null) throw new Refusal("no branch checked out (detached HEAD)");
+  return branch;
 }
 
 function parseKind(args) {
@@ -53,12 +48,10 @@ function parseKind(args) {
 function runOpen(args) {
   const kind = parseKind(args);
   const root = toplevel();
-  const branch = currentBranch();
+  const branch = currentBranch(root);
   if (isProtectedBranch(branch)) throw new Refusal(`refusing to open a run on protected branch ${branch}`);
 
-  const configPath = join(root, ".pairingbuddy", "test-config.json");
-  if (!existsSync(configPath)) throw new Refusal(`missing ${configPath}`);
-  const configHash = fileHash(configPath);
+  const configHash = validatedConfigHash(root);
 
   const runRoot = join(root, ".pairingbuddy", "run");
   const dir = join(runRoot, "task");
@@ -169,9 +162,35 @@ function humanApprove(args) {
   return { ok: true, gate, source: "human-cli" };
 }
 
+function acceptedEdit(path) {
+  try {
+    return acceptLedger(path);
+  } catch (e) {
+    if (e instanceof NoHandEdit) return null;
+    throw e;
+  }
+}
+
+// A human's own change to test-config. Only a config every test run can use is pinned, so this cannot strand the run.
+function acceptedConfig(root, path) {
+  const configPath = join(root, ".pairingbuddy", "test-config.json");
+  if (!existsSync(configPath) || fileHash(configPath) === readLedger(path).configHash) return null;
+  const newHash = validatedConfigHash(root);
+  let accepted;
+  updateLedger(path, (ledger) => {
+    accepted = { oldHash: ledger.configHash, newHash, seq: ledger.seq + 1 };
+    return { ...ledger, configHash: newHash, configAcceptances: [...(ledger.configAcceptances ?? []), accepted] };
+  });
+  return accepted;
+}
+
 function humanAccept(args) {
   if (args.length > 0) throw new UsageError("usage: pb human accept");
-  return { ok: true, ...acceptLedger(runLedgerPath().path) };
+  const { root, path } = runLedgerPath();
+  const edit = acceptedEdit(path);
+  const config = acceptedConfig(root, path);
+  if (edit === null && config === null) throw new Refusal(`nothing to accept: ledger ${path} has no sha mismatch, and test-config.json has not changed`);
+  return { ok: true, ...edit, ...(config === null ? {} : { config }) };
 }
 
 async function suiteRecord(plans, root, stage) {
@@ -199,7 +218,8 @@ async function runTests(args) {
   const { root, path } = runLedgerPath();
   const { configHash, stage } = readLedger(path);
   const { key, plans, selection } = testPlans(full, readTestConfig(root, configHash), root, stage);
-  const record = { ...(await suiteRecord(plans, root, stage)), ...selection };
+  const head = headOf(root);
+  const record = { ...(await suiteRecord(plans, root, stage)), ...selection, head };
   updateLedger(path, (ledger) => ({ ...ledger, tests: { ...ledger.tests, [key]: record } }));
   return { ok: true, key, ...record };
 }
@@ -220,39 +240,70 @@ async function requirePassingTests(root, path, { configHash, stage }) {
   if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed: exit codes ${record.runs.map(({ exitCode }) => exitCode).join(", ")}`);
 }
 
-function commitOrStop(root, path, plan) {
+function assertCommitAllowed(step, key, ledger) {
+  if (ledger.stop !== null) throw new Refusal(`the run has stopped: ${ledger.stop.reason}`);
+  assertCurrentKey(step, key, ledger);
+}
+
+// A stop belongs to the attempt that raised it. A key that is no longer current is refused here, so an orphan cannot
+// halt a later attempt or a finished stage.
+function commitOrStop(root, path, { step, key }, plan) {
   try {
     return commitPaths(root, plan);
   } catch (e) {
     if (!(e instanceof CheckpointStopped)) throw e;
-    updateLedger(path, (ledger) => ({ ...ledger, stop: { reason: e.message, seq: ledger.seq + 1 } }));
+    updateLedger(path, (ledger) => {
+      assertCurrentKey(step, key, ledger);
+      return { ...ledger, stop: { reason: e.message, seq: ledger.seq + 1 } };
+    });
     throw new Refusal(`the run stopped: ${e.message}`);
   }
 }
 
-// The evidence for stage finish, so a step with no change counts as done too.
+// The evidence for stage finish, so a step with no change counts as done too. It is stamped from the key, which was
+// checked against the ledger: whatever the ledger says by now is someone else's attempt.
 function withCheckpoint(ledger, record) {
-  const { name: stage, attempt } = ledger.stage;
+  const { stage, attempt } = parseKey(record.key);
   return { ...ledger, checkpoints: [...(ledger.checkpoints ?? []), { ...record, stage, attempt }] };
 }
 
-// Every check comes before the tests, and a step with no change runs none.
+// Checked under the lock, since the attempt can end at any moment up to here. A commit exists whatever became of its
+// attempt, so the ledger lists it, and only a current key makes it evidence.
+function recordCheckpoint(path, record) {
+  let orphaned = null;
+  updateLedger(path, (ledger) => {
+    const listed = record.committed ? { ...ledger, commits: [...ledger.commits, record.sha] } : ledger;
+    try {
+      assertCurrentKey(record.step, record.key, ledger);
+      return withCheckpoint(listed, record);
+    } catch (e) {
+      if (!(e instanceof CheckpointRefused)) throw e;
+      orphaned = e;
+      return listed;
+    }
+  });
+  if (orphaned !== null) throw new Refusal(`${record.committed ? `commit ${record.sha} landed, and it is no evidence: ` : ""}${orphaned.message}`);
+}
+
+// Every check that costs no test run comes first, and a step with no change runs none. The tests run code in the repo,
+// and the attempt can end while they do, so what they could change is looked at again before the commit.
 async function checkpoint(args) {
   const { step, key } = parseCheckpoint(args);
   const { root, path } = runLedgerPath();
   const ledger = readLedger(path);
-  if (ledger.stop !== null) throw new Refusal(`the run has stopped: ${ledger.stop.reason}`);
-  assertCurrentKey(step, key, ledger);
-  const branch = currentBranch();
+  assertCommitAllowed(step, key, ledger);
+  const branch = currentBranch(root);
   if (isProtectedBranch(branch)) throw new Refusal(`refusing to commit on protected branch ${branch}`);
   const plan = planCommit(root, join(root, ".pairingbuddy", "run", "task", "artifacts"), step, key);
   if (plan === null) {
-    updateLedger(path, (current) => withCheckpoint(current, { step, key, committed: false, sha: null }));
+    recordCheckpoint(path, { step, key, committed: false, sha: null });
     return { ok: true, step, key, committed: false };
   }
+  const head = headOf(root);
   await requirePassingTests(root, path, ledger);
-  const { sha, hookRetried } = commitOrStop(root, path, plan);
-  updateLedger(path, (current) => withCheckpoint({ ...current, commits: [...current.commits, sha] }, { step, key, committed: true, sha }));
+  assertCommitAllowed(step, key, readLedger(path));
+  const { sha, hookRetried } = commitOrStop(root, path, { step, key }, { ...plan, branch, head });
+  recordCheckpoint(path, { step, key, committed: true, sha });
   return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
 }
 
@@ -271,13 +322,14 @@ function stageFinish(args) {
   const { root, path } = runLedgerPath();
   const contract = loadStages(PLUGIN_ROOT);
   const artifactsDir = artifactsDirOf(root);
+  const head = headOf(root);
   let missing = null;
   let finished;
   updateLedger(path, (ledger) => {
     assertStageActive(ledger, "finish");
     if (ledger.stop !== null) throw new Refusal(`the run has stopped: ${ledger.stop.reason}`);
     const { name, attempt } = ledger.stage;
-    const problems = finishProblems(contract, ledger, artifactsDir);
+    const problems = finishProblems(contract, ledger, artifactsDir, head);
     if (problems.length > 0) {
       missing = `stage ${name} cannot finish at attempt ${attempt}: ${problems.join("; ")}`;
       return { ...ledger, stop: { reason: missing, seq: ledger.seq + 1 } };
@@ -298,14 +350,25 @@ function assertNotHumanStop(ledger, root) {
   throw new Refusal(`the human answered stop at ${answered.name}. Only the human can go on: ask them to type ${approveCommand(root, answered.name)}`);
 }
 
+// With no attempt to fail, only the stop goes, whatever state the stage is in, so a stop always has a way out.
+function withStopCleared(ledger) {
+  const { name } = ledger.stage;
+  const clearedStop = ledger.stop.reason;
+  return { ...ledger, stop: null, stages: ledger.stages.map((entry) => (entry.name === name ? { ...entry, clearedStop } : entry)) };
+}
+
 function stageFail(args) {
   assertNoArgs(args, "stage fail");
   const { root, path } = runLedgerPath();
   let failed;
   updateLedger(path, (ledger) => {
-    assertStageActive(ledger, "fail");
     assertNotHumanStop(ledger, root);
     const { name, attempt } = ledger.stage;
+    if (!isStageActive(ledger) && ledger.stop !== null) {
+      failed = { stage: name, attempt, nextAttempt: null, clearedStop: ledger.stop.reason };
+      return withStopCleared(ledger);
+    }
+    assertStageActive(ledger, "fail");
     const clearedStop = ledger.stop?.reason ?? null;
     const closed = closeStage(ledger, FAILED_STATUS, returnsAt(artifactsDirOf(root), ledger.stage).length, clearedStop === null ? {} : { clearedStop });
     failed = { stage: name, attempt, nextAttempt: nextAttempt(closed, name), clearedStop };
@@ -365,6 +428,20 @@ function assertTaskFinished(ledger) {
   if (gate !== undefined) throw new Refusal(`gate ${gate.name} has not passed, so the task cannot end. Run pb gate eval.`);
 }
 
+function assertCommitsOnHead(root, { commits }) {
+  const missing = commits.filter((sha) => !isOnHead(root, sha));
+  if (missing.length > 0) throw new Refusal(`these commits of this run are no longer on HEAD, so the task cannot end. Restore them, nothing was touched: ${missing.join(", ")}`);
+}
+
+// A later commit undoes what the green run proved. The stage is done, so a human's own run is the way to prove it again.
+function assertGreenRunStands(root, { tests: { full } }) {
+  if (full === undefined) return;
+  const rerun = `ask the human to type ${typedCommand(root, "test --full")}`;
+  if (!full.passed) throw new Refusal(`the last full suite run failed, so the task cannot end. Nothing was touched: ${rerun}`);
+  const head = headOf(root);
+  if (full.head !== head) throw new Refusal(`the full suite ran at ${full.head}, and HEAD is now ${head}, so the task cannot end. Nothing was touched: put HEAD back, or ${rerun}`);
+}
+
 function assertCleanTree(root) {
   const remaining = remainingFiles(root);
   if (remaining.length > 0) throw new Refusal(`the tree is dirty, so the task cannot end. Commit or remove these, nothing was touched: ${remaining.join(", ")}`);
@@ -380,6 +457,8 @@ function taskEnd(args) {
   const { root, path } = runLedgerPath();
   const ledger = readLedger(path);
   assertTaskFinished(ledger);
+  assertCommitsOnHead(root, ledger);
+  assertGreenRunStands(root, ledger);
   assertCleanTree(root);
   const plan = tickedPlan(root, ledger.plan);
   const dir = taskDirOf(root);

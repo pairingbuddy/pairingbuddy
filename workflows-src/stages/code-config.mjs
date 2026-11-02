@@ -2,6 +2,7 @@ export const meta = { name: 'code-config', description: 'Applies one configurati
 
 // pb-inline-module shared-node/keys.mjs
 // pb-inline-module shared-node/labels.mjs
+// pb-inline-module shared-node/shell-word.mjs
 // pb-inline RESULT_SCHEMA contracts/schemas/apply-config-change-result.schema.json
 // pb-inline RUNNER_SCHEMA contracts/schemas/runner-result.schema.json
 

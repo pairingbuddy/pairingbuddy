@@ -4,7 +4,9 @@
 //
 // Output contract:
 //   approve: {ok, gate, source:"human-cli"}, recording {source:"human-cli", answer:"approve"}
-//   accept:  {ok, oldSha, newSha, seq}, appending the same three fields to ledger.acceptances
+//   accept:  {ok, oldSha, newSha, seq}, appending the same three fields to ledger.acceptances, for a hand-edited ledger
+//            {ok, config: {oldHash, newHash, seq}}, appending that record to ledger.configAcceptances, for a changed
+//            test-config, and both together when both changed
 //   oldSha is the sha the file carried. newSha is the sha of the content as edited, before the acceptance is
 //   added: the ledger's own sha covers the acceptance, so it cannot appear inside what it signs.
 // A refusal exits 1, bad arguments exit 2, and neither changes a byte of the ledger.
@@ -453,6 +455,84 @@ describe("pb human accept re-signs an edited ledger", () => {
     const after = decisionOf(runGate(repo, stageCall(repo, SECOND)));
 
     assert.doesNotMatch(after?.permissionDecisionReason ?? "", /sha mismatch/);
+  });
+});
+
+describe("pb human accept takes a changed test-config", () => {
+  const RUNNER = { command: "node fake.mjs", test_directory: "tests", run_args: [] };
+  const GOOD = `${JSON.stringify({ runners: { fake: RUNNER }, default_runner: "fake" })}\n`;
+  const hashOf = (text) => createHash("sha256").update(text).digest("hex");
+  const editConfig = (repo, text) => writeFileSync(join(repo.dir, ".pairingbuddy", "test-config.json"), text);
+
+  test("it re-pins the hash and records the old and new hash", () => {
+    const repo = makeRepo();
+    const before = repo.ledger();
+    editConfig(repo, GOOD);
+
+    const output = succeeded(accept(repo));
+
+    const ledger = repo.ledger();
+    assert.equal(ledger.configHash, hashOf(GOOD));
+    assert.deepEqual(ledger.configAcceptances, [{ oldHash: before.configHash, newHash: hashOf(GOOD), seq: ledger.seq }]);
+    assert.deepEqual(output.config, ledger.configAcceptances[0]);
+    assert.equal(ledger.acceptances, undefined, "the ledger was not hand-edited");
+  });
+
+  test("the run goes on: pb test no longer refuses the file", () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo.dir, "fake.mjs"), "");
+    editConfig(repo, GOOD);
+    assertRefuses(repo, () => pb(repo, "test", "--full"), /config hash changed[\s\S]*human accept/);
+
+    succeeded(accept(repo));
+
+    assert.equal(pb(repo, "test", "--full").code, 0);
+  });
+
+  test("a second change adds a second record after the first", () => {
+    const repo = makeRepo();
+    editConfig(repo, GOOD);
+    succeeded(accept(repo));
+    const changedAgain = GOOD.replace("fake.mjs", "fake2.mjs");
+    editConfig(repo, changedAgain);
+
+    succeeded(accept(repo));
+
+    assert.deepEqual(repo.ledger().configAcceptances.map(({ newHash }) => newHash), [hashOf(GOOD), hashOf(changedAgain)]);
+  });
+
+  test("a hand edit and a changed config are both accepted at once", () => {
+    const repo = makeRepo();
+    handEdit(repo);
+    editConfig(repo, GOOD);
+
+    const output = succeeded(accept(repo));
+
+    const ledger = repo.ledger();
+    assert.equal(ledger.configHash, hashOf(GOOD));
+    assert.equal(ledger.acceptances.length, 1);
+    assert.equal(output.oldSha, ledger.acceptances[0].oldSha);
+    assert.equal(output.config.newHash, hashOf(GOOD));
+  });
+
+  for (const [name, text, pattern] of [
+    ["not JSON", "{not json", /not valid JSON/],
+    ["no run_args", JSON.stringify({ runners: { fake: { command: "x", test_directory: "tests" } }, default_runner: "fake" }), /run_args/],
+    ["an unknown default runner", JSON.stringify({ runners: { fake: RUNNER }, default_runner: "nope" }), /runner nope/],
+  ]) {
+    test(`a config with ${name} is refused, and the old hash stands`, () => {
+      const repo = makeRepo();
+      editConfig(repo, text);
+
+      assertRefuses(repo, () => accept(repo), pattern);
+    });
+  }
+
+  test("a missing file is nothing to accept", () => {
+    const repo = makeRepo();
+    rmSync(join(repo.dir, ".pairingbuddy", "test-config.json"));
+
+    assertRefuses(repo, () => accept(repo), /nothing to accept/i);
   });
 });
 

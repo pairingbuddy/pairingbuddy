@@ -519,9 +519,9 @@ describe("a model cannot supply the policy", () => {
     const repo = makeRepo();
     const command = `PAIRINGBUDDY_GATE_POLICY=auto ${evalCommand(repo)}`;
 
-    assertNotDenied(runGate(repo, mainBash(repo, command, "default")));
+    assertDenied(runGate(repo, mainBash(repo, command, "default")), /environment/);
 
-    assert.deepEqual(repo.ledger().policy, { mode: "default", source: "permission_mode" });
+    assert.notEqual(repo.ledger().policy.mode, "auto");
   });
 
   test("a permission_mode inside tool_input is not the payload's mode", () => {

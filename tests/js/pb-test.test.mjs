@@ -1,8 +1,9 @@
 // Task 28: pb test and pb test --full. Every test drives the real CLI as a subprocess, in a temp git repo with a real
 // ledger, and the test command is a small node script that logs the argv it was given.
 //
-// Output contract: a run that happened prints {ok, key, passed, red, runs} and exits 0 whatever the tests did, and the
-// same record lands in ledger.tests[key], stamped with the stage and attempt. Each run is
+// Output contract: a run that happened prints {ok, key, passed, red, runs, head} and exits 0 whatever the tests did, and
+// the same record lands in ledger.tests[key], stamped with the stage and attempt. head is the commit the run started
+// from, or null in a repo with none. Each run is
 // {runner, argv, exitCode, signal, timedOut, durationMs, excerpt, excerptTruncated}.
 // A refusal exits 1, bad arguments exit 2, and neither runs anything or changes a byte of the ledger.
 import "./isolated-tmpdir.mjs";
@@ -92,8 +93,8 @@ function assertRefuses(repo, pattern, { args = ["--full"], code = 1 } = {}) {
   assert.deepEqual(repo.calls(), [], "a refusal runs nothing");
 }
 
-function writeTests(repo, tests, { stage = STAGE, attempt = ATTEMPT, round = 1 } = {}) {
-  const key = `${stage}.${ROLE}.-.r${round}.a${attempt}`;
+function writeTests(repo, tests, { stage = STAGE, attempt = ATTEMPT, round = 1, role = ROLE } = {}) {
+  const key = `${stage}.${role}.-.r${round}.a${attempt}`;
   writeFileSync(join(repo.taskDir, "artifacts", `${key}.json`), JSON.stringify({ pb_key: key, tests }));
 }
 
@@ -201,6 +202,39 @@ describe("the exit code recorded matches the process", IN_PARALLEL, () => {
   });
 });
 
+describe("the head a run saw", IN_PARALLEL, () => {
+  const committedRepo = (body) => {
+    const repo = makeRepo({ body });
+    const identity = ["-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"];
+    execFileSync("git", [...identity, "commit", "-q", "--allow-empty", "-m", "seed"], { cwd: repo.dir });
+    return { repo, head: () => execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo.dir, encoding: "utf8" }).trim(), identity };
+  };
+
+  test("is recorded", () => {
+    const { repo, head } = committedRepo("");
+
+    assert.equal(recorded(repo, "--full").head, head());
+    assert.equal(repo.ledger().tests.full.head, head());
+  });
+
+  test("is the one the run started from, when a test moves it", () => {
+    const { repo, head } = committedRepo(`
+import { execFileSync } from "node:child_process";
+execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "moved"]);
+`);
+    const before = head();
+
+    recorded(repo, "--full");
+
+    assert.notEqual(head(), before);
+    assert.equal(repo.ledger().tests.full.head, before);
+  });
+
+  test("is null in a repo with no commit yet, and the run is still recorded", () => {
+    assert.equal(recorded(makeRepo(), "--full").head, null);
+  });
+});
+
 describe("the output excerpt", IN_PARALLEL, () => {
   test("holds stdout and stderr", () => {
     const repo = makeRepo({ body: `console.log("from stdout");console.error("from stderr");` });
@@ -243,9 +277,16 @@ describe("a config hash change refuses", IN_PARALLEL, () => {
     assertRefuses(repo, /config hash changed.*stop/i);
   });
 
+  test("the refusal names what the human types to accept the file", () => {
+    const repo = makeRepo();
+    writeFileSync(repo.configPath, JSON.stringify(singleRunner({ command: "node fake.mjs --edited" })));
+
+    assertRefuses(repo, /human accept/);
+  });
+
   test("the plain verb refuses too", () => {
     const repo = makeRepo();
-    writeTests(repo, [row("a.mjs")]);
+    writeTests(repo, [row("tests/a.mjs")]);
     writeFileSync(repo.configPath, `${JSON.stringify(singleRunner())}\n`);
 
     assertRefuses(repo, /config hash changed/i, { args: [] });
@@ -339,6 +380,10 @@ describe("the timeout", IN_PARALLEL, () => {
   for (const [name, timeout_seconds] of [["zero", 0], ["negative", -1], ["text", "5"]]) {
     test(`a ${name} timeout_seconds refuses`, () => assertRefuses(makeRepo({ config: singleRunner({ timeout_seconds }) }), /timeout_seconds/));
   }
+
+  test("a timeout_seconds too large for a timer refuses, since the timer would fire at once", () => {
+    assertRefuses(makeRepo({ config: singleRunner({ timeout_seconds: 2 ** 31 }) }), /timeout_seconds/);
+  });
 
   test("a process that leaves a child holding the pipes still records its own exit code", async () => {
     const body = `
@@ -438,7 +483,7 @@ describe("--full runs the whole suite", IN_PARALLEL, () => {
 
   test("the selected tests play no part", () => {
     const repo = makeRepo();
-    writeTests(repo, [row("a.mjs")]);
+    writeTests(repo, [row("tests/a.mjs")]);
 
     recorded(repo, "--full");
 
@@ -449,47 +494,98 @@ describe("--full runs the whole suite", IN_PARALLEL, () => {
 describe("plain pb test takes its selectors from the tests artifact", IN_PARALLEL, () => {
   test("runs the artifact's test files, each once, before run_args", () => {
     const repo = makeRepo({ config: singleRunner({ run_args: ["-v"] }) });
-    writeTests(repo, [row("a.mjs"), row("b.mjs"), row("a.mjs", { test_id: "t-other" })]);
+    writeTests(repo, [row("tests/a.mjs"), row("tests/b.mjs"), row("tests/a.mjs", { test_id: "t-other" })]);
 
     const printed = recorded(repo);
 
-    assert.deepEqual(repo.calls(), [["a.mjs", "b.mjs", "-v"]]);
+    assert.deepEqual(repo.calls(), [["tests/a.mjs", "tests/b.mjs", "-v"]]);
     assert.equal(printed.key, "selected");
-    assert.deepEqual(repo.ledger().tests.selected.tests, ["t-a.mjs", "t-b.mjs", "t-other"]);
+    assert.deepEqual(repo.ledger().tests.selected.tests, ["t-tests/a.mjs", "t-tests/b.mjs", "t-other"]);
     assert.deepEqual(repo.ledger().tests.full, undefined);
   });
 
   test("each test runs under the runner it names", () => {
     const config = { source_directory: ".", runners: { one: runner(), two: runner({ run_args: ["-x"] }) }, default_runner: "one" };
     const repo = makeRepo({ config });
-    writeTests(repo, [row("a.mjs", { runner_id: "one" }), row("b.mjs", { runner_id: "two" }), row("c.mjs", { runner_id: "one" })]);
+    writeTests(repo, [row("tests/a.mjs", { runner_id: "one" }), row("tests/b.mjs", { runner_id: "two" }), row("tests/c.mjs", { runner_id: "one" })]);
 
     const { runs } = recorded(repo);
 
-    assert.deepEqual(repo.calls(), [["a.mjs", "c.mjs"], ["b.mjs", "-x"]]);
+    assert.deepEqual(repo.calls(), [["tests/a.mjs", "tests/c.mjs"], ["tests/b.mjs", "-x"]]);
     assert.deepEqual(runs.map((run) => run.runner), ["one", "two"]);
   });
 
   test("the latest round wins", () => {
     const repo = makeRepo();
-    writeTests(repo, [row("old.mjs")], { round: 2 });
-    writeTests(repo, [row("new.mjs")], { round: 10 });
+    writeTests(repo, [row("tests/old.mjs")], { round: 2 });
+    writeTests(repo, [row("tests/new.mjs")], { round: 10 });
 
     recorded(repo);
 
-    assert.deepEqual(repo.calls(), [["new.mjs"]]);
+    assert.deepEqual(repo.calls(), [["tests/new.mjs"]]);
+  });
+
+  test("the latest round wins whatever order the directory lists them in", () => {
+    const repo = makeRepo();
+    for (let round = 1; round < 12; round += 1) writeTests(repo, [row(`tests/old${round}.mjs`)], { round });
+    writeTests(repo, [row("tests/new.mjs")], { round: 12 });
+
+    recorded(repo);
+
+    assert.deepEqual(repo.calls(), [["tests/new.mjs"]]);
+  });
+
+  test("another role's return is no tests artifact, even at a later round", () => {
+    const repo = makeRepo();
+    writeTests(repo, [row("tests/new.mjs")]);
+    for (const role of ["runner", "implement-tests"]) writeTests(repo, [row("tests/other.mjs")], { role, round: 9 });
+
+    recorded(repo);
+
+    assert.deepEqual(repo.calls(), [["tests/new.mjs"]]);
+  });
+
+  test("another role's return alone selects nothing", () => {
+    const repo = makeRepo();
+    writeTests(repo, [row("tests/other.mjs")], { role: "runner" });
+
+    assertRefuses(repo, /no tests artifact/, { args: [] });
+  });
+
+  test("a test file may sit deep under test_directory, and the directory may be spelled with a dot", () => {
+    const repo = makeRepo({ config: singleRunner({ test_directory: "./tests/" }) });
+    writeTests(repo, [row("tests/deep/er/a.mjs"), row("./tests/b.mjs")]);
+
+    recorded(repo);
+
+    assert.deepEqual(repo.calls(), [["tests/deep/er/a.mjs", "./tests/b.mjs"]]);
+  });
+
+  test("a test_directory of . takes any file in the repo", () => {
+    const repo = makeRepo({ config: singleRunner({ test_directory: "." }) });
+    writeTests(repo, [row("anywhere/a.mjs")]);
+
+    recorded(repo);
+
+    assert.deepEqual(repo.calls(), [["anywhere/a.mjs"]]);
   });
 
   const NO_SELECTION = [
     ["no artifact", () => {}, /no tests artifact/],
-    ["an artifact from another attempt", (repo) => writeTests(repo, [row("a.mjs")], { attempt: ATTEMPT - 1 }), /no tests artifact/],
-    ["an artifact from another stage", (repo) => writeTests(repo, [row("a.mjs")], { stage: "other" }), /no tests artifact/],
+    ["an artifact from another attempt", (repo) => writeTests(repo, [row("tests/a.mjs")], { attempt: ATTEMPT - 1 }), /no tests artifact/],
+    ["an artifact from another stage", (repo) => writeTests(repo, [row("tests/a.mjs")], { stage: "other" }), /no tests artifact/],
     ["an empty test list", (repo) => writeTests(repo, []), /selects no tests/],
     ["a list of the wrong shape", (repo) => writeTests(repo, "a.mjs"), /selects no tests/],
     ["a row with no test file", (repo) => writeTests(repo, [row("")]), /test_file/],
-    ["a row with no test id", (repo) => writeTests(repo, [row("a.mjs", { test_id: 7 })]), /test_id/],
+    ["a row with no test id", (repo) => writeTests(repo, [row("tests/a.mjs", { test_id: 7 })]), /test_id/],
     ["a test file that reads as a flag", (repo) => writeTests(repo, [row("--rootdir=/etc")]), /--rootdir/],
-    ["a test under an unknown runner", (repo) => writeTests(repo, [row("a.mjs", { runner_id: "nope" })]), /runner nope/],
+    ["a test file that reads as an args file", (repo) => writeTests(repo, [row("@args.txt")]), /@args\.txt/],
+    ["a test file outside test_directory", (repo) => writeTests(repo, [row("other/test_y.py")]), /other\/test_y\.py.*test_directory/],
+    ["a test file beside test_directory with the same start", (repo) => writeTests(repo, [row("tests-other/a.mjs")]), /test_directory/],
+    ["a test file that climbs out of test_directory", (repo) => writeTests(repo, [row("tests/../other/a.mjs")]), /test_directory/],
+    ["an absolute test file", (repo) => writeTests(repo, [row("/etc/passwd")]), /test_directory/],
+    ["the repo root as a test file", (repo) => writeTests(repo, [row(".")]), /test_directory/],
+    ["a test under an unknown runner", (repo) => writeTests(repo, [row("tests/a.mjs", { runner_id: "nope" })]), /runner nope/],
     ["an artifact that is not JSON", (repo) => writeFileSync(join(repo.taskDir, "artifacts", `${STAGE}.${ROLE}.-.r1.a${ATTEMPT}.json`), "{"), /cannot be read/],
   ];
   for (const [name, setup, pattern] of NO_SELECTION) {
@@ -501,9 +597,18 @@ describe("plain pb test takes its selectors from the tests artifact", IN_PARALLE
     });
   }
 
+  test("a test_directory of . still refuses a leading @ and a parent path", () => {
+    for (const file of ["@args.txt", "../outside.mjs"]) {
+      const repo = makeRepo({ config: singleRunner({ test_directory: "." }) });
+      writeTests(repo, [row(file)]);
+
+      assertRefuses(repo, /test_directory|reads as/, { args: [] });
+    }
+  });
+
   test("RED is judged the same way as for the full suite", () => {
     const repo = makeRepo({ body: "process.exit(5);" });
-    writeTests(repo, [row("a.mjs")]);
+    writeTests(repo, [row("tests/a.mjs")]);
 
     assert.equal(recorded(repo).red, false);
     assert.equal(repo.ledger().tests.selected.red, false);

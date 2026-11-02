@@ -6,9 +6,9 @@
 import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,6 +67,7 @@ function makeRepo({ stage = activeStage(), ledger = {}, tests = "" } = {}) {
   writeFileSync(join(dir, "fake.mjs"), tests);
   git(dir, "add", "a.txt", "fake.mjs");
   git(dir, "commit", "-q", "-m", "seed");
+  const seed = git(dir, "rev-parse", "HEAD");
   const taskDir = join(dir, ".pairingbuddy", "run", "task");
   mkdirSync(join(taskDir, "artifacts"), { recursive: true });
   writeFileSync(join(dir, ".pairingbuddy", "run", ".gitignore"), "*\n");
@@ -79,6 +80,7 @@ function makeRepo({ stage = activeStage(), ledger = {}, tests = "" } = {}) {
     configHash: createHash("sha256").update(configText).digest("hex"), policy: { mode: "auto", source: "permission_mode" },
     stage, stages: [], gates: {}, tests: {}, commits: [], retries: {}, spend: { agents: 0, tokens: 0 }, stop: null, needsHuman: null,
     ...ledger,
+    tests: Object.fromEntries(Object.entries(ledger.tests ?? {}).map(([name, record]) => [name, { head: seed, ...record }])),
   });
   return {
     dir, taskDir, ledgerPath,
@@ -128,8 +130,13 @@ function startStage(repo, plugin, stage, attempt) {
   return decision(hook(GATE, payload(repo, "Workflow", { name: `pairingbuddy:${stage}`, args: { pluginRoot: plugin, attempt } }), plugin));
 }
 
-function deliverReturn(repo, pbKey, fields = {}) {
-  hook(TAP, payload(repo, "StructuredOutput", { pb_key: pbKey, ambiguity: "", ...fields }, { agent_id: "a1", agent_type: "pairingbuddy:apply-config-change" }));
+// The agent the key names, unless a test says otherwise.
+function deliverReturn(repo, pbKey, fields = {}, agent = { agent_id: "a1", agent_type: `pairingbuddy:${pbKey.split(".")[1]}` }) {
+  hook(TAP, payload(repo, "StructuredOutput", { pb_key: pbKey, ambiguity: "", ...fields }, agent));
+}
+
+function recordRun(repo, stage, attempt, runId) {
+  hook(TAP, payload(repo, "Workflow", { name: `pairingbuddy:${stage}`, args: { attempt } }, { tool_response: { runId } }));
 }
 
 const artifactExists = (repo, pbKey) => existsSync(join(repo.taskDir, "artifacts", `${pbKey}.json`));
@@ -271,6 +278,28 @@ describe("stage finish refuses without its evidence, and leaves a stop", IN_PARA
 
   test("a full suite that failed", () => assertStops(docsRepo(fullRun({ passed: false })), /tests:full/));
 
+  test("a full suite that ran before HEAD moved, naming both", () => {
+    const repo = docsRepo(fullRun());
+    const stale = git(repo.dir, "rev-parse", "HEAD");
+    git(repo.dir, "commit", "-q", "--allow-empty", "-m", "a commit from the main context");
+    writeLedgerField(repo, { checkpoints: [docsCheckpoint] });
+
+    assertStops(repo, new RegExp(`tests:full.*${stale}.*${git(repo.dir, "rev-parse", "HEAD")}`));
+  });
+
+  test("a full suite with no recorded HEAD", () => {
+    const repo = docsRepo(fullRun({ head: null }));
+    writeLedgerField(repo, { checkpoints: [docsCheckpoint] });
+
+    assertStops(repo, /tests:full/);
+  });
+
+  test("a missing docs return, with the rest of the evidence in place", () => {
+    const repo = makeRepo({ stage: activeStage(NET), ledger: { checkpoints: [docsCheckpoint], tests: { full: fullRun() } } });
+
+    assertStops(repo, /artifact:update-documentation/);
+  });
+
   test("a stage with no recorded run, whatever its returns", () => {
     const repo = makeRepo({ stage: { ...activeStage(), runId: null } });
     writeReturn(repo, CONFIG_KEY);
@@ -280,6 +309,42 @@ describe("stage finish refuses without its evidence, and leaves a stop", IN_PARA
   test("every gap is named at once", () => {
     const repo = makeRepo();
     assertStops(repo, /artifact:apply-config-change.*checkpoint:config/);
+  });
+});
+
+describe("safety-net's own order keeps its green run", IN_PARALLEL, () => {
+  test("a docs commit, then the full suite, then finish", () => {
+    const repo = makeRepo({ stage: activeStage(NET) });
+    writeReturn(repo, DOCS_KEY);
+    writeFileSync(join(repo.dir, "a.txt"), "documented\n");
+
+    assert.equal(ok(repo, "checkpoint", "--step", "docs", "--from", DOCS_KEY).committed, true);
+    const { head } = ok(repo, "test", "--full");
+    ok(repo, "stage", "finish");
+
+    assert.equal(head, git(repo.dir, "rev-parse", "HEAD"));
+    assert.equal(repo.ledger().stage.status, "done");
+  });
+
+  test("a stage fail after HEAD moved runs safety-net again from the new HEAD", () => {
+    const plugin = makePlugin();
+    const repo = makeRepo({ stage: activeStage(NET, 1), ledger: { stages: [{ name: CONFIG, status: "done", attempt: 1 }] } });
+    const firstKey = key(NET, "update-documentation", 1);
+    writeReturn(repo, firstKey, { files_changed: [] });
+    ok(repo, "checkpoint", "--step", "docs", "--from", firstKey);
+    ok(repo, "test", "--full");
+    git(repo.dir, "commit", "-q", "--allow-empty", "-m", "a commit from the main context");
+    assertRefused(pb(repo, "stage", "finish"), /tests:full/);
+
+    ok(repo, "stage", "fail");
+    startStage(repo, plugin, NET, 2);
+    recordRun(repo, NET, 2, "wf_2");
+    writeReturn(repo, DOCS_KEY, { files_changed: [] });
+    ok(repo, "checkpoint", "--step", "docs", "--from", DOCS_KEY);
+    ok(repo, "test", "--full");
+
+    ok(repo, "stage", "finish");
+    assert.equal(repo.ledger().stage.status, "done");
   });
 });
 
@@ -457,6 +522,51 @@ describe("stage fail", IN_PARALLEL, () => {
     });
   }
 
+  const RAISED = { reason: "the commit failed: lint", seq: 1 };
+
+  for (const [state, stage] of [
+    ["a done stage", { ...activeStage(), status: "done" }],
+    ["a failed stage", { ...activeStage(), status: "failed" }],
+    ["a stage a human sent back", { ...activeStage(), status: "redo" }],
+    ["no stage", { name: "", status: "", runId: null, attempt: 0, startedAt: null }],
+  ]) {
+    test(`clears a run-raised stop on ${state}, and closes nothing`, () => {
+      const repo = makeRepo({ stage, ledger: { stop: RAISED } });
+
+      const result = ok(repo, "stage", "fail");
+
+      assert.equal(result.clearedStop, RAISED.reason);
+      assert.equal(result.nextAttempt, null, "nothing was failed, so nothing restarts");
+      assert.equal(repo.ledger().stop, null);
+      assert.deepEqual(repo.ledger().stage, stage);
+    });
+  }
+
+  test("a stop cleared on a done stage leaves that stage done, and says what was cleared", () => {
+    const repo = makeRepo({ stage: { ...activeStage(), status: "done" }, ledger: { stages: [{ name: CONFIG, status: "done", attempt: ATTEMPT }], stop: RAISED } });
+
+    ok(repo, "stage", "fail");
+
+    const [entry] = repo.ledger().stages;
+    assert.deepEqual([entry.status, entry.clearedStop], ["done", RAISED.reason]);
+  });
+
+  test("a human's stop stays refused once the stage is done", () => {
+    const repo = makeRepo({
+      stage: { ...activeStage(NET), status: "done" },
+      ledger: {
+        stages: [{ name: CONFIG, status: "done", attempt: 1 }, { name: NET, status: "done", attempt: ATTEMPT }],
+        gates: { "G:task-end": { source: "human", answer: "stop" } },
+        stop: { reason: "the human answered stop at G:task-end", seq: 1 },
+      },
+    });
+    const before = repo.ledger();
+
+    assertRefused(pb(repo, "stage", "fail"), /human approve G:task-end/);
+
+    assert.deepEqual(repo.ledger(), before);
+  });
+
   test("takes no argument", () => {
     const repo = makeRepo();
     assertRefused(pb(repo, "stage", "fail", "--stage", NET), /usage: pb stage fail/, 2);
@@ -584,7 +694,175 @@ describe("a failed attempt stays void", IN_PARALLEL, () => {
   });
 });
 
-// ---------- the report ----------
+// ---------- orphans ----------
+
+// fake.mjs waits while .git/hold exists, once, so the checkpoint that started it is orphaned by what the test does next.
+const HOLDING_TESTS = `
+import { existsSync, rmSync, writeFileSync } from "node:fs";
+if (existsSync(".git/hold")) {
+  rmSync(".git/hold");
+  writeFileSync(".git/held", "");
+  const deadline = Date.now() + 30_000;
+  while (!existsSync(".git/release") && Date.now() < deadline) await new Promise((done) => setTimeout(done, 20));
+}
+`;
+
+async function until(condition, what) {
+  const deadline = Date.now() + 20_000;
+  while (!condition()) {
+    assert.ok(Date.now() < deadline, `waited for ${what}`);
+    await new Promise((done) => setTimeout(done, 20));
+  }
+}
+
+function pbInBackground(repo, ...args) {
+  const child = spawn(process.execPath, [CLI, ...args], { cwd: repo.dir, env: env(), stdio: ["ignore", "pipe", "pipe"] });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => { stdout += chunk; });
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  return new Promise((done) => child.on("close", (code) => done({ code, stdout, stderr })));
+}
+
+async function heldCheckpoint(repo, step, pbKey, marker = "held") {
+  const running = pbInBackground(repo, "checkpoint", "--step", step, "--from", pbKey);
+  await until(() => existsSync(join(repo.dir, ".git", marker)), "the checkpoint to reach its wait");
+  return { finished: running };
+}
+
+const release = (repo) => writeFileSync(join(repo.dir, ".git", "release"), "");
+
+function preCommitHook(repo, body) {
+  const path = join(repo.dir, ".git", "hooks", "pre-commit");
+  writeFileSync(path, `#!/bin/sh\n${body}\n`);
+  chmodSync(path, 0o755);
+}
+
+const WAIT_IN_HOOK = 'touch .git/in-hook\ni=0\nwhile [ ! -f .git/release ] && [ $i -lt 1500 ]; do sleep 0.02; i=$((i+1)); done';
+
+// The next attempt, reached the way a run reaches it, through stage fail, the gate and the tap.
+function restartAtTwo(repo, plugin, stage, role) {
+  ok(repo, "stage", "fail");
+  assert.equal(startStage(repo, plugin, stage, 2).kind, "none");
+  recordRun(repo, stage, 2, "wf_2");
+  const pbKey = key(stage, role, 2);
+  deliverReturn(repo, pbKey, { commit_subject: "", files_changed: [] });
+  return pbKey;
+}
+
+describe("a checkpoint orphaned by stage fail", { concurrency: 4 }, () => {
+  const KEY_ONE = key(CONFIG, "apply-config-change", 1);
+
+  function orphanable() {
+    const repo = makeRepo({ stage: activeStage(CONFIG, 1), tests: HOLDING_TESTS });
+    writeReturn(repo, KEY_ONE);
+    writeFileSync(join(repo.dir, "a.txt"), "changed\n");
+    return repo;
+  }
+
+  const head = (repo) => git(repo.dir, "rev-parse", "HEAD");
+
+  test("commits nothing, raises no stop and is no evidence for the next attempt", async () => {
+    const plugin = makePlugin();
+    const repo = orphanable();
+    const seed = head(repo);
+    writeFileSync(join(repo.dir, ".git", "hold"), "");
+    const orphan = await heldCheckpoint(repo, "config", KEY_ONE);
+    restartAtTwo(repo, plugin, CONFIG, "apply-config-change");
+
+    release(repo);
+    const result = await orphan.finished;
+
+    assertRefused(result, /attempt 1.*attempt 2/);
+    assert.equal(head(repo), seed, "the void attempt committed nothing");
+    assert.equal(repo.ledger().stop, null);
+    assert.deepEqual(repo.ledger().checkpoints ?? [], []);
+    assertRefused(pb(repo, "stage", "finish"), /checkpoint:config/);
+  });
+
+  test("whose attempt ended while its commit hook ran raises no stop when that commit fails", async () => {
+    const repo = orphanable();
+    preCommitHook(repo, `${WAIT_IN_HOOK}\nexit 1`);
+    const orphan = await heldCheckpoint(repo, "config", KEY_ONE, "in-hook");
+    ok(repo, "stage", "fail");
+
+    release(repo);
+    const result = await orphan.finished;
+
+    assertRefused(result, /attempt|active/);
+    assert.equal(repo.ledger().stop, null);
+  });
+
+  test("whose attempt ended while its commit hook ran is refused, and its commit is recorded but is no evidence", async () => {
+    const plugin = makePlugin();
+    const repo = orphanable();
+    preCommitHook(repo, `[ -f .git/hook-once ] || { touch .git/hook-once; ${WAIT_IN_HOOK.replaceAll("\n", "; ")}; }\nexit 0`);
+    const orphan = await heldCheckpoint(repo, "config", KEY_ONE, "in-hook");
+    restartAtTwo(repo, plugin, CONFIG, "apply-config-change");
+
+    release(repo);
+    const result = await orphan.finished;
+
+    assertRefused(result, /attempt 1.*attempt 2/);
+    const ledger = repo.ledger();
+    assert.deepEqual(ledger.commits, [head(repo)], "the commit happened, so the ledger says so");
+    assert.deepEqual(ledger.checkpoints ?? [], []);
+    assert.equal(ledger.stop, null);
+  });
+
+  test("that fails after the stage is done cannot wedge the task", async () => {
+    const plugin = makePlugin();
+    const firstKey = key(NET, "update-documentation", 1);
+    const repo = makeRepo({ stage: activeStage(NET, 1), tests: HOLDING_TESTS, ledger: { stages: [{ name: CONFIG, status: "done", attempt: 1 }] } });
+    writeReturn(repo, firstKey);
+    writeFileSync(join(repo.dir, "a.txt"), "changed\n");
+    preCommitHook(repo, "echo lint failed >&2\nexit 1");
+    writeFileSync(join(repo.dir, ".git", "hold"), "");
+    const orphan = await heldCheckpoint(repo, "docs", firstKey);
+    const docsKey = restartAtTwo(repo, plugin, NET, "update-documentation");
+    ok(repo, "checkpoint", "--step", "docs", "--from", docsKey);
+    ok(repo, "test", "--full");
+    ok(repo, "stage", "finish");
+    assert.equal(ok(repo, "gate", "eval").result, "auto-pass");
+
+    release(repo);
+    assertRefused(await orphan.finished, /stage|attempt/);
+
+    assert.equal(repo.ledger().stop, null);
+    git(repo.dir, "checkout", "--", "a.txt");
+    ok(repo, "task", "end");
+  });
+
+  test("a checkpoint of the current attempt still raises its stop", async () => {
+    const repo = orphanable();
+    preCommitHook(repo, "echo lint failed >&2\nexit 1");
+
+    assertRefused(pb(repo, "checkpoint", "--step", "config", "--from", KEY_ONE), /lint failed/);
+
+    assert.match(repo.ledger().stop.reason, /lint failed/);
+  });
+});
+
+describe("a return counts only from the agent its key names", IN_PARALLEL, () => {
+  test("a plain agent's return is not captured, so stage finish refuses", () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo.dir, "a.txt"), "changed\n");
+
+    deliverReturn(repo, CONFIG_KEY, { commit_subject: "set a", files_changed: ["a.txt"] }, { agent_id: "a1", agent_type: "general-purpose" });
+
+    assert.equal(artifactExists(repo, CONFIG_KEY), false);
+    assertRefused(pb(repo, "stage", "finish"), /artifact:apply-config-change/);
+  });
+
+  test("the named agent's return is captured and carries the stage to its finish", () => {
+    const repo = makeRepo();
+
+    deliverReturn(repo, CONFIG_KEY, { commit_subject: "", files_changed: [] });
+    ok(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY);
+
+    ok(repo, "stage", "finish");
+  });
+});
 
 describe("the report states what ran and what was not covered", IN_PARALLEL, () => {
   test("what ran", () => {

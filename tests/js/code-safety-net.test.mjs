@@ -1,6 +1,10 @@
+import "./isolated-tmpdir.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runScript } from "./harness.mjs";
@@ -71,7 +75,8 @@ test("code-safety-net-docs-schema-carries-what-a-checkpoint-reads", async () => 
   const { calls } = await runStage();
 
   const { required, properties } = calls[0].opts.schema;
-  for (const field of ["pb_key", "commit_subject", "files_changed"]) assert.ok(required.includes(field), `${field} is required`);
+  for (const field of ["pb_key", "ambiguity", "commit_subject", "files_changed"]) assert.ok(required.includes(field), `${field} is required`);
+  assert.equal(properties.ambiguity.type, "string", "an empty string is no ambiguity, which is how the gate reads it");
   const pattern = new RegExp(properties.files_changed.items.pattern);
   assert.doesNotMatch("/private/tmp/repo/README.md", pattern);
   assert.match("docs/guide.md", pattern);
@@ -116,6 +121,27 @@ test("code-safety-net-bare-invocation-returns-not-started-without-agent", async 
 
   assert.deepEqual(result, { started: false });
   assert.equal(calls.length, 0);
+});
+
+test("code-safety-net-quotes-a-plugin-path-that-needs-it", async () => {
+  const { calls } = await runStage({ ...ARGS, pluginRoot: "/plug in" });
+
+  const commands = blockOf(calls[1].prompt, "commands").split("\n");
+  assert.deepEqual(commands, [`node '/plug in/cli/pb.mjs' checkpoint --step docs --from ${DOCS_KEY}`, "node '/plug in/cli/pb.mjs' test --full", "node '/plug in/cli/pb.mjs' stage finish"]);
+});
+
+test("code-safety-net-a-quoted-command-runs-in-a-real-shell", async (t) => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "pb-quoted-")));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const pluginRoot = join(dir, "sp ace");
+  for (const part of ["cli", "shared-node", "contracts"]) cpSync(fileURLToPath(new URL(`../../${part}`, import.meta.url)), join(pluginRoot, part), { recursive: true });
+  const { calls } = await runStage({ ...ARGS, pluginRoot });
+  const [command] = blockOf(calls[1].prompt, "commands").split("\n");
+
+  const { status, stderr } = spawnSync("sh", ["-c", command.replace(/ checkpoint .*/, " status")], { cwd: dir, encoding: "utf8" });
+
+  assert.equal(status, 1, stderr);
+  assert.match(stderr, /no run here/, "the CLI ran, so the path reached it whole");
 });
 
 for (const [name, drop, reason] of [["task", { task: "" }, /task/], ["plugin-root", { pluginRoot: null }, /pluginRoot/]]) {

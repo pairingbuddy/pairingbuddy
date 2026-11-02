@@ -4,9 +4,11 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { constants } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 
+import { isOutside } from "./checkpoint.mjs";
 import { returnFileKey } from "./stages.mjs";
+import { humanCommand } from "./verbs.mjs";
 
 // Under the Bash tool's 10-minute cap, so pb gets to record the timeout before the tool kills it.
 const DEFAULT_TIMEOUT_SECONDS = 540;
@@ -17,6 +19,8 @@ const EXCERPT_BYTES = 8192;
 const DRAIN_MS = 1000;
 const FORWARDED_SIGNALS = ["SIGTERM", "SIGINT", "SIGHUP"];
 const TESTS_ROLE = "create-test-placeholders";
+// What a test command reads as an option rather than a file: a flag, or pytest's @file of more arguments.
+const NOT_A_FILE_NAME = /^[-@]/;
 
 export class TestRunRefused extends Error {}
 
@@ -44,19 +48,39 @@ export function tokenize(command) {
   return words;
 }
 
-// The hash covers the bytes that are parsed, so the file cannot change between the two.
-export function readTestConfig(root, configHash) {
-  const path = join(root, ".pairingbuddy", "test-config.json");
+const configPathOf = (root) => join(root, ".pairingbuddy", "test-config.json");
+
+function configBytes(path) {
   if (!existsSync(path)) throw new TestRunRefused(`missing ${path}`);
-  const bytes = readFileSync(path);
-  if (createHash("sha256").update(bytes).digest("hex") !== configHash) {
-    throw new TestRunRefused(`the config hash changed: ${path} is not the file this run opened with. Stop here and tell the human.`);
-  }
+  return readFileSync(path);
+}
+
+const hashOf = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+function parsedConfig(path, bytes) {
   try {
     return JSON.parse(bytes.toString("utf8"));
   } catch {
     throw new TestRunRefused(`${path} is not valid JSON`);
   }
+}
+
+// The hash covers the bytes that are parsed, so the file cannot change between the two.
+export function readTestConfig(root, configHash) {
+  const path = configPathOf(root);
+  const bytes = configBytes(path);
+  if (hashOf(bytes) !== configHash) {
+    throw new TestRunRefused(`the config hash changed: ${path} is not the file this run opened with. Stop here and tell the human, who can check the file and type ${humanCommand(root, "accept")}`);
+  }
+  return parsedConfig(path, bytes);
+}
+
+// The hash a run may pin: only that of a config every test run can use, since a run cannot change what it pinned.
+export function validatedConfigHash(root) {
+  const path = configPathOf(root);
+  const bytes = configBytes(path);
+  fullSuitePlans(parsedConfig(path, bytes));
+  return hashOf(bytes);
 }
 
 function commandWords(id, { command }) {
@@ -125,11 +149,16 @@ function readTests(path) {
   return tests;
 }
 
-// A model wrote these rows: a test_file that reads as a flag would change what the human's command does.
+// A model wrote these rows: a test_file that reads as an option would change what the human's command does.
 function checkRow({ test_id: id, test_file: file }) {
   if (typeof id !== "string" || id === "") throw new TestRunRefused(`a row in the tests artifact has no test_id: ${JSON.stringify(id)}`);
   if (typeof file !== "string" || file === "") throw new TestRunRefused(`test ${id} has no test_file`);
-  if (file.startsWith("-")) throw new TestRunRefused(`test ${id} has a test_file that reads as a flag: ${file}`);
+  if (NOT_A_FILE_NAME.test(file)) throw new TestRunRefused(`test ${id} has a test_file that reads as a flag or an args file: ${file}`);
+}
+
+function assertUnderTestDirectory({ test_id: id, test_file: file }, { id: runner, testDirectory }) {
+  const inside = isAbsolute(file) ? file : relative(testDirectory, file);
+  if (inside === "" || isOutside(inside)) throw new TestRunRefused(`test ${id} has test_file ${file}, which is outside the test_directory ${testDirectory} of runner ${runner}`);
 }
 
 // One plan per runner, each naming its test files once, plus every test id they cover.
@@ -138,6 +167,7 @@ export function selectedPlans(config, artifactsDir, stage) {
   const filesByRunner = new Map();
   for (const row of tests) {
     checkRow(row);
+    assertUnderTestDirectory(row, checkedRunner(config, row.runner_id));
     const files = filesByRunner.get(row.runner_id) ?? new Set();
     filesByRunner.set(row.runner_id, files.add(row.test_file));
   }

@@ -112,7 +112,7 @@ With a `<paths>` block: skip bootstrapping, and treat a missing doc config as no
 
 ### Step 3: Human Review
 
-With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the task-end gate. Make only minimal changes the task clearly calls for.
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the task-end gate. Make only minimal changes the task clearly calls for. If the task leaves what the docs should say unresolved, do not guess: leave that part unchanged and describe the open question in `ambiguity`, which sends the task-end gate to the human. With nothing open, return an empty string.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -219,6 +219,7 @@ With a `<paths>` block, return the result as your StructuredOutput with exactly 
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
+  "ambiguity": "string (open question a human should settle, or empty string)",
   "commit_subject": "string (proposed commit subject line, or empty string when nothing changed)",
   "files_changed": ["string (repo-relative path of each modified file, never absolute)"]
 }

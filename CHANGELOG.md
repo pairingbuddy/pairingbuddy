@@ -33,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `pb checkpoint` re-checks the key against the ledger after the tests and under the lock when recording, and stamps a record from its key. A checkpoint orphaned by `pb stage fail` is refused, commits nothing and raises no stop. After the tests it also re-checks the branch, HEAD and the staged paths, and any difference stops the run with nothing committed. The branch is read at the run root, not the cwd, and a listed directory that is gone is refused
+- `pb stage fail` clears a run-raised stop in any stage state, and a human's `stop` stays refused
+- `pb run open` validates `test-config.json` before hashing it, and `pb human accept` also takes a changed `test-config.json`, re-pinning `configHash` and recording old and new in `ledger.configAcceptances`
+- During a run the gate denies any `pb` call under an assignment or the `env` command, and counts a `pb` name followed by a known verb in any position of a simple command, apart from the arguments of text commands such as `grep`, so `env -u`, `node -r`, `find -exec` and `coproc` forms are invocations
+- The tap files a return only from the agent its key names, `pairingbuddy:<role>`
+- `pb test` takes a selector only from under the runner's `test_directory`, and refuses a leading `-` or `@`
+- `pb test` records the HEAD it ran from. `pb stage finish` and `pb task end` refuse once HEAD has moved past a green full run, and `pb task end` refuses a recorded commit that left HEAD's history. `.pairingbuddy/` no longer counts as dirty in `pb task end`
+- Runner commands quote the plugin path, and the gate's auto-allow matches the quoted form
+- `update-documentation` returns `ambiguity`, which the task-end gate reads as it does for `apply-config-change`
 - A gate question must equal the question `pb gate eval` emitted, alone in its call, at PreToolUse and in the tap. Plan checkboxes compare by task title. `pb gate eval` through the gate denies when the policy cannot be recorded. A SHA mismatch names the `!... human accept` command from the CLI and from hook denies. During a run, `Write`, `Edit` and `NotebookEdit` are denied on `.claude/settings.json` and `.claude/settings.local.json`, and any `pb` or `pb.mjs` text with a shell expansion or glob after the name, an `xargs` feeding `pb` or `pb.mjs`, or another letter case of `pb.mjs`, is denied. A lock file with a future mtime counts as stale
 
 ## [0.7.0] - 2026-07-31

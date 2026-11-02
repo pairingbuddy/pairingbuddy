@@ -12,7 +12,8 @@ import { LedgerShaMismatch, readLedger, updateLedger } from "./ledger.mjs";
 import { checkboxes } from "./plan-boxes.mjs";
 import { bindSession, sessionsDirectory } from "./run-root.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, pipelineAgents, startLeaseSecondsLeft } from "./stages.mjs";
-import { disguisesPb, pbInvocations } from "./shell-calls.mjs";
+import { disguisesPb, pbInvocations, pbWithEnvironment } from "./shell-calls.mjs";
+import { shellWord } from "./shell-word.mjs";
 import { VERB_CLASSES, classOf, humanCommand, matchVerb, shaMismatchRemedy } from "./verbs.mjs";
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
@@ -23,7 +24,7 @@ const PROTECTED_CONFIGS = ["test-config.json", "git-config.json"];
 const SETTINGS_FILES = ["settings.json", "settings.local.json"];
 const GATE_HEADER_START = "PB gate:";
 const RUNNER_AGENT = `${PREFIX}runner`;
-const PB_COMMAND = `node ${join(PLUGIN_ROOT, "cli", "pb.mjs")}`;
+const PB_COMMAND = `node ${shellWord(join(PLUGIN_ROOT, "cli", "pb.mjs"))}`;
 const RUNNER_COMMANDS = [...VERB_CLASSES.runner, "test --full"].map((args) => `${PB_COMMAND} ${args}`);
 const CHECKPOINT_START = `${PB_COMMAND} checkpoint --step `;
 const ARTIFACT_CHECK_START = `${PB_COMMAND} artifact check `;
@@ -336,6 +337,9 @@ function checkBash({ tool_input: toolInput, agent_type: agentType }) {
   }
   if (disguisesPb(command)) {
     throw new Denied("pb takes literal words: nothing a shell expands ($, a backtick, {, a backslash, ?, *, [) may follow its name, xargs may not feed it, and pb.mjs takes no other letter case.");
+  }
+  if (pbWithEnvironment(command)) {
+    throw new Denied("pb takes no environment of its own: an assignment before it, or the env command, could change what its tests run or skip a commit hook. Run it exactly as given.");
   }
 }
 

@@ -128,6 +128,20 @@
           "seq": { "type": "integer", "minimum": 0 }
         }
       }
+    },
+    "configAcceptances": {
+      "description": "Each changed test-config a human accepted with pb human accept, oldest first. May be absent. oldHash is the configHash the run held, newHash the one it holds from then on, and seq the seq the acceptance wrote.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["oldHash", "newHash", "seq"],
+        "properties": {
+          "oldHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "newHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "seq": { "type": "integer", "minimum": 0 }
+        }
+      }
     }
   }
 }

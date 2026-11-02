@@ -55,10 +55,12 @@ function checkpointProblem(step, { ledger }) {
 
 const isAttemptRecord = (record, { name, attempt }) => record?.stage === name && record?.attempt === attempt;
 
-function testsProblem(name, { ledger: { tests, stage } }) {
+// A green run proves the commit it ran on, so a commit after it undoes the proof.
+function testsProblem(name, { ledger: { tests, stage }, head }) {
   const record = Object.hasOwn(tests, name) ? tests[name] : undefined;
   if (!isAttemptRecord(record, stage)) return `tests:${name} has no run at attempt ${stage.attempt}`;
-  return record.passed ? null : `tests:${name} failed at attempt ${stage.attempt}`;
+  if (!record.passed) return `tests:${name} failed at attempt ${stage.attempt}`;
+  return record.head === head ? null : `tests:${name} ran at ${record.head ?? "an unknown HEAD"}, and HEAD is now ${head}`;
 }
 
 const PROBLEMS = { artifact: artifactProblem, checkpoint: checkpointProblem, tests: testsProblem };
@@ -69,8 +71,8 @@ function evidenceProblem(entry, context) {
 }
 
 // Everything standing between this attempt and done, so one refusal names it all.
-export function finishProblems(contract, ledger, artifactsDir) {
-  const context = { ledger, artifactsDir };
+export function finishProblems(contract, ledger, artifactsDir, head) {
+  const context = { ledger, artifactsDir, head };
   const evidence = evidenceFor(contract, ledger.taskType, ledger.stage.name).map((entry) => evidenceProblem(entry, context));
   return [ledger.stage.runId === null ? "the stage has no recorded run" : null, ...evidence].filter((problem) => problem !== null);
 }

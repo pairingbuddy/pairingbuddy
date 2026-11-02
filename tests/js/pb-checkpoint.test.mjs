@@ -3,8 +3,9 @@
 // or ignore rules cannot change a result.
 //
 // Output contract: a commit prints {ok, step, key, committed: true, sha, message, paths, hookRetried}, and no change
-// prints {ok, step, key, committed: false}. Both exit 0. A refusal exits 1 and commits nothing. A stop exits 1 and
-// sets ledger.stop. Bad arguments exit 2.
+// prints {ok, step, key, committed: false}. Both exit 0. A refusal exits 1 and commits nothing, except that an attempt
+// ending during the commit itself leaves that commit listed in ledger.commits and no evidence. A stop exits 1 and sets
+// ledger.stop. Bad arguments exit 2.
 import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,6 +16,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { CheckpointStopped, commitPaths } from "../../shared-node/checkpoint.mjs";
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
@@ -432,6 +434,19 @@ describe("refused paths", IN_PARALLEL, () => {
     assertRefuses(repo, /directory/);
   });
 
+  test("a deleted directory is refused, since it would sweep up the files it held", () => {
+    const repo = makeRepo();
+    mkdirSync(join(repo.dir, "dd"));
+    repo.write("dd/x", "x\n");
+    repo.write("dd/y", "y\n");
+    git(repo.dir, "add", "dd");
+    git(repo.dir, "commit", "-q", "-m", "add dd");
+    rmSync(join(repo.dir, "dd"), { recursive: true });
+    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: ["dd"] }));
+
+    assertRefuses(repo, /dd.*directory/);
+  });
+
   test("a symlink out of the repo is refused", () => {
     const repo = changedRepo();
     symlinkSync(makeDir("pb-outside-"), join(repo.dir, "link"));
@@ -581,11 +596,134 @@ describe("protected branches", IN_PARALLEL, () => {
     });
   }
 
+  function nestedRepo(rootBranch, nestedBranch) {
+    const repo = changedRepo({ branch: rootBranch });
+    const sub = join(repo.dir, "sub");
+    mkdirSync(sub);
+    git(sub, "init", "-q", "-b", nestedBranch);
+    return { repo, sub };
+  }
+
+  const fromDir = (cwd) => spawnSync(process.execPath, [CLI, "checkpoint", ...configArgs()], { cwd, encoding: "utf8", env: gitEnv() });
+
+  test("the branch is the run root's, so a nested repo on another branch cannot hide main", () => {
+    const { repo, sub } = nestedRepo("main", "x");
+    const seed = repo.head();
+
+    const { status, stderr } = fromDir(sub);
+
+    assert.equal(status, 1, stderr);
+    assert.match(stderr, /protected branch main/);
+    assert.equal(repo.head(), seed);
+  });
+
+  test("a nested repo on main does not stop a commit on the run root's own branch", () => {
+    const { repo, sub } = nestedRepo("feature", "main");
+
+    const { status, stderr } = fromDir(sub);
+
+    assert.equal(status, 0, stderr);
+    assert.deepEqual(repo.committed(), ["a.txt"]);
+  });
+
   test("a detached HEAD is refused", () => {
     const repo = changedRepo();
     git(repo.dir, "checkout", "-q", "--detach");
 
     assertRefuses(repo, /detached/);
+  });
+});
+
+// Test code runs in the repo, so what it did is only known once it has finished.
+describe("nothing moves between the tests and the commit", IN_PARALLEL, () => {
+  const inTests = (...args) => `
+import { execFileSync } from "node:child_process";
+execFileSync("git", ${JSON.stringify(args)});
+`;
+
+  function runMoved(tests, arrange = () => {}) {
+    const repo = changedRepo({ tests });
+    git(repo.dir, "branch", "main");
+    arrange(repo);
+    return repo;
+  }
+
+  const CASES = [
+    ["a test staging an unlisted file", inTests("add", "b.txt"), (repo) => repo.write("b.txt", "changed\n"), /b\.txt/],
+    ["a test staging a protected path", inTests("add", "-f", ".pairingbuddy/test-config.json"), () => {}, /test-config\.json/],
+    ["a test checking out main", inTests("checkout", "-q", "main"), () => {}, /branch.*main/],
+    ["a test checking out another branch", inTests("checkout", "-q", "-b", "other"), () => {}, /branch.*other/],
+    ["a test detaching HEAD", inTests("checkout", "-q", "--detach"), () => {}, /branch/],
+    ["a test reverting the listed file", inTests("checkout", "--", "a.txt"), () => {}, /a\.txt/],
+  ];
+
+  for (const [name, tests, arrange, pattern] of CASES) {
+    test(`${name} stops the run with nothing committed`, () => {
+      const repo = runMoved(tests, arrange);
+
+      assertStops(repo, pattern);
+    });
+  }
+
+  test("a test removing a new listed file stops the run with nothing committed", () => {
+    const repo = makeRepo({ tests: `import { rmSync } from "node:fs";\nrmSync("new.txt");` });
+    repo.write("new.txt", "new\n");
+    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: ["new.txt"] }));
+
+    assertStops(repo, /new\.txt/);
+  });
+
+  test("a test committing moves HEAD, which stops the run with nothing of ours committed", () => {
+    const repo = changedRepo({ tests: inTests("commit", "-q", "--allow-empty", "-m", "from a test") });
+
+    const result = pb(repo, configArgs());
+
+    assert.equal(result.code, 1, result.stderr);
+    assert.match(result.stderr, /HEAD/);
+    assert.match(repo.ledger().stop?.reason ?? "", /HEAD/);
+    assert.deepEqual(repo.ledger().commits, []);
+    assert.equal(repo.message(), "from a test");
+    assert.deepEqual(repo.ledger().checkpoints ?? [], []);
+  });
+
+  test("a stop a checkpoint raises for this is cleared by stage fail, like any other", () => {
+    const repo = runMoved(inTests("add", "b.txt"), (moved) => moved.write("b.txt", "changed\n"));
+    assertStops(repo, /b\.txt/);
+
+    const { status, stderr } = spawnSync(process.execPath, [CLI, "stage", "fail"], { cwd: repo.dir, encoding: "utf8", env: gitEnv() });
+
+    assert.equal(status, 0, stderr);
+    assert.equal(repo.ledger().stop, null);
+  });
+
+  test("a run stopped while its tests ran commits nothing", () => {
+    const repo = changedRepo({ tests: `
+import { readFileSync, writeFileSync } from "node:fs";
+import { updateLedger } from ${JSON.stringify(join(ROOT, "shared-node", "ledger.mjs"))};
+updateLedger(".pairingbuddy/run/task/ledger.json", (ledger) => ({ ...ledger, stop: { reason: "raised meanwhile", seq: 1 } }));
+` });
+    const seed = repo.head();
+
+    assertNoCommit(repo, seed, pb(repo, configArgs()), /raised meanwhile/);
+    assert.equal(repo.staged(), "");
+  });
+});
+
+describe("the checkpoint record", IN_PARALLEL, () => {
+  test("carries the attempt of its key", () => {
+    const repo = changedRepo();
+
+    checkpoint(repo);
+
+    const [record] = repo.ledger().checkpoints;
+    assert.deepEqual([record.stage, record.attempt, record.key], [CONFIG_STAGE, ATTEMPT, CONFIG_KEY]);
+  });
+
+  test("a no-change checkpoint is refused too once its attempt is over", () => {
+    const repo = makeRepo({ ledger: { stage: { name: CONFIG_STAGE, status: "failed", runId: "wf_1", attempt: ATTEMPT, startedAt: null } } });
+    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: [] }));
+
+    assertRefuses(repo, /active/);
   });
 });
 
@@ -708,6 +846,16 @@ describe("a commit hook", IN_PARALLEL, () => {
     assert.doesNotMatch(repo.staged(), /pairingbuddy/);
   });
 
+  test("that hangs is killed at the commit timeout and stops the run", () => {
+    const repo = changedRepo();
+    hook(repo, "pre-commit", "sleep 8");
+    const before = Date.now();
+
+    assert.throws(() => commitPaths(repo.dir, { paths: ["a.txt"], message: "chore: set a", branch: "feature", head: repo.head() }, 500), (e) => e instanceof CheckpointStopped && /ETIMEDOUT/.test(e.message));
+
+    assert.ok(Date.now() - before < 6000, "the hook's own 8 seconds were not waited for");
+  });
+
   test("a stopped run takes no further checkpoint", () => {
     const repo = changedRepo();
     hook(repo, "pre-commit", "exit 1");
@@ -768,6 +916,27 @@ describe("a signing failure stops at once", IN_PARALLEL, () => {
 
     assert.equal(hookCalls(repo), 2);
     assert.equal(program.calls(), 1);
+  });
+
+  // Stands in for a git with translations, so the test holds on a git built without them. It speaks the human's
+  // language unless LANGUAGE says otherwise, as the real one does.
+  function translatingGit() {
+    const realGit = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+    const bin = makeDir("pb-git-de-");
+    writeFileSync(join(bin, "git"), `#!/bin/sh
+case "$1" in commit) ;; *) exec ${JSON.stringify(realGit)} "$@" ;; esac
+if [ "$LANGUAGE" = C ]; then echo "fatal: failed to write commit object" >&2; else echo "Fehler: Commit-Objekt konnte nicht geschrieben werden" >&2; fi
+exit 128
+`);
+    chmodSync(join(bin, "git"), 0o755);
+    return { PATH: `${bin}${delimiter}${process.env.PATH}`, LANGUAGE: "de", LANG: "de_DE.UTF-8" };
+  }
+
+  test("under another locale is still read as a signing failure", () => {
+    const repo = changedRepo();
+    const env = translatingGit();
+
+    assertStops(repo, /could not be signed/, () => pb(repo, configArgs(), env));
   });
 
   test("a hook that merely prints the signing words still gets its retry", () => {

@@ -175,6 +175,12 @@ test("code-config-runner-gets-the-checkpoint-then-stage-finish-exactly", async (
   assert.ok(prompt.includes("Return pb_key exactly as: code-config.runner.-.r1.a2"), "prompt names the expected key");
 });
 
+test("code-config-quotes-a-plugin-path-that-needs-it", async () => {
+  const { calls } = await runScript(STAGE, { args: { attempt: 2, pluginRoot: "/plug in", task: { description: "set x" } }, agent: async () => ({}) });
+
+  assert.ok(calls[1].prompt.includes("node '/plug in/cli/pb.mjs' stage finish"), calls[1].prompt);
+});
+
 test("code-config-runner-schema-is-the-contract-with-the-key-pinned", async () => {
   const contract = JSON.parse(readFileSync(RUNNER_CONTRACT, "utf8"));
   const { calls } = await runWith({ attempt: 2, task: "t" });
