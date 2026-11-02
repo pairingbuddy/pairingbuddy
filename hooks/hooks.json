@@ -37,6 +37,15 @@
             "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/solo-progress.mjs"
           }
         ]
+      },
+      {
+        "matcher": "StructuredOutput|Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/tap.mjs"
+          }
+        ]
       }
     ]
   }

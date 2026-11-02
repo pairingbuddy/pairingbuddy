@@ -46,12 +46,29 @@ schemas:
   - plan-requirements.schema.json
   - plan-architecture.schema.json
   - plan-tracer-bullets.schema.json
+  - apply-config-change-result.schema.json
 
 # =============================================================================
 # Agent definitions
 # =============================================================================
 
 agents:
+  apply-config-change:
+    color: magenta
+    model: haiku
+    skills: []
+    inputs: {}
+    outputs:
+      config_change_result:
+        schema: apply-config-change-result.schema.json
+        return_only: true
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
   curate-guidance:
     color: cyan
     model: sonnet

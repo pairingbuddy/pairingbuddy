@@ -296,3 +296,10 @@ def test_agent_section_content_matches_canonical(agent_name, section_heading, co
         f"Expected:\n{canonical}\n\n"
         f"Found:\n{section_content}"
     )
+
+
+def test_apply_config_change_is_limited_to_read_and_edit():
+    """The agent handles task text, so it must not inherit Bash, Write or Agent."""
+    post = frontmatter.load(AGENTS_DIR / "apply-config-change.md")
+
+    assert post.metadata.get("tools") == "Read, Edit"
