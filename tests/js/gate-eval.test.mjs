@@ -85,7 +85,7 @@ function runNode(script, { cwd, input, env, args = [], plugin }) {
 }
 
 const runGate = (repo, payload, { env } = {}) =>
-  runNode(join(repo.plugin, "hooks", "gate.mjs"), { cwd: repo.dir, input: JSON.stringify(payload), env, plugin: repo.plugin });
+  runNode(join(repo.plugin, "hooks", "gate-boot.mjs"), { cwd: repo.dir, input: JSON.stringify(payload), env, plugin: repo.plugin });
 
 const runTap = (repo, payload) =>
   runNode(join(repo.plugin, "hooks", "tap.mjs"), { cwd: repo.dir, input: JSON.stringify(payload), plugin: repo.plugin });
@@ -614,9 +614,9 @@ describe("a model cannot supply the policy", () => {
     }
   });
 
-  test("gate.mjs is wired to see AskUserQuestion", () => {
+  test("gate-boot.mjs is wired to see AskUserQuestion", () => {
     const hooks = JSON.parse(readFileSync(join(ROOT, "hooks", "hooks.json"), "utf8")).hooks.PreToolUse;
-    const entry = hooks.find((h) => h.hooks.some((hook) => hook.command.includes("gate.mjs")));
+    const entry = hooks.find((h) => h.hooks.some((hook) => hook.command.includes("gate-boot.mjs")));
 
     assert.match("AskUserQuestion", new RegExp(`^(${entry.matcher})$`));
   });

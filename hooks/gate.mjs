@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Gate: PreToolUse enforcement during a run. With no run state it allows everything silently.
+// Gate: PreToolUse enforcement during a run, loaded by gate-boot.mjs. With no run state it allows everything silently.
 // An allow prints nothing, unless it is the runner's exact command; a decision exits 0 with the JSON form on stdout.
 // Any error with run state denies.
 // This wrapper imports only built-ins and loads everything else dynamically, so that a failed import can

@@ -8,7 +8,7 @@ import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,7 @@ import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CLI = join(ROOT, "cli", "pb.mjs");
 const GATE = join(ROOT, "hooks", "gate.mjs");
+const BOOT = join(ROOT, "hooks", "gate-boot.mjs");
 const TAP = join(ROOT, "hooks", "tap.mjs");
 const PAYLOADS = join(ROOT, "tests", "probes", "fixtures", "payloads");
 const fixture = (name) => JSON.parse(readFileSync(join(PAYLOADS, name), "utf8"));
@@ -87,7 +88,7 @@ function runHook(script, payload, cwd) {
   return { code: status, stdout, stderr };
 }
 
-const runGate = (payload, { gate = GATE } = {}) => runHook(gate, payload, payload.cwd);
+const runGate = (payload, { gate = BOOT } = {}) => runHook(gate, payload, payload.cwd);
 const runTap = (payload) => runHook(TAP, payload, payload.cwd);
 
 const decisionOf = (result) => (result.stdout === "" ? null : JSON.parse(result.stdout).hookSpecificOutput);
@@ -265,7 +266,7 @@ describe("a main-context payload inside a run binds its session", () => {
     const session = newSession();
     const env = { ...hookEnv(), TMPDIR: blocked };
 
-    const { status, stdout, stderr } = spawnSync(process.execPath, [GATE], { cwd: repo.dir, input: JSON.stringify(bash(repo.dir, session, "ls")), env, encoding: "utf8" });
+    const { status, stdout, stderr } = spawnSync(process.execPath, [BOOT], { cwd: repo.dir, input: JSON.stringify(bash(repo.dir, session, "ls")), env, encoding: "utf8" });
 
     assert.deepEqual({ status, stdout, stderr }, { status: 0, stdout: "", stderr: "" });
   });
@@ -370,6 +371,17 @@ describe("a bound session is held to the run from any cwd", () => {
     rmSync(join(plugin, "shared-node", "run-root.mjs"));
 
     const decision = decisionOf(runGate(bash(outside, session, "ls"), { gate: join(plugin, "hooks", "gate.mjs") }));
+
+    assert.equal(decision?.permissionDecision, "deny");
+  });
+
+  test("a gate.mjs that does not parse still denies a bound session outside its run", () => {
+    const { session, outside } = boundRepo();
+    const plugin = makeDir("binding-boot-");
+    cpSync(join(ROOT, "hooks"), join(plugin, "hooks"), { recursive: true });
+    appendFileSync(join(plugin, "hooks", "gate.mjs"), "\n)broken(\n");
+
+    const decision = decisionOf(runGate(bash(outside, session, "ls"), { gate: join(plugin, "hooks", "gate-boot.mjs") }));
 
     assert.equal(decision?.permissionDecision, "deny");
   });

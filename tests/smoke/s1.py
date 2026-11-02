@@ -22,7 +22,7 @@ from pathlib import Path
 from tests.smoke.runner import REPO_ROOT, Budget, SmokeError, clean_env, run_claude
 
 CLI = REPO_ROOT / "cli" / "pb.mjs"
-GATE_HOOK = REPO_ROOT / "hooks" / "gate.mjs"
+GATE_HOOK = REPO_ROOT / "hooks" / "gate-boot.mjs"
 TAP_HOOK = REPO_ROOT / "hooks" / "tap.mjs"
 SAMPLE_REPO = Path(__file__).parent / "sample_repo"
 STAGES = ["code-config", "code-safety-net"]

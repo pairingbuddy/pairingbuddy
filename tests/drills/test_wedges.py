@@ -19,6 +19,7 @@ RECIPE_DOC = REPO_ROOT / "CONTRIBUTING.md"
 WEDGES = {
     "gate-throw": "gate.mjs crash or throw",
     "gate-parse": "gate.mjs parse failure",
+    "gate-boot-parse": "gate-boot.mjs parse failure",
     "stranded-stage": "Stranded active stage",
     "killed-session": "Killed session mid-stage",
     "killed-at-gate": "Killed session at a gate",
@@ -73,7 +74,7 @@ def gate_call(clone, tmp_path, tool, tool_input, session=SESSION_B, mode="defaul
     return hook(
         clone,
         tmp_path,
-        "gate.mjs",
+        "gate-boot.mjs",
         {
             "session_id": session,
             "cwd": str(clone),
@@ -260,7 +261,7 @@ class TestRefusals:
         result = run_script(tmp_path, "--stranded-stage", "--clone", str(clone))
 
         assert result.returncode == 0, result.stderr
-        assert_allowed(hook(clone, tmp_path, "gate.mjs", {"cwd": "/"}))
+        assert_allowed(hook(clone, tmp_path, "gate-boot.mjs", {"cwd": "/"}))
         assert ledger_of(clone)["stage"]["status"] == "active"
 
 
@@ -278,8 +279,24 @@ class TestGateThrow:
 
 
 class TestGateParseFailure:
-    def test_exits_one_with_no_decision_until_the_hook_is_restored(self, tmp_path):
+    def test_denies_every_call_until_the_hook_is_restored(self, tmp_path):
         clone = force(tmp_path, "gate-parse")
+        into_run = {"file_path": str(clone / RUN_STATE / "task" / "x.txt")}
+
+        assert "checkout -- hooks" in denial(gate_call(clone, tmp_path, "Write", into_run))
+        assert "checkout -- hooks" in denial(write_call(clone, tmp_path))
+        assert "checkout -- hooks" in denial(bash_call(clone, tmp_path))
+        assert not (clone / RUN_STATE / "task" / "x.txt").exists()
+
+        result = recover(clone, tmp_path, "gate-parse")
+
+        assert "ledger.json" in result.stdout
+        assert_allowed(write_call(clone, tmp_path))
+
+
+class TestGateBootParseFailure:
+    def test_exits_one_with_no_decision_until_the_hook_is_restored(self, tmp_path):
+        clone = force(tmp_path, "gate-boot-parse")
 
         wedged = write_call(clone, tmp_path)
 
@@ -287,8 +304,9 @@ class TestGateParseFailure:
         assert wedged.stdout == ""
         assert "SyntaxError" in wedged.stderr
 
-        recover(clone, tmp_path, "gate-parse")
+        result = recover(clone, tmp_path, "gate-boot-parse")
 
+        assert "ledger.json" in result.stdout
         assert_allowed(write_call(clone, tmp_path))
 
 
@@ -298,9 +316,9 @@ class TestStrandedStage:
 
         assert ledger_of(clone)["stage"]["status"] == "active"
         assert ledger_of(clone)["stage"]["runId"] is not None
-        assert "is active at attempt 1" in denial(
-            workflow_call(clone, tmp_path, "code-safety-net", 1)
-        )
+        wedged = denial(workflow_call(clone, tmp_path, "code-safety-net", 1))
+        assert "is active at attempt 1" in wedged
+        assert "cleared by the human running pb stage fail" in wedged
 
         recover(clone, tmp_path, "stranded-stage")
 

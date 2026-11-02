@@ -247,9 +247,9 @@ function assertCommitAllowed(step, key, ledger) {
 
 // A stop belongs to the attempt that raised it. A key that is no longer current is refused here, so an orphan cannot
 // halt a later attempt or a finished stage.
-function commitOrStop(root, path, { step, key }, plan) {
+function orStop(path, { step, key }, action) {
   try {
-    return commitPaths(root, plan);
+    return action();
   } catch (e) {
     if (!(e instanceof CheckpointStopped)) throw e;
     updateLedger(path, (ledger) => {
@@ -294,7 +294,8 @@ async function checkpoint(args) {
   assertCommitAllowed(step, key, ledger);
   const branch = currentBranch(root);
   if (isProtectedBranch(branch)) throw new Refusal(`refusing to commit on protected branch ${branch}`);
-  const plan = planCommit(root, join(root, ".pairingbuddy", "run", "task", "artifacts"), step, key);
+  const alreadyCommitted = (ledger.checkpoints ?? []).some((record) => record.key === key && record.committed);
+  const plan = orStop(path, { step, key }, () => planCommit(root, join(root, ".pairingbuddy", "run", "task", "artifacts"), step, key, alreadyCommitted));
   if (plan === null) {
     recordCheckpoint(path, { step, key, committed: false, sha: null });
     return { ok: true, step, key, committed: false };
@@ -302,7 +303,7 @@ async function checkpoint(args) {
   const head = headOf(root);
   await requirePassingTests(root, path, ledger);
   assertCommitAllowed(step, key, readLedger(path));
-  const { sha, hookRetried } = commitOrStop(root, path, { step, key }, { ...plan, branch, head });
+  const { sha, hookRetried } = orStop(path, { step, key }, () => commitPaths(root, { ...plan, branch, head }));
   recordCheckpoint(path, { step, key, committed: true, sha });
   return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
 }

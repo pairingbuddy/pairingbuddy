@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `hooks/gate-boot.mjs` is now the registered PreToolUse command. It imports `gate.mjs` dynamically, so a syntax error there denies during a run and names the recovery, instead of failing open. A syntax error in `gate-boot.mjs` itself still fails open. `force_wedge.mjs` gains `--gate-boot-parse`, and `--gate-parse` now denies
+- `pb checkpoint --step config` takes no change only from a return with an empty `files_changed` and a non-empty `ambiguity`, which the task-end gate then asks about. A return listing a file that did not change, an empty one with no ambiguity, or no return at all refuses and stops the run, so a refused edit can no longer leave `code-config` done. A no-change docs step stays valid
+- The active-stage deny says that a stranded stage is cleared by the human running `pb stage fail`
+- The `pb takes literal words` rule reads the shell structure: a bare `pb` counts only in command position or after a known wrapper, and a whole `pb.mjs` counts anywhere except as a quoted argument of a text command, so a word or pattern that merely mentions pb stays untouched
 - `pb checkpoint` re-checks the key against the ledger after the tests and under the lock when recording, and stamps a record from its key. A checkpoint orphaned by `pb stage fail` is refused, commits nothing and raises no stop. After the tests it also re-checks the branch, HEAD and the staged paths, and any difference stops the run with nothing committed. The branch is read at the run root, not the cwd, and a listed directory that is gone is refused
 - `pb stage fail` clears a run-raised stop in any stage state, and a human's `stop` stays refused
 - `pb run open` validates `test-config.json` before hashing it, and `pb human accept` also takes a changed `test-config.json`, re-pinning `configHash` and recording old and new in `ledger.configAcceptances`

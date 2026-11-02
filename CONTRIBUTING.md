@@ -184,21 +184,35 @@ If the bad code is committed in `$PLUGIN`, move the pin back instead: see Back-o
 
 ### gate.mjs parse failure
 
-**What you see:** each tool call reports a hook error with a `SyntaxError`, and the tool may still run. The hook exits 1 with no decision, so a parse failure is not a deny. Treat the run as ungated from that moment, and stop the session before doing anything else.
+**What you see:** every Write, Edit, Bash, Workflow and Agent call is denied with `The gate could not load, so the call is denied during a run: ...`. The registered hook is `hooks/gate-boot.mjs`, which loads `gate.mjs` and denies when it cannot. The model cannot fix this, since its Bash is denied too.
+
+```bash
+git -C "$PLUGIN" status --short
+git -C "$PLUGIN" checkout -- hooks
+ls -la "$ROOT/.pairingbuddy/run/task"
+pb status
+```
+
+Inspect that listing. Run state is gitignored, so `git status` cannot show a write into it, and a file there with a time after the hook broke did not come through the gate. If `pb status` reports a SHA mismatch, go to that section.
+
+### gate-boot.mjs parse failure
+
+**What you see:** each tool call reports a hook error with a `SyntaxError`, and the tool still runs. This is the one file whose parse failure is not a deny: the hook exits 1 with no decision. Treat the run as ungated from that moment, and stop the session before doing anything else.
 
 ```bash
 git -C "$PLUGIN" status --short
 git -C "$PLUGIN" checkout -- hooks
 git -C "$ROOT" status --short
 git -C "$ROOT" log --oneline -5
+ls -la "$ROOT/.pairingbuddy/run/task"
 pb status
 ```
 
-The last three show what ran while nothing was gated. If `pb status` reports a SHA mismatch, go to that section.
+The last four show what ran while nothing was gated. Inspect the listing too: run state is gitignored, so only `ls` shows a write into it. If `pb status` reports a SHA mismatch, go to that section.
 
 ### Stranded active stage
 
-**What you see:** the next stage is denied with `Stage <name> is active at attempt <n>. Wait for it to finish`, and nothing is running. `pb status` shows the stage as active.
+**What you see:** the next stage is denied with `Stage <name> is active at attempt <n>. Wait for it to finish`, a deny that ends by naming `pb stage fail`, and nothing is running. `pb status` shows the stage as active.
 
 ```bash
 pb status
@@ -293,13 +307,10 @@ rm -rf "$ROOT/.pairingbuddy/run"
 
 ### Not verified without a live session
 
-`tests/drills/test_wedges.py` runs the commands above against each forced wedge, with the hooks called directly. These parts need a person and a real session, which Task 36 of the plan covers:
+`tests/drills/test_wedges.py` runs the commands above against each forced wedge, with the hooks called directly. The live drill of 2026-11-02 saw the prompt, the `!` route, hook files restored under a running session and a second real session: see "T1 recovery drill" in `docs/spikes/workflow-platform-spike.md`. These parts still need a person and a real session:
 
-- How a deny or a hook error looks at the prompt, and that a hook exiting 1 lets the tool run. The fail-open reading of a parse failure comes from the architecture, not from a test.
-- That a running session picks up restored hook files with no restart.
-- The `!` route at the prompt. The tests run the same commands in a plain shell.
-- Killing a real session. The drill kills a ledger writer under the lock, so a Workflow that outlives its session has not been seen.
-- Two real sessions at once. The drill sends a second session id to the hooks.
+- That the deny from `gate-boot.mjs` holds at the prompt. The live drill ran before that file existed, and only direct hook calls have seen it.
+- A Workflow that outlives its killed session. The drill kills a ledger writer under the lock.
 
 ## Code Style
 

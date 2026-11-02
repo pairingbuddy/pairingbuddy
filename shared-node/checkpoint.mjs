@@ -7,9 +7,10 @@ import { dirname, basename, isAbsolute, join, normalize, relative, resolve, sep 
 import { parseKey } from "./keys.mjs";
 
 const PROTECTED_BRANCHES = ["main", "master"];
+// A config step exists to change something, so its return must account for any change that is not there.
 const STEPS = {
-  config: { type: "chore", role: "apply-config-change" },
-  docs: { type: "docs", role: "update-documentation" },
+  config: { type: "chore", role: "apply-config-change", provesChange: true },
+  docs: { type: "docs", role: "update-documentation", provesChange: false },
 };
 const STATE_DIRECTORY = ".pairingbuddy";
 const REFUSED_DIRECTORIES = [STATE_DIRECTORY, ".git"];
@@ -92,15 +93,22 @@ export function assertCurrentKey(step, key, { stage: { name, status, attempt } }
   if (role !== STEPS[step].role) throw new CheckpointRefused(`${key} is from role ${role}, and step ${step} takes role ${STEPS[step].role}`);
 }
 
-function readArtifact(artifactsDir, key) {
-  const path = join(artifactsDir, `${key}.json`);
-  let artifact;
+function parsedOrNull(path) {
   try {
-    artifact = JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(readFileSync(path, "utf8"));
   } catch {
+    return null;
+  }
+}
+
+function readArtifact(artifactsDir, step, key) {
+  const path = join(artifactsDir, `${key}.json`);
+  const artifact = parsedOrNull(path);
+  if (artifact === null) {
+    if (STEPS[step].provesChange) throw new CheckpointStopped(`step ${step} has no usable return in the artifact ${path}, so nothing shows what it did. pb stage fail clears this`);
     throw new CheckpointRefused(`the artifact ${path} cannot be read`);
   }
-  if (artifact?.pb_key !== key) throw new CheckpointRefused(`the artifact ${path} has pb_key ${JSON.stringify(artifact?.pb_key)}, not ${key}`);
+  if (artifact.pb_key !== key) throw new CheckpointRefused(`the artifact ${path} has pb_key ${JSON.stringify(artifact?.pb_key)}, not ${key}`);
   if (!Array.isArray(artifact.files_changed)) throw new CheckpointRefused(`the artifact ${path} has no files_changed list`);
   return artifact;
 }
@@ -172,15 +180,25 @@ function assertNothingElseStaged(root, listed) {
   if (stray.length > 0) throw new CheckpointRefused(`changes outside the list are staged, so the commit would carry them: ${stray.join(", ")}`);
 }
 
+// A refused edit leaves the tree as it was and the agent's return may not say so. Only an empty list with an ambiguity
+// is a no-change anyone can trust, and pb gate eval asks a human about that ambiguity.
+function assertChangeProven(step, { ambiguity }, listed, paths) {
+  const unchanged = listed.filter((path) => !paths.includes(path));
+  if (unchanged.length > 0) throw new CheckpointStopped(`step ${step} lists files that did not change: ${unchanged.join(", ")}. pb stage fail clears this`);
+  if (listed.length > 0 || (typeof ambiguity === "string" && ambiguity.trim() !== "")) return;
+  throw new CheckpointStopped(`step ${step} changed nothing and its return gives no ambiguity to say why. pb stage fail clears this`);
+}
+
 // What to commit, or null for no change. Every check that needs no test run is here, so a refusal costs none.
-export function planCommit(root, artifactsDir, step, key) {
-  const artifact = readArtifact(artifactsDir, key);
+// alreadyCommitted: this key has a commit, so a repeat of the step has nothing left to change.
+export function planCommit(root, artifactsDir, step, key, alreadyCommitted = false) {
+  const artifact = readArtifact(artifactsDir, step, key);
   const listed = [...new Set(artifact.files_changed.map((path) => checkedPath(root, path)))];
-  if (listed.length === 0) return null;
-  const paths = [...new Set(statusEntries(root, listed).map(({ path }) => path))];
-  if (paths.length === 0) return null;
+  const paths = listed.length === 0 ? [] : [...new Set(statusEntries(root, listed).map(({ path }) => path))];
   const swept = paths.find((path) => !listed.includes(path));
   if (swept !== undefined) throw new CheckpointRefused(`${swept} is not listed: a listed path matched it, so that path is a directory that is gone. List its files.`);
+  if (STEPS[step].provesChange && !alreadyCommitted) assertChangeProven(step, artifact, listed, paths);
+  if (paths.length === 0) return null;
   const message = commitMessage(step, artifact.commit_subject);
   assertNothingElseStaged(root, listed);
   return { paths, message };

@@ -175,6 +175,24 @@ the session's total, with one first S1 and two cap checks, was about $0.215.
   reached the same gate. No run called a pipeline agent directly, the failure seen in Task 22.
 - Not covered: `/pairingbuddy:code` routing, which S1 reaches in a later task.
 
+## T1 recovery drill
+
+2026-11-02. Claude Code 2.1.316. Run by the human. Every wedge recovered.
+
+| Wedge | Result | Notes |
+|---|---|---|
+| stranded-stage | Recovered | |
+| gate-throw | Recovered | Fail-closed live. Running sessions pick up restored hook files with no restart. |
+| gate-parse | Recovered, but fail-open | Fixed afterwards: `hooks/gate-boot.mjs` denies when `gate.mjs` cannot load. |
+| killed-session | Recovered | Stage cleared, leftover file shown. |
+| killed-at-gate | Recovered | Model denied. The `!` typed route records `human-cli`. |
+| sha-mismatch | Recovered | The deny gives the exact command. |
+| second-session | Recovered by the manual handover | The real session id owned the run after. No warning shown. |
+| no-unit | Recovered by hand delete | |
+| broken-cli | Recovered | A syntax error in `shared-node` fails closed. |
+
+The output of a `!` command reaches the model.
+
 ## T1c lens spend spike
 
 Question: what does one lens plus one refuter cost on a real diff, and what does that imply across

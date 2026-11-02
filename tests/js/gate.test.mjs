@@ -2,7 +2,7 @@ import "./isolated-tmpdir.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
-import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ import { graphFor, loadStages, pipelineAgents, START_LEASE_SECONDS, validateStag
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const GATE = join(ROOT, "hooks", "gate.mjs");
+const BOOT = join(ROOT, "hooks", "gate-boot.mjs");
 const PAYLOADS = join(ROOT, "tests", "probes", "fixtures", "payloads");
 const fixture = (name) => JSON.parse(readFileSync(join(PAYLOADS, name), "utf8"));
 
@@ -28,7 +29,7 @@ const GOOD_ARGS = { pluginRoot: ROOT, attempt: 1 };
 const MESSAGES = {
   order: (called, next) => `Stage order: ${called} cannot start now. The next stage is ${next}.`,
   allDone: (called) => `Stage order: ${called} cannot start now. All stages for config_change are done.`,
-  secondActive: (stage, attempt, called) => `Stage ${stage} is active at attempt ${attempt}. Wait for it to finish before starting ${called}.`,
+  secondActive: (stage, attempt, called) => `Stage ${stage} is active at attempt ${attempt}. Wait for it to finish before starting ${called}. A stranded stage is cleared by the human running pb stage fail.`,
   withinLease: (stage, attempt, called, seconds) => `${MESSAGES.secondActive(stage, attempt, called)} It has no recorded run yet: ${seconds} seconds remain on its start lease.`,
   neverStarted: (stage, attempt, called) => `Stage ${stage} is active at attempt ${attempt} with no recorded run, so it may never have started. Restart ${workflowName(stage)} at attempt ${attempt} before starting ${called}.`,
   missingBundle: (workflow, bundle) => `Cannot start ${workflow}: its built bundle ${bundle} is missing.`,
@@ -120,7 +121,7 @@ async function withPlugin(opts, fn) {
 
 // pluginRoot null leaves CLAUDE_PLUGIN_ROOT unset. processCwd is the hook's own cwd, payload.cwd by default.
 // A string payload goes to stdin as it is. gate and path swap the hook file and the PATH it sees.
-function runGate(payload, { pluginRoot = ROOT, processCwd = payload.cwd, gate = GATE, path = process.env.PATH } = {}) {
+function runGate(payload, { pluginRoot = ROOT, processCwd = payload.cwd, gate = BOOT, path = process.env.PATH } = {}) {
   const { CLAUDE_PLUGIN_ROOT: _inherited, ...env } = process.env;
   if (pluginRoot !== null) env.CLAUDE_PLUGIN_ROOT = pluginRoot;
   env.PATH = path;
@@ -203,12 +204,13 @@ async function assertDeniedWithoutWrite(repo, payload, reason, gateOptions) {
 
 // ---------- registration ----------
 
-test("gate.mjs is registered as a PreToolUse hook covering Workflow and Agent", () => {
+test("gate-boot.mjs is the registered PreToolUse hook, covering Workflow and Agent", () => {
   const { hooks } = JSON.parse(readFileSync(join(ROOT, "hooks", "hooks.json"), "utf8"));
 
-  const entries = (hooks.PreToolUse ?? []).filter((e) => e.hooks.some((h) => h.command.includes("hooks/gate.mjs")));
+  const entries = (hooks.PreToolUse ?? []).filter((e) => e.hooks.some((h) => h.command.includes("hooks/gate-boot.mjs")));
 
-  assert.equal(entries.length, 1, "PreToolUse must hold one entry for gate.mjs");
+  assert.equal(entries.length, 1, "PreToolUse must hold one entry for gate-boot.mjs");
+  assert.ok(!(hooks.PreToolUse ?? []).some((e) => e.hooks.some((h) => h.command.includes("hooks/gate.mjs"))), "a syntax error in a registered gate.mjs fails open");
   const matches = (tool) => new RegExp(`^(?:${entries[0].matcher || ".*"})$`).test(tool);
   assert.ok(matches("Workflow"), "the matcher must cover Workflow");
   assert.ok(matches("Agent"), "the matcher must cover Agent");
@@ -910,7 +912,7 @@ const FILE_TOOLS = [["Write", writeCall], ["Edit", editCall], ["NotebookEdit", n
 
 test("the gate's matcher also covers Write, Edit and NotebookEdit", () => {
   const { hooks } = JSON.parse(readFileSync(join(ROOT, "hooks", "hooks.json"), "utf8"));
-  const [entry] = hooks.PreToolUse.filter((e) => e.hooks.some((h) => h.command.includes("hooks/gate.mjs")));
+  const [entry] = hooks.PreToolUse.filter((e) => e.hooks.some((h) => h.command.includes("hooks/gate-boot.mjs")));
 
   const matches = (tool) => new RegExp(`^(?:${entry.matcher || ".*"})$`).test(tool);
 
@@ -1425,6 +1427,73 @@ test("a hook whose imports fail denies a write into a run from outside it", () =
         rmSync(elsewhere, { recursive: true, force: true });
       }
     })));
+
+// A whole copy of the plugin, started as hooks.json starts it, with its gate.mjs broken.
+async function withBootOver(breakGate, fn) {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "gate-boot-")));
+  try {
+    for (const part of ["hooks", "shared-node", "contracts"]) cpSync(join(ROOT, part), join(dir, part), { recursive: true });
+    breakGate(join(dir, "hooks", "gate.mjs"));
+    await fn(join(dir, "hooks", "gate-boot.mjs"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const RECOVERY = /git -C \S+ checkout -- hooks/;
+const GATE_BREAKS = [
+  ["a syntax error", (gate) => appendFileSync(gate, "\n)drill: forced parse failure(\n")],
+  ["a throw as it loads", (gate) => writeFileSync(gate, 'throw new Error("broken");\n')],
+  ["a file that is gone", (gate) => rmSync(gate)],
+  ["an import that does not resolve", (gate) => writeFileSync(gate, 'import "./no-such-module.mjs";\n')],
+];
+
+for (const [name, breakGate] of GATE_BREAKS) {
+  test(`${name} in gate.mjs denies a Write into run state, naming the recovery`, () =>
+    withBootOver(breakGate, (gate) =>
+      withRepo({}, async (repo) => {
+        assertDeniedNaming(await runGate(writeCall(repo.dir, repo.ledgerPath), { gate }), RECOVERY);
+      })));
+
+  test(`${name} in gate.mjs denies every other tool during a run`, () =>
+    withBootOver(breakGate, (gate) =>
+      withRepo({}, async (repo) => {
+        assertDeniedNaming(await runGate(stageCall(repo.dir, CONFIG), { gate }), RECOVERY);
+      })));
+
+  test(`${name} in gate.mjs denies a write into a run from outside it`, () =>
+    withBootOver(breakGate, (gate) =>
+      withRepo({}, async (repo) => {
+        const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), "gate-elsewhere-")));
+        try {
+          assertDeniedNaming(await runGate(writeCall(elsewhere, repo.ledgerPath), { gate, processCwd: elsewhere }), RECOVERY);
+        } finally {
+          rmSync(elsewhere, { recursive: true, force: true });
+        }
+      })));
+
+  test(`${name} in gate.mjs allows silently with no run`, () =>
+    withBootOver(breakGate, (gate) =>
+      withRepo({ ledger: null }, async (repo) => {
+        assertAllowed(await runGate(writeCall(repo.dir, "src/app.py"), { gate }));
+      })));
+}
+
+test("a broken gate.mjs denies on a payload it cannot read, from the hook's own cwd", () =>
+  withBootOver(GATE_BREAKS[0][1], (gate) =>
+    withRepo({}, async (repo) => {
+      assertDeniedNaming(await runGate("not json", { gate, processCwd: repo.dir }), RECOVERY);
+    })));
+
+test("gate-boot.mjs imports node built-ins only, and gate.mjs only dynamically", () => {
+  const source = readFileSync(BOOT, "utf8");
+
+  const staticImports = [...source.matchAll(/^import .* from "(.+)";$/gm)].map(([, name]) => name);
+
+  assert.ok(staticImports.length > 0);
+  assert.deepEqual(staticImports.filter((name) => !name.startsWith("node:")), []);
+  assert.match(source, /await import\("\.\/gate\.mjs"\)/);
+});
 
 test("a hook missing only the run-root module denies during a run", async () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "gate-partial-")));

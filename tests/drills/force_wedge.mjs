@@ -86,7 +86,7 @@ function hook(clone, name, payload) {
 }
 
 function gateCall(clone, session, tool, toolInput) {
-  hook(clone, "gate.mjs", { session_id: sessionOf(clone, session), cwd: clone, tool_name: tool, permission_mode: "default", tool_input: toolInput });
+  hook(clone, "gate-boot.mjs", { session_id: sessionOf(clone, session), cwd: clone, tool_name: tool, permission_mode: "default", tool_input: toolInput });
 }
 
 function pb(clone, ...args) {
@@ -128,6 +128,11 @@ function forceGateThrow(clone) {
 function forceGateParse(clone) {
   startStage(clone);
   appendFileSync(join(clone, "hooks", "gate.mjs"), SYNTAX_ERROR);
+}
+
+function forceGateBootParse(clone) {
+  startStage(clone);
+  appendFileSync(join(clone, "hooks", "gate-boot.mjs"), SYNTAX_ERROR);
 }
 
 // A ledger writer killed under the lock, as a session killed mid-write leaves it. The lock is stale after STALE_LOCK_MS.
@@ -183,6 +188,11 @@ const WEDGES = {
   "gate-parse": {
     recipe: "gate.mjs parse failure",
     force: forceGateParse,
+    sees: "every Write, Edit, Bash and Workflow call is denied with 'The gate could not load'.",
+  },
+  "gate-boot-parse": {
+    recipe: "gate-boot.mjs parse failure",
+    force: forceGateBootParse,
     sees: "the hook exits 1 with a SyntaxError and no decision, so nothing is being gated.",
   },
   "stranded-stage": {
