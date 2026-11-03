@@ -33,6 +33,25 @@ export function eventsFor(event: string, matcher: Record<string, unknown>): Even
         surveyed: { ...matcher, surface: 'terminal', props: { hasSurvey: true } },
         idle: { ...matcher, surface: 'terminal', props: { hasSurvey: false } },
       }
+    case 'agent.spawn': {
+      const spawn = { prompt: 'p', description: 'd', subagentType: 'pairingbuddy:classify-task' }
+      return { surveyed: spawn, idle: spawn }
+    }
+    // A session with no one at the prompt has no band to feed, so the hook only hands it on.
+    case 'session.start': {
+      const start = { cwd: '/', surface: null, isInteractive: false }
+      return { surveyed: start, idle: start }
+    }
+    // A session that ends without a clear only hands on.
+    case 'session.end': {
+      const end = { sessionId: 's1', reason: 'other' }
+      return { surveyed: end, idle: end }
+    }
+    // Any command but /pb passes through untouched.
+    case 'command.run': {
+      const run = { command: 'other', args: '' }
+      return { surveyed: run, idle: run }
+    }
     default:
       throw new Error(`no representative events for the "${event}" hook: add a case to eventsFor`)
   }

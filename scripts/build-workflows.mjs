@@ -195,6 +195,31 @@ const outputs = stageFiles.map((file) => ({
   content: bundle(readFileSync(join(stagesDir, file), 'utf8'), file),
 }));
 
+// The kit loads only code files, so the mod cannot import contracts/stages.json: a generated .ts copy stands in.
+// It is built only for a root that has the contract.
+const contractPath = join(root, 'contracts', 'stages.json');
+const modContractPath = join(root, 'mod', 'stages-contract.ts');
+const modContract = existsSync(contractPath)
+  ? [
+      '// Generated from contracts/stages.json by scripts/build-workflows.mjs. Do not edit: run that script to regenerate.',
+      `export default ${JSON.stringify(JSON.parse(readFileSync(contractPath, 'utf8')), null, 2)}`,
+      '',
+    ].join('\n')
+  : undefined;
+
+const writeModContract = () => {
+  if (modContract === undefined) return;
+  mkdirSync(join(root, 'mod'), { recursive: true });
+  writeFileSync(modContractPath, modContract);
+};
+
+// A line naming the mod contract when it is missing or differs, else none.
+const findModContractDrift = () => {
+  if (modContract === undefined) return [];
+  if (!existsSync(modContractPath)) return ['missing: mod/stages-contract.ts'];
+  return readFileSync(modContractPath, 'utf8') === modContract ? [] : ['differs: mod/stages-contract.ts'];
+};
+
 const writeOutputs = (dir) => {
   mkdirSync(dir, { recursive: true });
   for (const { name, content } of outputs) {
@@ -236,7 +261,7 @@ const checkSync = () => {
   const scratch = mkdtempSync(join(tmpdir(), 'build-workflows-'));
   try {
     writeOutputs(scratch);
-    const drift = findDrift(scratch, out);
+    const drift = [...findDrift(scratch, out), ...findModContractDrift()];
     if (drift.length > 0) {
       console.error(`build-workflows: ${out} is out of sync with ${src}`);
       for (const line of drift) console.error(`  ${line}`);
@@ -252,4 +277,5 @@ if (values.check) {
 } else {
   writeOutputs(out);
   pruneStale(out);
+  writeModContract();
 }

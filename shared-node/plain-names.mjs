@@ -1,0 +1,60 @@
+// Plain-language names for stage, gate and agent ids. The UI shows these, never the ids.
+const PLAIN_NAMES = {
+  // stages
+  "code-config": "make the config change",
+  "code-scenarios": "write scenarios",
+  "code-tdd": "build test by test",
+  "code-safety-net": "safety-net review",
+  // gates
+  "G:scenarios": "your OK on the scenarios",
+  "G:task-end": "your sign-off at the end",
+  // agents
+  "apply-config-change": "changing the config",
+  "runner": "running the checks",
+  "curate-guidance": "sorting your guidance",
+  "classify-task": "sizing up the task",
+  "enumerate-scenarios-and-test-cases": "listing scenarios",
+  "create-test-placeholders": "sketching the tests",
+  "implement-tests": "writing a failing test",
+  "implement-code": "making the test pass",
+  "identify-test-issues": "reviewing the tests",
+  "refactor-tests": "tidying the tests",
+  "identify-code-issues": "reviewing the code",
+  "refactor-code": "tidying the code",
+  "verify-test-coverage": "checking coverage",
+  "run-all-tests": "running every test",
+  "update-documentation": "updating the docs",
+  "commit-changes": "committing the changes",
+  "scope-refactoring": "scoping the cleanup",
+  "setup-spike": "setting up the experiment",
+  "explore-spike-unit": "trying an experiment",
+  "document-spike": "writing up the findings",
+  "brainstorm-requirements": "working out the requirements",
+  "solidify-architecture": "settling the architecture",
+  "decompose-tracer-bullets": "cutting the plan into slices",
+  "sequence-tasks": "writing the task list",
+  "design-ux-architect": "choosing the design",
+  "design-ux-token-generator": "generating the design tokens",
+  "design-ux-visual-builder": "building the preview",
+  "design-ux-critic": "critiquing the design",
+  "design-ux-explorer": "exploring the design",
+  "design-ux-validator": "validating the design",
+  "design-ux-gallery-generator": "building the gallery",
+  // task types
+  "config_change": "config change",
+  "bug_fix": "bug fix",
+  "new_feature": "new feature",
+  "refactoring": "refactoring",
+  "spike": "spike",
+  // phases keep their own names
+  "RED": "RED",
+  "GREEN": "GREEN",
+  "REFACTOR": "REFACTOR",
+  // roles
+  "refuter": "attacking a finding",
+  "course-checker": "checking the course",
+};
+
+export function plainName(id) {
+  return PLAIN_NAMES[id];
+}

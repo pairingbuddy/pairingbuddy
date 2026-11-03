@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
-import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, serveLedger, type Served } from './testing/band'
+import { plainName } from '../shared-node/plain-names.mjs'
+import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, serveLedger, start, type Served } from './testing/band'
 import { eventsFor, recordHooks } from './testing/hooks'
 
 // A run's state: a ledger and what sits beside it. The mod only ever reads this.
@@ -60,7 +61,9 @@ function recordingEngine(files: Map<string, string>, touched: string[], where: s
       recordOther(touched, where, `process.${String(name)}`)
     },
   })
-  const engine: Record<string, unknown> = { ui, fs, process }
+  // Named values are the session's, not files: reads find nothing, writes are not file writes.
+  const state = { get: async () => ({ value: undefined, version: 0 }), set: async () => ({ isSet: true, version: 1 }) }
+  const engine: Record<string, unknown> = { ui, fs, process, state }
   return new Proxy({}, { get: (_, key) => engine[String(key)] }) as never
 }
 
@@ -75,6 +78,8 @@ test('running hooks and band against a fixture ledger leaves .pairingbuddy/ unch
   // refused unless the path is allowed.
   const served: Served = { ledger: files.get(LEDGER_PATH), asked: [] }
   serveLedger(on, served)
+  on('session.start', () => ({ cwd: ROOT }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('fs.write', (_, e) =>
     write(files, touched, where, e.path, e.text) ? { value: undefined } : { deny: 'the mod is read-only' })
   on('ui.render', ($, e) => {
@@ -99,7 +104,9 @@ test('running hooks and band against a fixture ledger leaves .pairingbuddy/ unch
     }
   }
 
-  // The band as the engine draws it, on every surface.
+  // The band as the engine draws it, on every surface, once a session has started and the poll has read the run.
+  where = 'session start'
+  await start($)
   const drawn: Record<string, string | undefined> = {}
   for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
     for (const hasSurvey of [true, false]) {
@@ -113,11 +120,12 @@ test('running hooks and band against a fixture ledger leaves .pairingbuddy/ unch
   }
 
   expect(served.asked, 'the band read the ledger at <root>/<LEDGER>').toContain(LEDGER_PATH)
-  expect(drawn, 'the band drew running from the ledger on every surface').toEqual({
-    terminal: 'Workflow running',
-    desktop: 'Workflow running',
-    vscode: 'Workflow running',
-    mobile: 'Workflow running',
+  const stage = plainName('code-scenarios')
+  expect(drawn, 'the band drew the where segment from the ledger on every surface').toEqual({
+    terminal: stage,
+    desktop: stage,
+    vscode: stage,
+    mobile: stage,
   })
   expect(touched, 'no $.fs write and no $.process call').toEqual([])
   expect(JSON.stringify([...files]), '.pairingbuddy/ fixture is unchanged').toBe(before)

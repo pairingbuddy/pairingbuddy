@@ -4,9 +4,14 @@
 // Tokens match keys.mjs, so a label holds no free text and its item equals the key's.
 
 const LABEL_TOKEN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
-const LABEL_PHASE = /^(?:RED|GREEN|REFACTOR)$/;
+export const PHASES = ["RED", "GREEN", "REFACTOR"];
+const [REFUTER, COURSE_CHECKER] = ["refuter", "course-checker"];
+export const ROLES = [REFUTER, COURSE_CHECKER];
+
+const PHASE_ALTERNATION = PHASES.join("|");
+const LABEL_PHASE = new RegExp(`^(?:${PHASE_ALTERNATION})$`);
 const LABEL_FINDING_ID = /^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*-[1-9]\d*$/;
-const LABEL_TEXT = /^pb1 ([a-z0-9][a-z0-9_-]{0,63}) (RED|GREEN|REFACTOR|-) ([a-z0-9][a-z0-9_-]{0,63}) (-|[a-z0-9][a-z0-9_-]{0,63}) r([1-9]\d*)$/;
+const LABEL_TEXT = new RegExp(`^pb1 ([a-z0-9][a-z0-9_-]{0,63}) (${PHASE_ALTERNATION}|-) ([a-z0-9][a-z0-9_-]{0,63}) (-|[a-z0-9][a-z0-9_-]{0,63}) r([1-9]\\d*)$`);
 
 function requireLabelToken(name, value) {
   if (typeof value !== "string" || !LABEL_TOKEN.test(value)) {
@@ -28,8 +33,8 @@ function labelPhaseText(phase) {
 }
 
 function labelRoleProblem({ role, item, round }) {
-  if (role === "refuter" && !LABEL_FINDING_ID.test(String(item))) return `label refuter item must be the finding id it attacks: ${JSON.stringify(item)}`;
-  if (role === "course-checker" && round === 1) return "label course-checker round must be a fix attempt's round, never the lens round: 1";
+  if (role === REFUTER && !LABEL_FINDING_ID.test(String(item))) return `label refuter item must be the finding id it attacks: ${JSON.stringify(item)}`;
+  if (role === COURSE_CHECKER && round === 1) return "label course-checker round must be a fix attempt's round, never the lens round: 1";
   return null;
 }
 

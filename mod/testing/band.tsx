@@ -70,6 +70,9 @@ export type Served = { ledger: string | undefined; asked: string[] }
 export const ROOT = '/work/project'
 export const LEDGER_PATH = `${ROOT}/${LEDGER}`
 
+// Starts an interactive session, which is when the mod begins polling; until then its band draws idle.
+export const start = ($: any) => $.session.start({ cwd: ROOT, surface: null, isInteractive: true })
+
 export function serveLedger(on: Function, served: Served): void {
   // The session root is fixed and absolute; the ledger exists only at exactly <root>/<LEDGER>, so a read
   // relative to the working directory, or one anchored elsewhere, finds nothing. Paths are recorded as received.

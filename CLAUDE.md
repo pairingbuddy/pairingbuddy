@@ -52,7 +52,8 @@ pairingbuddy/
 │   ├── skill-config.yaml    # Skill definitions
 │   └── schemas/             # JSON schemas for state (39 total)
 ├── hooks/            # Claude Code hooks (SessionStart, PostToolUse)
-├── mod/              # Claude Code mod (register.tsx, *.test.tsx, testing/, fixtures/); read-only, isolated from the shell hooks
+├── mod/              # Claude Code mod (register.tsx, band.tsx, pane.tsx, view.ts, inputs.ts, poll.ts, stages-contract.ts (generated), *.test.tsx, testing/, fixtures/); read-only, isolated from the shell hooks
+├── shared-node/      # Pure ESM shared by the CLI, hooks, workflows and the mod (labels, ledger, stage graph, glance, plain names)
 ├── commands/         # Slash commands (/pairingbuddy:code, /pairingbuddy:plan, /pairingbuddy:design-ux)
 └── tests/            # Structural tests (~1121)
 ```

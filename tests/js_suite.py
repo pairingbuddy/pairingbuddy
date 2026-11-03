@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 JS_TEST_FILES = [
+    "tests/js/band-width.test.mjs",
     "tests/js/code-command.test.mjs",
     "tests/js/code-config.test.mjs",
     "tests/js/code-router.test.mjs",
@@ -17,6 +18,7 @@ JS_TEST_FILES = [
     "tests/js/code-tdd-refactor.test.mjs",
     "tests/js/gate-eval.test.mjs",
     "tests/js/gate.test.mjs",
+    "tests/js/glance-sentences.test.mjs",
     "tests/js/harness.test.mjs",
     "tests/js/hooks-json.test.mjs",
     "tests/js/keys-labels.test.mjs",
@@ -31,6 +33,7 @@ JS_TEST_FILES = [
     "tests/js/pb-stage.test.mjs",
     "tests/js/pb-task-end.test.mjs",
     "tests/js/pb-test.test.mjs",
+    "tests/js/plain-names.test.mjs",
     "tests/js/run-hooks.test.mjs",
     "tests/js/run-recorder.test.mjs",
     "tests/js/session-binding.test.mjs",

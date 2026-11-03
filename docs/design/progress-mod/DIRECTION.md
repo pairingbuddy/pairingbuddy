@@ -21,7 +21,7 @@ The pane opens with "at a glance". Each row is a plain sentence.
 | NOW | writing a failing test for the 0% discount · test 3 of 4 | writing a failing test …, 3rd try |
 | SPENT | 12 agents · 1:55 · ≈0.4% of plan | same form |
 | LEFT | 1 more test, then the safety-net review and your sign-off | this test, then … |
-| LOOPING | no · this step: try 1 of 3 | yes: 3 tries at the same failing test, with each try and the reason |
+| LOOPING | no · this step: try 1 of 3 | yes: 3 tries at the same step, with each try and the reason |
 | OFF TRACK | no | yes: what went off track |
 
 Planning uses the same rows. Its pane adds the aim, decisions, open questions (the one being asked is lit) and what is still to come. See [R4-4](round-4/R4-4-pane-planning-brainstorm.png) and [R4-5](round-4/R4-5-pane-planning-slices.png).
