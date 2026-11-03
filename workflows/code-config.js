@@ -1,4 +1,4 @@
-export const meta = { name: 'code-config', description: 'Applies one configuration change through the apply-config-change agent' };
+export const meta = { name: 'code-config', description: 'Internal stage, started by the coding skill inside a run. Do not call it directly: use /pairingbuddy:code' };
 
 if (args === undefined) return { started: false };
 

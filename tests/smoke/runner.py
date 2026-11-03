@@ -4,7 +4,7 @@
 not touched, and `--setting-sources project,local` keeps user settings and installed plugins out of
 the run. The env mechanism for a cheap model is P16's: `--model` does not override an agent's pin.
 
-The spend cap covers a whole smoke run, so a stage after the first gets what is left of it.
+The spend cap covers a whole smoke run, however many sessions it takes.
 """
 
 import json
@@ -72,6 +72,7 @@ def claude_command(prompt: str, budget_usd: float) -> list[str]:
         "--max-budget-usd", str(budget_usd),
         "--output-format", "stream-json",
         "--verbose",
+        "--include-hook-events",
     ]  # fmt: skip
 
 
@@ -103,7 +104,16 @@ def check_finished(results: list[dict], code: int, stderr: str) -> None:
         raise SmokeError(f"result error {results[-1].get('subtype')}")
 
 
+def refuse_repo_inside_plugin(repo: Path) -> None:
+    """Auto mode fails an in-repo Write with no verdict when the cwd is inside `--plugin-dir`."""
+    if repo.resolve().is_relative_to(REPO_ROOT):
+        raise SmokeError(
+            f"{repo} is inside the --plugin-dir {REPO_ROOT}: use a directory outside it"
+        )
+
+
 def spawn(repo: Path, prompt: str, budget: Budget, record: Path) -> subprocess.CompletedProcess:
+    refuse_repo_inside_plugin(repo)
     try:
         return subprocess.run(
             claude_command(prompt, round(budget.remaining, 6)),

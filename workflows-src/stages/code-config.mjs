@@ -1,4 +1,4 @@
-export const meta = { name: 'code-config', description: 'Applies one configuration change through the apply-config-change agent' };
+export const meta = { name: 'code-config', description: 'Internal stage, started by the coding skill inside a run. Do not call it directly: use /pairingbuddy:code' };
 
 // pb-inline-module shared-node/keys.mjs
 // pb-inline-module shared-node/labels.mjs

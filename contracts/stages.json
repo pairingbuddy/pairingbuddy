@@ -2,6 +2,7 @@
   "v": 1,
   "defaultTaskType": "config_change",
   "maxAgents": 1000,
+  "newPathAgents": ["apply-config-change", "runner"],
   "gateClasses": {
     "continue": { "auto": "passes when evidence is complete and no stop condition applies" },
     "conditional": { "auto": "passes only when the classifier reports certain" },

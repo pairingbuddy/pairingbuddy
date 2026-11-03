@@ -6,9 +6,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { readLedger, validateLedger } from "../../shared-node/ledger.mjs";
+import { readLedger, validateLedger, writeLedger } from "../../shared-node/ledger.mjs";
 
 const PB = new URL("../../cli/pb.mjs", import.meta.url).pathname;
+const PLUGIN = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
 const LEDGER_MODULE = new URL("../../shared-node/ledger.mjs", import.meta.url).href;
 const CONFIG = `${JSON.stringify({ runners: { pytest: { command: "pytest", test_directory: "tests", run_args: [] } }, default_runner: "pytest" })}\n`;
 
@@ -360,4 +361,128 @@ test("eight-concurrent-opens-give-exactly-one-winner", async (t) => {
     assert.equal(ledger.seq, 1, `round ${round}: the winner's ledger was written once and never overwritten`);
     assert.deepEqual(readdirSync(runDir(root)).sort(), ["artifacts", "ledger.json"], `round ${round}: losers left nothing behind`);
   }
+});
+
+function stopRun(root, stop = { reason: "the commit hook refused", seq: 1 }) {
+  const path = ledgerPath(root);
+  writeLedger(path, { ...readLedger(path), stop });
+}
+
+test("refuses the next task after a stop, naming the stop", (t) => {
+  const repo = makeRepo(t);
+  assert.equal(open(repo).status, 0);
+  stopRun(repo);
+  const before = readFileSync(ledgerPath(repo), "utf8");
+  assertCleanRefusal(open(repo), /the run has stopped.*the commit hook refused/);
+  assert.equal(readFileSync(ledgerPath(repo), "utf8"), before, "a refused open changes nothing");
+});
+
+test("the stop is the refusal even when the config would refuse too", (t) => {
+  const repo = makeRepo(t);
+  assert.equal(open(repo).status, 0);
+  stopRun(repo);
+  writeFileSync(join(repo, ".pairingbuddy", "test-config.json"), "{");
+  assertCleanRefusal(open(repo), /the run has stopped/);
+});
+
+test("a stop refuses from a subdirectory and from a repository nested under the run", (t) => {
+  const repo = makeRepo(t);
+  assert.equal(open(repo).status, 0);
+  stopRun(repo);
+  const sub = join(repo, "sub");
+  mkdirSync(sub);
+  assertCleanRefusal(open(sub), /the run has stopped/);
+  const nested = join(repo, "nested");
+  mkdirSync(join(nested, ".pairingbuddy"), { recursive: true });
+  git(nested, "init", "-q", "-b", "feature/y");
+  git(nested, "-c", "user.email=t@example.com", "-c", "user.name=T", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "init");
+  writeFileSync(join(nested, ".pairingbuddy", "test-config.json"), CONFIG);
+  assertCleanRefusal(open(nested), /the run has stopped/);
+});
+
+test("with no stop an open run keeps its own refusal", (t) => {
+  const repo = makeRepo(t);
+  assert.equal(open(repo).status, 0);
+  assertCleanRefusal(open(repo), /a run is already active/);
+});
+
+// ---------- the task ----------
+
+const writeTask = (root, text) => writeFileSync(join(root, ".pairingbuddy", "task.json"), text);
+
+test("run open stores the task from task.json, so a later turn has it", (t) => {
+  const root = makeRepo(t);
+  writeTask(root, JSON.stringify({ description: 'Set "port" to 9090' }));
+
+  assert.equal(open(root).status, 0);
+
+  assert.equal(readLedger(ledgerPath(root)).task, 'Set "port" to 9090');
+});
+
+test("run open keeps the task's context beside its description", (t) => {
+  const root = makeRepo(t);
+  writeTask(root, JSON.stringify({ description: "Set the port", context: "It is in app.ini" }));
+
+  assert.equal(open(root).status, 0);
+
+  assert.equal(readLedger(ledgerPath(root)).task, "Set the port\n\nIt is in app.ini");
+});
+
+test("run open with no task.json stores no task", (t) => {
+  const root = makeRepo(t);
+
+  assert.equal(open(root).status, 0);
+
+  assert.equal(readLedger(ledgerPath(root)).task, "");
+});
+
+for (const [name, text] of [["bad JSON", "{"], ["no description", "{}"], ["a blank description", '{"description":""}'], ["a null body", "null"]]) {
+  test(`a task.json with ${name} refuses, and no run opens`, (t) => {
+    const root = makeRepo(t);
+    writeTask(root, text);
+
+    assertCleanRefusal(open(root), /task\.json/);
+    assert.equal(existsSync(runDir(root)), false);
+  });
+}
+
+test("plain pb status gives no action, and any other argument is a usage error", (t) => {
+  const root = makeRepo(t);
+  assert.equal(open(root).status, 0);
+
+  assert.equal(Object.hasOwn(JSON.parse(pb(root, "status").stdout), "action"), false);
+  const usage = pb(root, "status", "--nope");
+  assert.equal(usage.status, 2);
+  assert.match(usage.stderr, /usage: pb status \[--action\]/);
+  assert.equal(pb(root, "status", "--action", "x").status, 2);
+});
+
+test("pb status --action refuses with no run, as plain status does", (t) => {
+  const r = pb(makeRepo(t), "status", "--action");
+
+  assertCleanRefusal(r, /no run here/);
+});
+
+test("pb status --action gives the next action, whose args the gate takes", (t) => {
+  const root = makeRepo(t);
+  writeTask(root, JSON.stringify({ description: "Set the port" }));
+  assert.equal(open(root).status, 0);
+
+  const { action, next } = JSON.parse(pb(root, "status", "--action").stdout);
+
+  assert.deepEqual(next, { stage: "code-config", attempt: 1 });
+  const args = JSON.parse(action.match(/with the args (\{.*\})\./)[1]);
+  assert.deepEqual(args, { attempt: 1, pluginRoot: PLUGIN, task: { description: "Set the port" } });
+});
+
+// ---------- a stop on a protected branch ----------
+
+test("a stop is the refusal on a protected branch too, so the branch cannot hide it", (t) => {
+  const root = makeRepo(t);
+  assert.equal(open(root).status, 0);
+  const ledger = readLedger(ledgerPath(root));
+  writeLedger(ledgerPath(root), { ...ledger, stop: { reason: "hook refused the commit", seq: 1 } });
+  git(root, "checkout", "-q", "main");
+
+  assertCleanRefusal(open(root), /hook refused the commit/);
 });

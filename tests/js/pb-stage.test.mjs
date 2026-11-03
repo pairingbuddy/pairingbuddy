@@ -127,7 +127,7 @@ function decision(stdout) {
 }
 
 function startStage(repo, plugin, stage, attempt) {
-  return decision(hook(GATE, payload(repo, "Workflow", { name: `pairingbuddy:${stage}`, args: { pluginRoot: plugin, attempt } }), plugin));
+  return decision(hook(GATE, payload(repo, "Workflow", { name: `pairingbuddy:${stage}`, args: { pluginRoot: plugin, attempt, task: { description: "set x" } } }), plugin));
 }
 
 // The agent the key names, unless a test says otherwise.

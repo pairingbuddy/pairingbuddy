@@ -129,7 +129,7 @@ function assertRefuses(repo, run, pattern, code = 1) {
 function stageCall(repo, stage) {
   return {
     ...fixture("pretooluse-workflow.json"), session_id: SESSION, cwd: repo.dir, permission_mode: "default",
-    tool_input: { name: `pairingbuddy:${stage}`, args: { pluginRoot: PLUGIN, attempt: 1 } },
+    tool_input: { name: `pairingbuddy:${stage}`, args: { pluginRoot: PLUGIN, attempt: 1, task: { description: "set x" } } },
   };
 }
 
