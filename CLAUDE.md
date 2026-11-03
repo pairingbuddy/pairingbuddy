@@ -9,6 +9,11 @@ Pairing Buddy is a Claude Code plugin that orchestrates TDD workflows through sp
 uv run pytest
 ```
 
+**Run mod tests:**
+```bash
+claude plugin test .
+```
+
 **Run specific test file:**
 ```bash
 uv run pytest tests/agents/test_agent_structure.py -v
@@ -47,6 +52,7 @@ pairingbuddy/
 │   ├── skill-config.yaml    # Skill definitions
 │   └── schemas/             # JSON schemas for state (39 total)
 ├── hooks/            # Claude Code hooks (SessionStart, PostToolUse)
+├── mod/              # Claude Code mod (register.tsx, *.test.tsx, testing/, fixtures/); read-only, isolated from the shell hooks
 ├── commands/         # Slash commands (/pairingbuddy:code, /pairingbuddy:plan, /pairingbuddy:design-ux)
 └── tests/            # Structural tests (~1121)
 ```
