@@ -1,0 +1,79 @@
+{
+  "note": "Stand-in for contracts/lenses.json, which lands with Task 76; that task replaces this file. Copied from the D8 lens map. `row` is the D8 row, `stage` the stage id in keys, and `agents` the agent a row with no lens still runs.",
+  "rows": [
+    { "row": "intake", "stage": "intake", "lenses": [{ "name": "classification", "model": "sonnet" }], "refute": "none", "fix": "course-checker" },
+    {
+      "row": "plan-requirements", "stage": "plan-requirements",
+      "lenses": [
+        { "name": "ambiguity", "model": "sonnet" }, { "name": "testability", "model": "sonnet" }, { "name": "scope", "model": "sonnet" },
+        { "name": "conflict", "model": "sonnet" }, { "name": "unknowns", "model": "sonnet" }, { "name": "corpus misalignment", "model": "sonnet" }
+      ],
+      "bias": true, "synth": true, "refute": "one", "maxRefuters": 10, "fix": "course-checker"
+    },
+    {
+      "row": "plan-architecture", "stage": "plan-architecture",
+      "lenses": [
+        { "name": "enforcement", "model": "opus" }, { "name": "simplicity", "model": "sonnet" }, { "name": "testability", "model": "sonnet" },
+        { "name": "migration", "model": "opus" }, { "name": "corpus misalignment", "model": "sonnet" }
+      ],
+      "bias": true, "synth": true, "refute": "one", "maxRefuters": 10, "fix": "course-checker"
+    },
+    {
+      "row": "plan-tracers", "stage": "plan-tracers",
+      "lenses": [
+        { "name": "slice thinness", "model": "sonnet" }, { "name": "ordering", "model": "sonnet" }, { "name": "PR-unit fit", "model": "sonnet" },
+        { "name": "dependency truth", "model": "sonnet" }, { "name": "corpus misalignment", "model": "sonnet" }
+      ],
+      "synth": true, "refute": "one", "maxRefuters": 10, "fix": "course-checker"
+    },
+    {
+      "row": "plan-sequence", "stage": "plan-sequence",
+      "lenses": [
+        { "name": "ordering", "model": "sonnet" }, { "name": "task size", "model": "sonnet" },
+        { "name": "testable acceptance criteria", "model": "sonnet" }, { "name": "corpus misalignment", "model": "sonnet" }
+      ],
+      "refute": "one", "maxRefuters": 6, "fix": "course-checker"
+    },
+    {
+      "row": "scenarios", "stage": "scenarios",
+      "lenses": [
+        { "name": "necessity", "model": "sonnet" }, { "name": "pyramid level", "model": "sonnet" },
+        { "name": "patterns", "model": "sonnet" }, { "name": "anti-patterns", "model": "sonnet" }
+      ],
+      "refute": "one", "maxRefuters": 6, "fix": "course-checker"
+    },
+    { "row": "tdd", "stage": "tdd", "lenses": [], "agents": [{ "role": "lens", "phase": "REFACTOR", "item": "t3" }], "refute": "none", "fix": "none" },
+    { "row": "refactor-scope", "stage": "refactor-scope", "lenses": [{ "name": "scope serves intent", "model": "sonnet" }], "refute": "none", "fix": "none" },
+    { "row": "refactor-apply", "stage": "refactor-apply", "lenses": [], "agents": [{ "role": "refactor-code", "item": "step1" }], "refute": "none", "fix": "none" },
+    { "row": "config", "stage": "code-config", "lenses": [], "agents": [{ "role": "apply-config-change", "item": null }], "refute": "none", "fix": "none" },
+    {
+      "row": "safety-net, new_feature and bug_fix", "stage": "code-safety-net",
+      "lenses": [{ "name": "code", "model": "sonnet" }, { "name": "tests", "model": "sonnet" }, { "name": "corpus misalignment", "model": "sonnet" }],
+      "refute": "one", "maxRefuters": 6, "fix": "course-checker"
+    },
+    {
+      "row": "safety-net, refactoring", "stage": "code-safety-net",
+      "lenses": [{ "name": "behaviour preservation", "model": "opus" }, { "name": "tests", "model": "sonnet" }, { "name": "corpus misalignment", "model": "sonnet" }],
+      "refute": "one", "maxRefuters": 6, "fix": "course-checker"
+    },
+    {
+      "row": "safety-net, config_change", "stage": "code-safety-net",
+      "lenses": [{ "name": "config fit", "model": "sonnet" }, { "name": "corpus misalignment", "model": "sonnet" }],
+      "refute": "one", "maxRefuters": 2, "fix": "course-checker"
+    },
+    { "row": "spike-unit", "stage": "spike-unit", "lenses": [], "agents": [{ "role": "explore-spike-unit", "item": "u1" }], "refute": "none", "fix": "none" },
+    { "row": "spike-document", "stage": "spike-document", "lenses": [{ "name": "claims against recorded evidence", "model": "sonnet" }], "refute": "none", "fix": "course-checker" },
+    { "row": "pr-draft", "stage": "pr-draft", "lenses": [{ "name": "claims", "model": "sonnet" }, { "name": "permanence", "model": "sonnet" }], "refute": "none", "fix": "course-checker" },
+    { "row": "design-domain, design-gallery", "stage": "design-domain", "lenses": [], "agents": [{ "role": "design-ux-explorer", "item": null }], "refute": "none", "fix": "none" },
+    { "row": "design-domain, design-gallery", "stage": "design-gallery", "lenses": [], "agents": [{ "role": "design-ux-gallery-generator", "item": null }], "refute": "none", "fix": "none" },
+    {
+      "row": "design-build critique", "stage": "design-build",
+      "lenses": [
+        { "name": "mental model alignment", "model": "sonnet" }, { "name": "information architecture", "model": "sonnet" },
+        { "name": "affordances", "model": "sonnet" }, { "name": "cognitive load", "model": "sonnet" },
+        { "name": "state design", "model": "sonnet" }, { "name": "flow integrity", "model": "sonnet" }
+      ],
+      "refute": "none", "fix": "none"
+    }
+  ]
+}
