@@ -172,12 +172,24 @@ function notCovered({ uncovered, gaps }, testRuns, returns, red) {
   ];
 }
 
-// Built from what was recorded, never from a model's summary of it.
+const COVERAGE_ROLE = "verify-test-coverage";
+
+// Each coverage round returns the gaps it still sees, so the newest round of the attempt speaks for the stage.
+function coverageGaps(current, returns) {
+  const rounds = current.map((key, i) => ({ ...key, artifact: returns[i] })).filter(({ role, item }) => role === COVERAGE_ROLE && item === null);
+  const newest = rounds.sort((a, b) => b.round - a.round)[0];
+  return Array.isArray(newest?.artifact.gaps) ? newest.artifact.gaps : [];
+}
+
+// Built from what was recorded, never from a model's summary of it. A coverage check is no lens round, so its gaps join
+// the lists apart from the lens returns.
 export function buildReport(ledger, artifactsDir) {
   const { name, attempt, runId } = ledger.stage;
   const current = returnsAt(artifactsDir, ledger.stage);
   const returns = current.map(({ pbKey }) => readReturn(artifactsDir, pbKey) ?? {});
-  const lists = Object.fromEntries(REPORT_LISTS.map((key) => [key, returns.flatMap((artifact) => artifact[key] ?? [])]));
+  const lensReturns = returns.filter((_, i) => current[i].role !== COVERAGE_ROLE);
+  const found = Object.fromEntries(REPORT_LISTS.map((key) => [key, lensReturns.flatMap((artifact) => artifact[key] ?? [])]));
+  const lists = { ...found, gaps: [...found.gaps, ...coverageGaps(current, returns)] };
   const tests = attemptTests(ledger);
   const red = redEvidence(ledger);
   const ambiguities = current.map(({ pbKey }, i) => ({ key: pbKey, ambiguity: returns[i].ambiguity ?? "" })).filter(({ ambiguity }) => ambiguity !== "");
@@ -195,7 +207,7 @@ export function buildReport(ledger, artifactsDir) {
     ambiguities,
     redEvidence: red,
     covered: coveredEvidence(ledger),
-    notCovered: notCovered(lists, tests, returns, red),
+    notCovered: notCovered(lists, tests, lensReturns, red),
     spend: { agents: current.length, agentsSource: "recorded returns", tokens: 0, tokensKnown: false, tokensUnit: TOKENS_UNIT },
   };
 }

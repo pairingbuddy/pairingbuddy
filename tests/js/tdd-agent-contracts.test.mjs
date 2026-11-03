@@ -11,11 +11,18 @@ const schemaOf = (name) => JSON.parse(read(`contracts/schemas/${name}`));
 
 const CONFIG = read("contracts/agent-config.yaml");
 const FILE_FIELDS = ["pb_key", "ambiguity", "commit_subject", "files_changed"];
+const ISSUE_FIELDS = ["pb_key", "ambiguity", "issues"];
+const COVERAGE_FIELDS = ["status", "scenarios_covered", "scenarios_total", "test_cases_covered", "test_cases_total", "gaps"];
 const AGENTS = [
   { name: "enumerate-scenarios-and-test-cases", paths: ["test_config", "human_guidance"], fields: ["pb_key", "ambiguity", "scenarios"], legacy: ".pairingbuddy/scenarios.json", legacySchema: "scenarios.schema.json" },
   { name: "create-test-placeholders", paths: ["scenarios", "test_config", "human_guidance", "tests", "coverage_report"], fields: [...FILE_FIELDS, "tests"], legacy: ".pairingbuddy/tests.json", legacySchema: "tests.schema.json" },
   { name: "implement-tests", paths: ["tests", "scenarios", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/test-state.json", legacySchema: "test-state.schema.json" },
   { name: "implement-code", paths: ["tests", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/code-state.json", legacySchema: "code-state.schema.json" },
+  { name: "identify-test-issues", paths: ["tests", "test_config", "human_guidance"], fields: ISSUE_FIELDS, legacy: ".pairingbuddy/test-issues.json", legacySchema: "issues.schema.json" },
+  { name: "identify-code-issues", paths: ["code", "test_config", "human_guidance"], fields: ISSUE_FIELDS, legacy: ".pairingbuddy/code-issues.json", legacySchema: "issues.schema.json" },
+  { name: "refactor-tests", paths: ["issues", "tests", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/files-changed.json", legacySchema: "files-changed.schema.json" },
+  { name: "refactor-code", paths: ["issues", "tests", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/files-changed.json", legacySchema: "files-changed.schema.json" },
+  { name: "verify-test-coverage", paths: ["scenarios", "tests", "test_config", "human_guidance"], fields: ["pb_key", "ambiguity", ...COVERAGE_FIELDS], legacy: ".pairingbuddy/coverage-report.json", legacySchema: "coverage-report.schema.json" },
 ];
 
 const resultSchema = ({ name }) => `${name}-result.schema.json`;
@@ -71,7 +78,7 @@ for (const agent of AGENTS) {
   });
 }
 
-for (const name of ["create-test-placeholders", "implement-tests", "implement-code"]) {
+for (const name of ["create-test-placeholders", "implement-tests", "implement-code", "refactor-tests", "refactor-code"]) {
   test(`${name}: files_changed is repo-relative, for pb checkpoint`, () => {
     const { files_changed: files } = schemaOf(`${name}-result.schema.json`).properties;
 
@@ -176,7 +183,54 @@ test("the placeholder agent writes no assertion, so RED has a real test to commi
 });
 
 test("ambiguity is a question for a human, never a report on the step", () => {
-  for (const name of ["create-test-placeholders", "implement-tests", "implement-code"]) {
+  for (const name of ["create-test-placeholders", "implement-tests", "implement-code", "identify-test-issues", "identify-code-issues", "refactor-tests", "refactor-code", "verify-test-coverage"]) {
     assert.match(read(`agents/${name}.md`), /`ambiguity` is only for a question a human must settle: never use it to report what you did or found/, name);
   }
+});
+
+// ---------- Task 48 and 49: the refactor finders and fixers, and the coverage check ----------
+
+for (const name of ["identify-test-issues", "identify-code-issues"]) {
+  test(`${name}: an issue is the legacy issue, so a fixer reads the same rows`, () => {
+    assert.deepEqual(schemaOf(`${name}-result.schema.json`).properties.issues, schemaOf("issues.schema.json").properties.issues);
+  });
+
+  test(`${name}: with paths it finds and never fixes, for the one cycle the test_id names`, () => {
+    const text = textOf({ name });
+
+    assert.match(text, /With a `<paths>` block: skip Step 3/);
+    assert.match(text, /`<test_id>` names the cycle/);
+    assert.match(text, /An empty `issues` list is a fine result: the refactor step is skipped/);
+  });
+}
+
+for (const name of ["refactor-tests", "refactor-code"]) {
+  test(`${name}: with paths it keeps every test's selector, since the CLI runs the tests by it`, () => {
+    assert.match(textOf({ name }), /keep every test's `test_file` and `test_function` exactly as they are/);
+  });
+
+  test(`${name}: with paths the CLI runs the tests and commits the group, so the return lists every file changed`, () => {
+    const text = textOf({ name });
+
+    assert.match(text, /The CLI runs every test the task has closed before it commits your changes as one fix group/);
+    assert.match(text, /With no change to make, return an empty `files_changed` list/);
+  });
+}
+
+test("refactor-tests: with paths it changes tests alone", () => {
+  assert.match(textOf({ name: "refactor-tests" }), /With a `<paths>` block: change only test files/);
+});
+
+test("verify-test-coverage: a coverage row is the legacy report's, so placeholders can read the return as its coverage_report", () => {
+  const result = schemaOf("verify-test-coverage-result.schema.json").properties;
+  const legacy = schemaOf("coverage-report.schema.json").properties;
+
+  for (const field of COVERAGE_FIELDS) assert.deepEqual(result[field], legacy[field], field);
+});
+
+test("verify-test-coverage: with paths it reconciles nothing, because the CLI reads the placeholders' rows", () => {
+  const text = textOf({ name: "verify-test-coverage" });
+
+  assert.match(text, /With a `<paths>` block: skip 2a and write no tests file/);
+  assert.match(text, /With a `<paths>` block: skip Step 3/);
 });

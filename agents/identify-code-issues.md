@@ -14,6 +14,11 @@ Analyze production code and identify quality issues that should be addressed dur
 
 ## Input
 
+The one input rule decides what you read and write:
+
+- With a `<paths>` block in the prompt: read only what the paths name, and return your Output as StructuredOutput. `code` is the GREEN return of the cycle just finished, and its `files_changed` lists the production files to look at, and only those. The prompt's `<test_id>` names the cycle. `test_config` is the test config. `human_guidance` is the human guidance, which may be missing. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
+- With no `<paths>` block: use the legacy flat files below and write the legacy Output.
+
 Reads from `.pairingbuddy/code-state.json`:
 
 ```json
@@ -81,6 +86,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 2: Main Work
 
+With a `<paths>` block: read what the Input section says instead of the files below.
+
 1. Read code state from `.pairingbuddy/code-state.json`
 2. Read test configuration from `.pairingbuddy/test-config.json`
 3. For each production file referenced in `files_changed`:
@@ -89,6 +96,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    c. Record each issue with file, line, type, description
 
 ### Step 3: Human Review
+
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at a gate. Find and never fix: `refactor-code` fixes what you return. An empty `issues` list is a fine result: the refactor step is skipped, so return only issues worth a change now. If something can only be settled by a human, describe it in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -135,6 +144,8 @@ Should I proceed with this approach?"
 
 ### Step 4: Output
 
+With a `<paths>` block: skip Step 4 and return your Output as StructuredOutput.
+
 **MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
 
 After approval, write output using this procedure for EACH output file listed in the Output section:
@@ -158,6 +169,8 @@ After approval, write output using this procedure for EACH output file listed in
 
 ### File Creation Restrictions
 
+With a `<paths>` block: write no files. Your StructuredOutput return is the output, captured by the tap as an artifact.
+
 **You may ONLY write to:** `.pairingbuddy/code-issues.json`
 
 Do NOT create any other files. No /tmp files, no markdown files, no text files. Your sole output is the JSON file specified in the Output section.
@@ -175,6 +188,26 @@ If `PAIRINGBUDDY_SOLO` environment variable is `true`:
 - Proceed directly to writing output
 
 ## Output
+
+With a `<paths>` block, return the result as your StructuredOutput with exactly these fields, and write no output file:
+
+```json
+{
+  "pb_key": "string (copied exactly from the prompt)",
+  "ambiguity": "string (open question a human should settle, or empty string)",
+  "issues": [
+    {
+      "file": "string (file path where issue was found)",
+      "line": "integer (line number, optional)",
+      "issue_type": "string (category of issue)",
+      "description": "string (what the issue is)",
+      "suggestion": "string (how to fix it, optional)"
+    }
+  ]
+}
+```
+
+With no `<paths>` block:
 
 Writes to `.pairingbuddy/code-issues.json`:
 

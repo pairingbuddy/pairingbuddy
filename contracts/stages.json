@@ -38,7 +38,30 @@
         {
           "name": "code-tdd",
           "gate": null,
-          "evidence": ["artifact:create-test-placeholders", "checkpoint:placeholders", "tests:cycle"]
+          "evidence": ["artifact:create-test-placeholders", "checkpoint:placeholders", "tests:cycle", "artifact:verify-test-coverage"]
+        },
+        {
+          "name": "code-safety-net",
+          "gate": "G:task-end",
+          "evidence": ["artifact:update-documentation", "checkpoint:docs", "tests:full"]
+        }
+      ],
+      "gates": {
+        "G:scenarios": { "class": "continue" },
+        "G:task-end": { "class": "continue" }
+      }
+    },
+    "new_feature": {
+      "nodes": [
+        {
+          "name": "code-scenarios",
+          "gate": "G:scenarios",
+          "evidence": ["artifact:enumerate-scenarios-and-test-cases"]
+        },
+        {
+          "name": "code-tdd",
+          "gate": null,
+          "evidence": ["artifact:create-test-placeholders", "checkpoint:placeholders", "tests:cycle", "artifact:verify-test-coverage"]
         },
         {
           "name": "code-safety-net",

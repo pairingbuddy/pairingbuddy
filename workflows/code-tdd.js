@@ -5,8 +5,13 @@ if (args === undefined) return { started: false };
 const PLACEHOLDERS_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Create Test Placeholders Result","description":"Return of the create-test-placeholders agent when its prompt gives paths: the pb key it was given, any open ambiguity, the proposed commit subject, the files it changed, and the tests artifact. Each row is a structured test selector, which pb test reads","type":"object","required":["pb_key","ambiguity","commit_subject","files_changed","tests"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question the scenarios left unresolved, or an empty string"},"commit_subject":{"type":"string","description":"Proposed commit subject line, or an empty string when nothing changed"},"files_changed":{"type":"array","description":"Repo-relative paths of files the agent modified","items":{"type":"string","pattern":"^(?!/)"}},"tests":{"type":"array","description":"Every test of the task, the rows the agent was given included","items":{"type":"object","required":["test_id","test_case_id","scenario_id","runner_id","test_file","test_function"],"properties":{"test_id":{"type":"string","description":"Unique identifier for this test, usable as the item of a stage key","pattern":"^[a-z0-9][a-z0-9_-]{0,63}$"},"test_case_id":{"type":"string","description":"Back-reference to test case"},"scenario_id":{"type":"string","description":"Back-reference to scenario"},"runner_id":{"type":"string","description":"Which runner to use from test-config","minLength":1},"test_file":{"type":"string","description":"Repo-relative path to the test file, and nothing else","pattern":"^(?![/@-])(?!.*::)[^\\r\\n]+$"},"test_function":{"type":"string","description":"The test's name as its file declares it, and nothing else","pattern":"^(?![-@])(?:(?!.*::)[^\\r\\n]+|[A-Za-z_]\\w*(?:::[A-Za-z_]\\w*)+)$"}},"additionalProperties":false}}},"additionalProperties":false};
 const TESTS_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Implement Tests Result","description":"Return of the implement-tests agent when its prompt gives paths: the pb key it was given, any open ambiguity, the proposed commit subject and the files it changed, which pb checkpoint reads. The CLI records whether the test failed","type":"object","required":["pb_key","ambiguity","commit_subject","files_changed"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question, or a test the agent could not get to fail for the right reason, or an empty string"},"commit_subject":{"type":"string","description":"Proposed commit subject line, or an empty string when nothing changed"},"files_changed":{"type":"array","description":"Repo-relative paths of files the agent modified","items":{"type":"string","pattern":"^(?!/)"}}},"additionalProperties":false};
 const CODE_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Implement Code Result","description":"Return of the implement-code agent when its prompt gives paths: the pb key it was given, any open ambiguity, the proposed commit subject and the files it changed, which pb checkpoint reads. The CLI records whether the test passed","type":"object","required":["pb_key","ambiguity","commit_subject","files_changed"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question, or a test the agent could not satisfy, or an empty string"},"commit_subject":{"type":"string","description":"Proposed commit subject line, or an empty string when nothing changed"},"files_changed":{"type":"array","description":"Repo-relative paths of files the agent modified","items":{"type":"string","pattern":"^(?!/)"}}},"additionalProperties":false};
+const TEST_ISSUES_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Identify Test Issues Result","description":"Return of the identify-test-issues agent when its prompt gives paths: the pb key it was given, any open ambiguity, and the quality issues it found in the test code of the cycle. The refactor agent fixes them, and an empty list skips the fix","type":"object","required":["pb_key","ambiguity","issues"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question a human should settle, or an empty string"},"issues":{"type":"array","items":{"type":"object","required":["file","issue_type","description"],"properties":{"file":{"type":"string","description":"File path where issue was found"},"line":{"type":"integer","description":"Line number (optional)"},"issue_type":{"type":"string","description":"Category of issue"},"description":{"type":"string","description":"What the issue is"},"suggestion":{"type":"string","description":"How to fix it (optional)"}},"additionalProperties":false}}},"additionalProperties":false};
+const CODE_ISSUES_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Identify Code Issues Result","description":"Return of the identify-code-issues agent when its prompt gives paths: the pb key it was given, any open ambiguity, and the quality issues it found in the production code of the cycle. The refactor agent fixes them, and an empty list skips the fix","type":"object","required":["pb_key","ambiguity","issues"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question a human should settle, or an empty string"},"issues":{"type":"array","items":{"type":"object","required":["file","issue_type","description"],"properties":{"file":{"type":"string","description":"File path where issue was found"},"line":{"type":"integer","description":"Line number (optional)"},"issue_type":{"type":"string","description":"Category of issue"},"description":{"type":"string","description":"What the issue is"},"suggestion":{"type":"string","description":"How to fix it (optional)"}},"additionalProperties":false}}},"additionalProperties":false};
+const REFACTOR_TESTS_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Refactor Tests Result","description":"Return of the refactor-tests agent when its prompt gives paths: the pb key it was given, any open ambiguity, the proposed commit subject and the files it changed, which pb checkpoint --step refactor commits as one fix group once the task's tests pass","type":"object","required":["pb_key","ambiguity","commit_subject","files_changed"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question, or an issue the agent could not fix without changing behaviour, or an empty string"},"commit_subject":{"type":"string","description":"Proposed commit subject line, or an empty string when nothing changed"},"files_changed":{"type":"array","description":"Repo-relative paths of files the agent modified","items":{"type":"string","pattern":"^(?!/)"}}},"additionalProperties":false};
+const REFACTOR_CODE_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Refactor Code Result","description":"Return of the refactor-code agent when its prompt gives paths: the pb key it was given, any open ambiguity, the proposed commit subject and the files it changed, which pb checkpoint --step refactor commits as one fix group once the task's tests pass","type":"object","required":["pb_key","ambiguity","commit_subject","files_changed"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question, or an issue the agent could not fix without changing behaviour, or an empty string"},"commit_subject":{"type":"string","description":"Proposed commit subject line, or an empty string when nothing changed"},"files_changed":{"type":"array","description":"Repo-relative paths of files the agent modified","items":{"type":"string","pattern":"^(?!/)"}}},"additionalProperties":false};
+const COVERAGE_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Verify Test Coverage Result","description":"Return of the verify-test-coverage agent when its prompt gives paths: the pb key it was given, any open ambiguity, and the coverage report, whose gaps the stage loops back on and the gate asks about once the loop's bound is spent","type":"object","required":["pb_key","ambiguity","status","scenarios_covered","scenarios_total","test_cases_covered","test_cases_total","gaps"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question a human should settle, or an empty string"},"status":{"type":"string","enum":["complete","incomplete","error"],"description":"Overall coverage status"},"scenarios_covered":{"type":"integer","description":"Number of scenarios with tests"},"scenarios_total":{"type":"integer","description":"Total number of scenarios"},"test_cases_covered":{"type":"integer","description":"Number of test cases with tests"},"test_cases_total":{"type":"integer","description":"Total number of test cases"},"gaps":{"type":"array","items":{"type":"object","required":["scenario_id","description"],"properties":{"scenario_id":{"type":"string","description":"Scenario with missing coverage"},"test_case_id":{"type":"string","description":"Specific test case missing (optional)"},"description":{"type":"string","description":"What coverage is missing"}},"additionalProperties":false},"description":"List of coverage gaps"}},"additionalProperties":false};
 const RUNNER_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Runner Result","description":"Return of the runner agent: the pb key it was given and the CLI's last exit code and its output, relayed unchanged. Evidence lives in the ledger, written by the CLI","type":"object","required":["pb_key","cli_exit_code","cli_output"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"cli_exit_code":{"type":"integer","description":"Exit code of the last pb command run: 0 when it was recorded, not when the tests passed"},"cli_output":{"type":"string","description":"What each pb command printed, unchanged, in order"}},"additionalProperties":false};
-const STAGES = {"v":1,"defaultTaskType":"config_change","maxAgents":1000,"stageMaxAgents":{"code-tdd":600},"migratedTypes":["config_change","bug_fix"],"newPathAgents":["apply-config-change","runner"],"gateClasses":{"continue":{"auto":"passes when evidence is complete and no stop condition applies"},"conditional":{"auto":"passes only when the classifier reports certain"},"decide":{"auto":"always asks the human"}},"taskTypes":{"config_change":{"nodes":[{"name":"code-config","gate":null,"evidence":["artifact:apply-config-change","checkpoint:config"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:task-end":{"class":"continue"}}},"bug_fix":{"nodes":[{"name":"code-scenarios","gate":"G:scenarios","evidence":["artifact:enumerate-scenarios-and-test-cases"]},{"name":"code-tdd","gate":null,"evidence":["artifact:create-test-placeholders","checkpoint:placeholders","tests:cycle"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:scenarios":{"class":"continue"},"G:task-end":{"class":"continue"}}}}};
+const STAGES = {"v":1,"defaultTaskType":"config_change","maxAgents":1000,"stageMaxAgents":{"code-tdd":600},"migratedTypes":["config_change","bug_fix"],"newPathAgents":["apply-config-change","runner"],"gateClasses":{"continue":{"auto":"passes when evidence is complete and no stop condition applies"},"conditional":{"auto":"passes only when the classifier reports certain"},"decide":{"auto":"always asks the human"}},"taskTypes":{"config_change":{"nodes":[{"name":"code-config","gate":null,"evidence":["artifact:apply-config-change","checkpoint:config"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:task-end":{"class":"continue"}}},"bug_fix":{"nodes":[{"name":"code-scenarios","gate":"G:scenarios","evidence":["artifact:enumerate-scenarios-and-test-cases"]},{"name":"code-tdd","gate":null,"evidence":["artifact:create-test-placeholders","checkpoint:placeholders","tests:cycle","artifact:verify-test-coverage"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:scenarios":{"class":"continue"},"G:task-end":{"class":"continue"}}},"new_feature":{"nodes":[{"name":"code-scenarios","gate":"G:scenarios","evidence":["artifact:enumerate-scenarios-and-test-cases"]},{"name":"code-tdd","gate":null,"evidence":["artifact:create-test-placeholders","checkpoint:placeholders","tests:cycle","artifact:verify-test-coverage"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:scenarios":{"class":"continue"},"G:task-end":{"class":"continue"}}}}};
 
 // What every stage does alike. RUNNER_SCHEMA comes from the stage's own pb-inline line, and buildKey, buildLabel and
 // shellWord from its pb-inline-module lines.
@@ -202,6 +207,10 @@ const stage = 'code-tdd';
 const maxAgents = STAGES.stageMaxAgents[stage];
 // How often one step is tried before the stage stops: a re-run starts these over, and a human stands between re-runs.
 const MAX_TRIES = 3;
+// How often coverage gaps send the stage back to placeholders. Gaps left after that finish the stage, and the gate asks.
+const MAX_COVERAGE_LOOPS = 2;
+// Only new_feature refactors per cycle: the old bug_fix path never did, and the CLI refuses the step for any other type.
+const REFACTORS_FOR = 'new_feature';
 const NO_STOP_NEEDED = 'run-stopped';
 // Only the CLI's own first word counts: a refusal also quotes the test's output, which can say anything.
 const RUN_STOPPED = /^pb: the run (?:has )?stopped/m;
@@ -231,6 +240,15 @@ function nextRunnerRound(item) {
   const name = item ?? '-';
   runnerRounds[name] = (runnerRounds[name] ?? 0) + 1;
   return runnerRounds[name];
+}
+
+// A role's rounds run on across retries and coverage loops alike, so no two returns of one role and item share a key.
+const agentRounds = {};
+
+function nextAgentRound(role, item) {
+  const name = `${role} ${item ?? '-'}`;
+  agentRounds[name] = (agentRounds[name] ?? 0) + 1;
+  return agentRounds[name];
 }
 
 const isRelayed = (run) => Number.isInteger(run.result?.cli_exit_code);
@@ -290,16 +308,22 @@ function prompted(instruction, pbKey, paths, testId, refusal) {
   ].join('\n');
 }
 
+async function spawnRole({ role, schema, instruction, paths, tddPhase = null, item = null }, refusal) {
+  phase(role);
+  const round = nextAgentRound(role, item);
+  const pbKey = buildKey({ stage, role, item, round, attempt: args.attempt });
+  const label = buildLabel({ stage, phase: tddPhase, role, item, round });
+  const result = await spawn(prompted(instruction, pbKey, paths, item, refusal), { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(schema, pbKey) });
+  return { pbKey, result };
+}
+
 // One agent and the checkpoint that judges it. A refusal goes back to a new agent at the next round.
-async function untilAccepted({ role, schema, instruction, paths, step, tddPhase = null, item = null }) {
+async function untilAccepted(call) {
   let refusal = null;
-  for (let round = 1; round <= MAX_TRIES; round += 1) {
-    phase(role);
-    const pbKey = buildKey({ stage, role, item, round, attempt: args.attempt });
-    const label = buildLabel({ stage, phase: tddPhase, role, item, round });
-    const result = await spawn(prompted(instruction, pbKey, paths(pbKey), item, refusal), { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(schema, pbKey) });
+  for (let tries = 0; tries < MAX_TRIES; tries += 1) {
+    const { pbKey, result } = await spawnRole(call, refusal);
     if (result !== null) {
-      const { result: relay } = await runStep([`checkpoint --step ${step} --from ${pbKey}`], { tddPhase, item });
+      const { result: relay } = await runStep([`checkpoint --step ${call.step} --from ${pbKey}`], call);
       if (relay.cli_exit_code === 0) return { pbKey, result, relay };
       refusal = relay.cli_output ?? '';
       if (RUN_STOPPED.test(refusal)) throw new StageHalted(NO_STOP_NEEDED);
@@ -308,14 +332,25 @@ async function untilAccepted({ role, schema, instruction, paths, step, tddPhase 
   throw new StageHalted('step-failed');
 }
 
+// One agent whose return is all there is to its step: a finder, or the coverage check. Nothing to commit, so no checkpoint.
+async function untilReturned(call) {
+  for (let tries = 0; tries < MAX_TRIES; tries += 1) {
+    const returned = await spawnRole(call, null);
+    if (returned.result !== null) return returned;
+  }
+  throw new StageHalted('step-failed');
+}
+
 const artifactPathOf = (pbKey) => `.pairingbuddy/run/task/artifacts/${pbKey}.json`;
 
-async function placeholders({ scenarios, tests }) {
+const SHARED_PATHS = { test_config: TEST_CONFIG, human_guidance: HUMAN_GUIDANCE };
+
+async function placeholders({ scenarios, tests, coverageReport = null }) {
   return untilAccepted({
     role: 'create-test-placeholders',
     schema: PLACEHOLDERS_SCHEMA,
     instruction: 'Create the test placeholders for the task below. The paths are your inputs.',
-    paths: () => ({ scenarios, test_config: TEST_CONFIG, human_guidance: HUMAN_GUIDANCE, ...(tests === null ? {} : { tests }) }),
+    paths: { scenarios, ...SHARED_PATHS, ...(tests === null ? {} : { tests }), ...(coverageReport === null ? {} : { coverage_report: coverageReport }) },
     step: 'placeholders',
   });
 }
@@ -324,7 +359,7 @@ const redStep = (testId, testsPath, scenarios) => untilAccepted({
   role: 'implement-tests',
   schema: TESTS_SCHEMA,
   instruction: 'Replace the placeholder of the one test named below with the real test. The paths are your inputs.',
-  paths: () => ({ tests: testsPath, scenarios, test_config: TEST_CONFIG, human_guidance: HUMAN_GUIDANCE }),
+  paths: { tests: testsPath, scenarios, ...SHARED_PATHS },
   step: 'red',
   tddPhase: 'RED',
   item: testId,
@@ -334,16 +369,54 @@ const greenStep = (testId, testsPath) => untilAccepted({
   role: 'implement-code',
   schema: CODE_SCHEMA,
   instruction: 'Write the least production code that makes the one test named below pass. The paths are your inputs.',
-  paths: () => ({ tests: testsPath, test_config: TEST_CONFIG, human_guidance: HUMAN_GUIDANCE }),
+  paths: { tests: testsPath, ...SHARED_PATHS },
   step: 'green',
   tddPhase: 'GREEN',
   item: testId,
 });
 
+// ---------- the per-cycle refactor ----------
+
+const hasIssues = ({ result }) => Array.isArray(result.issues) && result.issues.length > 0;
+
+// identify-* find and refactor-* fix, so the right thing gets refactored. Each fixer's change is one fix group, and the
+// CLI commits it only while every test the task has closed still passes. A finder with nothing to fix spawns no fixer.
+async function refactorGroup({ finder, findSchema, findInstruction, findPaths, fixer, fixSchema, fixInstruction }, id, testsPath) {
+  const cycle = { tddPhase: 'REFACTOR', item: id };
+  const found = await untilReturned({ ...cycle, role: finder, schema: findSchema, instruction: findInstruction, paths: { ...findPaths, ...SHARED_PATHS } });
+  if (!hasIssues(found)) return;
+  await untilAccepted({ ...cycle, role: fixer, schema: fixSchema, instruction: fixInstruction, paths: { issues: artifactPathOf(found.pbKey), tests: testsPath, ...SHARED_PATHS }, step: 'refactor' });
+}
+
+// Tests first, then code, as the old new_feature path did.
+async function refactorCycle(id, testsPath, green) {
+  await refactorGroup({
+    finder: 'identify-test-issues',
+    findSchema: TEST_ISSUES_SCHEMA,
+    findInstruction: 'Find the quality issues in the test of the cycle named below, and fix none of them. The paths are your inputs.',
+    findPaths: { tests: testsPath },
+    fixer: 'refactor-tests',
+    fixSchema: REFACTOR_TESTS_SCHEMA,
+    fixInstruction: 'Fix the test issues the issues path lists, without changing what any test verifies. The paths are your inputs.',
+  }, id, testsPath);
+  await refactorGroup({
+    finder: 'identify-code-issues',
+    findSchema: CODE_ISSUES_SCHEMA,
+    findInstruction: 'Find the quality issues in the production code the cycle named below changed, and fix none of them. The paths are your inputs.',
+    findPaths: { code: artifactPathOf(green.pbKey) },
+    fixer: 'refactor-code',
+    fixSchema: REFACTOR_CODE_SCHEMA,
+    fixInstruction: 'Fix the code issues the issues path lists, without changing behaviour. The paths are your inputs.',
+  }, id, testsPath);
+}
+
+// ---------- the cycles ----------
+
 const covered = [];
 
-// One test at a time, because every agent works in the same tree.
-async function runCycles(ids, state, testsPath) {
+// One test at a time, because every agent works in the same tree. A re-run refactors no cycle whose GREEN was already
+// done: the safety net reviews the whole task at its end.
+async function runCycles(ids, state, testsPath, refactors) {
   for (const id of ids) {
     const skipsRed = state.red.includes(id) || state.covered.includes(id);
     const red = skipsRed ? null : await redStep(id, testsPath, state.scenarios);
@@ -351,7 +424,35 @@ async function runCycles(ids, state, testsPath) {
       covered.push(id);
       continue;
     }
-    if (!state.green.includes(id)) await greenStep(id, testsPath);
+    if (state.green.includes(id)) continue;
+    const green = await greenStep(id, testsPath);
+    if (refactors) await refactorCycle(id, testsPath, green);
+  }
+}
+
+// ---------- the coverage loop ----------
+
+const hasGaps = ({ result }) => Array.isArray(result.gaps) && result.gaps.length > 0;
+
+const checkCoverage = (scenarios, testsPath) => untilReturned({
+  role: 'verify-test-coverage',
+  schema: COVERAGE_SCHEMA,
+  instruction: 'Check that the tests cover every test case of the scenarios, and report each gap. The paths are your inputs.',
+  paths: { scenarios, tests: testsPath, ...SHARED_PATHS },
+});
+
+const idsOf = ({ result }) => result.tests.map(({ test_id: id }) => id);
+
+// Each gap sends the stage back to placeholders, which keep the rows so far and add tests for the gaps, and only the new
+// tests cycle. The bound holds whatever the gaps, and the spawn cap covers every round of it.
+async function closeGaps(state, created, refactors) {
+  let current = created;
+  for (let loop = 0; ; loop += 1) {
+    const coverage = await checkCoverage(state.scenarios, artifactPathOf(current.pbKey));
+    if (!hasGaps(coverage) || loop >= MAX_COVERAGE_LOOPS) return idsOf(current);
+    const known = idsOf(current);
+    current = await placeholders({ scenarios: state.scenarios, tests: artifactPathOf(current.pbKey), coverageReport: artifactPathOf(coverage.pbKey) });
+    await runCycles(idsOf(current).filter((id) => !known.includes(id)), state, artifactPathOf(current.pbKey), refactors);
   }
 }
 
@@ -374,9 +475,11 @@ async function recordStop(reason) {
 let tests = [];
 try {
   const state = await readState();
+  const refactors = state.taskType === REFACTORS_FOR;
   const created = await placeholders(state);
-  tests = created.result.tests.map(({ test_id: id }) => id);
-  await runCycles(tests, state, artifactPathOf(created.pbKey));
+  tests = idsOf(created);
+  await runCycles(tests, state, artifactPathOf(created.pbKey), refactors);
+  tests = await closeGaps(state, created, refactors);
   const runner = await runStep(['stage finish']);
   return { started: true, stopReason: null, spawned, tests, covered, runner };
 } catch (error) {

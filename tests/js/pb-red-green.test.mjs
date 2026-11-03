@@ -110,6 +110,10 @@ function writeArtifact(repo, key, content) {
 
 const writeTests = (repo, tests, key = TESTS_KEY) => writeArtifact(repo, key, { pb_key: key, ambiguity: "", commit_subject: "add placeholders", files_changed: [], tests });
 
+// The coverage check's return, which code-tdd needs at its attempt to finish (Task 49).
+const coverageKey = (attempt = ATTEMPT) => `${STAGE}.verify-test-coverage.-.r1.a${attempt}`;
+const coverageDone = (repo, attempt = ATTEMPT) => writeArtifact(repo, coverageKey(attempt), { pb_key: coverageKey(attempt), ambiguity: "", status: "complete", scenarios_covered: 1, scenarios_total: 1, test_cases_covered: 1, test_cases_total: 1, gaps: [] });
+
 const fileReturn = (key, over) => ({ pb_key: key, ambiguity: "", commit_subject: "cover the crash", files_changed: [], ...over });
 
 function pb(repo, ...args) {
@@ -755,6 +759,7 @@ describe("a test an earlier GREEN covered", IN_PARALLEL, () => {
     coveredReady(repo);
     const greenSha = repo.head();
     assertPasses(step(repo, "red", redKey("t2")));
+    coverageDone(repo);
 
     assertPasses(pb(repo, "stage", "finish"));
 
@@ -786,7 +791,14 @@ describe("pb tdd state", IN_PARALLEL, () => {
 
     const state = assertPasses(pb(repo, "tdd", "state"));
 
-    assert.deepEqual(state, { ok: true, scenarios: path(SCENARIOS_KEY(2)), tests: null, red: [], green: [], covered: [] });
+    assert.deepEqual(state, { ok: true, taskType: "bug_fix", scenarios: path(SCENARIOS_KEY(2)), tests: null, red: [], green: [], covered: [] });
+  });
+
+  test("names the task type from the ledger, since the stage refactors per cycle for new_feature only", () => {
+    const repo = makeRepo({ rows: null, taskType: "new_feature", ledger: stagesWith(1) });
+    scenarios(repo, 1);
+
+    assert.equal(assertPasses(pb(repo, "tdd", "state")).taskType, "new_feature");
   });
 
   test("names the newest rows and what tests{} holds as done", () => {
@@ -882,6 +894,7 @@ describe("stage finish and the report", IN_PARALLEL, () => {
     placeholdersDone(repo);
     greenReady(repo);
     assertPasses(step(repo, "green", greenKey()));
+    coverageDone(repo);
 
     assertPasses(pb(repo, "stage", "finish"));
 
@@ -896,6 +909,7 @@ describe("stage finish and the report", IN_PARALLEL, () => {
     placeholdersDone(repo);
     greenReady(repo);
     assertPasses(step(repo, "green", greenKey()));
+    coverageDone(repo);
     assertPasses(pb(repo, "stage", "finish"));
     updateLedger(repo.ledgerPath, (ledger) => ({ ...ledger, stage: { ...ledger.stage, name: "code-safety-net", status: "active", attempt: 1 }, tests: { ...ledger.tests, full: { stage: "code-safety-net", attempt: 1, passed: true, red: false, runs: [], head: repo.head() } } }));
     const key = "code-safety-net.update-documentation.-.r1.a1";
@@ -916,8 +930,22 @@ describe("stage finish and the report", IN_PARALLEL, () => {
     const key = `${STAGE}.create-test-placeholders.-.r1.a3`;
     writeTests(repo, [row()], key);
     assertPasses(step(repo, "placeholders", key));
+    coverageDone(repo, 3);
 
     assertPasses(pb(repo, "stage", "finish"));
+  });
+
+  test("every test through RED and GREEN is not enough with no coverage check at this attempt", () => {
+    const repo = finishable();
+    placeholdersDone(repo);
+    greenReady(repo);
+    assertPasses(step(repo, "green", greenKey()));
+    coverageDone(repo, ATTEMPT - 1);
+
+    const result = pb(repo, "stage", "finish");
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /artifact:verify-test-coverage has no return at attempt 2/);
   });
 
   test("the report's excerpt is bounded, because the main context reads it", () => {
@@ -928,6 +956,7 @@ describe("stage finish and the report", IN_PARALLEL, () => {
     placeholdersDone(repo);
     greenReady(repo);
     assertPasses(step(repo, "green", greenKey()));
+    coverageDone(repo);
     assertPasses(pb(repo, "stage", "finish"));
 
     const { report } = assertPasses(pb(repo, "stage", "report"));

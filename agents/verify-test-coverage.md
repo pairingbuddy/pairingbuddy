@@ -24,6 +24,11 @@ Verify that actual test files match what's recorded in tests.json, update tests.
 
 ## Input
 
+The one input rule decides what you read and write:
+
+- With a `<paths>` block in the prompt: read only what the paths name, and return your Output as StructuredOutput. `scenarios` is the scenarios artifact, whose `scenarios` list has the shape below. `tests` is the tests artifact, whose `tests` rows have the shape below. `test_config` is the test config. `human_guidance` is the human guidance, which may be missing. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
+- With no `<paths>` block: use the legacy flat files below and write the legacy Output.
+
 Reads from `.pairingbuddy/scenarios.json`:
 
 ```json
@@ -112,6 +117,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 **2a. Reconcile tests.json with actual test files**
 
+With a `<paths>` block: skip 2a and write no tests file. The CLI reads the placeholders' rows, and only a new placeholders return can change them. In 2b, a row whose test is not in its file covers nothing, so its test case is a gap.
+
 Refactoring may have changed tests. Scan actual test files and compare to tests.json:
 
 1. For each entry in tests.json, verify the test_file and test_function still exist
@@ -134,6 +141,8 @@ Refactoring may have changed tests. Scan actual test files and compare to tests.
 3. Identify gaps: test_cases with no valid covering test
 
 ### Step 3: Human Review
+
+With a `<paths>` block: skip Step 3. No human is reachable from a stage. The stage loops back on your `gaps` a bounded number of times, and the gate asks the human about any gap left, so report every gap and nothing that is covered. If something can only be settled by a human, describe it in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -180,6 +189,8 @@ Should I proceed with this approach?"
 
 ### Step 4: Output
 
+With a `<paths>` block: skip Step 4 and return your Output as StructuredOutput.
+
 **MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
 
 After approval, write output using this procedure for EACH output file listed in the Output section:
@@ -205,6 +216,8 @@ After approval, write output using this procedure for EACH output file listed in
 
 ### File Creation Restrictions
 
+With a `<paths>` block: write no files. Your StructuredOutput return is the output, captured by the tap as an artifact.
+
 **You may ONLY write to:**
 - `.pairingbuddy/tests.json` (reconciliation updates)
 - `.pairingbuddy/coverage-report.json` (your primary output)
@@ -219,6 +232,29 @@ If `PAIRINGBUDDY_SOLO` environment variable is `true`:
 - Proceed directly to writing output
 
 ## Output
+
+With a `<paths>` block, return the result as your StructuredOutput with exactly these fields, and write no output file:
+
+```json
+{
+  "pb_key": "string (copied exactly from the prompt)",
+  "ambiguity": "string (open question a human should settle, or empty string)",
+  "status": "complete | incomplete | error",
+  "scenarios_covered": "integer (number of scenarios with tests)",
+  "scenarios_total": "integer (total number of scenarios)",
+  "test_cases_covered": "integer (number of test cases with tests)",
+  "test_cases_total": "integer (total number of test cases)",
+  "gaps": [
+    {
+      "scenario_id": "string (scenario with missing coverage)",
+      "test_case_id": "string (specific test case missing, optional)",
+      "description": "string (what coverage is missing)"
+    }
+  ]
+}
+```
+
+With no `<paths>` block:
 
 Updates `.pairingbuddy/tests.json` (reconciliation - may rename, move, or remove entries to match actual test files).
 

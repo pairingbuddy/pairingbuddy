@@ -1173,12 +1173,19 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
 
     assert.deepEqual(contract.taskTypes.bug_fix.nodes, [
       { name: SCENARIOS, gate: G_SCENARIOS, evidence: [`artifact:${AGENT}`] },
-      { name: "code-tdd", gate: null, evidence: ["artifact:create-test-placeholders", "checkpoint:placeholders", "tests:cycle"] },
+      { name: "code-tdd", gate: null, evidence: ["artifact:create-test-placeholders", "checkpoint:placeholders", "tests:cycle", "artifact:verify-test-coverage"] },
       { name: SAFETY_NET, gate: TASK_END, evidence: ["artifact:update-documentation", "checkpoint:docs", "tests:full"] },
     ]);
     assert.deepEqual(contract.taskTypes.bug_fix.gates, { [G_SCENARIOS]: { class: "continue" }, [TASK_END]: { class: "continue" } });
     assert.equal(contract.stageMaxAgents["code-tdd"], 600);
     assert.equal(contract.migratedTypes.includes("bug_fix"), true);
+  });
+
+  test("new_feature has the same graph as bug_fix, and is not migrated yet", () => {
+    const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
+
+    assert.deepEqual(contract.taskTypes.new_feature, contract.taskTypes.bug_fix);
+    assert.equal(contract.migratedTypes.includes("new_feature"), false);
   });
 
   test("with no ambiguity the gate auto-passes under auto", () => {
@@ -1405,6 +1412,50 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
 
     assertAsks(asked, TASK_END);
     assert.match(asked.reason, new RegExp(redKey("implement-tests", "t2").replaceAll(".", "\\.")));
+  });
+
+  // ---------- coverage gaps the loop left ----------
+
+  const coverageKey = (round, attempt = 1) => `${TDD}.verify-test-coverage.-.r${round}.a${attempt}`;
+  const gap = { scenario_id: "s1", test_case_id: "c2", description: "no test for a zero percent discount" };
+  const writeCoverage = (repo, round, gaps, attempt = 1) =>
+    writeFileSync(join(repo.taskDir, "artifacts", `${coverageKey(round, attempt)}.json`), JSON.stringify({ pb_key: coverageKey(round, attempt), ambiguity: "", status: gaps.length === 0 ? "complete" : "incomplete", scenarios_covered: 1, scenarios_total: 1, test_cases_covered: 1, test_cases_total: 1 + gaps.length, gaps }));
+  const coverageAtTaskEnd = () => atTaskEnd({ gates: { [G_SCENARIOS]: { source: "auto" } }, ambiguity: "" });
+
+  test("gaps the coverage loop left make G:task-end ask under auto", () => {
+    const repo = coverageAtTaskEnd();
+    writeCoverage(repo, 1, [gap]);
+    writeCoverage(repo, 2, [gap]);
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, TASK_END);
+    assert.match(asked.reason, /coverage gaps remain: 1/);
+    assert.match(asked.reason, new RegExp(coverageKey(2).replaceAll(".", "\\.")));
+  });
+
+  test("gaps an earlier round left and a later round closed do not ask", () => {
+    const repo = coverageAtTaskEnd();
+    writeCoverage(repo, 1, [gap]);
+    writeCoverage(repo, 2, []);
+
+    assertAutoPassed(repo, gateEval(repo, "auto"), TASK_END);
+  });
+
+  test("gaps of an attempt a re-run replaced do not ask", () => {
+    const repo = coverageAtTaskEnd();
+    updateLedger(repo.ledgerPath, (ledger) => ({ ...ledger, stages: ledger.stages.map((entry) => (entry.name === TDD ? { ...entry, attempt: 2 } : entry)) }));
+    writeCoverage(repo, 3, [gap], 1);
+    writeCoverage(repo, 1, [], 2);
+
+    assertAutoPassed(repo, gateEval(repo, "auto"), TASK_END);
+  });
+
+  test("a coverage return with no gaps list asks, since it may hide gaps", () => {
+    const repo = coverageAtTaskEnd();
+    writeFileSync(join(repo.taskDir, "artifacts", `${coverageKey(1)}.json`), JSON.stringify({ pb_key: coverageKey(1), ambiguity: "" }));
+
+    assert.match(gateEval(repo, "auto").reason, /cannot be read/);
   });
 
   test("an ambiguity on another agent's return for a covered test still asks", () => {

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, isProtectedBranch, planCommit, remainingFiles, testsOfStep } from "../shared-node/checkpoint.mjs";
+import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, isProtectedBranch, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep } from "../shared-node/checkpoint.mjs";
 import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { PlanRefused, tickPlanBox } from "../shared-node/plan-boxes.mjs";
@@ -520,7 +520,34 @@ async function cycleCheckpoint(context) {
   return commitPlan(context, plan, head, (sha) => withCycleDone(step, id, sha));
 }
 
-const CHECKPOINT_FLOWS = { full: suiteCheckpoint, none: placeholdersCheckpoint, selected: cycleCheckpoint };
+// What a cycle closed: RED and GREEN both done, or a covered pass. A row still at its placeholder fails by design.
+const isClosedCycle = ({ red, green, covered }) => covered?.done === true || (red?.done === true && green?.done === true);
+
+// Every test of the task a cycle closed, each by its own selector: the full suite would run the placeholders still
+// waiting for their RED, which fail by design. A failed run is evidence, so it lands in the ledger before the refusal.
+async function requireClosedTestsPass({ root, path, ledger }, config, rows) {
+  const plans = rows.filter(({ test_id: id }) => isClosedCycle(perTestOf(ledger, id))).map((row) => testPlan(config, row));
+  const head = headOf(root);
+  const record = { ...(await suiteRecord(plans, root, ledger.stage)), head };
+  updateLedger(path, (current) => ({ ...current, tests: { ...current.tests, refactor: record } }));
+  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed: exit codes ${record.runs.map(({ exitCode }) => exitCode).join(", ")}`);
+}
+
+// One fix group of a cycle's refactor. It follows the cycle's GREEN, and every test the task has closed must still pass.
+async function refactorCheckpoint(context) {
+  const { key, root, ledger } = context;
+  const { item: id, role } = parseKey(key);
+  if (!perTestOf(ledger, id).green?.done) throw new Refusal(`test ${id} has no GREEN, so its cycle has nothing to refactor yet`);
+  const config = readTestConfig(root, ledger.configHash);
+  const rows = testRows(config, artifactsDirOf(root), ledger.stage);
+  const plan = planFor(context, { testDirectories: [...new Set(rows.map((row) => testDirectoryOf(config, row)))], role });
+  if (plan === null) return noChange(context);
+  const head = headOf(root);
+  await requireClosedTestsPass(context, config, rows);
+  return commitPlan(context, plan, head);
+}
+
+const CHECKPOINT_FLOWS = { full: suiteCheckpoint, none: placeholdersCheckpoint, selected: cycleCheckpoint, closed: refactorCheckpoint };
 
 // Every check that costs no test run comes first.
 async function checkpoint(args) {
@@ -528,6 +555,7 @@ async function checkpoint(args) {
   const { root, path } = runLedgerPath();
   const ledger = readLedger(path);
   assertCommitAllowed(step, key, ledger);
+  if (!stepRunsFor(step, ledger.taskType)) throw new Refusal(`step ${step} runs for ${taskTypesOfStep(step).join(", ")} only, and this task is ${ledger.taskType}`);
   const branch = currentBranch(root);
   if (isProtectedBranch(branch)) throw new Refusal(`refusing to commit on protected branch ${branch}`);
   return CHECKPOINT_FLOWS[testsOfStep(step)]({ step, key, root, path, ledger, branch });
@@ -596,7 +624,7 @@ function tddState(args) {
   const artifactsDir = artifactsDirOf(root);
   const scenarios = newestReturn(artifactsDir, SCENARIOS_ROLE, ({ stage, attempt }) => !isVoidedAttempt(ledger, stage, attempt));
   if (scenarios === null) throw new Refusal("no scenarios return stands, so there is nothing to write tests from");
-  return { ok: true, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered") };
+  return { ok: true, taskType: ledger.taskType, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered") };
 }
 
 // A human's stop is the human's to lift. Only a stop the run itself raised clears here.

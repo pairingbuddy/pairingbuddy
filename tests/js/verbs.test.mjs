@@ -522,7 +522,10 @@ describe("runner auto-allow is for the exact command only", IN_PARALLEL, () => {
   const RED_KEY = "code-tdd.implement-tests.t1.r2.a1";
   const GREEN_KEY = "code-tdd.implement-code.login-valid.r1.a3";
 
-  for (const args of [`--step config --from ${CONFIG_KEY}`, `--step docs --from ${DOCS_KEY}`, `--step placeholders --from ${PLACEHOLDERS_KEY}`, `--step red --from ${RED_KEY}`, `--step green --from ${GREEN_KEY}`]) {
+  const REFACTOR_CODE_KEY = "code-tdd.refactor-code.t1.r1.a1";
+  const REFACTOR_TESTS_KEY = "code-tdd.refactor-tests.login-valid.r2.a3";
+
+  for (const args of [`--step config --from ${CONFIG_KEY}`, `--step docs --from ${DOCS_KEY}`, `--step placeholders --from ${PLACEHOLDERS_KEY}`, `--step red --from ${RED_KEY}`, `--step green --from ${GREEN_KEY}`, `--step refactor --from ${REFACTOR_CODE_KEY}`, `--step refactor --from ${REFACTOR_TESTS_KEY}`]) {
     test(`the runner's pb checkpoint ${args} is auto-allowed`, async () => {
       const result = await runGate(bashCall(`${PB} checkpoint ${args}`, { agentType: RUNNER_AGENT }));
 
@@ -531,7 +534,14 @@ describe("runner auto-allow is for the exact command only", IN_PARALLEL, () => {
   }
 
   const CHECKPOINT_NEAR_MISSES = [
-    ["an unknown step", `--step refactor --from ${RED_KEY}`],
+    ["an unknown step", `--step rework --from ${RED_KEY}`],
+    ["a RED key at refactor", `--step refactor --from ${RED_KEY}`],
+    ["a GREEN key at refactor", `--step refactor --from ${GREEN_KEY}`],
+    ["a finder's key at refactor", "--step refactor --from code-tdd.identify-code-issues.t1.r1.a1"],
+    ["a test finder's key at refactor", "--step refactor --from code-tdd.identify-test-issues.t1.r1.a1"],
+    ["a refactor key with no test", "--step refactor --from code-tdd.refactor-code.-.r1.a1"],
+    ["a refactor key at GREEN", `--step green --from ${REFACTOR_CODE_KEY}`],
+    ["a refactor key at RED", `--step red --from ${REFACTOR_TESTS_KEY}`],
     ["a config key at RED", `--step red --from ${CONFIG_KEY}`],
     ["a GREEN key at RED", `--step red --from ${GREEN_KEY}`],
     ["a RED key at GREEN", `--step green --from ${RED_KEY}`],

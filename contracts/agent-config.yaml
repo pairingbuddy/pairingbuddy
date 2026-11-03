@@ -52,6 +52,11 @@ schemas:
   - create-test-placeholders-result.schema.json
   - implement-tests-result.schema.json
   - implement-code-result.schema.json
+  - identify-test-issues-result.schema.json
+  - identify-code-issues-result.schema.json
+  - refactor-tests-result.schema.json
+  - refactor-code-result.schema.json
+  - verify-test-coverage-result.schema.json
   - refuter-verdict.schema.json
 
 # =============================================================================
@@ -308,6 +313,9 @@ agents:
       test_issues:
         schema: issues.schema.json
         file: .pairingbuddy/test-issues.json
+      test_issues_result:
+        schema: identify-test-issues-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -343,6 +351,9 @@ agents:
       files_changed:
         schema: files-changed.schema.json
         file: .pairingbuddy/files-changed.json
+      refactor_tests_result:
+        schema: refactor-tests-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -370,6 +381,9 @@ agents:
       code_issues:
         schema: issues.schema.json
         file: .pairingbuddy/code-issues.json
+      code_issues_result:
+        schema: identify-code-issues-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Input"
@@ -404,6 +418,9 @@ agents:
       files_changed:
         schema: files-changed.schema.json
         file: .pairingbuddy/files-changed.json
+      refactor_code_result:
+        schema: refactor-code-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Input"
@@ -433,6 +450,9 @@ agents:
       coverage_report:
         schema: coverage-report.schema.json
         file: .pairingbuddy/coverage-report.json
+      coverage_result:
+        schema: verify-test-coverage-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
