@@ -13,6 +13,9 @@ uv sync --extra dev
 # Run tests
 uv run pytest
 
+# Run mod tests (mod/*.test.tsx)
+claude plugin test .
+
 # Lint and format
 uv run ruff check .
 uv run ruff format .

@@ -39,6 +39,7 @@ packages = []  # Plugin with tests only, no installable Python package
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = ["docs/design"]  # throwaway mockup generators
 
 [tool.ruff.lint]
 select = [
