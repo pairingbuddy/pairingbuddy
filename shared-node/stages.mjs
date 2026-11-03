@@ -83,6 +83,12 @@ export function graphFor(contract, taskType) {
   return { taskType: name, stages: contract.taskTypes[name].nodes.map((node) => node.name) };
 }
 
+// Whether a run of this type has to name one test at RED and GREEN.
+export function needsTestSelection(contract, taskType) {
+  const { taskType: name } = graphFor(contract, taskType);
+  return contract.taskTypes[name].nodes.some((node) => node.evidence.includes("tests:cycle"));
+}
+
 // Every stage of every task type.
 export const allStages = (contract) => Object.values(contract.taskTypes).flatMap((graph) => graph.nodes.map((node) => node.name));
 

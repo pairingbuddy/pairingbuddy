@@ -147,7 +147,7 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 3: Human Review
 
-With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at a gate. If a test case leaves what to test unresolved, do not guess: describe the open question in `ambiguity`. With nothing open, return an empty string.
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at a gate. If a test case leaves what to test unresolved, do not guess: describe the open question in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -194,7 +194,7 @@ Should I proceed with this approach?"
 
 ### Step 4: Output
 
-With a `<paths>` block: create the placeholders as below, skip the JSON file steps, and return your Output as StructuredOutput. Each row is the selector the CLI runs, so give each test its own row: `test_id` is lowercase letters, digits, `-` or `_`, `runner_id` is a runner in the test config, `test_file` is a repo-relative path and nothing else, and `test_function` is the name as the file declares it and nothing else, or `Class::test_name` for a test nested in a class. Never join `test_file` and `test_function` into a `file::name` string, and add no flags. `tests` lists every test of the task, the rows in the `tests` path included, because the CLI reads this one return. `files_changed` lists the test files you changed.
+With a `<paths>` block: A placeholder asserts nothing about the code: its body only fails with a not-implemented message. `implement-tests` writes the real test next, so writing it here leaves RED nothing to commit. Create the placeholders as below, skip the JSON file steps, and return your Output as StructuredOutput. Each row is the selector the CLI runs, so give each test its own row: `test_id` is lowercase letters, digits, `-` or `_`, `runner_id` is a runner in the test config, `test_file` is a repo-relative path and nothing else, and `test_function` is the name as the file declares it and nothing else, or `Class::test_name` for a test nested in a class. Never join `test_file` and `test_function` into a `file::name` string, and add no flags. `tests` lists every test of the task, the rows in the `tests` path included, because the CLI reads this one return. `files_changed` lists the test files you changed.
 
 **MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
 

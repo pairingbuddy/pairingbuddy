@@ -445,3 +445,53 @@ human. So the chain works when the model stops, on one session.
 A stage call with no run is now denied, seen live once ($0.0032). S1 through `/pairingbuddy:code` then passed 5 of 5 at $0.018 to $0.022 and 49 to 56 s, on Haiku. 5 of 5 bounds the pass rate above about 55% at 95% confidence, so S1 is not proven stable.
 
 That first deny covered only a stage name and a byte-exact bundle, so it did not supersede the "still open" note above. With no run the gate now also denies a direct Agent call for an agent in `newPathAgents` in `contracts/stages.json`, a bundle copy differing only in trailing whitespace, and a script naming a stage or one of those agents literally. The hole narrows to Section 8's bypass, which stays open: an edited bundle that builds those names from string fragments passes.
+
+## T2a: S2 and the bug_fix flip
+
+2026-11-03. Claude Code 2.1.316 at the first trial and 2.1.317 for the rest, Haiku through P16's env, $1 cap per run, which is under the plan's $3. Each run is one `claude -p` session on a branch made from main, with the plugin loaded from outside the cwd and no inherited policy env. The sample is a pytest repo made by `tests/smoke/s2.mjs`, with one bug in `discount.py`. Run it with `node tests/smoke/s2.mjs`.
+
+**Result: on the final code, S2 passed 5 of 5 and S1 passed 1 of 1. That is not proof S2 is stable: 5 of 5 puts the pass rate above about 55% at 95% confidence. With the task's scope left open, a run still stops in 1 of 3, from a cause that is still open (below).**
+
+Pytest, not node:test. `pb test --full` passes the runner's `test_directory`, and `node --test tests` reads `tests` as a file and fails. node:test's `--test-name-pattern` also exits 0 when nothing matches, so a mistyped selector would pass GREEN. Pytest's `file::name` exits 4 on no match.
+
+| Round | Run | Result | Total s | Cost $ | Failure cause |
+|---|---|---|---|---|---|
+| Trial | 1 | FAIL | 15.8 | 0.006930 | No run opened: the skill's bootstrap asked "Use existing test config?" and the session ended |
+| Trial | 2 | FAIL | 59.0 | 0.025978 | `G:scenarios` asked a human: the scenarios return raised out-of-range inputs, which the task never mentioned, as an ambiguity |
+| Trial | 3 | FAIL | 127.5 | 0.047605 | The placeholder agent wrote the real test, so RED had nothing to commit, and `implement-tests` reported that as an ambiguity, which sent `G:task-end` to a human |
+| Trial | 4 | PASS | 127.1 | 0.044102 | |
+| A | 1-5 | 5 PASS | 124 to 144 | 0.227993 in all | Every run had `code-tdd` denied once: the model started it while `G:scenarios` was due, then recovered |
+| B | S1 | PASS | 72.1 | 0.026797 | |
+| B | probe 1 | PASS | 128.7 | 0.042996 | |
+| B | probe 2 | FAIL | 12.6 | 0.006985 | No run opened: the bootstrap question again, in spite of the "with no human" note |
+| C, final | S2 1 | PASS | 171.1 | 0.047689 | |
+| C | S2 2 | PASS | 150.0 | 0.053055 | |
+| C | S2 3 | PASS | 120.4 | 0.041265 | |
+| C | S2 4 | PASS | 126.1 | 0.040822 | |
+| C | S2 5 | PASS | 129.1 | 0.039983 | |
+| C | S1 | PASS | 67.9 | 0.026407 | |
+| C | probe 1 | PASS | 130.8 | 0.045160 | |
+| C | probe 2 | FAIL | 156.4 | 0.053341 | `code-tdd` stopped `step-failed`: the second test passed at RED after the first test's GREEN |
+| C | probe 3 | PASS | 121.3 | 0.042150 | |
+
+Round C is the code as it stands. A probe is S2 with the task's last sentence, "One regression test for exactly that case is the whole scope", left out. The S2 runs ended with three commits, the placeholder `test:`, then RED `test:` and GREEN `fix:`, one test each, and no `docs:` commit, with `G:scenarios` and `G:task-end` from `auto` and the policy from `permission_mode`. Stages took 5 to 13 s for scenarios, 46 to 60 s for tdd and 8 to 9 s for safety-net, with 9 workflow agents a run; S2 run 2 took 11, because the placeholder agent's first return had an empty `commit_subject` and was refused once. No gate deny in round C. The smoke spend was $0.819258 in all, and no run came near its cap. The paid integration check ran once after, with 3 runs capped at $0.50 each, and its cost was not reported, so the session total is at most $2.32.
+
+### Causes and fixes
+
+Each fix has a test first in `tests/js/`.
+
+- The bootstrap question: a config that exists is now used with no question. A note saying "ask nothing with no human" did not hold, as probe B2 showed.
+- `pb status`'s `next` names the next stage even while a gate stands before it, and the skill said to start stages while `next` is not null. It now follows `pb status --action`, which puts a due gate first.
+- `enumerate-scenarios-and-test-cases` now treats a case the task does not mention as out of scope, not as an ambiguity. It also leaves out cases the fix for an earlier case would already make pass.
+- `create-test-placeholders` is told a placeholder asserts nothing. All three TDD agents are told `ambiguity` is only for a question a human must settle, never a report.
+- `pb run open` refuses a type with RED and GREEN when any runner has no `selector_template`, and names the fix, for example `["{test_file}::{test_function}"]`. No default is guessed, because a wrong template can pass a test that never ran. A refusal at open costs no agent, while the stop at the placeholders checkpoint came after two.
+
+### Still open
+
+- **A later test that already passes stops the run.** Tests run one at a time, and RED refuses a test that passes, so a bug fix whose first GREEN also fixes a second case stops at `step-failed` after three tries. The agent rule makes this less likely and does not remove it: round C probe 2 hit it. A fix that keeps one RED and one GREEN per test needs a decision: write every RED before the first GREEN, or count such a case as covered and not as a failure.
+- **Relayed `/code` text: now seen.** Both S1 runs here found the `/pairingbuddy:code` text or the harness block in one workflow agent's records, which T1 never saw. Neither agent used Skill, Agent or Workflow.
+- The scoped sample task keeps S2 off that first risk, so S2 passing does not cover it.
+
+### The recorder
+
+`tests/smoke/run-recorder.mjs` is test tooling only, and no hook, verb or workflow loads it, which a test checks. A timer reads the ledger from outside the run, and the harness hands it each stream line. Each recording in `tests/smoke/recordings/<name>/` holds `ledger.jsonl`, one snapshot for each new `seq` with its time, and `spawns.jsonl`: Skill, Agent and Workflow calls, task start, progress and end, and each workflow agent with its label, phase and span, read from its transcript. It also holds `timing.json` with the total and per-stage seconds. The raw stream stays with the run's repo, outside the recording. Recordings are refused under `docs/plans/`. Round C's eight runs are kept, about 500 KB.

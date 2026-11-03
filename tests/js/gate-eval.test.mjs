@@ -1178,7 +1178,7 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
     ]);
     assert.deepEqual(contract.taskTypes.bug_fix.gates, { [G_SCENARIOS]: { class: "continue" }, [TASK_END]: { class: "continue" } });
     assert.equal(contract.stageMaxAgents["code-tdd"], 600);
-    assert.equal(contract.migratedTypes.includes("bug_fix"), false, "Task 46 flips it");
+    assert.equal(contract.migratedTypes.includes("bug_fix"), true);
   });
 
   test("with no ambiguity the gate auto-passes under auto", () => {

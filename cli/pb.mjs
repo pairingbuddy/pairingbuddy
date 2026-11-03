@@ -14,8 +14,8 @@ import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
 import { buildReport, closeStage, finishProblems, newestReturn, perTestOf, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
-import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, nextAttempt, nextStage } from "../shared-node/stages.mjs";
-import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
+import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
+import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { STAGE_STOP_REASONS, VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
@@ -93,6 +93,17 @@ function assertNotStopped(root) {
   if (stop !== null) throw new Refusal(`the run has stopped, so no next task can open: ${stop.reason}`);
 }
 
+// Any runner, since the placeholders may pick any of them. Refused here it costs nothing: refused later it costs the
+// scenarios and the placeholders, and it stops the run. No template is guessed, because a wrong one can pass a test
+// that never ran: a name-pattern runner exits 0 when nothing matches.
+function assertTestsSelectable(root, configHash, taskType) {
+  if (!needsTestSelection(loadStages(PLUGIN_ROOT), taskType)) return;
+  const missing = runnersWithoutSelector(readTestConfig(root, configHash));
+  if (missing.length === 0) return;
+  const named = missing.length === 1 ? `runner ${missing[0]} has` : `runners ${missing.join(", ")} have`;
+  throw new Refusal(`${named} no selector_template, so RED and GREEN cannot speak for one test, and no run was opened. Ask the human to add selector_template to each runner in .pairingbuddy/test-config.json: the argument words that select one test, for example ["{test_file}::{test_function}"] for pytest. Then start the task again`);
+}
+
 function runOpen(args) {
   const kind = parseKind(args);
   if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Refusal("Solo stays on the old path until T10, so no run was opened");
@@ -103,6 +114,7 @@ function runOpen(args) {
 
   const configHash = validatedConfigHash(root);
   const taskType = kind === "code" ? classifiedTaskType(root) : null;
+  assertTestsSelectable(root, configHash, taskType);
   const task = storedTask(root);
 
   const runRoot = join(root, ".pairingbuddy", "run");

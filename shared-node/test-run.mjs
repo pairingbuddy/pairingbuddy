@@ -222,6 +222,8 @@ export function selectedPlans(config, artifactsDir, stage) {
 
 export const hasSelector = (config, { runner_id: id }) => checkedRunner(config, id).template !== null;
 
+export const runnersWithoutSelector = (config) => Object.keys(config.runners).filter((id) => checkedRunner(config, id).template === null);
+
 export const testDirectoryOf = (config, { runner_id: id }) => checkedRunner(config, id).testDirectory;
 
 // What RED and GREEN run: this test and no other, or a refusal, since a run of its file says nothing about it.

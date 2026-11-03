@@ -157,3 +157,20 @@ test("an agent is told the optional tests path may be missing, and to keep its r
   assert.match(text, /`tests` and `coverage_report` are optional/);
   assert.match(text, /keep each row in `tests` exactly as it is/);
 });
+
+test("the scenarios agent keeps the gate for real questions, and enumerates what RED can accept", () => {
+  const text = read("agents/enumerate-scenarios-and-test-cases.md");
+
+  assert.match(text, /A case the task does not mention is out of scope: leave it out, and it is no ambiguity/);
+  assert.match(text, /RED refuses a test that already passes/);
+});
+
+test("the placeholder agent writes no assertion, so RED has a real test to commit", () => {
+  assert.match(read("agents/create-test-placeholders.md"), /A placeholder asserts nothing about the code: its body only fails with a not-implemented message. `implement-tests` writes the real test next/);
+});
+
+test("ambiguity is a question for a human, never a report on the step", () => {
+  for (const name of ["create-test-placeholders", "implement-tests", "implement-code"]) {
+    assert.match(read(`agents/${name}.md`), /`ambiguity` is only for a question a human must settle: never use it to report what you did or found/, name);
+  }
+});

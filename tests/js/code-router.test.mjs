@@ -11,7 +11,7 @@ import { readLedger } from "../../shared-node/ledger.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CONFIG = `${JSON.stringify({ runners: { node: { command: "node --version", test_directory: ".", run_args: [] } }, default_runner: "node" })}\n`;
-const OLD_PATH_TYPES = ["new_feature", "bug_fix", "refactoring", "spike"];
+const OLD_PATH_TYPES = ["new_feature", "refactoring", "spike"];
 
 function git(cwd, ...args) {
   const r = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -200,18 +200,73 @@ test("the skill's migrated types are the contract's, and each has a stage graph"
   const listed = JSON.parse(/^MIGRATED_TYPES = (\[.*\])$/m.exec(pseudocode())[1]);
   const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
 
-  assert.deepEqual(listed, ["config_change"]);
+  assert.deepEqual(listed, ["config_change", "bug_fix"]);
   assert.deepEqual(listed, contract.migratedTypes);
   assert.ok(listed.every((type) => Object.hasOwn(contract.taskTypes, type)));
 });
 
-test("a graph built ahead of its flip opens no run: bug_fix stays old until Task 46", (t) => {
-  const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
-  assert.ok(Object.hasOwn(contract.taskTypes, "bug_fix"), "the graph is there");
+const runner = (over = {}) => ({ command: "node --version", test_directory: ".", run_args: [], ...over });
+const SELECTABLE = { selector_template: ["{test_file}::{test_function}"] };
+
+function configure(root, runners) {
+  writeFileSync(join(root, ".pairingbuddy", "test-config.json"), JSON.stringify({ runners, default_runner: Object.keys(runners)[0] }));
+}
+
+test("bug_fix opens a run on its own graph once its runner can select one test", (t) => {
+  const root = makeRepo(t);
+  configure(root, { node: runner(SELECTABLE) });
+  classifyAs(root, "bug_fix");
+
+  assert.equal(pb(root, OPEN).status, 0);
+
+  assert.equal(ledgerOf(root).taskType, "bug_fix");
+  assert.deepEqual(JSON.parse(pb(root, ["status"]).stdout).next, { stage: "code-scenarios", attempt: 1 });
+});
+
+test("bug_fix with a runner that has no selector_template is refused at open, and the refusal names the fix", (t) => {
   const root = makeRepo(t);
   classifyAs(root, "bug_fix");
 
-  assertRefusedWithNoRunState(root, pb(root, OPEN), /bug_fix.*old path/);
+  const r = pb(root, OPEN);
+
+  assertRefusedWithNoRunState(root, r, /runner node has no selector_template/);
+  assert.match(r.stderr, /\.pairingbuddy\/test-config\.json/, "it names the file");
+  assert.match(r.stderr, /\{test_file\}::\{test_function\}/, "it shows what to add");
+  assert.match(r.stderr, /human/, "the human owns that file");
+});
+
+test("every runner is held to it, since the placeholders may pick any of them", (t) => {
+  const root = makeRepo(t);
+  configure(root, { node: runner(SELECTABLE), e2e: runner(), api: runner() });
+  classifyAs(root, "bug_fix");
+
+  assertRefusedWithNoRunState(root, pb(root, OPEN), /runners e2e, api have no selector_template/);
+});
+
+test("a type with no RED or GREEN needs no selector_template", (t) => {
+  const root = makeRepo(t);
+  classifyAs(root, "config_change");
+
+  assert.equal(pb(root, OPEN).status, 0);
+});
+
+test("a run opened before classification needs no selector_template", (t) => {
+  const root = makeRepo(t);
+
+  assert.equal(pb(root, OPEN).status, 0);
+});
+
+test("the bootstrap of test-config has the skill ask for a selector_template", () => {
+  const bootstrap = /### Bootstrap test-config\.json\n([\s\S]*?)\n### /.exec(skill())[1];
+
+  assert.match(bootstrap, /selector_template/);
+});
+
+test("a config that exists is used with no question, so no run ends waiting at the bootstrap", () => {
+  const bootstrap = /### Bootstrap test-config\.json\n([\s\S]*?)\n### /.exec(skill())[1];
+
+  assert.match(bootstrap, /If it exists, use it and ask nothing/);
+  assert.doesNotMatch(bootstrap, /Use existing test config\?/);
 });
 
 test("the agents a graph uses but the old path still calls stay callable with no run", (t) => {
@@ -328,6 +383,14 @@ test("the new path takes stage results from pb, never from the workflow's status
   for (const step of ["run open --kind code", "pb status", "pb gate eval", "pb task end", "pb stage finish"]) assert.ok(section.includes(step), `names ${step}`);
   assert.match(section, /never .*workflow's .*status/i);
   assert.doesNotMatch(section, /^.*\bpb human\b.*(run|type) it yourself/im);
+});
+
+test("the router follows the action, because a gate can fall between two stages", () => {
+  const section = /### Migrated-Types Router\n([\s\S]*?)\n## /.exec(skill())[1];
+
+  assert.match(section, /`pb status --action`/);
+  assert.match(section, /A gate can fall between two stages/);
+  assert.doesNotMatch(section, /While `next` is not null/, "next names a stage even while a gate stands before it");
 });
 
 // ---------- the thin command ----------

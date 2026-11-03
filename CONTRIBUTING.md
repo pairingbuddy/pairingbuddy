@@ -29,7 +29,7 @@ cd /path/to/your/worktree
 claude --plugin-dir /path/to/separate/pairingbuddy-checkout
 ```
 
-Smoke and the recovery drill keep to this: `tests/smoke/runner.py` refuses a repo inside the plugin, and `force_wedge.mjs` prints a start line with two directories.
+Smoke and the recovery drill keep to this: `tests/smoke/runner.py` and `tests/smoke/claude-run.mjs` refuse a repo inside the plugin, and `force_wedge.mjs` prints a start line with two directories.
 
 ## Project Structure
 
