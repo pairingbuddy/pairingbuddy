@@ -1,4 +1,4 @@
-// Test tooling only. Saves spawn events, ledger snapshots and timing from a real run, for the T4a replay rig (S8).
+// Test tooling only. Saves spawn events, ledger snapshots, what `pb task end` printed and timing from a real run, for the T4a replay rig (S8).
 // It sits outside the run: a timer reads the ledger, the smoke harness hands it stream lines, and it writes only to its
 // own directory. No hook, CLI verb or workflow loads it, so a run cannot tell it is there.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -50,6 +50,13 @@ export function workflowAgents(dirs, startedAt) {
 
 const transcriptDirs = (stream) => [...new Set(stream.flatMap(({ event }) => [...JSON.stringify(event).matchAll(TRANSCRIPT_DIR)].map(([, dir]) => dir)))];
 
+// The call that ends the task. Its output is the only place a leftover file shows, since a refusal leaves the ledger as it was.
+const TASK_END = /\bpb(?:\.mjs)?["']?\s+task end\b/;
+
+const textOf = (content) => (typeof content === "string" ? content : content.filter(({ type }) => type === "text").map(({ text }) => text).join(""));
+
+const toolResults = (event) => (event.type === "user" && Array.isArray(event.message?.content) ? event.message.content.filter((block) => block.type === "tool_result") : []);
+
 const jsonl = (rows) => rows.map((row) => `${JSON.stringify(row)}\n`).join("");
 
 export class RunRecorder {
@@ -61,9 +68,12 @@ export class RunRecorder {
     this.now = now;
     this.streamPath = streamPath;
     this.last = null;
+    this.snapshots = [];
     this.stream = [];
     this.stageStarted = {};
     this.stageEnded = {};
+    this.taskEndCalls = new Map();
+    this.taskEnds = [];
   }
 
   seconds() {
@@ -87,6 +97,7 @@ export class RunRecorder {
     }
     if (ledger.seq === this.last?.seq) return;
     this.last = ledger;
+    this.snapshots.push(ledger);
     const t = this.seconds();
     appendFileSync(join(this.out, "ledger.jsonl"), jsonl([{ t, ledger }]));
     this.noteStage(ledger.stage, t);
@@ -101,16 +112,28 @@ export class RunRecorder {
   line(event) {
     const row = { t: this.seconds(), event };
     this.stream.push(row);
+    this.noteTaskEnd(row);
     if (this.streamPath === null) return;
     mkdirSync(dirname(this.streamPath), { recursive: true });
     appendFileSync(this.streamPath, jsonl([row]));
   }
 
+  noteTaskEnd({ t, event }) {
+    for (const { id, name, input } of toolUses(event)) if (name === "Bash" && TASK_END.test(input.command ?? "")) this.taskEndCalls.set(id, input.command);
+    for (const { tool_use_id: id, content, is_error: isError } of toolResults(event)) {
+      if (this.taskEndCalls.has(id)) this.taskEnds.push({ t, command: this.taskEndCalls.get(id), output: textOf(content ?? ""), isError: isError === true });
+    }
+  }
+
+  spawns() {
+    return [...spawnEvents(this.stream), ...workflowAgents(transcriptDirs(this.stream), this.startedAt)].sort((a, b) => a.t - b.t);
+  }
+
   stop() {
     clearInterval(this.timer);
     const stageSeconds = Object.fromEntries(Object.keys(this.stageEnded).map((name) => [name, Number((this.stageEnded[name] - this.stageStarted[name]).toFixed(3))]));
-    const spawns = [...spawnEvents(this.stream), ...workflowAgents(transcriptDirs(this.stream), this.startedAt)].sort((a, b) => a.t - b.t);
-    writeFileSync(join(this.out, "spawns.jsonl"), jsonl(spawns));
+    writeFileSync(join(this.out, "spawns.jsonl"), jsonl(this.spawns()));
+    writeFileSync(join(this.out, "task-end.jsonl"), jsonl(this.taskEnds));
     writeFileSync(join(this.out, "timing.json"), JSON.stringify({ seconds: this.seconds(), stageSeconds }));
   }
 }
