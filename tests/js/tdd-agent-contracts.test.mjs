@@ -165,6 +165,12 @@ test("the scenarios agent keeps the gate for real questions, and enumerates what
   assert.match(text, /RED refuses a test that already passes/);
 });
 
+test("the scenarios agent keeps a case the task names even when an earlier fix covers it, and asks nothing about it", () => {
+  const text = read("agents/enumerate-scenarios-and-test-cases.md");
+
+  assert.match(text, /A case the task names stays a test even if the fix for an earlier case will also make it pass: the CLI records it as covered, so keeping it is no ambiguity/);
+});
+
 test("the placeholder agent writes no assertion, so RED has a real test to commit", () => {
   assert.match(read("agents/create-test-placeholders.md"), /A placeholder asserts nothing about the code: its body only fails with a not-implemented message. `implement-tests` writes the real test next/);
 });

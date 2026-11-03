@@ -99,7 +99,7 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 3: Human Review
 
-With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the `G:scenarios` gate. If the task leaves what to test unresolved, do not guess: return the scenarios you are sure of and describe the open question in `ambiguity`, which sends the gate to the human. A case the task does not mention is out of scope: leave it out, and it is no ambiguity. Tests run one at a time and RED refuses a test that already passes, so leave out any case the fix for an earlier case would already make pass. With nothing open, return an empty string.
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the `G:scenarios` gate. If the task leaves what to test unresolved, do not guess: return the scenarios you are sure of and describe the open question in `ambiguity`, which sends the gate to the human. A case the task does not mention is out of scope: leave it out, and it is no ambiguity. Tests run one at a time and RED refuses a test that already passes, so leave out any case the task does not name that the fix for an earlier case would already make pass. A case the task names stays a test even if the fix for an earlier case will also make it pass: the CLI records it as covered, so keeping it is no ambiguity. With nothing open, return an empty string.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 

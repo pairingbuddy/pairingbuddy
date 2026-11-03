@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, headOf, isCheckpointCall, isKey, isOnHead, isProtectedBranch, planCommit, remainingFiles, testsOfStep } from "../shared-node/checkpoint.mjs";
+import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, isProtectedBranch, planCommit, remainingFiles, testsOfStep } from "../shared-node/checkpoint.mjs";
 import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { PlanRefused, tickPlanBox } from "../shared-node/plan-boxes.mjs";
@@ -354,16 +354,16 @@ function planFor({ step, key, root, path, ledger }, scope = null) {
   return orStop(path, { step, key }, () => planCommit(root, artifactsDirOf(root), step, key, { alreadyCommitted, taskType: ledger.taskType, scope }));
 }
 
-function noChange({ step, key, path }, withEvidence) {
-  recordCheckpoint(path, { step, key, committed: false, sha: null }, withEvidence);
+function noChange({ step, key, path, record }, withEvidence) {
+  recordCheckpoint(path, { step, key, committed: false, sha: null, ...record }, withEvidence);
   return { ok: true, step, key, committed: false };
 }
 
 // The attempt can end while the tests run, so that is looked at again here.
-function commitPlan({ step, key, root, path, branch }, plan, head, evidenceFor) {
+function commitPlan({ step, key, root, path, branch, record }, plan, head, evidenceFor) {
   assertCommitAllowed(step, key, readLedger(path));
   const { sha, hookRetried } = orStop(path, { step, key }, () => commitPaths(root, { ...plan, branch, head }));
-  recordCheckpoint(path, { step, key, committed: true, sha }, evidenceFor?.(sha));
+  recordCheckpoint(path, { step, key, committed: true, sha, ...record }, evidenceFor?.(sha));
   return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
 }
 
@@ -403,16 +403,45 @@ function checkedRows({ step, key, root, path, ledger }) {
   const rows = testRows(config, artifactsDirOf(root), ledger.stage);
   assertRowsKept(rows, ledger);
   orStop(path, { step, key }, () => assertSelectable(config, rows));
-  return { testDirectories: [...new Set(rows.map((row) => testDirectoryOf(config, row)))] };
+  return { rows, testDirectories: [...new Set(rows.map((row) => testDirectoryOf(config, row)))] };
+}
+
+// The commit before this task's first placeholders, so a re-run does not find its own placeholders there.
+function placeholdersBase({ root, ledger }) {
+  const first = (ledger.checkpoints ?? []).find(({ step, base }) => step === "placeholders" && typeof base === "string");
+  return first?.base ?? headOf(root);
+}
+
+const escapedPattern = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// pytest's class path names the test by its last part.
+function isDefinedIn(text, testFunction) {
+  const name = String(testFunction).split("::").at(-1);
+  return new RegExp(`(?<![\\w$])${escapedPattern(name)}(?![\\w$])`).test(text);
+}
+
+// A test already in the file passes at its first RED, so RED could only refuse it as one that proves nothing.
+function assertRowsNew(root, base, rows) {
+  if (base === null) return;
+  const row = rows.find(({ test_file, test_function }) => {
+    const text = fileAtCommit(root, base, test_file);
+    return text !== null && isDefinedIn(text, test_function);
+  });
+  if (row !== undefined) throw new Refusal(`${row.test_function} (test ${row.test_id}) is already in ${row.test_file} at ${base.slice(0, 12)}, the commit before the placeholders, so it passes before any GREEN and proves nothing. List only the tests you create`);
 }
 
 function placeholdersCheckpoint(context) {
-  const plan = planFor(context, checkedRows(context));
-  return plan === null ? noChange(context) : commitPlan(context, plan, headOf(context.root));
+  const scope = checkedRows(context);
+  const base = placeholdersBase(context);
+  assertRowsNew(context.root, base, scope.rows);
+  const recorded = { ...context, record: { base } };
+  const plan = planFor(context, scope);
+  return plan === null ? noChange(recorded) : commitPlan(recorded, plan, headOf(context.root));
 }
 
-function assertCycleOrder(step, id, { red, green }) {
+function assertCycleOrder(step, id, { red, green, covered }) {
   if (step === "red" && green?.done) throw new Refusal(`test ${id} is finished: its GREEN is done`);
+  if (step === "green" && covered?.done) throw new Refusal(`test ${id} is covered: it passed at RED after an earlier GREEN, so its GREEN is skipped`);
   if (step === "green" && !red?.done) throw new Refusal(`test ${id} has no RED, so GREEN cannot stand on it`);
 }
 
@@ -443,7 +472,32 @@ const withCycleDone = (step, id, sha) => (ledger) => {
   return withPerTest(ledger, id, { ...entry, [step]: { ...entry[step], done: true, sha: sha ?? entry[step].sha } });
 };
 
-const stepNotMet = (step, id, { exitCode, excerpt }) => `test ${id} is not ${step.toUpperCase()}: exit ${exitCode}, so nothing was committed. ${excerpt.slice(-300)}`;
+// Only a pass after a GREEN of this task can be one that GREEN covered. Before any GREEN, a pass proves nothing.
+const provesNothing = (step, exitCode) => (step === "red" && exitCode === 0 ? ", and no GREEN in this task came before it, so it proves nothing" : "");
+
+const stepNotMet = (step, id, { exitCode, excerpt }) => `test ${id} is not ${step.toUpperCase()}: exit ${exitCode}${provesNothing(step, exitCode)}, so nothing was committed. ${excerpt.slice(-300)}`;
+
+// The first GREEN this task finished, by where its commit sits in the run's commits, or null before any.
+function earliestGreen({ tests: { perTest = {} }, commits }) {
+  const place = ({ sha }) => (commits.includes(sha) ? commits.indexOf(sha) : Infinity);
+  const greens = Object.entries(perTest).filter(([, { green }]) => green?.done).map(([test_id, { green: { sha } }]) => ({ test_id, sha }));
+  return greens.sort((a, b) => place(a) - place(b))[0] ?? null;
+}
+
+const coveredBy = (step, run, ledger) => (step === "red" && run.exitCode === 0 ? earliestGreen(ledger) : null);
+
+const withCovered = (id, { exitCodes, timedOut, excerpt, head }, after) => (sha) => (ledger) => {
+  const entry = perTestOf(ledger, id);
+  const covered = { stage: ledger.stage.name, attempt: ledger.stage.attempt, done: true, exitCodes, timedOut, excerpt, head, sha: sha ?? entry.covered?.sha ?? null, after };
+  return withPerTest(ledger, id, { ...entry, covered });
+};
+
+// Kept and committed as a test, with its GREEN skipped: the human sees it in the report and pb status.
+function coveredCheckpoint(context, plan, head, id, record, after) {
+  const evidence = withCovered(id, record, after);
+  const done = plan === null ? noChange(context, evidence()) : commitPlan(context, plan, head, evidence);
+  return { ...done, outcome: "covered", after };
+}
 
 // The run decides, and the key decides what runs. Nothing a caller says reaches the selection.
 async function cycleCheckpoint(context) {
@@ -457,7 +511,10 @@ async function cycleCheckpoint(context) {
   const head = headOf(root);
   const run = await runPlan(test, root);
   const passed = meetsStep(step, test, run);
-  recordCycleRun(context, row, { ...cycleRun(run, passed), head });
+  const record = { ...cycleRun(run, passed), head };
+  recordCycleRun(context, row, record);
+  const after = passed ? null : coveredBy(step, run, ledger);
+  if (after !== null) return coveredCheckpoint(context, plan, head, id, record, after);
   if (!passed) throw new Refusal(stepNotMet(step, id, run));
   if (plan === null) return noChange(context, withCycleDone(step, id));
   return commitPlan(context, plan, head, (sha) => withCycleDone(step, id, sha));
@@ -539,7 +596,7 @@ function tddState(args) {
   const artifactsDir = artifactsDirOf(root);
   const scenarios = newestReturn(artifactsDir, SCENARIOS_ROLE, ({ stage, attempt }) => !isVoidedAttempt(ledger, stage, attempt));
   if (scenarios === null) throw new Refusal("no scenarios return stands, so there is nothing to write tests from");
-  return { ok: true, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green") };
+  return { ok: true, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered") };
 }
 
 // A human's stop is the human's to lift. Only a stop the run itself raised clears here.

@@ -3,7 +3,9 @@
 //
 // One capped `claude -p` session on a human-made branch, with the plugin loaded from outside its cwd and no inherited
 // policy env. It asserts control flow only, never output quality: stage order, the one placeholder `test:` commit, one
-// RED and one GREEN commit per test, tests{} exit codes and gate sources. Every run is recorded for T4a.
+// RED and one GREEN commit per test, or one `test:` commit for a test an earlier GREEN covered, tests{} exit codes and
+// gate sources. Every run is recorded for T4a. An open-scope --task, one that lets the scenarios name more than one
+// test, is how a covered test shows up.
 //
 // The sample uses pytest because pb's full-suite run passes the test directory to the runner and a `::` selector that
 // matches nothing exits non-zero. `node --test <dir>` does not take a directory, and its name pattern exits 0 on no match.
@@ -84,7 +86,17 @@ function placeholderSha({ checkpoints = [] }) {
   return commits[0].sha;
 }
 
-function assertTestRow(id, { red, green }) {
+// A test that passed at RED after an earlier GREEN: kept with one test commit, and its GREEN skipped.
+const isCoveredRow = ({ covered }) => covered?.done === true;
+
+function assertCoveredRow(id, { covered }, greenBefore) {
+  if (!covered.sha || !isDeepStrictEqual(covered.exitCodes, [0])) throw new SmokeError(`test ${id} has no good covered pass: ${JSON.stringify(covered)}`);
+  if (!greenBefore) throw new SmokeError(`test ${id} is covered, and no GREEN came before it`);
+}
+
+function assertTestRow(id, row, greenBefore) {
+  if (isCoveredRow(row)) return assertCoveredRow(id, row, greenBefore);
+  const { red, green } = row;
   if (!red?.done || !red.sha || !isDeepStrictEqual(red.exitCodes, [1])) throw new SmokeError(`test ${id} has no good RED: ${JSON.stringify(red)}`);
   if (!green?.done || !green.sha || !isDeepStrictEqual(green.exitCodes, [0])) throw new SmokeError(`test ${id} has no good GREEN: ${JSON.stringify(green)}`);
 }
@@ -95,16 +107,18 @@ const typeOf = ({ subject }) => /^\w+/.exec(subject)?.[0];
 function assertCommits(ledger, log) {
   const rows = Object.entries(ledger.tests.perTest ?? {});
   if (rows.length === 0) throw new SmokeError("the ledger records no test");
-  for (const [id, row] of rows) assertTestRow(id, row);
-  const expected = ["test", ...rows.flatMap(() => ["test", "fix"])];
+  rows.forEach(([id, row], i) => assertTestRow(id, row, rows.slice(0, i).some(([, earlier]) => !isCoveredRow(earlier))));
+  const shasOf = (row) => (isCoveredRow(row) ? [row.covered.sha] : [row.red.sha, row.green.sha]);
+  const expected = ["test", ...rows.flatMap(([, row]) => (isCoveredRow(row) ? ["test"] : ["test", "fix"]))];
   const types = log.map(typeOf);
   const cycle = types.at(-1) === "docs" ? types.slice(0, -1) : types;
   if (!isDeepStrictEqual(cycle, expected)) throw new SmokeError(`commit types are ${types}, expected ${expected}, then at most one docs`);
   const unlisted = log.filter(({ sha }) => !ledger.commits.includes(sha));
   if (unlisted.length > 0) throw new SmokeError(`commits not in the ledger: ${unlisted.map(({ subject }) => subject)}`);
   if (log[0].sha !== placeholderSha(ledger)) throw new SmokeError("the first commit is not the placeholder commit");
-  rows.forEach(([id, { red, green }], i) => {
-    if (log[1 + 2 * i].sha !== red.sha || log[2 + 2 * i].sha !== green.sha) throw new SmokeError(`test ${id}: its RED and GREEN are not commits ${2 + 2 * i} and ${3 + 2 * i}`);
+  const cycleShas = rows.flatMap(([id, row]) => shasOf(row).map((sha) => ({ id, sha })));
+  cycleShas.forEach(({ id, sha }, i) => {
+    if (log[1 + i].sha !== sha) throw new SmokeError(`test ${id}: commit ${2 + i} is not its own`);
   });
 }
 

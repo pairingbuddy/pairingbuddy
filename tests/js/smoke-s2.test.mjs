@@ -46,6 +46,35 @@ test("several tests each need their own RED and GREEN, in order", () => {
   assertControlFlow(goodLedger({ tests, commits: log.map(({ sha }) => sha) }), log);
 });
 
+const coveredRow = (sha) => ({ red: { done: false, exitCodes: [0], sha: null }, covered: { done: true, exitCodes: [0], sha, after: { test_id: "t1", sha: "g1" } } });
+const COVERED_LOG = [...GOOD_LOG, commit("c2", "test: zero percent")];
+const coveredLedger = (t2 = coveredRow("c2")) => goodLedger({ tests: { perTest: { t1: row("r1", "g1"), t2 }, full: { passed: true, runs: [{ exitCode: 0 }] } }, commits: ["p", "r1", "g1", "c2"] });
+
+test("a test an earlier GREEN covered has one test commit and no GREEN", () => {
+  assertControlFlow(coveredLedger(), COVERED_LOG);
+});
+
+test("a docs commit may follow a covered test", () => {
+  assertControlFlow(goodLedger({ ...coveredLedger(), commits: ["p", "r1", "g1", "c2", "d"] }), [...COVERED_LOG, commit("d", "docs: note it")]);
+});
+
+for (const [what, t2, log, pattern] of [
+  ["a covered test with a fix commit after it", coveredRow("c2"), [...COVERED_LOG, commit("x", "fix: more")], /commit types/],
+  ["a covered test that did not pass", { ...coveredRow("c2"), covered: { ...coveredRow("c2").covered, exitCodes: [1] } }, COVERED_LOG, /t2.*covered/],
+  ["a covered test with no commit", coveredRow(null), COVERED_LOG, /t2.*covered/],
+  ["a covered test whose commit is out of place", coveredRow("g1"), COVERED_LOG, /t2/],
+]) {
+  test(`S2 fails on ${what}`, () => {
+    assert.throws(() => assertControlFlow(coveredLedger(t2), log), (e) => e instanceof SmokeError && pattern.test(e.message));
+  });
+}
+
+test("a covered test before any GREEN fails S2", () => {
+  const ledger = goodLedger({ tests: { perTest: { t1: coveredRow("c1") }, full: { passed: true, runs: [{ exitCode: 0 }] } }, commits: ["p", "c1"] });
+
+  assert.throws(() => assertControlFlow(ledger, [GOOD_LOG[0], commit("c1", "test: x")]), (e) => e instanceof SmokeError && /t1.*GREEN/.test(e.message));
+});
+
 for (const [what, ledger, log, pattern] of [
   ["a stage missing", goodLedger({ stages: [{ name: "code-tdd", status: "done" }] }), GOOD_LOG, /stage order/],
   ["stages out of order", goodLedger({ stages: ["code-tdd", "code-scenarios", "code-safety-net"].map((name) => ({ name, status: "done" })) }), GOOD_LOG, /stage order/],

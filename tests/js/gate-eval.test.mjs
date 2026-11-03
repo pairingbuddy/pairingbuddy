@@ -1375,4 +1375,45 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
 
     assert.match(gateEval(repo, "auto").reason, /a2/);
   });
+
+  // ---------- a RED pass the CLI recorded as covered ----------
+
+  const redKey = (agent, test) => `${TDD}.${agent}.${test}.r1.a1`;
+  const writeRed = (repo, ambiguity, { agent = "implement-tests", test = "t1" } = {}) =>
+    writeFileSync(join(repo.taskDir, "artifacts", `${redKey(agent, test)}.json`), JSON.stringify({ pb_key: redKey(agent, test), ambiguity, commit_subject: "x", files_changed: [] }));
+  const covered = { covered: { stage: TDD, attempt: 1, done: true, exitCodes: [0], timedOut: false, excerpt: "1 passed", head: "abc", sha: "abc", after: "t0" } };
+  const PASS_AT_RED = "t1 passed at RED: an earlier GREEN already covers it. Keep it, or redo?";
+
+  const coveredAtTaskEnd = (perTest) => {
+    const repo = atTaskEnd({ gates: { [G_SCENARIOS]: { source: "auto" } }, ambiguity: "" });
+    updateLedger(repo.ledgerPath, (ledger) => ({ ...ledger, tests: { perTest } }));
+    return repo;
+  };
+
+  test("an implement-tests ambiguity on a test the CLI recorded covered is settled, so the gate auto-passes", () => {
+    const repo = coveredAtTaskEnd({ t1: covered });
+    writeRed(repo, PASS_AT_RED);
+
+    assertAutoPassed(repo, gateEval(repo, "auto"), TASK_END);
+  });
+
+  test("the same ambiguity on a test that is not covered still asks", () => {
+    const repo = coveredAtTaskEnd({ t1: covered });
+    writeRed(repo, PASS_AT_RED, { test: "t2" });
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, TASK_END);
+    assert.match(asked.reason, new RegExp(redKey("implement-tests", "t2").replaceAll(".", "\\.")));
+  });
+
+  test("an ambiguity on another agent's return for a covered test still asks", () => {
+    const repo = coveredAtTaskEnd({ t1: covered });
+    writeRed(repo, PASS_AT_RED, { agent: "implement-code" });
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, TASK_END);
+    assert.match(asked.reason, new RegExp(redKey("implement-code", "t1").replaceAll(".", "\\.")));
+  });
 });

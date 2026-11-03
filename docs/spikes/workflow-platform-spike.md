@@ -495,3 +495,51 @@ Each fix has a test first in `tests/js/`.
 ### The recorder
 
 `tests/smoke/run-recorder.mjs` is test tooling only, and no hook, verb or workflow loads it, which a test checks. A timer reads the ledger from outside the run, and the harness hands it each stream line. Each recording in `tests/smoke/recordings/<name>/` holds `ledger.jsonl`, one snapshot for each new `seq` with its time, and `spawns.jsonl`: Skill, Agent and Workflow calls, task start, progress and end, and each workflow agent with its label, phase and span, read from its transcript. It also holds `timing.json` with the total and per-stage seconds. The raw stream stays with the run's repo, outside the recording. Recordings are refused under `docs/plans/`. Round C's eight runs are kept, about 500 KB.
+
+### Round D: an existing test listed as new
+
+The bug, from a live S2 run with an open-scope task: the placeholders agent listed the sample's own `test_zero_price_stays_zero`, which already passes, as a new test. RED refused it as one that proves nothing, and the stage stopped. `pb checkpoint --step placeholders` now refuses a row whose `test_function` is already in its `test_file` at the commit before the task's first placeholders, and names it. A pytest class path is matched by its last part. The checkpoint records that commit as `base`, so a re-run does not find its own placeholders there. The refusal is not a stop, so `code-tdd` hands it to a new placeholders agent, as it does any other refusal. `create-test-placeholders` now lists only the tests it creates. The tests are in `tests/js/pb-red-green.test.mjs` and `tests/js/code-tdd.test.mjs`. The stage test passed when first run, because the stage already passes on every refusal.
+
+2026-11-03, the same setup as round C, $0.70 cap per run. "Open" is `--task "Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it should return 90. Cover the edge cases too, such as 0 and 100 percent"`.
+
+| Run | Result | Total s | Cost $ | Agents | Tests | Where it ended |
+|---|---|---|---|---|---|---|
+| Open 1 | FAIL | 201.0 | 0.061230 | 15 | 4: 1 RED and GREEN, 3 covered | All three stages done, then a stop at `G:task-end`: two `implement-tests` returns gave a covered pass as an ambiguity |
+| Open 2 | FAIL | 203.3 | 0.061678 | 15 | 4: 1 RED and GREEN, 3 covered | Same, from one `implement-tests` return |
+| Open 3 | FAIL | 184.8 | 0.058180 | 13 | 3: 1 RED and GREEN, 2 covered | Same, from one `implement-tests` return |
+| Default | PASS | 158.7 | 0.051653 | 9 | 1 | Three commits: placeholder `test:`, RED `test:`, GREEN `fix:` |
+
+The spend was $0.232741 in all. No run stopped at `G:scenarios`: each scenarios return had an empty ambiguity, and the gate passed from `auto`. In every open run the placeholders checkpoint took the first return, and no row named an existing test, so the new refusal never fired live. All three open runs reached `G:task-end` with every test closed, the covered ones each with one `test:` commit. The stop came from the agent and not the CLI: `implement-tests` saw its test pass at RED after the first GREEN and asked a human whether to keep it, as in "a human should decide whether to keep it as a regression guard or drop it". The CLI had already kept that test as covered, so the question was already settled.
+
+Still open: `implement-tests` reports a covered pass as an ambiguity, so an open-scope task stops at `G:task-end` 3 times in 3. The agent needs telling that a pass at RED after an earlier GREEN is the CLI's decision, kept as covered, and not a question for a human. The recordings are `tests/smoke/recordings/e-open-1` to `e-open-3` and `e-default`.
+
+### Round F: a covered pass is not a question
+
+The human decided that a test the CLI kept as covered is the rule, so it is not a question to ask. That is now in the CLI and not only in a prompt. In `shared-node/gates.mjs`, an ambiguity on an `implement-tests` return counts as settled when that return's test, the item in its key, is `covered` in `tests.perTest`, so it no longer stops a gate. Any other ambiguity still asks: the same text on a test that is not covered, and an ambiguity on another agent's return for a covered test. The three tests in `tests/js/gate-eval.test.mjs` drive the real `pb gate eval`. The auto-pass test failed first with "carries an open ambiguity". The other two are guards, so they passed before the change and still pass after it. `implement-tests` also got one line, in the paths mode only: a pass after an earlier GREEN is the CLI's call, so leave it out of `ambiguity`.
+
+2026-11-03, the same setup as round D, $0.70 cap per run, the same open `--task`.
+
+| Run | Result | Total s | Cost $ | Agents | Tests | Where it ended |
+|---|---|---|---|---|---|---|
+| Open 1 | PASS | 174.6 | 0.062372 | 15 | 3: 1 RED and GREEN, 2 covered | Five commits: placeholder `test:`, RED `test:`, GREEN `fix:`, then one `test:` for each covered test |
+| Open 2 | PASS | 182.3 | 0.060689 | 15 | 4: 1 RED and GREEN, 3 covered | Six commits, the same shape |
+| Open 3 | FAIL | 57.9 | 0.023325 | 1 | 0 | A stop at `G:scenarios`: the scenarios return asked whether to keep the 0 and 100 percent cases as separate tests, since the base fix also makes them pass |
+| Default | PASS | 131.7 | 0.048646 | 9 | 1 | Three commits: placeholder `test:`, RED `test:`, GREEN `fix:` |
+
+The spend was $0.195032 in all. The four runs ran at the same time, each in its own repo. In open 1 and 2, every `implement-tests` return had an empty ambiguity, 34 empty returns in each run's transcripts, so the prompt line held and the new gate rule never had to fire live. The tests show the rule works, and these runs do not. `G:task-end` passed from `auto` in every run that got there.
+
+Still open: the scenarios agent can still turn "the base fix also covers this case" into a question at `G:scenarios`, here 1 time in 3. Round C's rule tells it to leave out such cases. With an open task that names the cases, it kept them and asked instead. It looks like the decision the human made for RED, one stage earlier: if it is, a named case the base fix covers is kept and becomes a covered test, and that is not a question either. The human has not decided that yet, so this round does not fix it. The recordings are `tests/smoke/recordings/f-open-1` to `f-open-3` and `f-default`.
+
+### Round G: a named case the base fix covers is not a question
+
+The human decided round F's open point: a case the task names stays a test even if the fix for an earlier case will also make it pass, and the CLI records it as covered. `enumerate-scenarios-and-test-cases` now says so in the paths mode only, so keeping such a case is no ambiguity. Round C's rule still leaves out a covered case the task does not name. The structural test in `tests/js/tdd-agent-contracts.test.mjs` failed first, then passed after the line.
+
+2026-11-03, the same setup as round F, $0.60 cap per run, the same open `--task`, three runs at the same time, each in its own repo.
+
+| Run | Result | Total s | Cost $ | Agents | Tests | Where it ended |
+|---|---|---|---|---|---|---|
+| Open 1 | PASS | 171.2 | 0.061887 | 15 | 4: 1 RED and GREEN, 3 covered | Six commits: placeholder `test:`, RED `test:`, GREEN `fix:`, then one `test:` for each covered test |
+| Open 2 | PASS | 179.9 | 0.060007 | 15 | 4: 1 RED and GREEN, 3 covered | Six commits, the same shape |
+| Open 3 | PASS | 152.6 | 0.057204 | 13 | 3: 1 RED and GREEN, 2 covered | Five commits, the same shape |
+
+The spend was $0.179098 in all. No run stopped at `G:scenarios`, and each kept the named 0 and 100 percent cases as covered tests. 3 of 3 is a small sample: it shows the rule can hold, not that the round F stop is gone. The recordings are `tests/smoke/recordings/g-open-1` to `g-open-3`.

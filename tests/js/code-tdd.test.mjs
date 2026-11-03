@@ -28,7 +28,7 @@ const pbKeyOf = ({ opts }) => opts.schema.properties.pb_key.enum[0];
 
 const accepted = { cli_exit_code: 0, cli_output: "{\"ok\":true}" };
 const refused = (text) => ({ cli_exit_code: 1, cli_output: `pb: ${text}` });
-const stateOutput = (over = {}) => JSON.stringify({ ok: true, scenarios: SCENARIOS_PATH, tests: null, red: [], green: [], ...over });
+const stateOutput = (over = {}) => JSON.stringify({ ok: true, scenarios: SCENARIOS_PATH, tests: null, red: [], green: [], covered: [], ...over });
 
 // Everything goes well unless a responder says otherwise. A responder returns undefined to leave the default in place.
 function standIn({ tests = [row("t1")], state = {}, runner = () => undefined, worker = () => undefined } = {}) {
@@ -302,6 +302,24 @@ test("code-tdd-a-run-the-cli-already-stopped-is-not-retried", async () => {
   assert.equal(calls.some(({ prompt }) => prompt.includes("stage stop")), false, "the ledger already holds the stop");
 });
 
+test("code-tdd-a-placeholders-refusal-for-an-existing-test-goes-to-a-new-placeholders-agent", async () => {
+  const refusal = "test test_zero_price_stays_zero is already in tests/test_a.py at the commit before the placeholders";
+  let tries = 0;
+  const { calls, result } = await runStage({
+    runner: ([command]) => {
+      if (!command.startsWith("checkpoint --step placeholders")) return undefined;
+      tries += 1;
+      return tries === 1 ? refused(refusal) : undefined;
+    },
+  });
+
+  const [first, retry] = calls.filter(({ opts }) => opts.agentType === PLACEHOLDERS);
+  assert.doesNotMatch(first.prompt, /previous_refusal/);
+  assert.equal(pbKeyOf(retry), "code-tdd.create-test-placeholders.-.r2.a1");
+  assert.match(blockOf(retry.prompt, "previous_refusal"), /test_zero_price_stays_zero is already in tests\/test_a\.py/);
+  assert.equal(result.stopReason, null);
+});
+
 test("code-tdd-refused-placeholders-retry-then-stop", async () => {
   const { calls, result } = await runStage({ runner: ([command]) => (command.startsWith("checkpoint --step placeholders") ? refused("no") : undefined) });
 
@@ -310,7 +328,7 @@ test("code-tdd-refused-placeholders-retry-then-stop", async () => {
   assert.equal(result.stopReason, "step-failed");
 });
 
-for (const [name, output] of [["not JSON", "I ran it"], ["a refusal", "{\"ok\":false}"], ["no list", "{\"ok\":true,\"scenarios\":\"x\"}"]]) {
+for (const [name, output] of [["not JSON", "I ran it"], ["a refusal", "{\"ok\":false}"], ["no list", "{\"ok\":true,\"scenarios\":\"x\"}"], ["no covered list", "{\"ok\":true,\"scenarios\":\"x\",\"red\":[],\"green\":[]}"]]) {
   test(`code-tdd-a-state-that-is-${name.replaceAll(" ", "-")}-stops-with-no-agent-spawned`, async () => {
     const { calls, result } = await runStage({ runner: ([command]) => (command === "tdd state" ? { cli_exit_code: 0, cli_output: output } : undefined) });
 
@@ -387,6 +405,48 @@ test("code-tdd-a-re-run-with-everything-done-only-finishes", async () => {
 
   assert.deepEqual(stepsOf(calls).slice(3), ["stage finish"]);
   assert.equal(result.stopReason, null);
+});
+
+// ---------- a test an earlier GREEN covered ----------
+
+const coveredOutput = (id) => JSON.stringify({ ok: true, step: "red", key: `code-tdd.implement-tests.${id}.r1.a1`, committed: true, outcome: "covered", after: { test_id: "t1", sha: "g1" } });
+const coversAtRed = (id) => ([command]) => (command === `checkpoint --step red --from code-tdd.implement-tests.${id}.r1.a1` ? { cli_exit_code: 0, cli_output: coveredOutput(id) } : undefined);
+
+test("code-tdd-a-test-covered-at-red-skips-its-green-and-the-next-test-goes-on", async () => {
+  const { calls, result } = await runStage({ tests: [row("t1"), row("t2"), row("t3")], runner: coversAtRed("t2") });
+
+  assert.deepEqual(stepsOf(calls).slice(7), [
+    "implement-tests code-tdd.implement-tests.t2.r1.a1",
+    "checkpoint --step red --from code-tdd.implement-tests.t2.r1.a1",
+    "implement-tests code-tdd.implement-tests.t3.r1.a1",
+    "checkpoint --step red --from code-tdd.implement-tests.t3.r1.a1",
+    "implement-code code-tdd.implement-code.t3.r1.a1",
+    "checkpoint --step green --from code-tdd.implement-code.t3.r1.a1",
+    "stage finish",
+  ]);
+  assert.equal(result.stopReason, null);
+  assert.deepEqual(result.covered, ["t2"]);
+});
+
+test("code-tdd-a-covered-relay-wrapped-in-words-still-reads", async () => {
+  const wrapped = ([command]) => (command.startsWith("checkpoint --step red --from code-tdd.implement-tests.t2") ? { cli_exit_code: 0, cli_output: `It printed:\n${coveredOutput("t2")}\n` } : undefined);
+  const { calls } = await runStage({ tests: [row("t1"), row("t2")], runner: wrapped });
+
+  assert.equal(calls.some(({ prompt }) => prompt.includes("<test_id>\nt2\n") && prompt.includes("Write the least production code")), false);
+});
+
+test("code-tdd-a-plain-red-relay-still-goes-to-green", async () => {
+  const { calls } = await runStage({ tests: [row("t1")], runner: ([command]) => (command.startsWith("checkpoint --step red") ? { cli_exit_code: 0, cli_output: "{\"ok\":true,\"outcome\":\"red\"} covered" } : undefined) });
+
+  assert.equal(calls.filter(({ opts }) => opts.agentType === CODE).length, 1);
+});
+
+test("code-tdd-a-re-run-skips-a-covered-test-entirely", async () => {
+  const { calls, result } = await runStage({ tests: [row("t1"), row("t2")], state: { red: ["t1"], green: ["t1"], covered: ["t2"] } }, { ...ARGS, attempt: 2 });
+
+  assert.deepEqual(stepsOf(calls).slice(3), ["stage finish"]);
+  assert.equal(result.stopReason, null);
+  assert.deepEqual(result.covered, ["t2"]);
 });
 
 // ---------- a stage's arguments ----------

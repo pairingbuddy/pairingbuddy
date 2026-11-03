@@ -108,7 +108,18 @@ function settledStages(contract, ledger) {
   return new Set(nodes.slice(0, last + 1).map(({ name }) => name));
 }
 
-const isSettled = (file, settled) => settled.has(returnFileKey(file)?.stage);
+const COVERED_ROLE = "implement-tests";
+
+// A pass at RED after an earlier GREEN is the CLI's call: once it recorded the test covered, a question about it is answered.
+function isCoveredPass(key, { tests: { perTest = {} } }) {
+  if (key?.role !== COVERED_ROLE || key.item === null || !Object.hasOwn(perTest, key.item)) return false;
+  return perTest[key.item].covered?.done === true;
+}
+
+function isSettled(file, settled, ledger) {
+  const key = returnFileKey(file);
+  return settled.has(key?.stage) || isCoveredPass(key, ledger);
+}
 
 // It names every open return, because approving this gate settles them all.
 function ambiguityStop(dir, ledger, settled) {
@@ -118,7 +129,7 @@ function ambiguityStop(dir, ledger, settled) {
     const artifact = parsedOrNull(join(dir, file));
     if (artifact === null) return `the return ${file} cannot be read`;
     const { ambiguity = null } = artifact;
-    if (ambiguity !== null && ambiguity !== "" && !isSettled(file, settled)) open.push(file);
+    if (ambiguity !== null && ambiguity !== "" && !isSettled(file, settled, ledger)) open.push(file);
   }
   if (open.length === 0) return null;
   return open.length === 1 ? `the return ${open[0]} carries an open ambiguity` : `these returns carry an open ambiguity: ${open.join(", ")}`;

@@ -58,15 +58,24 @@ async function runStep(commands, { tddPhase = null, item = null } = {}) {
   throw new StageHalted('step-failed');
 }
 
-function parsedState(run) {
-  const text = run.result.cli_output ?? '';
+function relayedJson(text) {
   try {
-    const state = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
-    return state.ok === true && Array.isArray(state.red) && Array.isArray(state.green) ? state : null;
+    return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
   } catch {
     return null;
   }
 }
+
+const LISTS = ['red', 'green', 'covered'];
+
+function parsedState(run) {
+  const state = relayedJson(run.result.cli_output ?? '');
+  return state?.ok === true && LISTS.every((list) => Array.isArray(state[list])) ? state : null;
+}
+
+// A RED that passed after an earlier GREEN of this task: the CLI kept it as covered, so it has no GREEN to run. A wrong
+// relay costs a refusal or a stop, because GREEN refuses a covered test and stage finish reads the ledger again.
+const isCovered = (relay) => relayedJson(relay.cli_output ?? '')?.outcome === 'covered';
 
 // The script has no shell, so the CLI's word comes through the runner. A wrong relay costs a refusal or a stop, because
 // RED, GREEN and stage finish each read the ledger again.
@@ -105,7 +114,7 @@ async function untilAccepted({ role, schema, instruction, paths, step, tddPhase 
     const result = await spawn(prompted(instruction, pbKey, paths(pbKey), item, refusal), { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(schema, pbKey) });
     if (result !== null) {
       const { result: relay } = await runStep([`checkpoint --step ${step} --from ${pbKey}`], { tddPhase, item });
-      if (relay.cli_exit_code === 0) return { pbKey, result };
+      if (relay.cli_exit_code === 0) return { pbKey, result, relay };
       refusal = relay.cli_output ?? '';
       if (RUN_STOPPED.test(refusal)) throw new StageHalted(NO_STOP_NEEDED);
     }
@@ -145,10 +154,17 @@ const greenStep = (testId, testsPath) => untilAccepted({
   item: testId,
 });
 
+const covered = [];
+
 // One test at a time, because every agent works in the same tree.
 async function runCycles(ids, state, testsPath) {
   for (const id of ids) {
-    if (!state.red.includes(id)) await redStep(id, testsPath, state.scenarios);
+    const skipsRed = state.red.includes(id) || state.covered.includes(id);
+    const red = skipsRed ? null : await redStep(id, testsPath, state.scenarios);
+    if (state.covered.includes(id) || (red !== null && isCovered(red.relay))) {
+      covered.push(id);
+      continue;
+    }
     if (!state.green.includes(id)) await greenStep(id, testsPath);
   }
 }
@@ -176,9 +192,9 @@ try {
   tests = created.result.tests.map(({ test_id: id }) => id);
   await runCycles(tests, state, artifactPathOf(created.pbKey));
   const runner = await runStep(['stage finish']);
-  return { started: true, stopReason: null, spawned, tests, runner };
+  return { started: true, stopReason: null, spawned, tests, covered, runner };
 } catch (error) {
   if (!(error instanceof StageHalted)) throw error;
   const runner = await recordStop(error.message);
-  return { started: true, stopReason: error.message, spawned, tests, runner };
+  return { started: true, stopReason: error.message, spawned, tests, covered, runner };
 }

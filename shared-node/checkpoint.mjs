@@ -96,6 +96,12 @@ export function headOf(root) {
   return status === 0 ? stdout.trim() : null;
 }
 
+// A file's text at a commit, or null where the commit has no such file.
+export function fileAtCommit(root, sha, path) {
+  const { status, stdout } = runGit(root, ["show", `${sha}:${normalize(path)}`]);
+  return status === 0 ? stdout : null;
+}
+
 export const isOnHead = (root, sha) => runGit(root, ["merge-base", "--is-ancestor", sha, "HEAD"]).status === 0;
 
 // ---------- the key ----------

@@ -7,7 +7,8 @@
 // refusal: exit 1, no commit, and the run lands in ledger.tests.perTest[id][step] with done: false.
 // ledger.tests.perTest[id] = { selector: {runner_id, test_file, test_function}, red, green }, where red and green are
 // { stage, attempt, passed, done, exitCodes, timedOut, excerpt, head, sha }. done is true once the step's commit landed, or
-// there was nothing to commit.
+// there was nothing to commit. A test that passes at RED after an earlier GREEN of this task gets covered in place of a
+// GREEN: { stage, attempt, done, exitCodes, timedOut, excerpt, head, sha, after: { test_id, sha } }.
 import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -570,6 +571,51 @@ describe("the placeholders step", IN_PARALLEL, () => {
     assertPasses(step(repo, "placeholders", TESTS_KEY));
   });
 
+  // A test already in the file before the placeholders passes at its first RED, so RED could only refuse it later.
+  const seedWith = (repo, text) => {
+    repo.write("tests/a.mjs", text);
+    git(repo.dir, "commit", "-q", "-am", "an existing test");
+  };
+
+  test("a row whose test_function is already in its test_file is refused, naming it", () => {
+    const repo = makeRepo();
+    seedWith(repo, "def t_old():\n    pass\n");
+    repo.write("tests/a.mjs", "def t_old():\n    pass\n\ndef t1():\n    pass\n");
+    placeholders(repo, { tests: [row("t1"), row("t2", { test_function: "t_old" })] });
+
+    assertRefused(repo, repo.head(), step(repo, "placeholders", TESTS_KEY), /t_old.*already in tests\/a\.mjs/);
+    assert.equal(repo.ledger().stop, null, "a new placeholders agent can fix it");
+  });
+
+  test("a pytest class path is matched by its last name", () => {
+    const repo = makeRepo();
+    seedWith(repo, "class TestA:\n    def test_old(self):\n        pass\n");
+    placeholders(repo, { tests: [row("t1", { test_function: "TestA::test_old" })] });
+
+    assertRefused(repo, repo.head(), step(repo, "placeholders", TESTS_KEY), /TestA::test_old/);
+  });
+
+  test("a name that only contains an existing one, or is in another file, is new", () => {
+    const repo = makeRepo();
+    seedWith(repo, "def t_old():\n    pass\n");
+    repo.write("tests/b.mjs", "t_new\n");
+    placeholders(repo, { files_changed: ["tests/b.mjs"], tests: [row("t1", { test_function: "t_old_two" }), row("t2", { test_file: "tests/b.mjs", test_function: "t_old" })] });
+
+    assertPasses(step(repo, "placeholders", TESTS_KEY));
+  });
+
+  test("a re-run judges its rows at the commit before the first placeholders", () => {
+    const repo = makeRepo();
+    repo.write("tests/a.mjs", "placeholder t1\n");
+    placeholders(repo);
+    assertPasses(step(repo, "placeholders", TESTS_KEY));
+    updateLedger(repo.ledgerPath, (ledger) => ({ ...ledger, stage: { ...ledger.stage, attempt: 3 } }));
+    const key = `${STAGE}.create-test-placeholders.-.r1.a3`;
+    writeArtifact(repo, key, { pb_key: key, ambiguity: "", commit_subject: "add placeholders", files_changed: [], tests: [row()] });
+
+    assert.equal(assertPasses(step(repo, "placeholders", key)).committed, false);
+  });
+
   test("a test id that names a method every object has starts with no evidence", () => {
     const repo = makeRepo({ rows: [row("constructor")], outcomes: { "tests/a.mjs::constructor": 1 } });
 
@@ -604,6 +650,129 @@ describe("a re-run carries the evidence across attempts", IN_PARALLEL, () => {
   });
 });
 
+// A test that passes at RED because an earlier GREEN in this task made it pass is kept: it commits as test, records as
+// covered with its exit-0 run and the earliest GREEN before it, and skips its GREEN. Before any GREEN it proves nothing.
+describe("a test an earlier GREEN covered", IN_PARALLEL, () => {
+  const TWO = [row("t1"), row("t2")];
+
+  // t1 through RED and GREEN, then t2 written and passing, ready for its RED.
+  function coveredReady(repo, outcomes = { "tests/a.mjs::t1": 0, "tests/a.mjs::t2": 0 }) {
+    greenReady(repo, { outcomes });
+    assertPasses(step(repo, "green", greenKey()));
+    repo.write("tests/a.mjs", "real test\nsecond test\n");
+    writeArtifact(repo, redKey("t2"), fileReturn(redKey("t2"), { commit_subject: "pin zero percent", files_changed: ["tests/a.mjs"] }));
+  }
+
+  test("commits as test, records covered with its exit-0 run and the GREEN before it, and says so", () => {
+    const repo = makeRepo({ rows: TWO });
+    coveredReady(repo);
+    const greenSha = repo.head();
+
+    const done = assertPasses(step(repo, "red", redKey("t2")));
+
+    assert.equal(done.committed, true);
+    assert.equal(done.outcome, "covered");
+    assert.deepEqual(done.after, { test_id: "t1", sha: greenSha });
+    assert.equal(repo.message(), "test: pin zero percent");
+    assert.deepEqual(repo.committed(), ["tests/a.mjs"]);
+    const record = repo.ledger().tests.perTest.t2;
+    assert.deepEqual(
+      { ...record.covered, excerpt: undefined },
+      { stage: STAGE, attempt: ATTEMPT, done: true, exitCodes: [0], timedOut: false, excerpt: undefined, head: greenSha, sha: repo.head(), after: { test_id: "t1", sha: greenSha } },
+    );
+    assert.match(record.covered.excerpt, /ran tests\/a\.mjs::t2/);
+    assert.equal(record.red.done, false, "it never failed, so it has no RED");
+    assert.equal(record.green, undefined, "its GREEN is skipped");
+    assert.ok(repo.ledger().commits.includes(repo.head()));
+  });
+
+  test("names the earliest GREEN before it when several came first", () => {
+    const repo = makeRepo({ rows: [row("t1"), row("t2"), row("t3")] });
+    greenReady(repo, { outcomes: { "tests/a.mjs::t1": 0, "tests/a.mjs::t2": 1 } });
+    assertPasses(step(repo, "green", greenKey()));
+    const firstGreen = repo.head();
+    repo.write("tests/a.mjs", "t2 test\n");
+    writeArtifact(repo, redKey("t2"), fileReturn(redKey("t2"), { files_changed: ["tests/a.mjs"] }));
+    assertPasses(step(repo, "red", redKey("t2")));
+    repo.outcomes({ "tests/a.mjs::t1": 0, "tests/a.mjs::t2": 0, "tests/a.mjs::t3": 0 });
+    repo.write("src.mjs", "fixed again\n");
+    writeArtifact(repo, greenKey("t2"), fileReturn(greenKey("t2"), { files_changed: ["src.mjs"] }));
+    assertPasses(step(repo, "green", greenKey("t2")));
+    repo.write("tests/a.mjs", "t3 test\n");
+    writeArtifact(repo, redKey("t3"), fileReturn(redKey("t3"), { files_changed: ["tests/a.mjs"] }));
+
+    const done = assertPasses(step(repo, "red", redKey("t3")));
+
+    assert.deepEqual(done.after, { test_id: "t1", sha: firstGreen });
+  });
+
+  test("a test that passes before any GREEN is still refused, as one that proves nothing", () => {
+    const repo = makeRepo({ outcomes: { "tests/a.mjs::t1": 0 } });
+    const seed = repo.head();
+    repo.write("tests/a.mjs", "real test\n");
+    writeArtifact(repo, redKey(), fileReturn(redKey(), { files_changed: ["tests/a.mjs"] }));
+
+    assertRefused(repo, seed, step(repo, "red", redKey()), /not RED.*no GREEN/s);
+    assert.equal(repo.ledger().tests.perTest.t1.covered, undefined);
+  });
+
+  test("only exit 0 is covered: a code that is neither RED nor a pass is refused after a GREEN too", () => {
+    const repo = makeRepo({ rows: TWO });
+    coveredReady(repo, { "tests/a.mjs::t1": 0, "tests/a.mjs::t2": 5 });
+    const seed = repo.head();
+
+    assertRefused(repo, seed, step(repo, "red", redKey("t2")), /not RED/);
+    assert.equal(repo.ledger().tests.perTest.t2.covered, undefined);
+  });
+
+  test("its GREEN is refused with no test run", () => {
+    const repo = makeRepo({ rows: TWO });
+    coveredReady(repo);
+    assertPasses(step(repo, "red", redKey("t2")));
+    const seed = repo.head();
+    const runs = repo.runs().length;
+    repo.write("src.mjs", "more\n");
+    writeArtifact(repo, greenKey("t2"), fileReturn(greenKey("t2"), { files_changed: ["src.mjs"] }));
+
+    assertRefused(repo, seed, step(repo, "green", greenKey("t2")), /t2 is covered/);
+    assert.equal(repo.runs().length, runs);
+  });
+
+  test("pb tdd state lists it as covered, and not as RED", () => {
+    const repo = makeRepo({ rows: TWO, ledger: { stages: [{ name: "code-scenarios", status: "done", attempt: 1 }] } });
+    writeArtifact(repo, "code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1", { pb_key: "code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1", ambiguity: "", scenarios: [] });
+    coveredReady(repo);
+    assertPasses(step(repo, "red", redKey("t2")));
+
+    const state = assertPasses(pb(repo, "tdd", "state"));
+
+    assert.deepEqual([state.red, state.green, state.covered], [["t1"], ["t1"], ["t2"]]);
+  });
+
+  test("the stage finishes on it, and the report and pb status list it", () => {
+    const repo = makeRepo({ rows: TWO, ledger: { stages: [{ name: "code-scenarios", status: "done", attempt: 1 }], gates: { "G:scenarios": { source: "auto" } } } });
+    assertPasses(step(repo, "placeholders", TESTS_KEY));
+    coveredReady(repo);
+    const greenSha = repo.head();
+    assertPasses(step(repo, "red", redKey("t2")));
+
+    assertPasses(pb(repo, "stage", "finish"));
+
+    const { report } = assertPasses(pb(repo, "stage", "report"));
+    assert.deepEqual(report.covered.map(({ test_id, exitCodes, after }) => ({ test_id, exitCodes, after })), [{ test_id: "t2", exitCodes: [0], after: { test_id: "t1", sha: greenSha } }]);
+    assert.match(report.covered[0].excerpt, /ran tests\/a\.mjs::t2/);
+    assert.deepEqual(report.redEvidence.map(({ test_id }) => test_id), ["t1"]);
+    const status = assertPasses(pb(repo, "status"));
+    assert.deepEqual(status.covered, [{ test_id: "t2", after: { test_id: "t1", sha: greenSha }, sha: repo.head() }]);
+  });
+
+  test("pb status lists none when no test was covered", () => {
+    const repo = makeRepo();
+
+    assert.deepEqual(assertPasses(pb(repo, "status")).covered, []);
+  });
+});
+
 describe("pb tdd state", IN_PARALLEL, () => {
   const SCENARIOS_KEY = (attempt) => `code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a${attempt}`;
   const path = (key) => `.pairingbuddy/run/task/artifacts/${key}.json`;
@@ -617,7 +786,7 @@ describe("pb tdd state", IN_PARALLEL, () => {
 
     const state = assertPasses(pb(repo, "tdd", "state"));
 
-    assert.deepEqual(state, { ok: true, scenarios: path(SCENARIOS_KEY(2)), tests: null, red: [], green: [] });
+    assert.deepEqual(state, { ok: true, scenarios: path(SCENARIOS_KEY(2)), tests: null, red: [], green: [], covered: [] });
   });
 
   test("names the newest rows and what tests{} holds as done", () => {

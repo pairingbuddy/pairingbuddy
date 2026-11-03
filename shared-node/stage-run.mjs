@@ -85,8 +85,9 @@ function cycleProblem({ ledger, artifactsDir, config }) {
     if (e instanceof TestRunRefused) return `tests:cycle cannot read the tests: ${e.message}`;
     throw e;
   }
-  const open = rows.map(({ test_id: id }) => id).filter((id) => !(perTestOf(ledger, id).red?.done && perTestOf(ledger, id).green?.done));
-  return open.length === 0 ? null : `tests:cycle has no RED and GREEN for ${open.join(", ")}`;
+  const isClosed = ({ red, green, covered }) => covered?.done || (red?.done && green?.done);
+  const open = rows.map(({ test_id: id }) => id).filter((id) => !isClosed(perTestOf(ledger, id)));
+  return open.length === 0 ? null : `tests:cycle has no RED and GREEN, and no covered pass, for ${open.join(", ")}`;
 }
 
 const testsEvidence = (name, context) => (name === "cycle" ? cycleProblem(context) : testsProblem(name, context));
@@ -148,6 +149,17 @@ function redEvidence({ tests: { perTest = {} }, stage: { name } }) {
     .map(([test_id, { red: { attempt, exitCodes, excerpt } }]) => ({ test_id, attempt, exitCodes, excerpt }));
 }
 
+// A test that passed at RED after an earlier GREEN, kept with its GREEN skipped: the human should know it never failed.
+function coveredEvidence({ tests: { perTest = {} }, stage: { name } }) {
+  return Object.entries(perTest)
+    .filter(([, { covered }]) => covered?.done && covered.stage === name)
+    .map(([test_id, { covered: { attempt, exitCodes, excerpt, after } }]) => ({ test_id, attempt, exitCodes, excerpt, after }));
+}
+
+// Every test of the task that an earlier GREEN covered, for pb status.
+export const coveredTests = ({ tests: { perTest = {} } }) =>
+  Object.entries(perTest).filter(([, { covered }]) => covered?.done).map(([test_id, { covered: { after, sha } }]) => ({ test_id, after, sha }));
+
 function notCovered({ uncovered, gaps }, testRuns, returns, red) {
   const lensRan = returns.some((artifact) => REPORT_LISTS.some((key) => artifact[key] !== undefined));
   return [
@@ -182,6 +194,7 @@ export function buildReport(ledger, artifactsDir) {
     ...lists,
     ambiguities,
     redEvidence: red,
+    covered: coveredEvidence(ledger),
     notCovered: notCovered(lists, tests, returns, red),
     spend: { agents: current.length, agentsSource: "recorded returns", tokens: 0, tokensKnown: false, tokensUnit: TOKENS_UNIT },
   };
