@@ -48,6 +48,7 @@ schemas:
   - plan-tracer-bullets.schema.json
   - apply-config-change-result.schema.json
   - runner-result.schema.json
+  - refuter-verdict.schema.json
 
 # =============================================================================
 # Agent definitions
