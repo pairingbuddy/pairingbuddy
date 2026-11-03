@@ -57,6 +57,8 @@ export function validateStages(contract) {
   }
   const problems = Object.entries(contract.taskTypes).flatMap(([type, graph]) => nodeProblems(type, graph, contract.gateClasses));
   if (!Object.hasOwn(contract.taskTypes, contract.defaultTaskType)) problems.push(`unknown default task type ${contract.defaultTaskType}`);
+  if (!isNameList(contract.migratedTypes)) problems.push("migratedTypes must be a list of task types");
+  else for (const type of contract.migratedTypes.filter((name) => !Object.hasOwn(contract.taskTypes, name))) problems.push(`migrated type ${type} has no stage graph`);
   if (!isNameList(contract.newPathAgents)) problems.push("newPathAgents must be a list of agent names");
   return problems;
 }

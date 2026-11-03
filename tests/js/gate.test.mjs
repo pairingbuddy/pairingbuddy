@@ -1158,6 +1158,13 @@ test("loadStages throws an error naming the file and the problem for an invalid 
   });
 });
 
+test("every migrated type needs a stage graph, and the list must be a list", () => {
+  const contract = VALID_CONTRACT();
+
+  assert.match(validateStages({ ...contract, migratedTypes: ["new_feature"] }).join(), /migrated type new_feature has no stage graph/);
+  for (const migratedTypes of [undefined, "config_change", [1]]) assert.match(validateStages({ ...contract, migratedTypes }).join(), /migratedTypes/);
+});
+
 test("pipelineAgents reads only the agents section", () =>
   withPlugin({}, async (pluginRoot) => {
     writeFileSync(join(pluginRoot, "contracts", "agent-config.yaml"), "schemas:\n  a-schema: x\nagents:\n  real-agent:\n    model: y\nfocus_warning:\n  not-an-agent: z\n");

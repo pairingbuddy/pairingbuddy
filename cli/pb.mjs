@@ -62,7 +62,7 @@ function classifiedTaskType(root) {
   if (!existsSync(path)) return null;
   const type = readStateJson(path)?.task_type;
   if (typeof type !== "string") throw new Refusal(`${path} has no task_type string, so no run was opened`);
-  if (!Object.hasOwn(loadStages(PLUGIN_ROOT).taskTypes, type)) throw new Refusal(`task type ${type} has no stage graph, so it stays on the old path and no run was opened`);
+  if (!loadStages(PLUGIN_ROOT).migratedTypes.includes(type)) throw new Refusal(`task type ${type} is not migrated, so it stays on the old path and no run was opened`);
   return type;
 }
 

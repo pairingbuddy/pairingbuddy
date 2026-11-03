@@ -11,6 +11,7 @@ JS_TEST_FILES = [
     "tests/js/code-config.test.mjs",
     "tests/js/code-router.test.mjs",
     "tests/js/code-safety-net.test.mjs",
+    "tests/js/code-scenarios.test.mjs",
     "tests/js/gate-eval.test.mjs",
     "tests/js/gate.test.mjs",
     "tests/js/harness.test.mjs",
@@ -26,6 +27,7 @@ JS_TEST_FILES = [
     "tests/js/run-hooks.test.mjs",
     "tests/js/session-binding.test.mjs",
     "tests/js/tap.test.mjs",
+    "tests/js/tdd-agent-contracts.test.mjs",
     "tests/js/verbs.test.mjs",
 ]
 

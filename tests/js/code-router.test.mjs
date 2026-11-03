@@ -93,7 +93,7 @@ test("no classification file: the taskType stays null, for a run opened before c
 });
 
 for (const type of [...OLD_PATH_TYPES, "constructor"]) {
-  test(`${type} has no stage graph, so no run opens and the gate stays out of the old path`, (t) => {
+  test(`${type} is not migrated, so no run opens and the gate stays out of the old path`, (t) => {
     const root = makeRepo(t);
     classifyAs(root, type);
 
@@ -123,6 +123,7 @@ test("a stage graph is chosen from the classification, not from a fixed type", (
   const stagesPath = join(plugin, "contracts", "stages.json");
   const contract = JSON.parse(readFileSync(stagesPath, "utf8"));
   contract.taskTypes.bug_fix = { nodes: [{ name: "code-bug", gate: null, evidence: [] }], gates: {} };
+  contract.migratedTypes.push("bug_fix");
   writeFileSync(stagesPath, JSON.stringify(contract));
   const root = makeRepo(t);
   classifyAs(root, "bug_fix");
@@ -195,12 +196,28 @@ test("a run with no finished stage cannot end, whatever the model reports", (t) 
 const skill = () => readFileSync(join(ROOT, "skills", "coding", "SKILL.md"), "utf8");
 const pseudocode = () => /## Workflow[\s\S]*?```python\n([\s\S]*?)```/.exec(skill())[1];
 
-test("the migrated-types list is exactly the types with a stage graph", () => {
+test("the skill's migrated types are the contract's, and each has a stage graph", () => {
   const listed = JSON.parse(/^MIGRATED_TYPES = (\[.*\])$/m.exec(pseudocode())[1]);
   const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
 
   assert.deepEqual(listed, ["config_change"]);
-  assert.deepEqual(listed.sort(), Object.keys(contract.taskTypes).sort());
+  assert.deepEqual(listed, contract.migratedTypes);
+  assert.ok(listed.every((type) => Object.hasOwn(contract.taskTypes, type)));
+});
+
+test("a graph built ahead of its flip opens no run: bug_fix stays old until Task 46", (t) => {
+  const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
+  assert.ok(Object.hasOwn(contract.taskTypes, "bug_fix"), "the graph is there");
+  const root = makeRepo(t);
+  classifyAs(root, "bug_fix");
+
+  assertRefusedWithNoRunState(root, pb(root, OPEN), /bug_fix.*old path/);
+});
+
+test("the agents a graph uses but the old path still calls stay callable with no run", (t) => {
+  const root = makeRepo(t);
+
+  assert.equal(gate(root, "Agent", { subagent_type: "pairingbuddy:enumerate-scenarios-and-test-cases", prompt: "go" }), null);
 });
 
 test("the router runs after the plan loop has left, after classification, and before the old branches", () => {

@@ -26,6 +26,11 @@ Replace placeholder tests with real test code. This is the RED phase of TDD - te
 
 ## Input
 
+The one input rule decides what you read and write:
+
+- With a `<paths>` block in the prompt: read only what the paths name, and return your Output as StructuredOutput. `tests` is the tests artifact, and the prompt's `<test_id>` names your one row in it. `scenarios` is the scenarios artifact, which describes that row's test case. `test_config` is the test config. `human_guidance` is the human guidance, which may be missing. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
+- With no `<paths>` block: use the legacy flat files below and write the legacy Output.
+
 Reads from `.pairingbuddy/current-batch.json`:
 
 ```json
@@ -86,6 +91,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
+With a `<paths>` block: your batch is the one row `<test_id>` names, there is no `.pairingbuddy/test-state.json` to write, and you may run the test to check your work. The CLI records whether it failed, so do not report that. No human is reachable from a stage: where the steps below say to ask the human, do not guess, and describe the problem in `ambiguity` instead. With nothing open, return an empty string.
+
 1. Read the batch from `.pairingbuddy/current-batch.json`
 2. Read test configuration from `.pairingbuddy/test-config.json`
 3. For each test in the batch:
@@ -115,6 +122,8 @@ If a test fails for the wrong reason (`failing_wrong_reason`):
 
 ### File Creation Restrictions
 
+With a `<paths>` block: change only that row's test file. Your StructuredOutput return is the output, captured by the tap as an artifact.
+
 **You may ONLY modify:**
 - Test files referenced in `current-batch.json`
 - `.pairingbuddy/test-state.json` (your JSON output)
@@ -129,6 +138,19 @@ Do NOT create files anywhere else. No /tmp files, no markdown files, no new test
 **If you suspect the problem is beyond the test itself** (missing project setup, wrong environment, broken dependencies), stop and ask the human operator directly.
 
 ## Output
+
+With a `<paths>` block, return the result as your StructuredOutput with exactly these fields, and write no output file:
+
+```json
+{
+  "pb_key": "string (copied exactly from the prompt)",
+  "ambiguity": "string (open question a human should settle, or a test you could not get to fail for the right reason, or empty string)",
+  "commit_subject": "string (proposed commit subject line, or empty string when nothing changed)",
+  "files_changed": ["string (repo-relative path of each modified file, never absolute)"]
+}
+```
+
+With no `<paths>` block:
 
 Writes to `.pairingbuddy/test-state.json`:
 

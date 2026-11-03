@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Implement Code Result",
+  "description": "Return of the implement-code agent when its prompt gives paths: the pb key it was given, any open ambiguity, the proposed commit subject and the files it changed, which pb checkpoint reads. The CLI records whether the test passed",
+  "type": "object",
+  "required": [
+    "pb_key",
+    "ambiguity",
+    "commit_subject",
+    "files_changed"
+  ],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "ambiguity": {
+      "type": "string",
+      "description": "An open question, or a test the agent could not satisfy, or an empty string"
+    },
+    "commit_subject": {
+      "type": "string",
+      "description": "Proposed commit subject line, or an empty string when nothing changed"
+    },
+    "files_changed": {
+      "type": "array",
+      "description": "Repo-relative paths of files the agent modified",
+      "items": {
+        "type": "string",
+        "pattern": "^(?!/)"
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -2,6 +2,7 @@
   "v": 1,
   "defaultTaskType": "config_change",
   "maxAgents": 1000,
+  "migratedTypes": ["config_change"],
   "newPathAgents": ["apply-config-change", "runner"],
   "gateClasses": {
     "continue": { "auto": "passes when evidence is complete and no stop condition applies" },
@@ -24,6 +25,18 @@
       ],
       "gates": {
         "G:task-end": { "class": "continue" }
+      }
+    },
+    "bug_fix": {
+      "nodes": [
+        {
+          "name": "code-scenarios",
+          "gate": "G:scenarios",
+          "evidence": ["artifact:enumerate-scenarios-and-test-cases"]
+        }
+      ],
+      "gates": {
+        "G:scenarios": { "class": "continue" }
       }
     }
   }
