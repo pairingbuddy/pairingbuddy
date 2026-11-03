@@ -98,7 +98,7 @@ function writeTests(repo, tests, { stage = STAGE, attempt = ATTEMPT, round = 1, 
   writeFileSync(join(repo.taskDir, "artifacts", `${key}.json`), JSON.stringify({ pb_key: key, tests }));
 }
 
-const row = (test_file, over) => ({ test_id: `t-${test_file}`, test_case_id: "c", scenario_id: "s", runner_id: "fake", test_file, test_function: "f", ...over });
+const row = (test_file, over) => ({ test_id: `t-${test_file.replace(/[^a-z0-9]/g, "-")}`, test_case_id: "c", scenario_id: "s", runner_id: "fake", test_file, test_function: "f", ...over });
 
 function isAlive(pid) {
   try {
@@ -500,7 +500,7 @@ describe("plain pb test takes its selectors from the tests artifact", IN_PARALLE
 
     assert.deepEqual(repo.calls(), [["tests/a.mjs", "tests/b.mjs", "-v"]]);
     assert.equal(printed.key, "selected");
-    assert.deepEqual(repo.ledger().tests.selected.tests, ["t-tests/a.mjs", "t-tests/b.mjs", "t-other"]);
+    assert.deepEqual(repo.ledger().tests.selected.tests, ["t-tests-a-mjs", "t-tests-b-mjs", "t-other"]);
     assert.deepEqual(repo.ledger().tests.full, undefined);
   });
 

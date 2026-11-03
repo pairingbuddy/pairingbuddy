@@ -69,21 +69,28 @@ function tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, toolInpu
   if (mismatch !== null) logError(taskDir, `workflow mismatch: ${JSON.stringify(toolInput?.name)} for stage ${mismatch}`);
 }
 
-function withAnswer({ gateAnswer, gatesFor, loadStages, recordAnswer }, ledger, toolResponse) {
-  const gate = ledger.needsHuman?.gate;
-  const answer = gate === undefined ? null : gateAnswer(gate, toolResponse);
-  if (answer === null) return ledger;
+function runGates({ gatesFor, loadStages }, ledger) {
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url));
-  return recordAnswer(ledger, gate, answer, gatesFor(loadStages(pluginRoot), ledger.taskType));
+  return gatesFor(loadStages(pluginRoot), ledger.taskType);
+}
+
+function askedAnswer({ gateAnswer }, ledger, toolResponse) {
+  const gate = ledger.needsHuman?.gate;
+  return gate === undefined ? null : gateAnswer(gate, toolResponse);
+}
+
+function withAnswer(modules, ledger, toolResponse) {
+  const answer = askedAnswer(modules, ledger, toolResponse);
+  return answer === null ? ledger : modules.recordAnswer(ledger, ledger.needsHuman.gate, answer, runGates(modules, ledger));
 }
 
 // Only tool_response counts: it holds what the human chose, and tool_input is the model's.
-function tapQuestion(modules, ledgerPath, toolResponse) {
-  const { readLedger, updateLedger } = modules;
+function tapQuestion(modules, root, ledgerPath, toolResponse) {
+  const { appendRedoFeedback, readLedger, updateLedger } = modules;
   const ledger = readLedger(ledgerPath);
-  if (withAnswer(modules, ledger, toolResponse) !== ledger) {
-    updateLedger(ledgerPath, (current) => withAnswer(modules, current, toolResponse));
-  }
+  if (withAnswer(modules, ledger, toolResponse) === ledger) return;
+  updateLedger(ledgerPath, (current) => withAnswer(modules, current, toolResponse));
+  if (askedAnswer(modules, ledger, toolResponse) === "redo") appendRedoFeedback(root, ledger, runGates(modules, ledger), toolResponse);
 }
 
 function tapRun(modules, root, input) {
@@ -94,21 +101,21 @@ function tapRun(modules, root, input) {
   try {
     if (input.tool_name === "StructuredOutput") tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, input);
     else if (input.tool_name === "Workflow") tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, input.tool_input, input.tool_response);
-    else if (input.tool_name === "AskUserQuestion" && input.agent_id === undefined) tapQuestion(modules, ledgerPath, input.tool_response);
+    else if (input.tool_name === "AskUserQuestion" && input.agent_id === undefined) tapQuestion(modules, root, ledgerPath, input.tool_response);
   } catch (e) {
     logError(taskDir, `error: ${e?.message ?? e}`);
   }
 }
 
 try {
-  const { gateAnswer, gatesFor, recordAnswer } = await import("../shared-node/gates.mjs");
+  const { appendRedoFeedback, gateAnswer, gatesFor, recordAnswer } = await import("../shared-node/gates.mjs");
   const { parseKey } = await import("../shared-node/keys.mjs");
   const { readLedger, updateLedger } = await import("../shared-node/ledger.mjs");
   const { findSessionRoot } = await import("../shared-node/run-root.mjs");
   const { loadStages } = await import("../shared-node/stages.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
   const root = findSessionRoot(input.cwd, input.session_id);
-  if (root !== null) tapRun({ gateAnswer, gatesFor, loadStages, parseKey, readLedger, recordAnswer, updateLedger }, root, input);
+  if (root !== null) tapRun({ appendRedoFeedback, gateAnswer, gatesFor, loadStages, parseKey, readLedger, recordAnswer, updateLedger }, root, input);
 } catch {
   // not a run situation
 }

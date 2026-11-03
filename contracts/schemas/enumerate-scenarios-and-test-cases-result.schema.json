@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Enumerate Scenarios Result",
+  "description": "Return of the enumerate-scenarios-and-test-cases agent when its prompt gives paths: the pb key it was given, any open ambiguity, and the scenarios in the shape of scenarios.schema.json",
+  "type": "object",
+  "required": [
+    "pb_key",
+    "ambiguity",
+    "scenarios"
+  ],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "ambiguity": {
+      "type": "string",
+      "description": "An open question the task left unresolved, which sends G:scenarios to a human, or an empty string"
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "scenario_id",
+          "description",
+          "test_cases"
+        ],
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "description": "Unique identifier for the scenario"
+          },
+          "description": {
+            "type": "string",
+            "description": "What this scenario tests"
+          },
+          "test_cases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "test_case_id",
+                "description"
+              ],
+              "properties": {
+                "test_case_id": {
+                  "type": "string",
+                  "description": "Unique identifier for the test case"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Specific condition to verify"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

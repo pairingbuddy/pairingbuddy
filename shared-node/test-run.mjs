@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { constants } from "node:os";
-import { isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
 
 import { isOutside } from "./checkpoint.mjs";
 import { returnFileKey } from "./stages.mjs";
@@ -15,12 +15,22 @@ const DEFAULT_TIMEOUT_SECONDS = 540;
 const MAX_TIMEOUT_MS = 2 ** 31 - 1;
 const DEFAULT_FAILURE_EXIT_CODES = [1];
 const EXCERPT_BYTES = 8192;
+// The tail of a run kept per test: enough for the failure line. The ledger holds two per test, and the main context
+// reads one per test in the report.
+const CYCLE_EXCERPT_CHARS = 1024;
 // How long a finished process's output may keep arriving, when something it left behind holds the pipes open.
 const DRAIN_MS = 1000;
 const FORWARDED_SIGNALS = ["SIGTERM", "SIGINT", "SIGHUP"];
 const TESTS_ROLE = "create-test-placeholders";
 // What a test command reads as an option rather than a file: a flag, or pytest's @file of more arguments.
 const NOT_A_FILE_NAME = /^[-@]/;
+// create-test-placeholders-result.schema.json holds both. A model's return may not have met the schema, so they hold
+// here too. A selector word is built from these, so `::` may only ever walk down inside the one file: a class path.
+const TEST_FILE = /^(?![/@-])(?!.*::)[^\r\n]+$/;
+const TEST_FUNCTION = /^(?![-@])(?:(?!.*::)[^\r\n]+|[A-Za-z_]\w*(?:::[A-Za-z_]\w*)+)$/;
+const TEST_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const SELECTOR_FIELDS = ["test_file", "test_function"];
+const SELECTOR_FIELD = /\{([^{}]*)\}/g;
 
 export class TestRunRefused extends Error {}
 
@@ -103,6 +113,15 @@ function timeoutMs(id, { timeout_seconds: seconds = DEFAULT_TIMEOUT_SECONDS }) {
   return seconds * 1000;
 }
 
+function selectorTemplate(id, { selector_template: template }) {
+  if (template === undefined) return null;
+  const words = Array.isArray(template) ? template : [];
+  const fields = words.filter((word) => typeof word === "string").flatMap((word) => [...word.matchAll(SELECTOR_FIELD)].map(([, field]) => field));
+  const usable = words.length > 0 && words.every((word) => typeof word === "string") && fields.every((field) => SELECTOR_FIELDS.includes(field)) && fields.includes("test_function");
+  if (!usable) throw new TestRunRefused(`runner ${id} needs selector_template to be a list of words that name {test_function}, and may name {test_file}`);
+  return words;
+}
+
 function checkedRunner(config, id) {
   const runners = config?.runners ?? {};
   if (!Object.hasOwn(runners, id)) throw new TestRunRefused(`runner ${id} is not in test-config.json`);
@@ -110,8 +129,14 @@ function checkedRunner(config, id) {
   const { run_args: runArgs, test_directory: testDirectory } = runner;
   if (!Array.isArray(runArgs) || !runArgs.every((arg) => typeof arg === "string")) throw new TestRunRefused(`runner ${id} needs run_args to be a list of strings`);
   if (typeof testDirectory !== "string" || testDirectory === "") throw new TestRunRefused(`runner ${id} needs a test_directory`);
-  return { id, command: commandWords(id, runner), runArgs, testDirectory, failureCodes: failureCodes(id, runner), timeoutMs: timeoutMs(id, runner) };
+  return { id, command: commandWords(id, runner), runArgs, testDirectory, failureCodes: failureCodes(id, runner), timeoutMs: timeoutMs(id, runner), template: selectorTemplate(id, runner) };
 }
+
+// One pass over each word, so a name that holds a field's own spelling stays that name. A row cannot start a word with
+// a flag: checkRow refused it.
+const filledWord = (word, row) => word.replace(SELECTOR_FIELD, (_, field) => row[field]);
+
+const selectorWords = ({ template }, row) => template.map((word) => filledWord(word, row));
 
 const planFor = (runner, paths) => ({ runner: runner.id, argv: [...runner.command, ...paths, ...runner.runArgs], failureCodes: runner.failureCodes, timeoutMs: runner.timeoutMs });
 
@@ -146,14 +171,17 @@ function readTests(path) {
   }
   const tests = artifact?.tests;
   if (!Array.isArray(tests) || tests.length === 0) throw new TestRunRefused(`the tests artifact ${path} selects no tests`);
+  if (artifact.pb_key !== basename(path, ".json")) throw new TestRunRefused(`the tests artifact ${path} has pb_key ${JSON.stringify(artifact.pb_key)}, so it is no return of that key`);
   return tests;
 }
 
 // A model wrote these rows: a test_file that reads as an option would change what the human's command does.
-function checkRow({ test_id: id, test_file: file }) {
-  if (typeof id !== "string" || id === "") throw new TestRunRefused(`a row in the tests artifact has no test_id: ${JSON.stringify(id)}`);
+function checkRow({ test_id: id, test_file: file, test_function: name }) {
+  if (typeof id !== "string" || !TEST_ID.test(id)) throw new TestRunRefused(`a row in the tests artifact has no usable test_id: ${JSON.stringify(id)}`);
   if (typeof file !== "string" || file === "") throw new TestRunRefused(`test ${id} has no test_file`);
   if (NOT_A_FILE_NAME.test(file)) throw new TestRunRefused(`test ${id} has a test_file that reads as a flag or an args file: ${file}`);
+  if (isAbsolute(file) === false && !TEST_FILE.test(file)) throw new TestRunRefused(`test ${id} has a test_file that is more than a file name: ${JSON.stringify(file)}`);
+  if (typeof name !== "string" || !TEST_FUNCTION.test(name)) throw new TestRunRefused(`test ${id} has a test_function that is more than a test name: ${JSON.stringify(name)}`);
 }
 
 function assertUnderTestDirectory({ test_id: id, test_file: file }, { id: runner, testDirectory }) {
@@ -161,18 +189,48 @@ function assertUnderTestDirectory({ test_id: id, test_file: file }, { id: runner
   if (inside === "" || isOutside(inside)) throw new TestRunRefused(`test ${id} has test_file ${file}, which is outside the test_directory ${testDirectory} of runner ${runner}`);
 }
 
-// One plan per runner, each naming its test files once, plus every test id they cover.
-export function selectedPlans(config, artifactsDir, stage) {
-  const tests = readTests(latestTestsFile(artifactsDir, stage));
-  const filesByRunner = new Map();
-  for (const row of tests) {
+// Every row of this attempt's tests artifact, each one checked, since a model wrote them.
+export function testRows(config, artifactsDir, stage) {
+  const rows = readTests(latestTestsFile(artifactsDir, stage));
+  const seen = new Set();
+  for (const row of rows) {
     checkRow(row);
     assertUnderTestDirectory(row, checkedRunner(config, row.runner_id));
-    const files = filesByRunner.get(row.runner_id) ?? new Set();
-    filesByRunner.set(row.runner_id, files.add(row.test_file));
+    if (seen.has(row.test_id)) throw new TestRunRefused(`test ${row.test_id} is in the tests artifact twice`);
+    seen.add(row.test_id);
   }
-  const plans = [...filesByRunner].map(([id, files]) => planFor(checkedRunner(config, id), [...files]));
-  return { plans, testIds: tests.map((row) => row.test_id) };
+  return rows;
+}
+
+function runnerRows(rows) {
+  const byRunner = new Map();
+  for (const row of rows) byRunner.set(row.runner_id, [...(byRunner.get(row.runner_id) ?? []), row]);
+  return byRunner;
+}
+
+// A runner with no template can only name files, so a file's other tests decide its run.
+const selection = (runner, rows) => (runner.template === null ? [...new Set(rows.map((row) => row.test_file))] : rows.flatMap((row) => selectorWords(runner, row)));
+
+// One plan per runner, plus every test id they cover and whether the run speaks for each test or only for its file.
+export function selectedPlans(config, artifactsDir, stage) {
+  const rows = testRows(config, artifactsDir, stage);
+  const runners = [...runnerRows(rows)].map(([id, own]) => ({ runner: checkedRunner(config, id), own }));
+  const plans = runners.map(({ runner, own }) => planFor(runner, selection(runner, own)));
+  const attribution = runners.every(({ runner }) => runner.template !== null) ? "test" : "file";
+  return { plans, testIds: rows.map((row) => row.test_id), attribution };
+}
+
+export const hasSelector = (config, { runner_id: id }) => checkedRunner(config, id).template !== null;
+
+export const runnersWithoutSelector = (config) => Object.keys(config.runners).filter((id) => checkedRunner(config, id).template === null);
+
+export const testDirectoryOf = (config, { runner_id: id }) => checkedRunner(config, id).testDirectory;
+
+// What RED and GREEN run: this test and no other, or a refusal, since a run of its file says nothing about it.
+export function testPlan(config, row) {
+  const runner = checkedRunner(config, row.runner_id);
+  if (runner.template === null) throw new TestRunRefused(`runner ${runner.id} has no selector_template in test-config.json, so a run cannot speak for test ${row.test_id} alone. Stop here and tell the human, who owns that file`);
+  return planFor(runner, selectorWords(runner, row));
 }
 
 // ---------- running ----------
@@ -251,6 +309,18 @@ export function runPlan({ runner, argv, timeoutMs: limit }, cwd) {
     });
   });
 }
+
+// What counts for one test at each step. RED needs a configured failure code: 5 is pytest's "no tests", and a timeout
+// has no code at all.
+const STEP_PASSES = {
+  red: ({ failureCodes: codes }, { exitCode }) => codes.includes(exitCode),
+  green: (_plan, { exitCode }) => exitCode === 0,
+};
+
+export const meetsStep = (step, plan, run) => STEP_PASSES[step](plan, run);
+
+// What the ledger keeps of one test's run at one step.
+export const cycleRun = ({ exitCode, timedOut, excerpt }, passed) => ({ passed, exitCodes: [exitCode], timedOut, excerpt: excerpt.slice(-CYCLE_EXCERPT_CHARS) });
 
 // RED needs every run to fail with a configured code: 5 is pytest's "no tests", and a timeout has no code at all.
 export function runRecord(plans, runs, { name, attempt }) {

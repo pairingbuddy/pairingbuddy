@@ -16,7 +16,7 @@ import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1127,5 +1127,252 @@ describe("pb gate eval refuses", () => {
 
     assert.equal(result.code, 1);
     assert.match(result.stderr, /no gate is due/);
+  });
+});
+
+// ---------- the bug_fix graph: code-scenarios and G:scenarios ----------
+
+describe("code-scenarios and G:scenarios on the real contract", () => {
+  const SCENARIOS = "code-scenarios";
+  const G_SCENARIOS = "G:scenarios";
+  const AGENT = "enumerate-scenarios-and-test-cases";
+  const keyAt = (attempt) => `${SCENARIOS}.${AGENT}.-.r1.a${attempt}`;
+  const GUIDANCE = (repo) => join(repo.dir, ".pairingbuddy", "human-guidance.json");
+  const guidanceOf = (repo) => JSON.parse(readFileSync(GUIDANCE(repo), "utf8")).guidance;
+
+  const scenariosRepo = ({ attempt = 1, mode = "auto", ambiguity = "" } = {}) => {
+    const repo = makeRepo({
+      ledger: {
+        taskType: "bug_fix", policy: { mode, source: "permission_mode" },
+        stage: { name: SCENARIOS, status: "done", runId: "wf_1", attempt, startedAt: null },
+        stages: [{ name: SCENARIOS, status: "done", attempt }],
+      },
+    });
+    writeScenarios(repo, attempt, ambiguity);
+    return repo;
+  };
+
+  function writeScenarios(repo, attempt, ambiguity) {
+    writeFileSync(join(repo.taskDir, "artifacts", `${keyAt(attempt)}.json`), JSON.stringify({ pb_key: keyAt(attempt), ambiguity, scenarios: [] }));
+  }
+
+  const redo = (repo, asked, annotations = {}) => {
+    const payload = recordedAnswer(repo, asked.question, "redo");
+    return runTap(repo, { ...payload, tool_response: { ...payload.tool_response, annotations } });
+  };
+
+  const askedAtScenarios = (opts) => {
+    const repo = scenariosRepo({ mode: "default", ...opts });
+    const asked = gateEval(repo);
+    assertAsks(asked, G_SCENARIOS);
+    return { repo, asked };
+  };
+
+  test("the graph is the stage and its gate, as a continue gate", () => {
+    const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
+
+    assert.deepEqual(contract.taskTypes.bug_fix.nodes, [
+      { name: SCENARIOS, gate: G_SCENARIOS, evidence: [`artifact:${AGENT}`] },
+      { name: "code-tdd", gate: null, evidence: ["artifact:create-test-placeholders", "checkpoint:placeholders", "tests:cycle"] },
+      { name: SAFETY_NET, gate: TASK_END, evidence: ["artifact:update-documentation", "checkpoint:docs", "tests:full"] },
+    ]);
+    assert.deepEqual(contract.taskTypes.bug_fix.gates, { [G_SCENARIOS]: { class: "continue" }, [TASK_END]: { class: "continue" } });
+    assert.equal(contract.stageMaxAgents["code-tdd"], 600);
+    assert.equal(contract.migratedTypes.includes("bug_fix"), true);
+  });
+
+  test("with no ambiguity the gate auto-passes under auto", () => {
+    const repo = scenariosRepo();
+
+    assertAutoPassed(repo, gateEval(repo, "auto"), G_SCENARIOS);
+  });
+
+  test("a non-null ambiguity asks under auto", () => {
+    const repo = scenariosRepo({ ambiguity: "Does the fix cover the retry path?" });
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, G_SCENARIOS);
+    assert.match(asked.reason, /ambiguity/);
+    assert.deepEqual(asked.question.options.map(({ label }) => label), ANSWERS);
+  });
+
+  test("stage finish refuses with no return at this attempt, and finishes with one", () => {
+    const repo = makeRepo({
+      ledger: {
+        taskType: "bug_fix",
+        stage: { name: SCENARIOS, status: "active", runId: "wf_1", attempt: 2, startedAt: null },
+        stages: [],
+      },
+    });
+    writeScenarios(repo, 1, "");
+
+    assert.notEqual(runPb(repo, ["stage", "finish"]).code, 0, "a return from attempt 1 is no evidence for attempt 2");
+    assert.notEqual(repo.ledger().stop, null);
+
+    runPb(repo, ["stage", "fail"]);
+    updateLedger(repo.ledgerPath, (ledger) => ({ ...ledger, stage: { ...ledger.stage, status: "active", attempt: 3 } }));
+    writeScenarios(repo, 3, "");
+
+    const finished = runPb(repo, ["stage", "finish"]);
+    assert.equal(finished.code, 0, finished.stderr);
+    assert.equal(repo.ledger().stage.status, "done");
+  });
+
+  test("a redo appends the human's note to human-guidance, as a schema row", () => {
+    const { repo, asked } = askedAtScenarios();
+    writeFileSync(GUIDANCE(repo), JSON.stringify({ guidance: [{ agent: "curate-guidance", timestamp: "2026-01-01T00:00:00Z", context: "kept", feedback: "keep me", persistent: true }] }));
+
+    redo(repo, asked, { [asked.question.question]: { notes: "Cover the retry path too" } });
+
+    const [kept, added] = guidanceOf(repo);
+    assert.equal(kept.feedback, "keep me", "what was there stays");
+    assert.equal(added.feedback, "Cover the retry path too");
+    assert.equal(added.agent, SCENARIOS);
+    assert.match(added.context, /G:scenarios/);
+    assert.equal(Number.isNaN(Date.parse(added.timestamp)), false);
+    assert.deepEqual(Object.keys(added).sort(), ["agent", "context", "feedback", "timestamp"], "not persistent: curation decides that");
+  });
+
+  test("a redo with no note still tells the next attempt the last one was sent back", () => {
+    const { repo, asked } = askedAtScenarios();
+
+    redo(repo, asked);
+
+    assert.match(guidanceOf(repo)[0].feedback, /sent code-scenarios back at G:scenarios.*attempt 1/);
+  });
+
+  test("a redo creates human-guidance.json when there is none", () => {
+    const { repo, asked } = askedAtScenarios();
+    assert.equal(existsSync(GUIDANCE(repo)), false);
+
+    redo(repo, asked);
+
+    assert.equal(guidanceOf(repo).length, 1);
+  });
+
+  for (const [name, text] of [["an unreadable", "{not json"], ["a wrongly shaped", '{"guidance":3}']]) {
+    test(`${name} human-guidance.json is left alone, and the redo still lands`, () => {
+      const { repo, asked } = askedAtScenarios();
+      writeFileSync(GUIDANCE(repo), text);
+
+      const result = redo(repo, asked);
+
+      assert.equal(result.code, 0);
+      assert.equal(readFileSync(GUIDANCE(repo), "utf8"), text, "someone's file is not overwritten");
+      assert.equal(repo.ledger().stage.status, "redo");
+      assert.match(readFileSync(join(repo.taskDir, "tap-errors.log"), "utf8"), /human-guidance/);
+    });
+  }
+
+  for (const answer of ["approve", "stop"]) {
+    test(`${answer} appends nothing`, () => {
+      const { repo, asked } = askedAtScenarios();
+
+      runTap(repo, recordedAnswer(repo, asked.question, answer));
+
+      assert.equal(existsSync(GUIDANCE(repo)), false);
+    });
+  }
+
+  test("a note in tool_input alone is the model's, so it is not the human's feedback", () => {
+    const { repo, asked } = askedAtScenarios();
+    const payload = recordedAnswer(repo, asked.question, "redo");
+
+    runTap(repo, { ...payload, tool_input: { ...payload.tool_input, annotations: { [asked.question.question]: { notes: "written by the model" } } } });
+
+    assert.doesNotMatch(guidanceOf(repo)[0].feedback, /written by the model/);
+  });
+
+  test("a redo re-runs the stage at the next attempt, through the real gate, and the old return stops counting", () => {
+    const { repo, asked } = askedAtScenarios({ ambiguity: "Which path?" });
+    redo(repo, asked, { [asked.question.question]: { notes: "The retry path" } });
+
+    assert.equal(JSON.parse(runPb(repo, ["status"]).stdout).next.attempt, 2);
+    const call = stageCall(repo, SCENARIOS);
+    assertDenied(runGate(repo, call), /Use attempt 2/);
+
+    assertNotDenied(runGate(repo, { ...call, tool_input: { ...call.tool_input, args: { ...call.tool_input.args, attempt: 2 } } }));
+    assert.deepEqual([repo.ledger().stage.attempt, repo.ledger().stage.status], [2, "active"]);
+    writeScenarios(repo, 2, "");
+    updateLedger(repo.ledgerPath, (ledger) => ({ ...ledger, stage: { ...ledger.stage, status: "done" }, stages: [{ name: SCENARIOS, status: "done", attempt: 2 }] }));
+
+    assertAutoPassed(repo, gateEval(repo, "auto"), G_SCENARIOS);
+  });
+
+  // ---------- an ambiguity a human already approved ----------
+
+  const TDD = "code-tdd";
+  const tddKey = (test, attempt = 1) => `${TDD}.implement-code.${test}.r1.a${attempt}`;
+  const writeTdd = (repo, ambiguity, test = "t1", attempt = 1) => writeFileSync(join(repo.taskDir, "artifacts", `${tddKey(test, attempt)}.json`), JSON.stringify({ pb_key: tddKey(test, attempt), ambiguity, commit_subject: "x", files_changed: [] }));
+
+  // G:scenarios answered as `gates` says, every stage done, and G:task-end due.
+  function atTaskEnd({ gates, ambiguity = "Which path?" }) {
+    const repo = makeRepo({
+      ledger: {
+        taskType: "bug_fix", policy: { mode: "auto", source: "permission_mode" }, gates,
+        stage: { name: SAFETY_NET, status: "done", runId: "wf_1", attempt: 1, startedAt: null },
+        stages: [{ name: SCENARIOS, status: "done", attempt: 1 }, { name: TDD, status: "done", attempt: 1 }, { name: SAFETY_NET, status: "done", attempt: 1 }],
+      },
+    });
+    writeScenarios(repo, 1, ambiguity);
+    return repo;
+  }
+
+  for (const [source, record] of [["the dialog", { source: "human", answer: "approve" }], ["the human's command", { source: "human-cli", answer: "approve" }]]) {
+    test(`an ambiguity approved through ${source} does not ask again at a later gate`, () => {
+      const repo = atTaskEnd({ gates: { [G_SCENARIOS]: record } });
+
+      assertAutoPassed(repo, gateEval(repo, "auto"), TASK_END);
+    });
+  }
+
+  test("through the real tap: approved at G:scenarios, then G:task-end passes", () => {
+    const { repo, asked } = askedAtScenarios({ ambiguity: "Which path?" });
+    runTap(repo, recordedAnswer(repo, asked.question, "approve"));
+    updateLedger(repo.ledgerPath, (ledger) => ({
+      ...ledger,
+      stage: { name: SAFETY_NET, status: "done", runId: "wf_1", attempt: 1, startedAt: null },
+      stages: [...ledger.stages, { name: TDD, status: "done", attempt: 1 }, { name: SAFETY_NET, status: "done", attempt: 1 }],
+    }));
+
+    assertAutoPassed(repo, gateEval(repo, "auto"), TASK_END);
+  });
+
+  test("an auto pass settles nothing, so an ambiguity it never saw still asks", () => {
+    const repo = atTaskEnd({ gates: { [G_SCENARIOS]: { source: "auto" } } });
+
+    assert.match(gateEval(repo, "auto").reason, /ambiguity/);
+  });
+
+  test("a new ambiguity from a stage after the approved gate still asks", () => {
+    const repo = atTaskEnd({ gates: { [G_SCENARIOS]: { source: "human", answer: "approve" } } });
+    writeTdd(repo, "Could not satisfy t1");
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, TASK_END);
+    assert.match(asked.reason, new RegExp(tddKey("t1").replaceAll(".", "\\.")));
+    assert.doesNotMatch(asked.reason, /enumerate-scenarios/, "what was approved is not asked about again");
+  });
+
+  test("a gate names every open ambiguity, because approving it settles them all", () => {
+    const repo = atTaskEnd({ gates: { [G_SCENARIOS]: { source: "human", answer: "approve" } } });
+    writeTdd(repo, "One", "t1");
+    writeTdd(repo, "Two", "t2");
+
+    const { reason } = gateEval(repo, "auto");
+
+    assert.match(reason, /\.t1\./);
+    assert.match(reason, /\.t2\./);
+  });
+
+  test("a redo's new attempt carries a new ambiguity, and that one asks at its own gate", () => {
+    const { repo, asked } = askedAtScenarios({ ambiguity: "Which path?" });
+    redo(repo, asked);
+    updateLedger(repo.ledgerPath, (ledger) => ({ ...ledger, stage: { ...ledger.stage, status: "done", attempt: 2 }, stages: [{ name: SCENARIOS, status: "done", attempt: 2 }] }));
+    writeScenarios(repo, 2, "A new question");
+
+    assert.match(gateEval(repo, "auto").reason, /a2/);
   });
 });

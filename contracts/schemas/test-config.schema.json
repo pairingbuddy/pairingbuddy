@@ -43,6 +43,12 @@
             "minItems": 1,
             "description": "Exit codes that count as RED. Default [1]"
           },
+          "selector_template": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "description": "Argument words that select one test, in place of its file. {test_file} and {test_function} are filled in, and {test_function} is required, for example [\"{test_file}::{test_function}\"] for pytest. A word is passed as it is, with no shell and no regex escaping, so a name-pattern runner needs anchors of its own. RED and GREEN refuse a runner with none"
+          },
           "timeout_seconds": {
             "type": "number",
             "exclusiveMinimum": 0,

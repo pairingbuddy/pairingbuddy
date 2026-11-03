@@ -27,7 +27,7 @@ for (const [file, skill] of [["plan", "planning"], ["design-ux", "designing-ux"]
 }
 
 // A skill listing shows the stages too, and 4 of 5 S1 runs loaded one despite the warning in the command.
-for (const stage of ["code-config", "code-safety-net"]) {
+for (const stage of ["code-config", "code-safety-net", "code-scenarios"]) {
   test(`${stage} calls itself internal, started by the coding skill`, () => {
     const firstLine = readFileSync(new URL(`../../workflows/${stage}.js`, import.meta.url), "utf8").split("\n")[0];
 

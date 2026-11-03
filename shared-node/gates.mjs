@@ -1,7 +1,7 @@
 // Gates: which gate is due, why it must ask, and what counts as passing it. The policy itself is
 // recorded by the gate hook and read here from the ledger, so no caller can supply it. Node built-ins only.
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
@@ -95,15 +95,33 @@ function isVoidedReturn(file, ledger) {
   return key !== null && isVoidedAttempt(ledger, key.stage, key.attempt);
 }
 
-function ambiguityStop(dir, ledger) {
+const isHumanApproved = (ledger, gate) => {
+  const record = Object.hasOwn(ledger.gates, gate) ? ledger.gates[gate] : undefined;
+  return HUMAN_SOURCES.includes(record?.source) && record.answer === "approve";
+};
+
+// A human who approved a gate has seen what its stage and every stage before it left open. A redo removes the gate's
+// record, so a record always speaks for the attempt that stands, and a stage after it has not been seen by anyone.
+function settledStages(contract, ledger) {
+  const { nodes } = contract.taskTypes[graphFor(contract, ledger.taskType).taskType];
+  const last = nodes.findLastIndex(({ gate }) => gate !== null && isHumanApproved(ledger, gate));
+  return new Set(nodes.slice(0, last + 1).map(({ name }) => name));
+}
+
+const isSettled = (file, settled) => settled.has(returnFileKey(file)?.stage);
+
+// It names every open return, because approving this gate settles them all.
+function ambiguityStop(dir, ledger, settled) {
   if (!existsSync(dir)) return null;
+  const open = [];
   for (const file of readdirSync(dir).filter((name) => name.endsWith(".json") && !name.startsWith(".") && !isVoidedReturn(name, ledger)).sort()) {
     const artifact = parsedOrNull(join(dir, file));
     if (artifact === null) return `the return ${file} cannot be read`;
     const { ambiguity = null } = artifact;
-    if (ambiguity !== null && ambiguity !== "") return `the return ${file} carries an open ambiguity`;
+    if (ambiguity !== null && ambiguity !== "" && !isSettled(file, settled)) open.push(file);
   }
-  return null;
+  if (open.length === 0) return null;
+  return open.length === 1 ? `the return ${open[0]} carries an open ambiguity` : `these returns carry an open ambiguity: ${open.join(", ")}`;
 }
 
 function retriesStop({ retries }) {
@@ -116,10 +134,10 @@ function configStop({ configHash }, root) {
   return existsSync(path) && fileHash(path) === configHash ? null : "the config hash changed during the run";
 }
 
-function stopReason(ledger, root) {
+function stopReason(contract, ledger, root) {
   const taskDir = join(root, ".pairingbuddy", "run", "task");
   if (ledger.stop !== null) return `the run stopped: ${ledger.stop.reason}`;
-  return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(join(taskDir, "artifacts"), ledger) ?? reportStop(join(taskDir, "report.json"), ledger);
+  return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(join(taskDir, "artifacts"), ledger, settledStages(contract, ledger)) ?? reportStop(join(taskDir, "report.json"), ledger);
 }
 
 // ---------- the decision ----------
@@ -135,7 +153,7 @@ function policyReason({ policy: { mode } }) {
 }
 
 // Why this gate must ask a human, or null when it passes under the recorded policy.
-export const askReason = (ledger, gate, root) => stopReason(ledger, root) ?? CLASS_REASONS[gate.class] ?? policyReason(ledger);
+export const askReason = (contract, ledger, gate, root) => stopReason(contract, ledger, root) ?? CLASS_REASONS[gate.class] ?? policyReason(ledger);
 
 // A model writes the dialog, so its words are the human's only when they are the words the CLI emitted, alone in
 // the call. Otherwise it could put "approve" on a description that says something else.
@@ -160,6 +178,35 @@ export function recordAnswer(ledger, name, answer, gates) {
   if (answer === "redo") return reopenStage(asked, name, gates);
   const recorded = { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer } } };
   return answer === "stop" ? { ...recorded, stop: { reason: `the human answered stop at ${name}`, seq: ledger.seq + 1 } } : recorded;
+}
+
+// ---------- redo feedback ----------
+
+function guidanceFile(path) {
+  if (!existsSync(path)) return { guidance: [] };
+  const file = parsedOrNull(path);
+  if (!Array.isArray(file?.guidance)) throw new Error(`${path} holds no guidance list, so a redo's feedback was not added to it`);
+  return file;
+}
+
+// Only tool_response counts, as for the answer: it holds what the human wrote. A redo with no note still tells the
+// next attempt that the last one was sent back.
+function redoFeedback(gate, stage, attempt, toolResponse) {
+  const notes = toolResponse.annotations?.[gateQuestionText(gate)]?.notes;
+  if (typeof notes === "string" && notes.trim() !== "") return notes.trim();
+  return `The human sent ${stage} back at ${gate} with no note, after attempt ${attempt}. Do not repeat that result.`;
+}
+
+// Stage agents read human-guidance.json, so this is how a redo reaches the next attempt (Data flow step 11).
+export function appendRedoFeedback(root, ledger, gates, toolResponse) {
+  const gate = ledger.needsHuman.gate;
+  const { stage } = gates.find(({ name }) => name === gate);
+  const path = join(root, ".pairingbuddy", "human-guidance.json");
+  const file = guidanceFile(path);
+  const entry = { agent: stage, timestamp: new Date().toISOString(), context: `redo at ${gate}`, feedback: redoFeedback(gate, stage, ledger.stage.attempt, toolResponse) };
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify({ ...file, guidance: [...file.guidance, entry] }, null, 2)}\n`);
+  renameSync(temp, path);
 }
 
 // A human's way past any answer: it undoes a redo that has not restarted, and the stop this gate's answer set.

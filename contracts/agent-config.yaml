@@ -48,6 +48,10 @@ schemas:
   - plan-tracer-bullets.schema.json
   - apply-config-change-result.schema.json
   - runner-result.schema.json
+  - enumerate-scenarios-and-test-cases-result.schema.json
+  - create-test-placeholders-result.schema.json
+  - implement-tests-result.schema.json
+  - implement-code-result.schema.json
   - refuter-verdict.schema.json
 
 # =============================================================================
@@ -161,6 +165,9 @@ agents:
       scenarios:
         schema: scenarios.schema.json
         file: .pairingbuddy/scenarios.json
+      scenarios_result:
+        schema: enumerate-scenarios-and-test-cases-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -204,6 +211,9 @@ agents:
       tests:
         schema: tests.schema.json
         file: .pairingbuddy/tests.json
+      tests_result:
+        schema: create-test-placeholders-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -239,6 +249,9 @@ agents:
       test_state:
         schema: test-state.schema.json
         file: .pairingbuddy/test-state.json
+      implement_tests_result:
+        schema: implement-tests-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Definitions"
@@ -266,6 +279,9 @@ agents:
       code_state:
         schema: code-state.schema.json
         file: .pairingbuddy/code-state.json
+      implement_code_result:
+        schema: implement-code-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Input"

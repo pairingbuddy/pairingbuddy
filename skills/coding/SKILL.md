@@ -117,7 +117,7 @@ These functions handle coordination, human interaction, and control flow that do
 _stop_if_run_open()
 
 # Task types that run through workflow stages. Must match the task types in contracts/stages.json.
-MIGRATED_TYPES = ["config_change"]
+MIGRATED_TYPES = ["config_change", "bug_fix"]
 
 # Plan execution mode: iterate through tasks from a plan MD file
 if _detect_plan_file(task):
@@ -300,9 +300,9 @@ A migrated type runs through workflow stages instead of the branches above. Ever
 `_run_new_path(task)`:
 
 1. Run `pb run open --kind code`. It reads `task_type` from `.pairingbuddy/task-classification.json` and picks the stage graph, and it stores the task from `.pairingbuddy/task.json`. If it refuses, stop and report the refusal. Do not make the change another way.
-2. Run `pb status`. Its `next` names the stage and attempt. While `next` is not null, start the workflow `pairingbuddy:<stage>` by name with the args `{"attempt": <attempt>, "pluginRoot": "<root>", "task": <task.json>}`, wait for it, and run `pb status` again.
-3. When `next` is null and no stage is active, run `pb gate eval`. On `auto-pass`, go on. On `needs-human`, show the human the question and `humanCommand`, and stop: only the human runs a `pb human` command.
-4. Run `pb task end`.
+2. Run `pb status --action`. Its `action` is the one next step. A gate can fall between two stages, so follow `action`, not `next`, which names a stage even while a gate stands before it. When it says to start a stage, start that workflow by name with the args it gives, wait for it, and run `pb status --action` again.
+3. When it says a gate is due, run `pb gate eval`. On `auto-pass`, go back to step 2. On `needs-human`, show the human the question and `humanCommand`, and stop: only the human runs a `pb human` command.
+4. When it says every stage and gate is done, run `pb task end`.
 
 `pb stage finish`, which the workflow's last agent runs, is the only proof a stage ran. Never read a workflow's reported status as a result: a workflow can report completed with no work done. After each workflow, `pb status` decides. If the stage did not finish, or `stop` is set, stop and report the `pb status` output.
 
@@ -313,10 +313,11 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 ### Bootstrap test-config.json
 
 1. Check if `.pairingbuddy/test-config.json` exists
-2. If exists, ask human: "Use existing test config?" (show current config)
-3. If missing or human says no, infer from: README, CLAUDE.md, plan docs, project structure
-4. Validate inferred config with human before writing
-5. If unable to infer, ask human directly
+2. If it exists, use it and ask nothing. The human owns that file, and a run that stops here waits for an answer no auto run can give
+3. If missing, infer from: README, CLAUDE.md, plan docs, project structure
+4. Give each test command a `selector_template`: the argument words that select one test, for example `["{test_file}::{test_function}"]` for pytest. Without it `pb run open` refuses a `bug_fix`, because RED and GREEN could not speak for one test
+5. Validate inferred config with human before writing
+6. If unable to infer, ask human directly
 
 ### State File Management
 

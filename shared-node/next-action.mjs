@@ -17,7 +17,7 @@ function nextStep(contract, ledger) {
 
 export function runStatus(contract, ledger, artifactsDir) {
   const { stage, stop, needsHuman } = ledger;
-  return { stage, next: nextStep(contract, ledger), stop, needsHuman, spend: spendTotals(ledger, artifactsDir, contract.maxAgents) };
+  return { stage, next: nextStep(contract, ledger), stop, needsHuman, spend: spendTotals(ledger, artifactsDir, contract) };
 }
 
 // Active with no recorded run and no lease left: the gate marked it, and a declined prompt or a failed start left it.

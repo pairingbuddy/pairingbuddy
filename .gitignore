@@ -54,3 +54,6 @@ docs/plans/
 
 # Claude Code local settings
 .claude/
+
+# Smoke run recordings for the mod replay rig
+tests/smoke/recordings/
