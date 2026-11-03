@@ -3,7 +3,7 @@
   "defaultTaskType": "config_change",
   "maxAgents": 1000,
   "stageMaxAgents": { "code-tdd": 600 },
-  "migratedTypes": ["config_change", "bug_fix"],
+  "migratedTypes": ["config_change", "bug_fix", "new_feature"],
   "newPathAgents": ["apply-config-change", "runner"],
   "gateClasses": {
     "continue": { "auto": "passes when evidence is complete and no stop condition applies" },

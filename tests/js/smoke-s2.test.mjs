@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Budget, SmokeError, SpendCapError, claudeCommand, cleanEnv, refuseRepoInsidePlugin, runClaude } from "../smoke/claude-run.mjs";
-import { TASK, assertControlFlow, makeRepo, parseOptions } from "../smoke/s2.mjs";
+import { FEATURE_TASK, TASK, assertControlFlow, makeRepo, parseOptions } from "../smoke/s2.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 
@@ -18,6 +18,7 @@ const placeholder = { step: "placeholders", committed: true, sha: "p" };
 
 function goodLedger(over = {}) {
   return {
+    taskType: "bug_fix",
     policy: POLICY,
     stages: ["code-scenarios", "code-tdd", "code-safety-net"].map((name) => ({ name, status: "done" })),
     gates: { "G:scenarios": { source: "auto" }, "G:task-end": { source: "auto" } },
@@ -29,21 +30,26 @@ function goodLedger(over = {}) {
 }
 
 const commit = (sha, subject) => ({ sha, subject });
+
+// The workflow agents the recorder read: the coverage check comes after the last GREEN and the last refactor.
+const agent = (t, role) => ({ t, kind: "workflow_agent", name: `pb1 code-tdd ${role}`, agentType: `pairingbuddy:${role}` });
+const AGENTS = [agent(1, "implement-tests"), agent(2, "implement-code"), agent(3, "verify-test-coverage")];
+const check = (ledger, log, options = {}) => assertControlFlow(ledger, log, { agents: AGENTS, ...options });
 const GOOD_LOG = [commit("p", "test: add placeholder"), commit("r1", "test: pin the discount"), commit("g1", "fix: subtract the discount")];
 
 test("a run with a placeholder, then RED and GREEN per test, passes", () => {
-  assertControlFlow(goodLedger(), GOOD_LOG);
+  check(goodLedger(), GOOD_LOG);
 });
 
 test("a docs commit after the cycles is allowed", () => {
-  assertControlFlow(goodLedger({ commits: ["p", "r1", "g1", "d"] }), [...GOOD_LOG, commit("d", "docs: note it")]);
+  check(goodLedger({ commits: ["p", "r1", "g1", "d"] }), [...GOOD_LOG, commit("d", "docs: note it")]);
 });
 
 test("several tests each need their own RED and GREEN, in order", () => {
   const tests = { perTest: { t1: row("r1", "g1"), t2: row("r2", "g2") }, full: { passed: true, runs: [{ exitCode: 0 }] } };
   const log = [...GOOD_LOG, commit("r2", "test: second"), commit("g2", "fix: second")];
 
-  assertControlFlow(goodLedger({ tests, commits: log.map(({ sha }) => sha) }), log);
+  check(goodLedger({ tests, commits: log.map(({ sha }) => sha) }), log);
 });
 
 const coveredRow = (sha) => ({ red: { done: false, exitCodes: [0], sha: null }, covered: { done: true, exitCodes: [0], sha, after: { test_id: "t1", sha: "g1" } } });
@@ -51,11 +57,11 @@ const COVERED_LOG = [...GOOD_LOG, commit("c2", "test: zero percent")];
 const coveredLedger = (t2 = coveredRow("c2")) => goodLedger({ tests: { perTest: { t1: row("r1", "g1"), t2 }, full: { passed: true, runs: [{ exitCode: 0 }] } }, commits: ["p", "r1", "g1", "c2"] });
 
 test("a test an earlier GREEN covered has one test commit and no GREEN", () => {
-  assertControlFlow(coveredLedger(), COVERED_LOG);
+  check(coveredLedger(), COVERED_LOG);
 });
 
 test("a docs commit may follow a covered test", () => {
-  assertControlFlow(goodLedger({ ...coveredLedger(), commits: ["p", "r1", "g1", "c2", "d"] }), [...COVERED_LOG, commit("d", "docs: note it")]);
+  check(goodLedger({ ...coveredLedger(), commits: ["p", "r1", "g1", "c2", "d"] }), [...COVERED_LOG, commit("d", "docs: note it")]);
 });
 
 for (const [what, t2, log, pattern] of [
@@ -65,14 +71,14 @@ for (const [what, t2, log, pattern] of [
   ["a covered test whose commit is out of place", coveredRow("g1"), COVERED_LOG, /t2/],
 ]) {
   test(`S2 fails on ${what}`, () => {
-    assert.throws(() => assertControlFlow(coveredLedger(t2), log), (e) => e instanceof SmokeError && pattern.test(e.message));
+    assert.throws(() => check(coveredLedger(t2), log), (e) => e instanceof SmokeError && pattern.test(e.message));
   });
 }
 
 test("a covered test before any GREEN fails S2", () => {
   const ledger = goodLedger({ tests: { perTest: { t1: coveredRow("c1") }, full: { passed: true, runs: [{ exitCode: 0 }] } }, commits: ["p", "c1"] });
 
-  assert.throws(() => assertControlFlow(ledger, [GOOD_LOG[0], commit("c1", "test: x")]), (e) => e instanceof SmokeError && /t1.*GREEN/.test(e.message));
+  assert.throws(() => check(ledger, [GOOD_LOG[0], commit("c1", "test: x")]), (e) => e instanceof SmokeError && /t1.*GREEN/.test(e.message));
 });
 
 for (const [what, ledger, log, pattern] of [
@@ -96,9 +102,77 @@ for (const [what, ledger, log, pattern] of [
   ["an inherited policy", goodLedger({ policy: { mode: "auto", source: "env" } }), GOOD_LOG, /policy/],
 ]) {
   test(`S2 fails on ${what}`, () => {
-    assert.throws(() => assertControlFlow(ledger, log), (e) => e instanceof SmokeError && pattern.test(e.message));
+    assert.throws(() => check(ledger, log), (e) => e instanceof SmokeError && pattern.test(e.message));
   });
 }
+
+// ---------- new_feature: a feat GREEN, then the cycle's refactor, each fix group kept green by the CLI ----------
+
+const refactorKey = (role, id = "t1") => `code-tdd.${role}.${id}.r1.a1`;
+const refactorCheckpoint = (role, sha, id = "t1") => ({ step: "refactor", key: refactorKey(role, id), committed: true, sha });
+// The closed tests' run the CLI makes before a fix group's commit, at the HEAD that commit goes on.
+const closedRun = (head, exitCodes = [0]) => ({ head, passed: exitCodes.every((code) => code === 0), runs: exitCodes.map((exitCode) => ({ exitCode })) });
+const FEATURE_LOG = [commit("p", "test: add placeholder"), commit("r1", "test: pin the order total"), commit("g1", "feat: add order_total"), commit("x1", "test: name the example"), commit("x2", "refactor: name the VAT rate")];
+const FEATURE_AGENTS = [agent(1, "implement-tests"), agent(2, "implement-code"), agent(3, "refactor-tests"), agent(4, "refactor-code"), agent(5, "verify-test-coverage")];
+
+function featureLedger(over = {}) {
+  return goodLedger({
+    taskType: "new_feature",
+    checkpoints: [placeholder, { step: "red", committed: true, sha: "r1" }, { step: "green", committed: true, sha: "g1" }, refactorCheckpoint("refactor-tests", "x1"), refactorCheckpoint("refactor-code", "x2"), { step: "refactor", key: refactorKey("refactor-code"), committed: false, sha: null }],
+    commits: FEATURE_LOG.map(({ sha }) => sha),
+    ...over,
+  });
+}
+
+// What the recorder saw: the final ledger, and one snapshot for each closed-tests run on the way.
+const FEATURE_SNAPSHOTS = [closedRun("g1"), closedRun("x1")].map((refactor) => featureLedger({ tests: { ...featureLedger().tests, refactor } }));
+const checkFeature = (ledger = featureLedger(), log = FEATURE_LOG, options = {}) => assertControlFlow(ledger, log, { type: "new_feature", agents: FEATURE_AGENTS, snapshots: [...FEATURE_SNAPSHOTS, ledger], ...options });
+
+test("new_feature: a feat GREEN, then refactor fix groups that each kept the closed tests green, passes", () => {
+  checkFeature();
+});
+
+test("new_feature: a docs commit may follow the refactor", () => {
+  checkFeature(featureLedger({ commits: [...FEATURE_LOG.map(({ sha }) => sha), "d"] }), [...FEATURE_LOG, commit("d", "docs: note it")]);
+});
+
+const featureFails = (what, pattern, ledger, log = FEATURE_LOG, options = {}) => [what, pattern, ledger, log, options];
+const onlyCodeFix = { checkpoints: [placeholder, { step: "red", committed: true, sha: "r1" }, { step: "green", committed: true, sha: "g1" }, refactorCheckpoint("refactor-code", "x1")], commits: ["p", "r1", "g1", "x1"] };
+
+for (const [what, pattern, ledger, log, options] of [
+  featureFails("a fix commit at GREEN", /commit types/, featureLedger(), [FEATURE_LOG[0], FEATURE_LOG[1], commit("g1", "fix: add order_total"), ...FEATURE_LOG.slice(3)]),
+  featureFails("no refactor commit, so the refactor step had nothing to do", /refactor/, featureLedger({ checkpoints: featureLedger().checkpoints.slice(0, 3), commits: ["p", "r1", "g1"] }), FEATURE_LOG.slice(0, 3)),
+  featureFails("a refactor commit with a feat type", /commit types/, featureLedger(), [...FEATURE_LOG.slice(0, 4), commit("x2", "feat: more")]),
+  featureFails("a refactor-tests commit typed refactor", /commit types/, featureLedger(), [...FEATURE_LOG.slice(0, 3), commit("x1", "refactor: tests"), FEATURE_LOG[4]]),
+  featureFails("a refactor commit out of place", /t1/, featureLedger({ checkpoints: [placeholder, { step: "red", committed: true, sha: "r1" }, { step: "green", committed: true, sha: "g1" }, refactorCheckpoint("refactor-tests", "x2"), refactorCheckpoint("refactor-code", "x1")] })),
+  featureFails("a refactor commit with no closed-tests run at its parent", /x2.*closed tests/, featureLedger(), FEATURE_LOG, { snapshots: [FEATURE_SNAPSHOTS[0]] }),
+  featureFails("a refactor commit whose closed-tests run failed", /x2.*closed tests/, featureLedger(), FEATURE_LOG, { snapshots: [FEATURE_SNAPSHOTS[0], featureLedger({ tests: { ...featureLedger().tests, refactor: closedRun("x1", [0, 1]) } })] }),
+  featureFails("a refactor commit whose closed-tests run ran nothing", /x2.*closed tests/, featureLedger(), FEATURE_LOG, { snapshots: [FEATURE_SNAPSHOTS[0], featureLedger({ tests: { ...featureLedger().tests, refactor: closedRun("x1", []) } })] }),
+  featureFails("a task the classifier took for a bug fix", /task type/, featureLedger({ taskType: "bug_fix" })),
+  featureFails("no coverage check", /coverage/, featureLedger(), FEATURE_LOG, { agents: FEATURE_AGENTS.slice(0, -1) }),
+  featureFails("a coverage check before the last refactor", /coverage/, featureLedger(), FEATURE_LOG, { agents: [...FEATURE_AGENTS.slice(0, 2), agent(2.5, "verify-test-coverage"), ...FEATURE_AGENTS.slice(2, 4)] }),
+]) {
+  test(`S2 new_feature fails on ${what}`, () => {
+    assert.throws(() => checkFeature(ledger, log, options), (e) => e instanceof SmokeError && pattern.test(e.message));
+  });
+}
+
+test("a refactor-code fix group that touched tests alone may be a test commit", () => {
+  const ledger = featureLedger(onlyCodeFix);
+
+  checkFeature(ledger, [...FEATURE_LOG.slice(0, 3), commit("x1", "test: rename")], { snapshots: [FEATURE_SNAPSHOTS[0], ledger] });
+});
+
+test("bug_fix fails S2 on any refactor commit, since only new_feature refactors", () => {
+  const ledger = goodLedger({ ...onlyCodeFix });
+  const log = [...GOOD_LOG, commit("x1", "refactor: tidy")];
+
+  assert.throws(() => check(ledger, log, { snapshots: [featureLedger({ tests: { ...featureLedger().tests, refactor: closedRun("g1") } }), ledger] }), (e) => e instanceof SmokeError && /refactor/.test(e.message));
+});
+
+test("bug_fix fails S2 with no coverage check after its GREEN", () => {
+  assert.throws(() => check(goodLedger(), GOOD_LOG, { agents: AGENTS.slice(0, 2) }), (e) => e instanceof SmokeError && /coverage/.test(e.message));
+});
 
 function tempDir(t) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "pb-s2-")));
@@ -139,7 +213,31 @@ test("a repo inside the plugin is refused, so the plugin loads from outside the 
 
 test("the task defaults to the scoped sample bug, and a probe can name its own", () => {
   assert.equal(parseOptions([]).task, TASK);
+  assert.equal(parseOptions([]).type, "bug_fix");
   assert.equal(parseOptions(["--task", "other"]).task, "other");
+});
+
+test("--type new_feature takes the scoped sample feature, and an unknown type is refused", () => {
+  assert.deepEqual(parseOptions(["--type", "new_feature"]).task, FEATURE_TASK);
+  assert.equal(parseOptions(["--type", "new_feature"]).type, "new_feature");
+  assert.equal(parseOptions(["--type", "new_feature", "--task", "other"]).task, "other");
+  assert.throws(() => parseOptions(["--type", "refactoring"]), /type/);
+});
+
+test("the new_feature sample has code worth refactoring next to the feature, a test of it, and a selectable runner", (t) => {
+  const repo = makeRepo(tempDir(t), "new_feature");
+
+  const cart = readFileSync(join(repo, "cart.py"), "utf8");
+  assert.match(cart, /def line_total/);
+  assert.doesNotMatch(cart, /order_total/, "the feature is not there yet");
+  assert.match(readFileSync(join(repo, "tests", "test_cart.py"), "utf8"), /line_total/);
+  assert.match(FEATURE_TASK, /order_total/);
+  // A run whose main context read "line totals" as price * quantity wrote that into task.json, and every agent after
+  // it then saw 30.0 as a contradiction. The task names the function and the sum, so no arithmetic is left to guess.
+  assert.match(FEATURE_TASK, /line_total\(price, quantity\)/);
+  assert.match(FEATURE_TASK, /25\.0 plus 5\.0/);
+  const { runners, default_runner: id } = JSON.parse(readFileSync(join(repo, ".pairingbuddy", "test-config.json"), "utf8"));
+  assert.ok(runners[id].selector_template.includes("{test_file}::{test_function}"));
 });
 
 test("the run's cap cannot pass a run's or a session's budget", () => {

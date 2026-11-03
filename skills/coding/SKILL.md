@@ -117,7 +117,7 @@ These functions handle coordination, human interaction, and control flow that do
 _stop_if_run_open()
 
 # Task types that run through workflow stages. Must match the task types in contracts/stages.json.
-MIGRATED_TYPES = ["config_change", "bug_fix"]
+MIGRATED_TYPES = ["config_change", "bug_fix", "new_feature"]
 
 # Plan execution mode: iterate through tasks from a plan MD file
 if _detect_plan_file(task):
@@ -170,10 +170,13 @@ task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refact
 
 # Migrated-types router. Solo stays on the old path until T10.
 if task_type in MIGRATED_TYPES and not _is_solo():
+    # Every type in MIGRATED_TYPES goes here outside Solo, and never the old branches below
     _run_new_path(task)
     _stop("Task complete.")
 
+# Old path: refactoring and spike, plan tasks, and every type under Solo
 if task_type == "new_feature":
+    # Plan tasks and Solo only: the router takes every other new_feature
     # Full TDD workflow with coverage verification loop
     scenarios = enumerate_scenarios_and_test_cases(task, test_config)
     gaps = None  # No gaps on first pass
@@ -208,6 +211,7 @@ if task_type == "new_feature":
         gaps = coverage.gaps  # Pass gaps to next iteration
 
 elif task_type == "bug_fix":
+    # Plan tasks and Solo only: the router takes every other bug_fix
     # Bug fix: add regression test first, then fix
     scenarios = enumerate_scenarios_and_test_cases(task, test_config)  # describes the bug
     tests = create_test_placeholders(scenarios, test_config)
@@ -241,7 +245,7 @@ elif task_type == "refactoring":
         _stop("Refactoring broke tests")
 
 elif task_type == "config_change":
-    # Plan tasks and Solo only: the router takes every other config change
+    # Plan tasks and Solo only: the router takes every other config_change
     # Config change: just make the change and verify tests still pass
     # No agents needed - orchestrator makes the change directly
     pass
@@ -315,7 +319,7 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 1. Check if `.pairingbuddy/test-config.json` exists
 2. If it exists, use it and ask nothing. The human owns that file, and a run that stops here waits for an answer no auto run can give
 3. If missing, infer from: README, CLAUDE.md, plan docs, project structure
-4. Give each test command a `selector_template`: the argument words that select one test, for example `["{test_file}::{test_function}"]` for pytest. Without it `pb run open` refuses a `bug_fix`, because RED and GREEN could not speak for one test
+4. Give each test command a `selector_template`: the argument words that select one test, for example `["{test_file}::{test_function}"]` for pytest. Without it `pb run open` refuses a `bug_fix` or a `new_feature`, because RED and GREEN could not speak for one test
 5. Validate inferred config with human before writing
 6. If unable to infer, ask human directly
 

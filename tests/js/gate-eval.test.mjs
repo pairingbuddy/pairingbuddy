@@ -1181,11 +1181,11 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
     assert.equal(contract.migratedTypes.includes("bug_fix"), true);
   });
 
-  test("new_feature has the same graph as bug_fix, and is not migrated yet", () => {
+  test("new_feature has the same graph as bug_fix, and is migrated", () => {
     const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
 
     assert.deepEqual(contract.taskTypes.new_feature, contract.taskTypes.bug_fix);
-    assert.equal(contract.migratedTypes.includes("new_feature"), false);
+    assert.equal(contract.migratedTypes.includes("new_feature"), true);
   });
 
   test("with no ambiguity the gate auto-passes under auto", () => {

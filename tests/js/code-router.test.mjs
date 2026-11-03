@@ -11,7 +11,7 @@ import { readLedger } from "../../shared-node/ledger.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CONFIG = `${JSON.stringify({ runners: { node: { command: "node --version", test_directory: ".", run_args: [] } }, default_runner: "node" })}\n`;
-const OLD_PATH_TYPES = ["new_feature", "refactoring", "spike"];
+const OLD_PATH_TYPES = ["refactoring", "spike"];
 
 function git(cwd, ...args) {
   const r = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -200,7 +200,7 @@ test("the skill's migrated types are the contract's, and each has a stage graph"
   const listed = JSON.parse(/^MIGRATED_TYPES = (\[.*\])$/m.exec(pseudocode())[1]);
   const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
 
-  assert.deepEqual(listed, ["config_change", "bug_fix"]);
+  assert.deepEqual(listed, ["config_change", "bug_fix", "new_feature"]);
   assert.deepEqual(listed, contract.migratedTypes);
   assert.ok(listed.every((type) => Object.hasOwn(contract.taskTypes, type)));
 });
@@ -212,15 +212,24 @@ function configure(root, runners) {
   writeFileSync(join(root, ".pairingbuddy", "test-config.json"), JSON.stringify({ runners, default_runner: Object.keys(runners)[0] }));
 }
 
-test("bug_fix opens a run on its own graph once its runner can select one test", (t) => {
+for (const type of ["bug_fix", "new_feature"]) {
+  test(`${type} opens a run on its own graph once its runner can select one test`, (t) => {
+    const root = makeRepo(t);
+    configure(root, { node: runner(SELECTABLE) });
+    classifyAs(root, type);
+
+    assert.equal(pb(root, OPEN).status, 0);
+
+    assert.equal(ledgerOf(root).taskType, type);
+    assert.deepEqual(JSON.parse(pb(root, ["status"]).stdout).next, { stage: "code-scenarios", attempt: 1 });
+  });
+}
+
+test("new_feature with a runner that has no selector_template is refused at open, as bug_fix is", (t) => {
   const root = makeRepo(t);
-  configure(root, { node: runner(SELECTABLE) });
-  classifyAs(root, "bug_fix");
+  classifyAs(root, "new_feature");
 
-  assert.equal(pb(root, OPEN).status, 0);
-
-  assert.equal(ledgerOf(root).taskType, "bug_fix");
-  assert.deepEqual(JSON.parse(pb(root, ["status"]).stdout).next, { stage: "code-scenarios", attempt: 1 });
+  assertRefusedWithNoRunState(root, pb(root, OPEN), /runner node has no selector_template/);
 });
 
 test("bug_fix with a runner that has no selector_template is refused at open, and the refusal names the fix", (t) => {
@@ -285,6 +294,25 @@ test("the router runs after the plan loop has left, after classification, and be
   assert.ok(planEnd !== -1 && planEnd < classified, "plan tasks never reach the router");
   assert.ok(classified < router, "the router reads the classification");
   assert.ok(router < oldBranches, "a migrated type never falls into the old branches");
+});
+
+// Live S2 runs classified new_feature and then followed the old new_feature branch, the first one past the router, with
+// no run opened. Each migrated type's old branch says, as its first line, that only plan tasks and Solo reach it.
+test("the old branch of every migrated type says only plan tasks and Solo reach it", () => {
+  const code = pseudocode();
+  const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
+
+  for (const type of contract.migratedTypes) {
+    const branch = new RegExp(`^(?:el)?if task_type == "${type}":\\n(.*)$`, "m").exec(code);
+    assert.ok(branch, `${type} has an old branch`);
+    assert.match(branch[1], new RegExp(`^ {4}# Plan tasks and Solo only: the router takes every other ${type}$`), type);
+  }
+});
+
+test("the router names the migrated types it takes away from the old branches", () => {
+  const router = /if task_type in MIGRATED_TYPES and not _is_solo\(\):\n([\s\S]*?)\n\n/.exec(pseudocode())[1];
+
+  assert.match(router, /never the old branches below/);
 });
 
 // The just-completed task is in task.json until cleanup, and classification applies all of human-guidance.json.
