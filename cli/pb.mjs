@@ -4,22 +4,26 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
-import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, headOf, isCheckpointCall, isKey, isOnHead, isProtectedBranch, planCommit, remainingFiles } from "../shared-node/checkpoint.mjs";
+import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, headOf, isCheckpointCall, isKey, isOnHead, isProtectedBranch, planCommit, remainingFiles, testsOfStep } from "../shared-node/checkpoint.mjs";
 import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { PlanRefused, tickPlanBox } from "../shared-node/plan-boxes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
-import { buildReport, closeStage, finishProblems, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
+import { buildReport, closeStage, finishProblems, newestReturn, perTestOf, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, nextAttempt, nextStage } from "../shared-node/stages.mjs";
-import { TestRunRefused, fullSuitePlans, readTestConfig, runPlan, runRecord, selectedPlans, validatedConfigHash } from "../shared-node/test-run.mjs";
-import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
+import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
+import { STAGE_STOP_REASONS, VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
 
 const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
+
+const SCENARIOS_ROLE = "enumerate-scenarios-and-test-cases";
+const TESTS_ROLE = "create-test-placeholders";
 
 class UsageError extends Error {}
 class Refusal extends Error {}
@@ -171,7 +175,7 @@ function gateEval(args) {
     const due = dueGate(gatesFor(contract, ledger.taskType), ledger);
     if (due === undefined) throw new Refusal(noGateDue(ledger));
     gate = due.name;
-    reason = askReason(ledger, due, root);
+    reason = askReason(contract, ledger, due, root);
     return reason === null ? recordAuto(ledger, gate) : { ...ledger, needsHuman: { gate, reason, seq: ledger.seq + 1 } };
   });
   if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto" };
@@ -255,8 +259,8 @@ function isFullRun(args) {
 
 function testPlans(full, config, root, stage) {
   if (full) return { key: "full", plans: fullSuitePlans(config), selection: {} };
-  const { plans, testIds } = selectedPlans(config, join(root, ".pairingbuddy", "run", "task", "artifacts"), stage);
-  return { key: "selected", plans, selection: { tests: testIds } };
+  const { plans, testIds, attribution } = selectedPlans(config, join(root, ".pairingbuddy", "run", "task", "artifacts"), stage);
+  return { key: "selected", plans, selection: { tests: testIds, attribution } };
 }
 
 // Takes no selector: a model must not choose what RED is recorded for. A run that happened exits 0 whatever the
@@ -317,13 +321,13 @@ function withCheckpoint(ledger, record) {
 
 // Checked under the lock, since the attempt can end at any moment up to here. A commit exists whatever became of its
 // attempt, so the ledger lists it, and only a current key makes it evidence.
-function recordCheckpoint(path, record) {
+function recordCheckpoint(path, record, withEvidence = (ledger) => ledger) {
   let orphaned = null;
   updateLedger(path, (ledger) => {
     const listed = record.committed ? { ...ledger, commits: [...ledger.commits, record.sha] } : ledger;
     try {
       assertCurrentKey(record.step, record.key, ledger);
-      return withCheckpoint(listed, record);
+      return withEvidence(withCheckpoint(listed, record));
     } catch (e) {
       if (!(e instanceof CheckpointRefused)) throw e;
       orphaned = e;
@@ -333,8 +337,123 @@ function recordCheckpoint(path, record) {
   if (orphaned !== null) throw new Refusal(`${record.committed ? `commit ${record.sha} landed, and it is no evidence: ` : ""}${orphaned.message}`);
 }
 
-// Every check that costs no test run comes first, and a step with no change runs none. The tests run code in the repo,
-// and the attempt can end while they do, so what they could change is looked at again before the commit.
+function planFor({ step, key, root, path, ledger }, scope = null) {
+  const alreadyCommitted = (ledger.checkpoints ?? []).some((record) => record.key === key && record.committed);
+  return orStop(path, { step, key }, () => planCommit(root, artifactsDirOf(root), step, key, { alreadyCommitted, taskType: ledger.taskType, scope }));
+}
+
+function noChange({ step, key, path }, withEvidence) {
+  recordCheckpoint(path, { step, key, committed: false, sha: null }, withEvidence);
+  return { ok: true, step, key, committed: false };
+}
+
+// The attempt can end while the tests run, so that is looked at again here.
+function commitPlan({ step, key, root, path, branch }, plan, head, evidenceFor) {
+  assertCommitAllowed(step, key, readLedger(path));
+  const { sha, hookRetried } = orStop(path, { step, key }, () => commitPaths(root, { ...plan, branch, head }));
+  recordCheckpoint(path, { step, key, committed: true, sha }, evidenceFor?.(sha));
+  return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
+}
+
+// A step with no change runs no test. The tests run code in the repo, so what they could change is looked at again
+// before the commit.
+async function suiteCheckpoint(context) {
+  const plan = planFor(context);
+  if (plan === null) return noChange(context);
+  const head = headOf(context.root);
+  await requirePassingTests(context.root, context.path, context.ledger);
+  return commitPlan(context, plan, head);
+}
+
+const SELECTOR_FIELDS = ["runner_id", "test_file", "test_function"];
+const selectorOf = (row) => Object.fromEntries(SELECTOR_FIELDS.map((field) => [field, row[field]]));
+
+// A row a step finished on is how a re-run knows what is done, so it cannot move, or a finished test would start again.
+// A row with only failed runs may: a wrong name is the likeliest reason it failed.
+function assertRowsKept(rows, { tests: { perTest = {} } }) {
+  for (const [id, { selector, red, green }] of Object.entries(perTest)) {
+    if (!red?.done && !green?.done) continue;
+    const row = rows.find(({ test_id: rowId }) => rowId === id);
+    if (row === undefined) throw new Refusal(`test ${id} has evidence, and the tests artifact dropped it`);
+    if (!isDeepStrictEqual(selectorOf(row), selector)) throw new Refusal(`test ${id} has evidence for ${JSON.stringify(selector)}, and the tests artifact changed it`);
+  }
+}
+
+// Costs nothing yet, and a test written for a runner that cannot select it could never pass RED. Only a human can fix
+// that file, so it stops here and not at the first RED.
+function assertSelectable(config, rows) {
+  const row = rows.find((candidate) => !hasSelector(config, candidate));
+  if (row !== undefined) throw new CheckpointStopped(`runner ${row.runner_id} has no selector_template in test-config.json, so RED cannot speak for one test. Tell the human, who owns that file. pb stage fail clears this`);
+}
+
+function checkedRows({ step, key, root, path, ledger }) {
+  const config = readTestConfig(root, ledger.configHash);
+  const rows = testRows(config, artifactsDirOf(root), ledger.stage);
+  assertRowsKept(rows, ledger);
+  orStop(path, { step, key }, () => assertSelectable(config, rows));
+  return { testDirectories: [...new Set(rows.map((row) => testDirectoryOf(config, row)))] };
+}
+
+function placeholdersCheckpoint(context) {
+  const plan = planFor(context, checkedRows(context));
+  return plan === null ? noChange(context) : commitPlan(context, plan, headOf(context.root));
+}
+
+function assertCycleOrder(step, id, { red, green }) {
+  if (step === "red" && green?.done) throw new Refusal(`test ${id} is finished: its GREEN is done`);
+  if (step === "green" && !red?.done) throw new Refusal(`test ${id} has no RED, so GREEN cannot stand on it`);
+}
+
+function selectedRow({ root, ledger }, config, id) {
+  const row = testRows(config, artifactsDirOf(root), ledger.stage).find(({ test_id: rowId }) => rowId === id);
+  if (row === undefined) throw new Refusal(`test ${id} is not in the tests artifact, so there is nothing to select`);
+  return row;
+}
+
+const withPerTest = (ledger, id, entry) => {
+  const { [id]: _replaced, ...others } = ledger.tests.perTest ?? {};
+  return { ...ledger, tests: { ...ledger.tests, perTest: { ...others, [id]: entry } } };
+};
+
+// A failed run is evidence, so it lands before the refusal. A repeat keeps what an earlier run of this step proved.
+function recordCycleRun({ step, key, path }, row, record) {
+  const id = row.test_id;
+  updateLedger(path, (ledger) => {
+    assertCurrentKey(step, key, ledger);
+    const entry = perTestOf(ledger, id);
+    const earlier = entry[step];
+    return withPerTest(ledger, id, { ...entry, selector: selectorOf(row), [step]: { stage: ledger.stage.name, attempt: ledger.stage.attempt, done: earlier?.done ?? false, sha: earlier?.sha ?? null, ...record } });
+  });
+}
+
+const withCycleDone = (step, id, sha) => (ledger) => {
+  const entry = perTestOf(ledger, id);
+  return withPerTest(ledger, id, { ...entry, [step]: { ...entry[step], done: true, sha: sha ?? entry[step].sha } });
+};
+
+const stepNotMet = (step, id, { exitCode, excerpt }) => `test ${id} is not ${step.toUpperCase()}: exit ${exitCode}, so nothing was committed. ${excerpt.slice(-300)}`;
+
+// The run decides, and the key decides what runs. Nothing a caller says reaches the selection.
+async function cycleCheckpoint(context) {
+  const { step, key, root, ledger } = context;
+  const id = parseKey(key).item;
+  const config = readTestConfig(root, ledger.configHash);
+  const row = selectedRow(context, config, id);
+  assertCycleOrder(step, id, perTestOf(ledger, id));
+  const test = testPlan(config, row);
+  const plan = planFor(context, { testDirectories: [testDirectoryOf(config, row)], testFile: row.test_file });
+  const head = headOf(root);
+  const run = await runPlan(test, root);
+  const passed = meetsStep(step, test, run);
+  recordCycleRun(context, row, { ...cycleRun(run, passed), head });
+  if (!passed) throw new Refusal(stepNotMet(step, id, run));
+  if (plan === null) return noChange(context, withCycleDone(step, id));
+  return commitPlan(context, plan, head, (sha) => withCycleDone(step, id, sha));
+}
+
+const CHECKPOINT_FLOWS = { full: suiteCheckpoint, none: placeholdersCheckpoint, selected: cycleCheckpoint };
+
+// Every check that costs no test run comes first.
 async function checkpoint(args) {
   const { step, key } = parseCheckpoint(args);
   const { root, path } = runLedgerPath();
@@ -342,18 +461,7 @@ async function checkpoint(args) {
   assertCommitAllowed(step, key, ledger);
   const branch = currentBranch(root);
   if (isProtectedBranch(branch)) throw new Refusal(`refusing to commit on protected branch ${branch}`);
-  const alreadyCommitted = (ledger.checkpoints ?? []).some((record) => record.key === key && record.committed);
-  const plan = orStop(path, { step, key }, () => planCommit(root, join(root, ".pairingbuddy", "run", "task", "artifacts"), step, key, alreadyCommitted));
-  if (plan === null) {
-    recordCheckpoint(path, { step, key, committed: false, sha: null });
-    return { ok: true, step, key, committed: false };
-  }
-  const head = headOf(root);
-  await requirePassingTests(root, path, ledger);
-  assertCommitAllowed(step, key, readLedger(path));
-  const { sha, hookRetried } = orStop(path, { step, key }, () => commitPaths(root, { ...plan, branch, head }));
-  recordCheckpoint(path, { step, key, committed: true, sha });
-  return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
+  return CHECKPOINT_FLOWS[testsOfStep(step)]({ step, key, root, path, ledger, branch });
 }
 
 function assertNoArgs(args, verb) {
@@ -378,7 +486,7 @@ function stageFinish(args) {
     assertStageActive(ledger, "finish");
     if (ledger.stop !== null) throw new Refusal(`the run has stopped: ${ledger.stop.reason}`);
     const { name, attempt } = ledger.stage;
-    const problems = finishProblems(contract, ledger, artifactsDir, head);
+    const problems = finishProblems(contract, ledger, artifactsDir, head, () => readTestConfig(root, ledger.configHash));
     if (problems.length > 0) {
       missing = `stage ${name} cannot finish at attempt ${attempt}: ${problems.join("; ")}`;
       return { ...ledger, stop: { reason: missing, seq: ledger.seq + 1 } };
@@ -390,6 +498,36 @@ function stageFinish(args) {
   });
   if (missing !== null) throw new Refusal(`${missing}. The run stopped: pb stage fail clears it`);
   return { ok: true, ...finished, report: reportPathOf(root) };
+}
+
+// A stage's script stops a run this way, because it has no shell of its own. The first stop stands: it says why.
+function stageStop(args) {
+  if (args.length !== 1 || !Object.hasOwn(STAGE_STOP_REASONS, args[0])) throw new UsageError(`usage: pb stage stop ${Object.keys(STAGE_STOP_REASONS).join("|")}`);
+  const reason = STAGE_STOP_REASONS[args[0]];
+  let stop;
+  updateLedger(runLedgerPath().path, (ledger) => {
+    assertStageActive(ledger, "stop");
+    stop = ledger.stop ?? { reason, seq: ledger.seq + 1 };
+    return { ...ledger, stop };
+  });
+  return { ok: true, stop };
+}
+
+const artifactPath = (pbKey) => (pbKey === null ? null : `.pairingbuddy/run/task/artifacts/${pbKey}.json`);
+
+const doneAt = ({ perTest = {} }, step) => Object.keys(perTest).filter((id) => perTest[id][step]?.done);
+
+// What the tdd stage cannot see for itself: its inputs, and how far tests{} got. A wrong relay of this costs a refusal
+// or a stop, since RED, GREEN and stage finish each read the ledger again.
+function tddState(args) {
+  if (args.length > 0) throw new UsageError("usage: pb tdd state");
+  const { root, path } = runLedgerPath();
+  const ledger = readLedger(path);
+  assertStageActive(ledger, "report on");
+  const artifactsDir = artifactsDirOf(root);
+  const scenarios = newestReturn(artifactsDir, SCENARIOS_ROLE, ({ stage, attempt }) => !isVoidedAttempt(ledger, stage, attempt));
+  if (scenarios === null) throw new Refusal("no scenarios return stands, so there is nothing to write tests from");
+  return { ok: true, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green") };
 }
 
 // A human's stop is the human's to lift. Only a stop the run itself raised clears here.
@@ -514,7 +652,7 @@ function taskEnd(args) {
 
 export const VERBS = {
   "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept, test: runTests, checkpoint,
-  "stage finish": stageFinish, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd,
+  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd,
 };
 
 async function runVerb(name, args) {

@@ -26,7 +26,7 @@ Create test files with placeholder tests from scenarios and test cases.
 
 The one input rule decides what you read and write:
 
-- With a `<paths>` block in the prompt: read only what the paths name, and return your Output as StructuredOutput. `scenarios` is the scenarios artifact, whose `scenarios` list has the shape below. `test_config` is the test config. `human_guidance` is the human guidance, which may be missing. `tests` and `coverage_report` are optional: `tests` holds the rows already made, and `coverage_report` limits the work to its gaps. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
+- With a `<paths>` block in the prompt: read only what the paths name, and return your Output as StructuredOutput. `scenarios` is the scenarios artifact, whose `scenarios` list has the shape below. `test_config` is the test config. `human_guidance` is the human guidance, which may be missing. `tests` and `coverage_report` are optional: `tests` holds the rows already made, so keep each row in `tests` exactly as it is, and `coverage_report` limits the work to its gaps. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
 - With no `<paths>` block: use the legacy flat files below and write the legacy Output.
 
 Reads from `.pairingbuddy/scenarios.json`:
@@ -61,6 +61,7 @@ Also reads `.pairingbuddy/test-config.json`:
       "file_pattern": "string (glob pattern for test files)",
       "run_args": ["array of strings appended after test path"],
       "failure_exit_codes": ["optional array of integers (exit codes that count as RED, default [1])"],
+      "selector_template": ["optional array of strings (argument words that select one test, naming {test_function} and optionally {test_file})"],
       "timeout_seconds": "optional number (pb test kills the process group after this long, default 540)"
     }
   },
@@ -193,7 +194,7 @@ Should I proceed with this approach?"
 
 ### Step 4: Output
 
-With a `<paths>` block: create the placeholders as below, skip the JSON file steps, and return your Output as StructuredOutput. Each row is the selector the CLI runs, so give each test its own row: `test_id` is lowercase letters, digits, `-` or `_`, `runner_id` is a runner in the test config, `test_file` is a repo-relative path and nothing else, and `test_function` is the name as the file declares it and nothing else. Never join them into a `file::name` string, and add no flags. `tests` lists every test of the task, the rows in the `tests` path included, because the CLI reads this one return. `files_changed` lists the test files you changed.
+With a `<paths>` block: create the placeholders as below, skip the JSON file steps, and return your Output as StructuredOutput. Each row is the selector the CLI runs, so give each test its own row: `test_id` is lowercase letters, digits, `-` or `_`, `runner_id` is a runner in the test config, `test_file` is a repo-relative path and nothing else, and `test_function` is the name as the file declares it and nothing else, or `Class::test_name` for a test nested in a class. Never join `test_file` and `test_function` into a `file::name` string, and add no flags. `tests` lists every test of the task, the rows in the `tests` path included, because the CLI reads this one return. `files_changed` lists the test files you changed.
 
 **MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
 
@@ -256,7 +257,7 @@ With a `<paths>` block, return the result as your StructuredOutput with exactly 
       "scenario_id": "string (back-reference to scenario)",
       "runner_id": "string (which runner from test-config)",
       "test_file": "string (repo-relative path to test file, nothing else)",
-      "test_function": "string (test name as the file declares it, nothing else)"
+      "test_function": "string (test name as the file declares it, or Class::test_name for a test nested in a class, nothing else)"
     }
   ]
 }

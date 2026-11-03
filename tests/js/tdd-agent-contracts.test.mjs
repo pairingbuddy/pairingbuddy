@@ -118,8 +118,21 @@ test("a test_file is a repo-relative file name and cannot read as an option", ()
 test("a test_function is one name, never a flag or a file::name selector", () => {
   const pattern = fieldPattern("test_function");
 
-  for (const name of ["test_login", "a redo clears the gate record"]) assert.match(name, pattern);
+  for (const name of ["test_login", "a redo clears the gate record", "test_x[1-a]"]) assert.match(name, pattern);
   for (const name of ["-k", "@args", "", "tests/a.py::test_x", "a\nb"]) assert.doesNotMatch(name, pattern);
+});
+
+test("a test_function may be a class path, and :: means nothing else", () => {
+  const pattern = fieldPattern("test_function");
+
+  for (const name of ["TestLogin::test_valid", "TestOuter::TestInner::test_valid"]) assert.match(name, pattern);
+  for (const name of ["::test_valid", "TestLogin::", "Test Login::test_valid", "TestLogin:::test_valid", "TestLogin::test valid", "a.b::test_valid", "TestLogin::-x", "TestLogin::test_a\nb"]) assert.doesNotMatch(name, pattern);
+});
+
+test("the CLI holds the same selector rules as the schema, since a model's return may have skipped it", () => {
+  const source = read("shared-node/test-run.mjs");
+
+  for (const field of ["test_file", "test_function"]) assert.ok(source.includes(`/${ROW().properties[field].pattern}/`), `${field} matches the schema pattern`);
 });
 
 test("the agent is told the selector rule", () => {
@@ -127,4 +140,20 @@ test("the agent is told the selector rule", () => {
 
   assert.match(text, /Each row is the selector/);
   assert.match(text, /every test of the task/);
+  assert.match(text, /`Class::test_name`/);
+});
+
+test("the test config names the selector template, in the schema and in every agent that shows it", () => {
+  const { selector_template: template } = schemaOf("test-config.schema.json").properties.runners.additionalProperties.properties;
+
+  assert.equal(template.type, "array");
+  assert.equal(template.minItems, 1);
+  for (const name of ["create-test-placeholders", "implement-tests", "implement-code"]) assert.match(read(`agents/${name}.md`), /"selector_template"/);
+});
+
+test("an agent is told the optional tests path may be missing, and to keep its rows", () => {
+  const text = read("agents/create-test-placeholders.md");
+
+  assert.match(text, /`tests` and `coverage_report` are optional/);
+  assert.match(text, /keep each row in `tests` exactly as it is/);
 });

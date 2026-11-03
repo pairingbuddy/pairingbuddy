@@ -11,10 +11,11 @@ export const START_LEASE_SECONDS = 120;
 
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
-const EVIDENCE_TESTS = ["full", "selected"];
+const EVIDENCE_TESTS = ["full", "selected", "cycle"];
 const EVIDENCE_ROLE = /^[a-z0-9_-]{1,64}$/;
 
-// artifact:<role>, checkpoint:<step> or tests:<run>. Each is checked by stage finish, at the attempt it finishes.
+// artifact:<role>, checkpoint:<step> or tests:<run>. Each is checked by stage finish, at the attempt it finishes, except
+// tests:cycle: per-test evidence outlives the attempt that made it, because a re-run continues from it.
 function isEvidence(entry) {
   if (typeof entry !== "string") return false;
   const [kind, name, ...rest] = entry.split(":");
@@ -51,6 +52,10 @@ function nodeProblems(taskType, graph, classes) {
 
 const isNameList = (list) => Array.isArray(list) && list.every((name) => typeof name === "string" && name !== "");
 
+// A stage's own cap sits under the whole-workflow cap.
+const stageCapProblems = ({ stageMaxAgents = {}, maxAgents }) =>
+  Object.entries(stageMaxAgents).filter(([, cap]) => !(Number.isInteger(cap) && cap > 0 && cap <= maxAgents)).map(([stage]) => `stageMaxAgents for ${stage} must be a positive integer up to maxAgents`);
+
 export function validateStages(contract) {
   if (!isObject(contract) || !isObject(contract.taskTypes) || !isObject(contract.gateClasses)) {
     return ["the contract needs taskTypes and gateClasses objects"];
@@ -60,7 +65,7 @@ export function validateStages(contract) {
   if (!isNameList(contract.migratedTypes)) problems.push("migratedTypes must be a list of task types");
   else for (const type of contract.migratedTypes.filter((name) => !Object.hasOwn(contract.taskTypes, name))) problems.push(`migrated type ${type} has no stage graph`);
   if (!isNameList(contract.newPathAgents)) problems.push("newPathAgents must be a list of agent names");
-  return problems;
+  return [...problems, ...stageCapProblems(contract)];
 }
 
 export function loadStages(pluginRoot) {
@@ -87,6 +92,8 @@ export function evidenceFor(contract, taskType, stage) {
   if (node === undefined) throw new Error(`stage ${stage} is not in the ${name} graph`);
   return node.evidence;
 }
+
+export const maxAgentsOf = ({ maxAgents, stageMaxAgents = {} }, stage) => (Object.hasOwn(stageMaxAgents, stage) ? stageMaxAgents[stage] : maxAgents);
 
 export const isStageActive = (ledger) => ledger.stage.status === "active";
 

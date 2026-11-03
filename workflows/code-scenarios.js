@@ -26,12 +26,13 @@ const taskBlock = () => ['<task>', JSON.stringify(args.task).replace(/</g, '\\u0
 
 const pbCommand = (words) => `node ${shellWord(`${args.pluginRoot}/cli/pb.mjs`)} ${words}`;
 
-// The stage's last step. The CLI commits and proves the evidence, so the runner only runs the words it is given.
-async function runCommands(stage, commands) {
+// The CLI commits and proves the evidence, so the runner only runs the words it is given. A stage that runs it more than
+// once gives each run its own round, since a key is one return. spawn counts it, for a stage that keeps a count.
+async function runCommands(stage, commands, { tddPhase = null, item = null, round = 1, spawn = agent } = {}) {
   phase('runner');
   const role = 'runner';
-  const pbKey = buildKey({ stage, role, item: null, round: 1, attempt: args.attempt });
-  const label = buildLabel({ stage, phase: null, role, item: null, round: 1 });
+  const pbKey = buildKey({ stage, role, item, round, attempt: args.attempt });
+  const label = buildLabel({ stage, phase: tddPhase, role, item, round });
   const prompt = [
     'Run the commands below, in order, exactly as written.',
     `Return pb_key exactly as: ${pbKey}`,
@@ -40,7 +41,7 @@ async function runCommands(stage, commands) {
     ...commands.map(pbCommand),
     '</commands>',
   ].join('\n');
-  const result = await agent(prompt, { agentType: 'pairingbuddy:runner', label, schema: pinnedKey(RUNNER_SCHEMA, pbKey) });
+  const result = await spawn(prompt, { agentType: 'pairingbuddy:runner', label, schema: pinnedKey(RUNNER_SCHEMA, pbKey) });
   return { pbKey, label, result };
 }
 

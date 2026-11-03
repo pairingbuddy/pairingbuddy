@@ -71,7 +71,7 @@
           "test_function": {
             "type": "string",
             "description": "The test's name as its file declares it, and nothing else",
-            "pattern": "^(?![-@])(?!.*::)[^\\r\\n]+$"
+            "pattern": "^(?![-@])(?:(?!.*::)[^\\r\\n]+|[A-Za-z_]\\w*(?:::[A-Za-z_]\\w*)+)$"
           }
         },
         "additionalProperties": false

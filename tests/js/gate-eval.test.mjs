@@ -1171,8 +1171,14 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
   test("the graph is the stage and its gate, as a continue gate", () => {
     const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
 
-    assert.deepEqual(contract.taskTypes.bug_fix.nodes, [{ name: SCENARIOS, gate: G_SCENARIOS, evidence: [`artifact:${AGENT}`] }]);
-    assert.deepEqual(contract.taskTypes.bug_fix.gates, { [G_SCENARIOS]: { class: "continue" } });
+    assert.deepEqual(contract.taskTypes.bug_fix.nodes, [
+      { name: SCENARIOS, gate: G_SCENARIOS, evidence: [`artifact:${AGENT}`] },
+      { name: "code-tdd", gate: null, evidence: ["artifact:create-test-placeholders", "checkpoint:placeholders", "tests:cycle"] },
+      { name: SAFETY_NET, gate: TASK_END, evidence: ["artifact:update-documentation", "checkpoint:docs", "tests:full"] },
+    ]);
+    assert.deepEqual(contract.taskTypes.bug_fix.gates, { [G_SCENARIOS]: { class: "continue" }, [TASK_END]: { class: "continue" } });
+    assert.equal(contract.stageMaxAgents["code-tdd"], 600);
+    assert.equal(contract.migratedTypes.includes("bug_fix"), false, "Task 46 flips it");
   });
 
   test("with no ambiguity the gate auto-passes under auto", () => {
@@ -1292,5 +1298,81 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
     updateLedger(repo.ledgerPath, (ledger) => ({ ...ledger, stage: { ...ledger.stage, status: "done" }, stages: [{ name: SCENARIOS, status: "done", attempt: 2 }] }));
 
     assertAutoPassed(repo, gateEval(repo, "auto"), G_SCENARIOS);
+  });
+
+  // ---------- an ambiguity a human already approved ----------
+
+  const TDD = "code-tdd";
+  const tddKey = (test, attempt = 1) => `${TDD}.implement-code.${test}.r1.a${attempt}`;
+  const writeTdd = (repo, ambiguity, test = "t1", attempt = 1) => writeFileSync(join(repo.taskDir, "artifacts", `${tddKey(test, attempt)}.json`), JSON.stringify({ pb_key: tddKey(test, attempt), ambiguity, commit_subject: "x", files_changed: [] }));
+
+  // G:scenarios answered as `gates` says, every stage done, and G:task-end due.
+  function atTaskEnd({ gates, ambiguity = "Which path?" }) {
+    const repo = makeRepo({
+      ledger: {
+        taskType: "bug_fix", policy: { mode: "auto", source: "permission_mode" }, gates,
+        stage: { name: SAFETY_NET, status: "done", runId: "wf_1", attempt: 1, startedAt: null },
+        stages: [{ name: SCENARIOS, status: "done", attempt: 1 }, { name: TDD, status: "done", attempt: 1 }, { name: SAFETY_NET, status: "done", attempt: 1 }],
+      },
+    });
+    writeScenarios(repo, 1, ambiguity);
+    return repo;
+  }
+
+  for (const [source, record] of [["the dialog", { source: "human", answer: "approve" }], ["the human's command", { source: "human-cli", answer: "approve" }]]) {
+    test(`an ambiguity approved through ${source} does not ask again at a later gate`, () => {
+      const repo = atTaskEnd({ gates: { [G_SCENARIOS]: record } });
+
+      assertAutoPassed(repo, gateEval(repo, "auto"), TASK_END);
+    });
+  }
+
+  test("through the real tap: approved at G:scenarios, then G:task-end passes", () => {
+    const { repo, asked } = askedAtScenarios({ ambiguity: "Which path?" });
+    runTap(repo, recordedAnswer(repo, asked.question, "approve"));
+    updateLedger(repo.ledgerPath, (ledger) => ({
+      ...ledger,
+      stage: { name: SAFETY_NET, status: "done", runId: "wf_1", attempt: 1, startedAt: null },
+      stages: [...ledger.stages, { name: TDD, status: "done", attempt: 1 }, { name: SAFETY_NET, status: "done", attempt: 1 }],
+    }));
+
+    assertAutoPassed(repo, gateEval(repo, "auto"), TASK_END);
+  });
+
+  test("an auto pass settles nothing, so an ambiguity it never saw still asks", () => {
+    const repo = atTaskEnd({ gates: { [G_SCENARIOS]: { source: "auto" } } });
+
+    assert.match(gateEval(repo, "auto").reason, /ambiguity/);
+  });
+
+  test("a new ambiguity from a stage after the approved gate still asks", () => {
+    const repo = atTaskEnd({ gates: { [G_SCENARIOS]: { source: "human", answer: "approve" } } });
+    writeTdd(repo, "Could not satisfy t1");
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, TASK_END);
+    assert.match(asked.reason, new RegExp(tddKey("t1").replaceAll(".", "\\.")));
+    assert.doesNotMatch(asked.reason, /enumerate-scenarios/, "what was approved is not asked about again");
+  });
+
+  test("a gate names every open ambiguity, because approving it settles them all", () => {
+    const repo = atTaskEnd({ gates: { [G_SCENARIOS]: { source: "human", answer: "approve" } } });
+    writeTdd(repo, "One", "t1");
+    writeTdd(repo, "Two", "t2");
+
+    const { reason } = gateEval(repo, "auto");
+
+    assert.match(reason, /\.t1\./);
+    assert.match(reason, /\.t2\./);
+  });
+
+  test("a redo's new attempt carries a new ambiguity, and that one asks at its own gate", () => {
+    const { repo, asked } = askedAtScenarios({ ambiguity: "Which path?" });
+    redo(repo, asked);
+    updateLedger(repo.ledgerPath, (ledger) => ({ ...ledger, stage: { ...ledger.stage, status: "done", attempt: 2 }, stages: [{ name: SCENARIOS, status: "done", attempt: 2 }] }));
+    writeScenarios(repo, 2, "A new question");
+
+    assert.match(gateEval(repo, "auto").reason, /a2/);
   });
 });

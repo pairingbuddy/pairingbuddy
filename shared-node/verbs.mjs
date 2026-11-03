@@ -7,9 +7,15 @@ import { shellWord } from "./shell-word.mjs";
 const CLI_PATH = fileURLToPath(new URL("../cli/pb.mjs", import.meta.url));
 
 export const VERB_CLASSES = {
-  runner: ["test", "checkpoint", "stage finish", "snapshot", "artifact check"],
+  runner: ["test", "checkpoint", "stage finish", "stage stop", "tdd state", "snapshot", "artifact check"],
   main: ["unit open", "run open", "stage report", "stage fail", "gate eval", "task end", "plan next", "publish", "status", "git doctor"],
   human: ["human approve", "human abandon", "human accept"],
+};
+
+// Why a stage's own script may stop the run. A script has no shell, so this is how a stop reaches the ledger.
+export const STAGE_STOP_REASONS = {
+  "agent-budget": "agent-budget: the stage spawned its maxAgents, and a re-run continues from tests{}",
+  "step-failed": "step-failed: a step of the stage failed past its retries, and a re-run continues from tests{}",
 };
 
 const ALL_VERBS = Object.values(VERB_CLASSES).flat();

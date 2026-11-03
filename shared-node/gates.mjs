@@ -95,15 +95,33 @@ function isVoidedReturn(file, ledger) {
   return key !== null && isVoidedAttempt(ledger, key.stage, key.attempt);
 }
 
-function ambiguityStop(dir, ledger) {
+const isHumanApproved = (ledger, gate) => {
+  const record = Object.hasOwn(ledger.gates, gate) ? ledger.gates[gate] : undefined;
+  return HUMAN_SOURCES.includes(record?.source) && record.answer === "approve";
+};
+
+// A human who approved a gate has seen what its stage and every stage before it left open. A redo removes the gate's
+// record, so a record always speaks for the attempt that stands, and a stage after it has not been seen by anyone.
+function settledStages(contract, ledger) {
+  const { nodes } = contract.taskTypes[graphFor(contract, ledger.taskType).taskType];
+  const last = nodes.findLastIndex(({ gate }) => gate !== null && isHumanApproved(ledger, gate));
+  return new Set(nodes.slice(0, last + 1).map(({ name }) => name));
+}
+
+const isSettled = (file, settled) => settled.has(returnFileKey(file)?.stage);
+
+// It names every open return, because approving this gate settles them all.
+function ambiguityStop(dir, ledger, settled) {
   if (!existsSync(dir)) return null;
+  const open = [];
   for (const file of readdirSync(dir).filter((name) => name.endsWith(".json") && !name.startsWith(".") && !isVoidedReturn(name, ledger)).sort()) {
     const artifact = parsedOrNull(join(dir, file));
     if (artifact === null) return `the return ${file} cannot be read`;
     const { ambiguity = null } = artifact;
-    if (ambiguity !== null && ambiguity !== "") return `the return ${file} carries an open ambiguity`;
+    if (ambiguity !== null && ambiguity !== "" && !isSettled(file, settled)) open.push(file);
   }
-  return null;
+  if (open.length === 0) return null;
+  return open.length === 1 ? `the return ${open[0]} carries an open ambiguity` : `these returns carry an open ambiguity: ${open.join(", ")}`;
 }
 
 function retriesStop({ retries }) {
@@ -116,10 +134,10 @@ function configStop({ configHash }, root) {
   return existsSync(path) && fileHash(path) === configHash ? null : "the config hash changed during the run";
 }
 
-function stopReason(ledger, root) {
+function stopReason(contract, ledger, root) {
   const taskDir = join(root, ".pairingbuddy", "run", "task");
   if (ledger.stop !== null) return `the run stopped: ${ledger.stop.reason}`;
-  return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(join(taskDir, "artifacts"), ledger) ?? reportStop(join(taskDir, "report.json"), ledger);
+  return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(join(taskDir, "artifacts"), ledger, settledStages(contract, ledger)) ?? reportStop(join(taskDir, "report.json"), ledger);
 }
 
 // ---------- the decision ----------
@@ -135,7 +153,7 @@ function policyReason({ policy: { mode } }) {
 }
 
 // Why this gate must ask a human, or null when it passes under the recorded policy.
-export const askReason = (ledger, gate, root) => stopReason(ledger, root) ?? CLASS_REASONS[gate.class] ?? policyReason(ledger);
+export const askReason = (contract, ledger, gate, root) => stopReason(contract, ledger, root) ?? CLASS_REASONS[gate.class] ?? policyReason(ledger);
 
 // A model writes the dialog, so its words are the human's only when they are the words the CLI emitted, alone in
 // the call. Otherwise it could put "approve" on a description that says something else.

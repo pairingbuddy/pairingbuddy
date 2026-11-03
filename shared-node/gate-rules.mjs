@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 
-import { isCheckpointCall, isKey } from "./checkpoint.mjs";
+import { isCheckpointCall, isKey, keyFitsStep } from "./checkpoint.mjs";
 import { answeredGate, blockingGate, gateQuestion, gatesFor, isGateQuestionCall } from "./gates.mjs";
 import { LedgerShaMismatch, readLedger, updateLedger } from "./ledger.mjs";
 import { checkboxes } from "./plan-boxes.mjs";
@@ -13,7 +13,7 @@ import { PLUGIN_ROOT, PREFIX, bundlePath, calledStage, matchesBundle, suppliedSc
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, pipelineAgents, startLeaseSecondsLeft } from "./stages.mjs";
 import { disguisesPb, pbInvocations, pbWithEnvironment } from "./shell-calls.mjs";
 import { shellWord } from "./shell-word.mjs";
-import { VERB_CLASSES, classOf, humanCommand, matchVerb, shaMismatchRemedy } from "./verbs.mjs";
+import { STAGE_STOP_REASONS, VERB_CLASSES, classOf, humanCommand, matchVerb, shaMismatchRemedy } from "./verbs.mjs";
 
 const EXPECTED_FIELDS = ["session_id", "cwd", "tool_name", "permission_mode"];
 const AGENT_PAIR = ["agent_id", "agent_type"];
@@ -22,7 +22,9 @@ const SETTINGS_FILES = ["settings.json", "settings.local.json"];
 const GATE_HEADER_START = "PB gate:";
 const RUNNER_AGENT = `${PREFIX}runner`;
 const PB_COMMAND = `node ${shellWord(join(PLUGIN_ROOT, "cli", "pb.mjs"))}`;
-const RUNNER_COMMANDS = [...VERB_CLASSES.runner, "test --full"].map((args) => `${PB_COMMAND} ${args}`);
+// Each stop reason is spelled out, and a bare `stage stop` is not on the list.
+const STAGE_STOPS = Object.keys(STAGE_STOP_REASONS).map((reason) => `stage stop ${reason}`);
+const RUNNER_COMMANDS = [...VERB_CLASSES.runner.filter((verb) => verb !== "stage stop"), ...STAGE_STOPS, "test --full"].map((args) => `${PB_COMMAND} ${args}`);
 const CHECKPOINT_START = `${PB_COMMAND} checkpoint --step `;
 const ARTIFACT_CHECK_START = `${PB_COMMAND} artifact check `;
 const AUTO_ALLOW_REASON = "Runner CLI command, auto-allowed by the Pairing Buddy gate.";
@@ -338,7 +340,7 @@ function checkQuestion({ tool_input: toolInput }, ledgerPath) {
 function isCheckpointCommand(command) {
   if (!command.startsWith(CHECKPOINT_START)) return false;
   const words = command.slice(CHECKPOINT_START.length).split(" ");
-  return words.length === 3 && words[1] === "--from" && isCheckpointCall(words[0], words[2]);
+  return words.length === 3 && words[1] === "--from" && isCheckpointCall(words[0], words[2]) && keyFitsStep(words[0], words[2]);
 }
 
 const isArtifactCheckCommand = (command) => command.startsWith(ARTIFACT_CHECK_START) && isKey(command.slice(ARTIFACT_CHECK_START.length));
