@@ -113,7 +113,7 @@ function openRun(clone) {
 // As far as the tap recording a run: from here only the stage itself would finish it.
 function startStage(clone) {
   openRun(clone);
-  const toolInput = { name: `pairingbuddy:${STAGE}`, args: { pluginRoot: pluginOf(clone), attempt: 1 } };
+  const toolInput = { name: `pairingbuddy:${STAGE}`, args: { pluginRoot: pluginOf(clone), attempt: 1, task: { description: "a drill task" } } };
   gateCall(clone, "first", "Workflow", toolInput);
   hook(clone, "tap.mjs", { session_id: sessionOf(clone, "first"), cwd: clone, tool_name: "Workflow", tool_input: toolInput, tool_response: { runId: "wf_drill" } });
 }

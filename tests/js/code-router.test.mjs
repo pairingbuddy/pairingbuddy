@@ -68,7 +68,8 @@ function gate(root, tool, toolInput) {
   return r.stdout === "" ? null : JSON.parse(r.stdout).hookSpecificOutput;
 }
 
-const AGENT_CALL = { subagent_type: "pairingbuddy:apply-config-change", prompt: "Set x" };
+const AGENT_CALL = { subagent_type: "pairingbuddy:classify-task", prompt: "Set x" };
+const NEW_PATH_AGENT_CALL = { subagent_type: "pairingbuddy:apply-config-change", prompt: "Set x" };
 
 // ---------- pb run open ----------
 
@@ -172,6 +173,12 @@ test("before a run a direct agent call passes, and once the run exists the gate 
   assert.match(decision.permissionDecisionReason, /Start the workflow pairingbuddy:code-config instead/);
 });
 
+test("an agent only a stage spawns is denied before a run as well", (t) => {
+  const root = makeRepo(t);
+
+  assert.equal(gate(root, "Agent", NEW_PATH_AGENT_CALL).permissionDecision, "deny");
+});
+
 test("a run with no finished stage cannot end, whatever the model reports", (t) => {
   const root = makeRepo(t);
   classifyAs(root, "config_change");
@@ -208,16 +215,86 @@ test("the router runs after the plan loop has left, after classification, and be
   assert.ok(router < oldBranches, "a migrated type never falls into the old branches");
 });
 
-// curate_guidance waits on a human. Ahead of the router it ended 2 of 5 S1 sessions before a run opened.
-test("guidance curation comes after the router, and still before the old branches", () => {
+// The just-completed task is in task.json until cleanup, and classification applies all of human-guidance.json.
+const CURATE = "human_guidance = curate_guidance(human_guidance, task)";
+const CLEANUP = "_cleanup_state_files()";
+const CLASSIFY = "task_classification = classify_task(task)";
+
+test("guidance curation comes before cleanup and classification, in the plan loop and outside it", () => {
   const code = pseudocode();
   const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
-  const curated = code.indexOf("human_guidance = curate_guidance(human_guidance, task)", planEnd);
-  const router = code.indexOf("if task_type in MIGRATED_TYPES and not _is_solo():");
-  const oldBranches = code.indexOf('if task_type == "new_feature":');
 
-  assert.ok(router < curated, "a migrated type meets no human checkpoint before its run");
-  assert.ok(curated < oldBranches, "the old path still curates its guidance");
+  for (const [name, from, to] of [["plan loop", 0, planEnd], ["non-plan path", planEnd, code.length]]) {
+    const order = [CURATE, CLEANUP, CLASSIFY].map((step) => code.slice(from, to).indexOf(step));
+    assert.ok(!order.includes(-1), `${name} has all three steps`);
+    assert.deepEqual([...order].sort((a, b) => a - b), order, `${name}: curate, cleanup, classify`);
+  }
+});
+
+test("curation runs once on the non-plan path, ahead of the router", () => {
+  const code = pseudocode();
+  const nonPlan = code.slice(code.indexOf('_stop("Plan execution paused/complete.")'));
+
+  assert.equal(nonPlan.split(CURATE).length, 2);
+  assert.ok(nonPlan.indexOf(CURATE) < nonPlan.indexOf("if task_type in MIGRATED_TYPES and not _is_solo():"));
+});
+
+test("the new task reaches task.json only after cleanup, in both orders", () => {
+  const code = pseudocode();
+  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
+
+  for (const [name, part] of [["plan loop", code.slice(0, planEnd)], ["non-plan path", code.slice(planEnd)]]) {
+    const written = part.indexOf("_write_task(task)");
+    assert.ok(part.indexOf(CLEANUP) < written && written < part.indexOf(CLASSIFY), `${name}: cleanup, write, classify`);
+  }
+});
+
+test("State File Management tells the same order", () => {
+  const steps = /### State File Management\n([\s\S]*?)\n### /.exec(skill())[1];
+
+  assert.ok(steps.indexOf("curate_guidance") < steps.indexOf("Delete all"));
+  assert.doesNotMatch(steps, /after classification/);
+});
+
+test("curate-guidance asks nothing with no human, and takes the check before any of its steps", () => {
+  const agent = readFileSync(join(ROOT, "agents", "curate-guidance.md"), "utf8");
+  const check = agent.indexOf("### When No Human Is Here");
+
+  assert.ok(check !== -1 && check < agent.indexOf("### Step 1: Read Inputs"));
+  const section = agent.slice(check, agent.indexOf("### Step 1: Read Inputs"));
+  for (const word of ["PAIRINGBUDDY_GATE_POLICY", "CLAUDE_CODE_ENTRYPOINT", "sdk-cli", "PAIRINGBUDDY_SOLO", '{"guidance": []}']) assert.ok(section.includes(word), `names ${word}`);
+  assert.match(section, /ask nothing/i);
+  assert.match(section, /offer nothing/i);
+});
+
+// ---------- entry with a run already open ----------
+
+test("the skill checks for an open run ahead of everything that touches state", () => {
+  const text = skill();
+  const check = text.indexOf("## An Open Run Comes First");
+  const code = pseudocode();
+
+  assert.ok(check !== -1 && check < text.indexOf("## State File Mappings"), "it sits at the top of the skill");
+  assert.ok(code.indexOf("_stop_if_run_open()") !== -1);
+  assert.ok(code.indexOf("_stop_if_run_open()") < code.indexOf("_detect_plan_file(task)"), "it comes first in the workflow");
+  const section = text.slice(check, text.indexOf("## State File Mappings"));
+  for (const word of ["pb status", "no run here", "`action`"]) assert.ok(section.includes(word), `names ${word}`);
+  assert.match(section, /do not clean state or classify/i);
+});
+
+test("Solo: a stage cannot start on a leftover run, and the Stop hook does not drive one", (t) => {
+  const root = makeRepo(t);
+  classifyAs(root, "config_change");
+  assert.equal(pb(root, OPEN).status, 0);
+  const env = { ...withoutSolo(), CLAUDE_PLUGIN_ROOT: ROOT, PAIRINGBUDDY_SOLO: "true" };
+  const payload = { session_id: "solo", cwd: root, tool_name: "Workflow", permission_mode: "bypassPermissions", tool_input: { name: "pairingbuddy:code-config", args: { attempt: 1, pluginRoot: ROOT, task: { description: "x" } } } };
+
+  const started = spawnSync("node", [join(ROOT, "hooks", "gate-boot.mjs")], { input: JSON.stringify(payload), cwd: root, env, encoding: "utf8" });
+  const stopped = spawnSync("node", [join(ROOT, "hooks", "stop.mjs")], { input: JSON.stringify({ session_id: "solo", cwd: root }), cwd: root, env, encoding: "utf8" });
+
+  assert.equal(JSON.parse(started.stdout).hookSpecificOutput.permissionDecision, "deny");
+  assert.equal(ledgerOf(root).stage.status, "");
+  assert.equal(stopped.stdout, "");
 });
 
 test("a run opens only inside the router, and the plan loop says it stays old", () => {

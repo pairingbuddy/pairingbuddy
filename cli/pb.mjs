@@ -11,7 +11,7 @@ import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, ac
 import { PlanRefused, tickPlanBox } from "../shared-node/plan-boxes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
-import { runStatus } from "../shared-node/next-action.mjs";
+import { nextAction, runStatus } from "../shared-node/next-action.mjs";
 import { buildReport, closeStage, finishProblems, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, fullSuitePlans, readTestConfig, runPlan, runRecord, selectedPlans, validatedConfigHash } from "../shared-node/test-run.mjs";
@@ -19,7 +19,7 @@ import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand 
 
 export { KINDS };
 
-const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 
 class UsageError extends Error {}
 class Refusal extends Error {}
@@ -46,7 +46,7 @@ function parseKind(args) {
   return kind;
 }
 
-function readClassification(path) {
+function readStateJson(path) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch (e) {
@@ -60,10 +60,20 @@ function readClassification(path) {
 function classifiedTaskType(root) {
   const path = join(root, ".pairingbuddy", "task-classification.json");
   if (!existsSync(path)) return null;
-  const type = readClassification(path)?.task_type;
+  const type = readStateJson(path)?.task_type;
   if (typeof type !== "string") throw new Refusal(`${path} has no task_type string, so no run was opened`);
   if (!Object.hasOwn(loadStages(PLUGIN_ROOT).taskTypes, type)) throw new Refusal(`task type ${type} has no stage graph, so it stays on the old path and no run was opened`);
   return type;
+}
+
+// The task, so that a later turn with no memory of it can still pass it to a stage. A run opened before the skill wrote
+// task.json stores none, and the text that starts a stage says so.
+function storedTask(root) {
+  const path = join(root, ".pairingbuddy", "task.json");
+  if (!existsSync(path)) return "";
+  const task = readStateJson(path);
+  if (typeof task?.description !== "string" || task.description === "") throw new Refusal(`${path} has no description, so no run was opened`);
+  return [task.description, task.context].filter(Boolean).join("\n\n");
 }
 
 // A task that ends removes run/task and a stopped one cannot end, so a stop stands in the way of any next open. It is
@@ -89,6 +99,7 @@ function runOpen(args) {
 
   const configHash = validatedConfigHash(root);
   const taskType = kind === "code" ? classifiedTaskType(root) : null;
+  const task = storedTask(root);
 
   const runRoot = join(root, ".pairingbuddy", "run");
   const dir = join(runRoot, "task");
@@ -111,7 +122,7 @@ function runOpen(args) {
     writeLedger(join(dir, "ledger.json"), {
       v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType,
       owner: { sessionId: null, lastSeen: null },
-      task: "", plan: { path: "", title: "" }, configHash,
+      task, plan: { path: "", title: "" }, configHash,
       policy: { mode: "", source: "" },
       stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null },
       stages: [], gates: {}, tests: {}, commits: [], retries: {},
@@ -442,10 +453,16 @@ function artifactCheck(args) {
   return { ok: true, key, path: file, artifact };
 }
 
+// The action stays behind a flag: plain status is what a stage's session reads, and an action there sends it past where
+// its prompt stopped.
 function status(args) {
-  assertNoArgs(args, "status");
+  const withAction = args.length === 1 && args[0] === "--action";
+  if (!withAction && args.length > 0) throw new UsageError("usage: pb status [--action]");
   const { root, path } = runLedgerPath();
-  return { ok: true, ...runStatus(loadStages(PLUGIN_ROOT), readLedger(path), artifactsDirOf(root)) };
+  const contract = loadStages(PLUGIN_ROOT);
+  const ledger = readLedger(path);
+  const state = runStatus(contract, ledger, artifactsDirOf(root));
+  return withAction ? { ok: true, ...state, action: nextAction(contract, ledger, root, PLUGIN_ROOT) } : { ok: true, ...state };
 }
 
 function assertTaskFinished(ledger) {

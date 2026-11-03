@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Gate: PreToolUse enforcement during a run, loaded by gate-boot.mjs. With no run state it allows everything silently,
-// except a Workflow call that would start a stage of this plugin: a stage has only ever run inside a run.
+// except a call that would start a stage of this plugin or reach an agent only a stage spawns: those have only ever run
+// inside a run. It also spares curate-guidance a question nobody would answer, since only a hook sees the policy.
 // An allow prints nothing, unless it is the runner's exact command; a decision exits 0 with the JSON form on stdout.
 // Any error with run state denies.
 // This wrapper imports only built-ins and loads everything else dynamically, so that a failed import can
@@ -12,6 +13,8 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 const TARGET_KEYS = { Write: "file_path", Edit: "file_path", NotebookEdit: "notebook_path" };
 const MAX_SYMLINKS = 40;
 const PLUGIN_PREFIX = "pairingbuddy:";
+const CURATOR = `${PLUGIN_PREFIX}curate-guidance`;
+const POLICY_ENV = "PAIRINGBUDDY_GATE_POLICY";
 const ABSENT_CODES = ["ENOENT", "ENOTDIR"];
 
 function readlinkOrNull(path) {
@@ -116,12 +119,29 @@ function decide(permissionDecision, permissionDecisionReason) {
 // With no run a failure allows, except on this plugin's own names: nothing can then say one of them is not a stage.
 async function denyStageWithNoRun(toolInput, cwd) {
   try {
-    const { stageWithNoRun } = await import("../shared-node/stage-calls.mjs");
-    const stage = stageWithNoRun(toolInput, cwd);
-    if (stage !== undefined) decide("deny", `Stage ${stage} cannot start with no run open. Use /pairingbuddy:code, which opens the run.`);
+    const { workflowDenial } = await import("../shared-node/stage-calls.mjs");
+    const reason = workflowDenial(toolInput, cwd);
+    if (reason !== null) decide("deny", reason);
   } catch (e) {
     if (toolInput.name?.startsWith?.(PLUGIN_PREFIX)) decide("deny", `Gate error with no run open: cannot tell whether ${toolInput.name} is a stage, so the call is denied: ${e?.message ?? e}`);
   }
+}
+
+// Here a failure allows, because the old path's agents go through this too.
+async function denyAgentWithNoRun(toolInput) {
+  if (!toolInput.subagent_type?.startsWith?.(PLUGIN_PREFIX)) return;
+  try {
+    const { agentDenial } = await import("../shared-node/stage-calls.mjs");
+    const reason = agentDenial(toolInput);
+    if (reason !== null) decide("deny", reason);
+  } catch {
+    // Allowed: see above.
+  }
+}
+
+function denyQuestionWithNoHuman({ agent_type: agentType, permission_mode: mode }) {
+  if (agentType !== CURATOR || (mode !== "auto" && process.env[POLICY_ENV] !== "auto")) return;
+  decide("deny", "No human answers under the auto policy, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.");
 }
 
 // A failed import is held back, not thrown here: only the walk can say whether this call is inside a run.
@@ -154,6 +174,10 @@ try {
     if (allowReason !== null) decide("allow", allowReason);
   } else if (payload?.tool_name === "Workflow") {
     await denyStageWithNoRun(payload.tool_input ?? {}, cwd);
+  } else if (payload?.tool_name === "Agent") {
+    await denyAgentWithNoRun(payload.tool_input ?? {});
+  } else if (payload?.tool_name === "AskUserQuestion") {
+    denyQuestionWithNoHuman(payload);
   }
 } catch (e) {
   if (runRoots.size > 0) decide("deny", e.gateDenial ? e.message : `Gate error during a run, so the call is denied: ${e?.message ?? e}`);

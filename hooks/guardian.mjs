@@ -3,6 +3,7 @@
 // Triggered by PostToolUse (timer-based) and SessionStart:compact (always inject).
 // Pass "always" as argv[2] to force injection (used after compaction).
 // With run state the reminder is reworded, and after compaction `pb status` and the next action replace it.
+// The reworded reminder is the main context's: a stage's agent is doing the stage's work, so it gets nothing.
 
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { dirname, isAbsolute, join } from "path";
@@ -76,7 +77,7 @@ async function runReminder() {
     const { findSessionRoot } = await import("../shared-node/run-root.mjs");
     const root = findSessionRoot(cwd, sessionId);
     if (root === null) return REMINDER;
-    if (!forceInject) return RUN_REMINDER;
+    if (!forceInject) return input.agent_id === undefined ? RUN_REMINDER : "";
     const { readRun, runReport } = await import("../shared-node/next-action.mjs");
     const plugin = dirname(dirname(fileURLToPath(import.meta.url)));
     return [GUARDIAN_OPEN, runReport(readRun(plugin, root)), GUARDIAN_CLOSE].join("\n");
@@ -85,13 +86,15 @@ async function runReminder() {
   }
 }
 
+// An empty reminder leaves the timer alone: the main context shares it, and it still has a reminder coming.
 let injectedContent = "";
 if (shouldInject) {
-  state.lastInjection = now.toISOString();
-  state.trigger = forceInject ? "compact" : "timer";
-
   const reminder = await runReminder();
-  injectedContent = isSoloMode ? reminder + "\n" + SOLO_ADDITIONS : reminder;
+  if (reminder !== "") {
+    state.lastInjection = now.toISOString();
+    state.trigger = forceInject ? "compact" : "timer";
+    injectedContent = isSoloMode ? reminder + "\n" + SOLO_ADDITIONS : reminder;
+  }
 }
 
 // Always update tool info and write state

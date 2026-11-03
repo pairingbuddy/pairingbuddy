@@ -396,8 +396,9 @@ live model. Probe P1 did.
   `pairingbuddy:coding` and its path, and warns off itself and the stages. Every later run loaded the
   right skill.
 - `curate-guidance` ran ahead of the router and waits on a human, so a session with none ended there.
-  It now runs after the router, so a migrated type stops only at its gates. This moves it after
-  classification on the old path too, and the plan loop is unchanged.
+  Moving it after the router fixed S1 and broke the old path: it reads the just-completed task, which
+  cleanup deletes, and classification read uncurated guidance. It is back before cleanup in both
+  orders, and under the auto policy or `claude -p` it now carries over silently and asks nothing.
 
 ### Known risks
 
@@ -434,11 +435,13 @@ human. So the chain works when the model stops, on one session.
 - Nothing confines a run's Bash to the sample repo. Round A run 5 read the installed plugin, and in
   round B run 2 `curate-guidance` reported 8 entries when the sample repo has none, matching this
   worktree's `human-guidance.json`. Both were reads.
-- `commands/plan.md` and `commands/design-ux.md` keep the "follow the X skill" wording. They were not
-  changed or run.
+- `commands/plan.md` and `commands/design-ux.md` now name their skill the same way as
+  `commands/code.md`, and warn off themselves. They were not run.
 - The ledger goes at `pb task end`, so S1 keeps its last copy by polling every 20 ms. A model that runs
   `pb gate eval && pb task end` as one call could beat the poll and fail S1 falsely. It did not happen.
 
 ### S1 after closing the no-run stage hole
 
-A stage call with no run is now denied, seen live once ($0.0032). S1 through `/pairingbuddy:code` then passed 5 of 5 at $0.018 to $0.022 and 49 to 56 s, on Haiku. That supersedes the "still open" note above. 5 of 5 bounds the pass rate above about 55% at 95% confidence, so S1 is not proven stable.
+A stage call with no run is now denied, seen live once ($0.0032). S1 through `/pairingbuddy:code` then passed 5 of 5 at $0.018 to $0.022 and 49 to 56 s, on Haiku. 5 of 5 bounds the pass rate above about 55% at 95% confidence, so S1 is not proven stable.
+
+That first deny covered only a stage name and a byte-exact bundle, so it did not supersede the "still open" note above. With no run the gate now also denies a direct Agent call for an agent in `newPathAgents` in `contracts/stages.json`, a bundle copy differing only in trailing whitespace, and a script naming a stage or one of those agents literally. The hole narrows to Section 8's bypass, which stays open: an edited bundle that builds those names from string fragments passes.

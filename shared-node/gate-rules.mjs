@@ -178,10 +178,15 @@ function misnamedStage(toolInput, scripts, graph) {
 // What the stage's own script refuses. It would refuse after this gate marked it active, stranding it, so it stops here.
 const isMissing = (value) => value === undefined || value === null || value === "";
 
-function argsDenial(called, attempt, { args }) {
+const PLACEHOLDER = /^\s*<[^<>]*>\s*$/;
+const isPlaceholder = (task) => PLACEHOLDER.test(typeof task === "object" ? task.description : task);
+const taskForm = (task) => (task === "" ? "an object with a description" : JSON.stringify({ description: task }));
+
+function argsDenial(called, attempt, { args }, task) {
   if (args?.attempt !== attempt) return `Wrong attempt for ${called}: got ${JSON.stringify(args?.attempt)}. Use attempt ${attempt}.`;
   if (args?.pluginRoot !== PLUGIN_ROOT) return `Wrong pluginRoot for ${called}: got ${JSON.stringify(args?.pluginRoot)}. Use pluginRoot ${PLUGIN_ROOT}.`;
-  if (isMissing(args?.task)) return `Missing task for ${called}: got ${JSON.stringify(args?.task)}. Pass the task as args.task, as {"description":"<this task>"}.`;
+  if (isMissing(args?.task)) return `Missing task for ${called}: got ${JSON.stringify(args?.task)}. Pass the task as args.task, as ${taskForm(task)}.`;
+  if (isPlaceholder(args.task)) return `Placeholder task for ${called}: got ${JSON.stringify(args.task)}. Pass the task as args.task, as ${taskForm(task)}.`;
   return null;
 }
 
@@ -218,7 +223,7 @@ function stageDenial(stage, ledger, graph, toolInput, scripts) {
   const gate = blockingGate(graph.gates, ledger);
   if (gate !== undefined) return `Stage order: ${called} cannot start now. Gate ${gate.name} has not passed: run pb gate eval, and a human must approve it if it asks.`;
   if (!existsSync(bundlePath(stage))) return `Cannot start ${called}: its built bundle ${bundlePath(stage)} is missing.`;
-  const argsProblem = argsDenial(called, nextAttempt(ledger, stage), toolInput);
+  const argsProblem = argsDenial(called, nextAttempt(ledger, stage), toolInput, ledger.task);
   if (argsProblem) return argsProblem;
   if (scripts.length > 0 && !matchesBundle(stage, scripts)) {
     return `Script for ${called} does not match the built bundle ${bundlePath(stage)}. Call ${called} by name with no script.`;
@@ -249,6 +254,7 @@ function checkWorkflow({ ledgerPath, ledger, graph, payload }) {
   const scripts = suppliedScripts(toolInput, cwd);
   const stage = calledStage(toolInput);
   if (stage !== undefined) {
+    if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Denied(`Solo stays on the old path until T10, so ${workflowName(stage)} cannot start. The run stays as it is: report pb status.`);
     startStage(ledgerPath, stage, graph, payload, scripts);
     return;
   }

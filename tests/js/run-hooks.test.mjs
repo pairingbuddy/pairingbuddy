@@ -5,7 +5,7 @@ import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,10 @@ const TASK_END = "G:task-end";
 const CONFIG_TEXT = '{"runners":{}}\n';
 const IDLE = { name: "", status: "", runId: null, attempt: 0, startedAt: null };
 const ACTIVE = { name: CONFIG, status: "active", runId: "wf_1", attempt: 1, startedAt: null };
+const secondsAgo = (seconds) => new Date(Date.now() - seconds * 1000).toISOString();
+const STRANDED = { ...ACTIVE, runId: null, startedAt: secondsAgo(3600) };
+const STOP = { reason: "hook refused the commit", seq: 1 };
+const OWNED = (sessionId) => ({ owner: { sessionId, lastSeen: "2026-11-02T00:00:00Z" } });
 const GUARDIAN_TEXT = "Make sure to follow Pairing Buddy workflows strictly.";
 
 const tempDirs = [];
@@ -86,6 +90,52 @@ function assertBlocks(stdout, pattern) {
   assert.match(output.reason, pattern);
 }
 
+const stopReason = (stdout) => JSON.parse(stdout).reason;
+
+// ---------- a run reached through the real gate and CLI ----------
+
+const TASK = 'Set "port" to 9090';
+const REAL_CONFIG = `${JSON.stringify({ runners: { node: { command: "node --version", test_directory: ".", run_args: [] } }, default_runner: "node" })}\n`;
+const CLI_ENV = () => {
+  const { PAIRINGBUDDY_SOLO: _solo, CLAUDE_PLUGIN_ROOT: _root, ...env } = process.env;
+  return env;
+};
+
+function git(cwd, ...args) {
+  execFileSync("git", args, { cwd, stdio: "ignore" });
+}
+
+const pb = (cwd, ...args) => spawnSync("node", [join(ROOT, "cli", "pb.mjs"), ...args], { cwd, encoding: "utf8", env: CLI_ENV() });
+
+function openRealRun() {
+  const dir = makeDir();
+  git(dir, "init", "-q", "-b", "feature/x");
+  git(dir, "config", "user.email", "t@example.com");
+  git(dir, "config", "user.name", "T");
+  git(dir, "config", "commit.gpgsign", "false");
+  writeFileSync(join(dir, "README.md"), "x\n");
+  git(dir, "add", ".");
+  git(dir, "commit", "-q", "-m", "init");
+  mkdirSync(join(dir, ".pairingbuddy"));
+  writeFileSync(join(dir, ".pairingbuddy", "test-config.json"), REAL_CONFIG);
+  writeFileSync(join(dir, ".pairingbuddy", "task.json"), JSON.stringify({ description: TASK }));
+  const opened = pb(dir, "run", "open", "--kind", "code");
+  assert.equal(opened.status, 0, opened.stderr);
+  return { dir, ledgerPath: join(dir, ".pairingbuddy", "run", "task", "ledger.json") };
+}
+
+function gate(cwd, tool, toolInput, session = "stop-session") {
+  const payload = { session_id: session, cwd, tool_name: tool, permission_mode: "default", tool_input: toolInput };
+  const r = spawnSync("node", [hook("gate-boot.mjs")], { input: JSON.stringify(payload), cwd, encoding: "utf8", env: { ...CLI_ENV(), CLAUDE_PLUGIN_ROOT: ROOT } });
+  assert.equal(r.status, 0, r.stderr);
+  return r.stdout === "" ? null : JSON.parse(r.stdout).hookSpecificOutput;
+}
+
+const startCall = (attempt = 1) => ({ name: `pairingbuddy:${CONFIG}`, args: { attempt, pluginRoot: ROOT, task: { description: TASK } } });
+
+// The args a model would copy out of the text. The gate takes them or it does not.
+const argsIn = (text) => JSON.parse(text.match(/with the args (\{.*\})\./)[1]);
+
 describe("Stop hook", () => {
   test("is registered for Stop, with the form the probe plugin used", () => {
     const { hooks } = JSON.parse(readFileSync(hook("hooks.json"), "utf8"));
@@ -102,9 +152,56 @@ describe("Stop hook", () => {
     assert.equal(stop(dir), "");
   });
 
-  test("stays silent while a stage is active, even with a stop set", () => {
+  test("stays silent while a stage runs", () => {
     assert.equal(stop(makeRun({ stage: ACTIVE }).dir), "");
-    assert.equal(stop(makeRun({ stage: ACTIVE, stop: { reason: "broken", seq: 1 } }).dir), "");
+  });
+
+  test("stays silent over a stage whose start lease still runs", () => {
+    assert.equal(stop(makeRun({ stage: { ...STRANDED, startedAt: secondsAgo(1) } }).dir), "");
+  });
+
+  test("stays silent with run/unit.json and no task, which has no action to give", () => {
+    const dir = makeDir();
+    mkdirSync(join(dir, ".pairingbuddy", "run"), { recursive: true });
+    writeFileSync(join(dir, ".pairingbuddy", "run", "unit.json"), "{}");
+    assert.equal(stop(dir), "");
+  });
+
+  test("a stop with a stage active is told, with its reason and what clears it", () => {
+    const stdout = stop(makeRun({ stage: ACTIVE, stop: STOP }).dir);
+    assertBlocks(stdout, /hook refused the commit/);
+    assertBlocks(stdout, /node \S*cli\/pb\.mjs stage fail/);
+    assert.doesNotMatch(stopReason(stdout), /Wait for its workflow/);
+  });
+
+  test("the stop stage finish really raises is told, here and at SessionStart", () => {
+    const { dir, ledgerPath } = openRealRun();
+    assert.equal(gate(dir, "Workflow", startCall()), null);
+    assert.equal(pb(dir, "stage", "finish").status, 1);
+    assert.equal(readLedger(ledgerPath).stage.status, "active", "the stage is still active");
+
+    assertBlocks(stop(dir), /The run has stopped: stage code-config cannot finish/);
+    const context = sessionStart(dir, "resume");
+    assert.match(context, /Next action: The run has stopped/);
+    assert.doesNotMatch(context, /Wait for its workflow/);
+  });
+
+  test("a stage that never started is told once its lease is gone, and the gate takes the restart it gives", () => {
+    const { dir, ledgerPath } = openRealRun();
+    assert.equal(gate(dir, "Workflow", startCall()), null);
+    assert.equal(stop(dir), "", "inside the lease");
+    updateLedger(ledgerPath, (ledger) => ({ ...ledger, stage: { ...ledger.stage, startedAt: secondsAgo(3600) } }));
+
+    const stdout = stop(dir);
+    assertBlocks(stdout, /pairingbuddy:code-config/);
+    assertBlocks(stdout, /node \S*cli\/pb\.mjs stage fail/);
+    assert.doesNotMatch(stopReason(stdout), /Wait for its workflow/);
+    assert.deepEqual(argsIn(stopReason(stdout)), startCall().args);
+    assert.equal(gate(dir, "Workflow", { name: `pairingbuddy:${CONFIG}`, args: argsIn(stopReason(stdout)) }), null);
+  });
+
+  test("a stage past its lease with a recorded run stays silent", () => {
+    assert.equal(stop(makeRun({ stage: { ...ACTIVE, startedAt: secondsAgo(3600) } }).dir), "");
   });
 
   for (const permission_mode of ["auto", "default", "acceptEdits", "bypassPermissions", "plan"]) {
@@ -113,9 +210,30 @@ describe("Stop hook", () => {
     });
   }
 
-  test("gives the next stage under Solo's environment too", () => {
+  test("Solo stays silent, because it stays on the old path", () => {
     const env = { PAIRINGBUDDY_SOLO: "true", PAIRINGBUDDY_GATE_POLICY: "auto" };
-    assertBlocks(stop(makeRun().dir, {}, { env }), /pairingbuddy:code-config/);
+    assert.equal(stop(makeRun().dir, {}, { env }), "");
+    assert.equal(stop(makeRun({ stop: STOP }).dir, {}, { env }), "");
+  });
+
+  test("the auto policy alone is not Solo, and PAIRINGBUDDY_SOLO=false is not either", () => {
+    assertBlocks(stop(makeRun().dir, {}, { env: { PAIRINGBUDDY_GATE_POLICY: "auto" } }), /pairingbuddy:code-config/);
+    assertBlocks(stop(makeRun().dir, {}, { env: { PAIRINGBUDDY_SOLO: "false" } }), /pairingbuddy:code-config/);
+  });
+
+  test("the next stage carries the real task from the ledger, as JSON", () => {
+    const { dir } = openRealRun();
+    const reason = stopReason(stop(dir));
+    assert.deepEqual(argsIn(reason), startCall().args);
+    assert.doesNotMatch(reason, /<[^>]*task[^>]*>/);
+    assert.equal(gate(dir, "Workflow", { name: `pairingbuddy:${CONFIG}`, args: argsIn(reason) }), null);
+  });
+
+  test("a run that stored no task says so, with no placeholder and no task in the args", () => {
+    const reason = stopReason(stop(makeRun({ task: "" }).dir));
+    assert.doesNotMatch(reason, /<[^>]*>/);
+    assert.equal(argsIn(reason).task, undefined);
+    assert.match(reason, /no task/);
   });
 
   test("a stage sent to a next attempt names that attempt", () => {
@@ -133,6 +251,13 @@ describe("Stop hook", () => {
     assertBlocks(stdout, /G:task-end/);
     assertBlocks(stdout, /permission mode is default/);
     assertBlocks(stdout, /human approve G:task-end/);
+  });
+
+  test("a stop comes before a gate waiting on the human", () => {
+    const needsHuman = { gate: TASK_END, reason: "permission mode is default", seq: 1 };
+    const stdout = stop(makeRun(allDone({ needsHuman, stop: STOP })).dir);
+    assertBlocks(stdout, /The run has stopped: hook refused the commit/);
+    assert.doesNotMatch(stopReason(stdout), /needs the human/);
   });
 
   test("a stop gives its reason and no way past it", () => {
@@ -226,7 +351,7 @@ describe("Stop hook cannot loop a turn", () => {
 
   test("a new turn starts a new chain", () => {
     const { dir, taskDir, ledgerPath } = makeRun();
-    writeFileSync(join(taskDir, "stop-notice.json"), JSON.stringify({ sessionId: "stop-session", action: "old", chain: 1000 }));
+    writeFileSync(join(taskDir, "stop-notice-stop-session.json"), JSON.stringify({ action: "old", chain: 1000 }));
     assert.equal(stop(dir, { stop_hook_active: true }), "");
     assertBlocks(stop(dir, { stop_hook_active: false }), /code-config/);
     assert.ok(existsSync(ledgerPath));
@@ -240,10 +365,93 @@ describe("Stop hook cannot loop a turn", () => {
     assert.equal(stop(dir, { stop_hook_active: true }), "");
   });
 
-  test("a second session is told what the first was told", () => {
+  test("a second session is told what the first was told while the run has no owner", () => {
     const { dir } = makeRun();
     assertBlocks(stop(dir, { session_id: newSession() }), /code-config/);
     assertBlocks(stop(dir, { session_id: newSession() }), /code-config/);
+  });
+
+  test("two sessions cannot erase each other's memory: alternating, each is told once", () => {
+    const { dir } = makeRun();
+    const [first, second] = [newSession(), newSession()];
+    const told = [];
+    for (let i = 0; i < 12; i += 1) told.push(stop(dir, { session_id: i % 2 === 0 ? first : second, stop_hook_active: true }));
+    assert.equal(told.filter((stdout) => stdout !== "").length, 2);
+  });
+
+  test("two sessions on one owned run: the owner is told once, the other never", () => {
+    const owner = newSession();
+    const { dir } = makeRun(OWNED(owner));
+    const other = newSession();
+    const told = [];
+    for (let i = 0; i < 12; i += 1) told.push(stop(dir, { session_id: i % 2 === 0 ? owner : other, stop_hook_active: true }));
+    assert.equal(told.filter((stdout) => stdout !== "").length, 1);
+    assert.notEqual(told[0], "", "the owner went first and was told");
+  });
+
+  test("a session that does not own the run is told nothing, whatever the action", () => {
+    for (const ledger of [{}, { stop: STOP }, allDone(), { stage: STRANDED }]) {
+      assert.equal(stop(makeRun({ ...OWNED("the-owner"), ...ledger }).dir, { session_id: newSession() }), "");
+    }
+  });
+
+  test("the session that owns the run is told", () => {
+    const owner = newSession();
+    assertBlocks(stop(makeRun(OWNED(owner)).dir, { session_id: owner }), /code-config/);
+  });
+
+  test("a ledger that cannot be read has no owner to go by, so it is told", () => {
+    const { dir, ledgerPath } = makeRun(OWNED("the-owner"));
+    writeFileSync(ledgerPath, "{");
+    assertBlocks(stop(dir, { session_id: newSession() }), /cannot be read/);
+  });
+});
+
+describe("hooks run from anywhere", () => {
+  test("Stop reads the payload's cwd, not its own", () => {
+    const { dir } = makeRun();
+    const input = JSON.stringify({ ...STOP_PAYLOAD, cwd: dir, session_id: newSession() });
+    assertBlocks(runHook("stop.mjs", { input, cwd: makeDir() }), /code-config/);
+  });
+
+  test("Stop falls back to its own cwd on a relative one", () => {
+    const { dir } = makeRun();
+    const input = JSON.stringify({ ...STOP_PAYLOAD, cwd: "not/absolute", session_id: newSession() });
+    assert.ok(stopReason(runHook("stop.mjs", { input, cwd: dir })).startsWith(`Pairing Buddy run at ${dir}.`));
+  });
+
+  test("SessionStart reads the payload's cwd, not its own", () => {
+    const { dir } = makeRun();
+    const input = JSON.stringify({ session_id: newSession(), cwd: dir, source: "startup" });
+    assert.ok(JSON.parse(runHook("session-start.mjs", { input, cwd: makeDir() })).hookSpecificOutput.additionalContext.includes(`A Pairing Buddy run is open at ${dir}.`));
+  });
+
+  test("SessionStart falls back to its own cwd on a relative one", () => {
+    const { dir } = makeRun();
+    const input = JSON.stringify({ session_id: newSession(), cwd: "not/absolute", source: "startup" });
+    assert.ok(JSON.parse(runHook("session-start.mjs", { input, cwd: dir })).hookSpecificOutput.additionalContext.includes(`A Pairing Buddy run is open at ${dir}.`));
+  });
+
+  test("the guardian reads the payload's cwd, not its own", () => {
+    const { dir } = makeRun();
+    const input = JSON.stringify({ session_id: newSession(), cwd: dir, hook_event_name: "PostToolUse", tool_name: "Read" });
+    assert.match(JSON.parse(runHook("guardian.mjs", { input, cwd: makeDir() })).hookSpecificOutput.additionalContext, /run is open/);
+  });
+
+  test("the guardian falls back to its own cwd on a relative one", () => {
+    const { dir } = makeRun();
+    const input = JSON.stringify({ session_id: newSession(), cwd: "not/absolute", hook_event_name: "PostToolUse", tool_name: "Read" });
+    const context = JSON.parse(runHook("guardian.mjs", { input, cwd: dir, args: ["always"] })).hookSpecificOutput.additionalContext;
+    assert.ok(context.includes(`A Pairing Buddy run is open at ${dir}.`));
+  });
+
+  test("a plugin path with a space comes out as one shell word in the text a model runs", () => {
+    const plugin = join(makeDir(), "with space");
+    for (const part of ["hooks", "shared-node", "cli", "contracts"]) cpSync(join(ROOT, part), join(plugin, part), { recursive: true });
+    const { dir } = makeRun(allDone());
+    const input = JSON.stringify({ ...STOP_PAYLOAD, cwd: dir, session_id: newSession() });
+    const r = spawnSync("node", [join(plugin, "hooks", "stop.mjs")], { cwd: dir, input, encoding: "utf8", env: { ...process.env, PAIRINGBUDDY_SOLO: "" } });
+    assert.ok(stopReason(r.stdout).includes(`node '${join(plugin, "cli", "pb.mjs")}' gate eval`), r.stdout);
   });
 });
 
@@ -285,10 +493,31 @@ describe("SessionStart hook", () => {
     writeFileSync(ledgerPath, "{");
     assert.match(sessionStart(dir, "startup"), /cannot be read/);
   });
+
+  test("still injects the skill on a payload of null", () => {
+    assert.match(JSON.parse(runHook("session-start.mjs", { input: "null", cwd: makeRun().dir })).hookSpecificOutput.additionalContext, /You have pairingbuddy/);
+  });
+
+  test("a ledger it cannot read gets no status line", () => {
+    const { dir, ledgerPath } = makeRun();
+    writeFileSync(ledgerPath, "{");
+    assert.doesNotMatch(sessionStart(dir, "startup"), /pb status:/);
+  });
+
+  test("run/unit.json with no task reports that no task is open", () => {
+    const dir = makeDir();
+    mkdirSync(join(dir, ".pairingbuddy", "run"), { recursive: true });
+    writeFileSync(join(dir, ".pairingbuddy", "run", "unit.json"), "{}");
+    const context = sessionStart(dir, "startup");
+    assert.match(context, /Next action: No task is open\./);
+    assert.doesNotMatch(context, /pb status:/);
+  });
 });
 
-function guardian(cwd, { args = [], env = {}, session = newSession() } = {}) {
-  const input = JSON.stringify({ session_id: session, cwd, hook_event_name: "PostToolUse", tool_name: "Read" });
+const STAGE_AGENT = { agent_id: "a1", agent_type: "pairingbuddy:apply-config-change" };
+
+function guardian(cwd, { args = [], env = {}, session = newSession(), over = {} } = {}) {
+  const input = JSON.stringify({ session_id: session, cwd, hook_event_name: "PostToolUse", tool_name: "Read", ...over });
   return JSON.parse(runHook("guardian.mjs", { input, cwd, args, env })).hookSpecificOutput.additionalContext;
 }
 
@@ -312,6 +541,22 @@ describe("guardian", () => {
     assert.ok(!context.includes(GUARDIAN_TEXT));
     assert.match(context, /run is open/);
     assert.match(context, /^<pairingbuddy-guardian>/);
+  });
+
+  test("gives a stage's agent nothing, because the run reminder is the main context's", () => {
+    assert.equal(guardian(makeRun().dir, { over: STAGE_AGENT }), "");
+    assert.equal(guardian(makeRun().dir, { over: STAGE_AGENT, env: { PAIRINGBUDDY_SOLO: "true" } }), "");
+  });
+
+  test("a stage agent's call leaves the main context's timer alone", () => {
+    const { dir } = makeRun();
+    const session = newSession();
+    guardian(dir, { session, over: STAGE_AGENT });
+    assert.match(guardian(dir, { session }), /run is open/);
+  });
+
+  test("a subagent with no run state keeps the plain reminder", () => {
+    assert.ok(guardian(makeDir(), { over: STAGE_AGENT }).includes(GUARDIAN_TEXT));
   });
 
   test("keeps Solo's additions when run state exists", () => {
@@ -346,6 +591,13 @@ describe("guardian", () => {
     const { ok, ...status } = JSON.parse(printed.stdout);
     assert.equal(ok, true);
     assert.deepEqual(JSON.parse(context.match(/pb status: (\{.*\})/)[1]), status);
+  });
+
+  test("pb status --action gives the same next action, plugin root included", () => {
+    const { dir } = makeRun();
+    const context = guardian(dir, { args: ["always"] });
+    const printed = spawnSync("node", [join(ROOT, "cli", "pb.mjs"), "status", "--action"], { cwd: dir, encoding: "utf8" });
+    assert.ok(context.includes(`Next action: ${JSON.parse(printed.stdout).action}`));
   });
 
   test("with a ledger it cannot read, after compaction it still answers", () => {

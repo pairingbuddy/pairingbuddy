@@ -49,12 +49,15 @@ function nodeProblems(taskType, graph, classes) {
   return problems;
 }
 
+const isNameList = (list) => Array.isArray(list) && list.every((name) => typeof name === "string" && name !== "");
+
 export function validateStages(contract) {
   if (!isObject(contract) || !isObject(contract.taskTypes) || !isObject(contract.gateClasses)) {
     return ["the contract needs taskTypes and gateClasses objects"];
   }
   const problems = Object.entries(contract.taskTypes).flatMap(([type, graph]) => nodeProblems(type, graph, contract.gateClasses));
   if (!Object.hasOwn(contract.taskTypes, contract.defaultTaskType)) problems.push(`unknown default task type ${contract.defaultTaskType}`);
+  if (!isNameList(contract.newPathAgents)) problems.push("newPathAgents must be a list of agent names");
   return problems;
 }
 

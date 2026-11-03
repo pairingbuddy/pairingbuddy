@@ -889,7 +889,7 @@ All agents with human review follow an explicit 4-step workflow in their Instruc
 
 ### 6. State File Cleanup and Persistence
 
-At the start of each task, the orchestrator runs `_cleanup_state_files()` to delete stale state from previous tasks. This happens after `curate_guidance` but before `classify_task`.
+At the start of each task, the orchestrator runs `_cleanup_state_files()` to delete stale state from previous tasks. This happens after `curate_guidance`, which reads the just-completed task from `task.json`, and before the new task is written and `classify_task` reads it. None of it happens when a run is already open: the coding skill reports the run's next action instead.
 
 **Files that persist across tasks:**
 | File | Why It Persists |

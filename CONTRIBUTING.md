@@ -273,7 +273,7 @@ If the file is not well-formed, `pb human accept` refuses: fix it by hand and ru
 
 ### Second session in the same worktree
 
-**What you see:** nothing warns you. The second session can call tools, but it does not own the run: its permission mode is not recorded, `pb run open` refuses with `a run is already active`, and a stage the first session holds denies the next one. Adopting a run explicitly does not exist yet.
+**What you see:** nothing warns you. The second session can call tools, but it does not own the run: its permission mode is not recorded, the Stop hook tells it nothing, `pb run open` refuses with `a run is already active`, and a stage the first session holds denies the next one. Adopting a run explicitly does not exist yet.
 
 If the first session is still working, close the second one, and that is the whole recovery.
 

@@ -112,7 +112,7 @@ function mainCall(cwd, session, tool, toolInput, mode = "default") {
 const bash = (cwd, session, command, mode) => mainCall(cwd, session, "Bash", { command, description: "run it" }, mode);
 const write = (cwd, session, path) => mainCall(cwd, session, "Write", { file_path: path, content: "x" });
 const stage = (cwd, session, name, args = { pluginRoot: ROOT, attempt: 1, task: { description: "set x" } }) => mainCall(cwd, session, "Workflow", { name: `pairingbuddy:${name}`, args });
-const agent = (cwd, session) => mainCall(cwd, session, "Agent", { subagent_type: "pairingbuddy:apply-config-change", description: "x", prompt: "x" });
+const agent = (cwd, session) => mainCall(cwd, session, "Agent", { subagent_type: "pairingbuddy:classify-task", description: "x", prompt: "x" });
 
 function subagent(cwd, session, command = "ls") {
   return { ...fixture("pretooluse-workflow-agent-bash.json"), session_id: session, cwd, permission_mode: "default", tool_name: "Bash", tool_input: { command, description: "x" } };

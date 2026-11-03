@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { answeredGate, blockingGate, gatesFor } from "./gates.mjs";
 import { LedgerShaMismatch, readLedger } from "./ledger.mjs";
 import { spendTotals } from "./stage-run.mjs";
-import { graphFor, isStageActive, loadStages, nextAttempt, nextStage } from "./stages.mjs";
+import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, startLeaseSecondsLeft } from "./stages.mjs";
 import { humanCommand, pbCommand, shaMismatchRemedy } from "./verbs.mjs";
 
 function nextStep(contract, ledger) {
@@ -20,22 +20,34 @@ export function runStatus(contract, ledger, artifactsDir) {
   return { stage, next: nextStep(contract, ledger), stop, needsHuman, spend: spendTotals(ledger, artifactsDir, contract.maxAgents) };
 }
 
-// The full args, because the gate denies a start without them.
-function startAction({ stage, attempt }, pluginRoot) {
-  const args = `{"attempt":${attempt},"pluginRoot":${JSON.stringify(pluginRoot)},"task":{"description":"<this task>"}}`;
-  return `Start the workflow pairingbuddy:${stage} by name with the args ${args}.`;
+// Active with no recorded run and no lease left: the gate marked it, and a declined prompt or a failed start left it.
+const isStranded = (ledger) => isStageUnstarted(ledger) && startLeaseSecondsLeft(ledger.stage, Date.now()) === 0;
+
+// A stage that is really running owns the turn. A stop or a stranded stage is still active, and nothing is coming.
+const isRunning = (ledger) => isStageActive(ledger) && ledger.stop === null && !isStranded(ledger);
+
+// The full args, because the gate denies a start without them. A run that stored no task has none to give.
+function startAction({ stage, attempt }, pluginRoot, task) {
+  const start = (args) => `Start the workflow pairingbuddy:${stage} by name with the args ${JSON.stringify(args)}.`;
+  if (task === "") return `${start({ attempt, pluginRoot })} This run stored no task, so add the human's task as args.task, an object with a description.`;
+  return start({ attempt, pluginRoot, task: { description: task } });
 }
 
-// The order is what the gate enforces: a stop, then a gate, and only then a stage.
-function nextAction(contract, ledger, root, pluginRoot) {
-  if (isStageActive(ledger)) {
-    const { name, attempt } = ledger.stage;
-    return `Stage ${name} is active at attempt ${attempt}. Wait for its workflow. If that workflow was killed or refused to start, ${pbCommand("stage fail")} clears the stage.`;
-  }
+function activeAction(ledger, pluginRoot) {
+  const { name, attempt } = ledger.stage;
+  const clears = `${pbCommand("stage fail")} clears the stage.`;
+  if (isStranded(ledger)) return `Stage ${name} has no recorded run and its start lease is over, so its workflow never started. ${startAction({ stage: name, attempt }, pluginRoot, ledger.task)} If it cannot start, ${clears}`;
+  return `Stage ${name} is active at attempt ${attempt}. Wait for its workflow. If that workflow was killed or refused to start, ${clears}`;
+}
+
+// The order is what the gate enforces: a stop, then a gate, and only then a stage. A stop comes before an active
+// stage because every stop the run raises leaves its stage active.
+export function nextAction(contract, ledger, root, pluginRoot) {
   const gates = gatesFor(contract, ledger.taskType);
   const answered = answeredGate(gates, ledger);
   if (answered !== undefined) return `Gate ${answered.name} was answered ${answered.answer}. Only the human can go on: ask them to type ${humanCommand(root, `approve ${answered.name}`)}`;
-  if (ledger.stop !== null) return `The run has stopped: ${ledger.stop.reason}. Nothing skips a stop, so report ${pbCommand("status")} to the human and go no further.`;
+  if (ledger.stop !== null) return `The run has stopped: ${ledger.stop.reason}. Nothing skips a stop, so report ${pbCommand("status")} to the human and go no further. Only if they say to go on, ${pbCommand("stage fail")} clears it.`;
+  if (isStageActive(ledger)) return activeAction(ledger, pluginRoot);
   if (ledger.needsHuman !== null) {
     const { gate, reason } = ledger.needsHuman;
     return `Gate ${gate} needs the human: ${reason}. Show them the question and go no further: only they run ${humanCommand(root, `approve ${gate}`)}`;
@@ -43,7 +55,7 @@ function nextAction(contract, ledger, root, pluginRoot) {
   const gate = blockingGate(gates, ledger);
   if (gate !== undefined) return `Gate ${gate.name} is due. Run ${pbCommand("gate eval")}.`;
   const step = nextStep(contract, ledger);
-  if (step !== null) return startAction(step, pluginRoot);
+  if (step !== null) return startAction(step, pluginRoot, ledger.task);
   return `Every stage and gate is done. Run ${pbCommand("task end")}.`;
 }
 
@@ -52,17 +64,18 @@ function unreadable(root, e) {
 }
 
 // status is null when there is nothing to report but the action. action is null for run state with no open task.
+// owner is null with no owner, and for a ledger that cannot say who owns it.
 export function readRun(pluginRoot, root) {
   const taskDir = join(root, ".pairingbuddy", "run", "task");
   const ledgerPath = join(taskDir, "ledger.json");
-  if (!existsSync(ledgerPath)) return { root, taskDir, active: false, status: null, action: null };
+  if (!existsSync(ledgerPath)) return { root, taskDir, running: false, owner: null, status: null, action: null };
   try {
     const contract = loadStages(pluginRoot);
     const ledger = readLedger(ledgerPath);
     const status = runStatus(contract, ledger, join(taskDir, "artifacts"));
-    return { root, taskDir, active: isStageActive(ledger), status, action: nextAction(contract, ledger, root, pluginRoot) };
+    return { root, taskDir, running: isRunning(ledger), owner: ledger.owner.sessionId, status, action: nextAction(contract, ledger, root, pluginRoot) };
   } catch (e) {
-    return { root, taskDir, active: false, status: null, action: unreadable(root, e) };
+    return { root, taskDir, running: false, owner: null, status: null, action: unreadable(root, e) };
   }
 }
 

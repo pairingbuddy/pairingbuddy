@@ -47,6 +47,20 @@ Reads from `.pairingbuddy/task.json` (optional - provides context on just-comple
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
+### When No Human Is Here
+
+Check this first. If `PAIRINGBUDDY_SOLO` is `true`, skip this check: Solo Mode below applies. Otherwise run this with Bash:
+
+```bash
+echo "$PAIRINGBUDDY_GATE_POLICY/$CLAUDE_CODE_ENTRYPOINT"
+```
+
+No human is here if the output starts with `auto/`, which is the auto policy, or ends with `/sdk-cli`, which is `claude -p`. The same holds if AskUserQuestion is ever denied with "No human answers". Then carry the guidance over silently:
+
+1. Ask nothing and offer nothing: skip every step below, and do not offer to bootstrap.
+2. Leave `.pairingbuddy/human-guidance.json` exactly as it stands. If it is missing, write `{"guidance": []}` to it with the Write tool.
+3. Finish with one line saying the guidance was carried over. It must not be a question.
+
 ### Step 1: Read Inputs
 
 Read all input files listed above, including `.pairingbuddy/human-guidance.json`.

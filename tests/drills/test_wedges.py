@@ -100,7 +100,11 @@ def bash_call(clone, tmp_path, **kwargs):
 def workflow_call(clone, tmp_path, stage, attempt, **kwargs):
     tool_input = {
         "name": f"pairingbuddy:{stage}",
-        "args": {"pluginRoot": str(plugin_of(clone)), "attempt": attempt},
+        "args": {
+            "pluginRoot": str(plugin_of(clone)),
+            "attempt": attempt,
+            "task": {"description": "a drill task"},
+        },
     }
     return gate_call(clone, tmp_path, "Workflow", tool_input, **kwargs)
 
