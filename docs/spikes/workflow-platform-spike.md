@@ -543,3 +543,28 @@ The human decided round F's open point: a case the task names stays a test even 
 | Open 3 | PASS | 152.6 | 0.057204 | 13 | 3: 1 RED and GREEN, 2 covered | Five commits, the same shape |
 
 The spend was $0.179098 in all. No run stopped at `G:scenarios`, and each kept the named 0 and 100 percent cases as covered tests. 3 of 3 is a small sample: it shows the rule can hold, not that the round F stop is gone. The recordings are `tests/smoke/recordings/g-open-1` to `g-open-3`.
+
+## T2b: `files_changed` at `pb task end`
+
+The risk (section 10 of the plan): an agent changes a file it leaves out of `files_changed`, the checkpoint commits only the listed files, and the leftover stops `pb task end` with "the tree is dirty". Safe, but a stop. The question is how often.
+
+**Result: 0 leftovers in 61 runs that reached `pb task end`, 33 `config_change` and 28 `bug_fix`. With no event seen, the rate is below about 5% at 95% confidence (3/61). That is not high, so nothing needs tuning before auto publish on this evidence.**
+
+How it was counted. The recordings in `tests/smoke/recordings/` hold ledger snapshots and spawns, not what `pb task end` printed, and a refusal does not change the ledger, so they cannot show a leftover. Of their 25 runs, 18 reached `pb task end` with every stage done and both gates passed. The count instead reads each run's own session transcript under `~/.claude/projects/`, one per sample repo, and takes the output of every Bash call that ran `task end`. Every run's first `task end` removed `run/task`, apart from one whose call failed to find the CLI from a quoting slip and passed on the next try. No run printed "the tree is dirty". The main context ran no `rm`, `git checkout`, `restore`, `clean`, `add` or `commit` before its `task end`, apart from clearing old `.pairingbuddy/` state at the start, which `pb task end` does not count. So no leftover was cleaned up out of sight either. Runs that stopped before `task end`, at a gate or a `step-failed` stop, are not counted. The transcripts cover S1, S2, the S2 probes and the integration runs from 2026-11-02 21:10 to 2026-11-03 08:32 UTC, and they stay on this machine. The S1 recordings are not in `tests/smoke/recordings/`, so they count only through their transcripts.
+
+This round's runs, 2026-11-03, after Task 50, $0.30 cap per run, four at the same time:
+
+| Run | Result | Total s | Cost $ | Agents | `task end` |
+|---|---|---|---|---|---|
+| Default | PASS | 149.5 | 0.053181 | 10 | Removed `run/task`, no leftover |
+| Open 1 | PASS | 205.4 | 0.065169 | 16 | Removed `run/task`, no leftover |
+| Open 2 | FAIL | 69.5 | 0.023220 | 1 | Not reached: `G:scenarios` asked a human about a scenarios ambiguity |
+| Open 3 | PASS | 183.9 | 0.060107 | 14 | Removed `run/task`, no leftover |
+
+The spend was $0.201677 in all. "Open" is the round D `--task`. Open 2 is round F's open point coming back, 1 time in 4 runs here after 0 in 3 in round G. The recordings are `tests/smoke/recordings/t51-default` and `t51-open-1` to `t51-open-3`.
+
+Where the sample is weak:
+
+- Every change is one file in a small sample repo. No `new_feature` run exists yet, so the refactor fixers, whose groups can touch several files, have never been measured live. Measure again when `new_feature` gets its S2.
+- The recorder does not keep `pb task end`'s output, so the next count needs the transcripts again. Recording that output would make it repeatable from `tests/smoke/recordings/`.
+- If a later count is high, the tuning it points to: have `pb checkpoint` refuse a step that leaves changed files outside its `files_changed`, so the stage retries that agent at once instead of the run stopping at task end, and tell the writing agents in the paths branch that an unlisted file stops the run.

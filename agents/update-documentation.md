@@ -88,7 +88,7 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 2: Main Work
 
-With a `<paths>` block: skip bootstrapping, and treat a missing doc config as no configured docs. Work only on the in-repo docs the config lists. With nothing to update, change nothing and return an empty `files_changed`.
+With a `<paths>` block: skip bootstrapping, and treat a missing doc config as no configured docs. Work only on the in-repo docs the config lists. With nothing to update, change nothing and return an empty `files_changed`. No human is reachable from a stage: where the steps below say to ask the human, do not guess, and describe the open question in `ambiguity` instead. Make the changes without waiting for a review, since the human reviews at the task-end gate.
 
 1. **Bootstrap doc-config.json** (if needed)
    a. Check if `.pairingbuddy/doc-config.json` exists

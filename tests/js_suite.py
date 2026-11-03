@@ -21,6 +21,7 @@ JS_TEST_FILES = [
     "tests/js/keys-labels.test.mjs",
     "tests/js/label-contract.test.mjs",
     "tests/js/ledger.test.mjs",
+    "tests/js/paths-mode-no-ask.test.mjs",
     "tests/js/pb-checkpoint.test.mjs",
     "tests/js/pb-human.test.mjs",
     "tests/js/pb-red-green.test.mjs",
