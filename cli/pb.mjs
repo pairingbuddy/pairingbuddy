@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // pb: deterministic workflow CLI. Verbs live in the VERBS table; later tasks add more.
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +17,8 @@ import { nextAction, runStatus } from "../shared-node/next-action.mjs";
 import { buildReport, closeStage, finishProblems, newestReturn, perTestOf, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
-import { STAGE_STOP_REASONS, VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
+import { COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
+import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
 
@@ -135,8 +137,9 @@ function runOpen(args) {
   }
   try {
     mkdirSync(join(dir, "artifacts"));
+    // runId is the pb run identity, set once here; stage.runId is the separate workflow run id per stage attempt.
     writeLedger(join(dir, "ledger.json"), {
-      v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType,
+      v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType, runId: randomUUID(),
       owner: { sessionId: null, lastSeen: null },
       task, plan: { path: "", title: "" }, configHash,
       policy: { mode: "", source: "" },
@@ -311,14 +314,14 @@ function assertCommitAllowed(step, key, ledger) {
 
 // A stop belongs to the attempt that raised it. A key that is no longer current is refused here, so an orphan cannot
 // halt a later attempt or a finished stage.
-function orStop(path, { step, key }, action) {
+function orStop(path, { step, key }, code, action) {
   try {
     return action();
   } catch (e) {
     if (!(e instanceof CheckpointStopped)) throw e;
     updateLedger(path, (ledger) => {
       assertCurrentKey(step, key, ledger);
-      return { ...ledger, stop: { reason: e.message, seq: ledger.seq + 1 } };
+      return { ...ledger, stop: { reason: e.message, seq: ledger.seq + 1, code } };
     });
     throw new Refusal(`the run stopped: ${e.message}`);
   }
@@ -351,7 +354,7 @@ function recordCheckpoint(path, record, withEvidence = (ledger) => ledger) {
 
 function planFor({ step, key, root, path, ledger }, scope = null) {
   const alreadyCommitted = (ledger.checkpoints ?? []).some((record) => record.key === key && record.committed);
-  return orStop(path, { step, key }, () => planCommit(root, artifactsDirOf(root), step, key, { alreadyCommitted, taskType: ledger.taskType, scope }));
+  return orStop(path, { step, key }, COMMIT_PLAN_UNUSABLE, () => planCommit(root, artifactsDirOf(root), step, key, { alreadyCommitted, taskType: ledger.taskType, scope }));
 }
 
 function noChange({ step, key, path, record }, withEvidence) {
@@ -362,7 +365,7 @@ function noChange({ step, key, path, record }, withEvidence) {
 // The attempt can end while the tests run, so that is looked at again here.
 function commitPlan({ step, key, root, path, branch, record }, plan, head, evidenceFor) {
   assertCommitAllowed(step, key, readLedger(path));
-  const { sha, hookRetried } = orStop(path, { step, key }, () => commitPaths(root, { ...plan, branch, head }));
+  const { sha, hookRetried } = orStop(path, { step, key }, COMMIT_FAILED, () => commitPaths(root, { ...plan, branch, head }));
   recordCheckpoint(path, { step, key, committed: true, sha, ...record }, evidenceFor?.(sha));
   return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
 }
@@ -402,7 +405,7 @@ function checkedRows({ step, key, root, path, ledger }) {
   const config = readTestConfig(root, ledger.configHash);
   const rows = testRows(config, artifactsDirOf(root), ledger.stage);
   assertRowsKept(rows, ledger);
-  orStop(path, { step, key }, () => assertSelectable(config, rows));
+  orStop(path, { step, key }, NO_SELECTOR_TEMPLATE, () => assertSelectable(config, rows));
   return { rows, testDirectories: [...new Set(rows.map((row) => testDirectoryOf(config, row)))] };
 }
 
@@ -586,7 +589,7 @@ function stageFinish(args) {
     const problems = finishProblems(contract, ledger, artifactsDir, head, () => readTestConfig(root, ledger.configHash));
     if (problems.length > 0) {
       missing = `stage ${name} cannot finish at attempt ${attempt}: ${problems.join("; ")}`;
-      return { ...ledger, stop: { reason: missing, seq: ledger.seq + 1 } };
+      return { ...ledger, stop: { reason: missing, seq: ledger.seq + 1, code: MISSING_ARTIFACT } };
     }
     const report = buildReport(ledger, artifactsDir);
     writeReport(reportPathOf(root), report);
@@ -600,11 +603,12 @@ function stageFinish(args) {
 // A stage's script stops a run this way, because it has no shell of its own. The first stop stands: it says why.
 function stageStop(args) {
   if (args.length !== 1 || !Object.hasOwn(STAGE_STOP_REASONS, args[0])) throw new UsageError(`usage: pb stage stop ${Object.keys(STAGE_STOP_REASONS).join("|")}`);
-  const reason = STAGE_STOP_REASONS[args[0]];
+  const code = args[0];
+  const reason = STAGE_STOP_REASONS[code];
   let stop;
   updateLedger(runLedgerPath().path, (ledger) => {
     assertStageActive(ledger, "stop");
-    stop = ledger.stop ?? { reason, seq: ledger.seq + 1 };
+    stop = ledger.stop ?? { reason, seq: ledger.seq + 1, code };
     return { ...ledger, stop };
   });
   return { ok: true, stop };

@@ -119,7 +119,8 @@ export function validateLedger(ledger) {
     acceptances: [Array.isArray, "an array"],
     configAcceptances: [Array.isArray, "an array"],
     checkpoints: [Array.isArray, "an array"],
-  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints"] });
+    runId: [(x) => isString(x) && x !== "", "a non-empty string"],
+  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
@@ -149,7 +150,7 @@ export function validateLedger(ledger) {
         checkObject(ledger.spend, "spend", { agents: [isCount, "a non-negative integer"], tokens: [isCount, "a non-negative integer"] }, errors, { closed: false });
         break;
       case "stop":
-        checkNullableObject(ledger.stop, "stop", { reason: [isNonEmptyString, "a non-empty string"], seq: [isCount, "a non-negative integer"] }, errors);
+        checkNullableObject(ledger.stop, "stop", { reason: [isNonEmptyString, "a non-empty string"], seq: [isCount, "a non-negative integer"], code: [isNonEmptyString, "a non-empty string"] }, errors);
         break;
       case "needsHuman":
         checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"] }, errors);

@@ -196,3 +196,10 @@ export const PANE = {
     view: {},
   },
 } as const
+
+// The human closes the pane: mount it on the terminal surface, press its dismiss button, unmount.
+export async function dismissPane($: any) {
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await pane.press({ key: 'dismiss' })
+  await pane.unmount()
+}

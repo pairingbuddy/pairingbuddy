@@ -1,34 +1,11 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { plainName } from '../shared-node/plain-names.mjs'
-import { BAND, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, serveLedger, start, type Served } from './testing/band'
-import { PANE } from './testing/replay'
+import { BAND, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, texts, type Served } from './testing/band'
+import { PANE, dismissPane } from './testing/replay'
+import { PANE_ID } from './pane-open'
 import { POLL_MS } from './poll'
 
 const IDLE = 'Pairing Buddy · idle'
-
-// What the engine beneath the mod answers, and what the mod asked of it. Registered before `$` is first touched.
-function engine(on: Function, ledger: unknown = SNAPSHOT_RUNNING) {
-  const served: Served = { ledger: JSON.stringify(ledger), asked: [] }
-  const calls = { opened: [] as any[], closed: [] as any[], registered: [] as any[] }
-  serveLedger(on, served)
-  on('session.start', () => ({ cwd: ROOT }))
-  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
-  on('command.register', (_: unknown, e: any) => {
-    calls.registered.push(e)
-    return { value: { command: e.name } }
-  })
-  on('ui.open', (_: unknown, e: any) => {
-    calls.opened.push(e)
-    return { value: { isPlaced: true } }
-  })
-  on('ui.close', (_: unknown, e: any) => {
-    calls.closed.push(e)
-    return { value: undefined }
-  })
-  return { served, calls }
-}
-
-const texts = async (surface: any) => (await surface.findAll({ type: 'Text' })).map((node: any) => node.text as string)
 
 test('pressing the band\'s details button opens the pane, closeable by esc', async ($, on) => {
   const { calls } = engine(on)
@@ -40,20 +17,19 @@ test('pressing the band\'s details button opens the pane, closeable by esc', asy
   await band.press({ key: 'details' })
   await band.unmount()
 
-  expect(calls.opened.map(open => open.id), 'the button opens the pane under its id').toEqual(['pairingbuddy'])
+  expect(calls.opened.map(open => open.id), 'the button opens the pane under its id').toEqual([PANE_ID])
   // Esc itself belongs to the engine; the mod's part is to ask for it.
   expect(calls.opened[0].closeOnEscape, 'the pane is opened closeable by esc').toBe(true)
 })
 
 test('the mod registers /pb at session start, and running it opens the same pane closeable by esc', async ($, on) => {
   const { calls } = engine(on)
-  on('command.run', () => ({ text: 'unanswered by the test' }))
   await start($)
 
   await $.command.run({ command: 'pb' })
 
   expect(calls.registered.map(command => command.name), 'the mod registers /pb at session start').toEqual(['pb'])
-  expect(calls.opened.map(open => open.id), '/pb opens the pane under its id').toEqual(['pairingbuddy'])
+  expect(calls.opened.map(open => open.id), '/pb opens the pane under its id').toEqual([PANE_ID])
   expect(calls.opened[0].closeOnEscape, '/pb opens it closeable by esc too').toBe(true)
 })
 
@@ -61,11 +37,9 @@ test('the dismiss button closes the pane by its id', async ($, on) => {
   const { calls } = engine(on)
   await start($)
 
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: 'dismiss' })
-  await pane.unmount()
+  await dismissPane($)
 
-  expect(calls.closed.map(close => close.id), 'the dismiss button closes the pane').toEqual(['pairingbuddy'])
+  expect(calls.closed.map(close => close.id), 'the dismiss button closes the pane').toEqual([PANE_ID])
 })
 
 test('the band\'s width budget subtracts the details button', async ($, on) => {

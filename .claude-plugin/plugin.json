@@ -44,5 +44,13 @@
     "./agents/sequence-tasks.md",
     "./agents/apply-config-change.md",
     "./agents/runner.md"
-  ]
+  ],
+  "userConfig": {
+    "alertSound": {
+      "type": "boolean",
+      "title": "Alert sound",
+      "description": "Play a sound on stop or needs-you",
+      "default": true
+    }
+  }
 }

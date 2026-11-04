@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const PAYLOADS = join(ROOT, "tests", "probes", "fixtures", "payloads");
@@ -254,7 +255,7 @@ describe("pb human approve is the way out of a redo or a stop", () => {
   }
 
   test("a stop the gate's answer set is cleared", () => {
-    const repo = makeRepo({ ledger: { gates: { [G_FIRST]: { source: "human", answer: "stop" } }, stop: { reason: `the human answered stop at ${G_FIRST}`, seq: 1 } } });
+    const repo = makeRepo({ ledger: { gates: { [G_FIRST]: { source: "human", answer: "stop" } }, stop: { reason: `the human answered stop at ${G_FIRST}`, seq: 1, code: HUMAN_STOPPED } } });
 
     succeeded(approve(repo, G_FIRST));
 

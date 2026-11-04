@@ -56,3 +56,16 @@ export function eventsFor(event: string, matcher: Record<string, unknown>): Even
       throw new Error(`no representative events for the "${event}" hook: add a case to eventsFor`)
   }
 }
+
+// What a hook did with an event: the value it answered, or the error it let escape.
+export async function outcome(call: () => unknown): Promise<{ value?: unknown; error?: unknown }> {
+  try {
+    return { value: await call() }
+  } catch (error) {
+    return { error }
+  }
+}
+
+export function isDeny(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && 'deny' in value
+}

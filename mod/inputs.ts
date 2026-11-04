@@ -8,12 +8,15 @@ type Spend = { agents: number; tokens: number; tokensKnown: boolean }
 type StageEntry = { name: string; status?: string; attempt?: number; startedAt?: string; spend?: Spend }
 // The ledger as the mod reads it: every field is optional, since the file may be partial.
 export type Ledger = {
+  runId?: string
   taskType?: string | null
   stage?: { name?: string; status?: string; runId?: string | null; attempt?: number; startedAt?: string | null }
   stages?: StageEntry[]
   spend?: Spend
+  task?: string
+  plan?: { path?: string }
   stop?: { reason?: string; seq?: number }
-  needsHuman?: { gate?: string | null }
+  needsHuman?: { gate?: string | null; seq?: number }
 } | undefined
 
 export type Inputs = { ledger: Ledger; spawns: Spawn[]; tests: string[]; now: number | undefined }

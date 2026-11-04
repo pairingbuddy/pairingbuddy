@@ -1,5 +1,6 @@
-import type { EngineInterface } from 'claude-code'
+import type { EngineInterface, PluginOptions } from 'claude-code'
 import { pollInputs } from './inputs'
+import { alertOn } from './alert'
 
 export const POLL_MS = 1000
 const INPUTS = { plugin: 'pairingbuddy', key: 'inputs' } as const
@@ -7,16 +8,18 @@ const INPUTS = { plugin: 'pairingbuddy', key: 'inputs' } as const
 export type PollerState = { started: boolean; polling: boolean }
 export const newPollerState = (): PollerState => ({ started: false, polling: false })
 
-// One poller per register: the poll exists so the band redraws every second, since a render may not wait on files.
+// One poller per register: the poll exists so the band redraws and the alert fires every second, since a render may not wait on files.
 // A start while one runs only reads once, a tick is skipped while a poll is in flight, and a failed poll is dropped.
-export async function startPoller($: EngineInterface, state: PollerState) {
+export async function startPoller($: EngineInterface, state: PollerState, options: PluginOptions = {}) {
   const poll = async () => {
     if (state.polling) {
       return
     }
     state.polling = true
     try {
-      await $.state.set(INPUTS, await pollInputs($))
+      const polled = await pollInputs($)
+      await $.state.set(INPUTS, polled)
+      await alertOn($, polled.ledger, options)
     } catch {
       // A failed tick is dropped; the next one tries again.
     } finally {

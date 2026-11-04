@@ -846,7 +846,8 @@ describe("pb stage stop", IN_PARALLEL, () => {
   }
 
   test("a stop already there stands", () => {
-    const repo = makeRepo({ ledger: { stop: { reason: "the first one", seq: 1 } } });
+    // Guards that a second pb stage stop does not replace an existing stop (checked by its reason).
+    const repo = makeRepo({ ledger: { stop: { reason: "the first one", seq: 1, code: "step-failed" } } });
 
     assertPasses(pb(repo, "stage", "stop", "agent-budget"));
 

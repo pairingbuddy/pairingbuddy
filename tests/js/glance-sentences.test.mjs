@@ -4,18 +4,8 @@ import assert from "node:assert/strict";
 import { glance } from "../../shared-node/glance.mjs";
 import { buildLabel } from "../../shared-node/labels.mjs";
 import { MAX_TRIES } from "../../shared-node/limits.mjs";
+import { recording, ledgerAtSeq, SOME_TIME, TDD_ACTIVE_SEQ } from "./glance-fixture.mjs";
 
-// Node imports the .ts data files directly (type stripping, Node 22.18+/23.6+); index.ts is not imported (extensionless './ledger' imports).
-async function recording(run, file) {
-  return (await import(new URL(`../../mod/fixtures/replay/${run}/${file}.ts`, import.meta.url))).default;
-}
-
-async function ledgerAtSeq(run, seq) {
-  return (await recording(run, "ledger")).find((snapshot) => snapshot.ledger.seq === seq).ledger;
-}
-
-const SOME_TIME = Date.parse("2026-11-03T07:12:00.000Z");
-const TDD_ACTIVE_SEQ = 7;
 const probeSpawns = await recording("probe-2", "spawns");
 const THROUGH_FIRST_RED_TRY = 10;
 const THROUGH_GREEN_RUNNER_CHECKPOINT = 13;
@@ -166,7 +156,19 @@ test("a stop shows 'needs you: stopped' in the band, never its reason or code", 
   assert.ok(!needsYou.includes("step-failed"), "no stop code in the band");
 });
 
-test("a stop shows 'stopped' in the pane's NOW, never its reason or code", async () => {
+test("a stop with a code shows 'stopped: <plain name>' in the pane's NOW, never its reason or code", async () => {
+  const snapshot = await ledgerAtSeq("g-open-1", TDD_ACTIVE_SEQ);
+  const reason = "step-failed: a step of the stage failed past its retries, and nothing more can run";
+  const ledger = { ...snapshot, stop: { reason, seq: TDD_ACTIVE_SEQ, code: "step-failed" } };
+
+  const result = glance({ ledger, spawns: [], now: SOME_TIME });
+
+  assert.equal(result.rows.now, "stopped: a step kept failing");
+  assert.ok(!result.rows.now.includes(reason), "no stop reason in the pane's NOW");
+  assert.ok(!result.rows.now.includes("step-failed"), "no raw stop code in the pane's NOW");
+});
+
+test("a stop without a code shows plain 'stopped' in the pane's NOW", async () => {
   const snapshot = await ledgerAtSeq("g-open-1", TDD_ACTIVE_SEQ);
   const reason = "step-failed: a step of the stage failed past its retries, and nothing more can run";
   const ledger = { ...snapshot, stop: { reason, seq: TDD_ACTIVE_SEQ } };

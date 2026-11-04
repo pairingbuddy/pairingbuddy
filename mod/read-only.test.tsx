@@ -2,15 +2,13 @@ import { expect, test } from 'claude-code/testing'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, serveLedger, start, type Served } from './testing/band'
 import { eventsFor, recordHooks } from './testing/hooks'
+import { recordOther, recordWrite, refuseWorldChanges } from './testing/refuse'
 
 // A run's state: a ledger and what sits beside it. The mod only ever reads this.
 const FIXTURE: Record<string, string> = {
   [LEDGER_PATH]: JSON.stringify(SNAPSHOT_RUNNING),
   [`${ROOT}/.pairingbuddy/test-state.json`]: '{"results":[]}',
 }
-
-// The one place that says which paths the mod may write. Empty today: the mod writes nothing.
-const ALLOWED_WRITES: string[] = []
 
 // Reads answered from the fixture, shared by the direct hook calls and the mounted band.
 const READS = {
@@ -26,21 +24,6 @@ const READS = {
   ancestors: () => [],
 }
 
-// The one write recorder. An allowed path is applied to the fixture copy, so the unchanged check
-// sees it; anything else is recorded with where it came from and refused.
-function write(files: Map<string, string>, touched: string[], where: string, path: string, text: string): boolean {
-  if (ALLOWED_WRITES.some(allowed => path === allowed || path.startsWith(allowed))) {
-    files.set(path, text)
-    return true
-  }
-  touched.push(`${where}: fs.write ${path}`)
-  return false
-}
-
-function recordOther(touched: string[], where: string, call: string) {
-  touched.push(`${where}: ${call}`)
-}
-
 // The test's `$` has neither a drawing surface nor fs and process of its own. This one lends element
 // stand-ins, serves reads from the fixture and records any other fs or process call, whatever its name.
 function recordingEngine(files: Map<string, string>, touched: string[], where: string): never {
@@ -50,7 +33,7 @@ function recordingEngine(files: Map<string, string>, touched: string[], where: s
     get: (_, name) => async (path?: string, text?: string) => {
       if (name in READS) return (READS as Record<string, Function>)[String(name)](files, path)
       if (name === 'write') {
-        write(files, touched, where, String(path), String(text))
+        recordWrite(files, touched, where, String(path), String(text))
         return
       }
       recordOther(touched, where, `fs.${String(name)} ${String(path)}`)
@@ -80,20 +63,11 @@ test('running hooks and band against a fixture ledger leaves .pairingbuddy/ unch
   serveLedger(on, served)
   on('session.start', () => ({ cwd: ROOT }))
   on('command.register', (_, e) => ({ value: { command: e.name } }))
-  on('fs.write', (_, e) =>
-    write(files, touched, where, e.path, e.text) ? { value: undefined } : { deny: 'the mod is read-only' })
+  refuseWorldChanges(on, touched, () => where, files)
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
 
     return <Text>engine</Text>
-  })
-  on('process.run', (_, e) => {
-    recordOther(touched, where, `process.run ${e.argv.join(' ')}`)
-    return { deny: 'the mod is read-only' }
-  })
-  on('process.spawn', async function* (_, e) {
-    recordOther(touched, where, `process.spawn ${e.argv.join(' ')}`)
-    return { deny: 'the mod is read-only' } as never
   })
 
   // Every hook the mod registers, whatever it is, with a survey in the slot and without.

@@ -16,7 +16,7 @@ const R4_1_BAND = [
   { id: "left", text: "left: 1 test + review" },
   { id: "looping", text: "looping: no" },
   { id: "offTrack", text: "off track: no" },
-  { id: "needsYou", text: "needs you: your sign-off at the end" },
+  { id: "needsYou", text: "needs you: your sign-off at the end", standing: true },
 ];
 
 const widthOf = (segments) => segments.map((segment) => segment.text).join(SEPARATOR).length;
@@ -64,11 +64,23 @@ test("after dropping 'left:' and '≈ %', the next step shortens 'needs you:' to
   assert.ok(widthOf(kept) <= columns, `nothing is wider than ${columns} columns`);
 });
 
-test("below that, the band is truncated, lowest priority last, with an ellipsis, and is never wider than the columns", () => {
+test("below that, a standing needs-you is kept whole, never wider than the columns, 'where' untouched", () => {
   const shortened = withShortNeedsYou(withoutPercent(withoutLeft(R4_1_BAND)));
   const columns = widthOf(shortened) - 1;
 
   const kept = fitBand(R4_1_BAND, columns);
+
+  assert.ok(widthOf(kept) <= columns, `no wider than ${columns} columns`);
+  assert.equal(textOf(kept, "needsYou"), "needs you: your sign-off at the end", "a standing needs-you is kept whole while it fits");
+  assert.equal(textOf(kept, "where"), "RED · test 3 of 4", "'where' is untouched");
+});
+
+test("below that, with nothing standing, the band is truncated in Task 57's order: needs-you is cut first, with an ellipsis", () => {
+  const calm = R4_1_BAND.map((segment) => (segment.id === "needsYou" ? { id: segment.id, text: "needs you: no" } : segment));
+  const shortened = withShortNeedsYou(withoutPercent(withoutLeft(calm)));
+  const columns = widthOf(shortened) - 1;
+
+  const kept = fitBand(calm, columns);
 
   assert.ok(widthOf(kept) <= columns, `no wider than ${columns} columns`);
   assert.match(textOf(kept, "needsYou"), /…$/, "the cut text ends in an ellipsis");

@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { eventsFor, recordHooks } from './testing/hooks'
+import { eventsFor, isDeny, outcome, recordHooks } from './testing/hooks'
 
 // Nothing of the engine is reachable: a hook that passes an event through must not touch `$`.
 const UNTOUCHED = new Proxy({}, {
@@ -24,19 +24,6 @@ test('every registered hook hands the event to next when a survey owns the slot'
     expect(result, `${event} hook returns what next returned`).toBe(handedOn)
   }
 })
-
-// What a hook did with an event: the value it answered, or the error it let escape.
-async function outcome(call: () => unknown): Promise<{ value?: unknown; error?: unknown }> {
-  try {
-    return { value: await call() }
-  } catch (error) {
-    return { error }
-  }
-}
-
-function isDeny(value: unknown): boolean {
-  return typeof value === 'object' && value !== null && 'deny' in value
-}
 
 test('no registered hook answers deny, with a normal next or a rejecting one', async () => {
   for (const { event, matcher, hook } of recordHooks()) {

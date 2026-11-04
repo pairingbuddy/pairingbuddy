@@ -1,4 +1,4 @@
-// Plain-language names for stage, gate and agent ids. The UI shows these, never the ids.
+// Plain-language names for the ids the UI would otherwise show. The UI shows these, never the ids.
 const PLAIN_NAMES = {
   // stages
   "code-config": "make the config change",
@@ -40,6 +40,14 @@ const PLAIN_NAMES = {
   "design-ux-explorer": "exploring the design",
   "design-ux-validator": "validating the design",
   "design-ux-gallery-generator": "building the gallery",
+  // stop codes
+  "missing-artifact": "a step didn't write its file",
+  "commit-plan-unusable": "the commit plan was unusable",
+  "commit-failed": "the commit failed",
+  "no-selector-template": "can't run one test on its own",
+  "human-stopped": "you asked it to stop",
+  "agent-budget": "the agent budget ran out",
+  "step-failed": "a step kept failing",
   // task types
   "config_change": "config change",
   "bug_fix": "bug fix",

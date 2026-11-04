@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { readLedger, validateLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { COMMIT_FAILED } from "../../shared-node/verbs.mjs";
 
 const PB = new URL("../../cli/pb.mjs", import.meta.url).pathname;
 const PLUGIN = new URL("../..", import.meta.url).pathname.replace(/\/$/, "");
@@ -50,6 +51,8 @@ function pb(cwd, ...args) {
 const open = (cwd, ...extra) => pb(cwd, "run", "open", "--kind", "code", ...extra);
 const runDir = (root) => join(root, ".pairingbuddy", "run", "task");
 const ledgerPath = (root) => join(runDir(root), "ledger.json");
+// Ends the run the way `pb task end` does: removes the run directory.
+const endRun = (root) => rmSync(runDir(root), { recursive: true, force: true });
 
 function assertCleanRefusal(r, pattern) {
   assert.notEqual(r.status, 0, "exit code must be non-zero");
@@ -363,7 +366,7 @@ test("eight-concurrent-opens-give-exactly-one-winner", async (t) => {
   }
 });
 
-function stopRun(root, stop = { reason: "the commit hook refused", seq: 1 }) {
+function stopRun(root, stop = { reason: "the commit hook refused", seq: 1, code: COMMIT_FAILED }) {
   const path = ledgerPath(root);
   writeLedger(path, { ...readLedger(path), stop });
 }
@@ -481,8 +484,34 @@ test("a stop is the refusal on a protected branch too, so the branch cannot hide
   const root = makeRepo(t);
   assert.equal(open(root).status, 0);
   const ledger = readLedger(ledgerPath(root));
-  writeLedger(ledgerPath(root), { ...ledger, stop: { reason: "hook refused the commit", seq: 1 } });
+  writeLedger(ledgerPath(root), { ...ledger, stop: { reason: "hook refused the commit", seq: 1, code: COMMIT_FAILED } });
   git(root, "checkout", "-q", "main");
 
   assertCleanRefusal(open(root), /hook refused the commit/);
+});
+
+// mod/alert.ts keys alerts on the top-level ledger.runId, so run open must write one.
+test("run-open-writes-run-id", (t) => {
+  const root = makeRepo(t);
+
+  const r = open(root);
+
+  assert.equal(r.status, 0, r.stderr);
+  const { runId } = readLedger(ledgerPath(root));
+  assert.equal(typeof runId, "string", "runId is a top-level string");
+  assert.notEqual(runId, "", "runId is non-empty");
+});
+
+test("two-run-opens-give-different-run-ids", (t) => {
+  const root = makeRepo(t);
+  writeTask(root, JSON.stringify({ description: "Set the port" }));
+  assert.equal(open(root).status, 0);
+  const first = readLedger(ledgerPath(root)).runId;
+  endRun(root);
+
+  const r = open(root);
+
+  assert.equal(r.status, 0, r.stderr);
+  const second = readLedger(ledgerPath(root)).runId;
+  assert.notEqual(second, first, "a second open of the same task gets a new runId");
 });

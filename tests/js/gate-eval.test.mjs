@@ -22,6 +22,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readLedger, updateLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { COMMIT_FAILED } from "../../shared-node/verbs.mjs";
+
+const AGENT_BUDGET = "agent-budget";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const PAYLOADS = join(ROOT, "tests", "probes", "fixtures", "payloads");
@@ -417,8 +420,8 @@ const ALWAYS_STOP = [
   { condition: "an uncovered lens", reason: /uncovered/, arrange: (repo) => writeReport(repo, { uncovered: ["security"] }) },
   { condition: "an unrefuted high-severity finding past the cap", reason: /unrefuted/, arrange: (repo) => writeReport(repo, { unrefuted: [{ id: "f2", severity: "high" }] }) },
   { condition: "a config hash change", reason: /config hash/, arrange: (repo) => writeFileSync(join(repo.dir, ".pairingbuddy", "test-config.json"), '{"runners":{"x":{}}}\n') },
-  { condition: "a failed publish", reason: /publish/, ledger: { stop: { reason: "publish-failed", seq: 0 } } },
-  { condition: "a stop", reason: /agent-budget/, ledger: { stop: { reason: "agent-budget", seq: 0 } } },
+  { condition: "a failed publish", reason: /publish/, ledger: { stop: { reason: "publish-failed", seq: 0, code: COMMIT_FAILED } } },
+  { condition: "a stop", reason: /agent-budget/, ledger: { stop: { reason: AGENT_BUDGET, seq: 0, code: AGENT_BUDGET } } },
 ];
 
 describe("always-stop conditions", () => {
@@ -444,7 +447,7 @@ describe("always-stop conditions", () => {
   }
 
   test("under default mode the stop condition is the reason given, not the mode", () => {
-    const repo = makeRepo({ ledger: { stop: { reason: "agent-budget", seq: 0 } } });
+    const repo = makeRepo({ ledger: { stop: { reason: AGENT_BUDGET, seq: 0, code: AGENT_BUDGET } } });
 
     assert.match(gateEval(repo, "default").reason, /agent-budget/);
   });
@@ -890,7 +893,7 @@ describe("a human's stop sets ledger.stop", () => {
   });
 
   test("a stop the gate answer did not set survives an approve", () => {
-    const stop = { reason: "agent-budget", seq: 0 };
+    const stop = { reason: AGENT_BUDGET, seq: 0, code: AGENT_BUDGET };
     const repo = makeRepo({ ledger: { stop } });
 
     assert.equal(runPb(repo, ["human", "approve", TASK_END]).code, 0);

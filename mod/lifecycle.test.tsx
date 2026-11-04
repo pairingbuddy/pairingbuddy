@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, start } from './testing/band'
+import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, start, texts } from './testing/band'
 import { POLL_MS } from './poll'
 
 const TESTS_PATH = `${ROOT}/.pairingbuddy/tests.json`
@@ -29,7 +29,6 @@ function engine(on: Function, files: Record<string, string>) {
   return run
 }
 
-const texts = async (surface: any) => (await surface.findAll({ type: 'Text' })).map((node: any) => node.text as string)
 const spawn = ($: any, name: string) => $.agent.spawn({ prompt: 'p', description: 'd', name, subagentType: 'pairingbuddy:implement-tests' })
 const agentsIn = (shown: string[]) => shown.find(text => /\d+ agents?/.test(text))?.match(/\d+ agents?/)?.[0]
 

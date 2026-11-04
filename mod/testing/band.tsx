@@ -94,3 +94,60 @@ export function serveLedger(on: Function, served: Served): void {
       : { deny: `ENOENT ${e.path}` }
   })
 }
+
+// What the engine beneath the mod answers, and what the mod asked of it. Registered before `$` is first touched.
+// The kit allows one handler per action in `on`, and a second registration of the same action throws, so a
+// test cannot stack its own failing handler on the rig's. The rig registers `ui.open` once and takes the
+// answer as `open`, a responder given the request; it defaults to a placed pane.
+export const PLACED = () => ({ value: { isPlaced: true } })
+
+export function engine(on: Function, ledger: unknown = SNAPSHOT_RUNNING, open: (request: any) => unknown = PLACED) {
+  const served: Served = { ledger: JSON.stringify(ledger), asked: [] }
+  // Serves the document the ledger shows from now on; null is an absent ledger.
+  const serve = (document: unknown) => {
+    served.ledger = document === null ? undefined : JSON.stringify(document)
+  }
+  // Serves the text as it is, for a ledger that is not valid JSON.
+  const serveRaw = (text: string) => {
+    served.ledger = text
+  }
+  const calls = { opened: [] as any[], closed: [] as any[], registered: [] as any[] }
+  serveLedger(on, served)
+  on('session.start', () => ({ cwd: ROOT }))
+  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
+  on('session.end', () => ({ sessionId: 's1' }))
+  on('command.run', () => ({ text: 'unanswered by the test' }))
+  on('command.register', (_: unknown, e: any) => {
+    calls.registered.push(e)
+    return { value: { command: e.name } }
+  })
+  on('ui.open', (_: unknown, e: any) => {
+    calls.opened.push(e)
+    return open(e)
+  })
+  on('ui.close', (_: unknown, e: any) => {
+    calls.closed.push(e)
+    return { value: undefined }
+  })
+  return { served, serve, serveRaw, calls }
+}
+
+// The text of every Text node on a mounted surface, in order.
+export const texts = async (surface: any) => (await surface.findAll({ type: 'Text' })).map((node: any) => node.text as string)
+
+// The terminal band as drawn now: mounts it, collects its texts and unmounts it.
+// Optional props merge into the band's props, for example { bodyColumns: 200 } for a wide terminal.
+export async function bandTexts($: any, props: Record<string, unknown> = {}): Promise<string[]> {
+  const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, ...props }, surface: 'terminal' })
+  const shown = await texts(band)
+  await band.unmount()
+  return shown
+}
+
+// What the band reads once an alert has run and the pane is placed.
+export const NEEDS_YOU_OPENED = 'needs you · opened details'
+
+// Whether any line of the band's texts includes the wording.
+export function bandSays(shown: string[], wording: string): boolean {
+  return shown.some(text => text.includes(wording))
+}

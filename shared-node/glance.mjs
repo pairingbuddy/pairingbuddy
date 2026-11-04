@@ -61,7 +61,7 @@ function spentRow({ ledger, spawns, now }) {
 }
 
 function nowRow(step, tests, ledger) {
-  if (ledger?.stop) return "stopped";
+  if (ledger?.stop) return stopLine(ledger.stop);
   if (!step) return plainName(ledger?.stage?.name) ?? UNKNOWN;
   const position = testPosition(step, tests);
   const where = position > 0 ? ` · test ${position} of ${tests.length}` : "";
@@ -80,6 +80,7 @@ function loopingRow(step) {
 }
 
 const SEPARATOR = " │ ";
+export const SEPARATOR_WIDTH = SEPARATOR.length;
 const PERCENT_PART = / · ≈.*$/;
 
 function bandWhere(step, tests, ledger) {
@@ -97,11 +98,31 @@ function bandSpent({ ledger, spawns, now }) {
   return `${elapsed(runStart(ledger), now)} · ${agents} ${agents === 1 ? "agent" : "agents"}`;
 }
 
-// A gate reads by its plain name; a stop reads "stopped", with no reason or code (stable stop codes are Task 58).
+const STOPPED = "stopped";
+
+// A stop reads by the plain name of its code, or undefined when the code has none.
+function stopName(stop) {
+  return plainName(stop?.code);
+}
+
+// The one wording for a stop, shared by the pane, the band and the status line: "stopped: <name>", or bare "stopped" when the code has no plain name.
+export function stopLine(stop) {
+  const name = stopName(stop);
+  return name ? `${STOPPED}: ${name}` : STOPPED;
+}
+
+// A gate reads by its plain name; a gate with no plain name falls back to its id as given.
+export const gateLine = (gate) => plainName(gate) ?? gate;
+
+// The one wording for a gate waiting on the human, shared by the band and the status line.
+export const needsYouLine = (gate) => `needs you: ${gateLine(gate)}`;
+
+// A gate reads by its plain name; a stop reads by the plain name of its code, never the code itself.
 function bandNeedsYou(ledger) {
   const gate = ledger?.needsHuman?.gate;
-  if (gate) return `needs you: ${plainName(gate) ?? gate}`;
-  return ledger?.stop ? "needs you: stopped" : "needs you: no";
+  if (gate) return { id: "needsYou", text: needsYouLine(gate), standing: true };
+  if (!ledger?.stop) return { id: "needsYou", text: "needs you: no" };
+  return { id: "needsYou", text: `needs you: ${stopName(ledger.stop) ?? STOPPED}`, standing: true };
 }
 
 function bandSegments({ ledger, spawns, tests, now }, step) {
@@ -112,7 +133,7 @@ function bandSegments({ ledger, spawns, tests, now }, step) {
     { id: "left", text: bandLeft(step, tests) },
     { id: "looping", text: `looping: ${looping}` },
     { id: "offTrack", text: `off track: ${UNKNOWN}` },
-    { id: "needsYou", text: bandNeedsYou(ledger) },
+    bandNeedsYou(ledger),
   ];
 }
 
@@ -127,20 +148,31 @@ function truncate(text, overflow) {
 }
 
 // Narrowing order: drop "left:", then the "≈ %" of spent, then shorten "needs you:" to "you:".
-// If it still does not fit, truncate segment texts with an ellipsis, last (lowest priority) first;
-// as a last resort drop trailing segments, so the band is never wider than the columns.
+// If it still does not fit, truncate segment texts with an ellipsis, last (lowest priority) first.
+// When an event stands (its segment carries standing: true), needs-you is kept whole: it is shortened only if that alone fits,
+// the other segments give first, and it is cut only as a last resort. The band is never wider than the columns.
 export function fitBand(segments, columns) {
   const withoutLeft = segments.filter((segment) => segment.id !== "left");
   const withoutPercent = withText(withoutLeft, "spent", (text) => text.replace(PERCENT_PART, ""));
-  const attempts = [segments, withoutLeft, withoutPercent, withText(withoutPercent, "needsYou", (text) => text.replace(/^needs you:/, "you:"))];
-  const fitting = attempts.find((attempt) => bandWidth(attempt) <= columns);
+  const shortened = withText(withoutPercent, "needsYou", (text) => text.replace(/^needs you:/, "you:"));
+  const fitting = [segments, withoutLeft, withoutPercent, shortened].find((attempt) => bandWidth(attempt) <= columns);
   if (fitting) return fitting;
 
-  let band = attempts.at(-1);
-  for (let i = band.length - 1; i >= 0 && bandWidth(band) > columns; i--) {
-    band = withText(band, band[i].id, (text) => truncate(text, bandWidth(band) - columns));
+  const standing = segments.some((segment) => segment.id === "needsYou" && segment.standing);
+  let band = standing ? withoutPercent : shortened;
+  const order = band.map((segment) => segment.id).reverse();
+  if (standing) order.splice(order.indexOf("needsYou"), 1);
+  for (const id of order) {
+    if (bandWidth(band) <= columns) break;
+    band = withText(band, id, (text) => truncate(text, bandWidth(band) - columns));
   }
-  while (bandWidth(band) > columns && band.length > 1) band = band.slice(0, -1);
+  while (bandWidth(band) > columns && band.length > 1) {
+    const last = band.findLastIndex((segment) => !standing || segment.id !== "needsYou");
+    band = band.filter((_, i) => i !== last);
+  }
+  if (standing && bandWidth(band) > columns) {
+    band = withText(withText(band, "needsYou", (text) => text.replace(/^needs you:/, "you:")), "needsYou", (text) => truncate(text, bandWidth(band) - columns));
+  }
   return bandWidth(band) > columns ? withText(band, band[0].id, (text) => text.slice(0, Math.max(columns, 0))) : band;
 }
 
