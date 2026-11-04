@@ -4,20 +4,29 @@ import { expect, mock, test } from 'claude-code/testing'
 import { engine, start, ROOT, SNAPSHOT_RUNNING } from './testing/band'
 import { commitsArgv, REPORTS_DIR } from './report'
 import { POLL_MS } from './poll'
-import { REPORT_KEY, REPORT_LABEL, REPORT_SLUG, paneTexts, pressReportButton, reportButton, reportConfirmation, reportOpenFailure, reportWriteFailure, REPORT_OPENED, writtenFileName } from './testing/report'
+import { PANE } from './testing/replay'
+import { recordReportCalls, REPORT_KEY, REPORT_LABEL, REPORT_SLUG, paneTexts, pressReportButton, reportButton, reportConfirmation, reportOpenFailure, reportWriteFailure, REPORT_OPENED, writtenFileName } from './testing/report'
 
 test('pane-shows-open-report-button', async ($, on) => {
+  engine(on)
+  mock.clock(on, { now: 0 })
+  await start($)
+
+  const withLedger = await reportButton($)
+
+  expect(withLedger?.text, 'while a ledger is live the pane holds the open-report button').toBe(REPORT_LABEL)
+})
+
+test('pane-has-no-open-report-button-before-any-ledger-is-polled', async ($, on) => {
   const { serve } = engine(on)
+  serve(null)
   const clock = mock.clock(on, { now: 0 })
   await start($)
-  const withLedger = await reportButton($)
-  serve(null)
   await clock.advance(POLL_MS)
 
-  const idle = await reportButton($)
+  const noLedgerYet = await reportButton($)
 
-  expect(withLedger?.text, 'with a ledger the pane holds the open-report button').toBe(REPORT_LABEL)
-  expect(idle, 'with no run the idle pane holds no open-report button').toBeUndefined()
+  expect(noLedgerYet, 'with no ledger polled in the session the pane holds no open-report button').toBeUndefined()
 })
 
 test('open-report-writes-html-under-reports-dir', async ($, on) => {
@@ -117,4 +126,24 @@ test('report-note-shown-only-while-ledger-exists', async ($, on) => {
   expect(whileLedger, 'the note is shown while the run has a ledger').toContain(reportConfirmation(fileName))
   expect(idle.some((t) => t.includes(fileName)), 'once the poll sees no ledger the pane no longer shows the note').toBe(false)
   expect(nextRun.some((t) => t.includes(fileName)), 'a ledger served again does not bring back the note from the earlier run').toBe(false)
+})
+
+test('pressing the report button after the live ledger is gone writes a report named and filled from the last polled ledger', async ($, on) => {
+  const sha = 'abc1234def5678abc1234def5678abc1234def56'
+  const { serve } = engine(on, { ...SNAPSHOT_RUNNING, commits: [sha] })
+  const clock = mock.clock(on, { now: Date.parse('2026-11-03T06:40:00Z') })
+  const recorder = recordReportCalls(on)
+  await start($)
+  serve(null)
+  await clock.advance(POLL_MS)
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await pane.press({ key: REPORT_KEY })
+  await pane.unmount()
+
+  const fileName = writtenFileName(recorder.writes, 'the press writes one report although the live ledger is gone')
+  expect(fileName, 'the file name carries the last run slug').toContain(REPORT_SLUG)
+  expect(recorder.writes[0].text, 'the report holds the last run task').toContain(SNAPSHOT_RUNNING.task.slice(0, 30))
+  const runs = recorder.calls.flatMap((c) => (c.kind === 'run' ? [c.argv] : []))
+  expect(runs, 'the commits are read via git from the snapshot shas').toContainEqual(commitsArgv([sha]))
 })

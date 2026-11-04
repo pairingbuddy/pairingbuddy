@@ -94,3 +94,14 @@ test("at a very small width the band is still no wider than the columns", () => 
 
   assert.ok(widthOf(kept) <= columns, `no wider than ${columns} columns`);
 });
+
+test("with separators and the gap counted fitBand still returns segments whose joined width plus the details button fits the columns, at 167 and a narrow width", () => {
+  const DETAILS_BUTTON = " ▸ details".length; // the space before the button plus its label
+  const drawnWidth = (segments) => widthOf(segments) + DETAILS_BUTTON;
+
+  for (const columns of [167, 60, 40]) {
+    const kept = fitBand(R4_1_BAND, columns - DETAILS_BUTTON);
+
+    assert.ok(drawnWidth(kept) <= columns, `the band plus the button is no wider than ${columns} columns, got ${drawnWidth(kept)}`);
+  }
+});

@@ -970,6 +970,8 @@ Solo sessions run unattended, so real-time progress visibility is essential. Two
 
 The mod also alerts when the run stops or needs a human (`mod/alert.ts`, `mod/pane-open.ts`): it plays the bundled `mod/assets/alert.wav` (configurable through the `alertSound` userConfig), sets the status line and opens the pane. Each event alerts once, tracked through `$.store` keyed by run id, kind and event seq. The ledger carries a `runId`, written by `pb run open`, and a stop carries a `stop.code` from `STOP_CODES` in `shared-node/stop-codes.mjs`; every code has a plain name in `shared-node/plain-names.mjs`. Alerts stay read-only: they never write run state.
 
+The mod keeps a snapshot of the last run in `$.state`, so after `pb task end` removes `.pairingbuddy/run/task` the pane still shows "last run finished" and its report button works. `/pb` is a registered command that answers and opens the pane.
+
 The first-pane smoke (Task 59) has a lab (`tests/smoke/t4a-lab.mjs`) and a broken-copy helper (`tests/smoke/broken-plugin.mjs`, `makeBrokenCopy` with `load` and `render` modes). `s2.mjs --plugin-dir` runs S2 against a broken copy, and `tests/smoke/T4A-RUNBOOK.md` guides the human session.
 
 ### macOS Sleep Prevention

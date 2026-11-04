@@ -1,10 +1,15 @@
-import { fitBand } from '../shared-node/glance.mjs'
+import { fitBand, SEPARATOR } from '../shared-node/glance.mjs'
 import type { Segment, Tags } from './view'
 
-const IDLE = 'Pairing Buddy · idle'
+const HINT = '/pb for details'
+const SHORT_HINT = '/pb'
+const IDLE_SEPARATOR = ' · '
+const IDLE = `Pairing Buddy · idle${IDLE_SEPARATOR}${HINT}`
+const ENDED = `Pairing Buddy · last run finished${IDLE_SEPARATOR}${HINT}`
 export const DETAILS = '▸ details'
 
-export const bandColumns = (columns: number) => columns - DETAILS.length - 1
+// The button and the space before it are always reserved; a hint (its separator and a trailing space) only when one is given.
+export const bandColumns = (columns: number, hint: string = '') => columns - DETAILS.length - 1 - (hint ? SEPARATOR.length + hint.length + 1 : 0)
 
 export const OPENED_DETAILS = 'needs you · opened details'
 
@@ -12,21 +17,31 @@ export const OPENED_DETAILS = 'needs you · opened details'
 const asOpened = (band: Segment[]): Segment[] => band.map(segment => (segment.id === 'needsYou' && segment.standing ? { ...segment, text: OPENED_DETAILS } : segment))
 
 // While a stage is active, only the segments that fit beside the details button; otherwise one dim "idle".
-export function Band({ Box, Text, Button, band, columns, running, opened, onDetails }: Tags & {
+export function Band({ Box, Text, Button, band, columns, running, opened, ended, onDetails }: Tags & {
   band: Segment[]
   columns: number
   running: boolean
   opened?: boolean
+  ended?: boolean
   onDetails: () => void
 }) {
-  const shown = running ? fitBand(opened ? asOpened(band) : band, bandColumns(columns)) : undefined
+  const source = opened ? asOpened(band) : band
+  // The hint is the lowest priority: "/pb for details" gives way to "/pb", then to nothing, before any segment is cut.
+  const content = running ? fitBand(source, bandColumns(columns)) : undefined
+  const hint = [HINT, SHORT_HINT].find(candidate => JSON.stringify(fitBand(source, bandColumns(columns, candidate))) === JSON.stringify(content))
+  const shown = content
 
   return (
     <Box>
       {shown
-        ? shown.map((segment: Segment) => <Text key={segment.id}>{segment.text}</Text>)
-        : <Text dimColor>{IDLE}</Text>}
-      <Button key="details" label={DETAILS} onPress={onDetails} />
+        ? shown.flatMap((segment: Segment, i: number) => [
+            ...(i > 0 ? [<Text key={`sep-${segment.id}`}>{SEPARATOR}</Text>] : []),
+            <Text key={segment.id}>{segment.text}</Text>,
+          ])
+        : <Box marginRight={1}><Text dimColor>{ended ? ENDED : IDLE}</Text></Box>}
+      {shown && <Text key="gap"> </Text>}
+      <Button key="details" label={DETAILS} onPress={onDetails}>{shown && <Text>{DETAILS}</Text>}</Button>
+      {shown && hint && <Text key="hint">{`${SEPARATOR}${hint} `}</Text>}
     </Box>
   )
 }

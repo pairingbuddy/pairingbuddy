@@ -1,6 +1,8 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, start, texts } from './testing/band'
 import { POLL_MS } from './poll'
+import { PANE } from './testing/replay'
+import { plainName } from '../shared-node/plain-names.mjs'
 
 const TESTS_PATH = `${ROOT}/.pairingbuddy/tests.json`
 const label = (item: string) => `pb1 code-tdd RED implement-tests ${item} r1`
@@ -48,7 +50,7 @@ test('a session.end with reason clear empties the spawn history, so the next dra
   await clock.advance(POLL_MS)
 
   expect(run.ledgerReads, 'the poller read the ledger again after the clear').toBeGreaterThan(readsAfterClear)
-  expect(await texts(band), 'the poller still redraws the band: the ledger is now idle').toEqual(['Pairing Buddy · idle'])
+  expect(await texts(band), 'the poller still redraws the band: the ledger is now idle').toEqual(['Pairing Buddy · idle · /pb for details'])
   run.files[LEDGER_PATH] = JSON.stringify(SNAPSHOT_RUNNING)
   await clock.advance(POLL_MS)
   expect(agentsIn(await texts(band)), 'only the agent spawned after the clear is counted').toBe('1 agent')
@@ -95,4 +97,33 @@ test('a tests.json entry without a test_id is not counted', async ($, on) => {
   await band.unmount()
 
   expect(shown, 'the band reads "test 1 of 2": the entries without an id are left out').toContain('RED · test 1 of 2')
+})
+
+test("when a new run ledger appears the pane shows the new run and its ended snapshot replaces the old one", async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const run = engine(on, { [LEDGER_PATH]: JSON.stringify(SNAPSHOT_RUNNING) })
+  await start($)
+  const steps = async () => {
+    const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+    const shown = await texts(pane)
+    await pane.unmount()
+    return shown.filter(text => /^[▸✓○] /.test(text))
+  }
+  const first = plainName('code-scenarios')
+  const second = plainName('code-config')
+
+  delete run.files[LEDGER_PATH]
+  await clock.advance(POLL_MS)
+  const afterFirstEnd = await steps()
+  run.files[LEDGER_PATH] = JSON.stringify({ ...SNAPSHOT_RUNNING, taskType: 'config_change', stage: { ...SNAPSHOT_RUNNING.stage, name: 'code-config' } })
+  await clock.advance(POLL_MS)
+  const whileSecondRuns = await steps()
+  delete run.files[LEDGER_PATH]
+  await clock.advance(POLL_MS)
+  const afterSecondEnd = await steps()
+
+  expect(afterFirstEnd.some(line => line.includes(first)), `the first ended run is shown: ${JSON.stringify(afterFirstEnd)}`).toBe(true)
+  expect(whileSecondRuns.some(line => line.includes(second)), `the new run is shown: ${JSON.stringify(whileSecondRuns)}`).toBe(true)
+  expect(afterSecondEnd.some(line => line.includes(second)), `the snapshot is the new run's: ${JSON.stringify(afterSecondEnd)}`).toBe(true)
+  expect(afterSecondEnd.some(line => line.includes(first)), `the old run's steps are gone: ${JSON.stringify(afterSecondEnd)}`).toBe(false)
 })

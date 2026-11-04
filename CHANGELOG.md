@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `/pb` now answers and opens the pane.
+- With no run, the pane invents no steps.
+- The last run is kept after `pb task end` and shown as "last run finished", and the report button still works.
+- Band segments are separated.
+- The band shows a "/pb for details" hint, which gives way before content does.
+
 ### Added
 
 - T4a first-pane smoke (Task 59): `tests/smoke/s2.mjs` takes `--plugin-dir`, so S2 can run against another plugin copy. New `tests/smoke/broken-plugin.mjs` (`makeBrokenCopy`, with `load` and `render` modes) builds a deliberately broken plugin copy. New `tests/smoke/t4a-lab.mjs` sets up the lab (`setup` with `--broken`, `--ask` and `--sound off`) and has `show`. New `tests/smoke/T4A-RUNBOOK.md` guides the human session. S2 passes healthy and with both broken copies; results are in `docs/design/progress-mod/t4a-smoke/README.md`

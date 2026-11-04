@@ -90,7 +90,7 @@ function loopingRow(step) {
   return isLooping(step.tries) ? `yes: ${step.tries} tries at the same step` : `no · this step: try ${step.tries} of ${MAX_TRIES}`;
 }
 
-const SEPARATOR = " │ ";
+export const SEPARATOR = " │ ";
 export const SEPARATOR_WIDTH = SEPARATOR.length;
 const PERCENT_PART = / · ≈.*$/;
 

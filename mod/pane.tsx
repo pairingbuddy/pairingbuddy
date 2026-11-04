@@ -8,9 +8,10 @@ const ROWS: [keyof Rows, string][] = [
   ['now', 'NOW'], ['spent', 'SPENT'], ['left', 'LEFT'], ['looping', 'LOOPING'], ['offTrack', 'OFF TRACK'],
 ]
 
-export function stepLines(ledger: Ledger): string[] {
+export function stepLines(ledger: Ledger, ended = false): string[] {
+  if (!ledger) return []
   const done = new Set((ledger?.stages ?? []).filter(stage => stage.status === 'done').map(stage => stage.name))
-  const current = ledger?.stage?.status === 'active' ? ledger.stage.name : undefined
+  const current = !ended && ledger?.stage?.status === 'active' ? ledger.stage.name : undefined
   return stageNamesFor(contract, ledger).map(name => {
     const mark = name === current ? '▸' : done.has(name) ? '✓' : '○'
     return `${mark} ${plainName(name) ?? name}`
@@ -19,9 +20,10 @@ export function stepLines(ledger: Ledger): string[] {
 
 export type Suggestion = { state: 'pending'; nextAgent?: string } | { state: 'delivered'; to: string }
 
-export function Pane({ Box, Text, Button, Input, rows, ledger, unknownLabels, note = null, suggestion, onDismiss, onReport = () => {}, onSuggest = () => {} }: PaneTags & {
+export function Pane({ Box, Text, Button, Input, rows, ledger, ended = false, unknownLabels, note = null, suggestion, onDismiss, onReport = () => {}, onSuggest = () => {} }: PaneTags & {
   rows: Rows
   ledger: Ledger
+  ended?: boolean
   unknownLabels: string[]
   note?: string | null
   suggestion?: Suggestion
@@ -32,7 +34,7 @@ export function Pane({ Box, Text, Button, Input, rows, ledger, unknownLabels, no
   return (
     <Box flexDirection="column">
       {ROWS.map(([key, label]) => <Text key={key}>{`${label}  ${rows[key]}`}</Text>)}
-      {stepLines(ledger).map(line => <Text key={line}>{line}</Text>)}
+      {stepLines(ledger, ended).map(line => <Text key={line}>{line}</Text>)}
       {unknownLabels.map((raw, i) => <Text key={`unknown-${i}`}>{raw}</Text>)}
       {unknownLabels.length > 0 && <Text dimColor>{`${unknownLabels.length} label${unknownLabels.length === 1 ? '' : 's'} unknown`}</Text>}
       <Text dimColor>Pairing Buddy only watches; it never changes your run</Text>
@@ -42,7 +44,7 @@ export function Pane({ Box, Text, Button, Input, rows, ledger, unknownLabels, no
       {ledger && (
         <>
           <Button key="report" label="r open report" onPress={onReport} />
-          <Input key="suggest" label="s suggest" onSubmit={onSuggest} />
+          {!ended && <Input key="suggest" label="s suggest" onSubmit={onSuggest} />}
         </>
       )}
       <Button key="dismiss" label="dismiss" role="dismiss" onPress={onDismiss} />

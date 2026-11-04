@@ -8,10 +8,13 @@ import { Pane, type Suggestion } from './pane'
 import { openReport } from './report'
 import { recordDelivery, submitSuggestion, type PendingSuggestion } from './suggest'
 import { PANE_ID, openPane } from './pane-open'
-import { buildView, type PaneTags, type View } from './view'
+import { buildEndedView, buildView, type PaneTags, type View } from './view'
 
 // The same key the poller writes (INPUTS in ./poll); the kit's scan reads the atom's literals from this file.
 const inputsAtom = atom({ plugin: 'pairingbuddy', key: 'inputs' }, null)
+
+// Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The last-run snapshot key is written in two copies, LAST_RUN in ./poll and lastRunAtom in register.tsx, and read from a third, LAST_RUN in ./report; keep all three in step.
+const lastRunAtom = atom({ plugin: 'pairingbuddy', key: 'last-run' }, null)
 
 // The same key the alert writes (OPENED in ./alert); the kit's scan reads the atom's literals from this file.
 const openedAtom = atom({ plugin: 'pairingbuddy', key: 'opened' }, null)
@@ -42,8 +45,11 @@ function drawGlance(
   const tags = $.ui.resolve(e)
 
   // Until the first poll lands there is nothing to draw from, so the view is the idle one.
-  return Promise.all([read($, inputsAtom), read($, openedAtom), read($, noteAtom), read($, pendingAtom)]).then(([polled, opened, note, pending]) => {
-    const view = buildView(fromPolled(polled, spawns))
+  return Promise.all([read($, inputsAtom), read($, openedAtom), read($, noteAtom), read($, pendingAtom), read($, lastRunAtom)]).then(([polled, opened, note, pending, lastRun]) => {
+    const live = fromPolled(polled, spawns)
+    // With no live ledger the last polled one is shown as a finished run.
+    const snapshot = fromPolled(lastRun as Parameters<typeof fromPolled>[0], spawns)
+    const view = live.ledger || !snapshot.ledger ? buildView(live) : buildEndedView(snapshot)
     const reportNote = typeof note === 'string' ? note : null
     return draw(tags, view, opened === true, reportNote, pending as PendingSuggestion | null)
   })
@@ -84,7 +90,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', ($, e, next) => {
-    return e.command === 'pb' ? openPane($).then(() => next({ ...e, args: e.args ?? '' })) : next(e)
+    return e.command === 'pb' ? openPane($).then(() => ({ text: 'Pairing Buddy pane opened' })) : next(e)
   })
 
   on('agent.spawn', ($, e, next) => {
@@ -94,11 +100,11 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button }, { band, running }, opened) => (
-    <Band Box={Box} Text={Text} Button={Button} band={band} running={running} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($).catch(() => {}) }} />
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button }, { band, running, ended }, opened) => (
+    <Band Box={Box} Text={Text} Button={Button} band={band} running={running} ended={ended} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($).catch(() => {}) }} />
   )))
 
-  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button, Input }, { rows, ledger, unknownLabels }, _opened, note, pending) => (
+  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button, Input }, { rows, ledger, ended, unknownLabels }, _opened, note, pending) => (
     <Pane
       Box={Box}
       Text={Text}
@@ -106,6 +112,7 @@ export const register: Register = (on, options) => {
       Input={Input}
       rows={rows}
       ledger={ledger}
+      ended={ended}
       unknownLabels={unknownLabels}
       note={note}
       suggestion={suggestionView(pending, () => nextAgent(contract, ledger, spawns))}

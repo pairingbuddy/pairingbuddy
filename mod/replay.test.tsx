@@ -18,7 +18,12 @@ const testsFile = (ids: string[]) => ({
   '.pairingbuddy/tests.json': JSON.stringify({ tests: ids.map(test_id => ({ test_id })) }),
 })
 
-const texts = (step: Step) => step.texts.map(node => node.text)
+const IDLE_TEXT = 'Pairing Buddy · idle · /pb for details'
+// Without an active stage the band is one text: idle, or "last run finished" once a run has ended.
+const quietBand = (shown: string[]) => (shown.length === 1 && /^Pairing Buddy · (idle|last run finished) · \/pb for details$/.test(shown[0]) ? shown : [IDLE_TEXT])
+const DRAWN_AROUND_SEGMENTS = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details' || text.startsWith(' │ /pb')
+// The band's segment texts: what is drawn without the separators, the gap, the details button text and the hint.
+const texts = (step: Step) => step.texts.map(node => node.text).filter(text => !DRAWN_AROUND_SEGMENTS(text))
 const paneTexts = (step: { pane: Step['texts'] }) => step.pane.map(node => node.text)
 function at<T extends { t: number }>(steps: T[], t: number): T {
   const found = steps.find(step => step.t === t)
@@ -53,7 +58,7 @@ test("band at each recorded step, in time order, shows the design's segments whi
     const expected = active
       ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS['g-open-1'], now: step.now }).band, bandColumns(80))
           .map((segment: { text: string }) => segment.text)
-      : ['Pairing Buddy · idle']
+      : quietBand(texts(step))
 
     shown.push([step.t, texts(step)])
 
@@ -62,8 +67,8 @@ test("band at each recorded step, in time order, shows the design's segments whi
   }
 
   expect(shown.length, 'the recording was replayed').toBeGreaterThan(10)
-  expect(shown.some(([, segments]) => segments[0] === 'Pairing Buddy · idle'), 'some steps are idle').toBe(true)
-  expect(shown.some(([, segments]) => segments[0] !== 'Pairing Buddy · idle'), 'some steps are active').toBe(true)
+  expect(shown.some(([, segments]) => segments[0] === IDLE_TEXT), 'some steps are idle').toBe(true)
+  expect(shown.some(([, segments]) => segments[0] !== IDLE_TEXT), 'some steps are active').toBe(true)
 })
 
 test('at 139, 80 and 50 columns the band draws exactly the fitted glance segments at every step of both recordings', async ($, on) => {
@@ -83,7 +88,7 @@ test('at 139, 80 and 50 columns the band draws exactly the fitted glance segment
         const expected = active
           ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now }).band, bandColumns(bodyColumns))
               .map((segment: { text: string }) => segment.text)
-          : ['Pairing Buddy · idle']
+          : quietBand(texts(step))
 
         expect(texts(step), `${name} band at t=${step.t}, ${bodyColumns} columns`).toEqual(expected)
       }

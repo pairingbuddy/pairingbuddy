@@ -107,3 +107,17 @@ test('suggest-failed-write-shows-not-saved-note', async ($, on) => {
   expect(writes.map((w) => w.path), 'the save was attempted once, on the guidance file').toEqual([GUIDANCE_PATH])
   await expectNotSavedNote($)
 })
+
+test('with only the snapshot and no live ledger the suggest input is not drawn, and with a live ledger it still is', async ($, on) => {
+  const { serve } = engine(on)
+  const clock = mock.clock(on, { now: 0 })
+  await start($)
+  const live = await suggestInput($)
+  serve(null)
+  await clock.advance(POLL_MS)
+
+  const ended = await suggestInput($)
+
+  expect(live?.label, 'with a live ledger the pane holds the suggest input').toBe(SUGGEST_LABEL)
+  expect(ended, 'once the run has ended, the snapshot shows no suggest input').toBeUndefined()
+})

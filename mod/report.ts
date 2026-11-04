@@ -1,11 +1,14 @@
 import type { EngineInterface } from 'claude-code'
 import { renderReport } from '../shared-node/report.mjs'
-import { readInputs, type Spawn } from './inputs'
+import { readInputs, type Inputs, type Spawn } from './inputs'
 
 
 // The pane's one note line, as mod state: the report press and the suggest submit (./suggest) both write it, so the latest action wins.
 // Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The same key is written in four copies, PANE_NOTE in ./poll, ./report and ./suggest and noteAtom in register.tsx; keep all four in step.
 const PANE_NOTE = { plugin: 'pairingbuddy', key: 'pane-note' }
+
+// Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The last-run snapshot key is written in two copies, LAST_RUN in ./poll and lastRunAtom in register.tsx, and read from a third, LAST_RUN in ./report; keep all three in step.
+const LAST_RUN = { plugin: 'pairingbuddy', key: 'last-run' } as const
 
 export const REPORTS_DIR = '.pairingbuddy/reports'
 
@@ -48,11 +51,19 @@ async function readCommits($: EngineInterface, shas: string[]): Promise<{ sha: s
   }
 }
 
+async function fromSnapshot($: EngineInterface, live: Inputs): Promise<Inputs> {
+  const snapshot = (await $.state.get(LAST_RUN)).value as { ledger?: unknown; tests?: string[]; now?: number | null } | null | undefined
+  if (!snapshot?.ledger) return live
+  return { ...live, ledger: snapshot.ledger as Inputs['ledger'], tests: snapshot.tests ?? [] }
+}
+
 // A function declaration, not an arrow: the mod loader rejects an exported arrow taking $ across files.
 // Writes the run report under the reports folder. Never throws: a failed write or open is shown as the pane note, and only a failure before the write (reading inputs, session root) is dropped.
 export async function openReport($: EngineInterface, spawns: Spawn[]): Promise<void> {
   try {
-    const inputs = await readInputs($, spawns)
+    const live = await readInputs($, spawns)
+    // With no live ledger the report is built from the last polled one.
+    const inputs = live.ledger ? live : await fromSnapshot($, live)
     // The button showed on a ledger that is gone or half-written now: write nothing rather than an empty report.
     if (!inputs.ledger) return
     const path = `${await $.session.root()}/${REPORTS_DIR}/${stampOf(inputs.now ?? Date.now())}-${slugOf(inputs.ledger.task)}.html`

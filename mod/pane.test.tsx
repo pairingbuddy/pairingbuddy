@@ -1,11 +1,12 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { BAND, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, texts, type Served } from './testing/band'
-import { PANE, dismissPane } from './testing/replay'
+import { PANE, dismissPane, paneTexts } from './testing/replay'
 import { PANE_ID } from './pane-open'
 import { POLL_MS } from './poll'
+import { REPORT_LABEL, reportButton } from './testing/report'
 
-const IDLE = 'Pairing Buddy · idle'
+const IDLE = 'Pairing Buddy · idle · /pb for details'
 
 test('pressing the band\'s details button opens the pane, closeable by esc', async ($, on) => {
   const { calls } = engine(on)
@@ -56,7 +57,7 @@ test('the band\'s width budget subtracts the details button', async ($, on) => {
   const narrow = await fitted(40)
   const wide = await fitted(200)
 
-  const drawn = [...narrow.segments, narrow.button].join(' ').length
+  const drawn = narrow.segments.join('').length
   expect(narrow.segments.length, 'the narrow band still draws segments').toBeGreaterThan(0)
   expect(narrow.segments.length, 'the 40 columns force segments to be cut').toBeLessThan(wide.segments.length)
   expect(drawn, `the segments and the button (${drawn}) fit the 40 columns`).toBeLessThanOrEqual(40)
@@ -111,4 +112,46 @@ test('with the band mounted, a ledger that goes from idle to an active stage cha
   const after = await texts(band)
   expect(after.some(text => text.includes(plainName('code-scenarios'))), `the poll reads the new ledger and the band redraws: ${JSON.stringify(after)}`).toBe(true)
   await band.unmount()
+})
+
+test("with no ledger the pane lists no step lines, neither the config change steps nor the safety-net review", async ($, on) => {
+  // What the human saw: the run closed (no ledger), the session still holds spawns from it.
+  engine(on, null)
+  await start($)
+  const finishedRun = (stage: string, agent: string) => `pb1 code-tdd ${stage} ${agent} item r1`
+  for (const [stage, agent] of [['RED', 'implement-tests'], ['GREEN', 'implement-code']]) {
+    await $.agent.spawn({ prompt: 'p', description: 'd', name: finishedRun(stage, agent), subagentType: `pairingbuddy:${agent}` })
+  }
+
+  const shown = await paneTexts($)
+
+  const steps = [plainName('code-config'), plainName('code-safety-net'), plainName('code-scenarios'), plainName('code-tdd')]
+  for (const step of steps) {
+    expect(shown.some(text => text.includes(`${step}`)), `no step line "${step}" in ${JSON.stringify(shown)}`).toBe(false)
+  }
+  expect(shown.some(text => /^[▸✓○] /.test(text)), `no step marker line in ${JSON.stringify(shown)}`).toBe(false)
+})
+test("after a poll saw a ledger and then the task file is gone, the pane shows the last run as finished with the open report button", async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const { serve } = engine(on)
+  await start($)
+  serve(null)
+  await clock.advance(POLL_MS)
+
+  const shown = await paneTexts($)
+  const button = await reportButton($)
+
+  expect(shown.some(text => /^[✓○] /.test(text) && text.includes(plainName('code-scenarios'))), `the last run's steps stay: ${JSON.stringify(shown)}`).toBe(true)
+  expect(shown.some(text => text.startsWith('▸ ')), `no step is marked as running in ${JSON.stringify(shown)}`).toBe(false)
+  expect(button?.text, 'the report button is still on the pane').toBe(REPORT_LABEL)
+})
+test("before any ledger was polled and with no live ledger the pane shows no steps and no report button", async ($, on) => {
+  // A ledger is on disk, but no poll has read it: the render must not read it, nor invent a snapshot.
+  engine(on)
+
+  const shown = await paneTexts($)
+  const button = await reportButton($)
+
+  expect(shown.some(text => /^[▸✓○] /.test(text)), `no step line in ${JSON.stringify(shown)}`).toBe(false)
+  expect(button, 'no report button before the first poll').toBeUndefined()
 })

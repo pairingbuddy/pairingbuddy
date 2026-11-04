@@ -44,6 +44,7 @@ JS_TEST_FILES = [
     "tests/js/session-binding.test.mjs",
     "tests/js/shell-hooks-isolation.test.mjs",
     "tests/js/smoke-s2.test.mjs",
+    "tests/js/stage-names.test.mjs",
     "tests/js/stage-report-coverage.test.mjs",
     "tests/js/stop-code-cli.test.mjs",
     "tests/js/stop-code-ledger.test.mjs",

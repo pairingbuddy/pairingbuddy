@@ -43,3 +43,14 @@ Filled after the human session.
 
 | file | part | columns | theme | moment |
 | --- | --- | --- | --- | --- |
+
+## Human session 1 findings (2026-11-04, A1 only, 167 columns, dark)
+
+Lab `20261104-101059`, healthy, auto mode. The run passed (3 commits). Session paused after A1 to fix these first.
+
+1. **`/pb` errors.** "pairingbuddy registered /pb but no command.run hook answered it". The pane still opened. Fixed.
+2. **Pane shows the wrong steps after the run.** With the run closed, the pane listed "make the config change" and "safety-net review" (config-change steps on a bug fix), with "NOW unknown" beside "SPENT 15 agents". Fixed.
+3. **Report and suggest are gone once the run ends.** `pb task end` removes `.pairingbuddy/run/task`, so the pane has no ledger at the moment the report matters; `show` reads "ledger: no ledger yet", "reports: none". Fixed.
+4. **Band segments run together.** "build test by test1:09 · 6 agentsleft: unknownlooping: unknownoff track: unknownneeds you: no[ ▸ details ]". Fixed.
+5. **The band button can't be reached.** A mouse click did nothing in this terminal, and ctrl+x then tab did not focus the band. Fixed: `/pb` replaces the click.
+6. The "Run a dynamic workflow?" dialog showed once per stage even in auto mode (known since P18B). Known platform behaviour, not fixed here.
