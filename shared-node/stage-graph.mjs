@@ -1,6 +1,7 @@
 // The pure half of the stage graph: what a contract and a ledger say about the stages and what may start next.
 // No node built-ins, so a mod can import it; reading and validating the contract stays in stages.mjs.
 import { parseKey } from "./keys.mjs";
+import { readLabel } from "./labels.mjs";
 
 // How long a stage marked active with no recorded run holds off another start.
 export const START_LEASE_SECONDS = 120;
@@ -10,6 +11,12 @@ export function graphFor(contract, taskType) {
   const name = taskType ?? contract.defaultTaskType;
   if (!Object.hasOwn(contract.taskTypes, name)) throw new Error(`no stage graph for task type ${name}`);
   return { taskType: name, stages: contract.taskTypes[name].nodes.map((node) => node.name) };
+}
+
+// The task type's stages from the contract, else only those the ledger has recorded (a type the contract does not know).
+export function stageNamesFor(contract, ledger) {
+  const known = Object.hasOwn(contract.taskTypes, ledger?.taskType ?? contract.defaultTaskType);
+  return known ? graphFor(contract, ledger?.taskType).stages : (ledger?.stages ?? []).map((stage) => stage.name);
 }
 
 // Whether a run of this type has to name one test at RED and GREEN.
@@ -83,4 +90,17 @@ export function isVoidedAttempt(ledger, stage, attempt) {
   const current = ledger.stage.name === stage ? ledger.stage : undefined;
   const standing = Math.max(current?.attempt ?? 0, ...ledger.stages.filter(({ name }) => name === stage).map((entry) => entry.attempt ?? 0));
   return attempt < standing || (attempt === standing && current?.status === FAILED_STATUS);
+}
+
+// The agent the next spawn will be: with the stage active and no agent spawned yet, the first artifact:<agent> entry of the
+// stage's evidence. Only spawns labelled with the active stage count; earlier stages' spawns are ignored.
+// Once an agent has spawned in the stage the contract does not say what follows, so it is undefined.
+export function nextAgent(contract, ledger, spawns) {
+  if (!isStageActive(ledger) || spawns.some((spawn) => readLabel(spawn.name).stage === ledger.stage.name)) return undefined;
+  try {
+    const entry = evidenceFor(contract, ledger.taskType, ledger.stage.name).find((item) => item.startsWith("artifact:"));
+    return entry?.slice("artifact:".length);
+  } catch {
+    return undefined;
+  }
 }

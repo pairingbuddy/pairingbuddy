@@ -1,5 +1,9 @@
-// The one place that says which paths the mod may write. Empty today: the mod writes nothing.
-export const ALLOWED_WRITES: string[] = []
+import { REPORTS_DIR } from '../report'
+import { GUIDANCE } from '../suggest'
+import { ROOT } from './band'
+
+// The one place that says which paths the mod may write, relative to the session root: the reports folder (a prefix, ends in '/') and the guidance file (exact).
+export const ALLOWED_WRITES: string[] = [`${REPORTS_DIR}/`, GUIDANCE]
 
 // Where a recorded call came from: a label, or a function read when the call is made. Empty records no prefix.
 export type Where = string | (() => string)
@@ -14,10 +18,24 @@ export function recordOther(touched: string[], where: Where, call: string) {
   touched.push(`${prefix(where)}${call}`)
 }
 
-// The one write recorder. An allowed path is applied to `files` when given, so an unchanged check
-// sees it; anything else is recorded and refused. Returns whether the write was allowed.
+// The path relative to the session root, normalised so `reports/../tests.json` is seen as `tests.json`.
+// Undefined when the path is outside the root.
+function relativeToRoot(path: string): string | undefined {
+  const parts: string[] = []
+  for (const part of path.split('/')) {
+    if (part === '..') parts.pop()
+    else if (part !== '' && part !== '.') parts.push(part)
+  }
+  const normal = `/${parts.join('/')}`
+  return normal.startsWith(`${ROOT}/`) ? normal.slice(ROOT.length + 1) : undefined
+}
+
+// The one write recorder. `path` is the absolute path the mod wrote, under the rigs' ROOT. An allowed write is applied
+// to `files` when given, so an unchanged check sees it; anything else is recorded in `touched` and refused.
+// A folder entry (ends in '/') allows by prefix, any other entry only by exact match. Returns whether the write was allowed.
 export function recordWrite(files: Map<string, string> | undefined, touched: string[], where: Where, path: string, text: string): boolean {
-  if (ALLOWED_WRITES.some(allowed => path === allowed || path.startsWith(allowed))) {
+  const relative = relativeToRoot(path)
+  if (relative !== undefined && ALLOWED_WRITES.some(allowed => (allowed.endsWith('/') ? relative.startsWith(allowed) : relative === allowed))) {
     files?.set(path, text)
     return true
   }

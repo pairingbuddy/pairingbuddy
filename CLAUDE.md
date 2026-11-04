@@ -52,7 +52,7 @@ pairingbuddy/
 │   ├── skill-config.yaml    # Skill definitions
 │   └── schemas/             # JSON schemas for state (39 total)
 ├── hooks/            # Claude Code hooks (SessionStart, PostToolUse)
-├── mod/              # Claude Code mod (register.tsx, band.tsx, pane.tsx, view.ts, inputs.ts, poll.ts, alert.ts, pane-open.ts, assets/, stages-contract.ts (generated), *.test.tsx, testing/, fixtures/); read-only, isolated from the shell hooks
+├── mod/              # Claude Code mod (register.tsx, band.tsx, pane.tsx, view.ts, inputs.ts, poll.ts, alert.ts, pane-open.ts, report.ts, suggest.ts, assets/, *.test.tsx, testing/, fixtures/); writes only reports/ and human-guidance.json, isolated from the shell hooks
 ├── shared-node/      # Pure ESM shared by the CLI, hooks, workflows and the mod (labels, ledger, stage graph, glance, plain names)
 ├── commands/         # Slash commands (/pairingbuddy:code, /pairingbuddy:plan, /pairingbuddy:design-ux)
 └── tests/            # Structural tests (~1121)
@@ -65,7 +65,7 @@ pairingbuddy/
 - Skills provide language/framework-specific HOW
 - Each agent reads input JSON, performs one operation, writes output JSON
 - State files live in `.pairingbuddy/` at target project root
-- State is cleaned at task start (except `test-config.json`, `doc-config.json`, `human-guidance.json`)
+- State is cleaned at task start (except `test-config.json`, `doc-config.json`, `human-guidance.json`; the `.pairingbuddy/reports/` folder is kept too)
 
 ### Configuration
 - `contracts/agent-config.yaml` is the single source of truth for agents

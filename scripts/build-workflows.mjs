@@ -195,11 +195,11 @@ const outputs = stageFiles.map((file) => ({
   content: bundle(readFileSync(join(stagesDir, file), 'utf8'), file),
 }));
 
-// The kit loads only code files, so the mod cannot import contracts/stages.json: a generated .ts copy stands in.
-// It is built only for a root that has the contract.
+// The kit loads only code files, so the mod and the pure report cannot read contracts/stages.json: one generated
+// .mjs module stands in. It is built only for a root that has the contract.
 const contractPath = join(root, 'contracts', 'stages.json');
-const modContractPath = join(root, 'mod', 'stages-contract.ts');
-const modContract = existsSync(contractPath)
+const contractModulePath = join(root, 'shared-node', 'stages-contract.mjs');
+const contractModule = existsSync(contractPath)
   ? [
       '// Generated from contracts/stages.json by scripts/build-workflows.mjs. Do not edit: run that script to regenerate.',
       `export default ${JSON.stringify(JSON.parse(readFileSync(contractPath, 'utf8')), null, 2)}`,
@@ -207,17 +207,17 @@ const modContract = existsSync(contractPath)
     ].join('\n')
   : undefined;
 
-const writeModContract = () => {
-  if (modContract === undefined) return;
-  mkdirSync(join(root, 'mod'), { recursive: true });
-  writeFileSync(modContractPath, modContract);
+const writeContractModule = () => {
+  if (contractModule === undefined) return;
+  mkdirSync(join(root, 'shared-node'), { recursive: true });
+  writeFileSync(contractModulePath, contractModule);
 };
 
-// A line naming the mod contract when it is missing or differs, else none.
-const findModContractDrift = () => {
-  if (modContract === undefined) return [];
-  if (!existsSync(modContractPath)) return ['missing: mod/stages-contract.ts'];
-  return readFileSync(modContractPath, 'utf8') === modContract ? [] : ['differs: mod/stages-contract.ts'];
+// A line naming the contract module when it is missing or differs, else none.
+const findContractModuleDrift = () => {
+  if (contractModule === undefined) return [];
+  if (!existsSync(contractModulePath)) return ['missing: shared-node/stages-contract.mjs'];
+  return readFileSync(contractModulePath, 'utf8') === contractModule ? [] : ['differs: shared-node/stages-contract.mjs'];
 };
 
 const writeOutputs = (dir) => {
@@ -261,7 +261,7 @@ const checkSync = () => {
   const scratch = mkdtempSync(join(tmpdir(), 'build-workflows-'));
   try {
     writeOutputs(scratch);
-    const drift = [...findDrift(scratch, out), ...findModContractDrift()];
+    const drift = [...findDrift(scratch, out), ...findContractModuleDrift()];
     if (drift.length > 0) {
       console.error(`build-workflows: ${out} is out of sync with ${src}`);
       for (const line of drift) console.error(`  ${line}`);
@@ -277,5 +277,5 @@ if (values.check) {
 } else {
   writeOutputs(out);
   pruneStale(out);
-  writeModContract();
+  writeContractModule();
 }

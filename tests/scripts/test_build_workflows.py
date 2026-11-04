@@ -488,7 +488,7 @@ def test_build_writes_mod_contract_from_stages_json_and_check_reports_drift(fixt
     contract = {"v": 1, "defaultTaskType": "x"}
     (fixture_tree / "contracts").mkdir()
     (fixture_tree / "contracts" / "stages.json").write_text(json.dumps(contract))
-    generated = fixture_tree / "mod" / "stages-contract.ts"
+    generated = fixture_tree / "shared-node" / "stages-contract.mjs"
 
     build_ok(fixture_tree, out)
 
@@ -503,4 +503,4 @@ def test_build_writes_mod_contract_from_stages_json_and_check_reports_drift(fixt
     result = run_build(fixture_tree / "workflows-src", out, fixture_tree, check=True)
 
     assert result.returncode != 0
-    assert "differs: mod/stages-contract.ts" in result.stderr
+    assert "differs: shared-node/stages-contract.mjs" in result.stderr

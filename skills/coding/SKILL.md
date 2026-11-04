@@ -88,7 +88,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 
 | Function | Behavior |
 |----------|----------|
-| `_cleanup_state_files()` | **MANDATORY.** Delete ALL `.pairingbuddy/*.json` files EXCEPT: `test-config.json`, `doc-config.json`, `human-guidance.json`. These three files persist across tasks. All other state files (task.json, task-classification.json, scenarios.json, tests.json, spike-*.json, etc.) MUST be deleted to start fresh. This prevents stale state from previous tasks from affecting the current task. |
+| `_cleanup_state_files()` | **MANDATORY.** Delete ALL `.pairingbuddy/*.json` files EXCEPT: `test-config.json`, `doc-config.json`, `human-guidance.json`. These three files persist across tasks, and the `.pairingbuddy/reports/` folder is kept too (the cleanup deletes only `*.json`). All other state files (task.json, task-classification.json, scenarios.json, tests.json, spike-*.json, etc.) MUST be deleted to start fresh. This prevents stale state from previous tasks from affecting the current task. |
 | `_filter_pending(tests)` | Filter tests.json to return only tests not yet processed in this session |
 | `_filter_pending(spike_questions)` | Filter spike-questions.json units to return only units with status "pending" |
 | `_mark_unit_answered(spike_questions, unit_id)` | Update unit status to "answered" in spike-questions.json |
@@ -331,7 +331,7 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
    - If empty or missing: offer to add new persistent guidance
    - Approved entries get `"persistent": true` flag
    - With no human, under the auto policy or `claude -p`: it carries over silently and asks nothing
-3. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json`, `doc-config.json`, and `human-guidance.json`
+3. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json`, `doc-config.json`, and `human-guidance.json`; the `.pairingbuddy/reports/` folder is kept too
 4. Write the new task to `task.json`
 5. If `human-guidance.json` doesn't exist after curation, initialize with `{"guidance": []}`
 6. Keep files after run for human review

@@ -7,6 +7,8 @@ export type Segment = { id: string; text: string; standing?: boolean }
 export type Rows = Record<'now' | 'spent' | 'left' | 'looping' | 'offTrack', string>
 // The kit's own types for the elements a render hook draws with.
 export type Tags = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
+// The Pane alone also draws the suggest Input.
+export type PaneTags = Tags & Pick<ElementTable, 'Input'>
 
 export type View = { ledger: Ledger; running: boolean; rows: Rows; band: Segment[]; unknownLabels: string[] }
 

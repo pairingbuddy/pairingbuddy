@@ -28,7 +28,8 @@ Reads from `.pairingbuddy/human-guidance.json` (optional - may not exist on firs
       "timestamp": "string (ISO 8601 datetime)",
       "context": "string (what was being reviewed)",
       "feedback": "string (human's guidance or correction)",
-      "persistent": "boolean (optional - if true, carried over from previous session)"
+      "persistent": "boolean (optional - if true, carried over from previous session)",
+      "task_scoped": "boolean (optional - a note for this task only; curate-guidance drops it at the next task)"
     }
   ]
 }
@@ -58,7 +59,7 @@ echo "$PAIRINGBUDDY_GATE_POLICY/$CLAUDE_CODE_ENTRYPOINT"
 No human is here if the output starts with `auto/`, which is the auto policy, or ends with `/sdk-cli`, which is `claude -p`. The same holds if AskUserQuestion is ever denied with "No human answers". Then carry the guidance over silently:
 
 1. Ask nothing and offer nothing: skip every step below, and do not offer to bootstrap.
-2. Leave `.pairingbuddy/human-guidance.json` exactly as it stands. If it is missing, write `{"guidance": []}` to it with the Write tool.
+2. If `.pairingbuddy/human-guidance.json` has no entry with `task_scoped: true`, leave the file untouched. Otherwise drop every entry with `task_scoped: true` and rewrite the file with the Write tool, never bash, jq or a heredoc. Copy every other entry unchanged, field for field, so it is kept exactly as it stands. If the file is missing, write `{"guidance": []}` to it with the Write tool.
 3. Finish with one line saying the guidance was carried over. It must not be a question.
 
 ### Step 1: Read Inputs
@@ -78,6 +79,7 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
      - Coding preferences
      - Project conventions
    - `task_specific` (DROP): Relates only to the completed task
+     - Entries with `task_scoped: true` are dropped without asking: list them under DROP in the review with reason "task_scoped", marked automatic; they need no separate confirmation
      - Specific implementation decisions for completed features
      - One-time corrections that don't generalize
 
@@ -190,7 +192,7 @@ After approval, write output using this procedure for EACH output file listed in
 After approval:
 
 1. Create output with approved entries
-2. Mark all kept/added entries with `"persistent": true`
+2. Mark all kept/added entries with `"persistent": true`. Kept entries must not carry `task_scoped`: if the human keeps a `task_scoped` entry, remove its `task_scoped` field when marking it persistent
 3. Write to `.pairingbuddy/human-guidance.json`
 
 **Example output (with existing guidance):**
@@ -256,7 +258,8 @@ Writes to `.pairingbuddy/human-guidance.json`:
       "timestamp": "string (ISO 8601 datetime)",
       "context": "string (what was being reviewed)",
       "feedback": "string (human's guidance or correction)",
-      "persistent": "boolean (true for carried-over entries)"
+      "persistent": "boolean (true for carried-over entries)",
+      "task_scoped": "boolean (optional - a note for this task only; curate-guidance drops it at the next task)"
     }
   ]
 }

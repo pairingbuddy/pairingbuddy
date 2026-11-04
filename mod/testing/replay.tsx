@@ -1,5 +1,5 @@
 import { mock } from 'claude-code/testing'
-import { BAND, LEDGER, ROOT } from './band'
+import { BAND, LEDGER, ROOT, texts } from './band'
 import { POLL_MS } from '../poll'
 
 // Replays a recorded run against the mod. A recording is a directory under mod/fixtures/replay/ whose
@@ -43,6 +43,9 @@ export type ReplayOptions = {
 // What the registered handlers answer from; each replay() call points it at its own recording and files.
 export type Rig = {
   served: Map<string, string>
+  // Paths whose read fails with an error whose code is EACCES (not ENOENT), so a test can make a file exist but be unreadable.
+  // replay() clears it with `served`.
+  unreadable: Set<string>
   // The mocked clock: it fires the mod's poll timer as it advances, and never runs backwards.
   clock: { advance: (ms: number) => Promise<void>; set: (ms: number) => Promise<void> }
   // Where the clock stands, in ms. Each recording is replayed from here on, shifted forward, so a later one
@@ -56,13 +59,14 @@ export type Rig = {
 // Registers the handlers once per test, before `$` is first touched (the engine allows one handler per
 // event, so a second registration throws). Every replay() in the test reuses the returned rig.
 export function setupReplay(on: Function): Rig {
-  const rig: Rig = { served: new Map(), clock: mock.clock(on, { now: 0 }) as Rig['clock'], now: 0, spawned: 0, reads: new Map() }
+  const rig: Rig = { served: new Map(), unreadable: new Set(), clock: mock.clock(on, { now: 0 }) as Rig['clock'], now: 0, spawned: 0, reads: new Map() }
   on('command.register', (_: unknown, e: { name: string }) => ({ value: { command: e.name } }))
   on('agent.spawn', () => ({ model: 'recorded', agentId: `recorded-${++rig.spawned}` }))
   on('session.root', () => ({ value: ROOT }))
   on('session.start', () => ({ cwd: ROOT }))
   on('fs.read', (_: unknown, e: { path: string }) => {
     rig.reads.set(e.path, (rig.reads.get(e.path) ?? 0) + 1)
+    if (rig.unreadable.has(e.path)) throw Object.assign(new Error(`EACCES ${e.path}`), { code: 'EACCES' })
     return rig.served.has(e.path) ? { value: rig.served.get(e.path) } : { deny: `ENOENT ${e.path}` }
   })
   on('fs.exists', (_: unknown, e: { path: string }) => ({ value: rig.served.has(e.path) }))
@@ -88,6 +92,7 @@ export async function* replay(
   { mount = { ...BAND, surface: 'terminal' }, files = {}, find = { type: 'Text' } }: ReplayOptions = {},
 ): AsyncGenerator<Step> {
   rig.served.clear()
+  rig.unreadable.clear()
   // The recording's own epoch, and the shift that moves it to where the clock stands now.
   const shift = Math.max(0, rig.now + POLL_MS - firstActiveEpoch(recording))
   const epoch = firstActiveEpoch(recording) + shift
@@ -196,6 +201,22 @@ export const PANE = {
     view: {},
   },
 } as const
+
+// Mounts the terminal pane, looks up one node by type and key, and unmounts. Undefined when the pane draws none.
+export async function findOnPane($: any, { type, key }: { type: string; key: string }): Promise<any | undefined> {
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const node = await pane.find({ type, key })
+  await pane.unmount()
+  return node === null ? undefined : node
+}
+
+// Mounts the terminal pane, collects every Text it draws, and unmounts.
+export async function paneTexts($: any): Promise<string[]> {
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const found = await texts(pane)
+  await pane.unmount()
+  return found
+}
 
 // The human closes the pane: mount it on the terminal surface, press its dismiss button, unmount.
 export async function dismissPane($: any) {

@@ -64,5 +64,5 @@ const PLAIN_NAMES = {
 };
 
 export function plainName(id) {
-  return PLAIN_NAMES[id];
+  return Object.hasOwn(PLAIN_NAMES, id) ? PLAIN_NAMES[id] : undefined;
 }

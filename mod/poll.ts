@@ -4,6 +4,8 @@ import { alertOn } from './alert'
 
 export const POLL_MS = 1000
 const INPUTS = { plugin: 'pairingbuddy', key: 'inputs' } as const
+// Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The same key is written in four copies, PANE_NOTE in ./poll, ./report and ./suggest and noteAtom in register.tsx; keep all four in step.
+const PANE_NOTE = { plugin: 'pairingbuddy', key: 'pane-note' } as const
 
 export type PollerState = { started: boolean; polling: boolean }
 export const newPollerState = (): PollerState => ({ started: false, polling: false })
@@ -19,6 +21,9 @@ export async function startPoller($: EngineInterface, state: PollerState, option
     try {
       const polled = await pollInputs($)
       await $.state.set(INPUTS, polled)
+      if (!polled.ledger) {
+        await $.state.set(PANE_NOTE, null)
+      }
       await alertOn($, polled.ledger, options)
     } catch {
       // A failed tick is dropped; the next one tries again.

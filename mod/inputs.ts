@@ -14,6 +14,7 @@ export type Ledger = {
   stages?: StageEntry[]
   spend?: Spend
   task?: string
+  commits?: string[]
   plan?: { path?: string }
   stop?: { reason?: string; seq?: number }
   needsHuman?: { gate?: string | null; seq?: number }

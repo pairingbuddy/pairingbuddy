@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runScript } from "./harness.mjs";
+import { blockOf, runScript } from "./harness.mjs";
 
 // Control-flow tests for the built code-safety-net stage. The agents are recording stand-ins.
 const STAGE = fileURLToPath(new URL("../../workflows/code-safety-net.js", import.meta.url));
@@ -19,7 +19,6 @@ const RUNNER_KEY = "code-safety-net.runner.-.r1.a2";
 const ARGS = { attempt: 2, pluginRoot: PLUGIN_ROOT, task: { description: "set x" } };
 
 const contractOf = (url) => JSON.parse(readFileSync(url, "utf8"));
-const blockOf = (prompt, tag) => prompt.slice(prompt.indexOf(`<${tag}>\n`) + tag.length + 3, prompt.indexOf(`\n</${tag}>`));
 const unpinned = ({ properties: { pb_key: { enum: pinned, ...pbKey }, ...properties }, ...schema }) => ({ ...schema, properties: { pb_key: pbKey, ...properties } });
 
 async function runStage(args = ARGS, agent = async () => ({})) {

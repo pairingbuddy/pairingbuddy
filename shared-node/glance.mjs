@@ -3,9 +3,9 @@
 import { plainName } from "./plain-names.mjs";
 import { readLabel } from "./labels.mjs";
 import { MAX_TRIES } from "./limits.mjs";
+import { clock } from "./duration.mjs";
 
 const UNKNOWN = "unknown";
-const TIME_UNKNOWN = "time unknown";
 const AGENT_KINDS = ["Agent", "workflow_agent"];
 const RUNNER_ROLE = "runner";
 const SAFETY_NET = "the safety-net review and your sign-off";
@@ -15,24 +15,37 @@ function ordinal(n) {
   return `${n}${suffix}`;
 }
 
-// The current step is the last agent spawn on a test, runner checkpoints aside. Its try is the run of
-// consecutive trailing spawns with the same role and test (a run of one is try 1).
-function currentStep(spawns) {
-  const labels = spawns
+// The labels of the agent spawns that sit on a test, in order, runner checkpoints aside. One rule for the pane and the report.
+export function testLabels(spawns) {
+  return (Array.isArray(spawns) ? spawns : [])
     .filter((spawn) => spawn && spawn.kind === "workflow_agent")
     .map((spawn) => readLabel(spawn.name))
     .filter((label) => !label.unknown && label.item !== null && label.role !== RUNNER_ROLE);
+}
+
+// The one rule for "tries at the same step": the run of consecutive spawns, ending at labels[index], with the same role and test
+// (a run of one is try 1). Shared by the pane's current step and the report's per-step numbering.
+export function triesAtStep(labels, index) {
+  const at = labels[index];
+  let tries = 0;
+  for (let i = index; i >= 0 && labels[i].role === at.role && labels[i].item === at.item; i--) tries++;
+  return tries;
+}
+
+// The current step is the last agent spawn on a test, with its tries at that step.
+export function currentStep(spawns) {
+  const labels = testLabels(spawns);
   const last = labels.at(-1);
   if (!last) return undefined;
-  let tries = 0;
-  for (let i = labels.length - 1; i >= 0 && labels[i].role === last.role && labels[i].item === last.item; i--) tries++;
-  return { ...last, tries };
+  return { ...last, tries: triesAtStep(labels, labels.length - 1) };
 }
+
+// The one rule for "looping", from a count of tries at the same step. Shared by the pane and the report.
+export const isLooping = (tries) => tries >= MAX_TRIES;
 
 const testPosition = (step, tests) => tests.indexOf(step?.item) + 1;
 const agentCount = (spawns) => spawns.filter((spawn) => spawn && AGENT_KINDS.includes(spawn.kind)).length;
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
-const isLooping = (step) => step.tries >= MAX_TRIES;
 
 // What is left after the current test: "N more tests" / "this test". `more` says whether to word it "N more tests" or "N tests".
 function remainingTests(step, tests, { more }) {
@@ -43,21 +56,19 @@ function remainingTests(step, tests, { more }) {
   return more ? `${count} more test${count === 1 ? "" : "s"}` : plural(count, "test");
 }
 
-function elapsed(startedAt, now) {
-  const seconds = Math.floor((now - Date.parse(startedAt)) / 1000);
-  if (!Number.isFinite(seconds) || seconds < 0) return TIME_UNKNOWN;
-  const [h, m, s] = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60];
-  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+// A recorded run knows how long it ran (ranFor, seconds) even when its start was not kept; otherwise it is now minus the start.
+function elapsed(startedAt, now, ranFor) {
+  return clock(Number.isFinite(ranFor) ? ranFor : (now - Date.parse(startedAt)) / 1000);
 }
 
 // The run began at the first stage's start; before any stage closes, that is the current stage's. A closed stage
 // that lacks its start leaves the run's start unknown, never the current stage's.
-const runStart = (ledger) => (ledger?.stages?.length > 0 ? ledger.stages[0].startedAt : ledger?.stage?.startedAt);
+export const runStart = (ledger) => (ledger?.stages?.length > 0 ? ledger.stages[0].startedAt : ledger?.stage?.startedAt);
 
-function spentRow({ ledger, spawns, now }) {
+function spentRow({ ledger, spawns, now, ranFor }) {
   const agents = agentCount(spawns);
   const tokens = ledger?.spend?.tokensKnown === true ? `${ledger.spend.tokens} tokens` : "tokens unknown";
-  return `${agents} ${agents === 1 ? "agent" : "agents"} · ${elapsed(runStart(ledger), now)} · ${tokens} · % of plan unknown`;
+  return `${agents} ${agents === 1 ? "agent" : "agents"} · ${elapsed(runStart(ledger), now, ranFor)} · ${tokens} · % of plan unknown`;
 }
 
 function nowRow(step, tests, ledger) {
@@ -76,7 +87,7 @@ function leftRow(step, tests) {
 
 function loopingRow(step) {
   if (!step) return UNKNOWN;
-  return isLooping(step) ? `yes: ${step.tries} tries at the same step` : `no · this step: try ${step.tries} of ${MAX_TRIES}`;
+  return isLooping(step.tries) ? `yes: ${step.tries} tries at the same step` : `no · this step: try ${step.tries} of ${MAX_TRIES}`;
 }
 
 const SEPARATOR = " │ ";
@@ -126,7 +137,7 @@ function bandNeedsYou(ledger) {
 }
 
 function bandSegments({ ledger, spawns, tests, now }, step) {
-  const looping = step ? (isLooping(step) ? "yes" : "no") : UNKNOWN;
+  const looping = step ? (isLooping(step.tries) ? "yes" : "no") : UNKNOWN;
   return [
     { id: "where", text: bandWhere(step, tests, ledger) },
     { id: "spent", text: bandSpent({ ledger, spawns, now }) },
@@ -183,13 +194,13 @@ function unknownLabels(spawns) {
     .map((spawn) => String(spawn.name));
 }
 
-export function glance({ ledger, spawns, tests, now } = {}) {
+export function glance({ ledger, spawns, tests, now, ranFor } = {}) {
   const list = Array.isArray(spawns) ? spawns : [];
   const names = Array.isArray(tests) ? tests : [];
   const step = currentStep(list);
   const rows = {
     now: nowRow(step, names, ledger),
-    spent: spentRow({ ledger, spawns: list, now }),
+    spent: spentRow({ ledger, spawns: list, now, ranFor }),
     left: leftRow(step, names),
     looping: loopingRow(step),
     offTrack: UNKNOWN,

@@ -1,39 +1,33 @@
 import { plainName } from '../shared-node/plain-names.mjs'
-import { graphFor } from '../shared-node/stage-graph.mjs'
-import contract from './stages-contract'
+import { stageNamesFor } from '../shared-node/stage-graph.mjs'
+import contract from '../shared-node/stages-contract.mjs'
 import type { Ledger } from './inputs'
-import type { Rows, Tags } from './view'
+import type { PaneTags, Rows } from './view'
 
 const ROWS: [keyof Rows, string][] = [
   ['now', 'NOW'], ['spent', 'SPENT'], ['left', 'LEFT'], ['looping', 'LOOPING'], ['offTrack', 'OFF TRACK'],
 ]
 
-// The task type's stages from the contract, else only those the ledger has recorded.
-function stageNames(ledger: Ledger): string[] {
-  try {
-    return graphFor(contract, ledger?.taskType).stages
-  } catch (error) {
-    if (!(error instanceof Error) || !error.message.startsWith('no stage graph')) {
-      throw error
-    }
-    return (ledger?.stages ?? []).map(stage => stage.name)
-  }
-}
-
 export function stepLines(ledger: Ledger): string[] {
   const done = new Set((ledger?.stages ?? []).filter(stage => stage.status === 'done').map(stage => stage.name))
   const current = ledger?.stage?.status === 'active' ? ledger.stage.name : undefined
-  return stageNames(ledger).map(name => {
+  return stageNamesFor(contract, ledger).map(name => {
     const mark = name === current ? '▸' : done.has(name) ? '✓' : '○'
     return `${mark} ${plainName(name) ?? name}`
   })
 }
 
-export function Pane({ Box, Text, Button, rows, ledger, unknownLabels, onDismiss }: Tags & {
+export type Suggestion = { state: 'pending'; nextAgent?: string } | { state: 'delivered'; to: string }
+
+export function Pane({ Box, Text, Button, Input, rows, ledger, unknownLabels, note = null, suggestion, onDismiss, onReport = () => {}, onSuggest = () => {} }: PaneTags & {
   rows: Rows
   ledger: Ledger
   unknownLabels: string[]
+  note?: string | null
+  suggestion?: Suggestion
   onDismiss: () => unknown
+  onReport?: () => unknown
+  onSuggest?: (text: string) => unknown
 }) {
   return (
     <Box flexDirection="column">
@@ -42,6 +36,15 @@ export function Pane({ Box, Text, Button, rows, ledger, unknownLabels, onDismiss
       {unknownLabels.map((raw, i) => <Text key={`unknown-${i}`}>{raw}</Text>)}
       {unknownLabels.length > 0 && <Text dimColor>{`${unknownLabels.length} label${unknownLabels.length === 1 ? '' : 's'} unknown`}</Text>}
       <Text dimColor>Pairing Buddy only watches; it never changes your run</Text>
+      {note && <Text>{note}</Text>}
+      {suggestion?.state === 'pending' && <Text>{`applies at the next agent spawn: ${suggestion.nextAgent ? (plainName(suggestion.nextAgent) ?? suggestion.nextAgent) : 'the next agent'}`}</Text>}
+      {suggestion?.state === 'delivered' && <Text>{`delivered to ${plainName(suggestion.to) ?? suggestion.to}`}</Text>}
+      {ledger && (
+        <>
+          <Button key="report" label="r open report" onPress={onReport} />
+          <Input key="suggest" label="s suggest" onSubmit={onSuggest} />
+        </>
+      )}
       <Button key="dismiss" label="dismiss" role="dismiss" onPress={onDismiss} />
     </Box>
   )
