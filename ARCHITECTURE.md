@@ -970,6 +970,8 @@ Solo sessions run unattended, so real-time progress visibility is essential. Two
 
 The mod also alerts when the run stops or needs a human (`mod/alert.ts`, `mod/pane-open.ts`): it plays the bundled `mod/assets/alert.wav` (configurable through the `alertSound` userConfig), sets the status line and opens the pane. Each event alerts once, tracked through `$.store` keyed by run id, kind and event seq. The ledger carries a `runId`, written by `pb run open`, and a stop carries a `stop.code` from `STOP_CODES` in `shared-node/stop-codes.mjs`; every code has a plain name in `shared-node/plain-names.mjs`. Alerts stay read-only: they never write run state.
 
+The first-pane smoke (Task 59) has a lab (`tests/smoke/t4a-lab.mjs`) and a broken-copy helper (`tests/smoke/broken-plugin.mjs`, `makeBrokenCopy` with `load` and `render` modes). `s2.mjs --plugin-dir` runs S2 against a broken copy, and `tests/smoke/T4A-RUNBOOK.md` guides the human session.
+
 ### macOS Sleep Prevention
 
 Solo Buddy uses `caffeinate -s` to prevent macOS from suspending the process when the screen locks. Without it, macOS App Nap freezes the terminal process entirely. Claude Code's built-in `caffeinate -i` only prevents idle sleep, not display/system sleep triggered by screen lock. The caffeinate process is cleaned up via the exit trap.
