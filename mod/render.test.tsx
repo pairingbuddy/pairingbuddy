@@ -3,7 +3,8 @@ import { fitBand, glance } from '../shared-node/glance.mjs'
 import { bandColumns } from './band'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { POLL_MS } from './poll'
-import { stopped } from './testing/alert'
+import { needingHuman, stopped } from './testing/alert'
+import { PANE } from './testing/replay'
 import { BAND, bandTexts, engine as bandEngine, LEDGER_PATH, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, SURFACES, ROOT, serveLedger, start, without, type Served } from './testing/band'
 
 // The band draws what the session's poll read, so each test starts a session first; the poll runs at session start.
@@ -65,7 +66,7 @@ test('band draws one dim "Pairing Buddy · idle" on every surface without throwi
     const drawn = await drawnOnEverySurface($)
 
     for (const surface of SURFACES) {
-      expect(drawn[surface], `${surface} band draws idle for a ${name} ledger`).toContain('Pairing Buddy · idle')
+      expect(drawn[surface], `${surface} band draws idle for a ${name} ledger`).toContain(name === 'no current stage yet' ? 'Pairing Buddy · between steps · next: ' : ['missing stage', 'missing stage and stages', 'missing owner', 'empty document'].includes(name) ? 'Pairing Buddy · run open' : 'Pairing Buddy · idle')
       expect(drawn[surface], `${surface} idle text is dim`).toContain('"dimColor":true')
     }
     expect(served.asked, `the band read <root>/<LEDGER> for a ${name} ledger`).toContain(LEDGER_PATH)
@@ -169,4 +170,101 @@ test("the idle band draws without error and names no focus key it cannot back", 
   expect(idle.join(''), `with no ledger the band reads idle with the hint: ${JSON.stringify(idle)}`).toBe('Pairing Buddy · idle · /pb for details')
   expect(ended.join(''), `after a run ended the band reads last run finished with the hint, never empty: ${JSON.stringify(ended)}`).toContain('Pairing Buddy · last run finished · /pb for details')
   expect((idle.concat(ended)).join(' '), 'neither band names ctrl+x or a key it cannot back').not.toMatch(/ctrl\+x|\btab\b/i)
+})
+
+// Placeholders for band idle and colour cases (scenarios band-never-idle-with-live-ledger, theme-colours-in-band-and-pane).
+const doneStage = (name: string, n: number) => ({ name, status: 'done', attempt: 1, startedAt: `2026-11-04T08:13:${10 + n}.000Z`, spend: { agents: 1, tokens: 0, tokensKnown: false } })
+// Seq 6 of tests/smoke/recordings/t59-healthy: code-scenarios is done and code-tdd has not started.
+const BETWEEN_SCENARIOS_AND_TDD = {
+  ...SNAPSHOT_RUNNING,
+  seq: 6,
+  stage: { name: 'code-scenarios', status: 'done', runId: 'wf_76c46091-82d', attempt: 1, startedAt: '2026-11-04T08:13:26.472Z' },
+  stages: [doneStage('code-scenarios', 0)],
+}
+// Seq 2 of the same recording: right after pb run open, no stage yet.
+const JUST_OPENED = { ...SNAPSHOT_NO_STAGE, seq: 2, owner: { sessionId: '3855343a-c693-4213-9f52-91a2ff2021ef', lastSeen: '2026-11-04T08:13:24.369Z' }, policy: { mode: 'auto', source: 'permission_mode' } }
+
+test('between-stages-band-shows-next-step: a live ledger with stage not active and stages done up to a known point draws a band without idle that reads between steps with the next stage plain name', async ($, on) => {
+  const cases: [string, unknown, string][] = [
+    ['right after run open', JUST_OPENED, plainName('code-scenarios')],
+    ['between code-scenarios and code-tdd', BETWEEN_SCENARIOS_AND_TDD, plainName('code-tdd')],
+  ]
+  const run = bandEngine(on, JUST_OPENED)
+  for (const [name, ledger, next] of cases) {
+    run.serve(ledger)
+    await start($)
+
+    const joined = (await bandTexts($, WIDE)).join('')
+
+    expect(joined, `${name}: the band is not idle: ${joined}`).not.toContain('idle')
+    expect(joined, `${name}: the band says between steps: ${joined}`).toContain('between steps')
+    expect(joined, `${name}: the band names the next step: ${joined}`).toContain(`next: ${next}`)
+  }
+})
+
+test('live-ledger-without-known-next-never-idle: a live ledger where no next stage can be named still draws a non-idle band saying the run is open with no invented step name', async ($, on) => {
+  const everyStageDone = { ...BETWEEN_SCENARIOS_AND_TDD, stages: ['code-scenarios', 'code-tdd', 'code-safety-net'].map(doneStage) }
+  const ledgers: Record<string, unknown> = {
+    'every stage done': everyStageDone,
+    'stage object absent': without(JUST_OPENED, 'stage'),
+    'stage object partial': { ...JUST_OPENED, stage: { name: '' } },
+  }
+  const run = bandEngine(on, JUST_OPENED)
+  for (const [name, ledger] of Object.entries(ledgers)) {
+    run.serve(ledger)
+    await start($)
+
+    const joined = (await bandTexts($, WIDE)).join('')
+
+    expect(joined, `${name}: the band is not idle: ${joined}`).not.toContain('idle')
+    expect(joined, `${name}: the band says the run is open: ${joined}`).toMatch(/run (is )?open|between steps/)
+    expect(joined, `${name}: no next step is invented: ${joined}`).not.toContain('next:')
+  }
+})
+
+test('no-ledger-no-snapshot-stays-idle: with no ledger and no snapshot the band reads the dim idle text, and with no ledger but a snapshot it reads last run finished', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const run = bandEngine(on, null)
+  await start($)
+  const idle = await bandTexts($, WIDE)
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const dim = JSON.stringify(await band.find({ type: 'Text' }))
+  await band.unmount()
+  run.serve(BETWEEN_SCENARIOS_AND_TDD)
+  await clock.advance(POLL_MS)
+  run.serve(null)
+  await clock.advance(POLL_MS)
+
+  const ended = await bandTexts($, WIDE)
+
+  expect(idle.join(''), `no ledger, no snapshot: idle with the hint: ${JSON.stringify(idle)}`).toBe('Pairing Buddy · idle · /pb for details')
+  expect(dim, 'the idle text is dim').toContain('"dimColor":true')
+  expect(ended.join(''), `no ledger but a snapshot: last run finished: ${JSON.stringify(ended)}`).toContain('Pairing Buddy · last run finished')
+})
+
+test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning and a stop in error in pane and band, while unknown values and the SPENT row stay dimColor', async ($, on) => {
+  const run = bandEngine(on, needingHuman())
+  const nodes = async (surface: Record<string, unknown>): Promise<{ text: string; props: Record<string, unknown> }[]> => {
+    const mounted = await $.ui.mount({ ...surface, surface: 'terminal' })
+    const found = await mounted.findAll({ type: 'Text' })
+    await mounted.unmount()
+    return found
+  }
+  const band = { ...BAND, props: { ...BAND.props, bodyColumns: 200 } }
+  const starting = (nodes: { text: string }[], prefix: string) => nodes.find(node => node.text.startsWith(prefix))!
+
+  await start($)
+  const gateBand = await nodes(band)
+  run.serve(stopped({ code: 'step-failed' }))
+  await $.session.start({ cwd: ROOT, surface: null, isInteractive: true })
+  const stopBand = await nodes(band)
+  const stopPane = await nodes(PANE)
+
+  expect(starting(gateBand, 'needs you').props.color, 'a needs-you gate in the band is warning').toBe('warning')
+  expect(starting(stopBand, 'needs you').props.color, 'a stop in the band is error').toBe('error')
+  expect(starting(stopPane, 'NOW').props.color, 'a stop in the pane NOW row is error').toBe('error')
+  expect(starting(gateBand, 'looping:').props.dimColor, 'an unknown band segment is dim').toBe(true)
+  expect(starting(gateBand, 'time unknown').props.dimColor, 'the band spend segment is dim').toBe(true)
+  expect(starting(stopPane, 'SPENT').props.dimColor, 'the pane SPENT row is dim').toBe(true)
+  expect(starting(stopPane, 'LOOPING').props.dimColor, 'an unknown pane row is dim').toBe(true)
 })

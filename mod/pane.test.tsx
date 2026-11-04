@@ -96,7 +96,7 @@ test('in the pane the unknown-label count sits straight after the raw labels, an
 
 test('with the band mounted, a ledger that goes from idle to an active stage changes what it draws only when the poll interval has passed, with no new mount', async ($, on) => {
   const clock = mock.clock(on, { now: 0 })
-  const { served } = engine(on, SNAPSHOT_NO_STAGE)
+  const { served } = engine(on, null)
   await start($)
 
   // The one mount: `band` is the same handle before and after, so the redraw needs no remount.
@@ -154,4 +154,45 @@ test("before any ledger was polled and with no live ledger the pane shows no ste
 
   expect(shown.some(text => /^[▸✓○] /.test(text)), `no step line in ${JSON.stringify(shown)}`).toBe(false)
   expect(button, 'no report button before the first poll').toBeUndefined()
+})
+
+test('details-button-opens-pane-with-focus: pressing the band details button opens the same pane with focus true', async ($, on) => {
+  const { calls } = engine(on)
+  await start($)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'details' })
+  await band.unmount()
+
+  expect(calls.opened.length, 'the details button calls ui.open once').toBe(1)
+  expect(calls.opened[0].id, 'it opens the pairingbuddy pane').toBe(PANE_ID)
+  expect(calls.opened[0].focus, 'the person asked for the pane, so it takes focus').toBe(true)
+  expect(calls.opened[0].closeOnEscape, 'esc returns to the prompt').toBe(true)
+  expect(calls.opened[0].holdToasts, 'the pane holds no toasts').toBeUndefined()
+})
+
+test('pane-step-lines-use-theme-keys: the current step line uses a theme key and is lit, done ticks use color success, and not-started lines stay plain or dim', async ($, on) => {
+  // code-scenarios is done, code-tdd is running, the safety-net review has not started.
+  engine(on, {
+    ...SNAPSHOT_RUNNING,
+    seq: 6,
+    stage: { name: 'code-tdd', status: 'active', runId: null, attempt: 1, startedAt: '2026-11-03T06:37:08.972Z' },
+    stages: [{ name: 'code-scenarios', status: 'done', attempt: 1, startedAt: '2026-11-03T06:36:08.972Z', spend: { agents: 1, tokens: 0, tokensKnown: false } }],
+  })
+  await start($)
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const nodes: { text: string; props: Record<string, unknown> }[] = await pane.findAll({ type: 'Text' })
+  await pane.unmount()
+
+  const line = (mark: string) => nodes.find(node => node.text.startsWith(`${mark} `))!
+  const current = line('▸')
+  const done = line('✓')
+  const todo = line('○')
+  expect(current?.props.color, 'the current step is lit with the claude theme key').toBe('claude')
+  expect(current?.props.bold, 'the current step is bold').toBe(true)
+  expect(current?.props.dimColor, 'the current step is not dim').not.toBe(true)
+  expect(done?.props.color, 'a done tick is in the success theme key').toBe('success')
+  expect(todo?.props.color, 'a step not started has no colour').toBeUndefined()
+  expect(todo?.props.bold, 'a step not started is not bold').not.toBe(true)
 })

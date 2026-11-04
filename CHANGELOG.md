@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The last run is kept after `pb task end` and shown as "last run finished", and the report button still works.
 - Band segments are separated.
 - The band shows a "/pb for details" hint, which gives way before content does.
+- The band says "between steps · next: …" or "run open" instead of idle during a run.
+- Tests come from the run's ledger, showing "test N" with no invented total, and LEFT stays unknown until the total is known.
+- `/pb` and details open the pane with focus, so `r` open report works and Tab reaches suggest. The alert's pane doesn't steal focus.
+- Theme-key colour: the current step is lit, ticks are success, needs-you is warning, stop is error, and unknowns and spend are dim.
 
 ### Added
 

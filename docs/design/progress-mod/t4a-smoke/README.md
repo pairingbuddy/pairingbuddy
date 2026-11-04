@@ -54,3 +54,12 @@ Lab `20261104-101059`, healthy, auto mode. The run passed (3 commits). Session p
 4. **Band segments run together.** "build test by test1:09 · 6 agentsleft: unknownlooping: unknownoff track: unknownneeds you: no[ ▸ details ]". Fixed.
 5. **The band button can't be reached.** A mouse click did nothing in this terminal, and ctrl+x then tab did not focus the band. Fixed: `/pb` replaces the click.
 6. The "Run a dynamic workflow?" dialog showed once per stage even in auto mode (known since P18B). Known platform behaviour, not fixed here.
+
+## Human session 2 findings (2026-11-04, A1, 167 columns, dark)
+
+Lab `20261104-105144`, healthy, auto mode, run passed (3 commits). Fixes 1-4 confirmed live: `/pb` answers, the pane lists the bug_fix steps, the band is separated, and after `pb task end` the pane and band read "last run finished" with open report kept.
+
+7. **Band says "idle" while a run is open between stages** (after `pb run open`, at gate checks), and then disagrees with the pane, which shows NOW "build test by test". **Fixed: the band says "between steps · next: …" or "run open".**
+8. **LEFT stays "unknown" and there is no "test 1 of 1"** during a real one-test bug_fix run. **Fixed: tests come from the ledger, "test N", LEFT unknown until the total is known.**
+9. **The pane takes no keys.** Opened by `/pb`, pressing `s` typed into the prompt, so `r open report`, `s suggest` and `dismiss` cannot be pressed. **Fixed: `/pb` and details open the pane with focus (`r`, Tab to suggest, Esc).**
+10. **No colour.** The mockups (rounds 4-5) lit the current step and coloured ticks and needs-you; the mod draws only plain and dim text. **Fixed: theme-key colour on current step, ticks, needs-you, stop, unknowns and spend.**

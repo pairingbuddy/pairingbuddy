@@ -207,3 +207,15 @@ test('older-ledger-stop-without-code-still-alerts', async ($, on) => {
   expect(run.calls.status[0].text, 'the line falls back to the plain stopped message').toBe('Pairing Buddy stopped')
   expect(run.calls.opened.map(open => open.id), 'a stop with no code opens the pairingbuddy pane once').toEqual([PANE_ID])
 })
+
+test('alert-opened-pane-does-not-take-focus: when the needs-you or stop alert opens the pane, the ui.open call has no focus', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const run = alertEngine(on)
+  await start($)
+
+  run.serve(stopped())
+  await clock.advance(POLL_MS)
+
+  expect(run.calls.opened.length, 'the alert opens the pane once').toBe(1)
+  expect(run.calls.opened[0].focus, 'the alert does not take the keyboard from a person typing').toBeFalsy()
+})

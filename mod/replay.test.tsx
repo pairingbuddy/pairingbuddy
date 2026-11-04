@@ -20,7 +20,7 @@ const testsFile = (ids: string[]) => ({
 
 const IDLE_TEXT = 'Pairing Buddy · idle · /pb for details'
 // Without an active stage the band is one text: idle, or "last run finished" once a run has ended.
-const quietBand = (shown: string[]) => (shown.length === 1 && /^Pairing Buddy · (idle|last run finished) · \/pb for details$/.test(shown[0]) ? shown : [IDLE_TEXT])
+const quietBand = (shown: string[]) => (shown.length === 1 && /^Pairing Buddy · (idle|last run finished|run open|between steps · next: [^·]+) ?(· \/pb( for details)?)?$/.test(shown[0]) ? shown : [IDLE_TEXT])
 const DRAWN_AROUND_SEGMENTS = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details' || text.startsWith(' │ /pb')
 // The band's segment texts: what is drawn without the separators, the gap, the details button text and the hint.
 const texts = (step: Step) => step.texts.map(node => node.text).filter(text => !DRAWN_AROUND_SEGMENTS(text))
@@ -174,4 +174,31 @@ test('across band and pane text for the replayed recordings, no rendered string 
     }
   }
   expect(strings, 'the band and pane drew text to check').toBeGreaterThan(100)
+})
+
+// ThemeKey, from types/claude-code.d.ts in the bundled plugin-authoring reference.
+const THEME_KEYS = [
+  'text', 'inverseText', 'inactive', 'subtle', 'suggestion', 'remember', 'success', 'error', 'warning', 'merged', 'claude',
+  'permission', 'planMode', 'autoAccept', 'promptBorder', 'bashBorder', 'ide', 'diffAdded', 'diffRemoved', 'diffAddedDimmed',
+  'diffRemovedDimmed', 'diffAddedWord', 'diffRemovedWord',
+]
+
+test('every-color-prop-is-a-theme-key: across every drawn Text in band and pane over the replay recordings, each color prop is a ThemeKey value and no hex, rgb or ANSI name', async ($, on) => {
+  const rig = setupReplay(on)
+  const colours = new Set<string>()
+  let nodes = 0
+  for (const [name, recording] of [['g-open-1', gOpen1], ['probe-2', probe2]] as const) {
+    for (const step of await drawn($, rig, recording, TESTS[name])) {
+      for (const node of [...step.texts, ...step.pane]) {
+        nodes++
+        const color = node.props.color
+        if (color === undefined) continue
+        colours.add(String(color))
+        expect(THEME_KEYS, `${name} t=${step.t}: "${node.text}" is coloured ${JSON.stringify(color)}`).toContain(color)
+      }
+    }
+  }
+
+  expect(nodes, 'the band and pane drew text to check').toBeGreaterThan(100)
+  expect([...colours], 'the recordings drew some colour at all').toEqual(expect.arrayContaining(['claude', 'success']))
 })

@@ -19,7 +19,7 @@ Watch the progress mod (band, pane, alert, report button) in one healthy run and
 3. Run `/theme`, switch to light, and take the same shot: `A-150-light-running.png`.
 4. Drag the window to about 110 columns. The pane should wait; open it by typing `/pb`. Shot in each theme: `A-110-dark-running.png`, `A-110-light-running.png`.
 5. Drag to about 80 columns. The band shows inline and there is no dock. Shot in each theme: `A-80-dark-running.png`, `A-80-light-running.png`.
-6. Go back to about 150 columns, dark theme. In the pane, press `s` and type a short suggestion. It should say `applies at the next agent spawn: <agent>`, and later `delivered to <agent>`.
+6. Go back to about 150 columns, dark theme. After `/pb` the pane has focus: press `r` for open report, Tab to reach suggest (the label no longer has "s"), type a short suggestion, and Esc to go back. Expect the band to say "between steps" between stages. It should say `applies at the next agent spawn: <agent>`, and later `delivered to <agent>`.
 7. When the run is **done**, take `A-150-dark-done.png`.
 8. Type `/pb`. After a run the pane shows "last run finished" with the **open report** button. Press it. A report page should open in the browser. Capture it: `A-report-dark-done.png`.
 9. Type `/exit`, then run `node tests/smoke/t4a-lab.mjs show`.

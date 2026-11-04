@@ -11,7 +11,7 @@ import { findOnPane, PANE, paneTexts, setupReplay } from './replay'
 export const SUGGEST_KEY = 'suggest'
 
 // The label the input carries: the key hint, then the action (R5-1).
-export const SUGGEST_LABEL = 's suggest'
+export const SUGGEST_LABEL = 'suggest'
 
 // Looks up the suggest input on the terminal pane. The label is undefined when the input draws none.
 export async function suggestInput($: any): Promise<{ label: string | undefined } | undefined> {

@@ -48,7 +48,8 @@ const agentCount = (spawns) => spawns.filter((spawn) => spawn && AGENT_KINDS.inc
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 // What is left after the current test: "N more tests" / "this test". `more` says whether to word it "N more tests" or "N tests".
-function remainingTests(step, tests, { more }) {
+function remainingTests(step, tests, { more, complete }) {
+  if (!complete) return undefined;
   const position = testPosition(step, tests);
   if (position === 0) return undefined;
   const count = tests.length - position;
@@ -71,17 +72,17 @@ function spentRow({ ledger, spawns, now, ranFor }) {
   return `${agents} ${agents === 1 ? "agent" : "agents"} · ${elapsed(runStart(ledger), now, ranFor)} · ${tokens} · % of plan unknown`;
 }
 
-function nowRow(step, tests, ledger) {
+function nowRow(step, tests, ledger, complete) {
   if (ledger?.stop) return stopLine(ledger.stop);
   if (!step) return plainName(ledger?.stage?.name) ?? UNKNOWN;
   const position = testPosition(step, tests);
-  const where = position > 0 ? ` · test ${position} of ${tests.length}` : "";
+  const where = position > 0 ? ` · test ${position}${complete ? ` of ${tests.length}` : ""}` : "";
   const retry = step.tries > 1 ? `, ${ordinal(step.tries)} try` : "";
   return `${plainName(step.role) ?? UNKNOWN} for ${step.item.replace(/[-_]/g, " ")}${where}${retry}`;
 }
 
-function leftRow(step, tests) {
-  const remaining = remainingTests(step, tests, { more: true });
+function leftRow(step, tests, complete) {
+  const remaining = remainingTests(step, tests, { more: true, complete });
   return remaining ? `${remaining}, then ${SAFETY_NET}` : UNKNOWN;
 }
 
@@ -94,14 +95,15 @@ export const SEPARATOR = " │ ";
 export const SEPARATOR_WIDTH = SEPARATOR.length;
 const PERCENT_PART = / · ≈.*$/;
 
-function bandWhere(step, tests, ledger) {
+function bandWhere(step, tests, ledger, complete) {
   const position = testPosition(step, tests);
   if (!step || position === 0) return plainName(ledger?.stage?.name) ?? UNKNOWN;
-  return `${step.phase} · test ${position} of ${tests.length}`;
+  return `${step.phase} · test ${position}${complete ? ` of ${tests.length}` : ""}`;
 }
 
-function bandLeft(step, tests) {
-  return `left: ${remainingTests(step, tests, { more: false }) ?? UNKNOWN}${testPosition(step, tests) > 0 ? " + review" : ""}`;
+function bandLeft(step, tests, complete) {
+  const remaining = remainingTests(step, tests, { more: false, complete });
+  return `left: ${remaining ?? UNKNOWN}${remaining ? " + review" : ""}`;
 }
 
 function bandSpent({ ledger, spawns, now }) {
@@ -136,12 +138,12 @@ function bandNeedsYou(ledger) {
   return { id: "needsYou", text: `needs you: ${stopName(ledger.stop) ?? STOPPED}`, standing: true };
 }
 
-function bandSegments({ ledger, spawns, tests, now }, step) {
+function bandSegments({ ledger, spawns, tests, now, complete }, step) {
   const looping = step ? (isLooping(step.tries) ? "yes" : "no") : UNKNOWN;
   return [
-    { id: "where", text: bandWhere(step, tests, ledger) },
+    { id: "where", text: bandWhere(step, tests, ledger, complete) },
     { id: "spent", text: bandSpent({ ledger, spawns, now }) },
-    { id: "left", text: bandLeft(step, tests) },
+    { id: "left", text: bandLeft(step, tests, complete) },
     { id: "looping", text: `looping: ${looping}` },
     { id: "offTrack", text: `off track: ${UNKNOWN}` },
     bandNeedsYou(ledger),
@@ -194,16 +196,17 @@ function unknownLabels(spawns) {
     .map((spawn) => String(spawn.name));
 }
 
-export function glance({ ledger, spawns, tests, now, ranFor } = {}) {
+// testsComplete: false says the list is only the tests seen so far, so no total ("of M") and no count left is claimed.
+export function glance({ ledger, spawns, tests, now, ranFor, testsComplete = true } = {}) {
   const list = Array.isArray(spawns) ? spawns : [];
   const names = Array.isArray(tests) ? tests : [];
   const step = currentStep(list);
   const rows = {
-    now: nowRow(step, names, ledger),
+    now: nowRow(step, names, ledger, testsComplete),
     spent: spentRow({ ledger, spawns: list, now, ranFor }),
-    left: leftRow(step, names),
+    left: leftRow(step, names, testsComplete),
     looping: loopingRow(step),
     offTrack: UNKNOWN,
   };
-  return { rows, band: bandSegments({ ledger, spawns: list, tests: names, now }, step), unknownLabels: unknownLabels(list) };
+  return { rows, band: bandSegments({ ledger, spawns: list, tests: names, now, complete: testsComplete }, step), unknownLabels: unknownLabels(list) };
 }

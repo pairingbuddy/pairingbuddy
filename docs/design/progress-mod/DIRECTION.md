@@ -31,7 +31,7 @@ Planning uses the same rows. Its pane adds the aim, decisions, open questions (t
 - **Plain language.** No gate, stage or agent ids appear in the UI. `G:task-end` is "your sign-off at the end", and a gate auto mode passed reads "OK'd (auto)". `code-tdd` is "build test by test". Tracers are "slices", explained on first use. Agent names such as implement-tests are not shown.
 - **A compact cycle marker.** `●RED ›GREEN ›REFACTOR` sits on the current test's own line, next to the step age. Only the current step is lit, and a bug fix drops REFACTOR. See [R5-1](round-5/R5-1-pane-tdd-calm.png).
 - **Per-test progress** is one row of `✓ ◌ ▸ ·` with short test names. Long lists fold: finished items collapse to one line, then the current item and the next two, then `+ n more`.
-- **Suggestions.** `s suggest` writes a note to `.pairingbuddy/human-guidance.json`. The next agent spawn reads it, because workflows take no input mid-run. The pane says which agent that will be, and that the agent running now won't see it.
+- **Suggestions.** Tab to suggest writes a note to `.pairingbuddy/human-guidance.json`. The next agent spawn reads it, because workflows take no input mid-run. The pane says which agent that will be, and that the agent running now won't see it.
 - **Spend is low and dim:** one row of the glance and the band's middle segment. There are no dollars. Plan usage shows as "≈ % of plan".
 
 ## Rejected, and why

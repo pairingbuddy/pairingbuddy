@@ -90,7 +90,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', ($, e, next) => {
-    return e.command === 'pb' ? openPane($).then(() => ({ text: 'Pairing Buddy pane opened' })) : next(e)
+    return e.command === 'pb' ? openPane($, true).then(() => ({ text: 'Pairing Buddy pane opened' })) : next(e)
   })
 
   on('agent.spawn', ($, e, next) => {
@@ -100,17 +100,18 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button }, { band, running, ended }, opened) => (
-    <Band Box={Box} Text={Text} Button={Button} band={band} running={running} ended={ended} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($).catch(() => {}) }} />
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button }, { band, running, ended, between }, opened) => (
+    <Band Box={Box} Text={Text} Button={Button} band={band} running={running} ended={ended} between={between} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($, true).catch(() => {}) }} />
   )))
 
-  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button, Input }, { rows, ledger, ended, unknownLabels }, _opened, note, pending) => (
+  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button, Input }, { rows, rowTones, ledger, ended, unknownLabels }, _opened, note, pending) => (
     <Pane
       Box={Box}
       Text={Text}
       Button={Button}
       Input={Input}
       rows={rows}
+      rowTones={rowTones}
       ledger={ledger}
       ended={ended}
       unknownLabels={unknownLabels}

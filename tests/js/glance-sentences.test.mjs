@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 import { glance } from "../../shared-node/glance.mjs";
 import { buildLabel } from "../../shared-node/labels.mjs";
@@ -219,4 +220,48 @@ test("glance lists the raw name of every workflow agent whose label does not rea
     { kind: "workflow_agent", name: buildLabel({ stage: "code-tdd", phase: "RED", role: "tester", item: "t1", round: 1 }) },
   ];
   assert.deepEqual(glance({ spawns }).unknownLabels, ["not a pb1 label at all"]);
+});
+
+// Seq 10 of tests/smoke/recordings/t59-healthy/ledger.jsonl is the first ledger with tests.perTest; seq 9 is the last without.
+async function t59Ledger(seq) {
+  const lines = (await readFile(new URL("../smoke/recordings/t59-healthy/ledger.jsonl", import.meta.url), "utf8")).trim().split("\n");
+  return JSON.parse(lines[seq - 1]).ledger;
+}
+const T59_TEST = "apply-discount-100-by-10-returns-90";
+
+test("one-test-run-shows-test-1-of-1-and-left: a one-test bug_fix ledger whose current item is that test shows 'test 1 of 1' in NOW and a LEFT row that is not unknown", async () => {
+  const ledger = await t59Ledger(10);
+  const tests = Object.keys(ledger.tests.perTest);
+  const spawns = [failingTestSpawn(T59_TEST)];
+
+  const result = glance({ ledger, spawns, tests, now: SOME_TIME });
+
+  assert.deepEqual(tests, [T59_TEST]);
+  assert.match(result.rows.now, /test 1 of 1/, "NOW says test 1 of 1");
+  assert.notEqual(result.rows.left, "unknown", "LEFT is known");
+  assert.match(result.rows.left, /^this test, then /, "LEFT reads this test, then the safety net");
+  assert.equal(result.band.find((segment) => segment.id === "left").text, "left: this test + review", "band left segment");
+});
+
+test("no-tests-recorded-stays-unknown: with ledger.tests empty or perTest absent and no tests.json, tests is empty, LEFT stays unknown and NOW has no 'test N of M'", async () => {
+  const ledger = await t59Ledger(9);
+  const spawns = [failingTestSpawn(T59_TEST)];
+
+  const result = glance({ ledger, spawns, tests: Object.keys(ledger.tests?.perTest ?? {}), now: SOME_TIME });
+
+  assert.deepEqual(ledger.tests, {});
+  assert.equal(result.rows.left, "unknown", "LEFT stays unknown");
+  assert.doesNotMatch(result.rows.now, /test \d+ of \d+/, "NOW invents no test position");
+});
+
+test("seen-only list shows test N without of M and LEFT unknown", () => {
+  const tests = ["first-test", "second-test"];
+  const spawns = tests.map(failingTestSpawn);
+
+  const result = glance({ ledger: undefined, spawns, tests, now: SOME_TIME, testsComplete: false });
+
+  assert.match(result.rows.now, /test 2(?! of)/, "NOW says which test, with no total");
+  assert.doesNotMatch(result.rows.now, / of \d/, "NOW claims no total");
+  assert.equal(result.rows.left, "unknown");
+  assert.doesNotMatch(JSON.stringify(result.band), / of \d/, "the band claims no total");
 });

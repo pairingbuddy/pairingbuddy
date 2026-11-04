@@ -31,3 +31,16 @@ test("running a command other than pb opens no pane and is passed on unanswered"
   expect(result?.text, 'the mod does not answer commands that belong to other plugins').toBe('unanswered by the test')
   expect(calls.opened, 'a command other than pb opens no pane').toEqual([])
 })
+
+test('pb-command-opens-pane-with-focus: running the pb command calls ui.open once with id pairingbuddy, focus true and closeOnEscape true, and without holdToasts', async ($, on) => {
+  const { calls } = engine(on)
+  await start($)
+
+  await $.command.run({ command: 'pb', args: '' })
+
+  expect(calls.opened.length, 'the pb command calls ui.open once').toBe(1)
+  expect(calls.opened[0].id, 'it opens the pairingbuddy pane').toBe(PANE_ID)
+  expect(calls.opened[0].focus, 'the pane takes focus so its hotkeys work').toBe(true)
+  expect(calls.opened[0].closeOnEscape, 'esc returns to the prompt').toBe(true)
+  expect(calls.opened[0].holdToasts, 'the pane holds no toasts').toBeUndefined()
+})

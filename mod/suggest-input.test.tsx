@@ -3,6 +3,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { engine, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
+import { findOnPane } from './testing/replay'
 import { expectNotSavedNote, GUIDANCE_PATH, SUGGEST_LABEL, suggestInput, typeSuggestion, writtenGuidance } from './testing/suggest'
 
 test('pane-shows-suggest-input', async ($, on) => {
@@ -120,4 +121,34 @@ test('with only the snapshot and no live ledger the suggest input is not drawn, 
 
   expect(live?.label, 'with a live ledger the pane holds the suggest input').toBe(SUGGEST_LABEL)
   expect(ended, 'once the run has ended, the snapshot shows no suggest input').toBeUndefined()
+})
+
+test('suggest-input-claims-no-hotkey', async ($, on) => {
+  const { serve } = engine(on)
+  const clock = mock.clock(on, { now: 0 })
+  await start($)
+  serve(SNAPSHOT_RUNNING)
+  await clock.advance(POLL_MS)
+
+  const input = await findOnPane($, { type: 'Input', key: 'suggest' })
+
+  expect(input, 'the pane holds the suggest input').toBeDefined()
+  expect(input.props?.hotkey, 'Input has no hotkey prop, so it must not pass one').toBeUndefined()
+  expect(input.props?.label, 'the label names no key, as nothing binds one').toMatch(/^suggest\b/)
+})
+
+test('button-key-letter-labels-carry-that-hotkey', async ($, on) => {
+  const { serve } = engine(on)
+  const clock = mock.clock(on, { now: 0 })
+  await start($)
+  serve(SNAPSHOT_RUNNING)
+  await clock.advance(POLL_MS)
+
+  const buttons = [await findOnPane($, { type: 'Button', key: 'report' }), await findOnPane($, { type: 'Button', key: 'dismiss' })]
+
+  const keyed = buttons.filter(button => /^\S\s/.test(button?.props?.label ?? ''))
+  expect(keyed.length, 'at least the report button leads with a key letter').toBeGreaterThan(0)
+  for (const button of keyed) {
+    expect(button.props.hotkey, `the button "${button.props.label}" carries its leading letter as hotkey`).toBe(button.props.label[0])
+  }
 })
