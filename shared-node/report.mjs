@@ -21,8 +21,18 @@ function glanceLabels(ledger) {
   return { now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", left: "Left", looping: "Looping", offTrack: "Off track" };
 }
 
-function atAGlance({ ledger, spawns, timing, tests }) {
-  const { rows } = glance({ ledger, spawns, tests, ranFor: timing?.seconds });
+// The run's length: endedAt (or the last stage end) minus the first start; NaN when either is missing.
+function runSeconds(ledger, endedAt) {
+  const stages = Array.isArray(ledger?.stages) ? ledger.stages : [];
+  const ends = stages.map((stage) => Date.parse(stage?.end)).filter(Number.isFinite);
+  const end = Number.isFinite(Date.parse(endedAt)) ? Date.parse(endedAt) : ends.length > 0 ? Math.max(...ends) : NaN;
+  const seconds = (end - Date.parse(stages[0]?.startedAt)) / 1000;
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : NaN;
+}
+
+function atAGlance({ ledger, spawns, ranFor, tests }) {
+  const { rows } = glance({ ledger, spawns, tests, ranFor });
+  if (outcome(ledger) === "DONE") rows.now = "finished";
   const labels = glanceLabels(ledger);
   const lines = Object.entries(rows).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
   return section("AT A GLANCE", lines.join("\n"));
@@ -115,18 +125,31 @@ function loopNote(tries, stop) {
   return `\n<p><strong>Why it looped</strong> RED must start from a test that fails, so a RED that did not was tried again. It took ${last.number} tries${ending}.</p>`;
 }
 
+// The ledger's perTest is the source of truth for a result; a step it recorded that no labelled spawn shows still gets a row (times unknown).
+function withLedgerTries(tries, record) {
+  const out = [...tries];
+  for (const [step, key] of [["RED", "red"], ["GREEN", "green"]]) {
+    if (record?.[key] && !out.some((t) => t.step === step)) out.push({ step, number: 1, writing: NaN, running: NaN });
+  }
+  return out;
+}
+
 function testCard(spawns, item, number, perTest, stop) {
-  const tries = triesOf(spawns, item);
+  const tries = withLedgerTries(triesOf(spawns, item), perTest?.[item]);
   const rows = tries.map((attempt) => tryRow(attempt, tries, perTest?.[item]));
-  const note = tries.length === 0 ? "\n<p>not reached</p>" : "";
+  const note = !perTest?.[item]?.red && tries.length === 0 ? "\n<p>not reached</p>" : "";
   const looped = loopNote(tries, stop);
   return `<article${looped ? ' class="looped"' : ""}>\n<h3>${number > 0 ? `<small>test ${number}</small> ` : ""}${escape(item)}</h3>${note}\n<table>\n${rows.join("\n")}\n</table>${looped}\n</article>`;
 }
 
 function testsSection({ ledger, spawns, tests }) {
   const perTest = ledger?.tests?.perTest ?? {};
-  const order = numberedTests(spawns, tests);
-  const items = [...new Set([...order, ...Object.keys(perTest)])];
+  const keys = Object.keys(perTest);
+  // Once perTest has results, a legacy-list id with no result and no spawns is dropped; the numbering keeps the existing order rules.
+  const seen = new Set([...keys, ...testsSeen(spawns)]);
+  const planned = numberedTests(spawns, tests).filter((item) => keys.length === 0 || seen.has(item));
+  const order = [...new Set([...planned, ...keys])];
+  const items = order;
   const last = currentStep(spawns)?.item;
   const cards = items.map((item) => testCard(spawns, item, order.indexOf(item) + 1, perTest, item === last ? ledger?.stop : null));
   return section("TESTS", cards.join("\n"));
@@ -137,18 +160,23 @@ const NOT_REACHED = "not reached";
 const secondsBetween = (from, to) => (Date.parse(to) - Date.parse(from)) / 1000;
 const stepClock = (seconds) => (Number.isFinite(seconds) && seconds >= 0 ? clock(seconds) : UNKNOWN);
 
-function stepRow(name, record, start) {
-  const cells = record
-    ? [stepClock(secondsBetween(start, record.startedAt)), stepClock(secondsBetween(start, record.end)), stepClock(secondsBetween(record.startedAt, record.end))]
-    : [NOT_REACHED, "", ""];
-  return `<tr>${[plainName(name), ...cells].map((cell) => `<td>${escape(cell)}</td>`).join("")}</tr>`;
+// Only columns with a source are drawn: end and took need a recorded end.
+function stepRow(name, record, start, withEnds) {
+  const times = record
+    ? [stepClock(secondsBetween(start, record.startedAt)), ...(withEnds ? [stepClock(secondsBetween(start, record.end)), stepClock(secondsBetween(record.startedAt, record.end))] : [])]
+    : [NOT_REACHED, ...(withEnds ? ["", ""] : [])];
+  return `<tr>${[plainName(name), ...times].map((cell) => `<td>${escape(cell)}</td>`).join("")}</tr>`;
 }
 
 function stepsSection({ ledger }) {
-  const recorded = new Map((ledger?.stages ?? []).map((stage) => [stage.name, stage]));
-  const start = ledger?.stages?.[0]?.startedAt;
-  const rows = stageNamesFor(contract, ledger).map((name) => stepRow(name, recorded.get(name), start));
-  return section("STEPS", `<table>\n${rows.join("\n")}\n</table>`);
+  const stages = Array.isArray(ledger?.stages) ? ledger.stages : [];
+  const recorded = new Map(stages.map((stage) => [stage.name, stage]));
+  const start = stages[0]?.startedAt;
+  const withEnds = stages.some((stage) => Number.isFinite(Date.parse(stage?.end)));
+  const labels = withEnds ? ["Step", "Start", "End", "Took"] : ["Step", "Started"];
+  const head = `<tr>${labels.map((label) => `<th>${label}</th>`).join("")}</tr>`;
+  const rows = stageNamesFor(contract, ledger).map((name) => stepRow(name, recorded.get(name), start, withEnds));
+  return section("STEPS", `<table>\n${head}\n${rows.join("\n")}\n</table>`);
 }
 
 const SHORT_SHA = 7;
@@ -180,13 +208,15 @@ p{margin:4px 0}
 section p strong{color:#9a9ca3;display:inline-block;min-width:150px;text-transform:uppercase;font-size:12px}
 article{border:1px solid #3a3c44;border-radius:8px;padding:12px 16px;margin:12px 0}
 table{border-collapse:collapse;width:100%}
+th{text-align:left;color:#9a9ca3;font-weight:400;padding:4px 12px 4px 0}
 td{padding:4px 12px 4px 0;vertical-align:top}
 ul{list-style:none;padding:0}
 li{margin:2px 0}
 .looped p strong{color:#ffc933;min-width:0;text-transform:none;font-size:inherit}
 footer{color:#6b6d75;margin-top:40px;font-size:12px}`;
 
-export function renderReport({ ledger, spawns, timing, commits, tests } = {}) {
+export function renderReport({ ledger, spawns, timing, commits, tests, endedAt } = {}) {
+  const ranFor = runSeconds(ledger, endedAt);
   const state = outcome(ledger);
   const taskType = plainName(ledger?.taskType) ?? "unknown type";
   return `<!doctype html>
@@ -197,9 +227,9 @@ ${STYLE}
 <body>
 <header>
 <h1>${escape(ledger?.task)}</h1>
-<p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(timing?.seconds)}</p>
+<p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(Number.isFinite(ranFor) ? ranFor : timing?.seconds)}</p>
 </header>
-${atAGlance({ ledger, spawns, timing, tests })}
+${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests })}
 ${stepsSection({ ledger })}
 ${testsSection({ ledger, spawns, tests })}
 ${commitsSection({ commits })}

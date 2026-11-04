@@ -104,3 +104,13 @@ test("runbook-capture-destination", async (t) => {
     assert.deepEqual(header, ["file", "part", "columns", "theme", "moment"], "header columns");
   });
 });
+
+test("focus-loss-recorded-as-platform-behaviour", async () => {
+  const runbook = readFileSync(RUNBOOK, "utf8").toLowerCase();
+  const readme = readReadme().toLowerCase();
+
+  for (const [name, text] of [["the runbook", runbook], ["the README", readme]]) {
+    assert.match(text, /focus[^.]*\b(lost|loses|lose)\b[^.]*window|window[^.]*\b(loses|lost)\b[^.]*focus/, `${name} says focus can be lost when the window loses focus`);
+    assert.match(text, /\/pb[^.]*\b(restores|restore|brings back|recovers)\b|\b(restores|restore|recovery)\b[^.]*\/pb/, `${name} says /pb restores it`);
+  }
+});

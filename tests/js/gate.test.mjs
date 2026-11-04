@@ -716,6 +716,47 @@ test("a failed stage still holds back the stage after it", () =>
 
 // ---------- pluginRoot ----------
 
+const wrongPluginRoot = (expected, got) => `Wrong pluginRoot for ${workflowName(CONFIG)}: got ${JSON.stringify(got)}. Use pluginRoot ${expected}.`;
+
+test("symlinked-plugin-root-accepted", () =>
+  withPlugin({}, (pluginRoot) =>
+    withRepo({}, async (repo) => {
+      const parent = realpathSync(mkdtempSync(join(tmpdir(), "gate-link-")));
+      try {
+        const link = join(parent, "plugin-link");
+        symlinkSync(pluginRoot, link);
+
+        const result = await runGate(stageCall(repo.dir, CONFIG, { pluginRoot: link, attempt: 1, task: { description: "set x" } }), { pluginRoot });
+
+        assertAllowed(result);
+      } finally {
+        rmSync(parent, { recursive: true, force: true });
+      }
+    })));
+
+test("different-real-root-denied-unchanged-message", () =>
+  withPlugin({}, (pluginRoot) =>
+    withPlugin({}, (other) =>
+      withRepo({}, (repo) =>
+        assertDeniedWithoutWrite(
+          repo,
+          stageCall(repo.dir, CONFIG, { pluginRoot: other, attempt: 1, task: { description: "set x" } }),
+          wrongPluginRoot(pluginRoot, other),
+          { pluginRoot },
+        )))));
+
+test("nonexistent-root-falls-back-to-string", () =>
+  withPlugin({}, (pluginRoot) =>
+    withRepo({}, (repo) => {
+      const missing = join(pluginRoot, "does-not-exist");
+      return assertDeniedWithoutWrite(
+        repo,
+        stageCall(repo.dir, CONFIG, { pluginRoot: missing, attempt: 1, task: { description: "set x" } }),
+        wrongPluginRoot(pluginRoot, missing),
+        { pluginRoot },
+      );
+    })));
+
 for (const wrong of ["/x", "", undefined]) {
   test(`pluginRoot ${JSON.stringify(wrong)} is denied with the right value`, () =>
     withRepo({}, (repo) =>

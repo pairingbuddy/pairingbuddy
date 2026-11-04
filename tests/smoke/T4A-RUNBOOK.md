@@ -19,7 +19,7 @@ Watch the progress mod (band, pane, alert, report button) in one healthy run and
 3. Run `/theme`, switch to light, and take the same shot: `A-150-light-running.png`.
 4. Drag the window to about 110 columns. The pane should wait; open it by typing `/pb`. Shot in each theme: `A-110-dark-running.png`, `A-110-light-running.png`.
 5. Drag to about 80 columns. The band shows inline and there is no dock. Shot in each theme: `A-80-dark-running.png`, `A-80-light-running.png`.
-6. Go back to about 150 columns, dark theme. After `/pb` the pane has focus: press `r` for open report, Tab to reach suggest (the label no longer has "s"), type a short suggestion, and Esc to go back. Expect the band to say "between steps" between stages. It should say `applies at the next agent spawn: <agent>`, and later `delivered to <agent>`.
+6. Go back to about 150 columns, dark theme. After `/pb` the pane has focus: press `r` for open report, Tab to reach suggest (the label no longer has "s"), type a short suggestion, and Esc to go back. Expect the band to say "between steps" between stages, and "all steps done" before the run closes. It should say `applies at the next agent spawn: <agent>`, and later `delivered to <agent>`.
 7. When the run is **done**, take `A-150-dark-done.png`.
 8. Type `/pb`. After a run the pane shows "last run finished" with the **open report** button. Press it. A report page should open in the browser. Capture it: `A-report-dark-done.png`.
 9. Type `/exit`, then run `node tests/smoke/t4a-lab.mjs show`.
@@ -27,14 +27,14 @@ Watch the progress mod (band, pane, alert, report button) in one healthy run and
 ### Part A2: needs-you gate, alert sound on
 
 10. Run `node tests/smoke/t4a-lab.mjs setup --ask`. Paste the `sh` line. The session starts in acceptEdits mode, so the gates ask a human.
-11. At about 150 columns, dark theme, wait for the first gate. You should **hear the alert** once, and the pane should open by itself with the band reading "needs you". Take `A-150-dark-needs-you.png`.
+11. At about 150 columns, dark theme, wait for the first gate. You should **hear the alert** once, and the pane should open by itself with the band reading "needs you: your OK on the scenarios". Take `A-150-dark-needs-you.png`.
 12. Answer the gate by typing the `!` command the session names. Let the run finish.
 13. Type `/exit`, then run `node tests/smoke/t4a-lab.mjs show`.
 
 ### Part A3: needs-you gate, alert sound off
 
 14. Run `node tests/smoke/t4a-lab.mjs setup --ask --sound off`. Paste the `sh` line. It passes a settings file that sets alertSound false.
-15. At about 150 columns, wait for the first gate. The pane should open and the band should read "needs you", with **no sound**. Take `A3-150-dark-needs-you.png`.
+15. At about 150 columns, wait for the first gate. The pane should open and the band should read "needs you: your OK on the scenarios", with **no sound**. Take `A3-150-dark-needs-you.png`.
 16. Answer the gate by typing the `!` command the session names. Let the run finish.
 17. Type `/exit`, then run `node tests/smoke/t4a-lab.mjs show`.
 
@@ -66,3 +66,7 @@ Score each on its own:
 ## Report back
 
 One of PASS, FAIL or INCONCLUSIVE for each check above. The `show` output for each run. The screenshots, named as above and saved in `docs/design/progress-mod/t4a-smoke/`. Anything on screen you could not read at a glance.
+
+## Known platform behaviour
+
+The pane can lose keyboard focus when the terminal window loses focus. This is platform behaviour: the reference documents no event for the window regaining focus, so the mod cannot restore it. Typing `/pb` again restores it.

@@ -147,3 +147,28 @@ test('pressing the report button after the live ledger is gone writes a report n
   const runs = recorder.calls.flatMap((c) => (c.kind === 'run' ? [c.argv] : []))
   expect(runs, 'the commits are read via git from the snapshot shas').toContainEqual(commitsArgv([sha]))
 })
+
+test('report-from-snapshot-ignores-stale-legacy-tests', async ($, on) => {
+  const healthyId = 'apply-discount-100-by-10-returns-90'
+  const legacyId = 'apply-discount-100-by-10-percent'
+  // The snapshot is written by the poll from the served ledger; the kit gives a test no way to write state, so the stale legacy list cannot be planted directly.
+  const record = (exitCode: number) => ({ stage: 'code-tdd', attempt: 1, done: true, passed: true, timedOut: false, excerpt: '', head: 'abc1234', sha: null, exitCodes: [exitCode] })
+  const ledger = { ...SNAPSHOT_RUNNING, tests: { perTest: { [healthyId]: { selector: { runner_id: 'node', test_file: 'tests/discount.test.mjs', test_function: healthyId }, red: record(1), green: record(0) } } } }
+  const { serve } = engine(on, ledger)
+  const clock = mock.clock(on, { now: Date.parse('2026-11-03T06:40:00Z') })
+  const recorder = recordReportCalls(on)
+  await start($)
+  serve(null)
+  await clock.advance(POLL_MS)
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await pane.press({ key: REPORT_KEY })
+  await pane.unmount()
+
+  writtenFileName(recorder.writes, 'the press writes one report')
+  const html = recorder.writes[0].text.match(/<h2>TESTS<\/h2>[\s\S]*?<\/section>/)?.[0] ?? ''
+  expect(html, 'the ledger key is in the report').toContain(healthyId)
+  expect(html, 'the ledger result is shown').toContain('passed (exit 0)')
+  expect(html.includes('not reached'), 'no test card says not reached').toBe(false)
+  expect(html.includes(legacyId), 'the legacy-only id is not shown').toBe(false)
+})

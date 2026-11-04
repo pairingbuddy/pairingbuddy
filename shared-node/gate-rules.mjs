@@ -1,7 +1,7 @@
 // Gate rules: what hooks/gate.mjs enforces once it has found run state. Every problem is thrown:
 // a Denied carries the reason meant for the caller, and any other error also denies.
 // Node built-ins only.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 
 import { isCheckpointCall, isKey, keyFitsStep } from "./checkpoint.mjs";
@@ -185,9 +185,19 @@ const PLACEHOLDER = /^\s*<[^<>]*>\s*$/;
 const isPlaceholder = (task) => PLACEHOLDER.test(typeof task === "object" ? task.description : task);
 const taskForm = (task) => (task === "" ? "an object with a description" : JSON.stringify({ description: task }));
 
+// A symlinked spelling of the plugin root is the same root; a path that cannot be resolved compares as written.
+const realOrSelf = (path) => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+};
+const isPluginRoot = (given) => given === PLUGIN_ROOT || (typeof given === "string" && realOrSelf(given) === realOrSelf(PLUGIN_ROOT));
+
 function argsDenial(called, attempt, { args }, task) {
   if (args?.attempt !== attempt) return `Wrong attempt for ${called}: got ${JSON.stringify(args?.attempt)}. Use attempt ${attempt}.`;
-  if (args?.pluginRoot !== PLUGIN_ROOT) return `Wrong pluginRoot for ${called}: got ${JSON.stringify(args?.pluginRoot)}. Use pluginRoot ${PLUGIN_ROOT}.`;
+  if (!isPluginRoot(args?.pluginRoot)) return `Wrong pluginRoot for ${called}: got ${JSON.stringify(args?.pluginRoot)}. Use pluginRoot ${PLUGIN_ROOT}.`;
   if (isMissing(args?.task)) return `Missing task for ${called}: got ${JSON.stringify(args?.task)}. Pass the task as args.task, as ${taskForm(task)}.`;
   if (isPlaceholder(args.task)) return `Placeholder task for ${called}: got ${JSON.stringify(args.task)}. Pass the task as args.task, as ${taskForm(task)}.`;
   return null;

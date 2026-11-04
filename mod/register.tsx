@@ -14,10 +14,15 @@ import { buildEndedView, buildView, type PaneTags, type View } from './view'
 const inputsAtom = atom({ plugin: 'pairingbuddy', key: 'inputs' }, null)
 
 // Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The last-run snapshot key is written in two copies, LAST_RUN in ./poll and lastRunAtom in register.tsx, and read from a third, LAST_RUN in ./report; keep all three in step.
+// Repeated on purpose: see ENDED_AT in ./poll; keep the copies in step.
+const endedAtAtom = atom({ plugin: 'pairingbuddy', key: 'ended-at' }, null)
 const lastRunAtom = atom({ plugin: 'pairingbuddy', key: 'last-run' }, null)
 
 // The same key the alert writes (OPENED in ./alert); the kit's scan reads the atom's literals from this file.
 const openedAtom = atom({ plugin: 'pairingbuddy', key: 'opened' }, null)
+
+// The same key the alert writes (STATUS_SET in ./alert); the kit's scan reads the atom's literals from this file.
+const statusSetAtom = atom({ plugin: 'pairingbuddy', key: 'status-set' }, null)
 
 // Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The same key is written in four copies, PANE_NOTE in ./poll, ./report and ./suggest and noteAtom in register.tsx; keep all four in step. The report press, the suggest submit and the poller all write it.
 const noteAtom = atom({ plugin: 'pairingbuddy', key: 'pane-note' }, null)
@@ -100,8 +105,8 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button }, { band, running, ended, between }, opened) => (
-    <Band Box={Box} Text={Text} Button={Button} band={band} running={running} ended={ended} between={between} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($, true).catch(() => {}) }} />
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button }, { band, running, waiting, ended, between }, opened) => (
+    <Band Box={Box} Text={Text} Button={Button} band={band} running={running} waiting={waiting} ended={ended} between={between} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($, true).catch(() => {}) }} />
   )))
 
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button, Input }, { rows, rowTones, ledger, ended, unknownLabels }, _opened, note, pending) => (

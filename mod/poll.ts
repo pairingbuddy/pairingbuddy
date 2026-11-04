@@ -10,6 +10,9 @@ const PANE_NOTE = { plugin: 'pairingbuddy', key: 'pane-note' } as const
 // Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The last-run snapshot key is written in two copies, LAST_RUN in ./poll and lastRunAtom in register.tsx, and read from a third, LAST_RUN in ./report; keep all three in step.
 const LAST_RUN = { plugin: 'pairingbuddy', key: 'last-run' } as const
 
+// Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The run-end key is written in two copies, ENDED_AT in ./poll and endedAtAtom in register.tsx, and read from a third, ENDED_AT in ./report; keep all three in step.
+const ENDED_AT = { plugin: 'pairingbuddy', key: 'ended-at' } as const
+
 export type PollerState = { started: boolean; polling: boolean }
 export const newPollerState = (): PollerState => ({ started: false, polling: false })
 
@@ -24,13 +27,19 @@ export async function startPoller($: EngineInterface, state: PollerState, option
     try {
       const polled = await pollInputs($)
       await $.state.set(INPUTS, polled)
+      // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.
+      await alertOn($, polled.ledger, options)
       // The last ledger read is kept as the snapshot; a new one overwrites it, and a gone ledger leaves it.
       if (polled.ledger) {
         await $.state.set(LAST_RUN, polled)
+        await $.state.set(ENDED_AT, null)
       } else {
         await $.state.set(PANE_NOTE, null)
+        // The first poll that sees the ledger gone while a snapshot exists is when the run ended.
+        const snapshot = (await $.state.get(LAST_RUN)).value
+        const ended = (await $.state.get(ENDED_AT)).value
+        if (snapshot && !ended) await $.state.set(ENDED_AT, new Date($.clock.now()).toISOString())
       }
-      await alertOn($, polled.ledger, options)
     } catch {
       // A failed tick is dropped; the next one tries again.
     } finally {

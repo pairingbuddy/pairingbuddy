@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { plainName } from '../shared-node/plain-names.mjs'
-import { BAND, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, texts, type Served } from './testing/band'
+import { BAND, bandTexts, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, texts, type Served } from './testing/band'
 import { PANE, dismissPane, paneTexts } from './testing/replay'
 import { PANE_ID } from './pane-open'
 import { POLL_MS } from './poll'
@@ -195,4 +195,64 @@ test('pane-step-lines-use-theme-keys: the current step line uses a theme key and
   expect(done?.props.color, 'a done tick is in the success theme key').toBe('success')
   expect(todo?.props.color, 'a step not started has no colour').toBeUndefined()
   expect(todo?.props.bold, 'a step not started is not bold').not.toBe(true)
+})
+
+const doneStage = (name: string, n: number) => ({ name, status: 'done', attempt: 1, startedAt: `2026-11-04T08:13:${10 + n}.000Z`, spend: { agents: 1, tokens: 0, tokensKnown: false } })
+const AFTER_SCENARIOS = {
+  ...SNAPSHOT_RUNNING,
+  seq: 6,
+  stage: { name: 'code-scenarios', status: 'done', runId: 'wf_76c46091-82d', attempt: 1, startedAt: '2026-11-04T08:13:26.472Z' },
+  stages: [doneStage('code-scenarios', 0)],
+}
+const nowRow = (shown: string[]) => shown.find(text => text.startsWith('NOW')) ?? ''
+
+test('pane-now-between-steps-has-no-band-label', async ($, on) => {
+  engine(on, AFTER_SCENARIOS)
+  await start($)
+
+  const now = nowRow(await paneTexts($))
+  const band = (await bandTexts($, { bodyColumns: 200 })).join('')
+
+  expect(now, `NOW reads the plain state: ${now}`).toContain('between steps · next: build test by test')
+  expect(now, `NOW carries no band label: ${now}`).not.toContain('Pairing Buddy ·')
+  expect(band, `the band keeps its label: ${band}`).toContain('Pairing Buddy · between steps')
+})
+
+test('pane-now-run-open-has-no-band-label', async ($, on) => {
+  const { stage: _stage, ...noStage } = AFTER_SCENARIOS
+  engine(on, noStage)
+  await start($)
+
+  const now = nowRow(await paneTexts($))
+
+  expect(now, `NOW reads the plain run open: ${now}`).toContain('run open')
+  expect(now, `NOW carries no band label: ${now}`).not.toContain('Pairing Buddy ·')
+})
+
+test('all-steps-done-before-task-end', async ($, on) => {
+  const everyStageDone = { ...AFTER_SCENARIOS, stages: ['code-scenarios', 'code-tdd', 'code-safety-net'].map(doneStage) }
+  engine(on, everyStageDone)
+  await start($)
+
+  const now = nowRow(await paneTexts($))
+  const band = (await bandTexts($, { bodyColumns: 200 })).join('')
+
+  expect(band, `the band says all steps done: ${band}`).toContain('all steps done')
+  expect(band, `the band never says run open: ${band}`).not.toContain('run open')
+  expect(now, `NOW says all steps done: ${now}`).toContain('all steps done')
+  expect(now, `NOW never says run open: ${now}`).not.toContain('run open')
+})
+
+test('pane-now-names-what-is-needed', async ($, on) => {
+  const waiting = { ...AFTER_SCENARIOS, needsHuman: { gate: 'G:scenarios', reason: 'the human decides', seq: 6 } }
+  const run = engine(on, waiting)
+  await start($)
+
+  const now = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const node = (await now.findAll({ type: 'Text' })).find((n: any) => n.text.startsWith('NOW'))
+  await now.unmount()
+
+  expect(node?.text, 'NOW names the gate').toContain('needs you: your OK on the scenarios')
+  expect(node?.props.color, 'NOW is in the warning tone').toBe('warning')
+  expect(node?.text, 'NOW is not the between-steps line').not.toContain('between steps')
 })

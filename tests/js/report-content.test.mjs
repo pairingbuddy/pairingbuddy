@@ -362,3 +362,98 @@ describe("report-content", () => {
     assert.match(card, /test 3\b/i, "the TESTS card numbers the current test 3, as AT A GLANCE does");
   });
 });
+
+// Finding 13: a real healthy run (t59-healthy) ends with perTest holding red and green for a test whose spawns carry no labels the report can match.
+const HEALTHY_ID = "apply-discount-100-by-10-returns-90";
+const LEGACY_ID = "apply-discount-100-by-10-percent";
+const healthyRecord = (exitCode) => ({ stage: "code-tdd", attempt: 1, done: true, passed: true, timedOut: false, excerpt: "", head: "abc1234", sha: null, exitCodes: [exitCode] });
+const healthyPerTest = {
+  [HEALTHY_ID]: {
+    selector: { runner_id: "node", test_file: "tests/js/discount.test.mjs", test_function: HEALTHY_ID },
+    red: healthyRecord(1),
+    green: healthyRecord(0),
+  },
+};
+const healthyReport = (tests) => renderReport({ ledger: { stage: { name: "code-tdd", status: "done" }, tests: { perTest: healthyPerTest } }, spawns: [], tests });
+const cardFor = (html, id) => cardsOf(html).find((card) => card.includes(id));
+
+test('ledger-result-shown-without-spawn-labels', async () => {
+  const html = healthyReport([]);
+
+  const card = cardFor(html, HEALTHY_ID);
+
+  assert.ok(card, "the ledger test gets a card");
+  assert.ok(card.includes("failed, as it should (exit 1)"), "the card shows the RED result from the ledger");
+  assert.ok(card.includes("passed (exit 0)"), "the card shows the GREEN result from the ledger");
+  assert.ok(!card.includes("not reached"), "a test with a ledger result is not marked not reached");
+});
+
+test('perTest-wins-over-disagreeing-legacy-list', async () => {
+  const html = healthyReport([LEGACY_ID]);
+
+  const legacyCard = cardFor(html, LEGACY_ID);
+
+  assert.ok(cardFor(html, HEALTHY_ID)?.includes("passed (exit 0)"), "the perTest test shows its result");
+  assert.ok(!legacyCard || !legacyCard.includes("not reached"), "the legacy-only id is not shown as not reached");
+  assert.ok(!sectionOf(html, "TESTS").includes("not reached"), "no card in the report says not reached");
+});
+
+// The t59-healthy recording (a finished bug-fix run) holds, per stage in ledger.stages: name, status, attempt, startedAt and spend.
+// It holds no end for a stage (no finishedAt or end field). Its timing snapshot holds { seconds, stageSeconds }. So the tests below
+// add `end` to the stages themselves, visibly, and pass no timing, to prove the run time comes from the ledger's stage times.
+const HEALTHY_RUN = new URL("../smoke/recordings/t59-healthy/", import.meta.url);
+const finishedLedger = async () => {
+  const lines = (await readFile(new URL("ledger.jsonl", HEALTHY_RUN), "utf8")).trim().split("\n");
+  return JSON.parse(lines.at(-1)).ledger;
+};
+const withEnds = (ledger, ends) => ({ ...ledger, stages: ledger.stages.map((stage, i) => ({ ...stage, end: ends[i] })) });
+// First start 08:13:26.472; last end 08:15:06.472, so the run took exactly 100 seconds (1:40).
+const ENDS = ["2026-11-04T08:13:42.543Z", "2026-11-04T08:14:38.797Z", "2026-11-04T08:15:06.472Z"];
+
+test('run-time-derived-from-stage-times', async () => {
+  const ledger = withEnds(await finishedLedger(), ENDS);
+  const bare = await finishedLedger();
+
+  const html = renderReport({ ledger, spawns: [] });
+  const noTimes = renderReport({ ledger: { ...bare, stages: [] }, spawns: [] });
+
+  assert.ok(headerOf(html).includes("1:40"), "the header shows the first start to the last end");
+  assert.ok(!headerOf(html).includes("time unknown"), "the header does not say time unknown");
+  assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Spent<\/strong>\s*\d+ agents? · 1:40 ·/);
+  const real = renderReport({ ledger: bare, spawns: [], endedAt: "2026-11-04T08:15:06.472Z" });
+  const realNoEnd = renderReport({ ledger: bare, spawns: [] });
+  assert.ok(headerOf(real).includes("1:40"), "real shape: the run time is endedAt minus the first startedAt");
+  assert.match(sectionOf(real, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]* · 1:40 ·/);
+  assert.ok(headerOf(realNoEnd).includes("time unknown"), "real shape without endedAt stays unknown");
+  assert.ok(headerOf(noTimes).includes("unknown"), "with no stage times and no timing the header stays unknown");
+  assert.match(sectionOf(noTimes, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]*unknown/);
+});
+
+const headersOf = (html) => [...sectionOf(html, "STEPS").matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map(([, cell]) => cell.trim().toLowerCase());
+const stepRows = (html) =>
+  [...sectionOf(html, "STEPS").matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]
+    .map(([, row]) => [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(([, cell]) => cell.trim()))
+    .filter((cells) => cells.length > 0);
+
+test('steps-columns-all-labelled', async () => {
+  const full = renderReport({ ledger: withEnds(await finishedLedger(), ENDS), spawns: [] });
+  const noEnds = renderReport({ ledger: await finishedLedger(), spawns: [] });
+
+  assert.deepEqual(headersOf(full), ["step", "start", "end", "took"], "every column of the STEPS table is named");
+  assert.deepEqual(headersOf(noEnds), ["step", "started"], "end and took have no source in the recording, so they are dropped");
+  assert.ok(!sectionOf(noEnds, "STEPS").includes("unknown"), "real shape (startedAt only): no unlabelled unknown column");
+  assert.ok(stepRows(noEnds).every((cells) => cells.length === 2), "each row has only the columns that are named");
+  assert.ok(!sectionOf(noEnds, "STEPS").includes("unknown"), "no column reads unknown in every row");
+});
+
+test('where-it-is-reads-finished-on-done-run', async () => {
+  const done = await finishedLedger();
+  const running = { ...done, stage: { ...done.stage, status: "active" } };
+
+  const doneGlance = sectionOf(renderReport({ ledger: done, spawns: [] }), "AT A GLANCE");
+  const runningGlance = sectionOf(renderReport({ ledger: running, spawns: [] }), "AT A GLANCE");
+
+  assert.match(doneGlance, /<strong>Where it is<\/strong>\s*finished/, "a done run reads finished");
+  assert.ok(!doneGlance.includes("safety-net review"), "a done run no longer names the safety-net review");
+  assert.match(runningGlance, /<strong>Where it is<\/strong>[^<]*safety-net review/, "a running ledger still names its step");
+});

@@ -20,7 +20,7 @@ const testsFile = (ids: string[]) => ({
 
 const IDLE_TEXT = 'Pairing Buddy · idle · /pb for details'
 // Without an active stage the band is one text: idle, or "last run finished" once a run has ended.
-const quietBand = (shown: string[]) => (shown.length === 1 && /^Pairing Buddy · (idle|last run finished|run open|between steps · next: [^·]+) ?(· \/pb( for details)?)?$/.test(shown[0]) ? shown : [IDLE_TEXT])
+const quietBand = (shown: string[]) => (shown.length === 1 && /^Pairing Buddy · (idle|last run finished|run open|all steps done|between steps · next: [^·]+) ?(· \/pb( for details)?)?$/.test(shown[0]) ? shown : [IDLE_TEXT])
 const DRAWN_AROUND_SEGMENTS = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details' || text.startsWith(' │ /pb')
 // The band's segment texts: what is drawn without the separators, the gap, the details button text and the hint.
 const texts = (step: Step) => step.texts.map(node => node.text).filter(text => !DRAWN_AROUND_SEGMENTS(text))

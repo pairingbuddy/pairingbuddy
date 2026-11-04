@@ -63,3 +63,25 @@ Lab `20261104-105144`, healthy, auto mode, run passed (3 commits). Fixes 1-4 con
 8. **LEFT stays "unknown" and there is no "test 1 of 1"** during a real one-test bug_fix run. **Fixed: tests come from the ledger, "test N", LEFT unknown until the total is known.**
 9. **The pane takes no keys.** Opened by `/pb`, pressing `s` typed into the prompt, so `r open report`, `s suggest` and `dismiss` cannot be pressed. **Fixed: `/pb` and details open the pane with focus (`r`, Tab to suggest, Esc).**
 10. **No colour.** The mockups (rounds 4-5) lit the current step and coloured ticks and needs-you; the mod draws only plain and dim text. **Fixed: theme-key colour on current step, ticks, needs-you, stop, unknowns and spend.**
+
+## Human session 3 (2026-11-04, 167 columns, dark)
+
+All five parts run. Fixes 7-10 confirmed live: the band reads "between steps · next: …", `/pb` opens the pane with focus (Tab walks it, `r` opened the report in the browser), steps and ticks are coloured.
+
+| Part | Lab | Result |
+|---|---|---|
+| A1 healthy, auto | `20261104-152106` | PASS. Report opened: DONE, steps with times, real commits |
+| A2 `--ask`, sound on | `20261104-220231-ask` | PASS. Alert heard at both gates, pane opened by itself, yellow status "needs you: your OK on the scenarios"; gates approved by typed `!` |
+| A3 `--ask --sound off` | `20261104-221135-ask-quiet` | PASS. No sound; pane and status still shown |
+| B1 `--broken load` | `20261104-221447-broken-load` | PASS. Notice "hooks module did not load: Error: pairingbuddy-broken-copy", no band, `/pb` unknown, run completed (3 commits, task end) |
+| B2 `--broken render` | `20261104-221833-broken-render` | PASS. Band kept working; `/pb` gave "ui.render hook skipped: threw Error: pairingbuddy-broken-copy" and an empty pane box; run completed |
+
+Findings:
+
+11. **Pane focus is lost after switching windows.** Tab stopped walking the pane after the terminal lost and regained focus; `/pb` again is the workaround. The pane can lose keyboard focus when the terminal window loses focus; this is platform behaviour, as the reference documents no event for the window regaining focus. Typing `/pb` again restores it.
+12. **The pane's NOW row repeats the band label.** "NOW Pairing Buddy · run open" and "NOW Pairing Buddy · between steps · …"; and with every step done it should say so, not "run open". Fixed: NOW drops the band prefix and reads "all steps done" before task end.
+13. **The report says the test was "not reached" when it passed.** The TESTS card shows `apply-discount-100-by-10-percent` (likely an id from another source than the ledger's perTest key). Fixed: the report takes test results from the ledger.
+14. **Report header and columns.** "time unknown" in the header and SPENT while steps have times; two unlabelled "unknown" columns in STEPS; "WHERE IT IS safety-net review" on a finished run. Fixed: run time comes from when the mod saw the run end, STEPS columns are labelled, a done run reads "finished".
+15. **Band does not lead with needs-you while a gate waits.** It read "between steps · next: build test by test" at the scenarios gate; the needs-you state should win, in the warning colour, in band and pane. Fixed: band and NOW lead with needs-you while a gate waits.
+16. **The needs-you status line stays after the gate is answered**, including after the run ended. Fixed: the status line clears when the gate is answered, the run ends, or a new run starts.
+17. **PreToolUse:Workflow rejects a symlinked pluginRoot** (`/private/var/…` vs `/var/…`): the check compares strings, not real paths. Outside the mod; seen only because the broken copy lives under `/var/folders`. Fixed: the pluginRoot check compares real paths.

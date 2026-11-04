@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tests come from the run's ledger, showing "test N" with no invented total, and LEFT stays unknown until the total is known.
 - `/pb` and details open the pane with focus, so `r` open report works and Tab reaches suggest. The alert's pane doesn't steal focus.
 - Theme-key colour: the current step is lit, ticks are success, needs-you is warning, stop is error, and unknowns and spend are dim.
+- The report takes test results from the ledger, so a passed test no longer reads "not reached".
+- The report shows run time from when the mod saw the run end, labels its STEPS columns, and reads "finished" on a done run.
+- Band and NOW lead with needs-you while a gate waits.
+- NOW drops the band prefix and reads "all steps done" before task end.
+- The needs-you or stop status line clears when the gate is answered, the run ends, or a new run starts.
+- The Workflow pluginRoot check compares real paths, so macOS `/var` and `/private/var` match.
+- Pane focus lost on window switch is documented as platform behaviour, recovered with `/pb`.
 
 ### Added
 

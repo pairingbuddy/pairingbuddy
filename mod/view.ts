@@ -1,5 +1,5 @@
 import type { ElementTable } from 'claude-code'
-import { glance } from '../shared-node/glance.mjs'
+import { glance, needsYouLine } from '../shared-node/glance.mjs'
 import { isStageActive, stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
@@ -14,7 +14,7 @@ export type Tags = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
 // The Pane alone also draws the suggest Input.
 export type PaneTags = Tags & Pick<ElementTable, 'Input'>
 
-export type View = { ledger: Ledger; ended?: boolean; between?: string; running: boolean; rows: Rows; band: Segment[]; unknownLabels: string[]; rowTones?: RowTones }
+export type View = { ledger: Ledger; ended?: boolean; between?: string; running: boolean; rows: Rows; band: Segment[]; unknownLabels: string[]; rowTones?: RowTones; waiting?: boolean }
 
 const NO_RUN_ROWS: Rows = { now: 'no run', spent: '-', left: '-', looping: '-', offTrack: '-' }
 
@@ -29,9 +29,12 @@ function bandTone(segment: Segment, ledger: NonNullable<Ledger>): Pick<Segment, 
   return {}
 }
 
+const waitingGate = (ledger: NonNullable<Ledger>) => (ledger.stop ? undefined : ledger.needsHuman?.gate || undefined)
+
 function rowTones(rows: Rows, ledger: NonNullable<Ledger>): RowTones {
   const tones: RowTones = {}
   if (ledger.stop) tones.now = 'error'
+  else if (waitingGate(ledger)) tones.now = 'warning'
   for (const key of ['spent', 'left', 'looping', 'offTrack'] as const) if (key === 'spent' || isUnknown(rows[key])) tones[key] = 'dim'
   return tones
 }
@@ -51,21 +54,29 @@ function buildPlainView({ ledger, spawns, tests, testsComplete, now }: Inputs): 
   if (!ledger) return { ledger, running: false, rows: NO_RUN_ROWS, band: [], unknownLabels: [] }
   const running = isStageActive(ledger)
   const shown = glance({ ledger, spawns, tests, now, testsComplete })
+  const gate = waitingGate(ledger)
+  if (gate) {
+    const needs = needsYouLine(gate)
+    const band = running ? shown.band : shown.band.filter((segment: Segment) => segment.id === 'needsYou')
+    return { ledger, running, waiting: true, ...shown, band, rows: { ...shown.rows, now: needs } }
+  }
   if (running) return { ledger, running, ...shown }
   // A live run with no active stage is between steps, never idle.
   const between = betweenText(ledger)
   return { ledger, running, between, ...shown, rows: ledger.stop ? shown.rows : { ...shown.rows, now: between } }
 }
 
-const RUN_OPEN = 'Pairing Buddy · run open'
+const ALL_DONE = 'all steps done'
+const RUN_OPEN = 'run open'
 
 // The next stage is the first of the task type's stages not yet done; unknown when none can be named.
 function betweenText(ledger: NonNullable<Ledger>): string {
   if (typeof ledger.stage?.status !== 'string') return RUN_OPEN
   const done = new Set((Array.isArray(ledger.stages) ? ledger.stages : []).filter(s => s?.status === 'done').map(s => s.name))
   const next = stageNamesFor(contract, ledger).find((name: string) => !done.has(name))
-  const name = next === undefined ? undefined : plainName(next)
-  return name ? `Pairing Buddy · between steps · next: ${name}` : RUN_OPEN
+  if (next === undefined) return ALL_DONE
+  const name = plainName(next)
+  return name ? `between steps · next: ${name}` : RUN_OPEN
 }
 
 // A run that is over, shown from its last snapshot: the steps stay, nothing is running, and the NOW row says so.

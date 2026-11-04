@@ -10,6 +10,9 @@ export function openedKey() {
   return 'opened'
 }
 
+// The run the status line is set for. Repeated on purpose in register.tsx (statusSetAtom); keep the copies in step.
+const STATUS_SET = { plugin: 'pairingbuddy', key: 'status-set' }
+
 const SOUND = { asset: 'mod/assets/alert.wav' }
 
 // Runs one alert effect fire and forget: a sync throw, a non-promise return or a rejection is dropped, so one failed effect never reaches the others. Never waits, since play settles only when the clip ends and the poll holds its lock while it waits on us.
@@ -23,6 +26,7 @@ function quietly(effect: () => unknown) {
 
 // Raises the alert for what the ledger shows. Never throws and never waits for the clip: a failed or slow alert must not break or block the poll or a hook.
 export async function alertOn($: EngineInterface, ledger: Ledger | null, options: PluginOptions = {}) {
+  await clearStaleStatus($, ledger)
   if (!ledger) return
   if (!(await anyUnseen($, ledger))) {
     if (KINDS.every((kind) => standing(ledger)[kind] === null)) quietly(() => $.state.set(OPENED, false))
@@ -31,6 +35,7 @@ export async function alertOn($: EngineInterface, ledger: Ledger | null, options
   // Read as the alert fires; an absent option means on.
   if (options.alertSound !== false) quietly(() => $.audio.play(SOUND))
   quietly(() => setStatus($, ledger))
+  quietly(() => markStatusSet($, ledger))
   quietly(() => $.state.set(OPENED, false).then(() => openAndRecord($)))
 }
 
@@ -88,4 +93,22 @@ function statusWords(ledger: Ledger) {
 function setStatus($: EngineInterface, ledger: Ledger) {
   const words = statusWords(ledger)
   if (words) return $.ui.status(`Pairing Buddy ${words}`)
+}
+
+// Clears the status line once, when it is set and its cause is gone: the ledger is gone, a new run began, or nothing is pending and no stop stands. A line never set is never cleared. The run it was set for is kept in mod state, which a new session starts without.
+async function clearStaleStatus($: EngineInterface, ledger: Ledger | null) {
+  try {
+    const setFor = (await $.state.get(STATUS_SET)).value
+    if (!setFor) return
+    if (ledger && runOf(ledger) === setFor && statusWords(ledger)) return
+    await $.state.set(STATUS_SET, null)
+    quietly(() => $.ui.status(undefined))
+  } catch {
+    // A failed clear is dropped.
+  }
+}
+
+// Records the run the status line was set for.
+async function markStatusSet($: EngineInterface, ledger: NonNullable<Ledger>) {
+  if (statusWords(ledger)) await $.state.set(STATUS_SET, runOf(ledger))
 }

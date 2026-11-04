@@ -217,7 +217,7 @@ test('live-ledger-without-known-next-never-idle: a live ledger where no next sta
     const joined = (await bandTexts($, WIDE)).join('')
 
     expect(joined, `${name}: the band is not idle: ${joined}`).not.toContain('idle')
-    expect(joined, `${name}: the band says the run is open: ${joined}`).toMatch(/run (is )?open|between steps/)
+    expect(joined, `${name}: the band says the run is open: ${joined}`).toMatch(/run (is )?open|between steps|all steps done/)
     expect(joined, `${name}: no next step is invented: ${joined}`).not.toContain('next:')
   }
 })
@@ -267,4 +267,21 @@ test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning
   expect(starting(gateBand, 'time unknown').props.dimColor, 'the band spend segment is dim').toBe(true)
   expect(starting(stopPane, 'SPENT').props.dimColor, 'the pane SPENT row is dim').toBe(true)
   expect(starting(stopPane, 'LOOPING').props.dimColor, 'an unknown pane row is dim').toBe(true)
+})
+
+test('band-leads-with-needs-you-at-a-gate', async ($, on) => {
+  const waiting = { ...BETWEEN_SCENARIOS_AND_TDD, needsHuman: { gate: 'G:scenarios', reason: 'the human decides', seq: 6 } }
+  bandEngine(on, waiting)
+  await start($)
+
+  const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 200 }, surface: 'terminal' })
+  const nodes = await band.findAll({ type: 'Text' })
+  await band.unmount()
+
+  const shown = nodes.map((node: any) => node.text as string)
+  const needs = nodes.find((node: any) => node.text.startsWith('needs you'))
+  expect(shown[0], `the band leads with needs you: ${JSON.stringify(shown)}`).toBe('needs you: your OK on the scenarios')
+  expect(needs?.props.color, 'needs you is in the warning colour').toBe('warning')
+  expect(needs?.props.bold, 'needs you is bold').toBe(true)
+  expect(shown.join(''), 'no dim between-steps line').not.toContain('between steps')
 })

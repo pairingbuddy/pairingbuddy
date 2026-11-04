@@ -3,7 +3,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, bandTexts, start } from './testing/band'
 import { plainName } from '../shared-node/plain-names.mjs'
-import { alertEngine, needingHuman, stopped } from './testing/alert'
+import { alertEngine, cleared, needingHuman, stopped } from './testing/alert'
 import { PANE_ID } from './pane-open'
 import { POLL_MS } from './poll'
 
@@ -218,4 +218,35 @@ test('alert-opened-pane-does-not-take-focus: when the needs-you or stop alert op
 
   expect(run.calls.opened.length, 'the alert opens the pane once').toBe(1)
   expect(run.calls.opened[0].focus, 'the alert does not take the keyboard from a person typing').toBeFalsy()
+})
+
+// The kit types clear the line with $.ui.status(undefined): the recorded request then has no text.
+test('status-cleared-when-gate-answered', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const run = alertEngine(on)
+  await start($)
+
+  run.serve(needingHuman({ gate: 'G:task-end' }))
+  await clock.advance(POLL_MS)
+  run.serve(cleared({ seq: 4 }))
+  await clock.advance(POLL_MS)
+  await clock.advance(POLL_MS)
+
+  expect(run.calls.status.length, 'one call set the line and one cleared it; the further poll with nothing pending adds none').toBe(2)
+  expect(run.calls.status[0].text, 'the first call set the needs-you line').toContain('your sign-off at the end')
+  expect(run.calls.status[1].text, 'the second call clears the line with undefined text').toBeUndefined()
+})
+
+test('status-cleared-when-run-ends', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const run = alertEngine(on)
+  await start($)
+
+  run.serve(needingHuman())
+  await clock.advance(POLL_MS)
+  run.serve(null)
+  await clock.advance(POLL_MS)
+
+  expect(run.calls.status.length, 'one call set the line and one cleared it when the ledger went away').toBe(2)
+  expect(run.calls.status[1].text, 'the second call clears the line with undefined text').toBeUndefined()
 })

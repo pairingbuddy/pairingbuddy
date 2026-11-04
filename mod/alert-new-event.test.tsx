@@ -19,7 +19,8 @@ test('new-stop-after-cleared-stop-alerts', async ($, on) => {
   await clock.advance(POLL_MS)
 
   expect(run.calls.played.length, 'the first stop and the new stop each play a sound').toBe(2)
-  expect(run.calls.status.length, 'the first stop and the new stop each set a status line').toBe(2)
+  expect(run.calls.status.filter((c) => c.text !== undefined).length, 'the first stop and the new stop each set a status line').toBe(2)
+  expect(run.calls.status.some((c) => c.text === undefined), 'the status line was cleared when the stop went away').toBe(true)
   expect(run.calls.opened.length, 'the first stop and the new stop each open the pane').toBe(2)
 })
 
@@ -81,7 +82,8 @@ test('same-event-after-clear-and-reappear-with-same-seq', async ($, on) => {
   await clock.advance(POLL_MS)
 
   expect(run.calls.played.length, 'the same stop shown again plays no second sound').toBe(1)
-  expect(run.calls.status.length, 'the same stop shown again sets no second status line').toBe(1)
+  expect(run.calls.status.filter((c) => c.text !== undefined).length, 'the same stop shown again sets no second status line').toBe(1)
+  expect(run.calls.status.some((c) => c.text === undefined), 'the status line was cleared when the stop went away').toBe(true)
   expect(run.calls.opened.length, 'the same stop shown again does not open the pane a second time').toBe(1)
 })
 
@@ -147,4 +149,24 @@ test('stop-and-needs-human-same-seq-both-alert', async ($, on) => {
   expect(run.calls.played.length, 'the stop and the wait share a seq but are different kinds: each plays a sound').toBe(2)
   expect(run.calls.status.length, 'the stop and the wait each set a status line').toBe(2)
   expect(run.calls.opened.length, 'the stop and the wait each open the pane').toBe(2)
+})
+
+test('status-cleared-when-new-run-starts', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const run = alertEngine(on)
+  await start($)
+
+  run.serve(stopped({ runId: 'run-a' }))
+  await clock.advance(POLL_MS)
+  run.serve({ ...cleared({ seq: 1 }), runId: 'run-b' })
+  await clock.advance(POLL_MS)
+
+  expect(run.calls.status.length, 'the stop of run A set the line and the new run cleared it').toBe(2)
+  expect(run.calls.status[1].text, 'the new run clears the line with undefined text').toBeUndefined()
+
+  run.serve(needingHuman({ seq: 2, runId: 'run-b' }))
+  await clock.advance(POLL_MS)
+
+  expect(run.calls.status.length, 'a gate in run B sets the line again').toBe(3)
+  expect(run.calls.status[2].text, 'the new line is set, not cleared').toBeTruthy()
 })

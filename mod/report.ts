@@ -10,6 +10,9 @@ const PANE_NOTE = { plugin: 'pairingbuddy', key: 'pane-note' }
 // Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The last-run snapshot key is written in two copies, LAST_RUN in ./poll and lastRunAtom in register.tsx, and read from a third, LAST_RUN in ./report; keep all three in step.
 const LAST_RUN = { plugin: 'pairingbuddy', key: 'last-run' } as const
 
+// Repeated on purpose: see ENDED_AT in ./poll; keep the copies in step.
+const ENDED_AT = { plugin: 'pairingbuddy', key: 'ended-at' } as const
+
 export const REPORTS_DIR = '.pairingbuddy/reports'
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -64,13 +67,14 @@ export async function openReport($: EngineInterface, spawns: Spawn[]): Promise<v
     const live = await readInputs($, spawns)
     // With no live ledger the report is built from the last polled one.
     const inputs = live.ledger ? live : await fromSnapshot($, live)
+    const endedAt = live.ledger ? undefined : ((await $.state.get(ENDED_AT)).value as string | null | undefined) ?? undefined
     // The button showed on a ledger that is gone or half-written now: write nothing rather than an empty report.
     if (!inputs.ledger) return
     const path = `${await $.session.root()}/${REPORTS_DIR}/${stampOf(inputs.now ?? Date.now())}-${slugOf(inputs.ledger.task)}.html`
     const shas = inputs.ledger.commits ?? []
     const commits = await readCommits($, shas)
     try {
-      await $.fs.write(path, renderReport({ ...inputs, commits }))
+      await $.fs.write(path, renderReport({ ...inputs, commits, endedAt }))
     } catch {
       await $.state.set(PANE_NOTE, "couldn't write the report")
       return

@@ -37,7 +37,7 @@ export function Pane({ Box, Text, Button, Input, rows, rowTones = {}, ledger, en
 }) {
   return (
     <Box flexDirection="column">
-      {ROWS.map(([key, label]) => <Text key={key} {...toneProps(rowTones[key])}>{`${label}  ${rows[key]}`}</Text>)}
+      {ROWS.map(([key, label]) => <Text key={key} {...toneProps(rowTones[key])} {...(key === 'now' && rowTones.now === 'warning' ? { bold: true } : {})}>{`${label}  ${rows[key]}`}</Text>)}
       {stepLines(ledger, ended).map(line => <Text key={line} {...stepProps(line)}>{line}</Text>)}
       {unknownLabels.map((raw, i) => <Text key={`unknown-${i}`}>{raw}</Text>)}
       {unknownLabels.length > 0 && <Text dimColor>{`${unknownLabels.length} label${unknownLabels.length === 1 ? '' : 's'} unknown`}</Text>}

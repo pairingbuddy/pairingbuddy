@@ -44,3 +44,16 @@ test('pb-command-opens-pane-with-focus: running the pb command calls ui.open onc
   expect(calls.opened[0].closeOnEscape, 'esc returns to the prompt').toBe(true)
   expect(calls.opened[0].holdToasts, 'the pane holds no toasts').toBeUndefined()
 })
+
+test('pb-reopens-pane-with-focus', async ($, on) => {
+  const { calls } = engine(on)
+  await start($)
+  await $.command.run({ command: 'pb', args: '' })
+
+  const result: any = await $.command.run({ command: 'pb', args: '' })
+
+  expect(calls.opened.length, 'the second pb opens the pane again').toBe(2)
+  expect(calls.opened[1].id, 'it opens the pairingbuddy pane').toBe(PANE_ID)
+  expect(calls.opened[1].focus, 'the pane takes the keys again, the documented recovery').toBe(true)
+  expect(result.text.trim().length, 'the answer text is still given').toBeGreaterThan(0)
+})
