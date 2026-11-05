@@ -1,8 +1,9 @@
 // The HTML run report (R5-3): a pure render of a recorded run into one self-contained string.
 // No fs, no network, no node: imports, so the mod can import it. Recorded text is escaped.
+import { isPassed } from "./gate-passed.mjs";
 import { plainName } from "./plain-names.mjs";
 import { clock } from "./duration.mjs";
-import { glance, testLabels, currentStep, triesAtStep, isLooping } from "./glance.mjs";
+import { glance, runStart, testLabels, currentStep, triesAtStep, isLooping } from "./glance.mjs";
 import { readLabel } from "./labels.mjs";
 import { stageNamesFor } from "./stage-graph.mjs";
 import contract from "./stages-contract.mjs";
@@ -22,11 +23,13 @@ function glanceLabels(ledger) {
 }
 
 // The run's length: endedAt (or the last stage end) minus the first start; NaN when either is missing.
-function runSeconds(ledger, endedAt) {
+// A run that has not ended (no end, no stage end, not DONE/STOPPED) is measured to `now`.
+function runSeconds(ledger, endedAt, now) {
   const stages = Array.isArray(ledger?.stages) ? ledger.stages : [];
   const ends = stages.map((stage) => Date.parse(stage?.end)).filter(Number.isFinite);
-  const end = Number.isFinite(Date.parse(endedAt)) ? Date.parse(endedAt) : ends.length > 0 ? Math.max(...ends) : NaN;
-  const seconds = (end - Date.parse(stages[0]?.startedAt)) / 1000;
+  const live = outcome(ledger) === "RUNNING" && Number.isFinite(now) ? now : NaN;
+  const end = Number.isFinite(Date.parse(endedAt)) ? Date.parse(endedAt) : ends.length > 0 ? Math.max(...ends) : live;
+  const seconds = (end - Date.parse(runStart(ledger))) / 1000;
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : NaN;
 }
 
@@ -58,7 +61,7 @@ function rerunStep(spawns, tests) {
 
 const NEXT_STEP = {
   STOPPED: ({ spawns, tests }) => rerunStep(spawns, tests),
-  DONE: ({ ledger }) => (ledger?.gates?.["G:task-end"]?.answer === "approve" ? "Nothing to do: the run is done." : "Review the result and give your sign-off."),
+  DONE: ({ ledger }) => (ledger?.gates && isPassed(ledger, "G:task-end") ? "Nothing to do: the run is done." : "Review the result and give your sign-off."),
   RUNNING: () => "Nothing to do yet: the run is still going.",
 };
 
@@ -229,8 +232,8 @@ function title(task) {
   return task.split(/\n\s*\n/).map((paragraph) => escape(paragraph.trim())).join("<br>");
 }
 
-export function renderReport({ ledger, spawns, timing, commits, tests, endedAt } = {}) {
-  const ranFor = runSeconds(ledger, endedAt);
+export function renderReport({ ledger, spawns, timing, commits, tests, endedAt, now } = {}) {
+  const ranFor = runSeconds(ledger, endedAt, now);
   const state = outcome(ledger);
   const taskType = plainName(ledger?.taskType) ?? "unknown type";
   return `<!doctype html>

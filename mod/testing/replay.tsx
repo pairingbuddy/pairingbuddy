@@ -1,5 +1,5 @@
 import { mock } from 'claude-code/testing'
-import { BAND, LEDGER, ROOT, texts } from './band'
+import { BAND, LEDGER, ROOT, isSeparatorRule, texts } from './band'
 import { POLL_MS } from '../poll'
 
 // Replays a recorded run against the mod. A recording is a directory under mod/fixtures/replay/ whose
@@ -135,7 +135,7 @@ export async function* replay(
 
     const ui = await $.ui.mount(mount)
     const nodes = await ui.find(find)
-    const texts = (await ui.findAll({ type: 'Text' })).map((node: any) => ({ text: node.text, props: node.props }))
+    const texts = (await ui.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node)).map((node: any) => ({ text: node.text, props: node.props }))
     await ui.unmount()
 
     yield { t: recorded.t, kind, recorded, now, ledger, fed: [...fed], texts, nodes }

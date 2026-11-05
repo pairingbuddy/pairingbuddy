@@ -6,7 +6,10 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus } from "./stages.mjs";
+import { isPassed } from "./gate-passed.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
+
+export { isPassed };
 
 const HUMAN_SOURCES = ["human", "human-cli"];
 const REPORT_LISTS = ["survivors", "gaps", "uncovered", "unrefuted"];
@@ -32,12 +35,6 @@ export function gatesFor(contract, taskType) {
 }
 
 const doneStages = (ledger) => new Set(ledger.stages.filter((s) => s.status === "done").map((s) => s.name));
-
-function isPassed(ledger, gate) {
-  if (ledger.needsHuman?.gate === gate) return false;
-  const record = Object.hasOwn(ledger.gates, gate) ? ledger.gates[gate] : undefined;
-  return record?.source === "auto" || (HUMAN_SOURCES.includes(record?.source) && record.answer === "approve");
-}
 
 // The first gate behind a finished stage that stands in the way of the next stage.
 export function blockingGate(gates, ledger) {

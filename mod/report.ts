@@ -67,6 +67,7 @@ export async function openReport($: EngineInterface, spawns: Spawn[]): Promise<v
     const live = await readInputs($, spawns)
     // With no live ledger the report is built from the last polled one.
     const inputs = live.ledger ? live : await fromSnapshot($, live)
+    // A report built from the last polled ledger is of a run that is gone: it is never measured to now.
     const endedAt = live.ledger ? undefined : ((await $.state.get(ENDED_AT)).value as string | null | undefined) ?? undefined
     // The button showed on a ledger that is gone or half-written now: write nothing rather than an empty report.
     if (!inputs.ledger) return
@@ -74,7 +75,7 @@ export async function openReport($: EngineInterface, spawns: Spawn[]): Promise<v
     const shas = inputs.ledger.commits ?? []
     const commits = await readCommits($, shas)
     try {
-      await $.fs.write(path, renderReport({ ...inputs, commits, endedAt }))
+      await $.fs.write(path, renderReport({ ...inputs, commits, endedAt, now: live.ledger ? inputs.now : undefined }))
     } catch {
       await $.state.set(PANE_NOTE, "couldn't write the report")
       return

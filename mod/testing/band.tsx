@@ -132,8 +132,13 @@ export function engine(on: Function, ledger: unknown = SNAPSHOT_RUNNING, open: (
   return { served, serve, serveRaw, calls }
 }
 
-// The text of every Text node on a mounted surface, in order.
-export const texts = async (surface: any) => (await surface.findAll({ type: 'Text' })).map((node: any) => node.text as string)
+// The dim rule the band draws above its content line. It is chrome, not band content, so the helpers below leave it out.
+export const isSeparatorRule = (node: { text?: string; props?: Record<string, unknown> }): boolean =>
+  node.props?.dimColor === true && /^[─━═\-_—]{3,}$/.test((node.text ?? '').trim())
+
+// The text of every Text node on a mounted surface, in order, without the band's separator rule.
+export const texts = async (surface: any) =>
+  (await surface.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node)).map((node: any) => node.text as string)
 
 // The terminal band as drawn now: mounts it, collects its texts and unmounts it.
 // Optional props merge into the band's props, for example { bodyColumns: 200 } for a wide terminal.

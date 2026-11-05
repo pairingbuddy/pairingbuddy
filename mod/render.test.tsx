@@ -5,7 +5,7 @@ import { plainName } from '../shared-node/plain-names.mjs'
 import { POLL_MS } from './poll'
 import { needingHuman, stopped } from './testing/alert'
 import { PANE } from './testing/replay'
-import { BAND, bandTexts, engine as bandEngine, LEDGER_PATH, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, SURFACES, ROOT, serveLedger, start, without, type Served } from './testing/band'
+import { BAND, bandTexts, isSeparatorRule, engine as bandEngine, LEDGER_PATH, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, SURFACES, ROOT, serveLedger, start, without, type Served } from './testing/band'
 
 // The band draws what the session's poll read, so each test starts a session first; the poll runs at session start.
 function engine(on: Function, served: Served) {
@@ -22,7 +22,7 @@ async function drawnOnEverySurface($: any): Promise<Record<string, string>> {
   const drawn: Record<string, string> = {}
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    const text = await ui.find({ type: 'Text' })
+    const text = (await ui.findAll({ type: 'Text' })).find((node: any) => !isSeparatorRule(node))
     drawn[surface] = JSON.stringify(text ?? null)
     await ui.unmount()
   }
@@ -228,7 +228,7 @@ test('no-ledger-no-snapshot-stays-idle: with no ledger and no snapshot the band 
   await start($)
   const idle = await bandTexts($, WIDE)
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  const dim = JSON.stringify(await band.find({ type: 'Text' }))
+  const dim = JSON.stringify((await band.findAll({ type: 'Text' })).find((node: any) => !isSeparatorRule(node)))
   await band.unmount()
   run.serve(BETWEEN_SCENARIOS_AND_TDD)
   await clock.advance(POLL_MS)
@@ -275,7 +275,7 @@ test('band-leads-with-needs-you-at-a-gate', async ($, on) => {
   await start($)
 
   const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 200 }, surface: 'terminal' })
-  const nodes = await band.findAll({ type: 'Text' })
+  const nodes = (await band.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node))
   await band.unmount()
 
   const shown = nodes.map((node: any) => node.text as string)

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { plainName } from '../shared-node/plain-names.mjs'
-import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, serveLedger, start, type Served } from './testing/band'
+import { BAND, isSeparatorRule, LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, serveLedger, start, type Served } from './testing/band'
 import { eventsFor, recordHooks } from './testing/hooks'
 import { recordOther, recordWrite, refuseWorldChanges } from './testing/refuse'
 
@@ -87,7 +87,7 @@ test('running hooks and band against a fixture ledger leaves .pairingbuddy/ unch
       where = `mount ${surface} hasSurvey=${hasSurvey}`
       const ui = await $.ui.mount({ ...BAND, surface, props: { ...BAND.props, hasSurvey } })
       if (!hasSurvey) {
-        drawn[surface] = (await ui.find({ type: 'Text' }))?.text
+        drawn[surface] = (await ui.findAll({ type: 'Text' })).find((node: any) => !isSeparatorRule(node))?.text
       }
       await ui.unmount()
     }

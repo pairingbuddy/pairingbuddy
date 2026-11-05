@@ -7,6 +7,10 @@ const IDLE_SEPARATOR = ' · '
 const IDLE = `Pairing Buddy · idle${IDLE_SEPARATOR}${HINT}`
 const ENDED = `Pairing Buddy · last run finished${IDLE_SEPARATOR}${HINT}`
 export const DETAILS = '▸ details'
+const RULE_FALLBACK_WIDTH = 40
+
+// A dim rule above the band text; columns is 0 before the first layout, so a fixed width stands in, never wider than the region.
+const rule = (columns: number) => '─'.repeat(columns > 0 ? columns : RULE_FALLBACK_WIDTH)
 
 // The button and the space before it are always reserved; a hint (its separator and a trailing space) only when one is given.
 export const bandColumns = (columns: number, hint: string = '') => columns - DETAILS.length - 1 - (hint ? SEPARATOR.length + hint.length + 1 : 0)
@@ -40,6 +44,8 @@ export function Band({ Box, Text, Button, band, columns, running, waiting, opene
     : ended ? ENDED : IDLE
 
   return (
+    <Box flexDirection="column">
+    <Text key="rule" dimColor>{rule(columns)}</Text>
     <Box>
       {shown
         ? shown.flatMap((segment: Segment, i: number) => [
@@ -50,6 +56,7 @@ export function Band({ Box, Text, Button, band, columns, running, waiting, opene
       {shown && <Text key="gap"> </Text>}
       <Button key="details" label={DETAILS} onPress={onDetails}>{shown && <Text>{DETAILS}</Text>}</Button>
       {shown && hint && <Text key="hint">{`${SEPARATOR}${hint} `}</Text>}
+    </Box>
     </Box>
   )
 }

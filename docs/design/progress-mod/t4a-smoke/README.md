@@ -102,3 +102,13 @@ A. **The report shows no run time after the run ends.** Cause: the poller passed
 19. **Test cards lack headings and show empty columns.** Fixed: each card has column headings, drops columns unknown on every row (Total, Writing, Running, Commit), and a not-reached card draws no empty table.
 20. **The report title loses the break between description and context.** Fixed: the title keeps the break.
 21. **The status line repeats the plugin name.** It read "Pairing Buddy needs you: …" beside the plugin's own name. Fixed: the status line shows the plain gate or stop words.
+
+## Human session 5 (2026-11-05, round 5 re-check)
+
+Lab `20261105-122313` (auto mode). Passed live: the report run time of 1:51 matched the pane, card headings with all-unknown columns were dropped, and the title break held.
+
+New findings, all fixed:
+
+18b. **The report still asks for sign-off after an auto-passed task-end gate.** Fixed: the report uses the same gate-passed rule as the CLI (`shared-node/gate-passed.mjs`), so an auto-passed gate counts as passed.
+22. **The band merges with the transcript** (the human's visual feedback). Fixed: a dim rule above the band separates it.
+23. **A report opened mid-run shows no elapsed time.** Fixed: it shows elapsed time to now, like the pane.
