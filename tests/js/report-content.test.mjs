@@ -751,3 +751,85 @@ test("finished-report-still-measures-to-end-not-now", () => {
   assert.ok(headerOf(byStageEnd).includes("0:51"), "a run with a stage end shows the length to the last stage end");
   assert.ok(!headerOf(byStageEnd).includes("1:00:00"), "a run with a stage end is not stretched to the later now");
 });
+
+// Scenario report-in-progress-step-start-time (Finding 26). Placeholders: fail until implemented.
+test("in-progress-stage-shows-start-time", async () => {
+  // The real running shape: the active stage is only in ledger.stage (with startedAt); ledger.stages holds the closed ones.
+  const recorded = await finishedLedger();
+  const running = {
+    ...recorded,
+    stage: { name: "code-tdd", status: "active", runId: "wf_running", attempt: 1, startedAt: "2026-11-04T08:13:42.543Z" },
+    stages: recorded.stages.slice(0, 1),
+  };
+
+  const rows = stepRows(renderReport({ ledger: running, spawns: [] }));
+
+  const row = rows.find((cells) => cells[0] === "build test by test");
+  assert.ok(row, "the STEPS table lists the running step");
+  assert.notEqual(row[1], "not reached", "a step that is running is not 'not reached'");
+  assert.equal(row[1], "0:16", "its start is measured from the first stage's start (16s)");
+});
+
+test("later-stages-still-not-reached", async () => {
+  const recorded = await finishedLedger();
+  const finished = { ...recorded.stages[0], end: "2026-11-04T08:13:42.543Z" };
+  const running = {
+    ...recorded,
+    stage: { name: "code-tdd", status: "active", runId: "wf_running", attempt: 1, startedAt: "2026-11-04T08:13:42.543Z" },
+    stages: [finished],
+  };
+
+  const rows = stepRows(renderReport({ ledger: running, spawns: [] }));
+
+  const row = (name) => rows.find((cells) => cells[0] === plainName(name));
+  assert.ok(row("code-safety-net"), "the STEPS table lists the stage after the running one");
+  assert.equal(row("code-safety-net")[1], "not reached", "a stage after the running one is still not reached");
+  assert.deepEqual(row("code-scenarios"), [plainName("code-scenarios"), "0:00", "0:16", "0:16"], "a finished stage keeps its start, end and took columns");
+});
+
+// Scenario report-follows-color-scheme (Finding 27). Placeholders: fail until implemented.
+test("report-has-light-palette-under-prefers-color-scheme", async () => {
+  const html = renderReport(await recordedReportInput("probe-2", { outcome: "stopped" }));
+  const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+  const mediaStart = css.search(/@media\s*\(\s*prefers-color-scheme:\s*light\s*\)/);
+  const open = mediaStart < 0 ? -1 : css.indexOf("{", mediaStart);
+  let depth = 0;
+  let end = open;
+  for (; end >= 0 && end < css.length; end++) {
+    if (css[end] === "{") depth++;
+    if (css[end] === "}" && --depth === 0) break;
+  }
+  const lightBlock = open < 0 ? "" : css.slice(open + 1, end);
+  const customProps = (text) => new Set([...text.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
+  const lightProps = customProps(lightBlock);
+  const baseCss = open < 0 ? css : css.slice(0, mediaStart) + css.slice(end + 1);
+  const baseProps = customProps(baseCss);
+  const body = baseCss.match(/body\s*\{([^}]*)\}/)?.[1] ?? "";
+
+  assert.ok(open >= 0, "the stylesheet has a @media (prefers-color-scheme: light) block");
+  assert.match(css, /color-scheme:\s*(light dark|dark light)/, "color-scheme declares both light and dark so the browser follows the viewer");
+  assert.ok(lightProps.size >= 2, "the light block redefines custom properties (page background and text)");
+  assert.ok([...lightProps].every((name) => baseProps.has(name)), "every property the light block redefines has a dark default in the base styles");
+  assert.match(body, /background:\s*var\(--[\w-]+\)/, "the page background comes from a custom property");
+  assert.match(body, /(^|[;\s])color:\s*var\(--[\w-]+\)/, "the page text colour comes from a custom property");
+});
+
+test("report-stays-self-contained-with-light-palette", async () => {
+  const html = renderReport(await recordedReportInput("probe-2", { outcome: "stopped" }));
+  const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+  const lightBlock = css.match(/@media\s*\(\s*prefers-color-scheme:\s*light\s*\)\s*\{\s*:root\s*\{([^}]*)\}/)?.[1] ?? "";
+  const definedInLight = (name) => new RegExp(`${name}\\s*:\\s*#[0-9a-fA-F]{3,8}\\b`).test(lightBlock);
+  const usedBy = (selector, name) => new RegExp(`${selector.replace(/\./g, "\\.")}[^{]*\\{[^}]*var\\(${name}\\)`).test(css);
+
+  assert.match(css, /prefers-color-scheme:\s*light/, "the light palette is present, so the self-contained check covers it");
+  assert.doesNotMatch(html, /https?:\/\//i, "the page names no http(s) URL");
+  assert.doesNotMatch(html, /\b(src|href)\s*=/i, "the page has no src or href attribute");
+  assert.doesNotMatch(html, /<script|<link/i, "the page has no script or link tag");
+  assert.doesNotMatch(html, /@import|url\s*\(/i, "the CSS imports nothing and loads no url() resource");
+  for (const name of ["--stopped", "--done", "--running", "--badge-ink", "--amber"]) {
+    assert.ok(definedInLight(name), `${name} is defined as a colour in the light palette`);
+  }
+  assert.ok(usedBy(".badge.stopped", "--stopped"), "the STOPPED badge background uses the --stopped colour");
+  assert.ok(usedBy(".badge.done", "--done"), "the DONE badge background uses the --done colour");
+  assert.ok(usedBy(".looped p strong", "--amber"), "the amber looping label uses the --amber colour");
+});

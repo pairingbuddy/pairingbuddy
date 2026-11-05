@@ -8,12 +8,14 @@ const IDLE = `Pairing Buddy · idle${IDLE_SEPARATOR}${HINT}`
 const ENDED = `Pairing Buddy · last run finished${IDLE_SEPARATOR}${HINT}`
 export const DETAILS = '▸ details'
 const RULE_FALLBACK_WIDTH = 40
+// The pane's [-] control sits beside the band row, so the row gets this many fewer cells than bodyColumns.
+const CONTROL_WIDTH = 4
 
 // A dim rule above the band text; columns is 0 before the first layout, so a fixed width stands in, never wider than the region.
 const rule = (columns: number) => '─'.repeat(columns > 0 ? columns : RULE_FALLBACK_WIDTH)
 
 // The button and the space before it are always reserved; a hint (its separator and a trailing space) only when one is given.
-export const bandColumns = (columns: number, hint: string = '') => columns - DETAILS.length - 1 - (hint ? SEPARATOR.length + hint.length + 1 : 0)
+export const bandColumns = (columns: number, hint: string = '') => columns - CONTROL_WIDTH - DETAILS.length - 1 - (hint ? SEPARATOR.length + hint.length + 1 : 0)
 
 export const OPENED_DETAILS = 'needs you · opened details'
 
@@ -37,7 +39,7 @@ export function Band({ Box, Text, Button, band, columns, running, waiting, opene
   const hint = [HINT, SHORT_HINT].find(candidate => JSON.stringify(fitBand(source, bandColumns(columns, candidate))) === JSON.stringify(content))
   const shown = content
   // Between steps the text is the same dim line; its hint gives way first when the width is short.
-  const room = columns - DETAILS.length - 1
+  const room = columns - CONTROL_WIDTH - DETAILS.length - 1
   const labelled = between ? `Pairing Buddy · ${between}` : undefined
   const idleText = labelled
     ? [`${labelled}${IDLE_SEPARATOR}${HINT}`, `${labelled}${IDLE_SEPARATOR}${SHORT_HINT}`, labelled].find(text => text.length <= room) ?? labelled
@@ -46,16 +48,16 @@ export function Band({ Box, Text, Button, band, columns, running, waiting, opene
   return (
     <Box flexDirection="column">
     <Text key="rule" dimColor>{rule(columns)}</Text>
-    <Box>
+    <Box flexShrink={1}>
       {shown
         ? shown.flatMap((segment: Segment, i: number) => [
-            ...(i > 0 ? [<Text key={`sep-${segment.id}`}>{SEPARATOR}</Text>] : []),
-            <Text key={segment.id} color={segment.tone === 'dim' ? undefined : segment.tone} bold={segment.bold} dimColor={segment.tone === 'dim' ? true : undefined}>{segment.text}</Text>,
+            ...(i > 0 ? [<Text key={`sep-${segment.id}`} wrap="truncate-end">{SEPARATOR}</Text>] : []),
+            <Text key={segment.id} color={segment.tone === 'dim' ? undefined : segment.tone} bold={segment.bold} dimColor={segment.tone === 'dim' ? true : undefined} wrap="truncate-end">{segment.text}</Text>,
           ])
-        : <Box marginRight={1}><Text dimColor>{idleText}</Text></Box>}
+        : <Box marginRight={1}><Text dimColor wrap="truncate-end">{idleText}</Text></Box>}
       {shown && <Text key="gap"> </Text>}
       <Button key="details" label={DETAILS} onPress={onDetails}>{shown && <Text>{DETAILS}</Text>}</Button>
-      {shown && hint && <Text key="hint">{`${SEPARATOR}${hint} `}</Text>}
+      {shown && hint && <Text key="hint" wrap="truncate-end">{`${SEPARATOR}${hint} `}</Text>}
     </Box>
     </Box>
   )

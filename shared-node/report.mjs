@@ -182,7 +182,9 @@ function stepRow(name, record, start, withEnds) {
 function stepsSection({ ledger }) {
   const stages = Array.isArray(ledger?.stages) ? ledger.stages : [];
   const recorded = new Map(stages.map((stage) => [stage.name, stage]));
-  const start = stages[0]?.startedAt;
+  const running = ledger?.stage;
+  if (running?.name && !recorded.has(running.name)) recorded.set(running.name, { name: running.name, startedAt: running.startedAt });
+  const start = stages[0]?.startedAt ?? running?.startedAt;
   const withEnds = stages.some((stage) => Number.isFinite(Date.parse(stage?.end)));
   const labels = withEnds ? ["Step", "Start", "End", "Took"] : ["Step", "Started"];
   const head = `<tr>${labels.map((label) => `<th>${label}</th>`).join("")}</tr>`;
@@ -205,26 +207,27 @@ function whatYouCanDo({ ledger, spawns, tests }) {
 }
 
 // R5-3's dark design: one inline stylesheet, monospace; the outcome badge is red, green or amber by outcome, and a looped test's "Why it looped" label is amber.
-const STYLE = `:root{color-scheme:dark}
-body{background:#1c1d21;color:#e6e6e6;font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0;padding:40px 56px;max-width:1100px}
-header p{color:#9a9ca3;margin:6px 0}
-.badge{color:#1c1d21;padding:2px 10px;border-radius:4px}
-.badge.stopped{background:#ff6b81}
-.badge.done{background:#5fd38d}
-.badge.running{background:#ffc933}
+const STYLE = `:root{color-scheme:light dark;--bg:#1c1d21;--fg:#e6e6e6;--muted:#9a9ca3;--rule:#3a3c44;--faint:#6b6d75;--amber:#ffc933;--badge-ink:#1c1d21;--stopped:#ff6b81;--done:#5fd38d;--running:#ffc933}
+@media (prefers-color-scheme:light){:root{--bg:#fafafa;--fg:#1c1d21;--muted:#5c5f66;--rule:#c9cbd1;--faint:#62646b;--amber:#8a5a00;--badge-ink:#ffffff;--stopped:#c62828;--done:#1a7f37;--running:#8a5a00}}
+body{background:var(--bg);color:var(--fg);font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0;padding:40px 56px;max-width:1100px}
+header p{color:var(--muted);margin:6px 0}
+.badge{color:var(--badge-ink);padding:2px 10px;border-radius:4px}
+.badge.stopped{background:var(--stopped)}
+.badge.done{background:var(--done)}
+.badge.running{background:var(--running)}
 h1{font:700 22px/1.3 system-ui,sans-serif;margin:0}
-h2{color:#9a9ca3;font-size:12px;letter-spacing:.12em;border-bottom:1px solid #3a3c44;padding-bottom:6px;margin:32px 0 12px}
+h2{color:var(--muted);font-size:12px;letter-spacing:.12em;border-bottom:1px solid var(--rule);padding-bottom:6px;margin:32px 0 12px}
 h3{font-size:14px;margin:0 0 8px}
 p{margin:4px 0}
-section p strong{color:#9a9ca3;display:inline-block;min-width:150px;text-transform:uppercase;font-size:12px}
-article{border:1px solid #3a3c44;border-radius:8px;padding:12px 16px;margin:12px 0}
+section p strong{color:var(--muted);display:inline-block;min-width:150px;text-transform:uppercase;font-size:12px}
+article{border:1px solid var(--rule);border-radius:8px;padding:12px 16px;margin:12px 0}
 table{border-collapse:collapse;width:100%}
-th{text-align:left;color:#9a9ca3;font-weight:400;padding:4px 12px 4px 0}
+th{text-align:left;color:var(--muted);font-weight:400;padding:4px 12px 4px 0}
 td{padding:4px 12px 4px 0;vertical-align:top}
 ul{list-style:none;padding:0}
 li{margin:2px 0}
-.looped p strong{color:#ffc933;min-width:0;text-transform:none;font-size:inherit}
-footer{color:#6b6d75;margin-top:40px;font-size:12px}`;
+.looped p strong{color:var(--amber);min-width:0;text-transform:none;font-size:inherit}
+footer{color:var(--faint);margin-top:40px;font-size:12px}`;
 
 // The task's paragraphs (split on blank lines) stay visibly apart inside the title.
 function title(task) {

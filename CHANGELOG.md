@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The needs-you or stop status line no longer repeats the plugin name.
 - The report no longer asks for sign-off after an auto-passed task-end gate. It uses the same gate-passed rule as the CLI, now in `shared-node/gate-passed.mjs`, which `gates.mjs` re-exports.
 - A report opened mid-run shows elapsed time like the pane. A snapshot of a gone run is not measured to now.
+- The band stays one line at narrow widths: it fits beside the platform's `[-]` control, drops whole segments (lowest priority first, needs-you kept) instead of cutting them, and never wraps.
+- The alert logs when the platform keeps its pane undrawn on a narrow terminal and never claims it opened; `/pb` or the details button still opens it.
+- The report's STEPS shows the running step's start time instead of "not reached".
+- The report follows the viewer's light or dark preference.
 
 ### Added
 

@@ -6,6 +6,14 @@ This is the record for plan Task 54 (mod mockups from real runs). It took five r
 
 The human approved this direction on 2026-11-03 after round 5 ("Looking good. Let's go!"). That covers Task 55. Rounds 1 to 3 keep only their README and generator; rerun `python3 src/mocks.py <outdir>` in a round's folder to get its PNGs back.
 
+## Task 60 verdict
+
+Date: 2026-11-05. Verdict: **pass after fixes**.
+
+The human checked wide dark (rounds 1 to 5), narrow (about 55 to 66 columns in a zellij pane) and light (the light colorblind theme on a light terminal), the alert sound and its off switch, and mid-run and finished reports. Findings 24 to 27 were fixed in this round (see [round 6](t4a-smoke/README.md)); 27 (report light mode) was included at the human's request.
+
+Remaining step: a quick narrow re-look by the human before Task 60 is ticked.
+
 ## Chosen direction
 
 - **The band is the default.** One row above the prompt, always visible, answers five questions: where, spent, left, looping, off track. It also shows "needs you". See [R4-1](round-4/R4-1-band-tdd-calm.png).

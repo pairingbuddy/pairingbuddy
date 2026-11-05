@@ -41,8 +41,9 @@ export async function alertOn($: EngineInterface, ledger: Ledger | null, options
 
 // The pane opened for the alert is recorded as mod state, so the band can read it; a pane that did not seat records nothing.
 async function openAndRecord($: EngineInterface) {
-  const placed = (await openPane($)) as { isPlaced?: boolean } | undefined
+  const placed = (await openPane($)) as { isPlaced?: boolean; reason?: string } | undefined
   if (placed?.isPlaced) await $.state.set(OPENED, true)
+  else quietly(() => $.ui.log(`Details pane waits: ${placed?.reason ?? 'no room for it'}. Show it with /pb or a wider terminal.`))
 }
 
 // The mod-store key of the seen record for a project.

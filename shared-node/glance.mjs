@@ -161,7 +161,7 @@ function truncate(text, overflow) {
 }
 
 // Narrowing order: drop "left:", then the "≈ %" of spent, then shorten "needs you:" to "you:".
-// If it still does not fit, truncate segment texts with an ellipsis, last (lowest priority) first.
+// If it still does not fit, drop whole segments, last (lowest priority) first; a segment is never cut unless it is the only one left.
 // When an event stands (its segment carries standing: true), needs-you is kept whole: it is shortened only if that alone fits,
 // the other segments give first, and it is cut only as a last resort. The band is never wider than the columns.
 export function fitBand(segments, columns) {
@@ -173,12 +173,6 @@ export function fitBand(segments, columns) {
 
   const standing = segments.some((segment) => segment.id === "needsYou" && segment.standing);
   let band = standing ? withoutPercent : shortened;
-  const order = band.map((segment) => segment.id).reverse();
-  if (standing) order.splice(order.indexOf("needsYou"), 1);
-  for (const id of order) {
-    if (bandWidth(band) <= columns) break;
-    band = withText(band, id, (text) => truncate(text, bandWidth(band) - columns));
-  }
   while (bandWidth(band) > columns && band.length > 1) {
     const last = band.findLastIndex((segment) => !standing || segment.id !== "needsYou");
     band = band.filter((_, i) => i !== last);

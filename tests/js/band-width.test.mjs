@@ -75,7 +75,7 @@ test("below that, a standing needs-you is kept whole, never wider than the colum
   assert.equal(textOf(kept, "where"), "RED · test 3 of 4", "'where' is untouched");
 });
 
-test("below that, with nothing standing, the band is truncated in Task 57's order: needs-you is cut first, with an ellipsis", () => {
+test("below that, with nothing standing, whole segments are dropped in Task 57's priority order: needs-you goes first, nothing is cut with an ellipsis", () => {
   const calm = R4_1_BAND.map((segment) => (segment.id === "needsYou" ? { id: segment.id, text: "needs you: no" } : segment));
   const shortened = withShortNeedsYou(withoutPercent(withoutLeft(calm)));
   const columns = widthOf(shortened) - 1;
@@ -83,8 +83,10 @@ test("below that, with nothing standing, the band is truncated in Task 57's orde
   const kept = fitBand(calm, columns);
 
   assert.ok(widthOf(kept) <= columns, `no wider than ${columns} columns`);
-  assert.match(textOf(kept, "needsYou"), /…$/, "the cut text ends in an ellipsis");
-  assert.equal(textOf(kept, "where"), "RED · test 3 of 4", "a higher-priority segment is untouched while a lower one can still give");
+  assert.ok(!idsOf(kept).includes("needsYou"), "needs-you is the first segment dropped when nothing is standing");
+  assert.deepEqual(idsOf(kept), idsOf(calm).filter((id) => idsOf(kept).includes(id)), "the segments that remain keep their order");
+  assert.ok(kept.every((segment) => !segment.text.endsWith("…")), "no kept segment is cut with an ellipsis");
+  assert.equal(textOf(kept, "where"), "RED · test 3 of 4", "a higher-priority segment is untouched while a lower one can still be dropped");
 });
 
 test("at a very small width the band is still no wider than the columns", () => {

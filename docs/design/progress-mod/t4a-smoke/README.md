@@ -112,3 +112,16 @@ New findings, all fixed:
 18b. **The report still asks for sign-off after an auto-passed task-end gate.** Fixed: the report uses the same gate-passed rule as the CLI (`shared-node/gate-passed.mjs`), so an auto-passed gate counts as passed.
 22. **The band merges with the transcript** (the human's visual feedback). Fixed: a dim rule above the band separates it.
 23. **A report opened mid-run shows no elapsed time.** Fixed: it shows elapsed time to now, like the pane.
+
+## Human session 6 (2026-11-05, round 6)
+
+Lab `20261105-134835-ask` (`--ask`), including narrow (about 55 to 66 columns in a zellij pane) and light (light colorblind theme on a light terminal) runs.
+
+Passed live: light readability, needs-you, the status line naming the plugin once, the mid-run report time, and the final report.
+
+New findings, all fixed:
+
+24. **The band wraps or squeezes at narrow widths.** Fixed: the band width budget subtracts the platform's `[-]` control, segments are dropped whole (lowest priority first, needs-you kept) instead of cut, and no text wraps onto a second row.
+25. **The alert pane is not drawn below 144 columns unasked.** This is a platform rule, not a mod bug. Fixed: the alert logs that the pane was not placed, never claims it opened, and a way in (`/pb` or the details button) is always shown.
+26. **The running step reads "not reached" in STEPS.** Fixed: the running stage shows its start time.
+27. **The report is always dark.** Fixed at the human's request: colours are CSS custom properties and the report follows the viewer's light or dark preference.
