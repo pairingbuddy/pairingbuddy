@@ -130,6 +130,10 @@ function parseKey(text) {
 
 const LABEL_TOKEN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const PHASES = ["RED", "GREEN", "REFACTOR"];
+const REFACTOR_TASK_TYPES = ["new_feature"];
+function refactorsPerCycle(taskType) {
+  return REFACTOR_TASK_TYPES.includes(taskType);
+}
 const [REFUTER, COURSE_CHECKER] = ["refuter", "course-checker"];
 const ROLES = [REFUTER, COURSE_CHECKER];
 

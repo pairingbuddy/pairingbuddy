@@ -1,9 +1,11 @@
 // Verbatim from tests/smoke/recordings/g-open-1/spawns.jsonl (trimmed). The kit loads only code files, so the recording is a module.
+// An Agent spawn also carries "seconds": the gap from its spawn to its task_notification row in the same recording (the recording has no duration field for Agents).
 export default [
  {
   "t": 21.031,
   "kind": "Agent",
-  "name": "pairingbuddy:classify-task"
+  "name": "pairingbuddy:classify-task",
+  "seconds": 5.803
  },
  {
   "t": 32.51,
@@ -64,5 +66,14 @@ export default [
   "agentType": "pairingbuddy:update-documentation",
   "phase": "update-documentation",
   "seconds": 3.883
+ },
+ {
+  "t": 152.734,
+  "kind": "workflow_agent",
+  "name": "pb1 code-safety-net - runner - r1",
+  "id": "a9242b705241059cf",
+  "agentType": "pairingbuddy:runner",
+  "phase": "runner",
+  "seconds": 6.306
  }
 ]

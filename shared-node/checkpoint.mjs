@@ -5,6 +5,7 @@ import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { dirname, basename, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 
 import { parseKey } from "./keys.mjs";
+import { REFACTOR_TASK_TYPES } from "./labels.mjs";
 
 const PROTECTED_BRANCHES = ["main", "master"];
 // A config step exists to change something, so its return must account for any change that is not there. tests says
@@ -17,7 +18,7 @@ const STEPS = {
   placeholders: { type: "test", roles: ["create-test-placeholders"], provesChange: false, tests: "none", namesTest: false },
   red: { type: "test", roles: ["implement-tests"], provesChange: false, tests: "selected", namesTest: true },
   green: { types: { bug_fix: "fix", new_feature: "feat" }, roles: ["implement-code"], provesChange: false, tests: "selected", namesTest: true },
-  refactor: { typeOfPaths: true, roles: ["refactor-code", "refactor-tests"], provesChange: false, tests: "closed", namesTest: true, taskTypes: ["new_feature"] },
+  refactor: { typeOfPaths: true, roles: ["refactor-code", "refactor-tests"], provesChange: false, tests: "closed", namesTest: true, taskTypes: REFACTOR_TASK_TYPES },
 };
 const STATE_DIRECTORY = ".pairingbuddy";
 const REFUSED_DIRECTORIES = [STATE_DIRECTORY, ".git"];

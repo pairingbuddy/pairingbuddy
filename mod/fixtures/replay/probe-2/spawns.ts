@@ -1,14 +1,17 @@
 // Verbatim from tests/smoke/recordings/probe-2/spawns.jsonl (trimmed). The kit loads only code files, so the recording is a module.
+// An Agent spawn also carries "seconds": the gap from its spawn to its task_notification row in the same recording (the recording has no duration field for Agents).
 export default [
  {
   "t": 8.312,
   "kind": "Agent",
-  "name": "pairingbuddy:curate-guidance"
+  "name": "pairingbuddy:curate-guidance",
+  "seconds": 6.193
  },
  {
   "t": 20.123,
   "kind": "Agent",
-  "name": "pairingbuddy:classify-task"
+  "name": "pairingbuddy:classify-task",
+  "seconds": 6.075
  },
  {
   "t": 34.342,

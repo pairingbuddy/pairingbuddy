@@ -14,8 +14,8 @@ export type Recording = { ledger: Recorded[]; spawns: Recorded[]; timing: unknow
 
 export type Step = {
   t: number
-  kind: 'ledger' | 'spawn'
-  // The snapshot served at this step (ledger steps) or the recorded spawn (spawn steps).
+  kind: 'ledger' | 'spawn' | 'finish'
+  // The snapshot served at this step (ledger steps), the recorded spawn (spawn steps), or the spawn that finishes (finish steps).
   recorded: Recorded
   // The mocked clock at this step, and the time the poll reads: epoch + `t`, or one poll interval after the previous
   // step if that is later, rounded up to a whole interval from the epoch so the poll is due exactly then.
@@ -62,6 +62,8 @@ export function setupReplay(on: Function): Rig {
   const rig: Rig = { served: new Map(), unreadable: new Set(), clock: mock.clock(on, { now: 0 }) as Rig['clock'], now: 0, spawned: 0, reads: new Map() }
   on('command.register', (_: unknown, e: { name: string }) => ({ value: { command: e.name } }))
   on('agent.spawn', () => ({ model: 'recorded', agentId: `recorded-${++rig.spawned}` }))
+  // The end of a recorded agent's turn: the mod hears it above this, which only answers it.
+  on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
   on('session.root', () => ({ value: ROOT }))
   on('session.start', () => ({ cwd: ROOT }))
   on('fs.read', (_: unknown, e: { path: string }) => {
@@ -84,6 +86,8 @@ export function setupReplay(on: Function): Rig {
 // A spawn step raises `agent.spawn` through the engine's `$`, so the mod under test (the instance the kit
 // mounted) sees it. An `Agent` record is a subagent of that type; a `workflow_agent` carries its label as
 // the spawn's `name`. A `Workflow` record is no agent, so it is not raised. Every step then redraws.
+// A finish step raises `turn.complete` for a spawn that recorded a duration, at its `t` plus its `seconds`, with the
+// agentId the spawn resolved: that event carries a workflow agent's agentId (`agent.list` leaves workflow agents out).
 // The mocked clock reads the recording's wall time: the first active stage's `startedAt` is at its `t`.
 export async function* replay(
   $: any,
@@ -109,7 +113,11 @@ export async function* replay(
   const events = [
     ...recording.ledger.map(recorded => ({ kind: 'ledger' as const, recorded })),
     ...recording.spawns.map(recorded => ({ kind: 'spawn' as const, recorded })),
-  ].sort((a, b) => a.recorded.t - b.recorded.t)
+    ...recording.spawns
+      .filter(recorded => typeof recorded.seconds === 'number')
+      .map(recorded => ({ kind: 'finish' as const, recorded })),
+  ].sort((a, b) => eventTime(a) - eventTime(b))
+  const agentIds = new Map<Recorded, string>()
 
   let ledger: Record<string, unknown> | undefined
   const fed: Recorded[] = []
@@ -118,15 +126,18 @@ export async function* replay(
     if (kind === 'ledger') {
       ledger = shifted(recorded.ledger, shift) as Record<string, unknown>
       served.set(ledgerPath, JSON.stringify(ledger))
-    } else {
+    } else if (kind === 'spawn') {
       fed.push(recorded)
-      await feed($, recorded)
+      const agentId = await feed($, recorded)
+      if (agentId) agentIds.set(recorded, agentId)
+    } else {
+      await finish($, recorded, agentIds.get(recorded))
     }
 
     // Past the poll interval at every step, so the drawn state comes from the atoms the poller wrote.
     // The poll timer was started at the epoch, so it is due at whole intervals from there; landing the step on one
     // makes the poll read the clock at exactly `now`, as the oracle does, and not up to an interval earlier.
-    const due = Math.max(epoch + recorded.t * 1000, rig.now + POLL_MS)
+    const due = Math.max(epoch + eventTime({ kind, recorded }) * 1000, rig.now + POLL_MS)
     const now = epoch + Math.ceil((due - epoch) / POLL_MS) * POLL_MS
     const polled = pollMarks(rig)
     await rig.clock.advance(now - rig.now)
@@ -138,7 +149,7 @@ export async function* replay(
     const texts = (await ui.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node)).map((node: any) => ({ text: node.text, props: node.props }))
     await ui.unmount()
 
-    yield { t: recorded.t, kind, recorded, now, ledger, fed: [...fed], texts, nodes }
+    yield { t: eventTime({ kind, recorded }), kind, recorded, now, ledger, fed: [...fed], texts, nodes }
   }
 }
 
@@ -174,17 +185,36 @@ function firstActiveEpoch(recording: Recording): number {
   return active ? Date.parse((active.ledger as any).stage.startedAt) - active.t * 1000 : 0
 }
 
-async function feed($: any, recorded: Recorded): Promise<void> {
+// When the event happens, in seconds from the run's start: a finish is its spawn's `t` plus its `seconds`.
+function eventTime({ kind, recorded }: { kind: string; recorded: Recorded }): number {
+  return kind === 'finish' ? recorded.t + (recorded.seconds as number) : recorded.t
+}
+
+// Raises the recorded spawn and returns the agentId the spawn resolved, if it is an agent.
+async function feed($: any, recorded: Recorded): Promise<string | undefined> {
   if (recorded.kind === 'Agent') {
-    await $.agent.spawn({ prompt: 'recorded', description: String(recorded.name), subagentType: String(recorded.name) })
+    return (await $.agent.spawn({ prompt: 'recorded', description: String(recorded.name), subagentType: String(recorded.name) })).agentId
   } else if (recorded.kind === 'workflow_agent') {
-    await $.agent.spawn({
+    return (await $.agent.spawn({
       prompt: 'recorded',
       description: String(recorded.phase),
       name: String(recorded.name),
       subagentType: String(recorded.agentType),
-    })
+    })).agentId
   }
+  return undefined
+}
+
+// The end of a recorded agent's turn, as the engine raises it when the agent's loop finishes.
+async function finish($: any, recorded: Recorded, agentId: string | undefined): Promise<void> {
+  await $.turn.complete({
+    answer: '',
+    durationMs: (recorded.seconds as number) * 1000,
+    isAborted: false,
+    turnId: `recorded-turn-${agentId}`,
+    agentId,
+    reason: 'answer',
+  })
 }
 
 // The pane as the engine mounts it, minus the surface; the id is the one the mod opens it under.

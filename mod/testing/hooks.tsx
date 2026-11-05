@@ -52,6 +52,11 @@ export function eventsFor(event: string, matcher: Record<string, unknown>): Even
       const run = { command: 'other', args: '' }
       return { surveyed: run, idle: run }
     }
+    // An agent's turn ended: the mod only notes the agent as finished and hands on.
+    case 'turn.complete': {
+      const turn = { answer: 'done', durationMs: 1000, isAborted: false, turnId: 't1', agentId: 'a1', reason: 'answer' }
+      return { surveyed: turn, idle: turn }
+    }
     default:
       throw new Error(`no representative events for the "${event}" hook: add a case to eventsFor`)
   }

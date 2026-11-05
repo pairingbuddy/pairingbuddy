@@ -98,14 +98,20 @@ const RESULT_WORDS = {
 // (Spawns carry no stage attempt, so the record's own attempt cannot be matched to a try.)
 function resultOf(attempt, tries, record, covered) {
   const latest = tries.filter((t) => t.step === attempt.step).at(-1);
-  const words = RESULT_WORDS[attempt.step];
-  if (latest !== attempt || attempt.running === undefined || !words || !record || typeof record.passed !== "boolean") return UNKNOWN;
+  if (latest !== attempt || attempt.running === undefined) return UNKNOWN;
+  return resultWords(attempt.step, record, covered);
+}
+
+// The wording for a step's record, shared with the pane's looping row (which has no runner timing to wait for).
+export function resultWords(step, record, covered) {
+  const words = RESULT_WORDS[step];
+  if (!words || !record || typeof record.passed !== "boolean") return UNKNOWN;
   const exits = Array.isArray(record.exitCodes) ? record.exitCodes.filter((code) => typeof code === "number") : [];
   const codes = exits.length > 0 ? ` (exit ${exits.join(", ")})` : "";
   if (record.timedOut === true) return `timed out${codes}`;
-  if (attempt.step === "RED" && covered?.done === true) return `already covered, the test passed before any new code${codes}`;
+  if (step === "RED" && covered?.done === true) return `already covered, the test passed before any new code${codes}`;
   // On a RED record, passed means the try met the step (the test failed); exit 0 on an unmet try is the test passing at once.
-  if (!record.passed && attempt.step === "RED" && exits.some((code) => code !== 0)) return `refused, the test did not fail cleanly${codes}`;
+  if (!record.passed && step === "RED" && exits.some((code) => code !== 0)) return `refused, the test did not fail cleanly${codes}`;
   return `${record.passed ? words.met : words.unmet}${codes}`;
 }
 

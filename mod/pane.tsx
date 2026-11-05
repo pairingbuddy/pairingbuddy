@@ -1,8 +1,9 @@
 import { plainName } from '../shared-node/plain-names.mjs'
+import { fitLegend, fitProgress, fitTries } from '../shared-node/now-building.mjs'
 import { stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
 import type { Ledger } from './inputs'
-import type { PaneTags, RowTones, Rows } from './view'
+import type { NowBuilding, PaneTags, RowTones, Rows } from './view'
 
 const ROWS: [keyof Rows, string][] = [
   ['now', 'NOW'], ['spent', 'SPENT'], ['left', 'LEFT'], ['looping', 'LOOPING'], ['offTrack', 'OFF TRACK'],
@@ -18,14 +19,37 @@ export function stepLines(ledger: Ledger, ended = false): string[] {
   })
 }
 
+// The lit step is coloured by its phase through theme keys; the others are dim.
+const PHASE_COLOURS: Record<string, string> = { RED: 'error', GREEN: 'success', REFACTOR: 'claude' }
+function NowBuildingBlock({ Box, Text, block, columns }: Pick<PaneTags, 'Box' | 'Text'> & { block: NowBuilding; columns: number }) {
+  return (
+    <Box flexDirection="column">
+      <Text bold wrap="truncate-end">now building</Text>
+      <Text wrap="truncate-end">{fitProgress(block.progress, columns)}</Text>
+      <Box>
+        {block.current && <Text bold wrap="truncate-end">{`${block.current}  `}</Text>}
+        {block.marker.steps.flatMap((step, i) => [
+          ...(i > 0 ? [<Text key={`gap-${step.name}`} wrap="truncate-end">{' '}</Text>] : []),
+          <Text key={step.name} wrap="truncate-end" {...(step.lit ? { color: PHASE_COLOURS[step.name], bold: true } : { dimColor: true })}>{`${step.mark}${step.name}`}</Text>,
+        ])}
+        {block.age && <Text wrap="truncate-end">{`  ${block.age}`}</Text>}
+      </Box>
+      <Text dimColor wrap="truncate-end">{fitLegend(columns)}</Text>
+      <Text dimColor wrap="truncate-end">{block.unknown > 0 ? `${block.active} active · ${block.unknown} unknown` : `${block.active} active`}</Text>
+    </Box>
+  )
+}
+
 export type Suggestion = { state: 'pending'; nextAgent?: string } | { state: 'delivered'; to: string }
 
 const toneProps = (tone?: string) => (tone === 'dim' ? { dimColor: true } : tone ? { color: tone } : {})
 const stepProps = (line: string) => (line.startsWith('▸') ? { color: 'claude', bold: true } : line.startsWith('✓') ? { color: 'success' } : {})
 
-export function Pane({ Box, Text, Button, Input, rows, rowTones = {}, ledger, ended = false, unknownLabels, note = null, suggestion, onDismiss, onReport = () => {}, onSuggest = () => {} }: PaneTags & {
+export function Pane({ Box, Text, Button, Input, rows, rowTones = {}, columns = 0, nowBuilding, ledger, ended = false, unknownLabels, note = null, suggestion, onDismiss, onReport = () => {}, onSuggest = () => {} }: PaneTags & {
   rows: Rows
   rowTones?: RowTones
+  columns?: number
+  nowBuilding?: NowBuilding
   ledger: Ledger
   ended?: boolean
   unknownLabels: string[]
@@ -37,8 +61,12 @@ export function Pane({ Box, Text, Button, Input, rows, rowTones = {}, ledger, en
 }) {
   return (
     <Box flexDirection="column">
-      {ROWS.map(([key, label]) => <Text key={key} {...toneProps(rowTones[key])} {...(key === 'now' && rowTones.now === 'warning' ? { bold: true } : {})}>{`${label}  ${rows[key]}`}</Text>)}
+      {ROWS.flatMap(([key, label]) => [
+        <Text key={key} {...toneProps(rowTones[key])} {...(key === 'now' && rowTones.now === 'warning' ? { bold: true } : {})}>{`${label}  ${rows[key]}`}</Text>,
+        ...(key === 'looping' && nowBuilding?.tries?.length ? [<Text key="tries" dimColor wrap="truncate-end">{fitTries(nowBuilding.tries, columns)}</Text>] : []),
+      ])}
       {stepLines(ledger, ended).map(line => <Text key={line} {...stepProps(line)}>{line}</Text>)}
+      {nowBuilding && <NowBuildingBlock Box={Box} Text={Text} block={nowBuilding} columns={columns} />}
       {unknownLabels.map((raw, i) => <Text key={`unknown-${i}`}>{raw}</Text>)}
       {unknownLabels.length > 0 && <Text dimColor>{`${unknownLabels.length} label${unknownLabels.length === 1 ? '' : 's'} unknown`}</Text>}
       <Text dimColor>Pairing Buddy only watches; it never changes your run</Text>

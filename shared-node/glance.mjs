@@ -19,7 +19,7 @@ function ordinal(n) {
 export function testLabels(spawns) {
   return (Array.isArray(spawns) ? spawns : [])
     .filter((spawn) => spawn && spawn.kind === "workflow_agent")
-    .map((spawn) => readLabel(spawn.name))
+    .map((spawn) => ({ ...readLabel(spawn.name), startedAt: spawn.startedAt }))
     .filter((label) => !label.unknown && label.item !== null && label.role !== RUNNER_ROLE);
 }
 
@@ -58,7 +58,7 @@ function remainingTests(step, tests, { more, complete }) {
 }
 
 // A recorded run knows how long it ran (ranFor, seconds) even when its start was not kept; otherwise it is now minus the start.
-function elapsed(startedAt, now, ranFor) {
+export function elapsed(startedAt, now, ranFor) {
   return clock(Number.isFinite(ranFor) ? ranFor : (now - Date.parse(startedAt)) / 1000);
 }
 
