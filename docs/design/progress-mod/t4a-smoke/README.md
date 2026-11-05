@@ -85,3 +85,20 @@ Findings:
 15. **Band does not lead with needs-you while a gate waits.** It read "between steps · next: build test by test" at the scenarios gate; the needs-you state should win, in the warning colour, in band and pane. Fixed: band and NOW lead with needs-you while a gate waits.
 16. **The needs-you status line stays after the gate is answered**, including after the run ended. Fixed: the status line clears when the gate is answered, the run ends, or a new run starts.
 17. **PreToolUse:Workflow rejects a symlinked pluginRoot** (`/private/var/…` vs `/var/…`): the check compares strings, not real paths. Outside the mod; seen only because the broken copy lives under `/var/folders`. Fixed: the pluginRoot check compares real paths.
+
+## Human session 4 (2026-11-05, round 4)
+
+Lab `20261105-102731-ask` (`--ask`). The fixes from round 3 held live:
+
+- Needs-you showed at both gates, and the alert beeped at both.
+- The status line cleared after each approval, and NOW carried no band prefix.
+- `/pb` opened the pane with focus, and `r` opened the report.
+- The report read "finished" with real results and labelled STEPS columns.
+
+New findings, all fixed:
+
+A. **The report shows no run time after the run ends.** Cause: the poller passed an unawaited `$.clock.now()` promise to `new Date`, so the ended-at time was never saved. Fixed: the poller awaits the clock, and the ended pane and the report measure to the same end time.
+18. **A signed-off run still asks for sign-off.** The report's WHAT YOU CAN DO kept asking after `G:task-end` was approved. Fixed: it no longer asks once the gate is approved.
+19. **Test cards lack headings and show empty columns.** Fixed: each card has column headings, drops columns unknown on every row (Total, Writing, Running, Commit), and a not-reached card draws no empty table.
+20. **The report title loses the break between description and context.** Fixed: the title keeps the break.
+21. **The status line repeats the plugin name.** It read "Pairing Buddy needs you: …" beside the plugin's own name. Fixed: the status line shows the plain gate or stop words.

@@ -52,7 +52,8 @@ describe("report-content", () => {
   });
 
   // The probe-2 recording holds, per try: the step (RED/GREEN), the try number, the seconds of the writing agent and of the
-  // runner. It holds no exit code, no result and no commit (ledger.tests is empty), so those cells must read "unknown".
+  // runner. It holds no exit code, no result and no commit (ledger.tests is empty), so the result cell reads "unknown" and the
+  // Commit column, unknown on every row, is dropped from the card (test-card-drops-column-unknown-for-every-row).
   test("report-lists-every-try-of-every-test", async () => {
     const cards = cardsOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })));
 
@@ -60,16 +61,16 @@ describe("report-content", () => {
     const [first, second] = cards;
     assert.ok(first.includes("ten-percent-off-hundred"), "the first card names the first test by its id");
     assert.ok(second.includes("zero-percent-keeps-full-price"), "the second card names the second test by its id");
-    // step, try, time, writing time, running time, result with exit code, commit
+    // step, try, time, writing time, running time, result with exit code (the cells match the card's headings; no Commit)
     assert.deepEqual(rowsOf(first), [
-      ["RED", "1", "0:11", "0:07", "0:03", "unknown", "unknown"],
-      ["GREEN", "1", "0:11", "0:07", "0:03", "unknown", "unknown"],
-    ], "the first test has one RED and one GREEN try, with no result or commit recorded");
+      ["RED", "1", "0:11", "0:07", "0:03", "unknown"],
+      ["GREEN", "1", "0:11", "0:07", "0:03", "unknown"],
+    ], "the first test has one RED and one GREEN try, with no result recorded");
     assert.deepEqual(rowsOf(second), [
-      ["RED", "1", "0:13", "0:10", "0:03", "unknown", "unknown"],
-      ["RED", "2", "0:11", "0:08", "0:02", "unknown", "unknown"],
-      ["RED", "3", "0:11", "0:08", "0:02", "unknown", "unknown"],
-    ], "the second test has three RED tries, with no result or commit recorded");
+      ["RED", "1", "0:13", "0:10", "0:03", "unknown"],
+      ["RED", "2", "0:11", "0:08", "0:02", "unknown"],
+      ["RED", "3", "0:11", "0:08", "0:02", "unknown"],
+    ], "the second test has three RED tries, with no result recorded");
   });
 
   // The result source is ledger.tests.perTest[id].{red,green}: one record per step, the latest try (see stage-run.mjs and the
@@ -456,4 +457,203 @@ test('where-it-is-reads-finished-on-done-run', async () => {
   assert.match(doneGlance, /<strong>Where it is<\/strong>\s*finished/, "a done run reads finished");
   assert.ok(!doneGlance.includes("safety-net review"), "a done run no longer names the safety-net review");
   assert.match(runningGlance, /<strong>Where it is<\/strong>[^<]*safety-net review/, "a running ledger still names its step");
+});
+
+// Scenario report-what-you-can-do-for-finished-run (placeholders)
+test("done-run-does-not-ask-for-sign-off", async () => {
+  // The ledger shape `pb human approve G:task-end` leaves behind (recordApproval): the gate answered approve by the human, no pending gate, no stop.
+  const recorded = await finishedLedger();
+  const signedOff = {
+    ...recorded,
+    stage: { ...recorded.stage, status: "done" },
+    needsHuman: null,
+    stop: null,
+    gates: { ...recorded.gates, "G:task-end": { source: "human-cli", answer: "approve" } },
+  };
+
+  const section = sectionOf(renderReport({ ledger: signedOff, spawns: [] }), "WHAT YOU CAN DO");
+
+  assert.ok(!section.includes("Review the result and give your sign-off."), "a signed-off run does not tell the human to review and sign off");
+  assert.ok(!/sign-?off/i.test(section), "a signed-off run does not ask for a sign-off in any words");
+});
+
+test("done-run-says-nothing-is-needed", async () => {
+  const recorded = await finishedLedger();
+  const signedOff = {
+    ...recorded,
+    stage: { ...recorded.stage, status: "done" },
+    needsHuman: null,
+    stop: null,
+    gates: { ...recorded.gates, "G:task-end": { source: "human-cli", answer: "approve" } },
+  };
+
+  const section = sectionOf(renderReport({ ledger: signedOff, spawns: [] }), "WHAT YOU CAN DO");
+
+  assert.match(section, /Nothing to do: the run is done\./, "a signed-off run says plainly that nothing is left to do");
+});
+
+test("done-run-still-awaiting-sign-off-asks-for-it", async () => {
+  const recorded = await finishedLedger();
+  const awaiting = {
+    ...recorded,
+    stage: { ...recorded.stage, status: "done" },
+    needsHuman: { gate: "G:task-end" },
+    stop: null,
+    gates: {},
+  };
+
+  const section = sectionOf(renderReport({ ledger: awaiting, spawns: [] }), "WHAT YOU CAN DO");
+
+  assert.match(section, /Review the result and give your sign-off\./, "a run still waiting on the task-end gate asks for the sign-off");
+  assert.ok(!section.includes("Nothing to do: the run is done."), "a run that is not signed off never says nothing is left to do");
+});
+
+test("stopped-and-running-next-steps-unchanged", async () => {
+  const stopped = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })), "WHAT YOU CAN DO");
+  const running = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "running" })), "WHAT YOU CAN DO");
+
+  assert.ok(stopped.includes("1. Re-run /pairingbuddy:code. It continues from test 2 and keeps test 1 and its commits."), "a stopped run still shows the re-run guidance");
+  assert.ok(running.includes("Nothing to do yet: the run is still going."), "a running run still says nothing is to be done yet");
+  assert.ok(!running.includes("sign-off"), "a running run does not ask for a sign-off");
+});
+
+// Scenario report-test-card-column-headings (placeholders)
+test("test-card-has-column-headings", async () => {
+  const [card] = cardsOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })));
+
+  const headings = [...card.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map(([, cell]) => cell.trim());
+
+  assert.deepEqual(headings.slice(0, 6), ["Step", "Try", "Total", "Writing", "Running", "Result"], "the card header row names the first six columns in cell order");
+  assert.equal(headings.length, rowsOf(card)[0].length, "every cell of a try row has a heading above it");
+});
+
+test("test-card-drops-column-unknown-for-every-row", async () => {
+  const headingsOf = (card) => [...card.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map(([, cell]) => cell.trim());
+  const isUnknown = (cell) => cell === "unknown" || cell === "time unknown";
+  const input = await recordedReportInput("probe-2", { outcome: "stopped" });
+  const untimed = { ...input, spawns: input.spawns.map((spawn) => ({ ...spawn, seconds: NaN })) };
+  const [timed] = cardsOf(renderReport(input));
+  const untimedCards = cardsOf(renderReport(untimed));
+
+  assert.equal(rowsOf(timed).every((row) => row.at(-1) === "unknown"), true, "precondition: the last cell is unknown on every try row");
+  assert.equal(headingsOf(timed).includes("Commit"), false, "the Commit heading is not drawn when its cell is unknown for every row");
+  assert.equal(headingsOf(timed).length, rowsOf(timed)[0].length, "dropping the column removes its heading and its cells together");
+
+  for (const card of untimedCards) {
+    const rows = rowsOf(card);
+    const headings = headingsOf(card);
+
+    assert.equal(rows.every((row) => row.slice(2, 5).every(isUnknown)), true, "precondition: Total, Writing and Running are unknown on every try row");
+    assert.deepEqual(headings.filter((name) => ["Total", "Writing", "Running", "Commit"].includes(name)), [], "no time or commit heading is drawn when its cells are unknown on every row");
+    assert.ok(rows.every((row) => row.length === headings.length), "every try row has exactly one cell per heading");
+  }
+});
+
+test("test-card-keeps-column-with-some-known-values", async () => {
+  const headingsOf = (card) => [...card.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map(([, cell]) => cell.trim());
+  const input = await recordedReportInput("probe-2", { outcome: "stopped" });
+  // Only the runner agent of the first RED try of the first test loses its time; every other try keeps it.
+  const runnerOfFirstTry = input.spawns.findIndex((spawn) => spawn.name === "pb1 code-tdd RED runner ten-percent-off-hundred r1");
+  const partial = { ...input, spawns: input.spawns.map((spawn, i) => (i === runnerOfFirstTry ? { ...spawn, seconds: NaN } : spawn)) };
+
+  const [card] = cardsOf(renderReport(partial));
+  const rows = rowsOf(card);
+  const headings = headingsOf(card);
+  const running = headings.indexOf("Running");
+
+  assert.ok(runnerOfFirstTry >= 0, "precondition: the recorded runner spawn is found");
+  assert.ok(running >= 0, "the Running heading is kept when at least one row has a known value");
+  assert.equal(rows[0][running], "time unknown", "the row that lacks the value reads unknown");
+  assert.equal(rows[1][running], "0:03", "the row that has the value keeps it");
+  assert.ok(rows.every((row) => row.length === headings.length), "every try row still has exactly one cell per heading");
+});
+
+test("test-card-headings-on-every-card", async () => {
+  const headingsOf = (card) => [...card.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map(([, cell]) => cell.trim());
+  const input = await recordedReportInput("probe-2", { outcome: "stopped" });
+  const untimed = { ...input, spawns: input.spawns.map((spawn) => ({ ...spawn, seconds: NaN })) };
+  const timedCards = cardsOf(renderReport(input));
+  const untimedCards = cardsOf(renderReport(untimed));
+
+  assert.ok(timedCards.length > 1, "precondition: the run has several tests, so several cards");
+  assert.ok(timedCards.some((card) => rowsOf(card).length > 1), "precondition: at least one card looped, with several try rows");
+
+  for (const card of [...timedCards, ...untimedCards]) {
+    const headings = headingsOf(card);
+
+    assert.ok(headings.length > 0, "every card carries its own header row");
+    assert.deepEqual(headings.slice(0, 2), ["Step", "Try"], "every card header starts with Step and Try");
+    assert.ok(headings.includes("Result"), "every card header names the Result column");
+    assert.ok(rowsOf(card).every((row) => row.length === headings.length), "every try row has one cell per heading of its own card");
+  }
+});
+
+test("test-card-headings-escape-and-not-reached-card", async () => {
+  const HOSTILE = `<script>alert("x")</script> & 'q'`;
+  const input = await recordedReportInput("probe-2", { outcome: "stopped" });
+  const perTest = {
+    ...input.ledger.tests?.perTest,
+    "never-ran-test": { selector: { runner_id: "node", test_file: "tests/js/discount.test.mjs", test_function: "never-ran-test" } },
+    [HOSTILE]: { selector: { runner_id: "node", test_file: "tests/js/discount.test.mjs", test_function: HOSTILE } },
+  };
+  const html = renderReport({ ...input, ledger: { ...input.ledger, tests: { ...input.ledger.tests, perTest } } });
+
+  const notReached = cardsOf(html).filter((card) => card.includes("not reached"));
+
+  assert.ok(notReached.length >= 2, "precondition: the tests that never ran each get a card saying not reached");
+  assert.ok(notReached.some((card) => card.includes("never-ran-test")), "precondition: the plain never-ran test has its card");
+  for (const card of notReached) {
+    assert.deepEqual(rowsOf(card), [], "a not reached card has no try rows");
+    assert.ok(!/<th[\s>]/.test(card), "a not reached card draws no column headings");
+    assert.ok(!card.includes("<table"), "a not reached card draws no empty heading-only table");
+  }
+  assert.ok(!html.includes("<script>"), "the raw script tag from a test id is absent from the whole report");
+});
+
+// Scenario report-title-keeps-description-context-break (placeholders)
+test("title-shows-break-between-description-and-context", () => {
+  const task = ["Add a discount rule", "Context: orders over 100 get 10 percent off"].join("\n\n");
+
+  const html = renderReport({ ledger: { task, stage: { name: "code-tdd", status: "done" } }, spawns: [] });
+
+  const title = headerOf(html).match(/<h1>([\s\S]*?)<\/h1>/)[1];
+  assert.ok(title.includes("Add a discount rule"), "precondition: the title holds the description");
+  assert.ok(title.includes("Context: orders over 100 get 10 percent off"), "precondition: the title holds the context");
+  assert.ok(/<br\s*\/?>|<\/(p|div|span)>\s*<(p|div|span)/.test(title), "the description and the context are separated by a break or by separate blocks inside the title");
+  assert.ok(!title.includes("Add a discount rule Context"), "the description and the context are not run together");
+});
+
+test("title-single-paragraph-has-no-break", () => {
+  const task = "Add a discount rule for orders over 100";
+
+  const html = renderReport({ ledger: { task, stage: { name: "code-tdd", status: "done" } }, spawns: [] });
+
+  const title = headerOf(html).match(/<h1>([\s\S]*?)<\/h1>/)[1];
+  assert.ok(title.includes(task), "precondition: the title holds the whole task on one line");
+  assert.ok(!/<br\s*\/?>/.test(title), "a task with no blank line has no break element in the title");
+});
+
+test("title-break-escapes-text", () => {
+  const task = ["Fix <b>bold</b> & \"quoted\" rule", "Context: it's <script>alert(1)</script> & more"].join("\n\n");
+
+  const html = renderReport({ ledger: { task, stage: { name: "code-tdd", status: "done" } }, spawns: [] });
+
+  const title = headerOf(html).match(/<h1>([\s\S]*?)<\/h1>/)[1];
+  assert.equal(
+    title,
+    "Fix &lt;b&gt;bold&lt;/b&gt; &amp; &quot;quoted&quot; rule<br>Context: it&#39;s &lt;script&gt;alert(1)&lt;/script&gt; &amp; more",
+    "both paragraphs are escaped and the break is the only markup in the title",
+  );
+  assert.ok(!html.includes("<script>"), "the raw script tag from the task is absent from the whole report");
+});
+
+test("title-missing-task-unchanged", () => {
+  const withoutTask = { stage: { name: "code-tdd", status: "done" } };
+
+  const html = renderReport({ ledger: withoutTask, spawns: [] });
+  const htmlNullTask = renderReport({ ledger: { ...withoutTask, task: null }, spawns: [] });
+
+  assert.match(html, /<h1><\/h1>/, "a ledger with no task renders an empty title");
+  assert.ok(!html.includes("undefined") && !html.includes("<br>"), "the empty title shows no 'undefined' and no break");
+  assert.match(htmlNullTask, /<h1><\/h1>/, "a null task renders an empty title too");
 });

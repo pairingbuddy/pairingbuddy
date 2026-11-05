@@ -38,7 +38,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
         // The first poll that sees the ledger gone while a snapshot exists is when the run ended.
         const snapshot = (await $.state.get(LAST_RUN)).value
         const ended = (await $.state.get(ENDED_AT)).value
-        if (snapshot && !ended) await $.state.set(ENDED_AT, new Date($.clock.now()).toISOString())
+        if (snapshot && !ended) await $.state.set(ENDED_AT, new Date(await $.clock.now()).toISOString())
       }
     } catch {
       // A failed tick is dropped; the next one tries again.

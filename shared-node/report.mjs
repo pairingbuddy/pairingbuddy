@@ -58,7 +58,7 @@ function rerunStep(spawns, tests) {
 
 const NEXT_STEP = {
   STOPPED: ({ spawns, tests }) => rerunStep(spawns, tests),
-  DONE: () => "Review the result and give your sign-off.",
+  DONE: ({ ledger }) => (ledger?.gates?.["G:task-end"]?.answer === "approve" ? "Nothing to do: the run is done." : "Review the result and give your sign-off."),
   RUNNING: () => "Nothing to do yet: the run is still going.",
 };
 
@@ -106,10 +106,9 @@ function resultOf(attempt, tries, record, covered) {
   return `${record.passed ? words.met : words.unmet}${codes}`;
 }
 
-function tryRow(attempt, tries, perTest) {
+function tryCells(attempt, tries, perTest) {
   const result = resultOf(attempt, tries, perTest?.[attempt.step.toLowerCase()], perTest?.covered);
-  const cells = [attempt.step, attempt.number, clock((attempt.writing ?? NaN) + (attempt.running ?? NaN)), clock(attempt.writing), clock(attempt.running), result, UNKNOWN];
-  return `<tr>${cells.map((cell) => `<td>${escape(cell)}</td>`).join("")}</tr>`;
+  return [attempt.step, attempt.number, clock((attempt.writing ?? NaN) + (attempt.running ?? NaN)), clock(attempt.writing), clock(attempt.running), result, UNKNOWN];
 }
 
 const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
@@ -134,12 +133,21 @@ function withLedgerTries(tries, record) {
   return out;
 }
 
+const TRY_COLUMNS = ["Step", "Try", "Total", "Writing", "Running", "Result", "Commit"];
+const OPTIONAL_COLUMNS = new Set(["Total", "Writing", "Running", "Commit"]);
+const UNKNOWN_CELLS = new Set([UNKNOWN, clock(NaN)]);
+
 function testCard(spawns, item, number, perTest, stop) {
   const tries = withLedgerTries(triesOf(spawns, item), perTest?.[item]);
-  const rows = tries.map((attempt) => tryRow(attempt, tries, perTest?.[item]));
+  const cells = tries.map((attempt) => tryCells(attempt, tries, perTest?.[item]));
+  // Step, Try and Result always stay; a time or commit column is dropped when it is unknown on every try row.
+  const kept = TRY_COLUMNS.map((label, column) => !OPTIONAL_COLUMNS.has(label) || cells.length === 0 || cells.some((row) => !UNKNOWN_CELLS.has(row[column])));
+  const rows = cells.map((row) => `<tr>${row.filter((_, column) => kept[column]).map((cell) => `<td>${escape(cell)}</td>`).join("")}</tr>`);
+  const head = `<tr>${TRY_COLUMNS.filter((_, column) => kept[column]).map((label) => `<th>${label}</th>`).join("")}</tr>`;
   const note = !perTest?.[item]?.red && tries.length === 0 ? "\n<p>not reached</p>" : "";
   const looped = loopNote(tries, stop);
-  return `<article${looped ? ' class="looped"' : ""}>\n<h3>${number > 0 ? `<small>test ${number}</small> ` : ""}${escape(item)}</h3>${note}\n<table>\n${rows.join("\n")}\n</table>${looped}\n</article>`;
+  const table = cells.length === 0 ? "" : `\n<table>\n${head}\n${rows.join("\n")}\n</table>`;
+  return `<article${looped ? ' class="looped"' : ""}>\n<h3>${number > 0 ? `<small>test ${number}</small> ` : ""}${escape(item)}</h3>${note}${table}${looped}\n</article>`;
 }
 
 function testsSection({ ledger, spawns, tests }) {
@@ -189,7 +197,7 @@ function commitsSection({ commits }) {
 }
 
 function whatYouCanDo({ ledger, spawns, tests }) {
-  const step = NEXT_STEP[outcome(ledger)]({ spawns, tests });
+  const step = NEXT_STEP[outcome(ledger)]({ ledger, spawns, tests });
   return section("WHAT YOU CAN DO", `<p>1. ${escape(step)}</p>`);
 }
 
@@ -215,6 +223,12 @@ li{margin:2px 0}
 .looped p strong{color:#ffc933;min-width:0;text-transform:none;font-size:inherit}
 footer{color:#6b6d75;margin-top:40px;font-size:12px}`;
 
+// The task's paragraphs (split on blank lines) stay visibly apart inside the title.
+function title(task) {
+  if (typeof task !== "string") return escape(task);
+  return task.split(/\n\s*\n/).map((paragraph) => escape(paragraph.trim())).join("<br>");
+}
+
 export function renderReport({ ledger, spawns, timing, commits, tests, endedAt } = {}) {
   const ranFor = runSeconds(ledger, endedAt);
   const state = outcome(ledger);
@@ -226,7 +240,7 @@ ${STYLE}
 </style></head>
 <body>
 <header>
-<h1>${escape(ledger?.task)}</h1>
+<h1>${title(ledger?.task)}</h1>
 <p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(Number.isFinite(ranFor) ? ranFor : timing?.seconds)}</p>
 </header>
 ${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests })}

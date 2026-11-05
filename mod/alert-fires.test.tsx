@@ -204,7 +204,7 @@ test('older-ledger-stop-without-code-still-alerts', async ($, on) => {
 
   expect(run.calls.played.length, 'a stop with no code plays one sound').toBe(1)
   expect(run.calls.status.length, 'a stop with no code sets one status line').toBe(1)
-  expect(run.calls.status[0].text, 'the line falls back to the plain stopped message').toBe('Pairing Buddy stopped')
+  expect(run.calls.status[0].text, 'the line falls back to the plain stopped message').toBe('stopped')
   expect(run.calls.opened.map(open => open.id), 'a stop with no code opens the pairingbuddy pane once').toEqual([PANE_ID])
 })
 

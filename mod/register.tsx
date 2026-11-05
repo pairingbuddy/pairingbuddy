@@ -50,11 +50,13 @@ function drawGlance(
   const tags = $.ui.resolve(e)
 
   // Until the first poll lands there is nothing to draw from, so the view is the idle one.
-  return Promise.all([read($, inputsAtom), read($, openedAtom), read($, noteAtom), read($, pendingAtom), read($, lastRunAtom)]).then(([polled, opened, note, pending, lastRun]) => {
+  return Promise.all([read($, inputsAtom), read($, openedAtom), read($, noteAtom), read($, pendingAtom), read($, lastRunAtom), read($, endedAtAtom)]).then(([polled, opened, note, pending, lastRun, endedAt]) => {
     const live = fromPolled(polled, spawns)
     // With no live ledger the last polled one is shown as a finished run.
     const snapshot = fromPolled(lastRun as Parameters<typeof fromPolled>[0], spawns)
-    const view = live.ledger || !snapshot.ledger ? buildView(live) : buildEndedView(snapshot)
+    // The ended view measures to the moment the run ended, the same end time the report uses.
+    const endedMs = typeof endedAt === 'string' ? Date.parse(endedAt) : NaN
+    const view = live.ledger || !snapshot.ledger ? buildView(live) : buildEndedView(Number.isNaN(endedMs) ? snapshot : { ...snapshot, now: endedMs })
     const reportNote = typeof note === 'string' ? note : null
     return draw(tags, view, opened === true, reportNote, pending as PendingSuggestion | null)
   })

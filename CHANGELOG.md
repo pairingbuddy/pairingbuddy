@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The needs-you or stop status line clears when the gate is answered, the run ends, or a new run starts.
 - The Workflow pluginRoot check compares real paths, so macOS `/var` and `/private/var` match.
 - Pane focus lost on window switch is documented as platform behaviour, recovered with `/pb`.
+- The report shows run time after the run ends. The poller passed an unawaited `$.clock.now()` promise to `new Date`, so the ended-at time was never saved; it now awaits the clock, and the ended pane and the report measure to the same end time.
+- A signed-off run no longer asks for sign-off in the report's WHAT YOU CAN DO once `G:task-end` is approved.
+- Test cards in the report have column headings and drop Total, Writing, Running and Commit columns that are unknown on every row.
+- A not-reached test card draws no empty table, only the not-reached note.
+- The report title keeps the break between the task description and its context.
+- The needs-you or stop status line no longer repeats the plugin name.
 
 ### Added
 

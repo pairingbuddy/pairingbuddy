@@ -92,7 +92,7 @@ function statusWords(ledger: Ledger) {
 // The status line words the stop as the pane and band do.
 function setStatus($: EngineInterface, ledger: Ledger) {
   const words = statusWords(ledger)
-  if (words) return $.ui.status(`Pairing Buddy ${words}`)
+  if (words) return $.ui.status(words)
 }
 
 // Clears the status line once, when it is set and its cause is gone: the ledger is gone, a new run began, or nothing is pending and no stop stands. A line never set is never cleared. The run it was set for is kept in mod state, which a new session starts without.
