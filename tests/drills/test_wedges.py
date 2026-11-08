@@ -157,6 +157,16 @@ def recover(clone, tmp_path, wedge, block=0):
     return result
 
 
+def git_log(clone):
+    return subprocess.run(
+        ["git", "log", "--oneline"],
+        capture_output=True,
+        text=True,
+        cwd=clone,
+        env=clean_env(clone.parent),
+    ).stdout
+
+
 def tree_snapshot():
     return subprocess.run(
         ["git", "status", "--porcelain", "--ignored"],
@@ -406,21 +416,23 @@ class TestSecondSession:
 
 
 class TestNoUnit:
-    def test_has_no_cli_way_out(self, tmp_path):
+    def test_human_abandon_is_the_way_out(self, tmp_path):
         clone = force(tmp_path, "no-unit")
+        commits_before = git_log(clone)
 
         assert not (clone / RUN_STATE / "unit.json").exists()
         ended = pb(clone, tmp_path, "task", "end")
         assert ended.returncode == 1
         assert "cannot end" in ended.stderr
-        abandon = pb(clone, tmp_path, "human", "abandon")
-        assert abandon.returncode == 2
-        assert "unknown verb" in abandon.stderr
+        abandoned = pb(clone, tmp_path, "human", "abandon")
 
-        recover(clone, tmp_path, "no-unit")
-
-        assert not (clone / RUN_STATE).exists()
+        assert abandoned.returncode == 0, abandoned.stderr
+        report = json.loads(abandoned.stdout)
+        assert report["result"] == "abandoned"
+        assert report["removed"] == [".pairingbuddy/run/task"]
+        assert not (clone / RUN_STATE / "task").exists()
         assert "no run here" in pb(clone, tmp_path, "status").stderr
+        assert git_log(clone) == commits_before
         assert_allowed(write_call(clone, tmp_path))
         assert pb(clone, tmp_path, "run", "open", "--kind", "code").returncode == 0
 

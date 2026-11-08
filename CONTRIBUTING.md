@@ -293,15 +293,15 @@ Leave out `pb stage fail` when no stage is active.
 
 ### A run with no unit
 
-**What you see:** a run you want to drop. `pb task end` refuses with `is not finished, so the task cannot end`, and `pb human abandon` fails with `unknown verb`, because it does not exist until T3a. This is the exposure of dogfood runs before then.
+**What you see:** a run you want to drop. `pb task end` refuses with `is not finished, so the task cannot end`.
 
-There is no CLI route, so a human deletes the run state by hand. The branch and its commits stay. `.pairingbuddy/test-config.json` and `git-config.json` are outside `run/` and stay too:
+`pb human abandon` is human-only, so a human types it at the Claude prompt. It removes the run state under `.pairingbuddy/run/`. The branch and its commits stay, and so do `.pairingbuddy/test-config.json` and `git-config.json`, which are outside `run/`:
 
 ```bash
-git -C "$ROOT" log --oneline -5
-git -C "$ROOT" status --short
-rm -rf "$ROOT/.pairingbuddy/run"
+! cd <ROOT> && node <PLUGIN>/cli/pb.mjs human abandon
 ```
+
+If the CLI itself is broken, that command cannot run. Use the Broken CLI recovery below, which ends with deleting the run state by hand.
 
 ### Broken CLI
 
