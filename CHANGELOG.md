@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pb git doctor` warns (never blocks; read-only `gh` calls with a 10s timeout) when squash merges don't use the PR title and body (`squash_merge_commit_title` and `squash_merge_commit_message` must be `PR_TITLE` and `PR_BODY`) or the default branch has no protection. It notes when `gh` is unavailable or protection can't be read. `pb unit open` shows the same warnings.
 - `pb human abandon` (human-only) removes the unit and task state under `.pairingbuddy/run`. It keeps commits, the branch and the working tree, and works after a stop.
 - `pb task end` refuses a `config_change` whose diff (no rename detection, from the unit's last task head or base) touches files outside the git-config `config_globs`. With empty `config_globs` it asks the human to type `pb human approve-config` (human-only, per task).
+- Smoke S3 (`tests/smoke/s3.mjs`, run by hand, spends money): S2's bug task from main against a local bare remote and a recording gh shim. It asserts the unit record, the publish run stopping at G:publish under auto policy with no push, the PR lint result, a forced stop pushing nothing, and after a human approve, `pb publish` pushing the approved HEAD and opening a draft PR against the configured base, with the coordination comment when the draft has one.
 
 ### Changed
 
