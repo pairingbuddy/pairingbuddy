@@ -31,6 +31,7 @@
       }
     },
     "configHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "gitConfigHash": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 of the bytes of .pairingbuddy/git-config.json recorded at pb run open, after the file is bootstrapped. May be absent on ledgers written before it existed." },
     "policy": {
       "type": "object",
       "additionalProperties": false,

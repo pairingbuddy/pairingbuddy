@@ -36,7 +36,8 @@ const NO_HOME = makeDir("pb-no-home-");
 
 export const env = (extra = {}) => ({ ...process.env, ...ISOLATED_GIT, HOME: NO_HOME, XDG_CONFIG_HOME: NO_HOME, CLAUDE_PLUGIN_ROOT: ROOT, ...extra });
 
-export function makeRepo({ ledger = {} } = {}) {
+// openTask: false leaves the repo with no task in flight, so `pb run open` starts from a fresh repo.
+export function makeRepo({ ledger = {}, openTask = true } = {}) {
   const dir = makeDir("pb-stop-code-");
   const git = (...args) => execFileSync("git", args, { cwd: dir, env: env(), stdio: "ignore" });
   git("init", "-q", "-b", "feature");
@@ -57,6 +58,7 @@ export function makeRepo({ ledger = {} } = {}) {
     stages: [],
     ...ledger,
   });
+  if (!openTask) rmSync(taskDir, { recursive: true, force: true });
   return { dir, ledger: () => readLedger(ledgerPath) };
 }
 

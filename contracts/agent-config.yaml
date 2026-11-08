@@ -58,6 +58,7 @@ schemas:
   - refactor-code-result.schema.json
   - verify-test-coverage-result.schema.json
   - refuter-verdict.schema.json
+  - git-config.schema.json
 
 # =============================================================================
 # Agent definitions

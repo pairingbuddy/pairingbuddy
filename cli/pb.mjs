@@ -7,9 +7,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, isProtectedBranch, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep } from "../shared-node/checkpoint.mjs";
+import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep } from "../shared-node/checkpoint.mjs";
 import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
+import { GitConfigRefused, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches } from "../shared-node/gitconf.mjs";
 import { PlanRefused, tickPlanBox } from "../shared-node/plan-boxes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
@@ -43,6 +44,21 @@ function currentBranch(root) {
   const branch = branchOf(root);
   if (branch === null) throw new Refusal("no branch checked out (detached HEAD)");
   return branch;
+}
+
+function loadGitConfigOrRefuse(root) {
+  try {
+    return loadGitConfig(root);
+  } catch (e) {
+    if (e instanceof GitConfigRefused) throw new Refusal(e.message);
+    throw e;
+  }
+}
+
+// One rule for every verb that refuses a protected branch: the configured list plus the repo's default branch.
+function assertBranchNotProtected(gitConfig, root, branch, action) {
+  const protectedSet = protectedBranches(gitConfig, defaultBranchOf(root, gitConfig.remote));
+  if (isBranchProtected(protectedSet, branch)) throw new Refusal(`refusing to ${action} on protected branch ${branch}`);
 }
 
 function parseKind(args) {
@@ -112,9 +128,11 @@ function runOpen(args) {
   const root = toplevel();
   assertNotStopped(root);
   const branch = currentBranch(root);
-  if (isProtectedBranch(branch)) throw new Refusal(`refusing to open a run on protected branch ${branch}`);
+  const gitConfig = loadGitConfigOrRefuse(root); // bootstraps git-config.json when missing; hashed below
+  assertBranchNotProtected(gitConfig, root, branch, "open a run");
 
   const configHash = validatedConfigHash(root);
+  const gitConfigHash = fileHash(gitConfigPath(root));
   const taskType = kind === "code" ? classifiedTaskType(root) : null;
   assertTestsSelectable(root, configHash, taskType);
   const task = storedTask(root);
@@ -141,7 +159,7 @@ function runOpen(args) {
     writeLedger(join(dir, "ledger.json"), {
       v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType, runId: randomUUID(),
       owner: { sessionId: null, lastSeen: null },
-      task, plan: { path: "", title: "" }, configHash,
+      task, plan: { path: "", title: "" }, configHash, gitConfigHash,
       policy: { mode: "", source: "" },
       stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null },
       stages: [], gates: {}, tests: {}, commits: [], retries: {},
@@ -560,7 +578,7 @@ async function checkpoint(args) {
   assertCommitAllowed(step, key, ledger);
   if (!stepRunsFor(step, ledger.taskType)) throw new Refusal(`step ${step} runs for ${taskTypesOfStep(step).join(", ")} only, and this task is ${ledger.taskType}`);
   const branch = currentBranch(root);
-  if (isProtectedBranch(branch)) throw new Refusal(`refusing to commit on protected branch ${branch}`);
+  assertBranchNotProtected(loadGitConfigOrRefuse(root), root, branch, "commit");
   return CHECKPOINT_FLOWS[testsOfStep(step)]({ step, key, root, path, ledger, branch });
 }
 

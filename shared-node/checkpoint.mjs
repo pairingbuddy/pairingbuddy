@@ -7,7 +7,6 @@ import { dirname, basename, isAbsolute, join, normalize, relative, resolve, sep 
 import { parseKey } from "./keys.mjs";
 import { REFACTOR_TASK_TYPES } from "./labels.mjs";
 
-const PROTECTED_BRANCHES = ["main", "master"];
 // A config step exists to change something, so its return must account for any change that is not there. tests says
 // what must run before the commit: the whole suite, the one test the key names, every test of the task a cycle closed,
 // or nothing, since a placeholder proves nothing. A key names a test exactly when its step works on one test's cycle.
@@ -33,8 +32,6 @@ const GIT_BUFFER_BYTES = 64 * 1024 * 1024;
 export class CheckpointRefused extends Error {}
 // A failure that needs a human: the verb records it as the run's stop.
 export class CheckpointStopped extends Error {}
-
-export const isProtectedBranch = (branch) => PROTECTED_BRANCHES.includes(branch.toLowerCase());
 
 export const checkpointSteps = () => Object.keys(STEPS);
 

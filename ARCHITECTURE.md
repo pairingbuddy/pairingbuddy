@@ -896,8 +896,11 @@ At the start of each task, the orchestrator runs `_cleanup_state_files()` to del
 |------|-----------------|
 | `test-config.json` | Project-specific test runner configuration |
 | `doc-config.json` | Documentation locations |
+| `git-config.json` | Git rules for the run (D21); never overwritten once it exists |
 | `human-guidance.json` | Persistent operational knowledge (entries with `persistent: true`) |
 | `reports/` (folder) | HTML run reports written by the progress mod; kept across task cleanup |
+
+**Git configuration (D21).** `shared-node/gitconf.mjs` reads and bootstraps `.pairingbuddy/git-config.json` (schema: `contracts/schemas/git-config.schema.json`). `pb run open` writes it with defaults when it is missing, never overwrites an existing one, and refuses to open a run when it is malformed. Protected branches are the configured ones plus the remote's default branch; the hard-coded `main`/`master` are gone, and `pr.base_branch` falls back to the default branch. The file's hash is recorded in the ledger as `gitConfigHash`; each gate check compares it, so editing the file mid-run stops the next gate check.
 | `plan/plan-config.json` | Plan name, output path, existing docs (persists across plans) |
 
 **All other files are deleted:**

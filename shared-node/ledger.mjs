@@ -15,7 +15,7 @@ const HEX64 = /^[0-9a-f]{64}$/;
 // Shape only, so a well-shaped impossible date stays readable and the gate can treat it as expired.
 const ISO_TIMESTAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
 export const KINDS = ["code", "plan"];
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -106,6 +106,7 @@ export function validateLedger(ledger) {
     task: [isString, "a string"],
     plan: [() => true, ""],
     configHash: [isSha, "64 lowercase hex characters"],
+    gitConfigHash: [isSha, "64 lowercase hex characters"],
     policy: [() => true, ""],
     stage: [() => true, ""],
     stages: [Array.isArray, "an array"],
@@ -120,7 +121,7 @@ export function validateLedger(ledger) {
     configAcceptances: [Array.isArray, "an array"],
     checkpoints: [Array.isArray, "an array"],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
-  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId"] });
+  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
