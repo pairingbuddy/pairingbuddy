@@ -113,10 +113,40 @@
           "properties": {
             "gate": { "type": "string", "minLength": 1 },
             "reason": { "type": "string" },
-            "seq": { "type": "integer", "minimum": 0 }
+            "seq": { "type": "integer", "minimum": 0 },
+            "shown": {
+              "description": "What gate eval showed the human at G:publish: the HEAD sha, the unit base and the PR target. May be absent. A publish answer is refused if HEAD is no longer headSha.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["headSha", "base", "target"],
+              "properties": {
+                "headSha": { "type": "string", "minLength": 1 },
+                "base": { "type": "string" },
+                "target": { "type": "string" }
+              }
+            }
           }
         }
       ]
+    },
+    "voidedGates": {
+      "description": "Gate approvals that stopped holding (G:publish after HEAD or the body moved), oldest first, kept for the audit trail. May be absent. record is the gate record as it stood; reason says what changed.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gate", "record", "reason"],
+        "properties": {
+          "gate": { "type": "string", "minLength": 1 },
+          "record": { "type": "object" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "lenses": {
+      "description": "Lens records by name (the one the publish gate reads is \"safety-net\"). Nothing writes it until T5c; this is the minimal shape, and T5c adds the per-stage fields. May be absent.",
+      "type": "object",
+      "additionalProperties": { "type": "object" }
     },
     "acceptances": {
       "description": "Each hand edit a human accepted with pb human accept, oldest first. May be absent. oldSha is the sha the edited file carried; newSha is the sha of the content as edited, before the acceptance was added; seq is the seq the acceptance wrote.",

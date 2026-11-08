@@ -8,7 +8,10 @@ import { isDeepStrictEqual } from "node:util";
 import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus } from "./stages.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
-import { gitConfigPath } from "./gitconf.mjs";
+import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
+import { headOf } from "./checkpoint.mjs";
+import { PrLintConfigRefused } from "./pr-lint.mjs";
+import { PrLintRunRefused, prBodyPath, prLintPath, readDraftArtifact, readUnit, runPrLint, sha256 } from "./pr-lint-run.mjs";
 
 export { isPassed };
 
@@ -21,10 +24,23 @@ export const GATE_OPTIONS = [
   { label: "stop", description: "Stop here." },
 ];
 
+export const PUBLISH_GATE = "G:publish";
+export const PUBLISH_LABEL = "publish";
+export const KEEP_LOCAL_LABEL = "keep local";
+export const KEEP_LOCAL = "keep-local";
+
+const PUBLISH_OPTIONS = [
+  { label: PUBLISH_LABEL, description: "Push the branch and open the pull request." },
+  { label: KEEP_LOCAL_LABEL, description: "Keep the commits on this branch and publish nothing." },
+  { label: "redo", description: "Redo the draft before this gate." },
+];
+
+const optionsOf = (gate) => (gate === PUBLISH_GATE ? PUBLISH_OPTIONS : GATE_OPTIONS);
+
 const gateHeader = (gate) => `PB gate: ${gate}`;
 const gateQuestionText = (gate) => `Approve ${gate}?`;
 
-export const gateQuestion = (gate) => ({ question: gateQuestionText(gate), header: gateHeader(gate), options: GATE_OPTIONS, multiSelect: false });
+export const gateQuestion = (gate) => ({ question: gateQuestionText(gate), header: gateHeader(gate), options: optionsOf(gate), multiSelect: false });
 
 export const fileHash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
@@ -194,7 +210,70 @@ function policyReason({ policy: { mode } }) {
 }
 
 // Why this gate must ask a human, or null when it passes under the recorded policy.
-export const askReason = (contract, ledger, gate, root) => stopReason(contract, ledger, root) ?? CLASS_REASONS[gate.class] ?? policyReason(ledger);
+export const askReason = (contract, ledger, gate, root, voided = null) =>
+  stopReason(contract, ledger, root) ?? (gate.name === PUBLISH_GATE ? publishReason(ledger, root, voided) : null) ?? CLASS_REASONS[gate.class] ?? policyReason(ledger);
+
+// ---------- G:publish ----------
+
+export class PublishRefused extends Error {}
+
+// The refusals the binding and the lint can throw: a CLI reports them, and the tap puts them on the gate.
+export const isBindingRefusal = (e) => e instanceof PublishRefused || e instanceof PrLintRunRefused || e instanceof PrLintConfigRefused || e instanceof GitConfigRefused;
+
+function currentHead(root) {
+  const head = headOf(root);
+  if (head === null) throw new PublishRefused("git has no HEAD here, so the publish binding cannot be read");
+  return head;
+}
+const short = (sha) => String(sha).slice(0, 7);
+
+// The lint result as it stands for the body on disk: missing, stale (made for another body), failed or ok.
+export function publishLint(root) {
+  const lint = existsSync(prLintPath(root)) ? parsedOrNull(prLintPath(root)) : null;
+  if (lint === null) return { status: "missing", ok: false, failures: [] };
+  const failures = Array.isArray(lint.failures) ? lint.failures : [];
+  const current = existsSync(prBodyPath(root)) ? sha256(readFileSync(prBodyPath(root))) : null;
+  if (lint.bodyHash !== current) return { status: "stale", ok: false, failures };
+  return { status: lint.ok === true ? "ok" : "failed", ok: lint.ok === true, failures };
+}
+
+function lintReason(root) {
+  const { status, failures } = publishLint(root);
+  if (status === "missing") return "the PR lint has not run";
+  if (status === "stale") return "the PR lint is stale: it was run for another body than run/pr-body.md";
+  if (status === "failed") return `the PR lint failed: ${failures.map(({ rule }) => rule).join(", ")}`;
+  return null;
+}
+
+const hasLensRecord = ({ lenses }) => lenses?.["safety-net"] !== undefined && lenses["safety-net"] !== null && Object.keys(lenses["safety-net"]).length > 0;
+
+// Why the publish gate asks whatever the policy says. Under auto it never records the approval itself: a lens record only removes that reason.
+function publishReason(ledger, root, voided) {
+  const reason = voided ?? lintReason(root);
+  if (reason !== null || ledger.policy.mode !== "auto") return reason;
+  return hasLensRecord(ledger) ? "G:publish is approved by a human, never by the auto policy" : "no lens record yet for the safety net";
+}
+
+// A human approval that no longer matches HEAD or run/pr-body.md does not stand. Null when it does, or when there is none.
+export function publishVoidReason(ledger, root) {
+  const record = Object.hasOwn(ledger.gates, PUBLISH_GATE) ? ledger.gates[PUBLISH_GATE] : undefined;
+  if (!HUMAN_SOURCES.includes(record?.source) || record.answer !== "approve") return null;
+  const head = currentHead(root);
+  const bodyHash = existsSync(prBodyPath(root)) ? sha256(readFileSync(prBodyPath(root))) : null;
+  if (record.headSha === undefined && record.bodyHash === undefined) return "the G:publish approval no longer holds: it carries no binding to HEAD or run/pr-body.md";
+  const changes = [
+    ...(record.headSha === head ? [] : [`HEAD moved from ${short(record.headSha)} to ${short(head)}`]),
+    ...(record.bodyHash === bodyHash ? [] : ["run/pr-body.md changed"]),
+  ];
+  return changes.length === 0 ? null : `the G:publish approval no longer holds: ${changes.join(" and ")}`;
+}
+
+// The stale approval leaves the gates and is kept in voidedGates with the reason, so the audit trail shows it was given and then voided.
+export function voidPublish(ledger, reason) {
+  const { [PUBLISH_GATE]: record, ...kept } = ledger.gates;
+  if (record === undefined) return ledger;
+  return { ...ledger, gates: kept, voidedGates: [...(ledger.voidedGates ?? []), { gate: PUBLISH_GATE, record, reason }] };
+}
 
 // A model writes the dialog, so its words are the human's only when they are the words the CLI emitted, alone in
 // the call. Otherwise it could put "approve" on a description that says something else.
@@ -204,7 +283,7 @@ export const isGateQuestionCall = (gate, questions) => Array.isArray(questions) 
 export function gateAnswer(gate, toolResponse) {
   if (!isGateQuestionCall(gate, toolResponse?.questions)) return null;
   const answer = toolResponse.answers?.[gateQuestionText(gate)];
-  return GATE_OPTIONS.some(({ label }) => label === answer) ? answer : null;
+  return optionsOf(gate).some(({ label }) => label === answer) ? answer : null;
 }
 
 // A redo sends the stage back and leaves no record, so the gate comes due again when the stage finishes.
@@ -213,10 +292,35 @@ function reopenStage(ledger, name, gates) {
   return withStageStatus({ ...ledger, gates: kept }, gates.find((gate) => gate.name === name).stage, REDO_STATUS);
 }
 
-// What a human's answer to the asking gate does to the ledger.
-export function recordAnswer(ledger, name, answer, gates) {
+// What the human is shown at G:publish and what an approval binds to: HEAD, where the unit started and where the PR goes.
+export function publishFacts(root) {
+  const unit = readUnit(root);
+  return { headSha: currentHead(root), base: unit.base, target: readGitConfig(root).pr.base_branch ?? unit.base };
+}
+
+// What G:publish approved: the commit and the body the human saw, and where they go. It re-runs the lint, so the
+// record also says when the human approved over a failed one. `shown` is what gate eval showed (needsHuman.shown): HEAD
+// must still be that commit, or the human approves what they did not see. The body hash is not compared: the human may
+// edit the body at the gate (D20), so it binds at answer time, after the lint re-run.
+export function publishBinding(root, ledger, shown = null) {
+  const facts = publishFacts(root);
+  if (shown?.headSha !== undefined && shown.headSha !== facts.headSha) {
+    throw new PublishRefused(`HEAD moved since the question: the human was shown ${short(shown.headSha)} and HEAD is ${short(facts.headSha)}, so nothing was approved`);
+  }
+  const lint = runPrLint(root, readDraftArtifact(root, ledger.stage).title);
+  const failed = lint.ok ? {} : { lintOk: false, lintFailures: lint.failures };
+  return { ...facts, bodyHash: lint.bodyHash, ...failed };
+}
+
+// The gate record of a human's approval. A publish approval carries its binding.
+const approvalRecord = (source, binding = {}) => ({ source, answer: "approve", ...binding });
+
+// What a human's answer to the asking gate does to the ledger. A publish answer is an approval that carries its binding.
+export function recordAnswer(ledger, name, answer, gates, binding = {}) {
   const asked = { ...ledger, needsHuman: null };
   if (answer === "redo") return reopenStage(asked, name, gates);
+  if (answer === PUBLISH_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: approvalRecord("human", binding) } };
+  if (answer === KEEP_LOCAL_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer: KEEP_LOCAL } } };
   const recorded = { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer } } };
   return answer === "stop" ? { ...recorded, stop: { code: HUMAN_STOPPED, reason: `the human answered stop at ${name}`, seq: ledger.seq + 1 } } : recorded;
 }
@@ -251,9 +355,9 @@ export function appendRedoFeedback(root, ledger, gates, toolResponse) {
 }
 
 // A human's way past any answer: it undoes a redo that has not restarted, and the stop this gate's answer set.
-export function recordApproval(ledger, name, gates) {
+export function recordApproval(ledger, name, gates, binding = {}) {
   const reopened = reopenedGate(gates, ledger);
   const restored = reopened?.name === name ? withStageStatus(ledger, reopened.stage, "done") : ledger;
   const stoppedHere = Object.hasOwn(ledger.gates, name) && ledger.gates[name].answer === "stop";
-  return { ...restored, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: { source: "human-cli", answer: "approve" } } };
+  return { ...restored, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: approvalRecord("human-cli", binding) } };
 }

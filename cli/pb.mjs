@@ -8,13 +8,14 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep } from "../shared-node/checkpoint.mjs";
-import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
+import { PUBLISH_GATE, answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, replaceFile, tickPlanBox } from "../shared-node/plan-boxes.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
+import { abandonRun } from "../shared-node/unit-files.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
@@ -22,7 +23,7 @@ import { buildReport, closeStage, finishProblems, newestReturn, perTestOf, readR
 import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
-import { PrLintConfigRefused, lintDraft } from "../shared-node/pr-lint.mjs";
+import { prBodyPath, readDraftArtifact, readUnit, runPrLint } from "../shared-node/pr-lint-run.mjs";
 import { shellWord } from "../shared-node/shell-word.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
@@ -216,17 +217,75 @@ function gateEval(args) {
   const contract = loadStages(PLUGIN_ROOT);
   const answered = answeredGate(gatesFor(contract, current.taskType), current);
   if (answered !== undefined) return answeredResult(answered, current, root);
+  const voided = refusing(() => publishVoidReason(current, root));
+  const standing = voided === null ? current : voidPublish(current, voided);
+  const skipped = publishSkip(contract, standing, root);
+  if (skipped !== null) {
+    if (voided !== null) updateLedger(path, (ledger) => voidPublish(ledger, voided));
+    return skipped;
+  }
+  // The shown block is built before anything is written, so a missing body or runner leaves the ledger untouched.
+  const shown = dueGate(gatesFor(contract, standing.taskType), standing)?.name === PUBLISH_GATE ? publishShown(root, standing) : null;
   let gate;
   let reason;
+  // One transaction: the void of a stale approval, the due gate and the question, so no state sits between them.
   updateLedger(path, (ledger) => {
-    const due = dueGate(gatesFor(contract, ledger.taskType), ledger);
-    if (due === undefined) throw new Refusal(noGateDue(ledger));
+    const open = voided === null ? ledger : voidPublish(ledger, voided);
+    const due = dueGate(gatesFor(contract, open.taskType), open);
+    if (due === undefined) throw new Refusal(noGateDue(open));
     gate = due.name;
-    reason = askReason(contract, ledger, due, root);
-    return reason === null ? recordAuto(ledger, gate) : { ...ledger, needsHuman: { gate, reason, seq: ledger.seq + 1 } };
+    if (gate === PUBLISH_GATE && shown === null) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
+    reason = askReason(contract, open, due, root, voided);
+    if (reason === null) return recordAuto(open, gate);
+    const facts = gate === PUBLISH_GATE ? { shown: { headSha: shown.headSha, base: shown.base, target: shown.target } } : {};
+    return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, ...facts } };
   });
   if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto" };
-  return { ok: true, result: "needs-human", gate, reason, question: gateQuestion(gate), humanCommand: approveCommand(root, gate) };
+  const asked = { ok: true, result: "needs-human", gate, reason, question: gateQuestion(gate), humanCommand: approveCommand(root, gate) };
+  return gate === PUBLISH_GATE ? { ...asked, shown } : asked;
+}
+
+// A unit with no commits past its base has nothing to publish (D19): the gate is skipped and no approval is recorded.
+// Recording a skip so blockingGate and next-action agree is left to Task 71 (pb publish).
+function publishSkip(contract, ledger, root) {
+  if (dueGate(gatesFor(contract, ledger.taskType), ledger)?.name !== PUBLISH_GATE) return null;
+  const { baseSha } = readUnitOrRefuse(root);
+  if (runGit(root, ["rev-list", "--count", `${baseSha}..HEAD`]) !== "0") return null;
+  return { ok: true, result: "skip", gate: PUBLISH_GATE, reason: "the unit has no commits past its base, so there is nothing to publish" };
+}
+
+const readUnitOrRefuse = (root) => refusing(() => readUnit(root));
+
+function publishCommits(root, unit) {
+  const rows = runGit(root, ["log", "--reverse", "--format=%H%x09%s", `${unit.baseSha}..HEAD`]).split("\n").filter(Boolean);
+  return rows.map((row) => {
+    const [sha, ...subject] = row.split("\t");
+    return { sha, subject: subject.join("\t"), inUnit: unit.commits.includes(sha) };
+  });
+}
+
+// What the human sees at G:publish: the draft, its lint, the coordination text apart from the body, and what would go out.
+// headSha, base and target are the facts a publish answer is held to (needsHuman.shown).
+function publishShown(root, ledger) {
+  const unit = readUnitOrRefuse(root);
+  const draft = readDraft(root, ledger.stage);
+  if (!existsSync(prBodyPath(root))) throw new Refusal("run/pr-body.md is missing, so there is no draft to show");
+  const lint = publishLint(root);
+  const config = readTestConfig(root, ledger.configHash);
+  const runner = config.runners?.[config.default_runner];
+  if (runner === undefined) throw new Refusal("test-config.json has no default runner, so the test command cannot be shown");
+  const { headSha, base, target } = refusing(() => publishFacts(root));
+  return {
+    title: draft.title,
+    body: readFileSync(prBodyPath(root), "utf8"),
+    lint: { ok: lint.ok, failures: lint.failures },
+    coordination: draft.coordination ?? "no comment",
+    base,
+    target,
+    headSha,
+    testCommand: runner.command,
+    commits: publishCommits(root, unit),
+  };
 }
 
 function answeredResult({ name, answer }, { stop }, root) {
@@ -245,19 +304,23 @@ function awaitedGate(ledger, gates) {
   return (blockingGate(gates, ledger) ?? reopenedGate(gates, ledger))?.name;
 }
 
-function approved(ledger, gate) {
+function approved(ledger, gate, root) {
   const gates = gatesFor(loadStages(PLUGIN_ROOT), ledger.taskType);
   const awaited = awaitedGate(ledger, gates);
   if (gate !== awaited) {
     throw new Refusal(`gate ${gate} is neither due nor pending. ${awaited === undefined ? "No gate is waiting." : `Gate ${awaited} is waiting.`}`);
   }
-  return recordApproval(ledger, gate, gates);
+  // The question's shown HEAD binds the answer here as it does in the tap: a commit since then is not approved.
+  const shown = ledger.needsHuman?.gate === gate ? ledger.needsHuman.shown : null;
+  const binding = gate === PUBLISH_GATE ? refusing(() => publishBinding(root, ledger, shown)) : undefined;
+  return recordApproval(ledger, gate, gates, binding);
 }
 
 function humanApprove(args) {
   if (args.length !== 1) throw new UsageError("usage: pb human approve <gate>");
   const [gate] = args;
-  updateLedger(runLedgerPath().path, (ledger) => approved(ledger, gate));
+  const { root, path } = runLedgerPath();
+  updateLedger(path, (ledger) => approved(ledger, gate, root));
   return { ok: true, gate, source: "human-cli" };
 }
 
@@ -265,9 +328,8 @@ function humanApprove(args) {
 function humanAbandon(args) {
   if (args.length > 0) throw new UsageError("usage: pb human abandon");
   const runDir = join(findRunRoot(process.cwd()) ?? toplevel(), ".pairingbuddy", "run");
-  const names = existsSync(runDir) ? readdirSync(runDir).filter((name) => name !== ".gitignore") : [];
+  const names = abandonRun(runDir);
   if (names.length === 0) return { ok: true, result: "nothing-to-abandon", removed: [], message: "nothing to abandon: no unit or task is open" };
-  for (const name of names) rmSync(join(runDir, name), { recursive: true, force: true });
   return { ok: true, result: "abandoned", removed: names.map((name) => `.pairingbuddy/run/${name}`) };
 }
 
@@ -822,16 +884,17 @@ function readUnitForRecord(root, ledger) {
   if (!Array.isArray(unit?.tasks)) throw new Refusal("run/unit.json has no tasks list, so the task cannot end. Nothing was touched");
   const headSha = headOf(root);
   if (headSha === null) throw new Refusal("there is no commit yet, so the task cannot end. Nothing was touched");
-  return { path, unit, record: newTaskRecord({ ledger, headSha }) };
+  return { path, unit, record: newTaskRecord({ ledger, headSha }), commits: ledger.commits };
 }
 
 // A retry after a crash finds its own record last, and appends nothing more.
 function appendTaskRecord(opened) {
   if (opened === null) return;
-  const { path, unit, record } = opened;
+  const { path, unit, record, commits } = opened;
   const last = unit.tasks.at(-1);
   if (last?.title === record.title && last?.headSha === record.headSha) return;
   unit.tasks.push(record);
+  unit.commits = [...new Set([...(unit.commits ?? []), ...commits])];
   writeJsonAtomic(path, unit);
 }
 
@@ -1028,39 +1091,31 @@ function gitDoctor() {
 function currentDraftTitle(root) {
   const { stage } = readLedger(join(taskDirOf(root), "ledger.json"));
   if (stage.name !== "pr-draft") throw new Refusal(`the current stage is ${stage.name || "none"}, not pr-draft, so there is no draft to lint`);
-  const pbKey = `pr-draft.draft-pull-request.-.r1.a${stage.attempt}`;
-  const path = join(artifactsDirOf(root), `${pbKey}.json`);
-  if (!existsSync(path)) throw new Refusal(`no draft artifact ${pbKey} under run/task/artifacts, so there is nothing to lint`);
-  return readStateJson(path).title;
+  return readDraft(root, stage).title;
 }
 
-function diffLinesSince(root, baseSha) {
-  const rows = runGit(root, ["diff", "--numstat", `${baseSha}...HEAD`]).split("\n").filter(Boolean);
-  return rows.reduce((sum, row) => sum + row.split("\t").slice(0, 2).reduce((n, count) => n + (Number(count) || 0), 0), 0);
+// The draft artifact the tap filed for this attempt of pr-draft.
+function readDraft(root, stage) {
+  return refusing(() => readDraftArtifact(root, stage));
 }
 
 function prLint(args) {
   assertNoArgs(args, "pr lint");
   const root = toplevel();
   if (!existsSync(unitPathOf(root))) throw new Refusal("no unit is open (run/unit.json is missing), so there is no draft to lint");
-  const unit = readStateJson(unitPathOf(root));
   const title = currentDraftTitle(root);
-  const bodyPath = join(root, ".pairingbuddy", "run", "pr-body.md");
-  if (!existsSync(bodyPath)) throw new Refusal("run/pr-body.md is missing, so there is no draft to lint");
-  const body = readFileSync(bodyPath, "utf8");
-  const { pr } = loadGitConfigOrRefuse(root);
-  let linted;
+  // Issue 1, by plan: a lint failure is recorded here (exit 0) and goes to the human at G:publish, not stopped here.
+  return refusing(() => runPrLint(root, title));
+}
+
+// The shared lint and binding code throws its own refusals; the CLI reports them as its own.
+function refusing(fn) {
   try {
-    linted = lintDraft({ title, body, diffLines: diffLinesSince(root, unit.baseSha), titleTemplate: pr.title_template, config: pr.lint });
+    return fn();
   } catch (e) {
-    if (e instanceof PrLintConfigRefused) throw new Refusal(e.message);
+    if (isBindingRefusal(e)) throw new Refusal(e.message);
     throw e;
   }
-  const { ok, failures } = linted;
-  const result = { ok, failures, bodyHash: createHash("sha256").update(body).digest("hex") };
-  writeJsonAtomic(join(root, ".pairingbuddy", "run", "pr-lint.json"), result);
-  // Issue 1, by plan: a lint failure is recorded here (exit 0) and goes to the human at G:publish (Task 70), not stopped here.
-  return result;
 }
 
 export const VERBS = {

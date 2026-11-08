@@ -5,9 +5,11 @@ const PLAIN_NAMES = {
   "code-scenarios": "write scenarios",
   "code-tdd": "build test by test",
   "code-safety-net": "safety-net review",
+  "pr-draft": "write the pull request",
   // gates
   "G:scenarios": "your OK on the scenarios",
   "G:task-end": "your sign-off at the end",
+  "G:publish": "your OK to publish",
   // agents
   "apply-config-change": "changing the config",
   "runner": "running the checks",

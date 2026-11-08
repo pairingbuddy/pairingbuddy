@@ -4,7 +4,6 @@ import "./isolated-tmpdir.mjs";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,38 +12,12 @@ import { fileURLToPath } from "node:url";
 import { writeLedger } from "../../shared-node/ledger.mjs";
 import { classOf, matchVerb } from "../../shared-node/verbs.mjs";
 import { baseLedger } from "./ledger-fixture.mjs";
-import { env, makeRepo, pb } from "./cli-repo-fixture.mjs";
+import { pb } from "./cli-repo-fixture.mjs";
+import { CLEAN_BODY, CLEAN_TITLE, repoWithDrafts } from "./publish-fixture.mjs";
+import { sha256 } from "./tap-fixture.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const GATE = join(ROOT, "hooks", "gate-boot.mjs");
-const CLEAN_TITLE = "feat: add export button";
-const CLEAN_BODY = "## Summary\n\nAdds an export button to the report page so a reader can download the table as CSV.\n\n## Impact\n\nReaders get a new button; nothing else changes.\n";
-const draftKey = (attempt) => `pr-draft.draft-pull-request.-.r1.a${attempt}`;
-const sha256 = (text) => createHash("sha256").update(text).digest("hex");
-
-// A repo with a unit open, one commit on the unit branch, a ledger on the pr-draft stage at ledgerAttempt, and the draft
-// artifacts the tap would have filed (one per attempt in titles, keyed by attempt number).
-function repoWithDrafts({ titles, body, ledgerAttempt = 1 }) {
-  const repo = makeRepo({ openTask: false, remote: true });
-  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "export", "--yes");
-  assert.equal(opened.code, 0, `unit open: ${opened.stderr}`);
-  writeFileSync(join(repo.dir, "export.txt"), "export\n");
-  execFileSync("git", ["add", "export.txt"], { cwd: repo.dir, env: env() });
-  execFileSync("git", ["commit", "-q", "-m", "feat: add export"], { cwd: repo.dir, env: env() });
-  const runDir = join(repo.dir, ".pairingbuddy", "run");
-  mkdirSync(join(runDir, "task", "artifacts"), { recursive: true });
-  writeFileSync(join(runDir, "pr-body.md"), body);
-  for (const [attempt, title] of Object.entries(titles)) {
-    writeFileSync(join(runDir, "task", "artifacts", `${draftKey(attempt)}.json`), JSON.stringify({ pb_key: draftKey(attempt), title, body, labels: [], base: "main", coordination: null }));
-  }
-  writeLedger(join(runDir, "task", "ledger.json"), {
-    ...baseLedger(),
-    stage: { name: "pr-draft", status: "active", runId: "r1", attempt: ledgerAttempt },
-    stages: [],
-  });
-  return { repo, runDir };
-}
-
 const repoWithDraft = ({ title, body }) => repoWithDrafts({ titles: { 1: title }, body });
 
 test("cli-lints-pr-body-and-title-and-prints-result", () => {

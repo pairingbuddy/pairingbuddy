@@ -15,7 +15,6 @@ import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,17 +22,15 @@ import { fileURLToPath } from "node:url";
 
 import { readLedger, updateLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { COMMIT_FAILED } from "../../shared-node/verbs.mjs";
+import { fixture, recordedAnswer, sha256, SESSION } from "./tap-fixture.mjs";
 
 const AGENT_BUDGET = "agent-budget";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
-const PAYLOADS = join(ROOT, "tests", "probes", "fixtures", "payloads");
-const fixture = (name) => JSON.parse(readFileSync(join(PAYLOADS, name), "utf8"));
 
 const TASK_END = "G:task-end";
 const CONFIG = "code-config";
 const SAFETY_NET = "code-safety-net";
-const SESSION = "session-one";
 const CONFIG_TEXT = '{"runners":{}}\n';
 const ANSWERS = ["approve", "redo", "stop"];
 
@@ -54,7 +51,7 @@ function makeLedger(over = {}) {
   return {
     v: 1, seq: 0, sha: "0".repeat(64), kind: "code", taskType: "config_change",
     owner: { sessionId: null, lastSeen: null }, task: "Task 26",
-    plan: { path: "", title: "" }, configHash: createHash("sha256").update(CONFIG_TEXT).digest("hex"),
+    plan: { path: "", title: "" }, configHash: sha256(CONFIG_TEXT),
     policy: { mode: "", source: "" },
     stage: { name: SAFETY_NET, status: "done", runId: "wf_1", attempt: 1, startedAt: null },
     stages: doneStages(CONFIG, SAFETY_NET),
@@ -149,20 +146,6 @@ function assertAutoPassed(repo, output, gate = TASK_END) {
   assert.deepEqual(output, { ok: true, result: "auto-pass", gate, source: "auto" });
   assert.equal(repo.ledger().gates[gate]?.source, "auto", "the gate record carries source auto");
   assert.equal(repo.ledger().needsHuman, null, "an auto-pass leaves needsHuman empty");
-}
-
-// Built on the human P3 recording (pb-probes/human/P3/20261031-181900/hooks.jsonl, scrubbed into the payload
-// fixtures). Only session, cwd, the question and the answer are filled in by the test; the recording's question
-// was "Approve this stage?", and a gate question must match what the CLI emitted, options included.
-function recordedAnswer(repo, gateQuestion, answer, { over = {}, toolResponse } = {}) {
-  const recorded = fixture("posttooluse-askuserquestion.json");
-  const questions = recorded.tool_input.questions.map((asked) => ({ ...asked, ...gateQuestion }));
-  const answered = { ...recorded.tool_input, questions, answers: { [gateQuestion.question]: answer } };
-  return {
-    ...recorded, session_id: SESSION, cwd: repo.dir,
-    tool_input: answered, tool_response: toolResponse === undefined ? answered : toolResponse,
-    ...over,
-  };
 }
 
 function recordedQuestion(repo, input) {

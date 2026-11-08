@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Tap: records StructuredOutput returns as run artifacts, stores the Workflow runId in the ledger, and
 // records a human's AskUserQuestion answer to the gate that is asking.
-// Never blocks a tool: every path exits 0 and nothing is printed.
+// Never blocks a tool: every path exits 0. It prints only when a publish answer could not be bound, and then as
+// additionalContext, the channel the other hooks use.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, writeSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -89,18 +90,43 @@ function askedAnswer({ gateAnswer }, ledger, toolResponse) {
   return gate === undefined ? null : gateAnswer(gate, toolResponse);
 }
 
-function withAnswer(modules, ledger, toolResponse) {
+// Pure: the binding of a publish answer is computed once by the caller, never here.
+function withAnswer(modules, ledger, toolResponse, binding) {
   const answer = askedAnswer(modules, ledger, toolResponse);
-  return answer === null ? ledger : modules.recordAnswer(ledger, ledger.needsHuman.gate, answer, runGates(modules, ledger));
+  return answer === null ? ledger : modules.recordAnswer(ledger, ledger.needsHuman.gate, answer, runGates(modules, ledger), binding);
+}
+
+function say(message) {
+  const hookSpecificOutput = { hookEventName: "PostToolUse", additionalContext: message };
+  writeSync(1, `${JSON.stringify({ hookSpecificOutput })}\n`);
+}
+
+// A publish answer that cannot be bound is not approved. The gate keeps asking with the reason on it, and the hook says so.
+function refuseAnswer({ updateLedger }, ledgerPath, gate, e) {
+  const reason = `the publish answer could not be bound: ${e.message}`;
+  updateLedger(ledgerPath, (current) => (current.needsHuman?.gate === gate ? { ...current, needsHuman: { ...current.needsHuman, reason } } : current));
+  say(`Pairing Buddy did not record the ${gate} answer: ${e.message}. ${gate} is still asking.`);
 }
 
 // Only tool_response counts: it holds what the human chose, and tool_input is the model's.
 function tapQuestion(modules, root, ledgerPath, toolResponse) {
-  const { appendRedoFeedback, readLedger, updateLedger } = modules;
+  const { appendRedoFeedback, isBindingRefusal, publishBinding, readLedger, updateLedger, PUBLISH_LABEL, KEEP_LOCAL_LABEL } = modules;
   const ledger = readLedger(ledgerPath);
-  if (withAnswer(modules, ledger, toolResponse) === ledger) return;
-  updateLedger(ledgerPath, (current) => withAnswer(modules, current, toolResponse));
-  if (askedAnswer(modules, ledger, toolResponse) === "redo") appendRedoFeedback(root, ledger, runGates(modules, ledger), toolResponse);
+  const answer = askedAnswer(modules, ledger, toolResponse);
+  if (answer === null) return;
+  let binding;
+  if (answer === PUBLISH_LABEL) {
+    try {
+      binding = publishBinding(root, ledger, ledger.needsHuman.shown ?? null);
+    } catch (e) {
+      if (!isBindingRefusal(e)) throw e;
+      refuseAnswer(modules, ledgerPath, ledger.needsHuman.gate, e);
+      return;
+    }
+  }
+  updateLedger(ledgerPath, (current) => withAnswer(modules, current, toolResponse, binding));
+  if (answer === "redo") appendRedoFeedback(root, ledger, runGates(modules, ledger), toolResponse);
+  if (answer === KEEP_LOCAL_LABEL) modules.closeUnit(join(root, ".pairingbuddy", "run"));
 }
 
 function tapRun(modules, root, input) {
@@ -118,14 +144,15 @@ function tapRun(modules, root, input) {
 }
 
 try {
-  const { appendRedoFeedback, gateAnswer, gatesFor, recordAnswer } = await import("../shared-node/gates.mjs");
+  const { KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, gateAnswer, gatesFor, isBindingRefusal, publishBinding, recordAnswer } = await import("../shared-node/gates.mjs");
   const { parseKey } = await import("../shared-node/keys.mjs");
   const { readLedger, updateLedger } = await import("../shared-node/ledger.mjs");
+  const { closeUnit } = await import("../shared-node/unit-files.mjs");
   const { findSessionRoot } = await import("../shared-node/run-root.mjs");
   const { loadStages } = await import("../shared-node/stages.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
   const root = findSessionRoot(input.cwd, input.session_id);
-  if (root !== null) tapRun({ appendRedoFeedback, gateAnswer, gatesFor, loadStages, parseKey, readLedger, recordAnswer, updateLedger }, root, input);
+  if (root !== null) tapRun({ KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, gateAnswer, gatesFor, isBindingRefusal, loadStages, parseKey, publishBinding, readLedger, recordAnswer, updateLedger }, root, input);
 } catch {
   // not a run situation
 }

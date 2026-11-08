@@ -15,7 +15,7 @@ const HEX64 = /^[0-9a-f]{64}$/;
 // Shape only, so a well-shaped impossible date stays readable and the gate can treat it as expired.
 const ISO_TIMESTAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
 export const KINDS = ["code", "plan"];
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "voidedGates"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -90,8 +90,8 @@ function checkObject(value, path, shape, errors, { closed = true, optional = [] 
   }
 }
 
-function checkNullableObject(value, path, shape, errors) {
-  if (value !== null) checkObject(value, path, shape, errors);
+function checkNullableObject(value, path, shape, errors, options) {
+  if (value !== null) checkObject(value, path, shape, errors, options);
 }
 
 export function validateLedger(ledger) {
@@ -121,8 +121,10 @@ export function validateLedger(ledger) {
     configAcceptances: [Array.isArray, "an array"],
     checkpoints: [Array.isArray, "an array"],
     configApproval: [() => true, ""],
+    lenses: [isObject, "an object"], // nothing writes it until T5c; the schema documents the minimal shape
+    voidedGates: [Array.isArray, "an array"],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
-  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval"] });
+  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "voidedGates"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
@@ -155,7 +157,12 @@ export function validateLedger(ledger) {
         checkNullableObject(ledger.stop, "stop", { reason: [isNonEmptyString, "a non-empty string"], seq: [isCount, "a non-negative integer"], code: [isNonEmptyString, "a non-empty string"] }, errors);
         break;
       case "needsHuman":
-        checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"] }, errors);
+        checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"], shown: [isObject, "an object"] }, errors, { optional: ["shown"] });
+        break;
+      case "voidedGates":
+        if (Array.isArray(ledger.voidedGates)) {
+          ledger.voidedGates.forEach((v, i) => checkObject(v, `voidedGates.${i}`, { gate: [isNonEmptyString, "a non-empty string"], record: [isObject, "an object"], reason: [isString, "a string"] }, errors));
+        }
         break;
       case "acceptances":
         if (Array.isArray(ledger.acceptances)) {
