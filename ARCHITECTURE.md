@@ -208,6 +208,25 @@ Long Claude Code sessions tend to drift — the session agent starts skipping wo
 - No activation signal needed — injects regardless of whether a workflow is active (the cost is 4 lines of harmless text)
 - Time-based, not count-based — adapts naturally to both rapid agent bursts and slow interactive sessions
 
+### Git and gh Guard (D17)
+
+The gate hook (`hooks/gate.mjs`) denies git and gh calls in Bash commands by run state and caller. The rules are data plus a pure classifier in `shared-node/d17.mjs` (`D17_TABLE`, `classify`, `decide`, `d17Denial`). `shared-node/shell-calls.mjs` reads the command and `shared-node/git-files.mjs` reads git state.
+
+| Caller and state | Rule |
+|------------------|------|
+| Subagent, run or unit open | Read-only git/gh allowlist, plus the table's single-file checkout/restore/switch forms and branch creation. Everything else is denied, plumbing included. |
+| Main context, run open | The table's denylist: push outside `pb publish`, `gh pr create/merge/edit`, no-revert commands, branch switching while a unit is open, and plumbing equivalents. |
+| Subagent, no run | No push to a protected or unresolvable target, no force. |
+| Main context, no run | Unrestricted. The guard imports nothing new on this path. |
+
+**Shell reader.** It handles heredocs, ANSI-C (`$'...'`) quoting, git global options, `gh -R` anywhere, and `cd`, `-C`, `--git-dir` and `GIT_DIR` targets. It re-reads commands passed to `watch`, `git rebase -x`, `git bisect run`, `git submodule foreach` and `script -c`.
+
+**Git state as files.** Hooks never call git. They read HEAD, config and refs as plain files, including linked worktrees. A reftable repo reads as "unknown".
+
+**Fail closed.** Write and Edit into `.git` are denied while a run exists. If the guard's modules fail to import, subagents are denied.
+
+**Accepted gaps** (Section 8): built command words, `${IFS}` splitting, aliases and scripts in config, and commits made without `git commit`.
+
 ### State Management
 
 State files live in `.pairingbuddy/` at the git root of the target project:

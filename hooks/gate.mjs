@@ -145,15 +145,97 @@ async function denyAgentWithNoRun(toolInput) {
 // unit open, and then it denies, since a model never approves a gate.
 async function denyUnitOpenConfirm(payload) {
   const command = payload.tool_input?.command;
-  if (typeof command !== "string") return;
+  if (typeof command !== "string") return false;
   const auto = payload.permission_mode === "auto" || process.env[POLICY_ENV] === "auto";
-  if (auto) return;
+  if (auto) return false;
   try {
     const { unitOpenDenial } = await import("../shared-node/unit-open-denial.mjs");
     const reason = unitOpenDenial(payload, { denyBuiltWords: true });
+    if (reason === null) return false;
+    decide("deny", reason);
+    return true;
+  } catch (e) {
+    if (!/\bunit\s+open\b/.test(command) || !/--(yes|branch)\b/.test(command)) return false;
+    decide("deny", `Gate error with no run open: cannot tell whether this unit open confirms, so the call is denied: ${e?.message ?? e}`);
+    return true;
+  }
+}
+
+// Either agent key marks a subagent, drift included: with no run only a subagent is held to D17, whatever the permission mode.
+const isSubagent = (payload) => payload?.agent_id !== undefined || payload?.agent_type !== undefined;
+
+// A command that moves to another directory may reach a run from a cwd outside it. Only such a command, or a subagent's, pays
+// for the import, so a plain main-context call outside a run loads nothing new.
+const MOVES_DIRECTORY = /(?:^|[\s;&|(){}])(?:(?:cd|pushd|-C)(?=\s|$)|--git-dir|--work-tree|GIT_DIR=|GIT_WORK_TREE=)/;
+const MENTIONS_GIT = /\bg(?:it|h)\b/;
+// Set when d17.mjs cannot be read for a command that moves to another directory: nothing can then say which run it touches.
+let commandReadingFailure = null;
+
+async function addCommandRunRoots(payload, cwd) {
+  const command = payload.tool_input?.command;
+  if (typeof command !== "string") return;
+  const text = command.replace(/\\\n|['"\\]/g, "");
+  if (!isSubagent(payload) && !(MOVES_DIRECTORY.test(text) && MENTIONS_GIT.test(text))) return;
+  try {
+    const { commandDirectories } = await import("../shared-node/d17.mjs");
+    for (const dir of commandDirectories(command, cwd)) addRunRoot(canonicalPath(dir));
+  } catch (e) {
+    // Without the reading, only the cwd and the session say where the run is. The failure is kept: with no run found, a
+    // command that could reach one is denied when it mutates (denyD17WithNoRun), and with a run the gate denies later.
+    commandReadingFailure = e;
+  }
+}
+
+// What a subagent may run when d17.mjs cannot be read: git and gh calls that only read, found in the raw text. The same
+// list as shared-node/d17.mjs, without its option parsing, so anything it cannot place is a deny.
+const GIT_READ_ONLY_VERB = /^(?:status|log|diff|show|rev-parse|ls-files|ls-tree|cat-file|blame|grep|describe|shortlog|merge-base|rev-list|for-each-ref|name-rev|check-ignore|var|help|version)$/;
+const GH_READ_ONLY_CALL = /^(?:pr (?:view|list|status|checks|diff)|issue (?:view|list)|repo view|run (?:view|list)|help|version)$/;
+const GIT_GLOBAL_WITH_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env"]);
+const GH_GLOBAL_WITH_VALUE = new Set(["-R", "--repo", "--hostname"]);
+const WRITING_API_FLAG = /^(?:-[A-Za-z]*[fFX]|--(?:field|raw-field|input|method))/;
+
+function rawCallIsReadOnly(name, words) {
+  const value = name === "git" ? GIT_GLOBAL_WITH_VALUE : GH_GLOBAL_WITH_VALUE;
+  const positional = [];
+  for (let i = 0; i < words.length && positional.length < 2; i += 1) {
+    if (words[i].startsWith("-")) i += value.has(words[i]) ? 1 : 0;
+    else positional.push(words[i]);
+  }
+  const [first, second] = positional;
+  if (first === undefined) return true;
+  if (name === "git") return GIT_READ_ONLY_VERB.test(first) || (first === "config" && words.some((word) => /^--(?:get|list)/.test(word) || word === "-l"));
+  if (first === "api") return !words.some((word) => WRITING_API_FLAG.test(word));
+  return GH_READ_ONLY_CALL.test(second === undefined ? first : `${first} ${second}`);
+}
+
+function rawAllowlistDenial(text) {
+  for (const [, name, rest] of text.matchAll(/(?<![\w.-])(git|gh)(?![\w.-])([^;&|\n()`]*)/g)) {
+    if (!rawCallIsReadOnly(name, rest.trim().split(/\s+/).filter(Boolean))) return name;
+  }
+  return null;
+}
+
+// Text that could change a run's state from a directory the gate could not read.
+const MUTATING_RAW = /\bgit\b[^;&|\n]*\b(?:push|send-pack|http-push|reset|clean|checkout|restore|switch|branch|rebase|stash|bisect|update-ref|symbolic-ref|commit|worktree|read-tree|checkout-index)\b|\bgh\b[^;&|\n]*\b(?:pr|release|repo)\b/;
+
+// With no run, D17 holds subagents only. A failure denies every git or gh call that is not plainly read-only, since a subagent
+// must never publish or revert. The main context is held only when its command moved to a directory the gate could not read.
+async function denyD17WithNoRun(payload, cwd) {
+  const command = payload.tool_input?.command;
+  const subagent = isSubagent(payload);
+  if (typeof command !== "string" || (!subagent && commandReadingFailure === null)) return;
+  const text = command.replace(/\\\n|['"\\]/g, "");
+  if (!subagent) {
+    if (MUTATING_RAW.test(text)) decide("deny", `Gate error with no run open: cannot tell which run this git or gh call reaches, so the call is denied: ${commandReadingFailure?.message ?? commandReadingFailure}`);
+    return;
+  }
+  try {
+    const { d17Denial } = await import("../shared-node/d17.mjs");
+    const reason = d17Denial({ command, cwd, runState: "none", isSubagent: true });
     if (reason !== null) decide("deny", reason);
   } catch (e) {
-    if (/\bunit\s+open\b/.test(command) && /--(yes|branch)\b/.test(command)) decide("deny", `Gate error with no run open: cannot tell whether this unit open confirms, so the call is denied: ${e?.message ?? e}`);
+    const call = rawAllowlistDenial(text);
+    if (call !== null) decide("deny", `Gate error with no run open: cannot tell whether this ${call} call is read-only, so the call is denied for a subagent: ${e?.message ?? e}`);
   }
 }
 
@@ -185,6 +267,7 @@ try {
   if (sessionRoot !== null) runRoots.add(sessionRoot);
   const targets = targetPaths(payload, cwd);
   targets.forEach(addRunRoot);
+  if (payload?.tool_name === "Bash") await addCommandRunRoots(payload, cwd);
   if (runRoots.size > 0) {
     if (importFailure !== null) throw importFailure;
     const { checkCall } = await import("../shared-node/gate-rules.mjs");
@@ -195,7 +278,7 @@ try {
   } else if (payload?.tool_name === "Agent") {
     await denyAgentWithNoRun(payload.tool_input ?? {});
   } else if (payload?.tool_name === "Bash") {
-    await denyUnitOpenConfirm(payload);
+    if (!(await denyUnitOpenConfirm(payload))) await denyD17WithNoRun(payload, cwd);
   } else if (payload?.tool_name === "AskUserQuestion") {
     denyQuestionWithNoHuman(payload);
   }

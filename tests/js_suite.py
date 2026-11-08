@@ -22,6 +22,8 @@ JS_TEST_FILES = [
     "tests/js/configured-branch-rules.test.mjs",
     "tests/js/curate-guidance-drops-suggestions.test.mjs",
     "tests/js/current-test.test.mjs",
+    "tests/js/d17-guard.test.mjs",
+    "tests/js/d17-rules.test.mjs",
     "tests/js/gate-eval.test.mjs",
     "tests/js/gate.test.mjs",
     "tests/js/git-config-bootstrap.test.mjs",

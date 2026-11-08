@@ -260,7 +260,7 @@ describe("wrong-class verbs inside a compound command", IN_PARALLEL, () => {
 });
 
 const MENTIONS = [
-  ["a commit message", 'git commit -m "fix pb test"'],
+  ["a git log search", 'git log --grep "fix pb test"'],
   ["a grep pattern", "grep 'pb test' f"],
   ["an echoed line", "echo pb publish"],
   ["a wrapped argument", "timeout 5 grep 'pb test' f"],
@@ -270,7 +270,7 @@ const MENTIONS = [
   ["a printf", "printf pb test"],
   ["a comment after a command", "ls # pb test"],
   ["a comment line", "# then pb test\nls"],
-  ["the path of the CLI as a plain argument", "git add cli/pb.mjs tests/js/verbs.test.mjs"],
+  ["the path of the CLI as a plain argument", "git diff cli/pb.mjs tests/js/verbs.test.mjs"],
 ];
 
 describe("a wrong-class verb that is only mentioned stays undecided", IN_PARALLEL, () => {
@@ -280,6 +280,32 @@ describe("a wrong-class verb that is only mentioned stays undecided", IN_PARALLE
         const result = await runGate(bashCall(command, { agentType }));
 
         assertSilent(result);
+      });
+    }
+  }
+});
+
+// A pb verb named inside a commit message, or the CLI's path given to git add, is a mention too. RUN_REPO holds a run, and
+// D17 lets the main context commit and add during a run, so there the gate stays silent. A subagent is denied the same
+// command by D17, not by a pb verb rule, so its deny must come from D17 and must not name a pb verb.
+const GIT_MENTIONS = [
+  ["a commit message", 'git commit -m "fix pb test"', /Subagents do not commit during a run/],
+  ["the path of the CLI as a plain argument", "git add cli/pb.mjs tests/js/verbs.test.mjs", /A subagent during a run only reads/],
+];
+
+describe("a pb verb inside a git command stays a mention", IN_PARALLEL, () => {
+  for (const { caller, agentType } of CALLERS) {
+    for (const [shape, command, subagentDeny] of GIT_MENTIONS) {
+      test(`${caller} using ${shape}`, async () => {
+        const result = await runGate(bashCall(command, { agentType }));
+
+        if (agentType === undefined) {
+          assertSilent(result);
+          return;
+        }
+        const reason = denialReason(result);
+        assert.match(reason, subagentDeny, "the deny comes from D17");
+        assert.doesNotMatch(reason, /belongs to/, "no pb verb rule decided this");
       });
     }
   }
@@ -673,20 +699,29 @@ describe("runner auto-allow is for the exact command only", IN_PARALLEL, () => {
   }
 });
 
+// Every call runs in RUN_REPO, which holds a run ledger, so the git and gh rows are denied by D17 and the row names the rule it expects.
 describe("deny messages do not advertise pb human abandon", IN_PARALLEL, () => {
   const DENIALS = [
-    ["pb human abandon itself", `${PB} human abandon`, undefined],
-    ["another human verb", `${PB} human approve g1`, undefined],
-    ["a runner verb from main context", `${PB} test`, undefined],
-    ["a main verb from a subagent", `${PB} publish`, "pairingbuddy:apply-config-change"],
+    ["pb human abandon itself", `${PB} human abandon`, undefined, /pb human/],
+    ["another human verb", `${PB} human approve g1`, undefined, /pb human/],
+    ["a runner verb from main context", `${PB} test`, undefined, /runner/i],
+    ["a main verb from a subagent", `${PB} publish`, "pairingbuddy:apply-config-change", /main context/i],
+    ["git push during a run", "git push", undefined, /git push is denied during a run/],
+    ["gh pr merge during a run", "gh pr merge 3", undefined, /gh pr merge is denied during a run/],
+    ["gh pr create during a run", "gh pr create --fill", undefined, /gh pr create, edit, ready/],
+    ["git reset --hard during a run", "git reset --hard", undefined, /Nothing reverts during a run/],
+    ["a hook-skipping commit during a run", "git commit --no-verify -m x", undefined, /skips hooks or signing/],
+    ["a subagent's commit during a run", "git commit -m x", "pairingbuddy:apply-config-change", /Subagents do not commit/],
+    ["a subagent's push to main during a run", "git push origin main", "pairingbuddy:apply-config-change", /git push is denied during a run/],
   ];
 
-  for (const [name, command, agentType] of DENIALS) {
+  for (const [name, command, agentType, expected] of DENIALS) {
     test(`deny of ${name}`, async () => {
       const result = await runGate(bashCall(command, { agentType }));
 
       const reason = denialReason(result);
 
+      assert.match(reason, expected, "the deny comes from the intended rule");
       assert.doesNotMatch(reason, /abandon/i);
     });
   }
