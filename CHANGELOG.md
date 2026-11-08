@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pb human abandon` (human-only) removes the unit and task state under `.pairingbuddy/run`. It keeps commits, the branch and the working tree, and works after a stop.
 - `pb task end` refuses a `config_change` whose diff (no rename detection, from the unit's last task head or base) touches files outside the git-config `config_globs`. With empty `config_globs` it asks the human to type `pb human approve-config` (human-only, per task).
 
+### Changed
+
+- The `committing-changes` skill now carries the commit step table (RED test, covered RED test, GREEN `feat`/`fix`, REFACTOR `refactor` or `test`, docs/`chore`) and commits on green. It allows RED commits under squash; with `red_commits` false, for projects that don't squash, RED tests ride with the GREEN commit.
+
 ### Fixed
 
 - `/pb` now answers and opens the pane.

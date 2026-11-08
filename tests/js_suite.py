@@ -17,6 +17,7 @@ JS_TEST_FILES = [
     "tests/js/code-tdd.test.mjs",
     "tests/js/code-tdd-coverage.test.mjs",
     "tests/js/code-tdd-refactor.test.mjs",
+    "tests/js/committing-changes-skill.test.mjs",
     "tests/js/config-hash-in-ledger.test.mjs",
     "tests/js/configured-branch-rules.test.mjs",
     "tests/js/curate-guidance-drops-suggestions.test.mjs",
