@@ -13,7 +13,7 @@ import { nextAttempt } from "../../shared-node/stages.mjs";
 import { updateLedger } from "../../shared-node/ledger.mjs";
 import { env, pb } from "./cli-repo-fixture.mjs";
 import {
-  BAD_TITLE, CLEAN_BODY, GATE, REFUSED,
+  BAD_TITLE, CLEAN_BODY, CLEAN_TITLE, GATE, REFUSED,
   approvedThroughTap, commitMore, evalGate, git, lintOf, publishRepo, reworded, setPolicyThroughGate, unitFile,
 } from "./publish-fixture.mjs";
 import { recordedAnswer, runTap, sha256 } from "./tap-fixture.mjs";
@@ -31,7 +31,7 @@ describe("publish-gate-choices", () => {
 
     const ledger = repo.ledger();
     assert.deepEqual(ledger.gates[GATE], {
-      source: "human", answer: "approve", headSha: git(repo, "rev-parse", "HEAD"), bodyHash: sha256(CLEAN_BODY), base: "main", target: "main",
+      source: "human", answer: "approve", headSha: git(repo, "rev-parse", "HEAD"), bodyHash: sha256(CLEAN_BODY), titleHash: sha256(CLEAN_TITLE), labels: [], base: "main", target: "main",
     });
     assert.equal(isPassed(ledger, GATE), true);
     assert.equal(ledger.needsHuman, null);
@@ -106,7 +106,7 @@ describe("publish-binding", () => {
 
     assert.equal(approved.code, 0, approved.stderr);
     assert.deepEqual(repo.ledger().gates[GATE], {
-      source: "human-cli", answer: "approve", headSha: git(repo, "rev-parse", "HEAD"), bodyHash: sha256(CLEAN_BODY), base: "main", target: "main",
+      source: "human-cli", answer: "approve", headSha: git(repo, "rev-parse", "HEAD"), bodyHash: sha256(CLEAN_BODY), titleHash: sha256(CLEAN_TITLE), labels: [], base: "main", target: "main",
     });
   });
 

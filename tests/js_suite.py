@@ -54,6 +54,8 @@ JS_TEST_FILES = [
     "tests/js/pr-draft.test.mjs",
     "tests/js/pr-lint.test.mjs",
     "tests/js/pr-lint-cli.test.mjs",
+    "tests/js/publish.test.mjs",
+    "tests/js/publish-steps.test.mjs",
     "tests/js/publish-gate-answers.test.mjs",
     "tests/js/publish-gate-eval.test.mjs",
     "tests/js/progress-row.test.mjs",

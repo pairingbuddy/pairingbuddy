@@ -96,6 +96,8 @@ export function publishRepo({ commits = 1, title = CLEAN_TITLE, body = CLEAN_BOD
 
 export const DRAFT_KEY = draftKey(1);
 export const unitFile = (repo) => join(repo.dir, ".pairingbuddy", "run", "unit.json");
+export const readUnitRecord = (repo) => JSON.parse(readFileSync(unitFile(repo), "utf8"));
+export const gitConfigPath = (repo) => join(repo.dir, ".pairingbuddy", "git-config.json");
 export const lintOf = (runDir) => JSON.parse(readFileSync(join(runDir, "pr-lint.json"), "utf8"));
 
 export function evalGate(repo) {

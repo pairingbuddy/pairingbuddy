@@ -28,6 +28,9 @@ export function needsTestSelection(contract, taskType) {
 // Every stage of every task type.
 export const allStages = (contract) => Object.values(contract.taskTypes).flatMap((graph) => graph.nodes.map((node) => node.name));
 
+// The stages that close a task, whatever its type: a unit's tasks may be of different types.
+export const safetyNetStages = (contract) => [...new Set(allStages(contract).filter((name) => /(^|-)safety-net$/.test(name)))];
+
 export function evidenceFor(contract, taskType, stage) {
   const { taskType: name } = graphFor(contract, taskType);
   const node = contract.taskTypes[name].nodes.find((candidate) => candidate.name === stage);

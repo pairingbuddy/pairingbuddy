@@ -110,7 +110,7 @@ function isVoidedReturn(file, ledger) {
   return key !== null && isVoidedAttempt(ledger, key.stage, key.attempt);
 }
 
-const isHumanApproved = (ledger, gate) => {
+export const isHumanApproved = (ledger, gate) => {
   const record = Object.hasOwn(ledger.gates, gate) ? ledger.gates[gate] : undefined;
   return HUMAN_SOURCES.includes(record?.source) && record.answer === "approve";
 };
@@ -177,17 +177,20 @@ function retriesStop({ retries }) {
   return exhausted === undefined ? null : `retries are exhausted for ${exhausted}`;
 }
 
-function gitConfigStop({ gitConfigHash }, root) {
-  if (gitConfigHash === undefined) return null;
-  const path = gitConfigPath(root);
-  return existsSync(path) && fileHash(path) === gitConfigHash ? null : "the git-config hash changed during the run";
+// The config files whose hash is not the one recorded: test-config.json and git-config.json, in that order. A missing
+// test-config.json counts as changed. git-config.json is tracked only when the unit recorded a hash; then a missing file
+// counts as changed too.
+export function changedConfigs({ configHash, gitConfigHash }, root) {
+  const differs = (path, recorded) => !existsSync(path) || fileHash(path) !== recorded;
+  return [
+    ...(differs(join(root, ".pairingbuddy", "test-config.json"), configHash) ? ["test-config.json"] : []),
+    ...(gitConfigHash !== undefined && differs(gitConfigPath(root), gitConfigHash) ? ["git-config.json"] : []),
+  ];
 }
 
-function configStop({ configHash, gitConfigHash }, root) {
-  const path = join(root, ".pairingbuddy", "test-config.json");
-  if (!existsSync(path) || fileHash(path) !== configHash) return "the config hash changed during the run";
-  return gitConfigStop({ gitConfigHash }, root);
-}
+const CONFIG_STOPS = { "test-config.json": "the config hash changed during the run", "git-config.json": "the git-config hash changed during the run" };
+
+const configStop = (hashes, root) => CONFIG_STOPS[changedConfigs(hashes, root)[0]] ?? null;
 
 function stopReason(contract, ledger, root) {
   const taskDir = join(root, ".pairingbuddy", "run", "task");
@@ -254,18 +257,47 @@ function publishReason(ledger, root, voided) {
   return hasLensRecord(ledger) ? "G:publish is approved by a human, never by the auto policy" : "no lens record yet for the safety net";
 }
 
-// A human approval that no longer matches HEAD or run/pr-body.md does not stand. Null when it does, or when there is none.
-export function publishVoidReason(ledger, root) {
-  const record = Object.hasOwn(ledger.gates, PUBLISH_GATE) ? ledger.gates[PUBLISH_GATE] : undefined;
-  if (!HUMAN_SOURCES.includes(record?.source) || record.answer !== "approve") return null;
-  const head = currentHead(root);
-  const bodyHash = existsSync(prBodyPath(root)) ? sha256(readFileSync(prBodyPath(root))) : null;
+const publishRecord = (ledger) => (Object.hasOwn(ledger.gates, PUBLISH_GATE) ? ledger.gates[PUBLISH_GATE] : undefined);
+
+// How G:publish stands in the ledger: a human "approve", a human "keep-local", an auto pass, or no usable record.
+export function publishApproval(ledger) {
+  const record = publishRecord(ledger);
+  if (HUMAN_SOURCES.includes(record?.source)) {
+    if (record.answer === "approve") return "human";
+    if (record.answer === KEEP_LOCAL) return "keep-local";
+  }
+  return record?.source === "auto" ? "auto" : "none";
+}
+
+// The title and labels of the draft, as an approval binds them: a hash of the title (it becomes the squash-merge
+// headline) and the labels as they will be passed to gh.
+export const draftBinding = (draft) => ({ titleHash: sha256(draft.title), labels: draft.labels ?? [] });
+
+// What an approval is compared with: HEAD, base and target, the body bytes (null when there is no body) and the draft.
+export const currentBinding = (root, draft, body) => ({ ...publishFacts(root), bodyHash: body === null ? null : sha256(body), ...draftBinding(draft) });
+
+// Why a G:publish approval no longer matches the current binding, or null when it still does.
+export function staleBindingReason(record, current) {
   if (record.headSha === undefined && record.bodyHash === undefined) return "the G:publish approval no longer holds: it carries no binding to HEAD or run/pr-body.md";
+  const moved = (name, was, now) => (was === now ? [] : [`${name} changed from ${was ?? "none"} to ${now}`]);
   const changes = [
-    ...(record.headSha === head ? [] : [`HEAD moved from ${short(record.headSha)} to ${short(head)}`]),
-    ...(record.bodyHash === bodyHash ? [] : ["run/pr-body.md changed"]),
+    ...(record.headSha === current.headSha ? [] : [`HEAD moved from ${short(record.headSha)} to ${short(current.headSha)}`]),
+    ...(record.bodyHash === current.bodyHash ? [] : ["run/pr-body.md changed"]),
+    ...(record.titleHash === current.titleHash ? [] : ["the PR title changed"]),
+    ...(isDeepStrictEqual(record.labels, current.labels) ? [] : ["the PR labels changed"]),
+    ...moved("base", record.base, current.base),
+    ...moved("target", record.target, current.target),
   ];
   return changes.length === 0 ? null : `the G:publish approval no longer holds: ${changes.join(" and ")}`;
+}
+
+// A human approval that no longer matches HEAD, run/pr-body.md or the draft's title and labels does not stand. Null when
+// it does, or when there is none. `current` is the binding the caller already read, so one read serves the check and the use.
+export function publishVoidReason(ledger, root, current = null) {
+  if (publishApproval(ledger) !== "human") return null;
+  const draft = current === null ? readDraftArtifact(root, ledger.stage) : null;
+  const bound = current ?? currentBinding(root, draft, existsSync(prBodyPath(root)) ? readFileSync(prBodyPath(root)) : null);
+  return staleBindingReason(publishRecord(ledger), bound);
 }
 
 // The stale approval leaves the gates and is kept in voidedGates with the reason, so the audit trail shows it was given and then voided.
@@ -298,7 +330,7 @@ export function publishFacts(root) {
   return { headSha: currentHead(root), base: unit.base, target: readGitConfig(root).pr.base_branch ?? unit.base };
 }
 
-// What G:publish approved: the commit and the body the human saw, and where they go. It re-runs the lint, so the
+// What G:publish approved: the commit, the body, the title and the labels the human saw, and where they go. It re-runs the lint, so the
 // record also says when the human approved over a failed one. `shown` is what gate eval showed (needsHuman.shown): HEAD
 // must still be that commit, or the human approves what they did not see. The body hash is not compared: the human may
 // edit the body at the gate (D20), so it binds at answer time, after the lint re-run.
@@ -307,9 +339,10 @@ export function publishBinding(root, ledger, shown = null) {
   if (shown?.headSha !== undefined && shown.headSha !== facts.headSha) {
     throw new PublishRefused(`HEAD moved since the question: the human was shown ${short(shown.headSha)} and HEAD is ${short(facts.headSha)}, so nothing was approved`);
   }
-  const lint = runPrLint(root, readDraftArtifact(root, ledger.stage).title);
+  const draft = readDraftArtifact(root, ledger.stage);
+  const lint = runPrLint(root, draft.title);
   const failed = lint.ok ? {} : { lintOk: false, lintFailures: lint.failures };
-  return { ...facts, bodyHash: lint.bodyHash, ...failed };
+  return { ...facts, bodyHash: lint.bodyHash, ...draftBinding(draft), ...failed };
 }
 
 // The gate record of a human's approval. A publish approval carries its binding.

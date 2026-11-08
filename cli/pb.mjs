@@ -8,19 +8,20 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep } from "../shared-node/checkpoint.mjs";
-import { PUBLISH_GATE, answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
+import { PUBLISH_GATE, answeredGate, askReason, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
-import { PlanRefused, replaceFile, tickPlanBox } from "../shared-node/plan-boxes.mjs";
+import { PlanRefused, boxLabelsUnder, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
+import { NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prViewArgv, publishSteps, pushArgv, targetBranch, upstreamArgv } from "../shared-node/publish.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
-import { abandonRun } from "../shared-node/unit-files.mjs";
+import { abandonRun, closeUnit } from "../shared-node/unit-files.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
 import { buildReport, closeStage, finishProblems, newestReturn, perTestOf, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
-import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
+import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { prBodyPath, readDraftArtifact, readUnit, runPrLint } from "../shared-node/pr-lint-run.mjs";
@@ -249,9 +250,8 @@ function gateEval(args) {
 // Recording a skip so blockingGate and next-action agree is left to Task 71 (pb publish).
 function publishSkip(contract, ledger, root) {
   if (dueGate(gatesFor(contract, ledger.taskType), ledger)?.name !== PUBLISH_GATE) return null;
-  const { baseSha } = readUnitOrRefuse(root);
-  if (runGit(root, ["rev-list", "--count", `${baseSha}..HEAD`]) !== "0") return null;
-  return { ok: true, result: "skip", gate: PUBLISH_GATE, reason: "the unit has no commits past its base, so there is nothing to publish" };
+  if (unitCommits(root, readUnitOrRefuse(root)).length !== 0) return null;
+  return { ok: true, result: "skip", gate: PUBLISH_GATE, reason: NO_COMMITS_REASON };
 }
 
 const readUnitOrRefuse = (root) => refusing(() => readUnit(root));
@@ -950,19 +950,193 @@ function taskEnd(args) {
   return { ok: true, removed: dir, plan };
 }
 
+// The commits past the unit's base, oldest first. One rule for "nothing to publish", in gate eval and in pb publish.
+const unitCommits = (root, unit) => runGit(root, ["rev-list", "--reverse", `${unit.baseSha}..HEAD`]).split("\n").filter(Boolean);
+
+// The labels of the plan boxes under the unit's heading. planBoxes is null with no plan, no heading to go by, or no such
+// heading; planProblem says when the plan cannot be read.
+function unitPlan(root, unit) {
+  if (typeof unit.plan !== "string" || unit.plan === "" || typeof unit.unit !== "string" || unit.unit === "") return { planBoxes: null, planProblem: null };
+  try {
+    return { planBoxes: boxLabelsUnder(readFileSync(join(root, unit.plan), "utf8"), unit.unit), planProblem: null };
+  } catch (e) {
+    return { planBoxes: null, planProblem: `the plan ${unit.plan} cannot be read: ${e.code ?? e.message}` };
+  }
+}
+
+// Null where git says no (or the remote is unreachable): the caller treats that as "nothing there".
+function tryGit(cwd, args) {
+  try {
+    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+// Why the unit branch cannot be pushed as a name: its shape in the argv, then git's own rules for a branch ref.
+function branchProblemOf(root, branch) {
+  return branchShapeProblem(branch) ?? (tryGit(root, ["check-ref-format", `refs/heads/${branch}`]) === null ? `git does not accept ${JSON.stringify(branch)} as a branch name` : null);
+}
+
+// What only a real publish needs: the evidence, and where the branch and the remote stand.
+function publishingFacts(root, unit, gitConfig, head) {
+  const branchProblem = branchProblemOf(root, unit.branch);
+  const usable = branchProblem === null;
+  return {
+    safetyNets: safetyNetStages(loadStages(PLUGIN_ROOT)), ...unitPlan(root, unit), head, dirty: remainingFiles(root), branchProblem,
+    branchIsProtected: usable && isProtected(gitConfig, root, unit.branch), currentBranch: branchOf(root),
+    branchTip: usable ? tryGit(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${unit.branch}`]) : null,
+    remoteSha: usable ? (tryGit(root, ["ls-remote", "--", gitConfig.remote, `refs/heads/${unit.branch}`])?.split(/\s/)[0] || null) : null,
+  };
+}
+
+// Pushes the approved SHA, opens (or adopts) the PR, writes the plan line, deletes the unit's refs and closes the unit.
+// The policy is only what the gate hook recorded in the ledger. Facts are read once, steps come from publishSteps.
+function publish(args) {
+  assertNoArgs(args, "publish");
+  const { root, path } = runLedgerPath();
+  const ledger = readLedger(path);
+  const unit = readUnitOrRefuse(root);
+  const gitConfig = loadGitConfigOrRefuse(root);
+  const commits = unitCommits(root, unit);
+  const mode = gitConfig.pr?.publish;
+  // The body bytes and the draft are read once: what the approval is checked against is what gh gets.
+  const bound = commits.length === 0 ? null : readBound(root, ledger);
+  const voidReason = bound === null ? null : refusing(() => publishVoidReason(ledger, root, bound.current));
+  const facts = {
+    unit, runStop: ledger.stop, publishMode: mode, commits, changedConfigs: changedConfigs(unit, root), approval: publishApproval(ledger), voidReason,
+    taskRunOpen: !gatesFor(loadStages(PLUGIN_ROOT), ledger.taskType).some(({ name }) => name === PUBLISH_GATE),
+    ...(bound === null || mode === "none" ? {} : publishingFacts(root, unit, gitConfig, bound.current.headSha)),
+  };
+  if (voidReason !== null) updateLedger(path, (current) => voidPublish(current, voidReason));
+  const plan = publishSteps(facts);
+  if (plan.refusals.length > 0) throw new Refusal(`not published: ${plan.refusals.join("; ")}`);
+  return executePublish(plan.steps, { root, unit, gitConfig, ledger, bound });
+}
+
+// The draft artifact and the body bytes as they stand, with the binding they make.
+function readBound(root, ledger) {
+  const draft = readDraft(root, ledger.stage);
+  const body = existsSync(prBodyPath(root)) ? readFileSync(prBodyPath(root)) : null;
+  return { draft, body, current: refusing(() => currentBinding(root, draft, body)) };
+}
+
+function executePublish(steps, ctx) {
+  const { root, unit, gitConfig } = ctx;
+  const runDir = join(root, ".pairingbuddy", "run");
+  const remote = gitConfig.remote;
+  let url = null;
+  let warnings = [];
+  for (const step of steps) {
+    if (step.do === "push") {
+      runGit(root, pushArgv(remote, step.sha, step.branch), { context: "nothing was pushed or opened; the unit is intact" });
+    } else if (step.do === "set-upstream") {
+      runGit(root, upstreamArgv(remote, step.branch), { context: `${step.branch} is on ${remote} but its upstream is not set; run pb publish again, the push will not repeat` });
+    } else if (step.do === "open-pr") {
+      url = openPr(ctx, step.recordedUrl);
+    } else if (step.do === "plan-line") {
+      warnings = recordPrLine(root, unit, url);
+    } else if (step.do === "delete-refs") {
+      deleteUnitRefs(root, step.prefix, url);
+    } else {
+      closeUnit(runDir);
+      return step.result === "published" ? { ok: true, result: "published", url, warnings } : { ok: true, result: step.result, reason: step.reason };
+    }
+  }
+  throw new Error("the publish plan has no close step");
+}
+
+// The PR gh knows for the unit branch, which must be from that branch into the target. Refuses a mismatch.
+function verifiedPr(view, branch, target) {
+  const wrong = foreignPrReason(view, { branch, target });
+  if (wrong !== null) throw new Refusal(`not published: ${wrong}`);
+  return view.url;
+}
+
+function viewPr(root, branch, context = "") {
+  const text = run(root, "gh", prViewArgv(branch), { context });
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Refusal(`gh pr view gave output that is not JSON: ${text.slice(0, 200)}`);
+  }
+}
+
+// Opens the PR for the approved body, title and labels, or adopts the unit's own PR when one exists already (a retry
+// after a crash). Records the url in unit.json before anything else is done with it.
+function openPr({ root, unit, gitConfig, ledger, bound }, recordedUrl) {
+  const target = targetBranch(gitConfig, unit);
+  const opened = `${unit.branch} is pushed to ${gitConfig.remote}`;
+  let url;
+  if (recordedUrl !== null) {
+    url = verifiedPr(viewPr(root, unit.branch, `${opened}; the recorded PR ${recordedUrl} could not be checked, run pb publish again`), unit.branch, target);
+    if (url !== recordedUrl) throw new Refusal(`not published: unit.json records the PR ${recordedUrl}, but the PR for ${unit.branch} is ${url}`);
+    return url;
+  }
+  const snapshot = join(root, ".pairingbuddy", "run", `pr-body.${process.pid}.snapshot.md`);
+  writeFileSync(snapshot, bound.body ?? "");
+  try {
+    url = createdPr(root, unit, target, snapshot, bound.draft, ledger.policy?.mode, opened);
+  } finally {
+    rmSync(snapshot, { force: true });
+  }
+  writeJsonAtomic(unitPathOf(root), { ...unit, pr: { url } });
+  return url;
+}
+
+function createdPr(root, unit, target, bodyFile, draft, policyMode, opened) {
+  const argv = prCreateArgv({ title: draft.title, bodyFile, base: target, branch: unit.branch, labels: draft.labels ?? [], policyMode });
+  let printed;
+  try {
+    printed = run(root, "gh", argv, { context: `${opened}, but the PR was not opened; run pb publish again, the push will not repeat` });
+  } catch (failure) {
+    let view;
+    try {
+      view = viewPr(root, unit.branch);
+    } catch {
+      throw failure;
+    }
+    return verifiedPr(view, unit.branch, target);
+  }
+  const url = printed.split("\n").at(-1).trim();
+  if (!PR_URL.test(url)) throw new Refusal(`gh printed ${JSON.stringify(url)}, which is not a pull request URL; the PR may be open, run pb publish again and it will be looked up`);
+  return url;
+}
+
+// The refs under the unit's own prefix, deleted in one transaction. Other units' refs are not touched.
+function deleteUnitRefs(root, prefix, url) {
+  const refs = runGit(root, ["for-each-ref", "--format=%(refname)", prefix]).split("\n").filter(Boolean);
+  if (refs.length === 0) return;
+  runGit(root, ["update-ref", "--stdin"], { input: refs.map((ref) => `delete ${ref}\n`).join(""), context: `the PR is open at ${url}; run pb publish again` });
+}
+
+// Writes "PR: <url> branch: <branch>" under the unit's heading in its plan. Warnings for what is only worth reporting.
+function recordPrLine(root, unit, url) {
+  if (typeof unit.plan !== "string" || unit.plan === "") return [];
+  try {
+    const found = writePrLine(root, unit.plan, unit.unit, `PR: ${url} branch: ${unit.branch}`);
+    return found ? [] : [`the plan ${unit.plan} has no heading for the unit ${JSON.stringify(unit.unit)}, so no PR: line was written`];
+  } catch (e) {
+    throw new Refusal(`the PR was opened (${url}) but the plan ${unit.plan} could not be written: ${e.message}; run pb publish again`);
+  }
+}
+
 function flagValue(args, flag) {
   const i = args.indexOf(flag);
   return i === -1 ? undefined : args[i + 1];
 }
 
-function runGit(cwd, args) {
+// One runner for git and gh. `context` says what was reached and what to do next, and is appended to the failure.
+function run(cwd, command, args, { context = "", input } = {}) {
   try {
-    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    return execFileSync(command, args, { cwd, encoding: "utf8", input, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] }).trim();
   } catch (e) {
     const why = String(e.stderr ?? "").trim() || e.message;
-    throw new Refusal(`git ${args.join(" ")} failed: ${why}`);
+    throw new Refusal(`${command} ${args.join(" ")} failed: ${why}${context === "" ? "" : `; ${context}`}`);
   }
 }
+
+const runGit = (cwd, args, options) => run(cwd, "git", args, options);
 
 // --branch <name> is the human's own name for the branch. A missing value, or one that looks like a flag, is a usage error.
 function chosenBranch(args) {
@@ -1121,7 +1295,7 @@ function refusing(fn) {
 export const VERBS = {
   "unit open": unitOpen, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
-  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd,
+  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 async function runVerb(name, args) {

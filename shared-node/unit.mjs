@@ -27,5 +27,6 @@ export function newTaskRecord({ ledger, headSha }) {
     attempts: Object.fromEntries((ledger.stages ?? []).map((stage) => [stage.name, stage.attempt])),
     lessons: [],
     spend: null,
+    fullSuite: ledger.tests?.full === undefined ? null : { passed: ledger.tests.full.passed, head: ledger.tests.full.head },
   };
 }

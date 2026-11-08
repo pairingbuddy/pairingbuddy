@@ -13,7 +13,20 @@
     "baseSha": { "type": "string" },
     "configHash": { "type": "string" },
     "gitConfigHash": { "type": "string" },
-    "tasks": { "type": "array", "items": { "type": "object" } },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fullSuite": {
+            "description": "The task ledger's full-suite result when the task ended; null when none was run.",
+            "type": ["object", "null"],
+            "required": ["passed", "head"],
+            "properties": { "passed": { "type": "boolean" }, "head": { "type": ["string", "null"] } }
+          }
+        }
+      }
+    },
     "commits": { "type": "array" }
   }
 }
