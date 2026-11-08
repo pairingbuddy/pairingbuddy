@@ -102,6 +102,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_update_claude_task(task_id)` | Mark a Claude Code Task as completed (TaskUpdate) |
 | `_is_solo()` | True when the `PAIRINGBUDDY_SOLO` env var is `true`. |
 | `_stop_if_run_open()` | The check in An Open Run Comes First. |
+| `_stop_if_unit_open()` | If `.pairingbuddy/run/unit.json` exists, stop and tell the human the open unit's branch (read from unit.json) and that the old path cannot run inside a unit. They can finish the unit's work on the new path, or leave it by running `pb human abandon` (human-only: they type `!cd <project root> && node <root>/cli/pb.mjs human abandon`, which removes the unit and task state and keeps every commit). |
 | `_write_task(task)` | Write the new task to `.pairingbuddy/task.json`. It waits for cleanup: curation reads the just-completed task from that file, and cleanup deletes it. |
 | `_run_new_path(task)` | Runs a migrated type through its workflow stages. See Migrated-Types Router. |
 | `_update_solo_report(event, details)` | **Solo mode only.** Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file if absent; on resume, **reconciles** existing entries against the current plan — drops entries for removed tasks, reorders to match plan, then appends session separator), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
@@ -138,6 +139,7 @@ if _detect_plan_file(task):
         _cleanup_state_files()
         _write_task(task)
         task_classification = classify_task(task)
+        _stop_if_unit_open()
         # ... (same old-path branches as below, based on task_type,
         # never the migrated-types router: plan tasks stay on the old path until T7) ...
 
@@ -173,6 +175,9 @@ if task_type in MIGRATED_TYPES and not _is_solo():
     # Every type in MIGRATED_TYPES goes here outside Solo, and never the old branches below
     _run_new_path(task)
     _stop("Task complete.")
+
+# The old path cannot run inside an open unit
+_stop_if_unit_open()
 
 # Old path: refactoring and spike, plan tasks, and every type under Solo
 if task_type == "new_feature":

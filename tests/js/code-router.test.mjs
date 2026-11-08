@@ -367,6 +367,31 @@ test("curate-guidance asks nothing with no human, and takes the check before any
   assert.match(section, /offer nothing/i);
 });
 
+// ---------- the old path inside an open unit ----------
+
+test("old-path-stops-on-open-unit: the old path is guarded after the router and in the plan loop", () => {
+  const code = pseudocode();
+  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
+  const planPart = code.slice(0, planEnd);
+  const nonPlan = code.slice(planEnd);
+
+  const guard = nonPlan.indexOf("_stop_if_unit_open()");
+  assert.ok(guard !== -1, "the non-plan path calls it");
+  assert.ok(nonPlan.indexOf("if task_type in MIGRATED_TYPES and not _is_solo():") < guard, "after the router");
+  assert.ok(guard < nonPlan.indexOf("# Old path"), "before the old path");
+  const planGuard = planPart.indexOf("_stop_if_unit_open()");
+  assert.ok(planGuard !== -1, "the plan loop calls it");
+  assert.ok(planGuard < planPart.indexOf("same old-path branches"), "before each plan task's old-path work");
+});
+
+test("stop-rule-names-unit-file-and-abandon: the functions table row says what it checks and how to leave", () => {
+  const row = /^\| `_stop_if_unit_open\(\)` \|.*$/m.exec(skill());
+
+  assert.ok(row, "the functions table has a row for it");
+  assert.ok(row[0].includes(".pairingbuddy/run/unit.json"), "names the unit file");
+  assert.ok(row[0].includes("`pb human abandon`"), "names the way out");
+});
+
 // ---------- entry with a run already open ----------
 
 test("the skill checks for an open run ahead of everything that touches state", () => {

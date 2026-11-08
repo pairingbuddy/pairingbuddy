@@ -134,6 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The mod's test list uses `tests.json` when it lists every test the ledger has seen; otherwise it keeps the ledger's tests.
+- The coding skill's old path stops when a unit is open (`.pairingbuddy/run/unit.json`) and tells the human to finish it on the new path or run `pb human abandon`.
 
 ## [0.7.0] - 2026-07-31
 
