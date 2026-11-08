@@ -15,7 +15,7 @@ const HEX64 = /^[0-9a-f]{64}$/;
 // Shape only, so a well-shaped impossible date stays readable and the gate can treat it as expired.
 const ISO_TIMESTAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
 export const KINDS = ["code", "plan"];
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -120,8 +120,9 @@ export function validateLedger(ledger) {
     acceptances: [Array.isArray, "an array"],
     configAcceptances: [Array.isArray, "an array"],
     checkpoints: [Array.isArray, "an array"],
+    configApproval: [() => true, ""],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
-  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash"] });
+  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
@@ -162,6 +163,9 @@ export function validateLedger(ledger) {
             oldSha: [isSha, "64 lowercase hex characters"], newSha: [isSha, "64 lowercase hex characters"], seq: [isCount, "a non-negative integer"],
           }, errors));
         }
+        break;
+      case "configApproval":
+        checkObject(ledger.configApproval, "configApproval", { source: [(x) => x === "human-cli", "human-cli"] }, errors);
         break;
       case "configAcceptances":
         if (Array.isArray(ledger.configAcceptances)) {

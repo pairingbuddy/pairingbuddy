@@ -15,7 +15,7 @@ const REPORT_TEXT = "<!doctype html><title>Task 31</title><p>What changed, kept 
 
 // A repo whose task is finished, so `pb task end` is allowed to remove run/task.
 function finishedRepo() {
-  const repo = makeRepo();
+  const repo = makeRepo({ configGlobs: ["**"] });
   const pairing = join(repo.dir, ".pairingbuddy");
   writeFileSync(join(repo.dir, ".gitignore"), ".pairingbuddy/\n");
   execFileSync("git", ["add", ".gitignore"], { cwd: repo.dir, env: env() });

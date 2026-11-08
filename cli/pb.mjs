@@ -2,7 +2,7 @@
 // pb: deterministic workflow CLI. Verbs live in the VERBS table; later tasks add more.
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -12,6 +12,7 @@ import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion,
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
+import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, replaceFile, tickPlanBox } from "../shared-node/plan-boxes.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
@@ -257,6 +258,27 @@ function humanApprove(args) {
   const [gate] = args;
   updateLedger(runLedgerPath().path, (ledger) => approved(ledger, gate));
   return { ok: true, gate, source: "human-cli" };
+}
+
+// Leaves the unit: everything under run/ goes except run/.gitignore. Commits, branch and working tree are not touched.
+function humanAbandon(args) {
+  if (args.length > 0) throw new UsageError("usage: pb human abandon");
+  const runDir = join(findRunRoot(process.cwd()) ?? toplevel(), ".pairingbuddy", "run");
+  const names = existsSync(runDir) ? readdirSync(runDir).filter((name) => name !== ".gitignore") : [];
+  if (names.length === 0) return { ok: true, result: "nothing-to-abandon", removed: [], message: "nothing to abandon: no unit or task is open" };
+  for (const name of names) rmSync(join(runDir, name), { recursive: true, force: true });
+  return { ok: true, result: "abandoned", removed: names.map((name) => `.pairingbuddy/run/${name}`) };
+}
+
+// Records that the human has seen this task's config diff. It lives in the task's ledger, so it goes with the task.
+function humanApproveConfig(args) {
+  if (args.length > 0) throw new UsageError("usage: pb human approve-config");
+  const { path } = runLedgerPath();
+  const ledger = readLedger(path);
+  if (ledger.taskType !== "config_change") throw new Refusal(`no approval needed: this task is ${ledger.taskType ?? "not typed"}, not a config_change`);
+  if (loadGitConfigOrRefuse(toplevel()).config_globs.length > 0) throw new Refusal("no approval needed: config_globs is not empty, so a config_change is checked against it");
+  updateLedger(path, (ledger) => ({ ...ledger, configApproval: { source: "human-cli" } }));
+  return { ok: true, source: "human-cli" };
 }
 
 function acceptedEdit(path) {
@@ -812,6 +834,40 @@ function appendTaskRecord(opened) {
   writeJsonAtomic(path, unit);
 }
 
+// Where the task's own commits start: the unit's last task, else the unit's base. With no unit, the parent of the run's
+// first commit (the ledger records no start commit), or null when the run committed nothing.
+function taskStart(root, { commits }, opened) {
+  if (opened !== null) return opened.unit.tasks.at(-1)?.headSha ?? opened.unit.baseSha;
+  if (commits.length === 0) return null;
+  const parent = `${commits[0]}^`;
+  // A root commit has no parent: diff against the empty tree instead.
+  try {
+    execFileSync("git", ["rev-parse", "--verify", "--quiet", parent], { cwd: root, stdio: "ignore" });
+    return parent;
+  } catch {
+    return runGit(root, ["hash-object", "-t", "tree", "/dev/null"]);
+  }
+}
+
+function taskDiffFiles(root, ledger, opened) {
+  const start = taskStart(root, ledger, opened);
+  if (start === null) return [];
+  const out = runGit(root, ["diff", "--name-only", "--no-renames", start, "HEAD"]);
+  return out === "" ? [] : out.split("\n");
+}
+
+// A config_change may only touch config_globs. An empty list is the human's call, once per task.
+function assertConfigChangeInGlobs(root, ledger, opened) {
+  if (ledger.taskType !== "config_change") return;
+  const globs = loadGitConfigOrRefuse(root).config_globs;
+  if (globs.length === 0) {
+    if (ledger.configApproval?.source === "human-cli") return;
+    throw new Refusal(`config_globs is empty, so this config_change needs the human's confirmation. Nothing was touched: ask the human to run pb human approve-config by typing ${humanCommand(root, "approve-config")}`);
+  }
+  const outside = outsideGlobs(globs, taskDiffFiles(root, ledger, opened));
+  if (outside.length > 0) throw new Refusal(`this config_change touches files outside config_globs (${globs.join(", ")}). Nothing was touched: ${outside.join(", ")}`);
+}
+
 // Appends the unit's task record, then removes run/task. The refusals all come first, including reading the unit and HEAD, so a refused call changes nothing.
 function taskEnd(args) {
   assertNoArgs(args, "task end");
@@ -822,6 +878,7 @@ function taskEnd(args) {
   assertGreenRunStands(root, ledger);
   assertCleanTree(root);
   const opened = readUnitForRecord(root, ledger);
+  assertConfigChangeInGlobs(root, ledger, opened);
   const plan = tickedPlan(root, ledger.plan);
   appendTaskRecord(opened);
   const dir = taskDirOf(root);
@@ -967,7 +1024,7 @@ function gitDoctor() {
 
 export const VERBS = {
   "unit open": unitOpen, "git doctor": gitDoctor,
-  "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept, test: runTests, checkpoint,
+  "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
   "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd,
 };
 

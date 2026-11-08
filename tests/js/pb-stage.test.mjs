@@ -61,7 +61,8 @@ const git = (dir, ...args) => execFileSync("git", args, { cwd: dir, encoding: "u
 
 const activeStage = (name = CONFIG, attempt = ATTEMPT) => ({ name, status: "active", runId: "wf_1", attempt, startedAt: null });
 
-function makeRepo({ stage = activeStage(), ledger = {}, tests = "" } = {}) {
+// configGlobs: the config_globs written to git-config.json; a config_change task may end only on files they cover.
+function makeRepo({ stage = activeStage(), ledger = {}, tests = "", configGlobs = ["**"] } = {}) {
   const dir = makeDir("pb-stage-");
   git(dir, "init", "-q", "-b", "feature");
   git(dir, "config", "user.name", "Test");
@@ -76,6 +77,7 @@ function makeRepo({ stage = activeStage(), ledger = {}, tests = "" } = {}) {
   writeFileSync(join(dir, ".pairingbuddy", "run", ".gitignore"), "*\n");
   const configText = JSON.stringify(TEST_CONFIG);
   writeFileSync(join(dir, ".pairingbuddy", "test-config.json"), configText);
+  if (configGlobs) writeFileSync(join(dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ config_globs: configGlobs }));
   const ledgerPath = join(taskDir, "ledger.json");
   writeLedger(ledgerPath, {
     v: 1, seq: 0, sha: "0".repeat(64), kind: "code", taskType: "config_change",

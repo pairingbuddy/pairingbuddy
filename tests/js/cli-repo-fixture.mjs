@@ -38,8 +38,9 @@ export const env = (extra = {}) => ({ ...process.env, ...ISOLATED_GIT, HOME: NO_
 
 // openTask: false leaves the repo with no task in flight, so `pb run open` starts from a fresh repo.
 // remote: true gives the repo a local bare origin with its default branch "main" pushed and refs/remotes/origin/HEAD set;
+// configGlobs writes .pairingbuddy/git-config.json with those config_globs; left out, there is no such file.
 // .pairingbuddy/ is git-ignored there, so only real changes make the tree dirty. The bare repo's path is returned as remoteDir.
-export function makeRepo({ ledger = {}, openTask = true, remote = false } = {}) {
+export function makeRepo({ ledger = {}, openTask = true, remote = false, configGlobs } = {}) {
   const dir = makeDir("pb-stop-code-");
   const remoteDir = remote ? makeDir("pb-remote-") : null;
   const git = (...args) => execFileSync("git", args, { cwd: dir, env: env(), stdio: "ignore" });
@@ -63,6 +64,7 @@ export function makeRepo({ ledger = {}, openTask = true, remote = false } = {}) 
   mkdirSync(join(taskDir, "artifacts"), { recursive: true });
   writeFileSync(join(dir, ".pairingbuddy", "run", ".gitignore"), "*\n");
   writeFileSync(join(dir, ".pairingbuddy", "test-config.json"), TEST_CONFIG);
+  if (configGlobs) writeFileSync(join(dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ config_globs: configGlobs }));
   const ledgerPath = join(taskDir, "ledger.json");
   writeLedger(ledgerPath, {
     ...baseLedger(),
