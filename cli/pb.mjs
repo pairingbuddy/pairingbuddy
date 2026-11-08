@@ -9,14 +9,14 @@ import { isDeepStrictEqual } from "node:util";
 
 import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep } from "../shared-node/checkpoint.mjs";
 import { PUBLISH_GATE, answeredGate, askReason, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
-import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
+import { KINDS, LEDGER_VERSION, isPublishRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, boxLabelsUnder, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
-import { NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prViewArgv, publishSteps, pushArgv, targetBranch, upstreamArgv } from "../shared-node/publish.mjs";
+import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, targetBranch, upstreamArgv } from "../shared-node/publish.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
-import { abandonRun, closeUnit } from "../shared-node/unit-files.mjs";
+import { abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
@@ -24,9 +24,9 @@ import { buildReport, closeStage, finishProblems, newestReturn, perTestOf, readR
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
-import { prBodyPath, readDraftArtifact, readUnit, runPrLint } from "../shared-node/pr-lint-run.mjs";
+import { PrLintRunRefused, prBodyPath, readDraftArtifact, readUnit, runPrLint } from "../shared-node/pr-lint-run.mjs";
 import { shellWord } from "../shared-node/shell-word.mjs";
-import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
+import { VERB_CLASSES, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
 
@@ -144,18 +144,37 @@ function ensureRunRoot(root) {
   return runRoot;
 }
 
+// One refusal for an existing run/task of any shape, whether or not its ledger reads. A publish open adds what it was for.
+function refuseRunOpen(dir, kind) {
+  const base = `a run is already active at ${dir}`;
+  throw new Refusal(kind === "publish" ? `${base}, so no publish run was opened. Run ${pbCommand("status --action")} to go on; a task run is ended with ${pbCommand("task end")}` : base);
+}
+
+// A publish run needs a unit whose planned tasks all have a task record (the evidence pb publish checks) and no run in
+// run/task. A stop is refused before this, by assertNotStopped.
+function assertPublishable(root) {
+  const runDir = join(root, ".pairingbuddy", "run");
+  const unit = readUnitOrRefuse(root);
+  if (!Array.isArray(unit?.tasks)) throw new Refusal(`${join(runDir, "unit.json")} has no tasks list, so no publish run was opened`);
+  if (existsSync(join(runDir, "task"))) refuseRunOpen(join(runDir, "task"), "publish");
+  if (unit.tasks.length === 0) throw new Refusal(`the unit has no ended task, so there is nothing to publish yet and no publish run was opened. End the task with ${pbCommand("task end")} first`);
+  const unrecorded = recordedTasks({ unit, ...unitPlan(root, unit) });
+  if (unrecorded !== null) throw new Refusal(`${unrecorded}, so no publish run was opened. End each task with ${pbCommand("task end")} first`);
+}
+
 function runOpen(args) {
   const kind = parseKind(args);
   if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Refusal("Solo stays on the old path until T10, so no run was opened");
   const root = toplevel();
   assertNotStopped(root);
+  if (kind === "publish") assertPublishable(root);
   const branch = currentBranch(root);
   const gitConfig = loadGitConfigOrRefuse(root); // bootstraps git-config.json when missing; hashed below
   assertBranchNotProtected(gitConfig, root, branch, "open a run", "; start the work on a unit branch with pb unit open");
 
   const configHash = validatedConfigHash(root);
   const gitConfigHash = fileHash(gitConfigPath(root));
-  const taskType = kind === "code" ? classifiedTaskType(root) : null;
+  const taskType = kind === "code" ? classifiedTaskType(root) : kind === "publish" ? "publish" : null;
   assertTestsSelectable(root, configHash, taskType);
   const task = storedTask(root);
 
@@ -166,7 +185,7 @@ function runOpen(args) {
   try {
     mkdirSync(dir);
   } catch (e) {
-    if (e.code === "EEXIST") throw new Refusal(`a run is already active at ${dir}`);
+    if (e.code === "EEXIST") refuseRunOpen(dir, kind);
     throw e;
   }
   try {
@@ -254,7 +273,13 @@ function publishSkip(contract, ledger, root) {
   return { ok: true, result: "skip", gate: PUBLISH_GATE, reason: NO_COMMITS_REASON };
 }
 
-const readUnitOrRefuse = (root) => refusing(() => readUnit(root));
+function readUnitOrRefuse(root) {
+  try {
+    return readUnit(root);
+  } catch (e) {
+    throw e instanceof PrLintRunRefused ? new Refusal(e.message) : e;
+  }
+}
 
 function publishCommits(root, unit) {
   const rows = runGit(root, ["log", "--reverse", "--format=%H%x09%s", `${unit.baseSha}..HEAD`]).split("\n").filter(Boolean);
@@ -937,6 +962,7 @@ function taskEnd(args) {
   assertNoArgs(args, "task end");
   const { root, path } = runLedgerPath();
   const ledger = readLedger(path);
+  if (isPublishRun(ledger)) throw new Refusal(`this is a publish run, which has no task to end. Nothing was touched: run ${pbCommand("publish")} once G:publish is approved`);
   assertTaskFinished(ledger);
   assertCommitsOnHead(root, ledger);
   assertGreenRunStands(root, ledger);
@@ -996,6 +1022,8 @@ function publish(args) {
   assertNoArgs(args, "publish");
   const { root, path } = runLedgerPath();
   const ledger = readLedger(path);
+  if (!isPublishRun(ledger)) throw new Refusal(`pb publish needs a publish run, and the open run is a ${ledger.kind} run. Nothing was touched: end the task with ${pbCommand("task end")}, then open the publish run with ${pbCommand("run open --kind publish")}`);
+  if (publishApproval(ledger) === "keep-local") return finishKeptLocal(root, ledger);
   const unit = readUnitOrRefuse(root);
   const gitConfig = loadGitConfigOrRefuse(root);
   const commits = unitCommits(root, unit);
@@ -1005,13 +1033,23 @@ function publish(args) {
   const voidReason = bound === null ? null : refusing(() => publishVoidReason(ledger, root, bound.current));
   const facts = {
     unit, runStop: ledger.stop, publishMode: mode, coordination: bound?.draft.coordination ?? null, commits, changedConfigs: changedConfigs(unit, root), approval: publishApproval(ledger), voidReason,
-    taskRunOpen: !gatesFor(loadStages(PLUGIN_ROOT), ledger.taskType).some(({ name }) => name === PUBLISH_GATE),
+    taskRunOpen: !isPublishRun(ledger),
     ...(bound === null || mode === "none" ? {} : publishingFacts(root, unit, gitConfig, bound.current.headSha)),
   };
   if (voidReason !== null) updateLedger(path, (current) => voidPublish(current, voidReason));
   const plan = publishSteps(facts);
   if (plan.refusals.length > 0) throw new Refusal(`not published: ${plan.refusals.join("; ")}`);
   return executePublish(plan.steps, { root, unit, gitConfig, ledger, bound });
+}
+
+// The human answered keep local at G:publish: nothing is pushed or opened, no unit or git state is read, and whatever the
+// hook's own cleanup left (unit files, the publish run) goes. Idempotent, so a repeat after a failure finishes the job.
+function finishKeptLocal(root, ledger) {
+  if (ledger.stop !== null) throw new Refusal(`not published: the run stopped: ${ledger.stop.reason}`);
+  const runDir = join(root, ".pairingbuddy", "run");
+  closeUnit(runDir);
+  if (isPublishRun(ledger)) endRun(runDir);
+  return { ok: true, result: "kept-local", reason: KEPT_LOCAL_REASON };
 }
 
 // The draft artifact and the body bytes as they stand, with the binding they make.
@@ -1045,6 +1083,7 @@ function executePublish(steps, ctx) {
       deleteUnitRefs(root, step.prefix, url);
     } else {
       closeUnit(runDir);
+      if (isPublishRun(ctx.ledger)) endRun(runDir);
       return step.result === "published" ? { ok: true, result: "published", url, warnings, ...(pendingComment === undefined ? {} : { pendingComment }) } : { ok: true, result: step.result, reason: step.reason };
     }
   }

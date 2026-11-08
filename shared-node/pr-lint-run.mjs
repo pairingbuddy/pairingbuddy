@@ -17,8 +17,12 @@ export const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 
 export function readUnit(root) {
   const path = join(runDirOf(root), "unit.json");
-  if (!existsSync(path)) throw new PrLintRunRefused("no unit is open (run/unit.json is missing), so there is no draft to lint");
-  return JSON.parse(readFileSync(path, "utf8"));
+  if (!existsSync(path)) throw new PrLintRunRefused(`no unit is open (${path} is missing)`);
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    throw new PrLintRunRefused(`${path} is unreadable: ${e.message}`);
+  }
 }
 
 // The draft artifact the tap filed for this attempt of pr-draft.

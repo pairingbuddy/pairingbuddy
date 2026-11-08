@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Tap: records StructuredOutput returns as run artifacts, stores the Workflow runId in the ledger, and
 // records a human's AskUserQuestion answer to the gate that is asking.
-// Never blocks a tool: every path exits 0. It prints only when a publish answer could not be bound, and then as
+// Never blocks a tool: every path exits 0. It prints only when a publish answer could not be bound or the keep-local close failed, and then as
 // additionalContext, the channel the other hooks use.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, writeSync } from "node:fs";
@@ -126,7 +126,24 @@ function tapQuestion(modules, root, ledgerPath, toolResponse) {
   }
   updateLedger(ledgerPath, (current) => withAnswer(modules, current, toolResponse, binding));
   if (answer === "redo") appendRedoFeedback(root, ledger, runGates(modules, ledger), toolResponse);
-  if (answer === KEEP_LOCAL_LABEL) modules.closeUnit(join(root, ".pairingbuddy", "run"));
+  if (answer === KEEP_LOCAL_LABEL) closeKeptLocal(modules, root, ledger);
+}
+
+// Keep local closes the unit, and a publish run ends with it. Each step runs whatever the other did, and a failure is
+// said through the hook, since the recorded answer stays: pb publish finishes what is left.
+function closeKeptLocal(modules, root, ledger) {
+  const runDir = join(root, ".pairingbuddy", "run");
+  const failures = [];
+  const attempt = (what, step) => {
+    try {
+      step();
+    } catch (e) {
+      failures.push(`${what}: ${e.message}`);
+    }
+  };
+  attempt("the unit files were not removed", () => modules.closeUnit(runDir));
+  if (modules.isPublishRun(ledger)) attempt("the publish run was not ended", () => modules.endRun(runDir));
+  if (failures.length > 0) say(`Pairing Buddy recorded keep local at G:publish but could not finish closing (${failures.join("; ")}). Run ${modules.pbCommand("publish")} to finish; it closes the unit and ends the run without pushing.`);
 }
 
 function tapRun(modules, root, input) {
@@ -146,13 +163,14 @@ function tapRun(modules, root, input) {
 try {
   const { KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, gateAnswer, gatesFor, isBindingRefusal, publishBinding, recordAnswer } = await import("../shared-node/gates.mjs");
   const { parseKey } = await import("../shared-node/keys.mjs");
-  const { readLedger, updateLedger } = await import("../shared-node/ledger.mjs");
-  const { closeUnit } = await import("../shared-node/unit-files.mjs");
+  const { isPublishRun, readLedger, updateLedger } = await import("../shared-node/ledger.mjs");
+  const { pbCommand } = await import("../shared-node/verbs.mjs");
+  const { closeUnit, endRun } = await import("../shared-node/unit-files.mjs");
   const { findSessionRoot } = await import("../shared-node/run-root.mjs");
   const { loadStages } = await import("../shared-node/stages.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
   const root = findSessionRoot(input.cwd, input.session_id);
-  if (root !== null) tapRun({ KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, gateAnswer, gatesFor, isBindingRefusal, loadStages, parseKey, publishBinding, readLedger, recordAnswer, updateLedger }, root, input);
+  if (root !== null) tapRun({ KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, updateLedger }, root, input);
 } catch {
   // not a run situation
 }

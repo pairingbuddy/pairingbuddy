@@ -3,8 +3,8 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { answeredGate, blockingGate, gatesFor } from "./gates.mjs";
-import { LedgerShaMismatch, readLedger } from "./ledger.mjs";
+import { PUBLISH_GATE, answeredGate, blockingGate, gatesFor, publishApproval } from "./gates.mjs";
+import { LedgerShaMismatch, isPublishRun, readLedger } from "./ledger.mjs";
 import { coveredTests, spendTotals } from "./stage-run.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, startLeaseSecondsLeft } from "./stages.mjs";
 import { humanCommand, pbCommand, shaMismatchRemedy } from "./verbs.mjs";
@@ -44,6 +44,8 @@ function activeAction(ledger, pluginRoot) {
 // stage because every stop the run raises leaves its stage active.
 export function nextAction(contract, ledger, root, pluginRoot) {
   const gates = gatesFor(contract, ledger.taskType);
+  // A keep-local answer to G:publish is final, not a gate waiting for an approval: pb publish finishes closing the unit.
+  if (ledger.stop === null && isPublishRun(ledger) && publishApproval(ledger) === "keep-local") return `The human answered keep local at ${PUBLISH_GATE}, so the unit is kept local. Run ${pbCommand("publish")} to finish closing it.`;
   const answered = answeredGate(gates, ledger);
   if (answered !== undefined) return `Gate ${answered.name} was answered ${answered.answer}. Only the human can go on: ask them to type ${humanCommand(root, `approve ${answered.name}`)}`;
   if (ledger.stop !== null) return `The run has stopped: ${ledger.stop.reason}. Nothing skips a stop, so report ${pbCommand("status")} to the human and go no further. Only if they say to go on, ${pbCommand("stage fail")} clears it.`;
@@ -56,6 +58,7 @@ export function nextAction(contract, ledger, root, pluginRoot) {
   if (gate !== undefined) return `Gate ${gate.name} is due. Run ${pbCommand("gate eval")}.`;
   const step = nextStep(contract, ledger);
   if (step !== null) return startAction(step, pluginRoot, ledger.task);
+  if (isPublishRun(ledger)) return publishApproval(ledger) === "human" ? `Every stage and gate is done and ${PUBLISH_GATE} is approved. Run ${pbCommand("publish")}.` : `Gate ${PUBLISH_GATE} is due. Run ${pbCommand("gate eval")}.`;
   return `Every stage and gate is done. Run ${pbCommand("task end")}.`;
 }
 

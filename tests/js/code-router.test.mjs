@@ -1,5 +1,5 @@
 import "./isolated-tmpdir.mjs";
-import { test } from "node:test";
+import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -504,4 +504,178 @@ except SmokeError as e:
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /--plugin-dir/);
   assert.equal(existsSync(marker), false, "no claude ran");
+});
+
+// ---------- the router around a unit and its publish run ----------
+
+const routerSection = () => /### Migrated-Types Router\n([\s\S]*?)\n## /.exec(skill())[1];
+
+// The router's steps are numbered list items, each a run of sentences. A sentence ends at . ! or ? followed by a space
+// and a capital letter or a backtick, so "step 2 and do not run `pb unit open` again." stays whole, and the list markers
+// are not sentences of their own.
+const listMarker = /^\s*(\d+\.|-)\s+/;
+const sentencesOf = (text) => text.split("\n").map((line) => line.replace(listMarker, "")).flatMap((line) => line.split(/(?<=[.!?])\s+(?=[A-Z`])/)).filter((sentence) => sentence.trim() !== "");
+
+// Every sentence of the text matching all of the patterns (regular expressions only, so each needle is visibly a pattern).
+const sentencesMatching = (text, ...patterns) => sentencesOf(text).filter((sentence) => patterns.every((pattern) => pattern.test(sentence)));
+
+// The sentences that say it, at least one: a claim nobody makes fails here, with what the router does say.
+function sentencesSaying(claim, text, ...patterns) {
+  const found = sentencesMatching(text, ...patterns);
+  assert.ok(found.length > 0, `no sentence says ${claim} (${patterns.join(" and ")}). The router's sentences:\n${sentencesOf(text).join("\n")}`);
+  return found;
+}
+
+describe("skill-opens-unit-before-code-run", () => {
+  test("unit-open-precedes-run-open", () => {
+    const section = routerSection();
+
+    const [unitFirst] = sentencesSaying("a non-plan task is a unit of one task, opened first", section, /unit of one task/, /unit opens first/);
+    const [unitOpen] = sentencesSaying("to run pb unit open with a type and a slug", section, /^Otherwise run `pb unit open --type <type> --slug <slug>`/);
+    const [codeOpen] = sentencesSaying("to run pb run open --kind code", section, /^Run `pb run open --kind code`/);
+    assert.ok(section.indexOf(unitFirst) < section.indexOf(codeOpen), "the unit step comes before the code run step");
+    assert.ok(section.indexOf(unitOpen) < section.indexOf(codeOpen), "pb unit open comes before pb run open --kind code");
+  });
+
+  test("unit-open-confirmation-is-the-humans", () => {
+    const section = routerSection();
+
+    const [confirmed] = sentencesSaying("the human confirmed the just-opened unit's branch", section, /the human confirmed its branch/, /just opened/);
+    assert.match(confirmed, /do not run `pb unit open` again/);
+    sentencesSaying("that only the human types a command for the human", section, /^Only the human types it\.?$/);
+    sentencesSaying("that the auto policy refusal is a command the model runs", section, /under the auto policy/, /run only that command/);
+  });
+
+  test("the-model-never-adds-yes-or-branch", () => {
+    const section = routerSection();
+
+    const naming = sentencesSaying("what --yes and --branch are", section, /--yes/, /--branch/);
+
+    for (const sentence of naming) assert.match(sentence, /^Never add `--yes` or `--branch` yourself/, `a sentence naming --yes or --branch forbids it: ${sentence}`);
+  });
+
+  test("unit-open-runs-only-the-command-the-refusal-prints", () => {
+    const section = routerSection();
+
+    sentencesSaying("that a command to run is run as printed, and only that", section, /refuses with a command to run/, /run only that command/);
+    sentencesSaying("that the model makes no policy judgement of its own", section, /never judge the policy yourself/i);
+    sentencesSaying("that a command for the human is shown and the run stops", section, /refuses with a command for the human to type/, /stop and show the human that command/);
+  });
+
+  test("resume-uses-just-opened-unit", () => {
+    const section = routerSection();
+
+    const resume = sentencesSaying("an open unit with no task records and its branch checked out is the one just opened", section, /If an open unit has no task records/, /its branch is checked out/, /it is the one just opened/);
+
+    assert.match(resume[0], /go on to step 2 and do not run `pb unit open` again/);
+  });
+
+  const typeMapping = { new_feature: "feat", bug_fix: "fix", refactoring: "refactor", config_change: "chore" };
+  for (const [type, abbreviation] of Object.entries(typeMapping)) {
+    test(`unit-type-mapping: ${type} is ${abbreviation}`, () => {
+      const section = routerSection();
+
+      sentencesSaying(`${type} maps to ${abbreviation}`, section, /mapped from `task_type`/, new RegExp(`\`${type}\` to \`${abbreviation}\``));
+    });
+  }
+
+  test("unit-slug-is-kebab-case-and-the-cli-validates", () => {
+    const section = routerSection();
+
+    sentencesSaying("a short kebab-case slug from the task", section, /--slug <slug>/, /kebab-case slug/);
+    sentencesSaying("that the CLI validates the type and the slug", section, /^The CLI validates both/);
+  });
+});
+
+describe("skill-opens-publish-run-after-task-end", () => {
+  test("publish-open-after-task-end", () => {
+    const section = routerSection();
+
+    sentencesSaying("to run pb task end and then open the publish run", section, /When it says every stage and gate is done, run `pb task end`, then `pb run open --kind publish`/);
+  });
+
+  test("task-end-and-publish-open-refusals-stop-the-run", () => {
+    const section = routerSection();
+
+    sentencesSaying("that a refusal of either command stops and is reported", section, /If either refuses, stop and report the refusal/, /do not open the publish run by other means/);
+  });
+
+  test("publish-run-follows-action", () => {
+    const section = routerSection();
+
+    const [follow] = sentencesSaying("to follow the action through pr-draft and G:publish as for the code stages", section, /^Follow `pb status --action` through pr-draft and `G:publish` as for the code stages/);
+
+    assert.match(follow, /run `pb gate eval` when it says a gate is due/);
+  });
+});
+
+describe("skill-runs-pb-publish-after-approval", () => {
+  test("pb-publish-after-approval", () => {
+    const section = routerSection();
+
+    sentencesSaying("that an approved G:publish makes the action name pb publish", section, /^When G:publish is approved, `pb status --action` names `pb publish`/);
+  });
+
+  test("gate-eval-skip-runs-pb-publish", () => {
+    const section = routerSection();
+
+    sentencesSaying("that a gate eval skip runs pb publish", section, /^When `pb gate eval` returns `skip`/, /run `pb publish` too/);
+  });
+
+  test("reports-url-warnings-pending-comment", () => {
+    const section = routerSection();
+
+    sentencesSaying("to report url, warnings and pendingComment from pb publish", section, /report `url`, `warnings` and `pendingComment` from its output/);
+  });
+
+  test("no-direct-push", () => {
+    const section = routerSection();
+
+    sentencesSaying("that pb publish is the only route to a push or a PR, and a push is never run by hand", section, /`pb publish` is the only route to a push or a PR/, /never run `git push` or `gh pr create` yourself/);
+  });
+
+  test("only-the-human-runs-pb-human", () => {
+    const section = routerSection();
+
+    sentencesSaying("that only the human runs a pb human command", section, /only the human runs a `pb human` command/);
+  });
+});
+
+describe("skill-keep-local-skip-local-stop", () => {
+  test("keep-local-reports-and-stops", () => {
+    const section = routerSection();
+
+    const rule = sentencesSaying("to report and stop on keep local", section, /If the human answers keep local/, /report that and stop/);
+
+    for (const sentence of rule) assert.doesNotMatch(sentence, /pb publish/, "no pb publish follows it");
+  });
+
+  test("skip-and-local-report-reason", () => {
+    const section = routerSection();
+
+    sentencesSaying("to report the reason and stop when pb publish returns skip, local or kept-local", section, /If `pb publish` returns `skip`, `local` or `kept-local`/, /report the `reason` and stop/);
+  });
+
+  test("gate-eval-skip-means-nothing-to-publish", () => {
+    const section = routerSection();
+
+    const gateSkip = sentencesSaying("what a gate eval skip means", section, /`pb gate eval` returns `skip`/);
+    for (const sentence of gateSkip) assert.match(sentence, /nothing to publish/, "the gate eval skip is named by what it means");
+    sentencesSaying("what a pb publish skip means", section, /`pb publish` returns `skip`/, /nothing was pushed/);
+  });
+
+  test("a left-behind kept-local unit is finished by pb publish", () => {
+    const section = routerSection();
+
+    sentencesSaying("that a left-behind kept-local unit is finished by pb publish", section, /kept-local unit is left behind/, /`pb publish`/, /report its `reason`/);
+  });
+
+  // A deliberate regression guard: these rules were in the router before the unit and publish run were added.
+  test("regression-guard-existing-router-rules-kept", () => {
+    const section = routerSection();
+
+    sentencesSaying("that pb stage finish is the only proof", section, /`pb stage finish`[^.]*is the only proof/);
+    sentencesSaying("never to read a workflow's reported status as a result", section, /^Never read a workflow's reported status as a result/);
+    sentencesSaying("never to do a stage's work", section, /^Never do a stage's work yourself/);
+  });
 });

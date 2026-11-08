@@ -6,7 +6,7 @@ const short = (sha) => String(sha).slice(0, 7);
 const list = (items) => items.join(", ");
 
 // Plan boxes under the unit's heading with no task record. With no boxes to go by, the unit must have a record at all.
-const recordedTasks = ({ unit, planBoxes, planProblem }) => {
+export const recordedTasks = ({ unit, planBoxes, planProblem }) => {
   if (planProblem) return planProblem;
   if (planBoxes === null || planBoxes.length === 0) return unit.tasks.length > 0 ? null : "the unit has no task records";
   const titles = new Set(unit.tasks.map((task) => task.title));
@@ -99,6 +99,7 @@ export function branchShapeProblem(branch) {
 export const unitRefPrefix = (branch) => `refs/pairingbuddy/${branch}/`;
 
 export const NO_COMMITS_REASON = "the unit has no commits past its base, so there is nothing to publish";
+export const KEPT_LOCAL_REASON = "the human answered keep local at G:publish, so the unit is closed and nothing was published";
 export const LOCAL_REASON = "pr.publish is none, so the commits, branch and refs stay local";
 
 // Never --force, never a merge: exactly the approved SHA goes to the unit branch on the remote, as a plain push.

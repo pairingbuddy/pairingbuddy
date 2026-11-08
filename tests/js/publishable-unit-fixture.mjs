@@ -2,16 +2,17 @@
 // line is written into, the unit's private refs, and the one wrapper that runs pb publish with the recording gh.
 import "./isolated-tmpdir.mjs";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { branchOf, headOf } from "../../shared-node/checkpoint.mjs";
+import { buildKey } from "../../shared-node/keys.mjs";
 import { updateLedger } from "../../shared-node/ledger.mjs";
 import { newTaskRecord } from "../../shared-node/unit.mjs";
-import { env, pb, pbWithEnv } from "./cli-repo-fixture.mjs";
+import { env, makeRepo, pb, pbWithEnv, ROOT } from "./cli-repo-fixture.mjs";
 import { FAKE_PR_URL, installGhShim } from "./gh-shim-fixture.mjs";
-import { sha256 } from "./tap-fixture.mjs";
+import { SESSION, fixture, runTap, sha256 } from "./tap-fixture.mjs";
 import {
   DRAFT_KEY, GATE,
   approvedThroughTap, commitMore, evalGate, git, gitConfigPath, publishRepo, readUnitRecord, unitFile,
@@ -171,4 +172,92 @@ export function publishUnit(unit, extraEnv = {}) {
   const gh = installGhShim();
   const result = pbWithEnv(unit.repo, gh.env({ PAIRINGBUDDY_GATE_POLICY: undefined, ...extraEnv }), "publish");
   return { gh, result };
+}
+
+// ---------- the publish run ----------
+
+export const TASK = "Add an export button";
+export const CONTEXT = "Readers want the table as CSV.";
+export const taskDirOf = (repo) => join(repo.dir, ".pairingbuddy", "run", "task");
+export const runDirOf = (repo) => join(repo.dir, ".pairingbuddy", "run");
+
+export function writeTaskJson(repo, task = { description: TASK, context: CONTEXT }) {
+  writeFileSync(join(repo.dir, ".pairingbuddy", "task.json"), JSON.stringify(task));
+}
+
+// A repo with a unit open (the real pb unit open), one commit on its branch, and `tasks` task records in unit.json
+// (none for an empty list), with .pairingbuddy/task.json written. No run/task. The task records are seeded: pb task end
+// appends them in a real run, and it needs a finished code run (see publishableUnit).
+export function endedTaskUnit({ tasks = [{}] } = {}) {
+  const repo = makeRepo({ openTask: false, remote: true });
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "export", "--yes");
+  assert.equal(opened.code, 0, `unit open: ${opened.stderr}`);
+  writeFileSync(join(repo.dir, "export-1.txt"), "export 1\n");
+  git(repo, "add", "export-1.txt");
+  git(repo, "commit", "-q", "-m", "feat: add export 1");
+  const head = headOf(repo.dir);
+  changeUnit(repo, { tasks: tasks.map((entry) => taskRecord(head, entry)), commits: [head] });
+  writeTaskJson(repo);
+  return repo;
+}
+
+export function openRun(repo, kind) {
+  const opened = pb(repo, "run", "open", "--kind", kind);
+  assert.equal(opened.code, 0, `run open --kind ${kind}: ${opened.stderr}`);
+  return JSON.parse(opened.stdout);
+}
+
+export function statusAction(repo) {
+  const result = pb(repo, "status", "--action");
+  assert.equal(result.code, 0, `pb status --action: ${result.stderr}`);
+  return JSON.parse(result.stdout).action;
+}
+
+const hookPayload = (repo, base, over) => ({ ...base, session_id: SESSION, cwd: repo.dir, ...over });
+
+function startWorkflow(repo, mode) {
+  const args = JSON.parse(/with the args (\{.*\})\./.exec(statusAction(repo))[1]);
+  const { agent_id: _id, agent_type: _type, ...base } = fixture("pretooluse-workflow.json");
+  const toolInput = { name: "pairingbuddy:pr-draft", args };
+  const { status, stdout, stderr } = spawnSync(process.execPath, [join(ROOT, "hooks", "gate-boot.mjs")], {
+    cwd: repo.dir, input: JSON.stringify(hookPayload(repo, base, { permission_mode: mode, tool_name: "Workflow", tool_input: toolInput })),
+    env: env({ PAIRINGBUDDY_GATE_POLICY: undefined }), encoding: "utf8",
+  });
+  assert.equal(status, 0, `the gate hook: ${stderr}`);
+  assert.equal(stdout, "", "the gate hook lets the pr-draft workflow start");
+  const posted = { ...base, tool_name: "Workflow", tool_input: toolInput, tool_response: { runId: "wf_pr_draft" } };
+  runTap(repo, hookPayload(repo, posted, { hook_event_name: "PostToolUse" }));
+}
+
+// What the pr-draft workflow's agent returns, filed by the tap under the key the workflow builds.
+function fileDraft(repo, draft) {
+  const { pb_key: _drafted, ...fields } = draft;
+  const pbKey = buildKey({ stage: "pr-draft", role: "draft-pull-request", item: null, round: 1, attempt: 1 });
+  const payload = {
+    ...fixture("pretooluse-workflow-agent-bash.json"), hook_event_name: "PostToolUse", tool_name: "StructuredOutput",
+    agent_type: "pairingbuddy:draft-pull-request", tool_input: { pb_key: pbKey, ...fields }, tool_response: "ok",
+  };
+  runTap(repo, hookPayload(repo, payload, {}));
+}
+
+// A publish run reached the way a real one is: pb run open --kind publish, the pr-draft workflow started through the
+// gate hook (which records the policy and the stage), its draft-pull-request return filed by the tap, then the
+// runner's two commands, pb pr lint and pb stage finish. Only the unit around it is built by publishableUnit (its task
+// records are seeded, see there), and that unit's own hand-written run/task is thrown away; the draft's fields are
+// carried over as the agent's answer. approve false leaves G:publish unanswered; other options go to publishableUnit.
+export function publishRun({ approve = true, mode = "default", ...options } = {}) {
+  const unit = publishableUnit({ approval: "none", mode, ...options });
+  const { repo } = unit;
+  const draft = JSON.parse(readFileSync(join(taskDirOf(repo), "artifacts", `${DRAFT_KEY}.json`), "utf8"));
+  rmSync(taskDirOf(repo), { recursive: true });
+  writeTaskJson(repo);
+  openRun(repo, "publish");
+  startWorkflow(repo, mode);
+  fileDraft(repo, draft);
+  const lint = pb(repo, "pr", "lint");
+  assert.equal(lint.code, 0, `pr lint: ${lint.stderr}`);
+  const finished = pb(repo, "stage", "finish");
+  assert.equal(finished.code, 0, `stage finish: ${finished.stderr}`);
+  if (approve) approvedThroughTap(repo);
+  return unit;
 }

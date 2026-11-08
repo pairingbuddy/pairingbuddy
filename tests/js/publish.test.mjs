@@ -3,7 +3,7 @@
 import "./isolated-tmpdir.mjs";
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -74,10 +74,13 @@ describe("publish-happy-path", () => {
   });
 
   test("draft-flag-under-auto-policy-from-ledger", () => {
-    const { repo, argv } = published({ mode: "auto", env: { PAIRINGBUDDY_GATE_POLICY: "default" } });
+    const unit = publishableUnit({ mode: "auto" });
+    assert.equal(unit.repo.ledger().policy.mode, "auto", "the gate hook recorded auto");
 
-    assert.equal(repo.ledger().policy.mode, "auto", "the gate hook recorded auto");
-    assert.equal(argv.filter((arg) => arg === "--draft").length, 1, "--draft, whatever the CLI's environment says");
+    const { gh, result } = publishUnit(unit, { PAIRINGBUDDY_GATE_POLICY: "default" });
+
+    assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
+    assert.equal(gh.prCreates()[0].argv.filter((arg) => arg === "--draft").length, 1, "--draft, whatever the CLI's environment says");
   });
 
   test("labels-passed-through-unchanged", () => {
@@ -581,11 +584,11 @@ describe("publish-closes-in-place-only-with-approval", () => {
 
   test("no-commits-skip-refuses-while-a-task-run-is-open", () => {
     const unit = publishableUnit({ commits: 0, approval: "none" });
-    changeLedger(unit.repo, () => ({ taskType: "new_feature" }));
+    changeLedger(unit.repo, () => ({ kind: "code", taskType: "new_feature" }));
 
     const stderr = refused(unit);
 
-    assert.match(stderr, /task run is open/, "the refusal says a task run is open");
+    assert.match(stderr, /needs a publish run.*code run/, "the refusal says the open run is a code run");
   });
 
   test("no-commits-skip-refuses-when-a-config-changed", () => {
@@ -597,9 +600,35 @@ describe("publish-closes-in-place-only-with-approval", () => {
     assert.match(stderr, /test-config\.json/, "the refusal names the changed config");
   });
 
-  test("refusal-names-keep-local-and-auto-apart-from-no-approval", () => {
+  test("a keep-local record closes the unit and the run with no push and no gh", () => {
+    const unit = publishableUnit({ approval: "none" });
+    changeLedger(unit.repo, (ledger) => ({ gates: { ...ledger.gates, "G:publish": { source: "human", answer: "keep-local" } } }));
+
+    const { gh, result } = publishUnit(unit);
+
+    assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
+    assert.equal(JSON.parse(result.stdout).result, "kept-local");
+    assert.equal(remoteRef(unit.repo, `refs/heads/${unit.branch}`), null, "nothing was pushed");
+    assert.deepEqual(gh.calls(), [], "no gh call was made");
+    assert.equal(existsSync(unitFile(unit.repo)), false, "the unit is closed");
+    assert.equal(existsSync(join(unit.repo.dir, ".pairingbuddy", "run", "task")), false, "the run is ended");
+  });
+
+  test("a keep-local run left with its unit already closed is still ended by pb publish", () => {
+    const unit = publishableUnit({ approval: "none" });
+    changeLedger(unit.repo, (ledger) => ({ gates: { ...ledger.gates, "G:publish": { source: "human", answer: "keep-local" } } }));
+    for (const name of RUN_FILES) rmSync(runFile(unit.repo, name), { force: true });
+
+    const { gh, result } = publishUnit(unit);
+
+    assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
+    assert.equal(JSON.parse(result.stdout).result, "kept-local");
+    assert.equal(existsSync(join(unit.repo.dir, ".pairingbuddy", "run", "task")), false, "the run is ended");
+    assert.deepEqual(gh.calls(), [], "no gh call was made");
+  });
+
+  test("refusal-names-auto-apart-from-no-approval", () => {
     const records = [
-      [{ source: "human", answer: "keep-local" }, /answered keep local/],
       [{ source: "auto", answer: "approve" }, /auto policy/],
     ];
     for (const [record, reason] of records) {

@@ -308,10 +308,16 @@ A migrated type runs through workflow stages instead of the branches above. Ever
 
 `_run_new_path(task)`:
 
-1. Run `pb run open --kind code`. It reads `task_type` from `.pairingbuddy/task-classification.json` and picks the stage graph, and it stores the task from `.pairingbuddy/task.json`. If it refuses, stop and report the refusal. Do not make the change another way.
-2. Run `pb status --action`. Its `action` is the one next step. A gate can fall between two stages, so follow `action`, not `next`, which names a stage even while a gate stands before it. When it says to start a stage, start that workflow by name with the args it gives, wait for it, and run `pb status --action` again.
-3. When it says a gate is due, run `pb gate eval`. On `auto-pass`, go back to step 2. On `needs-human`, show the human the question and `humanCommand`, and stop: only the human runs a `pb human` command.
-4. When it says every stage and gate is done, run `pb task end`.
+1. A non-plan `/code` task is a unit of one task, so the unit opens first. If an open unit has no task records and its branch is checked out, it is the one just opened (the human confirmed its branch): go on to step 2 and do not run `pb unit open` again. Otherwise run `pb unit open --type <type> --slug <slug>`, with the type mapped from `task_type` (`new_feature` to `feat`, `bug_fix` to `fix`, `refactoring` to `refactor`, `config_change` to `chore`) and a short kebab-case slug from the task. The CLI validates both.
+   - When it refuses with a command to run, as it does under the auto policy, run only that command. Never add `--yes` or `--branch` yourself and never judge the policy yourself: the CLI decides it.
+   - When it refuses with a command for the human to type, with a leading `!`, stop and show the human that command. Only the human types it. Resume at step 2 once they have.
+2. Run `pb run open --kind code`. It reads `task_type` from `.pairingbuddy/task-classification.json` and picks the stage graph, and it stores the task from `.pairingbuddy/task.json`. If it refuses, stop and report the refusal. Do not make the change another way.
+3. Run `pb status --action`. Its `action` is the one next step. A gate can fall between two stages, so follow `action`, not `next`, which names a stage even while a gate stands before it. When it says to start a stage, start that workflow by name with the args it gives, wait for it, and run `pb status --action` again.
+4. When it says a gate is due, run `pb gate eval`. On `auto-pass`, go back to step 3. On `needs-human`, show the human the question and `humanCommand`, and stop: only the human runs a `pb human` command.
+5. When it says every stage and gate is done, run `pb task end`, then `pb run open --kind publish`. If either refuses, stop and report the refusal: do not work around it, and do not open the publish run by other means.
+6. Follow `pb status --action` through pr-draft and `G:publish` as for the code stages: start the stage it names, run `pb gate eval` when it says a gate is due. On `needs-human`, show the question and stop as in step 4. If the human answers keep local, report that and stop. If a kept-local unit is left behind, `pb status --action` names `pb publish` to finish closing it: run it and report its `reason`.
+7. When G:publish is approved, `pb status --action` names `pb publish`. When `pb gate eval` returns `skip`, the unit has nothing to publish: run `pb publish` too. Run it and report `url`, `warnings` and `pendingComment` from its output. `pb publish` is the only route to a push or a PR: never run `git push` or `gh pr create` yourself.
+8. If `pb publish` returns `skip`, `local` or `kept-local`, nothing was pushed: report the `reason` and stop.
 
 `pb stage finish`, which the workflow's last agent runs, is the only proof a stage ran. Never read a workflow's reported status as a result: a workflow can report completed with no work done. After each workflow, `pb status` decides. If the stage did not finish, or `stop` is set, stop and report the `pb status` output.
 

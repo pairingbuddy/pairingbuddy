@@ -60,6 +60,7 @@ JS_TEST_FILES = [
     "tests/js/publish-steps.test.mjs",
     "tests/js/publish-gate-answers.test.mjs",
     "tests/js/publish-gate-eval.test.mjs",
+    "tests/js/publish-run.test.mjs",
     "tests/js/publish-comment.test.mjs",
     "tests/js/progress-row.test.mjs",
     "tests/js/report-content.test.mjs",

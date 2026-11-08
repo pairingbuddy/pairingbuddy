@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `/code` on the new path opens a unit first (`pb unit open --type feat|fix|refactor|chore --slug`). The model runs only the command a refusal prints for it, and the human confirms the branch otherwise. An open, empty unit on its branch is resumed.
+- After `pb task end`, `/code` opens a publish run (`pb run open --kind publish`, refused unless every unit task has a record, no task run is open and no publish run exists) and follows `pb status --action` through `pr-draft` and `G:publish`. On approval or nothing to publish it runs `pb publish` and reports url, warnings and `pendingComment`.
+- Keep local is finished by `pb publish` (result `kept-local`) if the tap's cleanup left anything.
+- The ledger kind is `publish` if and only if the taskType is `publish`.
+- `pb task end` refuses in a publish run. `pb publish` refuses outside a publish run and ends the publish run when it closes the unit.
 - The `G:publish` binding now also covers the PR title, labels and coordination text (an edit voids the approval).
 - `pb task end` records the full-suite result (`fullSuite`) so `pb publish` can check the last task's suite at HEAD.
 - `pb task end` now records the unit's commits, so `G:publish` can flag commits not in the unit record.
