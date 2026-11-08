@@ -47,6 +47,16 @@ function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, { to
   const temp = join(dir, `.${pbKey}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
   writeFileSync(temp, JSON.stringify(toolInput));
   renameSync(temp, join(dir, `${pbKey}.json`));
+  writePrBody(taskDir, parsed, toolInput.body);
+}
+
+// The pr-draft return's body is the PR body file the later stages read, written whole or not at all.
+function writePrBody(taskDir, parsed, body) {
+  if (parsed.stage !== "pr-draft" || parsed.role !== "draft-pull-request" || typeof body !== "string") return;
+  const runDir = join(taskDir, "..");
+  const temp = join(runDir, `.pr-body.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
+  writeFileSync(temp, body);
+  renameSync(temp, join(runDir, "pr-body.md"));
 }
 
 const hasStage = (ledger) => Boolean(ledger.stage?.name);

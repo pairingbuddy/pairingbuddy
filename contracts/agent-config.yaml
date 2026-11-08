@@ -98,6 +98,22 @@ agents:
         content: focus_warning
       - heading: "## Output"
 
+  draft-pull-request:
+    color: blue
+    model: sonnet
+    skills: [creating-pull-requests]
+    inputs: {}
+    outputs:
+      draft_pull_request_result:
+        schema: draft-pull-request-result.schema.json
+        return_only: true
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
   curate-guidance:
     color: cyan
     model: sonnet

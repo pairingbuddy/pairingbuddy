@@ -25,6 +25,7 @@ const PLAIN_NAMES = {
   "run-all-tests": "running every test",
   "update-documentation": "updating the docs",
   "commit-changes": "committing the changes",
+  "draft-pull-request": "drafting the pull request",
   "scope-refactoring": "scoping the cleanup",
   "setup-spike": "setting up the experiment",
   "explore-spike-unit": "trying an experiment",

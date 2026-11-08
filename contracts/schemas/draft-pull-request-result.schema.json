@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Draft Pull Request Result",
+  "description": "Return of the draft-pull-request agent: the pb key it was given, and the pull request title, body, labels, base branch and the coordination comment for text that is true only while the PR is open",
+  "type": "object",
+  "required": ["pb_key", "title", "body", "labels", "base", "coordination"],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "title": {
+      "type": "string",
+      "description": "Pull request title, following the configured title template"
+    },
+    "body": {
+      "type": "string",
+      "description": "Pull request body, written for main's log after a squash-merge"
+    },
+    "labels": {
+      "type": "array",
+      "description": "Labels to put on the pull request",
+      "items": { "type": "string" }
+    },
+    "base": {
+      "type": "string",
+      "description": "Base branch the pull request targets"
+    },
+    "coordination": {
+      "type": ["string", "null"],
+      "description": "Text true only while the PR is open, posted as a comment, or null when there is none"
+    }
+  },
+  "additionalProperties": false
+}
