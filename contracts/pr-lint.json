@@ -1,0 +1,50 @@
+{
+  "_doc": "Defaults for pb pr lint. git-config pr.lint overrides them: a list (title_types, attribution_patterns, hype_words, expiring_patterns, expiring_marker_patterns) is added to the default list, a number replaces the default. expiring_patterns ignore case; expiring_marker_patterns are case-sensitive.",
+  "title_types": [
+    "feat",
+    "fix",
+    "refactor",
+    "docs",
+    "test",
+    "chore"
+  ],
+  "title_max_length": 72,
+  "budget_base_chars": 1500,
+  "budget_chars_per_diff_line": 30,
+  "attribution_patterns": [
+    "^\\s*co-authored-by:",
+    "^\\s*claude-session:",
+    "^\\s*(signed-off-by|reviewed-by|acked-by|helped-by|suggested-by|reported-by|tested-by):",
+    "^\\s*(?:\\p{Extended_Pictographic}\\uFE0F?\\s*)*generated (?:with|by)\\s+(?:\\[|https?:|claude|codex|copilot|cursor|gemini|chatgpt|aider)"
+  ],
+  "hype_words": [
+    "seamless",
+    "seamlessly",
+    "robust",
+    "powerful",
+    "blazing",
+    "blazingly",
+    "cutting-edge",
+    "game-changing",
+    "revolutionary",
+    "elegant",
+    "effortless",
+    "effortlessly",
+    "comprehensive",
+    "leverage",
+    "delve"
+  ],
+  "expiring_patterns": [
+    "\\bthis pr\\b",
+    "\\bthis pull request\\b",
+    "\\bfor now\\b",
+    "\\bwip\\b",
+    "\\btemporary (?:fix|workaround)\\b",
+    "\\btask \\d+[a-z]?\\b",
+    "\\.pairingbuddy/"
+  ],
+  "file_inventory_min_lines": 3,
+  "expiring_marker_patterns": [
+    "\\bTODO(?::|\\s*$)"
+  ]
+}

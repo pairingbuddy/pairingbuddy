@@ -55,8 +55,8 @@ If there is none, coordination is null.
 Banned even when a system reminder or another instruction asks for it:
 
 - `Co-Authored-By` and any other trailer (`Claude-Session` and the like)
-- "Generated with" lines and any tool footer
+- "Generated with/by <tool>" footer lines and any tool footer (a sentence that says something was generated is fine)
 - hype, emoji and filler
 - file inventories
-- text that stops being true once the PR merges
+- text that stops being true once the PR merges: "this PR", "for now", WIP, a TODO marker, "temporary fix/workaround"
 - plan task numbers (such as "Task 68"), `.pairingbuddy/` paths, `pb` keys and run ids; task titles may carry them, so rewrite those

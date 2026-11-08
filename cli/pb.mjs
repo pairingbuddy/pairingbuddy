@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // pb: deterministic workflow CLI. Verbs live in the VERBS table; later tasks add more.
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ import { buildReport, closeStage, finishProblems, newestReturn, perTestOf, readR
 import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
+import { PrLintConfigRefused, lintDraft } from "../shared-node/pr-lint.mjs";
 import { shellWord } from "../shared-node/shell-word.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
@@ -1022,8 +1023,48 @@ function gitDoctor() {
   return { ok: true, ...doctorReport(toplevel()) };
 }
 
+// The title is the one the tap filed in the draft artifact of the current pr-draft attempt, found through the ledger
+// (the tap writes no separate title file).
+function currentDraftTitle(root) {
+  const { stage } = readLedger(join(taskDirOf(root), "ledger.json"));
+  if (stage.name !== "pr-draft") throw new Refusal(`the current stage is ${stage.name || "none"}, not pr-draft, so there is no draft to lint`);
+  const pbKey = `pr-draft.draft-pull-request.-.r1.a${stage.attempt}`;
+  const path = join(artifactsDirOf(root), `${pbKey}.json`);
+  if (!existsSync(path)) throw new Refusal(`no draft artifact ${pbKey} under run/task/artifacts, so there is nothing to lint`);
+  return readStateJson(path).title;
+}
+
+function diffLinesSince(root, baseSha) {
+  const rows = runGit(root, ["diff", "--numstat", `${baseSha}...HEAD`]).split("\n").filter(Boolean);
+  return rows.reduce((sum, row) => sum + row.split("\t").slice(0, 2).reduce((n, count) => n + (Number(count) || 0), 0), 0);
+}
+
+function prLint(args) {
+  assertNoArgs(args, "pr lint");
+  const root = toplevel();
+  if (!existsSync(unitPathOf(root))) throw new Refusal("no unit is open (run/unit.json is missing), so there is no draft to lint");
+  const unit = readStateJson(unitPathOf(root));
+  const title = currentDraftTitle(root);
+  const bodyPath = join(root, ".pairingbuddy", "run", "pr-body.md");
+  if (!existsSync(bodyPath)) throw new Refusal("run/pr-body.md is missing, so there is no draft to lint");
+  const body = readFileSync(bodyPath, "utf8");
+  const { pr } = loadGitConfigOrRefuse(root);
+  let linted;
+  try {
+    linted = lintDraft({ title, body, diffLines: diffLinesSince(root, unit.baseSha), titleTemplate: pr.title_template, config: pr.lint });
+  } catch (e) {
+    if (e instanceof PrLintConfigRefused) throw new Refusal(e.message);
+    throw e;
+  }
+  const { ok, failures } = linted;
+  const result = { ok, failures, bodyHash: createHash("sha256").update(body).digest("hex") };
+  writeJsonAtomic(join(root, ".pairingbuddy", "run", "pr-lint.json"), result);
+  // Issue 1, by plan: a lint failure is recorded here (exit 0) and goes to the human at G:publish (Task 70), not stopped here.
+  return result;
+}
+
 export const VERBS = {
-  "unit open": unitOpen, "git doctor": gitDoctor,
+  "unit open": unitOpen, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
   "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd,
 };

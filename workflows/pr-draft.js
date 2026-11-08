@@ -3,6 +3,7 @@ export const meta = { name: 'pr-draft', description: 'Internal stage, started by
 if (args === undefined) return { started: false };
 
 const RESULT_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Draft Pull Request Result","description":"Return of the draft-pull-request agent: the pb key it was given, and the pull request title, body, labels, base branch and the coordination comment for text that is true only while the PR is open","type":"object","required":["pb_key","title","body","labels","base","coordination"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"title":{"type":"string","description":"Pull request title, following the configured title template"},"body":{"type":"string","description":"Pull request body, written for main's log after a squash-merge"},"labels":{"type":"array","description":"Labels to put on the pull request","items":{"type":"string"}},"base":{"type":"string","description":"Base branch the pull request targets"},"coordination":{"type":["string","null"],"description":"Text true only while the PR is open, posted as a comment, or null when there is none"}},"additionalProperties":false};
+const RUNNER_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Runner Result","description":"Return of the runner agent: the pb key it was given and the CLI's last exit code and its output, relayed unchanged. Evidence lives in the ledger, written by the CLI","type":"object","required":["pb_key","cli_exit_code","cli_output"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"cli_exit_code":{"type":"integer","description":"Exit code of the last pb command run: 0 when it was recorded, not when the tests passed"},"cli_output":{"type":"string","description":"What each pb command printed, unchanged, in order"}},"additionalProperties":false};
 
 // What every stage does alike. RUNNER_SCHEMA comes from the stage's own pb-inline line, and buildKey, buildLabel and
 // shellWord from its pb-inline-module lines.
@@ -194,6 +195,12 @@ function readLabel(text) {
   }
 }
 
+// One shell word for a path or an argument, unchanged when a shell would read it as it stands. Workflow bundles inline
+// this file, so it imports nothing.
+const SHELL_SAFE = /^[\w@%+=:,./-]+$/;
+
+const shellWord = (word) => (SHELL_SAFE.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`);
+
 const missing = missingArgument();
 if (missing !== null) return missing;
 
@@ -223,5 +230,6 @@ const prompt = [
 
 const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
-// Task 68a adds lint after the writer and the 'stage finish' step, so this stage does not close its ledger stage yet.
-return { started: true, pbKey, label, result };
+const runner = await runCommands(stage, ['pr lint', 'stage finish']);
+
+return { started: true, pbKey, label, result, runner };

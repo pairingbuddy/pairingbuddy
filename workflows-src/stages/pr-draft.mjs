@@ -2,7 +2,9 @@ export const meta = { name: 'pr-draft', description: 'Internal stage, started by
 
 // pb-inline-module shared-node/keys.mjs
 // pb-inline-module shared-node/labels.mjs
+// pb-inline-module shared-node/shell-word.mjs
 // pb-inline RESULT_SCHEMA contracts/schemas/draft-pull-request-result.schema.json
+// pb-inline RUNNER_SCHEMA contracts/schemas/runner-result.schema.json
 
 const missing = missingArgument();
 if (missing !== null) return missing;
@@ -33,5 +35,6 @@ const prompt = [
 
 const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
-// Task 68a adds lint after the writer and the 'stage finish' step, so this stage does not close its ledger stage yet.
-return { started: true, pbKey, label, result };
+const runner = await runCommands(stage, ['pr lint', 'stage finish']);
+
+return { started: true, pbKey, label, result, runner };

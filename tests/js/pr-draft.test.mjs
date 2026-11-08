@@ -21,7 +21,8 @@ const runStage = (args = ARGS, agent = async () => ({})) => runScript(STAGE, { a
 test("pr-draft-spawns-the-draft-pull-request-agent-once-with-key-task-and-paths", async () => {
   const { calls } = await runStage();
 
-  assert.equal(calls.length, 1, "exactly one agent call");
+  assert.equal(calls[0].opts.agentType, `pairingbuddy:${AGENT}`, "the writer is the first call");
+  assert.equal(calls.filter(({ opts }) => opts.agentType === `pairingbuddy:${AGENT}`).length, 1, "exactly one writer call");
   assert.equal(calls[0].opts.agentType, `pairingbuddy:${AGENT}`);
   assert.ok(calls[0].prompt.includes(`Return pb_key exactly as: pr-draft.${AGENT}.-.r1.a1`), "the prompt names its key");
   assert.deepEqual(JSON.parse(blockOf(calls[0].prompt, "task")), ARGS.task, "the task block carries the task");
@@ -54,4 +55,24 @@ test("pr-draft-contract-requires-title-body-labels-base-and-coordination", () =>
 
   for (const field of ["title", "body", "labels", "base", "coordination"]) assert.ok(required.includes(field), `${field} is required`);
   assert.deepEqual([...properties.coordination.type].sort(), ["null", "string"], "coordination is a string or null");
+});
+
+test("pr-draft-lints-after-writer-records-hash-then-finishes", async () => {
+  const lintFailed = JSON.stringify({ ok: false, failures: [{ rule: "hype", text: "seamless" }] });
+  const agent = async (prompt, opts) => {
+    if (opts.agentType === `pairingbuddy:${AGENT}`) return { title: "feat: add export button", body: "body", labels: [], base: "main", coordination: null };
+    return { cli_exit_code: 0, cli_output: lintFailed };
+  };
+
+  const { calls, result } = await runStage(ARGS, agent);
+
+  assert.deepEqual(calls.map(({ opts }) => opts.agentType), [`pairingbuddy:${AGENT}`, "pairingbuddy:runner"], "the runner follows the writer");
+  assert.ok(calls[1].prompt.includes("Return pb_key exactly as: pr-draft.runner.-.r1.a1"), "the runner prompt names its key");
+  assert.deepEqual(blockOf(calls[1].prompt, "commands").split("\n"), [
+    `node ${PLUGIN_ROOT}/cli/pb.mjs pr lint`,
+    `node ${PLUGIN_ROOT}/cli/pb.mjs stage finish`,
+  ], "lint first, then finish, in one runner call");
+  assert.equal(result.runner.pbKey, "pr-draft.runner.-.r1.a1");
+  assert.equal(result.runner.result.cli_output, lintFailed, "a failed lint is relayed and does not stop the stage finishing");
+  assert.equal(result.started, true);
 });
