@@ -1,7 +1,7 @@
 // Plan checkboxes: how the gate reads them, and the one writer, which only pb task end calls. Tasks are identified by
 // title (D12), and the text around a box is the human's, so only its mark changes. Node built-ins only.
 import { randomBytes } from "node:crypto";
-import { readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 
 import { isOutside } from "./checkpoint.mjs";
@@ -37,9 +37,10 @@ function boxOf(text, { path, title }) {
   return boxes[0];
 }
 
-function replaceFile(file, text) {
+// Writes text to a temp file and renames it over file, which keeps its mode when it exists.
+export function replaceFile(file, text) {
   const temp = `${file}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
-  writeFileSync(temp, text, { mode: statSync(file).mode });
+  writeFileSync(temp, text, { mode: existsSync(file) ? statSync(file).mode : 0o644 });
   renameSync(temp, file);
 }
 

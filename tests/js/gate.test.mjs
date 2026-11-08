@@ -1,20 +1,16 @@
 import "./isolated-tmpdir.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { appendFileSync, chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { BOOT, ROOT, assertAllowed, assertDenied, fixture, runGate } from "./gate-harness.mjs";
 import { graphFor, loadStages, pipelineAgents, START_LEASE_SECONDS, validateStages } from "../../shared-node/stages.mjs";
 
-const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const GATE = join(ROOT, "hooks", "gate.mjs");
-const BOOT = join(ROOT, "hooks", "gate-boot.mjs");
-const PAYLOADS = join(ROOT, "tests", "probes", "fixtures", "payloads");
-const fixture = (name) => JSON.parse(readFileSync(join(PAYLOADS, name), "utf8"));
 
 const CONFIG = "code-config";
 const SAFETY_NET = "code-safety-net";
@@ -125,29 +121,6 @@ async function withPlugin(opts, fn) {
   }
 }
 
-// pluginRoot null leaves CLAUDE_PLUGIN_ROOT unset. processCwd is the hook's own cwd, payload.cwd by default.
-// A string payload goes to stdin as it is. gate and path swap the hook file and the PATH it sees.
-function runGate(payload, { pluginRoot = ROOT, processCwd = payload.cwd, gate = BOOT, path = process.env.PATH } = {}) {
-  const { CLAUDE_PLUGIN_ROOT: _inherited, ...env } = process.env;
-  if (pluginRoot !== null) env.CLAUDE_PLUGIN_ROOT = pluginRoot;
-  env.PATH = path;
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [gate], {
-      cwd: processCwd,
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => (stdout += d));
-    child.stderr.on("data", (d) => (stderr += d));
-    child.on("error", reject);
-    child.on("close", (code) => resolve({ code, stdout, stderr }));
-    child.stdin.on("error", () => {});
-    child.stdin.end(typeof payload === "string" ? payload : JSON.stringify(payload));
-  });
-}
-
 function workflowCall(cwd, toolInput) {
   return { ...fixture("pretooluse-workflow.json"), cwd, tool_input: toolInput };
 }
@@ -164,23 +137,12 @@ function agentCall(cwd, subagentType) {
   };
 }
 
-function assertAllowed(result) {
-  assert.deepEqual(result, { code: 0, stdout: "", stderr: "" }, "an allow is silent");
-}
-
 // The stage the gate marked, with startedAt stamped at or after `since`.
 function assertMarkedActive(stage, name, attempt, since) {
   const { startedAt, ...rest } = stage;
   assert.deepEqual(rest, { name, status: "active", runId: null, attempt });
   assert.equal(new Date(Date.parse(startedAt)).toISOString(), startedAt, "startedAt is an ISO timestamp");
   assert.ok(Date.parse(startedAt) >= since && Date.parse(startedAt) <= Date.now(), `startedAt ${startedAt} is the time of this start`);
-}
-
-function assertDenied(result, reason) {
-  assert.equal(result.code, 0, `the JSON deny form needs exit 0; stderr: ${result.stderr}`);
-  assert.deepEqual(JSON.parse(result.stdout), {
-    hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason },
-  });
 }
 
 // The seconds remaining depend on how long the hook took, so the reason is matched within a range.
@@ -398,12 +360,7 @@ test("curate-guidance asks nobody under the auto permission mode", () =>
 
 test("curate-guidance asks nobody under PAIRINGBUDDY_GATE_POLICY=auto", () =>
   withRepo({ ledger: null }, async (repo) => {
-    process.env.PAIRINGBUDDY_GATE_POLICY = "auto";
-    try {
-      assertDenied(await runGate(question(repo.dir, { permission_mode: "default" })), MESSAGES.noHumanHere);
-    } finally {
-      delete process.env.PAIRINGBUDDY_GATE_POLICY;
-    }
+    assertDenied(await runGate(question(repo.dir, { permission_mode: "default" }), { env: { PAIRINGBUDDY_GATE_POLICY: "auto" } }), MESSAGES.noHumanHere);
   }));
 
 test("curate-guidance still asks a human outside the auto policy", () =>

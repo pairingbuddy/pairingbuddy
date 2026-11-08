@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Unit",
+  "description": "The unit record in .pairingbuddy/run/unit.json: a branch and the task records that accumulate on it.",
+  "type": "object",
+  "required": ["unit", "plan", "tracer", "branch", "base", "baseSha", "configHash", "gitConfigHash", "tasks", "commits"],
+  "properties": {
+    "unit": { "type": ["string", "null"] },
+    "plan": { "type": ["string", "null"] },
+    "tracer": { "type": ["string", "null"] },
+    "branch": { "type": "string" },
+    "base": { "type": "string" },
+    "baseSha": { "type": "string" },
+    "configHash": { "type": "string" },
+    "gitConfigHash": { "type": "string" },
+    "tasks": { "type": "array", "items": { "type": "object" } },
+    "commits": { "type": "array" }
+  }
+}

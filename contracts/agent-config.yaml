@@ -59,6 +59,7 @@ schemas:
   - verify-test-coverage-result.schema.json
   - refuter-verdict.schema.json
   - git-config.schema.json
+  - unit.schema.json
 
 # =============================================================================
 # Agent definitions

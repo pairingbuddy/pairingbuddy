@@ -139,6 +139,24 @@ async function denyAgentWithNoRun(toolInput) {
   }
 }
 
+// Outside auto, a unit open that confirms, or a pb call whose words a shell builds, is denied with no run. There is no text
+// pre-filter: the built words (a substitution, IFS, a brace, a glob) can hide the word unit from any cheap test, and the
+// import is lazy. A failure mirrors denyStageWithNoRun: it allows, except where the raw text clearly is a confirming
+// unit open, and then it denies, since a model never approves a gate.
+async function denyUnitOpenConfirm(payload) {
+  const command = payload.tool_input?.command;
+  if (typeof command !== "string") return;
+  const auto = payload.permission_mode === "auto" || process.env[POLICY_ENV] === "auto";
+  if (auto) return;
+  try {
+    const { unitOpenDenial } = await import("../shared-node/unit-open-denial.mjs");
+    const reason = unitOpenDenial(payload, { denyBuiltWords: true });
+    if (reason !== null) decide("deny", reason);
+  } catch (e) {
+    if (/\bunit\s+open\b/.test(command) && /--(yes|branch)\b/.test(command)) decide("deny", `Gate error with no run open: cannot tell whether this unit open confirms, so the call is denied: ${e?.message ?? e}`);
+  }
+}
+
 function denyQuestionWithNoHuman({ agent_type: agentType, permission_mode: mode }) {
   if (agentType !== CURATOR || (mode !== "auto" && process.env[POLICY_ENV] !== "auto")) return;
   decide("deny", "No human answers under the auto policy, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.");
@@ -176,6 +194,8 @@ try {
     await denyStageWithNoRun(payload.tool_input ?? {}, cwd);
   } else if (payload?.tool_name === "Agent") {
     await denyAgentWithNoRun(payload.tool_input ?? {});
+  } else if (payload?.tool_name === "Bash") {
+    await denyUnitOpenConfirm(payload);
   } else if (payload?.tool_name === "AskUserQuestion") {
     denyQuestionWithNoHuman(payload);
   }

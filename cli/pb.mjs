@@ -2,7 +2,7 @@
 // pb: deterministic workflow CLI. Verbs live in the VERBS table; later tasks add more.
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -10,8 +10,9 @@ import { isDeepStrictEqual } from "node:util";
 import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep } from "../shared-node/checkpoint.mjs";
 import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
-import { GitConfigRefused, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches } from "../shared-node/gitconf.mjs";
-import { PlanRefused, tickPlanBox } from "../shared-node/plan-boxes.mjs";
+import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches } from "../shared-node/gitconf.mjs";
+import { PlanRefused, replaceFile, tickPlanBox } from "../shared-node/plan-boxes.mjs";
+import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
@@ -19,6 +20,7 @@ import { buildReport, closeStage, finishProblems, newestReturn, perTestOf, readR
 import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
+import { shellWord } from "../shared-node/shell-word.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
@@ -56,9 +58,12 @@ function loadGitConfigOrRefuse(root) {
 }
 
 // One rule for every verb that refuses a protected branch: the configured list plus the repo's default branch.
-function assertBranchNotProtected(gitConfig, root, branch, action) {
-  const protectedSet = protectedBranches(gitConfig, defaultBranchOf(root, gitConfig.remote));
-  if (isBranchProtected(protectedSet, branch)) throw new Refusal(`refusing to ${action} on protected branch ${branch}`);
+function isProtected(gitConfig, root, branch) {
+  return isBranchProtected(protectedBranches(gitConfig, defaultBranchOf(root, gitConfig.remote)), branch);
+}
+
+function assertBranchNotProtected(gitConfig, root, branch, action, hint = "") {
+  if (isProtected(gitConfig, root, branch)) throw new Refusal(`refusing to ${action} on protected branch ${branch}${hint}`);
 }
 
 function parseKind(args) {
@@ -122,6 +127,18 @@ function assertTestsSelectable(root, configHash, taskType) {
   throw new Refusal(`${named} no selector_template, so RED and GREEN cannot speak for one test, and no run was opened. Ask the human to add selector_template to each runner in .pairingbuddy/test-config.json: the argument words that select one test, for example ["{test_file}::{test_function}"] for pytest. Then start the task again`);
 }
 
+// Creates .pairingbuddy/run with a '*' .gitignore so nothing under it shows up as untracked. Returns the run root.
+function ensureRunRoot(root) {
+  const runRoot = join(root, ".pairingbuddy", "run");
+  mkdirSync(runRoot, { recursive: true });
+  try {
+    writeFileSync(join(runRoot, ".gitignore"), "*\n", { flag: "wx" });
+  } catch (e) {
+    if (e.code !== "EEXIST") throw e;
+  }
+  return runRoot;
+}
+
 function runOpen(args) {
   const kind = parseKind(args);
   if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Refusal("Solo stays on the old path until T10, so no run was opened");
@@ -129,7 +146,7 @@ function runOpen(args) {
   assertNotStopped(root);
   const branch = currentBranch(root);
   const gitConfig = loadGitConfigOrRefuse(root); // bootstraps git-config.json when missing; hashed below
-  assertBranchNotProtected(gitConfig, root, branch, "open a run");
+  assertBranchNotProtected(gitConfig, root, branch, "open a run", "; start the work on a unit branch with pb unit open");
 
   const configHash = validatedConfigHash(root);
   const gitConfigHash = fileHash(gitConfigPath(root));
@@ -137,14 +154,8 @@ function runOpen(args) {
   assertTestsSelectable(root, configHash, taskType);
   const task = storedTask(root);
 
-  const runRoot = join(root, ".pairingbuddy", "run");
+  const runRoot = ensureRunRoot(root);
   const dir = join(runRoot, "task");
-  mkdirSync(runRoot, { recursive: true });
-  try {
-    writeFileSync(join(runRoot, ".gitignore"), "*\n", { flag: "wx" });
-  } catch (e) {
-    if (e.code !== "EEXIST") throw e;
-  }
   // A non-recursive mkdir is the claim: exactly one concurrent opener wins, and an existing
   // run/task of any shape (with or without a ledger) refuses.
   try {
@@ -754,7 +765,53 @@ function tickedPlan(root, { path, title }) {
   return path === "" ? null : { path, title, ticked: tickPlanBox(root, { path, title }) };
 }
 
-// Removes run/task only. The refusals all come first, so a refused call changes nothing.
+const unitPathOf = (root) => join(root, ".pairingbuddy", "run", "unit.json");
+
+// Writes a JSON file atomically: a temp file renamed into place. With exclusive, the temp file is linked into place
+// instead, which fails when the file already exists, so of two openers only one claims it.
+function writeJsonAtomic(path, value, { exclusive = false } = {}) {
+  const text = JSON.stringify(value, null, 2) + "\n";
+  if (!exclusive) return replaceFile(path, text);
+  const temp = `${path}.${randomUUID()}.tmp`;
+  writeFileSync(temp, text);
+  try {
+    linkSync(temp, path);
+  } catch (e) {
+    if (e.code === "EEXIST") throw new Refusal("a unit is already open (run/unit.json exists); nothing was touched");
+    throw e;
+  } finally {
+    rmSync(temp, { force: true });
+  }
+}
+
+// What taskEnd needs to record the task, read with the other refusals: the open unit and HEAD, or null with no unit.
+// A corrupt unit.json, one without a tasks list, or no commit refuses here, before anything changes.
+function readUnitForRecord(root, ledger) {
+  const path = unitPathOf(root);
+  if (!existsSync(path)) return null;
+  let unit;
+  try {
+    unit = JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    throw new Refusal(`run/unit.json is unreadable, so the task cannot end. Nothing was touched: ${e.message}`);
+  }
+  if (!Array.isArray(unit?.tasks)) throw new Refusal("run/unit.json has no tasks list, so the task cannot end. Nothing was touched");
+  const headSha = headOf(root);
+  if (headSha === null) throw new Refusal("there is no commit yet, so the task cannot end. Nothing was touched");
+  return { path, unit, record: newTaskRecord({ ledger, headSha }) };
+}
+
+// A retry after a crash finds its own record last, and appends nothing more.
+function appendTaskRecord(opened) {
+  if (opened === null) return;
+  const { path, unit, record } = opened;
+  const last = unit.tasks.at(-1);
+  if (last?.title === record.title && last?.headSha === record.headSha) return;
+  unit.tasks.push(record);
+  writeJsonAtomic(path, unit);
+}
+
+// Appends the unit's task record, then removes run/task. The refusals all come first, including reading the unit and HEAD, so a refused call changes nothing.
 function taskEnd(args) {
   assertNoArgs(args, "task end");
   const { root, path } = runLedgerPath();
@@ -763,13 +820,107 @@ function taskEnd(args) {
   assertCommitsOnHead(root, ledger);
   assertGreenRunStands(root, ledger);
   assertCleanTree(root);
+  const opened = readUnitForRecord(root, ledger);
   const plan = tickedPlan(root, ledger.plan);
+  appendTaskRecord(opened);
   const dir = taskDirOf(root);
   rmSync(dir, { recursive: true });
   return { ok: true, removed: dir, plan };
 }
 
+function flagValue(args, flag) {
+  const i = args.indexOf(flag);
+  return i === -1 ? undefined : args[i + 1];
+}
+
+function runGit(cwd, args) {
+  try {
+    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  } catch (e) {
+    const why = String(e.stderr ?? "").trim() || e.message;
+    throw new Refusal(`git ${args.join(" ")} failed: ${why}`);
+  }
+}
+
+// --branch <name> is the human's own name for the branch. A missing value, or one that looks like a flag, is a usage error.
+function chosenBranch(args) {
+  if (!args.includes("--branch")) return undefined;
+  const name = flagValue(args, "--branch");
+  if (name === undefined || name.startsWith("-")) throw new UsageError("--branch needs a branch name that does not start with '-'");
+  return name;
+}
+
+// Refuses a protected branch name, and one git itself rejects, before anything changes.
+function assertUsableBranch(root, gitConfig, branch) {
+  if (isProtected(gitConfig, root, branch)) throw new Refusal(`branch ${branch} is protected; choose another name`);
+  try {
+    execFileSync("git", ["check-ref-format", "--branch", branch], { cwd: root, stdio: "ignore" });
+  } catch {
+    throw new Refusal(`invalid branch name: ${branch}`);
+  }
+}
+
+function branchExists(root, branch) {
+  try {
+    execFileSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: root, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A UnitRefused from the template (an unknown placeholder) is a refusal; nothing else in the open throws it.
+function renderBranchOrRefuse(template, values) {
+  try {
+    return renderBranch(template, values);
+  } catch (e) {
+    if (e instanceof UnitRefused) throw new Refusal(e.message);
+    throw e;
+  }
+}
+
+// The CLI reads no gate policy: the acceptance is the human's own typed line with --yes or --branch.
+// The refusals come first and touch nothing, with one accepted exception: loadGitConfigOrRefuse bootstraps
+// .pairingbuddy/git-config.json when it is missing, since the branch refusals need its template and protected list.
+// That file is under .pairingbuddy/, so it never makes the tree dirty. Then run/unit.json is claimed exclusively before
+// the branch is made, and removed again if the switch fails, so no branch is left without its record.
+function unitOpen(args) {
+  const type = flagValue(args, "--type");
+  const slug = flagValue(args, "--slug");
+  if (!type || !slug) throw new UsageError("usage: pb unit open --type <type> --slug <slug>");
+  const chosen = chosenBranch(args);
+  const root = toplevel();
+  if (existsSync(unitPathOf(root))) throw new Refusal("a unit is already open (run/unit.json exists); nothing was touched");
+  const dirty = remainingFiles(root);
+  if (dirty.length > 0) throw new Refusal(`the tree is dirty, so the unit cannot open. Commit or remove these, nothing was touched: ${dirty.join(", ")}`);
+  const gitConfig = loadGitConfigOrRefuse(root);
+  const branch = chosen ?? renderBranchOrRefuse(gitConfig.branch_template, { type, slug });
+  assertUsableBranch(root, gitConfig, branch);
+  if (branchExists(root, branch)) throw new Refusal(`branch ${branch} already exists; choose another name`);
+  if (chosen === undefined && !args.includes("--yes")) {
+    const again = `unit open --type ${shellWord(type)} --slug ${shellWord(slug)}`;
+    throw new Refusal(`proposed branch: ${branch}. Ask the human to type ${typedCommand(root, `${again} --yes`)}, or ${typedCommand(root, `${again} --branch <name>`)} to choose another name`);
+  }
+  const configHash = validatedConfigHash(root);
+  const gitConfigHash = fileHash(gitConfigPath(root));
+  const base = baseBranch(gitConfig, defaultBranchOf(root, gitConfig.remote));
+  if (base === null) throw new Refusal("cannot tell the base branch");
+  const git = (...a) => runGit(root, a);
+  git("fetch", gitConfig.remote);
+  const baseSha = git("rev-parse", `${gitConfig.remote}/${base}`);
+  ensureRunRoot(root);
+  writeJsonAtomic(unitPathOf(root), newUnit({ branch, base, baseSha, configHash, gitConfigHash }), { exclusive: true });
+  try {
+    git("switch", "-c", branch, baseSha);
+  } catch (e) {
+    rmSync(unitPathOf(root), { force: true });
+    throw e;
+  }
+  return { ok: true, branch, base, baseSha };
+}
+
 export const VERBS = {
+  "unit open": unitOpen,
   "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept, test: runTests, checkpoint,
   "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd,
 };

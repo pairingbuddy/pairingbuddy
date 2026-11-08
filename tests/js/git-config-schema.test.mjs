@@ -2,30 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DEFAULTS } from "../../shared-node/gitconf.mjs";
+import { violations } from "./schema-check.mjs";
 
 const SCHEMA_NAME = "git-config.schema.json";
 const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), "utf8");
-
-const kindOf = (v) => (Array.isArray(v) ? "array" : v === null ? "null" : Number.isInteger(v) ? "integer" : typeof v);
-
-// Minimal draft-07 subset checker (no validator dependency in this repo): type, properties, items.
-function violations(schema, value, path = "$") {
-  const kind = kindOf(value);
-  const types = [].concat(schema.type ?? []);
-  if (types.length && !types.some((t) => t === kind || (t === "number" && kind === "integer"))) {
-    return [`${path}: expected ${types.join("|")}, got ${kind}`];
-  }
-  const out = [];
-  if (kind === "object") {
-    for (const [key, sub] of Object.entries(schema.properties ?? {})) {
-      if (key in value) out.push(...violations(sub, value[key], `${path}.${key}`));
-    }
-  }
-  if (kind === "array" && schema.items) {
-    value.forEach((item, i) => out.push(...violations(schema.items, item, `${path}[${i}]`)));
-  }
-  return out;
-}
 
 // Scenario: git-config-schema (structural level only).
 

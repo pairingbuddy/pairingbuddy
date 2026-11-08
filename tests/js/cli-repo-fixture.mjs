@@ -37,15 +37,28 @@ const NO_HOME = makeDir("pb-no-home-");
 export const env = (extra = {}) => ({ ...process.env, ...ISOLATED_GIT, HOME: NO_HOME, XDG_CONFIG_HOME: NO_HOME, CLAUDE_PLUGIN_ROOT: ROOT, ...extra });
 
 // openTask: false leaves the repo with no task in flight, so `pb run open` starts from a fresh repo.
-export function makeRepo({ ledger = {}, openTask = true } = {}) {
+// remote: true gives the repo a local bare origin with its default branch "main" pushed and refs/remotes/origin/HEAD set;
+// .pairingbuddy/ is git-ignored there, so only real changes make the tree dirty. The bare repo's path is returned as remoteDir.
+export function makeRepo({ ledger = {}, openTask = true, remote = false } = {}) {
   const dir = makeDir("pb-stop-code-");
+  const remoteDir = remote ? makeDir("pb-remote-") : null;
   const git = (...args) => execFileSync("git", args, { cwd: dir, env: env(), stdio: "ignore" });
-  git("init", "-q", "-b", "feature");
+  git("init", "-q", "-b", remote ? "main" : "feature");
   git("config", "user.name", "Test");
   git("config", "user.email", "test@example.com");
   writeFileSync(join(dir, "a.txt"), "a\n");
   git("add", "a.txt");
+  if (remote) {
+    writeFileSync(join(dir, ".gitignore"), ".pairingbuddy/\n");
+    git("add", ".gitignore");
+  }
   git("commit", "-q", "-m", "seed");
+  if (remote) {
+    execFileSync("git", ["init", "-q", "--bare", "-b", "main", remoteDir], { env: env(), stdio: "ignore" });
+    git("remote", "add", "origin", remoteDir);
+    git("push", "-q", "-u", "origin", "main");
+    git("remote", "set-head", "origin", "main");
+  }
   const taskDir = join(dir, ".pairingbuddy", "run", "task");
   mkdirSync(join(taskDir, "artifacts"), { recursive: true });
   writeFileSync(join(dir, ".pairingbuddy", "run", ".gitignore"), "*\n");
@@ -59,10 +72,13 @@ export function makeRepo({ ledger = {}, openTask = true } = {}) {
     ...ledger,
   });
   if (!openTask) rmSync(taskDir, { recursive: true, force: true });
-  return { dir, ledger: () => readLedger(ledgerPath) };
+  return { dir, remoteDir, ledger: () => readLedger(ledgerPath) };
 }
 
-export function pb(repo, ...args) {
-  const { status, stdout, stderr } = spawnSync(process.execPath, [CLI, ...args], { cwd: repo.dir, encoding: "utf8", timeout: 30_000, env: env() });
+// Like pb, with extra environment variables (for example PAIRINGBUDDY_GATE_POLICY=auto).
+export function pbWithEnv(repo, extraEnv, ...args) {
+  const { status, stdout, stderr } = spawnSync(process.execPath, [CLI, ...args], { cwd: repo.dir, encoding: "utf8", timeout: 30_000, env: env(extraEnv) });
   return { code: status, stdout, stderr };
 }
+
+export const pb = (repo, ...args) => pbWithEnv(repo, {}, ...args);

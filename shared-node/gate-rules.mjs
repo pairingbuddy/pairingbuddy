@@ -14,6 +14,7 @@ import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nex
 import { disguisesPb, pbInvocations, pbWithEnvironment } from "./shell-calls.mjs";
 import { shellWord } from "./shell-word.mjs";
 import { STAGE_STOP_REASONS } from "./stop-codes.mjs";
+import { SHELL_QUOTING, unitOpenDenial } from "./unit-open-denial.mjs";
 import { VERB_CLASSES, classOf, humanCommand, matchVerb, shaMismatchRemedy } from "./verbs.mjs";
 
 const EXPECTED_FIELDS = ["session_id", "cwd", "tool_name", "permission_mode"];
@@ -29,7 +30,6 @@ const RUNNER_COMMANDS = [...VERB_CLASSES.runner.filter((verb) => verb !== "stage
 const CHECKPOINT_START = `${PB_COMMAND} checkpoint --step `;
 const ARTIFACT_CHECK_START = `${PB_COMMAND} artifact check `;
 const AUTO_ALLOW_REASON = "Runner CLI command, auto-allowed by the Pairing Buddy gate.";
-const SHELL_QUOTING = /\\\n|\$(?=['"])|['"\\]/g;
 const PB_CALL = /(?<![\w.-])pb(?:\.mjs)?(?=\s+([\w.-]+)(?:\s+([\w.-]+))?)/g;
 const POLICY_ENV = "PAIRINGBUDDY_GATE_POLICY";
 const VERB_OWNERS = { runner: "the runner agent", main: "the main context" };
@@ -403,6 +403,9 @@ function checkRun(root, context) {
 // position gave, cwd or pointer; a run reached only through a target path does not bind it.
 export function checkCall({ runRoots, sessionRoot, payload, targets, canonicalPath }) {
   assertNoDrift(payload);
+  // The same rule as with no run: only the auto policy lets the model confirm a unit.
+  const unitOpenReason = observedPolicy(payload).mode === "auto" ? null : unitOpenDenial(payload);
+  if (unitOpenReason !== null) throw new Denied(unitOpenReason);
   if (sessionRoot !== null && payload.agent_id === undefined) bindSession(payload.session_id, sessionRoot);
   for (const root of runRoots) checkRun(root, { payload, targets, canonicalPath });
   return isRunnerCommand(payload) ? AUTO_ALLOW_REASON : null;

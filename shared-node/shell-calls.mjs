@@ -131,13 +131,24 @@ function fromCommandWord(words) {
     if (ASSIGNMENT.test(words[i]) || KEYWORDS.has(words[i])) {
       i += 1;
     } else if (WRAPPERS.has(baseName(words[i]))) {
+      const isEnv = baseName(words[i]) === "env";
       i += 1;
-      while (i < words.length && (WRAPPER_OPTION.test(words[i]) || ASSIGNMENT.test(words[i]))) i += 1;
+      while (i < words.length && !(isEnv && ENV_SPLIT.test(words[i])) && (WRAPPER_OPTION.test(words[i]) || ASSIGNMENT.test(words[i]))) i += 1;
     } else {
       break;
     }
   }
   return words.slice(i);
+}
+
+const ENV_SPLIT = /^(?:-[A-Za-z]*S|--split-string(?:=|$))/;
+
+// The string env -S (--split-string) splits into a command line, glued to the option or the next word. fromCommandWord
+// leaves the run starting at that option, since what follows is text to parse again, not a command word.
+function envSplitString([option, next]) {
+  if (!ENV_SPLIT.test(option ?? "")) return undefined;
+  if (option.startsWith("--split-string")) return option.length > "--split-string".length ? option.slice("--split-string=".length) : next;
+  return option.slice(option.indexOf("S") + 1) || next;
 }
 
 // The command text that a shell or eval will parse again, or undefined for any other command. The shell can sit in any
@@ -146,6 +157,8 @@ function innerScript(run) {
   const [head, ...rest] = run;
   if (head === "eval") return rest.join(" ");
   if (TEXT_COMMANDS.has(baseName(head))) return undefined;
+  const split = envSplitString(run);
+  if (split !== undefined) return split;
   const shell = run.findIndex((word) => SHELLS.has(baseName(word)));
   if (shell === -1) return undefined;
   const flag = run.slice(shell + 1).findIndex((word) => SHELL_C_FLAG.test(word));
@@ -210,7 +223,7 @@ function callsIn(words) {
     if (!isPbName(word)) return false;
     return i === start || (!TEXT_COMMANDS.has(baseName(run[0])) && i > start && matchVerb(words.slice(i + 1, i + 3)) !== undefined);
   };
-  return words.flatMap((word, i) => (isCall(word, i) ? [{ before: words.slice(0, i), after: words.slice(i + 1, i + 3) }] : []));
+  return words.flatMap((word, i) => (isCall(word, i) ? [{ before: words.slice(0, i), name: word, after: words.slice(i + 1, i + 3), rest: words.slice(i + 1) }] : []));
 }
 
 // Every call a shell would make, in a compound, a subshell, a substitution, `sh -c` or eval.
@@ -231,3 +244,6 @@ const setsEnvironment = (word) => ASSIGNMENT.test(word) || baseName(word) === "e
 
 // True when a pb call runs under an assignment or the env command in its own simple command.
 export const pbWithEnvironment = (command) => pbCalls(command).some(({ before }) => before.some(setsEnvironment));
+
+// Each bare `unit open` call as {name, rest}: the pb word as written and every word after it.
+export const pbUnitOpenCalls = (command) => pbCalls(command).filter(({ after }) => matchVerb(after) === "unit open");
