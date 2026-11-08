@@ -271,7 +271,11 @@ export function publishApproval(ledger) {
 
 // The title and labels of the draft, as an approval binds them: a hash of the title (it becomes the squash-merge
 // headline) and the labels as they will be passed to gh.
-export const draftBinding = (draft) => ({ titleHash: sha256(draft.title), labels: draft.labels ?? [] });
+export const draftBinding = (draft) => ({
+  titleHash: sha256(draft.title),
+  labels: draft.labels ?? [],
+  coordinationHash: draft.coordination == null ? null : sha256(draft.coordination),
+});
 
 // What an approval is compared with: HEAD, base and target, the body bytes (null when there is no body) and the draft.
 export const currentBinding = (root, draft, body) => ({ ...publishFacts(root), bodyHash: body === null ? null : sha256(body), ...draftBinding(draft) });
@@ -285,6 +289,7 @@ export function staleBindingReason(record, current) {
     ...(record.bodyHash === current.bodyHash ? [] : ["run/pr-body.md changed"]),
     ...(record.titleHash === current.titleHash ? [] : ["the PR title changed"]),
     ...(isDeepStrictEqual(record.labels, current.labels) ? [] : ["the PR labels changed"]),
+    ...((record.coordinationHash ?? null) === current.coordinationHash ? [] : ["the coordination comment changed"]),
     ...moved("base", record.base, current.base),
     ...moved("target", record.target, current.target),
   ];

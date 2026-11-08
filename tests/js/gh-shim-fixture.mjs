@@ -2,7 +2,7 @@
 // shim.env as the extra environment of a pb call and that `gh` is the first on PATH. Every call appends one JSON line to
 // the log: { argv, bodyFile } where bodyFile is the content of the file named by --body-file, read at call time (pb
 // publish removes it afterwards), or null. `gh pr create` prints a fake PR URL. A call fails when the shim is told to,
-// through the environment: GH_SHIM_FAIL is a subcommand prefix ("pr create"). GH_SHIM_URL replaces the URL `gh pr create`
+// through the environment: GH_SHIM_FAIL is a subcommand prefix ("pr create", "pr comment"). GH_SHIM_URL replaces the URL `gh pr create`
 // prints. `gh pr view` answers with the JSON in GH_SHIM_VIEW (see viewEnv), and fails with "no pull requests found" when it is unset.
 import "./isolated-tmpdir.mjs";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
@@ -55,8 +55,9 @@ export function installGhShim() {
   const env = (extra = {}) => ({ PATH: `${dir}:${process.env.PATH}`, GH_SHIM_LOG: logPath, ...extra });
   const calls = () => (existsSync(logPath) ? readFileSync(logPath, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)) : []);
   const prCreates = () => calls().filter(({ argv }) => argv[0] === "pr" && argv[1] === "create");
+  const prComments = () => calls().filter(({ argv }) => argv[0] === "pr" && argv[1] === "comment");
   const prViews = () => calls().filter(({ argv }) => argv[0] === "pr" && argv[1] === "view");
-  return { env, calls, prCreates, prViews };
+  return { env, calls, prCreates, prComments, prViews };
 }
 
 // The values after every occurrence of flag in an argv, in order.

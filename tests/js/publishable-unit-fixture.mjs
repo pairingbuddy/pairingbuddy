@@ -3,14 +3,14 @@
 import "./isolated-tmpdir.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { branchOf, headOf } from "../../shared-node/checkpoint.mjs";
 import { updateLedger } from "../../shared-node/ledger.mjs";
 import { newTaskRecord } from "../../shared-node/unit.mjs";
 import { env, pb, pbWithEnv } from "./cli-repo-fixture.mjs";
-import { installGhShim } from "./gh-shim-fixture.mjs";
+import { FAKE_PR_URL, installGhShim } from "./gh-shim-fixture.mjs";
 import { sha256 } from "./tap-fixture.mjs";
 import {
   DRAFT_KEY, GATE,
@@ -59,10 +59,36 @@ export const runFile = (repo, name) => join(repo.dir, ".pairingbuddy", "run", na
 export const PLAN = "# Plan\n\n## Phase one\n\n#### PR: Export\n\n- [x] Task A\n\n#### PR: Other\n\n- [ ] Task C\n";
 export const planFile = (repo) => join(repo.dir, ".pairingbuddy", "plan.md");
 
+// The PR: line pb publish writes into the plan for a unit on this branch.
+export const prLinePattern = (branch) => new RegExp(`^PR: ${FAKE_PR_URL.replace(/\./g, "\\.")} branch: ${branch}$`, "m");
+
+// A pre-push hook in the repo that runs the shell command, so a test can change things between the checks and the push.
+export function installPrePushHook(repo, command) {
+  const hooks = join(repo.dir, git(repo, "rev-parse", "--git-path", "hooks"));
+  const hook = join(hooks, "pre-push");
+  mkdirSync(hooks, { recursive: true });
+  writeFileSync(hook, `#!/bin/sh\n${command}\n`);
+  chmodSync(hook, 0o755);
+}
+
+// The plan is readable when publish checks it and a directory by the time the PR: line is written, for any user, root
+// included, so pb publish stops after opening the PR (and commenting) with the unit still open.
+export const planBecomesDirectoryAtPush = (repo) => installPrePushHook(repo, `rm "${planFile(repo)}" && mkdir "${planFile(repo)}"`);
+
 // The unit's plan is a file in .pairingbuddy/ (git-ignored, so the tree stays clean) with the unit's heading in it.
 export function withPlan(repo, text = PLAN) {
   writeFileSync(planFile(repo), text);
   changeUnit(repo, { plan: ".pairingbuddy/plan.md", unit: "Export" });
+}
+
+// A unit that crashed after opening the PR: pushed, its url recorded (pr.url, plus extraPr), with a plan and private refs.
+export function unitWithRecordedPr(extraPr = {}) {
+  const unit = publishableUnit();
+  withPlan(unit.repo);
+  makePrivateRefs(unit.repo, unit.branch);
+  git(unit.repo, "push", "-q", "-u", "origin", unit.branch);
+  changeUnit(unit.repo, { pr: { url: FAKE_PR_URL, ...extraPr } });
+  return unit;
 }
 
 // A task record as pb task end appends it, built by the real writer from a ledger with a finished safety-net, valid

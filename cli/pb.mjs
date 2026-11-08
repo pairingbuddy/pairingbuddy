@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
@@ -1004,7 +1004,7 @@ function publish(args) {
   const bound = commits.length === 0 ? null : readBound(root, ledger);
   const voidReason = bound === null ? null : refusing(() => publishVoidReason(ledger, root, bound.current));
   const facts = {
-    unit, runStop: ledger.stop, publishMode: mode, commits, changedConfigs: changedConfigs(unit, root), approval: publishApproval(ledger), voidReason,
+    unit, runStop: ledger.stop, publishMode: mode, coordination: bound?.draft.coordination ?? null, commits, changedConfigs: changedConfigs(unit, root), approval: publishApproval(ledger), voidReason,
     taskRunOpen: !gatesFor(loadStages(PLUGIN_ROOT), ledger.taskType).some(({ name }) => name === PUBLISH_GATE),
     ...(bound === null || mode === "none" ? {} : publishingFacts(root, unit, gitConfig, bound.current.headSha)),
   };
@@ -1027,6 +1027,7 @@ function executePublish(steps, ctx) {
   const remote = gitConfig.remote;
   let url = null;
   let warnings = [];
+  let pendingComment;
   for (const step of steps) {
     if (step.do === "push") {
       runGit(root, pushArgv(remote, step.sha, step.branch), { context: "nothing was pushed or opened; the unit is intact" });
@@ -1034,16 +1035,55 @@ function executePublish(steps, ctx) {
       runGit(root, upstreamArgv(remote, step.branch), { context: `${step.branch} is on ${remote} but its upstream is not set; run pb publish again, the push will not repeat` });
     } else if (step.do === "open-pr") {
       url = openPr(ctx, step.recordedUrl);
+    } else if (step.do === "comment") {
+      const posted = postComment(ctx, url, step.text);
+      warnings = [...warnings, ...posted.warnings];
+      pendingComment = posted.pendingComment ?? pendingComment;
     } else if (step.do === "plan-line") {
-      warnings = recordPrLine(root, unit, url);
+      warnings = [...warnings, ...recordPrLine(root, unit, url)];
     } else if (step.do === "delete-refs") {
       deleteUnitRefs(root, step.prefix, url);
     } else {
       closeUnit(runDir);
-      return step.result === "published" ? { ok: true, result: "published", url, warnings } : { ok: true, result: step.result, reason: step.reason };
+      return step.result === "published" ? { ok: true, result: "published", url, warnings, ...(pendingComment === undefined ? {} : { pendingComment }) } : { ok: true, result: step.result, reason: step.reason };
     }
   }
   throw new Error("the publish plan has no close step");
+}
+
+// Posts the coordination text on the PR from a kept per-PR file outside run/, deleted once it posts. A failure after the
+// PR is open never stops the publish: the file stays, and the warning has gh's reason and the one command to post it by
+// hand. The unit closes either way, so a failed post is not retried by pb publish.
+function postComment({ root, unit }, url, text) {
+  if (typeof url !== "string" || !PR_URL.test(url)) throw new Refusal(`not published: the comment needs the pull request URL, and got ${JSON.stringify(url)}`);
+  const kept = join(root, ".pairingbuddy", "pr-comments", `${url.match(/(\d+)$/)[1]}.md`);
+  try {
+    mkdirSync(dirname(kept), { recursive: true });
+    writeFileSync(kept, text);
+  } catch (e) {
+    return { warnings: [`the coordination comment was not posted on ${url} (it could not be saved: ${e.message}); post it by hand`] };
+  }
+  try {
+    execFileSync("gh", ["pr", "comment", url, "--body-file", kept], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  } catch (e) {
+    const why = String(e.stderr ?? "").trim() || e.message;
+    return {
+      warnings: [`the coordination comment was not posted on ${url} (${why}); post it by hand with: gh pr comment ${url} --body-file ${kept}`],
+      pendingComment: kept,
+    };
+  }
+  const warnings = [];
+  try {
+    rmSync(kept, { force: true });
+  } catch (e) {
+    warnings.push(`the coordination comment was posted, but ${kept} could not be removed: ${e.message}`);
+  }
+  try {
+    writeJsonAtomic(unitPathOf(root), { ...unit, pr: { ...unit.pr, url, commented: true } });
+  } catch (e) {
+    warnings.push(`the coordination comment was posted on ${url}, but recording it failed (${e.message}); do not post it again`);
+  }
+  return { warnings };
 }
 
 // The PR gh knows for the unit branch, which must be from that branch into the target. Refuses a mismatch.

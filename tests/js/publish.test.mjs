@@ -13,7 +13,7 @@ import { CLEAN_BODY, CLEAN_TITLE, DRAFT_KEY, commitMore, git, gitConfigPath, rea
 import {
   OTHER_UNIT_REF, PLAN, RUN_FILES, SAFETY_NET,
   changeLedger, changeUnit, divergeRemote, localRefs, makePrivateRefs, planFile, privateRefsOf, publishableUnit, publishUnit,
-  remoteRef, remoteRefs, runFile, withPlan,
+  installPrePushHook, planBecomesDirectoryAtPush, prLinePattern, remoteRef, remoteRefs, runFile, unitWithRecordedPr, withPlan,
 } from "./publishable-unit-fixture.mjs";
 
 // Publishes a fresh publishable unit and returns what the tests look at.
@@ -43,14 +43,6 @@ const tracedPushes = (traceFile) => readFileSync(traceFile, "utf8").split("\n")
   .filter((line) => line.includes("built-in: git push"))
   .map((line) => line.slice(line.indexOf("built-in: git ") + "built-in: git ".length).split(" "));
 const newTraceFile = () => join(mkdtempSync(join(tmpdir(), "pb-git-trace-")), "trace.txt");
-function installPrePushHook(repo, command) {
-  const hooks = join(repo.dir, git(repo, "rev-parse", "--git-path", "hooks"));
-  const hook = join(hooks, "pre-push");
-  mkdirSync(hooks, { recursive: true });
-  writeFileSync(hook, `#!/bin/sh\n${command}\n`);
-  chmodSync(hook, 0o755);
-}
-const urlPattern = (url) => url.replace(/\./g, "\\.");
 
 describe("publish-happy-path", () => {
   test("pushes-branch-with-upstream", () => {
@@ -311,7 +303,10 @@ describe("publish-never-merges-or-forces", () => {
     const { gh, head, branch, result } = published({ ghEnv: { GIT_TRACE: traceFile } });
 
     assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
-    assert.deepEqual(gh.calls().map(({ argv }) => argv.slice(0, 2).join(" ")), ["pr create"], "the only gh call is pr create");
+    assert.deepEqual(gh.calls().map(({ argv }) => argv.slice(0, 2).join(" ")), ["pr create", "pr comment"], "the only gh calls are pr create then pr comment");
+    const everyArg = gh.calls().flatMap(({ argv }) => argv);
+    assert.equal(everyArg.includes("--force"), false, "no gh call passes --force");
+    assert.equal(everyArg.includes("--merge"), false, "no gh call passes --merge");
     assert.deepEqual(tracedPushes(traceFile), [["push", "--", "origin", `${head}:refs/heads/${branch}`]], "one plain push of the approved SHA, no force flag");
   });
 
@@ -410,8 +405,7 @@ describe("publish-records-and-closes-unit", () => {
   test("pr-url-recorded-in-unit-before-plan-line", () => {
     const unit = publishableUnit();
     withPlan(unit.repo);
-    // The plan is readable when publish checks it and a directory by the time the PR: line is written, for any user, root included.
-    installPrePushHook(unit.repo, `rm "${planFile(unit.repo)}" && mkdir "${planFile(unit.repo)}"`);
+    planBecomesDirectoryAtPush(unit.repo);
 
     const { result } = publishUnit(unit);
 
@@ -422,18 +416,14 @@ describe("publish-records-and-closes-unit", () => {
   });
 
   test("retry-with-recorded-url-skips-create-and-finishes", () => {
-    const unit = publishableUnit();
-    withPlan(unit.repo);
-    makePrivateRefs(unit.repo, unit.branch);
-    git(unit.repo, "push", "-q", "-u", "origin", unit.branch);
-    changeUnit(unit.repo, { pr: { url: FAKE_PR_URL } });
+    const unit = unitWithRecordedPr();
 
     const { gh, result } = publishUnit(unit, viewEnv({ head: unit.branch }));
 
     assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
     assert.deepEqual(gh.prCreates(), [], "no second gh pr create");
     assert.equal(remoteRef(unit.repo, `refs/heads/${unit.branch}`), unit.head, "the remote branch is at HEAD");
-    assert.match(readFileSync(planFile(unit.repo), "utf8"), new RegExp(`^PR: ${urlPattern(FAKE_PR_URL)} branch: ${unit.branch}$`, "m"), "the PR: line is written");
+    assert.match(readFileSync(planFile(unit.repo), "utf8"), prLinePattern(unit.branch), "the PR: line is written");
     assert.deepEqual(localRefs(unit.repo), [], "the private refs are deleted");
     assert.equal(existsSync(unitFile(unit.repo)), false, "the unit is closed");
   });
@@ -647,7 +637,7 @@ describe("publish-adopts-its-own-pr", () => {
     assert.equal(JSON.parse(result.stdout).url, FAKE_PR_URL, "the existing PR's url is the result");
     assert.equal(gh.prViews().length, 1, "gh pr view was asked once");
     assert.deepEqual(gh.prViews()[0].argv.slice(-2), ["--", unit.branch], "the branch follows --");
-    assert.match(readFileSync(planFile(unit.repo), "utf8"), new RegExp(`^PR: ${urlPattern(FAKE_PR_URL)} branch:`, "m"), "the PR: line is written");
+    assert.match(readFileSync(planFile(unit.repo), "utf8"), prLinePattern(unit.branch), "the PR: line is written");
     assert.equal(existsSync(unitFile(unit.repo)), false, "the unit is closed");
   });
 

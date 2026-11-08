@@ -153,6 +153,7 @@ export function publishSteps(facts) {
       ...(facts.remoteSha === facts.head ? [] : [{ do: "push", sha: facts.head, branch }]),
       { do: "set-upstream", branch },
       { do: "open-pr", recordedUrl: pr?.url ?? null },
+      ...(facts.coordination === null || pr?.commented === true ? [] : [{ do: "comment", text: facts.coordination }]),
       { do: "plan-line" },
       { do: "delete-refs", prefix: unitRefPrefix(branch) },
       { do: "close", result: "published" },

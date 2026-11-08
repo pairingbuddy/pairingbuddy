@@ -20,11 +20,11 @@ const facts = (over = {}) => ({
 const stepNames = (plan) => plan.steps.map((step) => step.do);
 
 describe("publishSteps: a publish", () => {
-  test("runs push, upstream, open-pr, plan-line, delete-refs, close in that order", () => {
+  test("For a publishable fact set, the step list has a comment step after open-pr and before plan-line and close, in that order", () => {
     const plan = publishSteps(facts());
 
     assert.deepEqual(plan.refusals, []);
-    assert.deepEqual(stepNames(plan), ["push", "set-upstream", "open-pr", "plan-line", "delete-refs", "close"]);
+    assert.deepEqual(stepNames(plan), ["push", "set-upstream", "open-pr", "comment", "plan-line", "delete-refs", "close"]);
     assert.deepEqual(plan.steps[0], { do: "push", sha: HEAD, branch: "feat/x" }, "the push is of the approved SHA");
     assert.equal(plan.steps.at(-1).result, "published");
   });
@@ -142,5 +142,25 @@ describe("argv helpers", () => {
     assert.match(foreignPrReason(null, unit), /not a pull request URL/);
     assert.equal(PR_URL.test("https://github.com/o/r/pull/12"), true);
     assert.equal(PR_URL.test("https://github.com/o/r/pull/12\nrm -rf"), false);
+  });
+});
+
+describe("publishSteps: the coordination comment", () => {
+  test("With null coordination, the step list has no comment step", () => {
+    const plan = publishSteps(facts({ coordination: null }));
+
+    assert.deepEqual(stepNames(plan), ["push", "set-upstream", "open-pr", "plan-line", "delete-refs", "close"]);
+  });
+
+  test("With a recorded url and commented unset, the comment step is still planned (the partner of the commented: true case)", () => {
+    const plan = publishSteps(facts({ unit: { ...facts().unit, pr: { url: "https://github.com/o/r/pull/3" } } }));
+
+    assert.deepEqual(stepNames(plan), ["push", "set-upstream", "open-pr", "comment", "plan-line", "delete-refs", "close"]);
+  });
+
+  test("When unit.pr records commented: true, publishSteps plans no comment step (open-pr, plan-line, delete-refs, close remain)", () => {
+    const plan = publishSteps(facts({ unit: { ...facts().unit, pr: { url: "https://github.com/o/r/pull/3", commented: true } } }));
+
+    assert.deepEqual(stepNames(plan), ["push", "set-upstream", "open-pr", "plan-line", "delete-refs", "close"]);
   });
 });
