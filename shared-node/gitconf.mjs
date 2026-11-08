@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 export class GitConfigRefused extends Error {}
@@ -31,14 +31,26 @@ export const gitConfigPath = (root) => join(root, ".pairingbuddy", "git-config.j
 export function loadGitConfig(root) {
   const file = gitConfigPath(root);
   const config = structuredClone(DEFAULTS);
-  if (existsSync(file)) {
-    const parsed = parseConfigFile(file);
-    validateTypes(parsed, DEFAULTS);
-    return mergeOverDefaults(config, parsed);
-  }
+  if (!existsSync(file) && bootstrapExclusively(file, config)) return config;
+  const parsed = parseConfigFile(file);
+  validateTypes(parsed, DEFAULTS);
+  return mergeOverDefaults(config, parsed);
+}
+
+// Writes defaults to a temp file, then hard-links it into place; never overwrites. False when another process won.
+function bootstrapExclusively(file, config) {
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
-  return config;
+  const temp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  writeFileSync(temp, JSON.stringify(config, null, 2) + "\n");
+  try {
+    linkSync(temp, file);
+    return true;
+  } catch (err) {
+    if (err.code === "EEXIST") return false;
+    throw err;
+  } finally {
+    unlinkSync(temp);
+  }
 }
 
 function parseConfigFile(file) {

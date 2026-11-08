@@ -11,6 +11,7 @@ import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, check
 import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches } from "../shared-node/gitconf.mjs";
+import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { PlanRefused, replaceFile, tickPlanBox } from "../shared-node/plan-boxes.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
@@ -916,11 +917,56 @@ function unitOpen(args) {
     rmSync(unitPathOf(root), { force: true });
     throw e;
   }
-  return { ok: true, branch, base, baseSha };
+  return { ok: true, branch, base, baseSha, doctor: doctorReport(root) };
+}
+
+const GH_UNAVAILABLE = "gh is unavailable: the git settings were not checked.";
+const PROTECTION_UNREADABLE = "branch protection could not be read: the default branch was not checked.";
+const GH_TIMEOUT_MS = 10000;
+
+// A stalled gh is killed at the timeout, which throws and becomes the gh-unavailable note.
+function gh(root, args) {
+  return execFileSync("gh", args, {
+    cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+    timeout: GH_TIMEOUT_MS, killSignal: "SIGKILL", env: { ...process.env, GH_PROMPT_DISABLED: "1" },
+  });
+}
+
+// Only the "Branch not protected" 404 means unprotected. Any other 404/403 (e.g. no admin rights) is unreadable.
+// A failing gh api exits non-zero with the JSON body on stdout.
+function protectionOf(root, repoPath, branch) {
+  try {
+    return JSON.parse(gh(root, ["api", `${repoPath}/branches/${branch}/protection`]));
+  } catch (e) {
+    const body = typeof e.stdout === "string" ? e.stdout : "";
+    const parsed = JSON.parse(body);
+    if (parsed.message === "Branch not protected") return parsed;
+    const isGithubError = typeof parsed.message === "string" || parsed.status === "404" || parsed.status === "403";
+    if (isGithubError) return { unreadable: true };
+    throw e;
+  }
+}
+
+// Read-only gh calls. Never throws: any failure becomes the single gh-unavailable note.
+function doctorReport(root) {
+  try {
+    const { nameWithOwner } = JSON.parse(gh(root, ["repo", "view", "--json", "nameWithOwner"]));
+    const repoPath = `repos/${nameWithOwner}`;
+    const repo = JSON.parse(gh(root, ["api", repoPath]));
+    const protection = protectionOf(root, repoPath, repo.default_branch);
+    const warnings = doctorWarnings({ repo, protection });
+    return protection.unreadable ? { warnings, note: PROTECTION_UNREADABLE } : { warnings };
+  } catch {
+    return { warnings: [], note: GH_UNAVAILABLE };
+  }
+}
+
+function gitDoctor() {
+  return { ok: true, ...doctorReport(toplevel()) };
 }
 
 export const VERBS = {
-  "unit open": unitOpen,
+  "unit open": unitOpen, "git doctor": gitDoctor,
   "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human accept": humanAccept, test: runTests, checkpoint,
   "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd,
 };

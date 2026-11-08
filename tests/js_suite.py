@@ -25,6 +25,8 @@ JS_TEST_FILES = [
     "tests/js/gate.test.mjs",
     "tests/js/git-config-bootstrap.test.mjs",
     "tests/js/git-config-schema.test.mjs",
+    "tests/js/git-doctor-cli.test.mjs",
+    "tests/js/git-doctor.test.mjs",
     "tests/js/glance-sentences.test.mjs",
     "tests/js/glance-stop-names.test.mjs",
     "tests/js/harness.test.mjs",

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pb git doctor` warns (never blocks; read-only `gh` calls with a 10s timeout) when squash merges don't use the PR title and body (`squash_merge_commit_title` and `squash_merge_commit_message` must be `PR_TITLE` and `PR_BODY`) or the default branch has no protection. It notes when `gh` is unavailable or protection can't be read. `pb unit open` shows the same warnings.
+
 ### Fixed
 
 - `/pb` now answers and opens the pane.
