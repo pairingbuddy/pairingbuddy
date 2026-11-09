@@ -1454,3 +1454,23 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
     assert.match(asked.reason, new RegExp(redKey("implement-code", "t1").replaceAll(".", "\\.")));
   });
 });
+
+// Scenario: uncovered-stops-under-auto. Gate eval treats a non-empty uncovered as an always-stop.
+test("Under auto policy, a report from the scenarios stage with uncovered [necessity] makes gate eval ask, with a reason naming the lens", () => {
+  const repo = makeRepo();
+  writeReport(repo, { stage: "scenarios", attempt: 1, uncovered: ["necessity"] });
+
+  const output = gateEval(repo, "auto");
+
+  assertAsks(output);
+  assert.match(output.reason, /necessity/, "the reason names the uncovered lens");
+});
+
+test("Same stage with uncovered [] and no other stop lets the gate pass under auto", () => {
+  const repo = makeRepo();
+  writeReport(repo, { stage: "scenarios", attempt: 1, uncovered: [] });
+
+  const output = gateEval(repo, "auto");
+
+  assertAutoPassed(repo, output);
+});

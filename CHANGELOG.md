@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `lensAttack` runs the read-only `lens` agent once per lens wired to a stage row in `contracts/lenses.json`, each at its own model (`sonnet` or `opus`, checked by a contract test). Each call carries the lens-result schema and its own key. One pure merge (`shared-node/lens-merge.mjs`) serves the workflow and the stage report: lens order then finding order, ids `<lens>-<n>`, a finding with no rule kept as non-blocking `low`, and a lens with no return listed as uncovered, so the gate asks even under `auto`. The scenarios stage runs its first lens (necessity) after the enumerator. The `lens` agent is stage-only.
 - The `lens` agent (Sonnet; Read, Grep, Glob; read-only) reviews a subject through one named lens and returns findings, each with a rule, a severity (`high`, `medium`, `low`), a claim and where it is. Agent count is now 33.
 - Probe P21 confirmed that a per-call `model` overrides an agent's pinned model, so a workflow can run a pinned agent on a different model per call.
 - The D17 git and gh guard: the gate reads every git and gh call in a Bash command and denies it by run state and caller. The rules are a table plus a pure classifier in `shared-node/d17.mjs`.
