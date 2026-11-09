@@ -93,7 +93,6 @@ export function fitTries(tries, columns) {
   };
   const folds = Array.from({ length: tries.length }, (_, hidden) => text(hidden));
   const candidates = [...folds, text(last, { prefix: false }), text(last, { prefix: false, step: false })];
-  if (!(columns > 0)) return candidates[0];
   return candidates.find((line) => fitsWidth(line, columns)) ?? candidates.at(-1);
 }
 

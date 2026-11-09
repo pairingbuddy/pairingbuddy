@@ -1092,7 +1092,6 @@ function executePublish(steps, ctx) {
 // PR is open never stops the publish: the file stays, and the warning has gh's reason and the one command to post it by
 // hand. The unit closes either way, so a failed post is not retried by pb publish.
 function postComment({ root, unit }, url, text) {
-  if (typeof url !== "string" || !PR_URL.test(url)) throw new Refusal(`not published: the comment needs the pull request URL, and got ${JSON.stringify(url)}`);
   const kept = join(root, ".pairingbuddy", "pr-comments", `${url.match(/(\d+)$/)[1]}.md`);
   try {
     mkdirSync(dirname(kept), { recursive: true });
@@ -1308,8 +1307,7 @@ function protectionOf(root, repoPath, branch) {
   try {
     return JSON.parse(gh(root, ["api", `${repoPath}/branches/${branch}/protection`]));
   } catch (e) {
-    const body = typeof e.stdout === "string" ? e.stdout : "";
-    const parsed = JSON.parse(body);
+    const parsed = JSON.parse(e.stdout);
     if (parsed.message === "Branch not protected") return parsed;
     const isGithubError = typeof parsed.message === "string" || parsed.status === "404" || parsed.status === "403";
     if (isGithubError) return { unreadable: true };

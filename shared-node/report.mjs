@@ -117,7 +117,7 @@ export function resultWords(step, record, covered) {
 
 function tryCells(attempt, tries, perTest) {
   const result = resultOf(attempt, tries, perTest?.[attempt.step.toLowerCase()], perTest?.covered);
-  return [attempt.step, attempt.number, clock((attempt.writing ?? NaN) + (attempt.running ?? NaN)), clock(attempt.writing), clock(attempt.running), result, UNKNOWN];
+  return [attempt.step, attempt.number, clock(attempt.writing + attempt.running), clock(attempt.writing), clock(attempt.running), result, UNKNOWN];
 }
 
 const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
@@ -156,7 +156,7 @@ function testCard(spawns, item, number, perTest, stop) {
   const note = !perTest?.[item]?.red && tries.length === 0 ? "\n<p>not reached</p>" : "";
   const looped = loopNote(tries, stop);
   const table = cells.length === 0 ? "" : `\n<table>\n${head}\n${rows.join("\n")}\n</table>`;
-  return `<article${looped ? ' class="looped"' : ""}>\n<h3>${number > 0 ? `<small>test ${number}</small> ` : ""}${escape(item)}</h3>${note}${table}${looped}\n</article>`;
+  return `<article${looped ? ' class="looped"' : ""}>\n<h3><small>test ${number}</small> ${escape(item)}</h3>${note}${table}${looped}\n</article>`;
 }
 
 function testsSection({ ledger, spawns, tests }) {
