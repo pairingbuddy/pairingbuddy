@@ -73,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The alert logs when the platform keeps its pane undrawn on a narrow terminal and never claims it opened; `/pb` or the details button still opens it.
 - The report's STEPS shows the running step's start time instead of "not reached".
 - The report follows the viewer's light or dark preference.
+- The progress pane, band and HTML report no longer claim a known test total ('test 3 of 4', tests left) when they don't know the list is complete; the report also passes on whether the list is complete, which it used to drop.
 
 ### Added
 

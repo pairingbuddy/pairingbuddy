@@ -33,8 +33,8 @@ function runSeconds(ledger, endedAt, now) {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : NaN;
 }
 
-function atAGlance({ ledger, spawns, ranFor, tests }) {
-  const { rows } = glance({ ledger, spawns, tests, ranFor });
+function atAGlance({ ledger, spawns, ranFor, tests, testsComplete }) {
+  const { rows } = glance({ ledger, spawns, tests, ranFor, testsComplete });
   if (outcome(ledger) === "DONE") rows.now = "finished";
   const labels = glanceLabels(ledger);
   const lines = Object.entries(rows).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
@@ -241,7 +241,7 @@ function title(task) {
   return task.split(/\n\s*\n/).map((paragraph) => escape(paragraph.trim())).join("<br>");
 }
 
-export function renderReport({ ledger, spawns, timing, commits, tests, endedAt, now } = {}) {
+export function renderReport({ ledger, spawns, timing, commits, tests, testsComplete, endedAt, now } = {}) {
   const ranFor = runSeconds(ledger, endedAt, now);
   const state = outcome(ledger);
   const taskType = plainName(ledger?.taskType) ?? "unknown type";
@@ -255,7 +255,7 @@ ${STYLE}
 <h1>${title(ledger?.task)}</h1>
 <p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(Number.isFinite(ranFor) ? ranFor : timing?.seconds)}</p>
 </header>
-${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests })}
+${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete })}
 ${stepsSection({ ledger })}
 ${testsSection({ ledger, spawns, tests })}
 ${commitsSection({ commits })}

@@ -191,7 +191,7 @@ function unknownLabels(spawns) {
 }
 
 // testsComplete: false says the list is only the tests seen so far, so no total ("of M") and no count left is claimed.
-export function glance({ ledger, spawns, tests, now, ranFor, testsComplete = true } = {}) {
+export function glance({ ledger, spawns, tests, now, ranFor, testsComplete = false } = {}) {
   const list = Array.isArray(spawns) ? spawns : [];
   const names = Array.isArray(tests) ? tests : [];
   const step = currentStep(list);

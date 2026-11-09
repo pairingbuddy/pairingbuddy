@@ -56,7 +56,7 @@ test("band at each recorded step, in time order, shows the design's segments whi
   for await (const step of replay($, rig, gOpen1, { files: testsFile(TESTS['g-open-1']) })) {
     const active = (step.ledger as any)?.stage?.status === 'active'
     const expected = active
-      ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS['g-open-1'], now: step.now }).band, bandColumns(80))
+      ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS['g-open-1'], now: step.now, testsComplete: true }).band, bandColumns(80))
           .map((segment: { text: string }) => segment.text)
       : quietBand(texts(step))
 
@@ -86,7 +86,7 @@ test('at 139, 80 and 50 columns the band draws exactly the fitted glance segment
       for (const step of steps) {
         const active = (step.ledger as any)?.stage?.status === 'active'
         const expected = active
-          ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now }).band, bandColumns(bodyColumns))
+          ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now, testsComplete: true }).band, bandColumns(bodyColumns))
               .map((segment: { text: string }) => segment.text)
           : quietBand(texts(step))
 

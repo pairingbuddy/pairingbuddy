@@ -5,6 +5,7 @@ import calm from './fixtures/replay/g-open-1'
 import looping from './fixtures/replay/probe-2'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, engine, start } from './testing/band'
 import { POLL_MS } from './poll'
+import { fromPolled } from './inputs'
 
 test('pane-renders-now-building-block', async ($, on) => {
   const clock = mock.clock(on, { now: Date.parse('2026-11-04T08:20:00.000Z') })
@@ -243,4 +244,12 @@ test('now-building-draws-legend-line', async ($, on) => {
   expect(narrow, 'the legend Text is in the now-building block at 55 columns').toBeDefined()
   expect(textOf(narrow), 'at 55 columns the last two entries are dropped whole, nothing is cut mid-word').toBe('✓ made to pass   ◌ already passed, nothing to fix')
   expect(narrow.props.dimColor, 'the narrow legend is drawn faint').toBe(true)
+})
+
+test('from-polled-without-tests-complete-is-incomplete', async () => {
+  const polled = { ledger: null, tests: ['ten-percent-off'], now: null }
+
+  const inputs = fromPolled(polled, [])
+
+  expect(inputs.testsComplete).toBe(false)
 })
