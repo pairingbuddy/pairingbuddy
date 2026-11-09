@@ -178,7 +178,8 @@ export function fitBand(segments, columns) {
     band = band.filter((_, i) => i !== last);
   }
   if (standing && bandWidth(band) > columns) {
-    band = withText(withText(band, "needsYou", (text) => text.replace(/^needs you:/, "you:")), "needsYou", (text) => truncate(text, bandWidth(band) - columns));
+    const short = withText(band, "needsYou", (text) => text.replace(/^needs you:/, "you:"));
+    band = withText(short, "needsYou", (text) => truncate(text, bandWidth(short) - columns));
   }
   return bandWidth(band) > columns ? withText(band, band[0].id, (text) => text.slice(0, Math.max(columns, 0))) : band;
 }
