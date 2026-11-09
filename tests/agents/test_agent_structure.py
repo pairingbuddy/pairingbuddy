@@ -328,7 +328,11 @@ RESTRICTED_AGENT_TOOLS = {
     "runner": ["Bash"],
     "apply-config-change": ["Read", "Edit"],
     "lens": ["Read", "Grep", "Glob"],
+    "refuter": ["Read", "Grep", "Glob"],
+    "synthesizer": ["Read", "Grep", "Glob"],
 }
+
+PINNED_AGENT_MODELS = {"refuter": "sonnet", "synthesizer": "opus"}
 
 
 @pytest.mark.parametrize(
@@ -346,10 +350,29 @@ def test_restricted_agent_config_tools_are_exact(agent_name, expected_tools):
     )
 
 
-def test_lens_prompt_opens_with_authority_block():
-    """The lens prompt opens with a block treating repository content as evidence."""
-    body = (AGENTS_DIR / "lens.md").read_text()
-    opening = body[body.index("# Lens") + len("# Lens") : body.index("## Purpose")].lower()
+@pytest.mark.parametrize(
+    "agent_name,expected_model",
+    list(PINNED_AGENT_MODELS.items()),
+    ids=list(PINNED_AGENT_MODELS),
+)
+def test_pinned_agent_config_model(agent_name, expected_model):
+    """The plan pins refuter to sonnet and synthesizer to opus in agent-config.yaml."""
+    agents = load_agent_config()["agents"]
+
+    assert agent_name in agents, f"Agent '{agent_name}' missing from agent-config.yaml"
+    assert agents[agent_name].get("model") == expected_model, (
+        f"Agent '{agent_name}' model must be {expected_model}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("filename", "title"),
+    [("lens.md", "# Lens"), ("refuter.md", "# Refuter"), ("synthesizer.md", "# Synthesizer")],
+)
+def test_prompt_opens_with_authority_block(filename, title):
+    """The prompt opens with a block treating repository content as evidence."""
+    body = (AGENTS_DIR / filename).read_text()
+    opening = body[body.index(title) + len(title) : body.index("## Purpose")].lower()
 
     assert "evidence" in opening, "Authority block before Purpose must call content evidence"
     assert "never instructions" in opening or "not instructions" in opening, (

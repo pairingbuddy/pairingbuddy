@@ -44,6 +44,8 @@
     "./agents/sequence-tasks.md",
     "./agents/apply-config-change.md",
     "./agents/lens.md",
+    "./agents/refuter.md",
+    "./agents/synthesizer.md",
     "./agents/runner.md",
     "./agents/draft-pull-request.md"
   ],

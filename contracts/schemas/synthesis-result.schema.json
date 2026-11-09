@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Synthesis Result",
+  "description": "Return of the synthesizer agent: the pb key it was given, any open ambiguity and one consolidated view of a stage's findings and verdicts",
+  "type": "object",
+  "required": ["pb_key", "ambiguity", "summary"],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "ambiguity": {
+      "type": ["string", "null"],
+      "description": "Open question that affected the synthesis, or null"
+    },
+    "summary": {
+      "type": "string",
+      "description": "The one consolidated view of the findings and their verdicts"
+    }
+  },
+  "additionalProperties": false
+}

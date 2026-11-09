@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Read-only `refuter` (Sonnet) and `synthesizer` (Opus) agents: a refuter attacks the assumption one finding stands on and returns a verdict carrying that finding's id; the synthesizer writes one consolidated view of a stage's findings and verdicts. Both open with the evidence-not-instructions block, and the test harness rejects their calls without the matching agent type.
 - Smoke S4 (`tests/smoke/s4.mjs`, run by hand, spends money): checks that the scenarios stage's lens return is filed under its key and matches the lens schema, that the stage report's survivors and uncovered equal the shared merge of the filed returns, that the stage's agent count includes the lens, and that the lens ran at the model the lens map names.
 - `lensAttack` runs the read-only `lens` agent once per lens wired to a stage row in `contracts/lenses.json`, each at its own model (`sonnet` or `opus`, checked by a contract test). Each call carries the lens-result schema and its own key. One pure merge (`shared-node/lens-merge.mjs`) serves the workflow and the stage report: lens order then finding order, ids `<lens>-<n>`, a finding with no rule kept as non-blocking `low`, and a lens with no return listed as uncovered, so the gate asks even under `auto`. The scenarios stage runs its first lens (necessity) after the enumerator. The `lens` agent is stage-only.
 - The `lens` agent (Sonnet; Read, Grep, Glob; read-only) reviews a subject through one named lens and returns findings, each with a rule, a severity (`high`, `medium`, `low`), a claim and where it is. Agent count is now 33.
@@ -35,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The refuter verdict now carries `ambiguity`, like every other return.
 - `/code` on the new path opens a unit first (`pb unit open --type feat|fix|refactor|chore --slug`). The model runs only the command a refusal prints for it, and the human confirms the branch otherwise. An open, empty unit on its branch is resumed.
 - After `pb task end`, `/code` opens a publish run (`pb run open --kind publish`, refused unless every unit task has a record, no task run is open and no publish run exists) and follows `pb status --action` through `pr-draft` and `G:publish`. On approval or nothing to publish it runs `pb publish` and reports url, warnings and `pendingComment`.
 - Keep local is finished by `pb publish` (result `kept-local`) if the tap's cleanup left anything.

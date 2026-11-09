@@ -217,7 +217,7 @@ test("a label failing the regex is reported as unknown, with its raw text", () =
 });
 
 test("the verdict schema carries the finding id, with the key's own rule", () => {
-  assert.deepEqual([...verdictSchema.required].sort(), ["finding_id", "pb_key", "verdict"]);
+  assert.deepEqual([...verdictSchema.required].sort(), ["ambiguity", "finding_id", "pb_key", "verdict"]);
   assert.equal(verdictSchema.additionalProperties, false);
   assert.deepEqual(verdictSchema.properties.verdict.enum, ["survives", "refuted"], "the values name the buckets D8 returns");
 

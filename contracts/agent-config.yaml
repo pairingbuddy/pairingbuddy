@@ -100,6 +100,40 @@ agents:
         content: focus_warning
       - heading: "## Output"
 
+  refuter:
+    color: cyan
+    model: sonnet
+    tools: [Read, Grep, Glob]
+    skills: []
+    inputs: {}
+    outputs:
+      refuter_verdict:
+        schema: refuter-verdict.schema.json
+        return_only: true
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
+  synthesizer:
+    color: cyan
+    model: opus
+    tools: [Read, Grep, Glob]
+    skills: []
+    inputs: {}
+    outputs:
+      synthesis_result:
+        schema: synthesis-result.schema.json
+        return_only: true
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
   runner:
     color: green
     model: haiku

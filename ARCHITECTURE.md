@@ -83,7 +83,7 @@ The system includes human review points to prevent:
 ```
 pairingbuddy/
 ├── .claude-plugin/plugin.json    # Register agents and skills
-├── agents/                        # Plugin agents (33 total: TDD/spike, design-ux, planning and PR drafting)
+├── agents/                        # Plugin agents (35 total: TDD/spike, design-ux, planning and PR drafting)
 │   ├── curate-guidance.md
 │   ├── classify-task.md
 │   ├── enumerate-scenarios-and-test-cases.md
@@ -118,7 +118,7 @@ pairingbuddy/
 │   ├── agent-config.yaml         # Agent structure requirements (single source of truth)
 │   ├── skill-config.yaml         # Skill + frontmatter requirements
 │   ├── test-terminology.yaml     # Shared definitions for test-related agents
-│   └── schemas/                  # JSON schemas for state contracts (39 total)
+│   └── schemas/                  # JSON schemas for state contracts (58 total)
 ├── skills/                        # Skills (run in main context)
 │   ├── coding/                   # TDD orchestrator skill
 │   ├── planning/                 # Planning orchestrator skill
@@ -867,7 +867,7 @@ Tests validate that implementations match these contracts.
 
 ### 5. Agent Focus and Human Review
 
-**Focus Warning:** All 33 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
+**Focus Warning:** All 35 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
 
 **Human Review Checkpoints:** Fourteen TDD/spike/planning agents pause for human review before proceeding (design-ux agents use orchestrator-level human interaction instead):
 1. curate-guidance

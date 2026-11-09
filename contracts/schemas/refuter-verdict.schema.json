@@ -3,7 +3,7 @@
   "title": "Refuter Verdict",
   "description": "Return of a refuter: the finding it attacked and whether that finding stood. The finding id is the same value as the item in its pb_key and label, so a verdict joins to its finding without reading text",
   "type": "object",
-  "required": ["pb_key", "finding_id", "verdict"],
+  "required": ["pb_key", "finding_id", "verdict", "ambiguity"],
   "properties": {
     "pb_key": {
       "type": "string",
@@ -18,6 +18,10 @@
       "type": "string",
       "enum": ["survives", "refuted"],
       "description": "survives: the attack failed and the finding stands. refuted: the assumption it stood on does not hold"
+    },
+    "ambiguity": {
+      "type": ["string", "null"],
+      "description": "What in the finding or its evidence was unclear enough to affect the verdict, or null when nothing was"
     }
   },
   "additionalProperties": false
