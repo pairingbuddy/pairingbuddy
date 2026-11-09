@@ -139,28 +139,6 @@ async function denyAgentWithNoRun(toolInput) {
   }
 }
 
-// Outside auto, a unit open that confirms, or a pb call whose words a shell builds, is denied with no run. There is no text
-// pre-filter: the built words (a substitution, IFS, a brace, a glob) can hide the word unit from any cheap test, and the
-// import is lazy. A failure mirrors denyStageWithNoRun: it allows, except where the raw text clearly is a confirming
-// unit open, and then it denies, since a model never approves a gate.
-async function denyUnitOpenConfirm(payload) {
-  const command = payload.tool_input?.command;
-  if (typeof command !== "string") return false;
-  const auto = payload.permission_mode === "auto" || process.env[POLICY_ENV] === "auto";
-  if (auto) return false;
-  try {
-    const { unitOpenDenial } = await import("../shared-node/unit-open-denial.mjs");
-    const reason = unitOpenDenial(payload, { denyBuiltWords: true });
-    if (reason === null) return false;
-    decide("deny", reason);
-    return true;
-  } catch (e) {
-    if (!/\bunit\s+open\b/.test(command) || !/--(yes|branch)\b/.test(command)) return false;
-    decide("deny", `Gate error with no run open: cannot tell whether this unit open confirms, so the call is denied: ${e?.message ?? e}`);
-    return true;
-  }
-}
-
 // Either agent key marks a subagent, drift included: with no run only a subagent is held to D17, whatever the permission mode.
 const isSubagent = (payload) => payload?.agent_id !== undefined || payload?.agent_type !== undefined;
 
@@ -278,7 +256,7 @@ try {
   } else if (payload?.tool_name === "Agent") {
     await denyAgentWithNoRun(payload.tool_input ?? {});
   } else if (payload?.tool_name === "Bash") {
-    if (!(await denyUnitOpenConfirm(payload))) await denyD17WithNoRun(payload, cwd);
+    await denyD17WithNoRun(payload, cwd);
   } else if (payload?.tool_name === "AskUserQuestion") {
     denyQuestionWithNoHuman(payload);
   }

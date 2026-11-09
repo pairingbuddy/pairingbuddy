@@ -401,7 +401,7 @@ describe("publish-records-and-closes-unit", () => {
 
     assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
     for (const name of RUN_FILES) assert.equal(existsSync(runFile(unit.repo, name)), false, `${name} is gone`);
-    const opened = pb(unit.repo, "unit", "open", "--type", "feat", "--slug", "next", "--yes");
+    const opened = pb(unit.repo, "unit", "open", "--type", "feat", "--slug", "next");
     assert.equal(opened.code, 0, `a new unit can be opened: ${opened.stderr}`);
   });
 

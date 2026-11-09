@@ -4,9 +4,7 @@
 //
 // The sample repo starts on main, and the unit branch is made by `pb unit open` from pr.base_branch: `develop`, a branch
 // on the remote that is not the default, so the PR target is proven to come from git-config.json. The human opens the
-// unit from this script's shell, with --yes, before run 1, and /code resumes that empty unit. Under the auto policy the
-// model cannot confirm it: the CLI's refusal of a bare `pb unit open` names a command for the human, and Claude Code's
-// auto-mode classifier denies a model's own --yes as an auto-mode bypass, so /code from main stops before any branch.
+// unit from this script's shell before run 1, and /code resumes that empty unit.
 //
 // Run 1, `/pairingbuddy:code <S2 bug task>` under the auto policy, in the open unit: S2's control flow on the task's ledger, then the unit
 // record (branch, base, baseSha, one task record with a green full suite at HEAD, its commits), the publish run done
@@ -253,7 +251,7 @@ async function runS3({ budgetUsd, record, out, pluginDir }) {
   const result = { passed: false, step: "unit-open", cause: "", runs: {} };
   let current = null;
   try {
-    const opened = humanPb(repo, gh, pluginDir, "unit", "open", "--type", UNIT.type, "--slug", UNIT.slug, "--yes");
+    const opened = humanPb(repo, gh, pluginDir, "unit", "open", "--type", UNIT.type, "--slug", UNIT.slug);
     check(opened.code === 0, `the human's pb unit open: exit ${opened.code}, ${opened.stderr}`);
     check(git(repo, "rev-parse", "--abbrev-ref", "HEAD").trim() === UNIT_BRANCH, `pb unit open left HEAD off ${UNIT_BRANCH}`);
     result.step = "run1";

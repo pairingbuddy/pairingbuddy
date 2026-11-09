@@ -457,9 +457,6 @@ const setsEnvironment = (word) => ASSIGNMENT.test(word) || baseName(word) === "e
 // True when a pb call runs under an assignment or the env command in its own simple command.
 export const pbWithEnvironment = (command) => pbCalls(command).some(({ before }) => before.some(setsEnvironment));
 
-// Each bare `unit open` call as {name, rest}: the pb word as written and every word after it.
-export const pbUnitOpenCalls = (command) => pbCalls(command).filter(({ after }) => matchVerb(after) === "unit open");
-
 // Every simple command a shell would run, in a compound, a subshell, a substitution, `sh -c` or eval, in order. cd is the
 // directory a `cd` earlier in the text named (as written), or undefined. The reading is the one pb calls get.
 function simpleCommandsOf(command, cd) {

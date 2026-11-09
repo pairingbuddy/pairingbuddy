@@ -190,7 +190,7 @@ export function writeTaskJson(repo, task = { description: TASK, context: CONTEXT
 // appends them in a real run, and it needs a finished code run (see publishableUnit).
 export function endedTaskUnit({ tasks = [{}] } = {}) {
   const repo = makeRepo({ openTask: false, remote: true });
-  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "export", "--yes");
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "export");
   assert.equal(opened.code, 0, `unit open: ${opened.stderr}`);
   writeFileSync(join(repo.dir, "export-1.txt"), "export 1\n");
   git(repo, "add", "export-1.txt");

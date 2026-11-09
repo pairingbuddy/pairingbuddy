@@ -25,7 +25,6 @@ import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, i
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, readDraftArtifact, readUnit, runPrLint } from "../shared-node/pr-lint-run.mjs";
-import { shellWord } from "../shared-node/shell-word.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
@@ -1217,7 +1216,7 @@ function run(cwd, command, args, { context = "", input } = {}) {
 
 const runGit = (cwd, args, options) => run(cwd, "git", args, options);
 
-// --branch <name> is the human's own name for the branch. A missing value, or one that looks like a flag, is a usage error.
+// --branch <name> names the branch instead of the template. A missing value, or one that looks like a flag, is a usage error.
 function chosenBranch(args) {
   if (!args.includes("--branch")) return undefined;
   const name = flagValue(args, "--branch");
@@ -1254,7 +1253,7 @@ function renderBranchOrRefuse(template, values) {
   }
 }
 
-// The CLI reads no gate policy: the acceptance is the human's own typed line with --yes or --branch.
+// A plain call opens the template branch; --branch names another. The CLI reads no gate policy and asks nobody to confirm.
 // The refusals come first and touch nothing, with one accepted exception: loadGitConfigOrRefuse bootstraps
 // .pairingbuddy/git-config.json when it is missing, since the branch refusals need its template and protected list.
 // That file is under .pairingbuddy/, so it never makes the tree dirty. Then run/unit.json is claimed exclusively before
@@ -1262,7 +1261,9 @@ function renderBranchOrRefuse(template, values) {
 function unitOpen(args) {
   const type = flagValue(args, "--type");
   const slug = flagValue(args, "--slug");
-  if (!type || !slug) throw new UsageError("usage: pb unit open --type <type> --slug <slug>");
+  const usage = "usage: pb unit open --type <type> --slug <slug> [--branch <name>]";
+  if (args.includes("--yes")) throw new UsageError(`--yes is no longer accepted: pb unit open has no confirm step. ${usage}`);
+  if (!type || !slug) throw new UsageError(usage);
   const chosen = chosenBranch(args);
   const root = toplevel();
   if (existsSync(unitPathOf(root))) throw new Refusal("a unit is already open (run/unit.json exists); nothing was touched");
@@ -1272,10 +1273,6 @@ function unitOpen(args) {
   const branch = chosen ?? renderBranchOrRefuse(gitConfig.branch_template, { type, slug });
   assertUsableBranch(root, gitConfig, branch);
   if (branchExists(root, branch)) throw new Refusal(`branch ${branch} already exists; choose another name`);
-  if (chosen === undefined && !args.includes("--yes")) {
-    const again = `unit open --type ${shellWord(type)} --slug ${shellWord(slug)}`;
-    throw new Refusal(`proposed branch: ${branch}. Ask the human to type ${typedCommand(root, `${again} --yes`)}, or ${typedCommand(root, `${again} --branch <name>`)} to choose another name`);
-  }
   const configHash = validatedConfigHash(root);
   const gitConfigHash = fileHash(gitConfigPath(root));
   const base = baseBranch(gitConfig, defaultBranchOf(root, gitConfig.remote));

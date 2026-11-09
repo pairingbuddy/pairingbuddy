@@ -28,7 +28,7 @@ export const git = (repo, ...args) => execFileSync("git", args, { cwd: repo.dir,
 // ledger overrides fields of that ledger. recorded lists the SHAs of the commits made.
 export function repoWithDrafts({ titles, body, ledgerAttempt = 1, commits = 1, coordination = null, ledger = {} }) {
   const repo = makeRepo({ openTask: false, remote: true });
-  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "export", "--yes");
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "export");
   assert.equal(opened.code, 0, `unit open: ${opened.stderr}`);
   const recorded = [];
   for (let n = 1; n <= commits; n++) {

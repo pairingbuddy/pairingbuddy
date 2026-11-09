@@ -84,7 +84,6 @@ JS_TEST_FILES = [
     "tests/js/t4a-runbook.test.mjs",
     "tests/js/tap.test.mjs",
     "tests/js/tdd-agent-contracts.test.mjs",
-    "tests/js/unit-open-gate.test.mjs",
     "tests/js/unit-open.test.mjs",
     "tests/js/verbs.test.mjs",
 ]

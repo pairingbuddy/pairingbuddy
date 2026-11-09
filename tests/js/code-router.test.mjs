@@ -537,28 +537,18 @@ describe("skill-opens-unit-before-code-run", () => {
     assert.ok(section.indexOf(unitOpen) < section.indexOf(codeOpen), "pb unit open comes before pb run open --kind code");
   });
 
-  test("unit-open-confirmation-is-the-humans", () => {
+  test("router-does-not-say-the-human-confirmed-the-branch", () => {
     const section = routerSection();
 
-    const [confirmed] = sentencesSaying("the human confirmed the just-opened unit's branch", section, /the human confirmed its branch/, /just opened/);
-    assert.match(confirmed, /do not run `pb unit open` again/);
+    assert.doesNotMatch(section, /the human confirmed its branch/, "the router no longer says the human confirmed the just-opened unit's branch");
+    assert.doesNotMatch(section, /\b(?:run|pass|add|use|append|with)\b[^.\n]*--yes/i, "the router never tells the model to pass --yes");
+    sentencesSaying("that pb unit open opens the template branch with no confirmation", section, /There is no confirmation/, /a plain call opens the template branch/);
     sentencesSaying("that only the human types a command for the human", section, /^Only the human types it\.?$/);
-    sentencesSaying("that the auto policy refusal is a command the model runs", section, /under the auto policy/, /run only that command/);
   });
 
-  test("the-model-never-adds-yes-or-branch", () => {
+  test("unit-open-refusal-for-the-human-is-shown-and-stops", () => {
     const section = routerSection();
 
-    const naming = sentencesSaying("what --yes and --branch are", section, /--yes/, /--branch/);
-
-    for (const sentence of naming) assert.match(sentence, /^Never add `--yes` or `--branch` yourself/, `a sentence naming --yes or --branch forbids it: ${sentence}`);
-  });
-
-  test("unit-open-runs-only-the-command-the-refusal-prints", () => {
-    const section = routerSection();
-
-    sentencesSaying("that a command to run is run as printed, and only that", section, /refuses with a command to run/, /run only that command/);
-    sentencesSaying("that the model makes no policy judgement of its own", section, /never judge the policy yourself/i);
     sentencesSaying("that a command for the human is shown and the run stops", section, /refuses with a command for the human to type/, /stop and show the human that command/);
   });
 

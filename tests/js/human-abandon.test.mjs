@@ -17,7 +17,7 @@ const taskPath = (repo) => join(repo.dir, ".pairingbuddy", "run", "task");
 // A repo with a unit open (on its own branch, with one commit past the base) and a task in flight.
 function openUnitWithTask() {
   const repo = makeRepo({ remote: true });
-  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x", "--yes");
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
   assert.equal(opened.code, 0, `setup: pb unit open, stderr: ${opened.stderr}`);
   writeFileSync(join(repo.dir, "b.txt"), "b\n");
   gitIn(repo, "add", "b.txt");
