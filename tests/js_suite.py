@@ -41,6 +41,7 @@ JS_TEST_FILES = [
     "tests/js/harness.test.mjs",
     "tests/js/hooks-json.test.mjs",
     "tests/js/keys-labels.test.mjs",
+    "tests/js/lens-schema.test.mjs",
     "tests/js/label-contract.test.mjs",
     "tests/js/human-abandon.test.mjs",
     "tests/js/ledger.test.mjs",

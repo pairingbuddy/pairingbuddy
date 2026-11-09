@@ -55,6 +55,7 @@ row, and the latest row for a probe stands.
 | P12 | 2.1.316 | 2026-11-01 | human | PASS | mod.jsonl 7 lines including spawn for stage:one, shell hooks alongside, marketplace install from a local marketplace, stage1.done present | `human/P12/20261101-092406` | Mod ships in this plugin |
 | P19 | 2.1.316 | 2026-11-01 | human | PASS | Part 1: one pairingbuddy entry, the builder at 0.7.0, no errors. Part 2: hookonly-mod.log `mod loaded`, hookonly-shell.jsonl has lines. Start command: `claude --plugin-dir /Users/alberto/src/pairingbuddy/pairingbuddy-builder` | `human/P19/20261101-092922` | Builder needs no marketplace disable |
 | P20 | 2.1.316 | 2026-11-01 | human | FAIL (toast only) | Import PASS. Polling PASS, pane updated by itself over two cycles. Sound PASS, heard. Toast FAIL: logged sent twice, human watched and saw none. Capture not tested: `script` skipped, `screencapture` needs a terminal restart, human screenshots used | `human/P20/20261101-093019` | Alerts rely on sound and pane. T4a captures frames with human screenshots until a tool is granted |
+| P21 | 2.1.321 | 2026-11-09 | auto | PASS | per-call model beat the pin both ways. percall:haiku-pin+sonnet: type=pbprobe:pinned-haiku spawn.model=claude-sonnet-5-5 spawned.model=claude-sonnet-5-5 transcript=['claude-sonnet-5-5']; percall:sonnet-pin+haiku: type=pbprobe:pinned-sonnet spawn.model=claude-haiku-5-5 spawned.model=claude-haiku-5-5 transcript=['claude-haiku-5-5']; percall:plain+sonnet: type=workflow-subagent spawn.model=claude-sonnet-5-5 spawned.model=claude-sonnet-5-5 transcript=['claude-sonnet-5-5']; session modelUsage ['claude-haiku-5-5', 'claude-sonnet-5-5'] | `$PROBE_RECORDINGS/P21/20261109-210838` | Per-call `model` overrides a pinned agentType |
 <!-- probe-results-end -->
 
 Scope of the auto probes: each run used `--setting-sources project,local` and
@@ -86,6 +87,21 @@ and their Recording paths are under the lab directory, not `$PROBE_RECORDINGS`.
   `CLAUDE_CODE_SUBAGENT_MODEL` did not override a pin. `ANTHROPIC_DEFAULT_OPUS_MODEL` and
   `ANTHROPIC_DEFAULT_SONNET_MODEL`, set in the child process, did, for both `agent()` and
   the Agent tool. The test-only mod rewrite also worked.
+- P21 (2026-11-09, 2.1.321, $0.042): one workflow, `pbprobe:percall`, ran three
+  `agent()` calls: `pbprobe:pinned-haiku` (`model: claude-haiku-5-5`) with
+  `model: 'claude-sonnet-5-5'`, `pbprobe:pinned-sonnet` (`model: sonnet`) with
+  `model: 'claude-haiku-5-5'`, and a plain `agent()` with `model: 'claude-sonnet-5-5'`
+  as the control. In all three, the per-call model is what ran. The mod's `agent.spawn`
+  saw it before and after spawn, the transcript's assistant turns and the API request
+  `params.model` used it, and session `modelUsage` showed sonnet output (8 tokens) that
+  no other source could have produced. So a per-call `model` beats a frontmatter pin in
+  both directions, unlike `--model` and `CLAUDE_CODE_SUBAGENT_MODEL` in P16. Each agent
+  transcript also names `claude-opus-5-5`, but that is the `advisor` tool's entry in the
+  request shape, not a turn.
+  Caveats for a later re-run: `judge_p21` matches transcripts by substring of the agent id
+  (exact matching needs the recorded id form checked first), and `pinned-haiku` pins a
+  full model id while `pinned-sonnet` pins the alias, so the two directions test
+  different pin forms.
 - `-p` result count: a workflow that finishes before the model's turn ends can give one
   `result` event (P1, and the `--output-format json` run in P14). Others gave two or three.
 - U1-U8: no result changed on 2.1.316. `CLAUDE_PLUGIN_ROOT` is still unset in a workflow

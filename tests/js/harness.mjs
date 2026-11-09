@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import v8 from "node:v8";
 import vm from "node:vm";
+import { parseKey } from "../../shared-node/keys.mjs";
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
@@ -25,6 +26,20 @@ function assertKnownAgent(agentType) {
   const name = /^pairingbuddy:(.+)$/.exec(agentType)?.[1];
   if (name === undefined || !readAgentNames().has(name)) {
     throw new Error(`Unknown agentType "${agentType}": expected pairingbuddy:<name> for an agent in contracts/agent-config.yaml`);
+  }
+}
+
+const KEY_SHAPE = /^[a-z0-9][a-z0-9_-]*\.[a-z0-9][a-z0-9_-]*\.[^.]+\.r\d+\.a\d+$/;
+
+function isLensKey(text) {
+  return typeof text === "string" && KEY_SHAPE.test(text) && parseKey(text).role === "lens";
+}
+
+function assertLensAgentType(opts) {
+  const pbKey = opts.schema?.properties?.pb_key;
+  const keys = [...(pbKey?.enum ?? []), ...(pbKey?.const === undefined ? [] : [pbKey.const])];
+  if (keys.some(isLensKey) && opts.agentType !== "pairingbuddy:lens") {
+    throw new Error('A lens call must name agentType "pairingbuddy:lens"');
   }
 }
 
@@ -278,6 +293,7 @@ export async function runScript(path, { args, agent, workflow } = {}) {
     agent: async ({ prompt, opts }) => {
       try {
         assertKnownAgent(opts.agentType);
+        assertLensAgentType(opts);
         if (opts.schema !== undefined) assertValidSchema(opts.schema);
       } catch (e) {
         fail(e.message);

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The `lens` agent (Sonnet; Read, Grep, Glob; read-only) reviews a subject through one named lens and returns findings, each with a rule, a severity (`high`, `medium`, `low`), a claim and where it is. Agent count is now 33.
+- Probe P21 confirmed that a per-call `model` overrides an agent's pinned model, so a workflow can run a pinned agent on a different model per call.
 - The D17 git and gh guard: the gate reads every git and gh call in a Bash command and denies it by run state and caller. The rules are a table plus a pure classifier in `shared-node/d17.mjs`.
   - A subagent during a run or unit gets a read-only git and gh allowlist (plus the table's single-file checkout, restore and switch forms and branch creation); everything else, plumbing included, is denied.
   - The main context during a run gets the table's denylist: push outside `pb publish`, `gh pr create/merge/edit/ready/revert/update-branch`, `gh repo sync --force`, `gh release create`, reverts (plumbing and stash forms too), hook-skipping commits, and creating, switching or rebasing onto another branch while a unit is open. Denials name `pb publish`.

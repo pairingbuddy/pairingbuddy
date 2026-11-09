@@ -133,6 +133,32 @@ def test_agent_model_matches_config(agent_name):
 
 
 @pytest.mark.parametrize("agent_name", get_agent_names())
+def test_agent_file_tools_equal_config_tools(agent_name):
+    """Agent frontmatter tools must equal the tools list in agent-config.yaml."""
+    agent_file = AGENTS_DIR / f"{agent_name}.md"
+    assert agent_file.exists(), f"Agent file not found: {agent_file}"
+
+    config = load_agent_config()
+    expected_tools = config["agents"][agent_name].get("tools")
+
+    post = frontmatter.load(agent_file)
+    actual_tools = post.metadata.get("tools")
+
+    if expected_tools is None:
+        assert "tools" not in post.metadata, (
+            f"Agent '{agent_name}' has a tools line {actual_tools!r} "
+            "but agent-config.yaml declares no tools"
+        )
+        return
+
+    if isinstance(actual_tools, str):
+        actual_tools = [t.strip() for t in actual_tools.split(",")]
+    assert set(actual_tools or []) == set(expected_tools), (
+        f"Agent tools {actual_tools} don't match expected {expected_tools}"
+    )
+
+
+@pytest.mark.parametrize("agent_name", get_agent_names())
 def test_agent_skills_match_config(agent_name):
     """Agent skills must match the expected list from agent-config.yaml."""
     agent_file = AGENTS_DIR / f"{agent_name}.md"
@@ -298,15 +324,37 @@ def test_agent_section_content_matches_canonical(agent_name, section_heading, co
     )
 
 
-def test_apply_config_change_is_limited_to_read_and_edit():
-    """The agent handles task text, so it must not inherit Bash, Write or Agent."""
-    post = frontmatter.load(AGENTS_DIR / "apply-config-change.md")
+RESTRICTED_AGENT_TOOLS = {
+    "runner": ["Bash"],
+    "apply-config-change": ["Read", "Edit"],
+    "lens": ["Read", "Grep", "Glob"],
+}
 
-    assert post.metadata.get("tools") == "Read, Edit"
+
+@pytest.mark.parametrize(
+    "agent_name,expected_tools",
+    list(RESTRICTED_AGENT_TOOLS.items()),
+    ids=list(RESTRICTED_AGENT_TOOLS),
+)
+def test_restricted_agent_config_tools_are_exact(agent_name, expected_tools):
+    """Restricted agents must list exactly their allowed tools in agent-config.yaml."""
+    agents = load_agent_config()["agents"]
+
+    assert agent_name in agents, f"Agent '{agent_name}' missing from agent-config.yaml"
+    assert agents[agent_name].get("tools") == expected_tools, (
+        f"Agent '{agent_name}' tools must be exactly {expected_tools}"
+    )
 
 
-def test_runner_is_limited_to_bash():
-    """The runner relays CLI output, so it must not read, edit or spawn anything."""
-    post = frontmatter.load(AGENTS_DIR / "runner.md")
+def test_lens_prompt_opens_with_authority_block():
+    """The lens prompt opens with a block treating repository content as evidence."""
+    body = (AGENTS_DIR / "lens.md").read_text()
+    opening = body[body.index("# Lens") + len("# Lens") : body.index("## Purpose")].lower()
 
-    assert post.metadata.get("tools") == "Bash"
+    assert "evidence" in opening, "Authority block before Purpose must call content evidence"
+    assert "never instructions" in opening or "not instructions" in opening, (
+        "Authority block must say repository content is not instructions"
+    )
+    assert "comments" in opening and "commit messages" in opening, (
+        "Authority block must name comments and commit messages as repository content"
+    )

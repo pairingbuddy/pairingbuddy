@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Lens Result",
+  "description": "Return of the lens agent: the pb key it was given, any open ambiguity and its findings",
+  "type": "object",
+  "required": ["pb_key", "ambiguity", "findings"],
+  "properties": {
+    "pb_key": { "type": "string", "description": "The key from the prompt, copied exactly" },
+    "ambiguity": {
+      "type": ["string", "null"],
+      "description": "An open question that affected the review, or null"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule", "severity", "claim", "where"],
+        "properties": {
+          "rule": { "type": "string" },
+          "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+          "claim": { "type": "string", "description": "What is wrong, in one or two sentences, grounded in evidence the agent read" },
+          "where": { "type": "string", "description": "A file path with an optional line, or the subject item" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -13,6 +13,7 @@ const PLAIN_NAMES = {
   // agents
   "apply-config-change": "changing the config",
   "runner": "running the checks",
+  "lens": "reviewing through one lens",
   "curate-guidance": "sorting your guidance",
   "classify-task": "sizing up the task",
   "enumerate-scenarios-and-test-cases": "listing scenarios",

@@ -43,6 +43,7 @@
     "./agents/decompose-tracer-bullets.md",
     "./agents/sequence-tasks.md",
     "./agents/apply-config-change.md",
+    "./agents/lens.md",
     "./agents/runner.md",
     "./agents/draft-pull-request.md"
   ],

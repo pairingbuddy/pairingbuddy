@@ -177,6 +177,62 @@ for (const [label, agentType] of Object.entries(REJECTED_AGENT_TYPES)) {
   });
 }
 
+test("lens-call-without-agent-type-rejected", async () => {
+  const seen = [];
+  const agent = async (prompt) => seen.push(prompt);
+  const schema = { type: "object", properties: { pb_key: { type: "string", enum: ["code-review.lens.-.r1.a1"] } } };
+
+  await assert.rejects(
+    run(`await agent("p", { schema: ${JSON.stringify(schema)} });`, { agent }),
+    /lens.*agentType/i,
+  );
+
+  assert.deepEqual(seen, [], "the responder is never called");
+});
+
+test("lens-call-with-const-key-without-agent-type-rejected", async () => {
+  const seen = [];
+  const agent = async (prompt) => seen.push(prompt);
+  const schema = { type: "object", properties: { pb_key: { type: "string", const: "code-review.lens.-.r1.a1" } } };
+
+  await assert.rejects(
+    run(`await agent("p", { schema: ${JSON.stringify(schema)} });`, { agent }),
+    /lens.*agentType/i,
+  );
+
+  assert.deepEqual(seen, [], "the responder is never called");
+});
+
+test("lens-call-with-wrong-agent-type-rejected", async () => {
+  const seen = [];
+  const agent = async (prompt) => seen.push(prompt);
+  const schema = { type: "object", properties: { pb_key: { type: "string", enum: ["code-review.lens.-.r1.a1"] } } };
+
+  await assert.rejects(
+    run(`await agent("p", { agentType: "pairingbuddy:curate-guidance", schema: ${JSON.stringify(schema)} });`, { agent }),
+    /lens.*agentType/i,
+  );
+
+  assert.deepEqual(seen, [], "the responder is never called");
+});
+
+test("lens-call-with-lens-agent-type-accepted", async () => {
+  const seen = [];
+  const agent = async (prompt) => (seen.push(prompt), {});
+  const schema = { type: "object", properties: { pb_key: { type: "string", enum: ["code-review.lens.-.r1.a1"] } } };
+
+  await run(`await agent("p", { agentType: "pairingbuddy:lens", schema: ${JSON.stringify(schema)} });`, { agent });
+
+  assert.deepEqual(seen, ["p"], "the lens call reaches the responder");
+});
+
+test("non-key-pb-key-enum-on-non-lens-call-does-not-throw", async () => {
+  const agent = async () => ({});
+  const schema = { type: "object", properties: { pb_key: { type: "string", enum: ["not a key"] } } };
+
+  await run(`await agent("p", { schema: ${JSON.stringify(schema)} });`, { agent });
+});
+
 test("known-agent-type-recorded", async () => {
   const sut = await runScript(fixture("known_agent_types"), { args: {}, agent: respondOk });
 

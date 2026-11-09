@@ -656,6 +656,67 @@ def judge_u(ctx: Context) -> Verdict:
     )
 
 
+# P21: a per-call `model` against an agent's frontmatter pin.
+P21_LABELS = {
+    "percall:haiku-pin+sonnet": "claude-sonnet-5-5",
+    "percall:sonnet-pin+haiku": "claude-haiku-5-5",
+    "percall:plain+sonnet": "claude-sonnet-5-5",
+}
+
+
+def run_p21(ctx: Context) -> None:
+    ctx.setup()
+    ctx.claude(f"{call('percall')} Wait for it to finish, then stop.")
+
+
+def spawn_pairs(ctx: Context) -> list[tuple[dict, dict]]:
+    """Each mod `spawn` line with the `spawned` line that follows it (spawns are sequential)."""
+    pairs, pending = [], None
+    for line in ctx.mod():
+        if line["tag"] == "spawn":
+            pending = line["data"]
+        elif line["tag"] == "spawned" and pending is not None:
+            pairs.append((pending, line["data"] or {}))
+            pending = None
+    return pairs
+
+
+def judge_p21(ctx: Context) -> Verdict:
+    models = ctx.transcript_models()
+    rows, wins = [], {}
+    for spawn, spawned in spawn_pairs(ctx):
+        label = spawn.get("desc")
+        if label not in P21_LABELS:
+            continue
+        agent = str(spawned.get("agentId", ""))
+        ran = sorted(next((m for a, m in models.items() if agent and agent in a), set()))
+        asked = P21_LABELS[label]
+        wins[label] = ran == [asked]
+        rows.append(
+            f"{label}: type={spawn.get('type')} spawn.model={spawn.get('model')} "
+            f"spawned.model={spawned.get('model')} transcript={ran}"
+        )
+    results = ctx.runs["main"].results()
+    usage = sorted(results[-1].get("modelUsage", {})) if results else []
+    rows.append(f"session modelUsage {usage}")
+    if len(wins) < len(P21_LABELS) or not wins.get("percall:plain+sonnet"):
+        return Verdict("INCONCLUSIVE", "; ".join(rows), "None: control or an agent missing")
+    pinned = [k for k in P21_LABELS if "pin+" in k]
+    if all(wins[k] for k in pinned):
+        return Verdict(
+            "PASS",
+            "per-call model beat the pin both ways. " + "; ".join(rows),
+            "Per-call `model` overrides a pinned agentType",
+        )
+    if not any(wins[k] for k in pinned):
+        return Verdict(
+            "FAIL",
+            "the pin beat the per-call model both ways. " + "; ".join(rows),
+            "Model choice lives in agent frontmatter, not the script",
+        )
+    return Verdict("FAIL", "mixed. " + "; ".join(rows), "Review: precedence depends on direction")
+
+
 case("P2", run_p2, judge_p2)
 case("P5", run_p5, judge_p5)
 case("P6", run_p6, judge_p6)
@@ -668,4 +729,5 @@ case("P14", run_p14, judge_p14)
 case("P15", run_p15, judge_p15)
 case("P16", run_p16, judge_p16)
 case("P17", run_p17, judge_p17)
+case("P21", run_p21, judge_p21)
 case("U", run_u, judge_u)
