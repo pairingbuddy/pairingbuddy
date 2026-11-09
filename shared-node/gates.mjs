@@ -273,7 +273,7 @@ export function publishApproval(ledger) {
 // headline) and the labels as they will be passed to gh.
 export const draftBinding = (draft) => ({
   titleHash: sha256(draft.title),
-  labels: draft.labels ?? [],
+  labels: draft.labels,
   coordinationHash: draft.coordination == null ? null : sha256(draft.coordination),
 });
 

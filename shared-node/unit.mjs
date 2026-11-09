@@ -16,15 +16,15 @@ export function newUnit({ branch, base, baseSha, configHash, gitConfigHash }) {
 
 // The D19 record of one finished task; spend is not measured yet, so it starts empty.
 export function newTaskRecord({ ledger, headSha }) {
-  const gateSources = Object.fromEntries(Object.entries(ledger.gates ?? {}).map(([gate, entry]) => [gate, entry.source]));
+  const gateSources = Object.fromEntries(Object.entries(ledger.gates).map(([gate, entry]) => [gate, entry.source]));
   return {
     title: ledger.task,
-    stages: (ledger.stages ?? []).map((stage) => stage.name),
+    stages: ledger.stages.map((stage) => stage.name),
     gateSources,
     headSha,
     reportSummary: null,
     blocking: [],
-    attempts: Object.fromEntries((ledger.stages ?? []).map((stage) => [stage.name, stage.attempt])),
+    attempts: Object.fromEntries(ledger.stages.map((stage) => [stage.name, stage.attempt])),
     lessons: [],
     spend: null,
     fullSuite: ledger.tests?.full === undefined ? null : { passed: ledger.tests.full.passed, head: ledger.tests.full.head },

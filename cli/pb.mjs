@@ -918,7 +918,7 @@ function appendTaskRecord(opened) {
   const last = unit.tasks.at(-1);
   if (last?.title === record.title && last?.headSha === record.headSha) return;
   unit.tasks.push(record);
-  unit.commits = [...new Set([...(unit.commits ?? []), ...commits])];
+  unit.commits = [...new Set([...unit.commits, ...commits])];
   writeJsonAtomic(path, unit);
 }
 
@@ -1086,7 +1086,6 @@ function executePublish(steps, ctx) {
       return step.result === "published" ? { ok: true, result: "published", url, warnings, ...(pendingComment === undefined ? {} : { pendingComment }) } : { ok: true, result: step.result, reason: step.reason };
     }
   }
-  throw new Error("the publish plan has no close step");
 }
 
 // Posts the coordination text on the PR from a kept per-PR file outside run/, deleted once it posts. A failure after the
@@ -1163,7 +1162,7 @@ function openPr({ root, unit, gitConfig, ledger, bound }, recordedUrl) {
 }
 
 function createdPr(root, unit, target, bodyFile, draft, policyMode, opened) {
-  const argv = prCreateArgv({ title: draft.title, bodyFile, base: target, branch: unit.branch, labels: draft.labels ?? [], policyMode });
+  const argv = prCreateArgv({ title: draft.title, bodyFile, base: target, branch: unit.branch, labels: draft.labels, policyMode });
   let printed;
   try {
     printed = run(root, "gh", argv, { context: `${opened}, but the PR was not opened; run pb publish again, the push will not repeat` });

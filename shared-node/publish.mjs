@@ -15,12 +15,12 @@ export const recordedTasks = ({ unit, planBoxes, planProblem }) => {
 };
 
 const withoutSafetyNet = ({ unit, safetyNets }) => {
-  const unfinished = unit.tasks.filter((task) => !(task.stages ?? []).some((name) => safetyNets.includes(name)));
+  const unfinished = unit.tasks.filter((task) => !task.stages.some((name) => safetyNets.includes(name)));
   return unfinished.length === 0 ? null : `${list(safetyNets)} did not finish for ${list(unfinished.map((task) => task.title))}`;
 };
 
 const invalidGateSources = ({ unit }) => {
-  const bad = unit.tasks.flatMap((task) => Object.entries(task.gateSources ?? {}).filter(([, source]) => !GATE_SOURCES.includes(source)).map(([gate, source]) => `${gate} from ${task.title} has source ${JSON.stringify(source)}`));
+  const bad = unit.tasks.flatMap((task) => Object.entries(task.gateSources).filter(([, source]) => !GATE_SOURCES.includes(source)).map(([gate, source]) => `${gate} from ${task.title} has source ${JSON.stringify(source)}`));
   return bad.length === 0 ? null : `invalid gate sources: ${list(bad)}`;
 };
 
@@ -36,13 +36,13 @@ const staleFullSuite = ({ unit, head }) => {
 const dirtyTree = ({ dirty }) => (dirty.length === 0 ? null : `the tree has uncommitted files: ${list(dirty)}`);
 
 const openBlocking = ({ unit }) => {
-  const open = unit.tasks.flatMap((task) => task.blocking ?? []);
+  const open = unit.tasks.flatMap((task) => task.blocking);
   return open.length === 0 ? null : `blocking findings are open: ${list(open)}`;
 };
 
 const changedConfig = ({ changedConfigs }) => (changedConfigs.length === 0 ? null : `these files changed since the unit opened: ${list(changedConfigs)}`);
 
-const stopped = ({ runStop }) => (runStop === null || runStop === undefined ? null : `the run stopped: ${runStop.reason}`);
+const stopped = ({ runStop }) => (runStop === null ? null : `the run stopped: ${runStop.reason}`);
 
 // A stale approval is reported by its own reason; the checks after it cover only what is not an approval at all.
 const staleApproval = ({ voidReason }) => voidReason ?? null;
@@ -56,7 +56,7 @@ const UNAPPROVED = {
 const unapproved = ({ voidReason, approval }) => (voidReason !== null || approval === "human" ? null : UNAPPROVED[approval]);
 
 const unrecordedCommits = ({ unit, commits }) => {
-  const missing = commits.filter((sha) => !(unit.commits ?? []).includes(sha));
+  const missing = commits.filter((sha) => !unit.commits.includes(sha));
   return missing.length === 0 ? null : `commits not in the unit record: ${list(missing.map(short))}`;
 };
 
