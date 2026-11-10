@@ -42,6 +42,7 @@ JS_TEST_FILES = [
     "tests/js/hooks-json.test.mjs",
     "tests/js/keys-labels.test.mjs",
     "tests/js/lens-attack.test.mjs",
+    "tests/js/read-confinement.test.mjs",
     "tests/js/lens-schema.test.mjs",
     "tests/js/refuter-schema.test.mjs",
     "tests/js/lenses-contract.test.mjs",
