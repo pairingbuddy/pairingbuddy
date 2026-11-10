@@ -415,6 +415,7 @@ const artifactConfig = (overrides = {}) => baseConfig({
   lenses: [{ name: "necessity", model: "sonnet" }],
   fix: {
     mode: "artifact",
+    beforeKey: "scenarios",
     agentType: ENUMERATE,
     schemaByAgentType: { [ENUMERATE]: readJson("contracts/schemas/enumerate-scenarios-and-test-cases-result.schema.json") },
     instruction: "Fix the findings below.",

@@ -869,3 +869,23 @@ test("build-report-merges-by-ledger-task-type", async () => {
 
   assert.deepEqual(report.uncovered, [notReturned], "the config_change row's other lens has no return, so it alone is uncovered");
 });
+
+// The pr-draft stage wires both of its lenses, so a lens with no return shows up as uncovered, the same as in the workflow.
+test("build-report-wires-both-pr-draft-lenses", () => {
+  const attempt = 1;
+  const finding = { rule: "claims-match-record", severity: "high", kind: "fix-here", claim: "says tests ran on CI", where: "pr-body.md" };
+  const pbKey = `pr-draft.lens.claims.r1.a${attempt}`;
+  const artifactsDir = mkdtempSync(join(tmpdir(), "report-pr-draft-"));
+  writeFileSync(join(artifactsDir, `${pbKey}.json`), JSON.stringify({ pb_key: pbKey, ambiguity: null, findings: [finding] }));
+  const ledger = { stage: { name: "pr-draft", status: "active", runId: "wf_1", attempt, startedAt: null }, tests: {}, checkpoints: [] };
+
+  let report;
+  try {
+    report = buildReport(ledger, artifactsDir);
+  } finally {
+    rmSync(artifactsDir, { recursive: true, force: true });
+  }
+
+  assert.deepEqual(report.survivors.map((s) => s.id), ["claims-1"], "the claims finding survives, with the claims lens's id");
+  assert.deepEqual(report.uncovered, ["permanence"], "the permanence lens has no return, so it alone is uncovered");
+});

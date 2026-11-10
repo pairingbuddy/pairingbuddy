@@ -52,6 +52,7 @@ const lensResult = await lensAttack({
   maxAttempts: LENSES.maxAttempts,
   fix: {
     mode: 'artifact',
+    beforeKey: 'scenarios',
     agentType: `pairingbuddy:${role}`,
     schemaByAgentType: { [`pairingbuddy:${role}`]: RESULT_SCHEMA },
     instruction: 'Revise the scenarios at the scenarios path to resolve the findings below. Change only what the findings name.',

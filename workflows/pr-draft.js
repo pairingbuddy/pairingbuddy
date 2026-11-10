@@ -3,7 +3,11 @@ export const meta = { name: 'pr-draft', description: 'Internal stage, started by
 if (args === undefined) return { started: false };
 
 const RESULT_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Draft Pull Request Result","description":"Return of the draft-pull-request agent: the pb key it was given, and the pull request title, body, labels, base branch and the coordination comment for text that is true only while the PR is open","type":"object","required":["pb_key","title","body","labels","base","coordination"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"title":{"type":"string","description":"Pull request title, following the configured title template"},"body":{"type":"string","description":"Pull request body, written for main's log after a squash-merge"},"labels":{"type":"array","description":"Labels to put on the pull request","items":{"type":"string"}},"base":{"type":"string","description":"Base branch the pull request targets"},"coordination":{"type":["string","null"],"description":"Text true only while the PR is open, posted as a comment, or null when there is none"}},"additionalProperties":false};
+const LENSES = {"maxAttempts":5,"rows":[{"row":"intake","stage":"intake","lenses":[{"name":"classification","model":"sonnet"}],"refute":"none","fix":"course-checker"},{"row":"plan-requirements","stage":"plan-requirements","lenses":[{"name":"ambiguity","model":"sonnet"},{"name":"testability","model":"sonnet"},{"name":"scope","model":"sonnet"},{"name":"conflict","model":"sonnet"},{"name":"unknowns","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"bias":true,"synth":true,"refute":"one","maxRefuters":10,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"plan-architecture","stage":"plan-architecture","lenses":[{"name":"enforcement","model":"opus"},{"name":"simplicity","model":"sonnet"},{"name":"testability","model":"sonnet"},{"name":"migration","model":"opus"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"bias":true,"synth":true,"refute":"one","maxRefuters":10,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"plan-tracers","stage":"plan-tracers","lenses":[{"name":"slice-thinness","model":"sonnet"},{"name":"ordering","model":"sonnet"},{"name":"pr-unit-fit","model":"sonnet"},{"name":"dependency-truth","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"synth":true,"refute":"one","maxRefuters":10,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"plan-sequence","stage":"plan-sequence","lenses":[{"name":"ordering","model":"sonnet"},{"name":"task-size","model":"sonnet"},{"name":"testable-acceptance-criteria","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"scenarios","stage":"scenarios","lenses":[{"name":"necessity","model":"sonnet"},{"name":"pyramid-level","model":"sonnet"},{"name":"patterns","model":"sonnet"},{"name":"anti-patterns","model":"sonnet"}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"tdd","stage":"tdd","lenses":[],"agents":[{"role":"lens","phase":"REFACTOR","item":"t3"}],"refute":"none","fix":"none"},{"row":"refactor-scope","stage":"refactor-scope","lenses":[{"name":"scope-serves-intent","model":"sonnet"}],"refute":"none","fix":"none"},{"row":"refactor-apply","stage":"refactor-apply","lenses":[],"agents":[{"role":"refactor-code","item":"step1"}],"refute":"none","fix":"none"},{"row":"config","stage":"code-config","lenses":[],"agents":[{"role":"apply-config-change","item":null}],"refute":"none","fix":"none"},{"row":"safety-net, new_feature and bug_fix","stage":"code-safety-net","taskTypes":["new_feature","bug_fix"],"lenses":[{"name":"code","model":"sonnet"},{"name":"tests","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"safety-net, refactoring","stage":"code-safety-net","taskTypes":["refactoring"],"lenses":[{"name":"behaviour-preservation","model":"opus"},{"name":"tests","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"safety-net, config_change","stage":"code-safety-net","taskTypes":["config_change"],"lenses":[{"name":"config-fit","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":2,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"spike-unit","stage":"spike-unit","lenses":[],"agents":[{"role":"explore-spike-unit","item":"u1"}],"refute":"none","fix":"none"},{"row":"spike-document","stage":"spike-document","lenses":[{"name":"claims-against-recorded-evidence","model":"sonnet"}],"refute":"none","fix":"course-checker"},{"row":"pr-draft","stage":"pr-draft","lenses":[{"name":"claims","model":"sonnet","brief":"Check every statement in the title and body against the unit diff (subject_diff) and the recorded runs in the unit record (reportSummary, gateSources, blocking, lessons). Flag any claim the diff or the record does not show."},{"name":"permanence","model":"sonnet","brief":"Read the title and body as they will read in git log on main a year from now. Flag text that is true only while the pull request is open, such as review requests, stacking notes, links to temporary state, 'this PR', 'for now' and dates relative to today."}],"wiresAll":true,"refute":"none","fix":"course-checker"},{"row":"design-domain, design-gallery","stage":"design-domain","lenses":[],"agents":[{"role":"design-ux-explorer","item":null}],"refute":"none","fix":"none"},{"row":"design-domain, design-gallery","stage":"design-gallery","lenses":[],"agents":[{"role":"design-ux-gallery-generator","item":null}],"refute":"none","fix":"none"},{"row":"design-build critique","stage":"design-build","lenses":[{"name":"mental-model-alignment","model":"sonnet"},{"name":"information-architecture","model":"sonnet"},{"name":"affordances","model":"sonnet"},{"name":"cognitive-load","model":"sonnet"},{"name":"state-design","model":"sonnet"},{"name":"flow-integrity","model":"sonnet"}],"refute":"none","fix":"none"}],"lightReview":{"model":"sonnet","maxFocuses":2,"rule":{"test":"test-quality","production":"code-smell"},"catalog":[{"name":"code-smell","brief":"Look for long functions, deep nesting, dead code, magic values and needless complexity. Do not suggest behaviour the tests do not require."},{"name":"naming-and-domain","brief":"Look for names that hide intent or drift from the domain terms used elsewhere."},{"name":"duplication-against-corpus","brief":"Look for logic that repeats something that already exists in the corpus or elsewhere in the change."},{"name":"test-quality","brief":"Look for unclear test structure, missing or weak assertions, logic in tests, shared state and other test smells. Do not report missing scenarios or coverage gaps."},{"name":"test-level","brief":"Look for a test at the wrong pyramid level, mocking what it should exercise or exercising what it should mock."},{"name":"design-fit","brief":"Look for responsibilities, coupling and dependencies that do not fit the surrounding design. Do not suggest behaviour the tests do not require."}]}};
+const LENS_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Lens Result","description":"Return of the lens agent: the pb key it was given, any open ambiguity and its findings","type":"object","required":["pb_key","ambiguity","findings"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":["string","null"],"description":"An open question that affected the review, or null"},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["rule","severity","kind","claim","where"],"properties":{"rule":{"type":"string"},"severity":{"type":"string","enum":["high","medium","low"]},"kind":{"type":"string","enum":["fix-here","risk","drift"]},"claim":{"type":"string","description":"What is wrong, in one or two sentences, grounded in evidence the agent read"},"where":{"type":"string","description":"A file path with an optional line, or the subject item"}}}}},"additionalProperties":false};
 const RUNNER_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Runner Result","description":"Return of the runner agent: the pb key it was given and the CLI's last exit code and its output, relayed unchanged. Evidence lives in the ledger, written by the CLI","type":"object","required":["pb_key","cli_exit_code","cli_output"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"cli_exit_code":{"type":"integer","description":"Exit code of the last pb command run: 0 when it was recorded, not when the tests passed"},"cli_output":{"type":"string","description":"What each pb command printed, unchanged, in order"}},"additionalProperties":false};
+const STAGES = {"v":1,"defaultTaskType":"config_change","maxAgents":1000,"stageMaxAgents":{"code-tdd":600},"migratedTypes":["config_change","bug_fix","new_feature"],"newPathAgents":["apply-config-change","course-checker","lens","refuter","runner"],"gateClasses":{"continue":{"auto":"passes when evidence is complete and no stop condition applies"},"conditional":{"auto":"passes only when the classifier reports certain"},"decide":{"auto":"always asks the human"}},"taskTypes":{"config_change":{"nodes":[{"name":"code-config","gate":null,"evidence":["artifact:apply-config-change","checkpoint:config"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:task-end":{"class":"continue"}}},"bug_fix":{"nodes":[{"name":"code-scenarios","gate":"G:scenarios","evidence":["artifact:enumerate-scenarios-and-test-cases"]},{"name":"code-tdd","gate":null,"evidence":["artifact:create-test-placeholders","checkpoint:placeholders","tests:cycle","artifact:verify-test-coverage"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:scenarios":{"class":"continue"},"G:task-end":{"class":"continue"}}},"new_feature":{"nodes":[{"name":"code-scenarios","gate":"G:scenarios","evidence":["artifact:enumerate-scenarios-and-test-cases"]},{"name":"code-tdd","gate":null,"evidence":["artifact:create-test-placeholders","checkpoint:placeholders","tests:cycle","artifact:verify-test-coverage"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:scenarios":{"class":"continue"},"G:task-end":{"class":"continue"}}},"publish":{"nodes":[{"name":"pr-draft","gate":"G:publish","evidence":["artifact:draft-pull-request"]}],"gates":{"G:publish":{"class":"continue"}}}}};
+const COURSE_VERDICT_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Course Verdict","description":"Return of a course checker: its judgement of one fix group's diff against the group's finding(s)","type":"object","required":["pb_key","finding_id","verdict","mistake","what_went_wrong"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"finding_id":{"type":"string","pattern":"^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*-[1-9][0-9]*$","description":"The finding that decided the verdict"},"verdict":{"type":"string","enum":["better","wrong-direction","broke-something"],"description":"How the fix went: better means it moved toward the finding, wrong-direction means it moved away from the finding, broke-something means it broke working behaviour"},"mistake":{"type":"string","enum":["none","missed-finding","changed-behaviour","out-of-scope","weakened-tests","new-defect","other"],"description":"The kind of mistake the fix made; none only with better"},"what_went_wrong":{"type":"string","description":"What went wrong, empty for better"}},"additionalProperties":false};
 
 // One course-checker call per fix group. It needs these names from elsewhere: buildKey, buildLabel and fixAttemptRound (from the stage's pb-inline-module lines: keys, labels), asPromptData and pinnedKey (from the other shared sources), and agent (from the workflow runtime).
 // config.schema is required: it is the course verdict schema, and the call pins its key into it.
@@ -46,8 +50,30 @@ async function courseCheck(config) {
   return accepted;
 }
 
-// The fix loop of lensAttack: one fix agent per group of surviving findings, run one group at a time. It needs these names from elsewhere: buildKey, buildLabel and fixAttemptRound (from the stage's pb-inline-module lines: keys, labels), lensOfFinding (from the pb-inline-module line for shared-node/lens-merge.mjs), mistakeKey and normalizeApproach (from the pb-inline-module line for shared-node/mistake-check.mjs), asPromptData, pinnedKey and taskBlock (from the other shared sources), relayedJson (from relayed-json.mjs), courseCheck (from course-check.mjs), runCommands (from the stage runtime) and agent (from the workflow runtime).
-// Config fields read: stage, attempt, maxAttempts and checkSchema (the course verdict schema passed to courseCheck) are required. priorRollbacks is optional: the stage's rollbacks made before this loop, where failedAttempts starts (default 0). config.fix is required: instruction, agentType, schemaByAgentType, and optionally agentTypeByLens (agent type per lens, else agentType). In artifact mode only, fix.mode is 'artifact', fix.paths are the fix agent's inputs and fix.before is the artifact the first group is judged against; in the default (code) mode fix.paths are the inputs and fix.mode and fix.before are unused.
+// The fix loop of lensAttack: one fix agent per group of surviving findings, run one group at a time.
+// It needs these names from elsewhere:
+//   buildKey, buildLabel, fixAttemptRound: the stage's pb-inline-module lines (keys, labels)
+//   lensOfFinding: the pb-inline-module line for shared-node/lens-merge.mjs
+//   mistakeKey, normalizeApproach: the pb-inline-module line for shared-node/mistake-check.mjs
+//   asPromptData, pinnedKey, taskBlock: the other shared sources
+//   relayedJson, lintReportOf: relayed-json.mjs
+//   courseCheck: course-check.mjs
+//   runCommands: the stage runtime; agent: the workflow runtime
+// Config fields read:
+//   required: stage, attempt, maxAttempts, checkSchema (the course verdict schema passed to courseCheck)
+//   priorRollbacks (optional, default 0): the stage's rollbacks made before this loop, where failedAttempts starts
+//   priorAttempts (optional, default 0): the fix attempts an earlier loop in the same stage made, so this loop's fix keys continue after theirs
+//   priorLessons (optional, default []): the notes an earlier loop in the same stage wrote, where this loop's lessons start
+//   fix (required): instruction, agentType, schemaByAgentType, and optionally agentTypeByLens (agent type per lens, else agentType)
+//   fix.paths: the fix agent's inputs (in artifact mode too)
+//   artifact mode only (code mode ignores these):
+//     fix.mode: 'artifact'
+//     fix.before: the artifact the first group is judged against
+//     fix.beforeKey (required in artifact mode): the name under which the fix agent is given the latest kept artifact's path among its inputs; without it the key becomes the string 'undefined'
+//     fix.lint (optional, true for a lint loop): each kept-or-not decision starts with a lone 'pr lint' run after the fix
+
+// The lens whose findings are lint failures. pr-draft names its lint findings `${LINT_LENS}-<n>` and lensOfFinding strips the number, so the stage and this loop meet on this name.
+const LINT_LENS = 'lint';
 
 const TESTS_FAILED = /^pb: the tests failed, so nothing was committed/m;
 const FIX_DIFF_PATH = '.pairingbuddy/run/fix.diff';
@@ -63,8 +89,16 @@ function fixGroupsOf(survivors) {
 
 const fixArtifactPathOf = (key) => `.pairingbuddy/run/task/artifacts/${key}.json`;
 
-// One fix attempt for attempt.group; attempt is { group, fixAttempt, notes, failedAttempts, before, artifactMode, retry, mustChangeApproach, rejectedApproaches (default []) }. Returns { outcome, key }; red, rejected, repeated and kept also return the fix's approach, rejected also returns the verdict, and kept in artifact mode also returns the kept artifact's path.
-// Outcomes: 'failed': no fix returned, the checkpoint was refused for a reason other than red tests, or the checker gave no verdict (null); nothing is rolled back and the loop stops. 'red': the tests failed, so the fix is rolled back (code mode only: artifact mode has no checkpoint, so it never goes red). 'kept': the checker found it better; in artifact mode the kept artifact becomes the next group's `before`. 'rejected': any other verdict, rolled back. 'repeated': the fix's approach equals (once normalized) one of attempt.rejectedApproaches; refused before any checkpoint or checker, rolled back. (fixLoop also stops with step-failed when a rollback is refused.)
+// One fix attempt for attempt.group; attempt is { group, fixAttempt, notes, failedAttempts, before, artifactMode, retry, mustChangeApproach, rejectedApproaches (default []) }.
+// Returns { outcome, key }; red, lint-failed, rejected, repeated and kept also return the fix's approach, rejected also returns the verdict, and kept in artifact mode also returns the kept artifact's path.
+// Outcomes:
+//   'failed': no fix returned, the checkpoint was refused for a reason other than red tests, the lint relay (fix.lint) was not a readable verdict, or the checker gave no verdict (null); nothing is rolled back and the loop stops.
+//   'red': the tests failed, so the fix is rolled back (code mode only: artifact mode has no checkpoint, so it never goes red).
+//   'kept': the checker found it better, or (fix.lint, a LINT_LENS group) the lint passed, with no checker; in artifact mode the kept artifact becomes the next group's `before`.
+//   'lint-failed' (artifact mode with fix.lint only): the lint ran and reported ok false, so the redraft is rolled back without a checker.
+//   'rejected': any other verdict, rolled back.
+//   'repeated': the fix's approach equals (once normalized) one of attempt.rejectedApproaches; refused before any checkpoint or checker, rolled back.
+// (fixLoop also stops with step-failed when a rollback is refused.)
 async function fixGroup(config, attempt, spent) {
   const { group, fixAttempt, notes, failedAttempts, before, artifactMode, retry, mustChangeApproach, rejectedApproaches = [] } = attempt;
   const fix = config.fix;
@@ -77,7 +111,7 @@ async function fixGroup(config, attempt, spent) {
     `Return pb_key exactly as: ${key}`,
     '',
     '<paths>',
-    asPromptData(artifactMode ? { ...fix.paths, scenarios: before } : fix.paths),
+    asPromptData(artifactMode ? { ...fix.paths, [fix.beforeKey]: before } : fix.paths),
     '</paths>',
     ...taskBlock(),
     '<findings>',
@@ -103,6 +137,14 @@ async function fixGroup(config, attempt, spent) {
     if (relay.cli_exit_code !== 0 && TESTS_FAILED.test(relay.cli_output ?? '')) return { outcome: 'red', key, approach };
     if (relay.cli_exit_code !== 0) return { outcome: 'failed', key };
   }
+  if (fix.lint && artifactMode) {
+    spent.count += 1;
+    const { result: lintRelay } = await runCommands(config.stage, ['pr lint'], { item: group.id, round });
+    const lintReport = lintReportOf(lintRelay);
+    if (lintReport === null) return { outcome: 'failed', key };
+    if (!lintReport.ok) return { outcome: 'lint-failed', key, approach };
+    if (group.lens === LINT_LENS) return { outcome: 'kept', key, approach, artifact: fixArtifactPathOf(key) };
+  }
   spent.count += 1;
   const diff = artifactMode ? { before, after: fixArtifactPathOf(key) } : { fix_diff: FIX_DIFF_PATH };
   const verdict = await courseCheck({ stage: config.stage, attempt: config.attempt, group, fixAttempt, rollbacks: failedAttempts, diff, schema: config.checkSchema });
@@ -119,31 +161,32 @@ async function rollbackGroup(config, { group, fixAttempt, artifactMode }, fixKey
   return { ok: true, relayed: relayedJson(result.cli_output ?? '') };
 }
 
-// The mistake keys of one rolled-back attempt: a red rollback has one 'tests-red' key per finding in the group, a rejected verdict has its one key. The verdict's finding_id always names a group finding: courseCheck (acceptGroupVerdict) turns any other verdict into null, which stops the loop before this runs.
+// The mistake keys of one rolled-back attempt: a red rollback has one 'tests-red' key per finding in the group, a lint-failed one has one 'lint-failed' key per finding, a rejected verdict has its one key. The verdict's finding_id always names a group finding: courseCheck (acceptGroupVerdict) turns any other verdict into null, which stops the loop before this runs.
 function mistakeKeysOf(outcome, group, verdict) {
   if (outcome === 'red') return group.findings.map((finding) => mistakeKey(finding, 'tests-red'));
+  if (outcome === 'lint-failed') return group.findings.map((finding) => mistakeKey(finding, 'lint-failed'));
   const finding = group.findings.find((f) => f.id === verdict.finding_id);
   return [mistakeKey(finding, verdict.mistake)];
 }
 
-// Returns { attempts, failedAttempts, lessons, stopReason }. lessons is the stage's growing note: one list for the whole loop, shown only in a retry's prompt.
+// Returns { attempts, failedAttempts, lessons, stopReason, before }. attempts is the running count including priorAttempts, so a caller can pass it on. before is the last kept artifact's path, or the starting fix.before. lessons is the stage's growing note: one list for the whole loop, shown only in a retry's prompt. It starts from config.priorLessons when an earlier loop of the same stage (the lint loop) already wrote notes, since the note is the stage's.
 async function fixLoop(config, survivors, budget = Infinity) {
   const spent = { count: 0 };
-  let attempts = 0;
+  let attempts = config.priorAttempts ?? 0;
   let failedAttempts = config.priorRollbacks ?? 0;
-  const lessons = [];
+  const lessons = [...(config.priorLessons ?? [])];
   const artifactMode = config.fix.mode === 'artifact';
   let before = config.fix.before;
   let stopRecorded = false;
   // Loop-wide on purpose: a mistake key seen in any earlier fix group counts as a repeat in this stage.
   const seenMistakes = new Set();
-  const stop = (stopReason) => ({ spawned: spent.count, attempts, failedAttempts, lessons, stopReason, stopRecorded });
+  const stop = (stopReason) => ({ spawned: spent.count, attempts, failedAttempts, lessons, stopReason, stopRecorded, before });
   for (const group of fixGroupsOf(survivors)) {
     let retry = false;
     let mustChangeApproach = false;
     const rejectedApproaches = [];
     for (;;) {
-      // An attempt spawns up to 4 agents (fix, checkpoint runner, checker, rollback runner), each charged to spent when spawned. 4 is the code-mode worst case; artifact mode skips the checkpoint runner (at most 3), and the check stays at 4 in both modes.
+      // An attempt spawns up to 4 agents (fix, checkpoint runner, checker, rollback runner), each charged to spent when spawned. The worst case is 4 in code mode (fix, checkpoint, checker, rollback) and in artifact mode with fix.lint (fix, lint, checker, rollback); plain artifact mode spawns at most 3. The check stays at 4 in every mode.
       if (budget - spent.count < 4) return stop('agent-budget');
       attempts += 1;
       const attempt = { group, fixAttempt: attempts, notes: retry ? lessons : [], retry, mustChangeApproach, rejectedApproaches, failedAttempts, before, artifactMode };
@@ -317,6 +360,15 @@ function relayedJson(text) {
   } catch {
     return null;
   }
+}
+
+// The verdict of a relayed 'pr lint' run as { ok, failures }, or null when the step is broken: the exit code is not 0, the JSON is unreadable, ok is not a boolean, or ok is false without a failures array. failures is [] when ok is true.
+function lintReportOf(relay) {
+  if (relay.cli_exit_code !== 0) return null;
+  const report = relayedJson(relay.cli_output ?? '');
+  if (typeof report?.ok !== 'boolean') return null;
+  if (report.ok) return { ok: true, failures: [] };
+  return Array.isArray(report.failures) ? { ok: false, failures: report.failures } : null;
 }
 
 // The corpus is what pb snapshot found, relayed by the runner as the JSON the CLI printed. A snapshot that failed is no
@@ -556,6 +608,113 @@ function readLabel(text) {
   }
 }
 
+// Ranks, caps and settles what the lenses returned. Pure, with no imports, so the bundler can inline it into a workflow
+// and the stage report can run the same rules over the recorded returns.
+
+// A finding with a rule is blocking; one without is demoted to low severity.
+function tagFinding(lensName, finding, n) {
+  const hasRule = String(finding.rule ?? '').trim() !== '';
+  return { ...finding, id: `${lensName}-${n + 1}`, ...(hasRule ? { blocking: true } : { blocking: false, severity: 'low' }) };
+}
+
+// The lens a finding came from: tagFinding's id rule (`<lens>-<n>`) read backwards. Keep the two together.
+function lensOfFinding(finding) {
+  return finding.id.replace(/-\d+$/, '');
+}
+
+// A stage's lens config from its row in lenses.json: the one shape lensAttack is given and the report reads, so both
+// apply the same lenses, refute setting and caps. stage is the stage name, which a row names bare or with the code- prefix. A row with taskTypes (the
+// safety-net rows, one per task type) is picked by taskType and wires all its lenses; so does a row with wiresAll true
+// (pr-draft, which has no task types). Any other row wires one lens, the first. The stages whose rows have no lens call yet get no lenses.
+function wiredLensConfig(lensMap, stage, taskType) {
+  const rows = lensMap.rows.filter((candidate) => candidate.stage === stage || `code-${candidate.stage}` === stage);
+  const row = rows.find((candidate) => candidate.taskTypes?.includes(taskType)) ?? rows.find((candidate) => candidate.taskTypes === undefined);
+  if (row === undefined) return { lenses: [] };
+  const { refute, maxRefuters, maxFindingsPerLens } = row;
+  return { lenses: row.taskTypes === undefined && row.wiresAll !== true ? row.lenses.slice(0, 1) : row.lenses, refute, maxRefuters, maxFindingsPerLens };
+}
+
+// A verdict counts only for the finding it was sent for: the refuter returns the finding_id it believes it attacked, and a
+// verdict naming another id is dropped, so that finding stays unrefuted. sentId is the id the workflow sent, which the
+// refuter's key and label carry too. Returns the verdict, or null.
+function acceptVerdict(sentId, verdict) {
+  return verdict !== null && verdict !== undefined && verdict.finding_id === sentId ? verdict : null;
+}
+
+const KIND_ORDER = ['fix-here', 'risk', 'drift'];
+const SEVERITY_ORDER = ['high', 'medium', 'low'];
+// A missing or unknown value sorts last. Array.prototype.sort is stable, so ties keep lens then finding order.
+const rankIn = (field, order) => (finding) => {
+  const at = order.indexOf(finding[field]);
+  return at === -1 ? order.length : at;
+};
+const kindRank = rankIn('kind', KIND_ORDER);
+const severityRank = rankIn('severity', SEVERITY_ORDER);
+const byRank = (a, b) => kindRank(a) - kindRank(b) || severityRank(a) - severityRank(b);
+
+const hasFindings = (result) => result !== null && result !== undefined && Array.isArray(result.findings);
+
+// config: { refute, maxRefuters, maxFindingsPerLens }, as in wiredLensConfig. How many top-ranked findings get a refuter;
+// null when the stage does not refute.
+function refuterCountOf({ refute, maxRefuters }) {
+  return refute === undefined || refute === 'none' ? null : maxRefuters;
+}
+
+// returns: one { lens: { name }, result } per configured lens, in lens order. A null or missing result means that lens is uncovered.
+// Each lens's findings are tagged and ranked and cut to config.maxFindingsPerLens (no cap keeps all), then all are ranked
+// together. The plan splits that list: sent is what goes to a refuter (the top maxRefuters, or everything when the stage
+// does not refute), pastCut is the rest, which nobody attacks.
+function rankLensReturns(returns, config) {
+  const refuterCount = refuterCountOf(config);
+  const perLens = returns.map(({ lens, result }) => {
+    const covered = hasFindings(result) && !(lens.needsCorpus === true && Array.isArray(config.corpus) && config.corpus.length === 0);
+    const ranked = (covered ? result.findings.map((finding, n) => tagFinding(lens.name, finding, n)) : []).sort(byRank);
+    const kept = config.maxFindingsPerLens === undefined ? ranked : ranked.slice(0, config.maxFindingsPerLens);
+    return { lens: lens.name, covered, kept, dropped: ranked.length - kept.length };
+  });
+  const ranked = perLens.flatMap(({ kept }) => kept).sort(byRank);
+  const cut = refuterCount === null ? ranked.length : refuterCount;
+  return {
+    refuting: refuterCount !== null,
+    uncovered: perLens.filter(({ covered }) => !covered).map(({ lens }) => lens),
+    trimmed: perLens.filter(({ dropped }) => dropped > 0).map(({ lens, dropped }) => ({ lens, dropped })),
+    sent: ranked.slice(0, cut),
+    pastCut: ranked.slice(cut),
+  };
+}
+
+// verdicts: the verdicts acceptVerdict let through, one per finding at most. They count only when the plan refutes. A sent
+// finding with a "refuted" verdict moves from survivors to refuted; a sent finding with no verdict is unrefuted, like every
+// finding past the cut, and unrefuted findings never block.
+// stopReason, attempts and lessons are neutral: lensAttack sets stopReason, and later tasks fill the rest.
+function settleLensRound({ refuting, uncovered, sent, pastCut }, verdicts = []) {
+  const byId = new Map(refuting ? verdicts.map((verdict) => [verdict.finding_id, verdict]) : []);
+  const answered = refuting ? sent.filter(({ id }) => byId.has(id)) : sent;
+  const unanswered = refuting ? sent.filter(({ id }) => !byId.has(id)) : [];
+  const isRefuted = ({ id }) => byId.get(id)?.verdict === 'refuted';
+  return {
+    uncovered,
+    refuted: answered.filter(isRefuted),
+    unrefuted: [...unanswered, ...pastCut].map((finding) => ({ ...finding, blocking: false })),
+    attempts: 0,
+    lessons: [],
+    stopReason: null,
+    survivors: answered.filter((finding) => !isRefuted(finding)),
+  };
+}
+
+// The report's one call: rank, then settle over the verdicts the tap recorded.
+function mergeLensReturns(returns, config, verdicts = []) {
+  return settleLensRound(rankLensReturns(returns, config), verdicts);
+}
+
+// Helpers for the mistake check: compare approaches and findings across attempts. No imports, no Node APIs.
+const normalizeApproach = (approach) => String(approach ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+// The file part of a finding's where: drops a trailing :line or :line-line suffix.
+const fileOfWhere = (where) => where.replace(/:\d+(-\d+)?$/, "");
+// The identity of a mistake: its rule, the file it is in and the mistake name, so line moves do not change it.
+const mistakeKey = (finding, mistake) => JSON.stringify([finding.rule, fileOfWhere(finding.where), mistake]);
+
 // One shell word for a path or an argument, unchanged when a shell would read it as it stands. Workflow bundles inline
 // this file, so it imports nothing.
 const SHELL_SAFE = /^[\w@%+=:,./-]+$/;
@@ -570,8 +729,11 @@ const role = 'draft-pull-request';
 
 phase(role);
 
-const pbKey = buildKey({ stage, role, item: null, round: 1, attempt: args.attempt });
-const label = buildLabel({ stage, phase: null, role, item: null, round: 1 });
+// The rounds of this stage, named once: the stop and the closing runner must stay on the same final round.
+const ROUND = { draft: 1, snapshot: 1, lint: 2, finish: 3 };
+
+const pbKey = buildKey({ stage, role, item: null, round: ROUND.draft, attempt: args.attempt });
+const label = buildLabel({ stage, phase: null, role, item: null, round: ROUND.draft });
 const paths = {
   unit: '.pairingbuddy/run/unit.json',
   git_config: '.pairingbuddy/git-config.json',
@@ -591,6 +753,97 @@ const prompt = [
 
 const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
-const runner = await runCommands(stage, ['pr lint', 'stage finish']);
+const snapshot = await runCommands(stage, ['snapshot'], { round: ROUND.snapshot });
+const { paths: corpus, rolledBack } = snapshotResult(snapshot);
 
-return { started: true, pbKey, label, result, runner };
+// Spawns that are not fix-loop or lens agents: the draft, the snapshot runner and the first lint runner (the last one is spawned just below) and the finishing runner (still to come).
+const reserved = 4;
+const maxAgents = STAGES.stageMaxAgents[stage] ?? STAGES.maxAgents;
+const agentBudget = maxAgents - reserved;
+const draftPath = `.pairingbuddy/run/task/artifacts/${pbKey}.json`;
+
+// The redraft is the same for lint failures and lens findings: only the draft it starts from differs.
+const redraftFix = (before) => ({
+  mode: 'artifact',
+  lint: true,
+  beforeKey: 'draft',
+  agentType: `pairingbuddy:${role}`,
+  schemaByAgentType: { [`pairingbuddy:${role}`]: RESULT_SCHEMA },
+  instruction: 'Redraft the pull request at the draft path to resolve the findings below. Change only what the findings name.',
+  paths,
+  before,
+});
+
+const lint = await runCommands(stage, ['pr lint'], { round: ROUND.lint });
+const lintReport = lintReportOf(lint.result);
+
+// A lint run that did not exit 0, or printed no readable verdict, is a broken step, not a verdict on the draft: stop the stage.
+if (lintReport === null) return fixStop(stage, { stopReason: 'step-failed' }, ROUND.finish);
+
+// A lint that failed is fixed first: its failures become findings for a redraft loop, and no lens runs while that loop stops the stage.
+let lintLoop = null;
+if (!lintReport.ok) {
+  // The ids are `${LINT_LENS}-<n>`: the fix loop finds the lint group by that name.
+  const findings = lintReport.failures.map(({ rule, text }, i) => ({
+    id: `${LINT_LENS}-${i + 1}`,
+    rule,
+    claim: text,
+    where: 'pr-body.md',
+    severity: 'high',
+    kind: 'fix-here',
+  }));
+  lintLoop = await fixLoop({
+    stage,
+    attempt: args.attempt,
+    maxAttempts: LENSES.maxAttempts,
+    checkSchema: COURSE_VERDICT_SCHEMA,
+    priorRollbacks: rolledBack,
+    fix: redraftFix(draftPath),
+  }, findings, agentBudget);
+}
+
+// An agent-budget end of the lint loop is not a stop: the lint still fails, no lens gets to run, and the stage goes on to the final runner.
+const lintBudgetEnded = lintLoop?.stopReason === 'agent-budget';
+if (lintLoop !== null && !lintBudgetEnded) {
+  const stopped = await fixStop(stage, lintLoop, ROUND.finish);
+  if (stopped !== null) return stopped;
+}
+
+// The field of the return that holds the loop's result: the lint loop's when the budget ended it, else the lens attack's.
+let lensResult = lintLoop;
+if (!lintBudgetEnded) {
+  // The draft the lenses and the lens redraft start from: the last one the lint loop kept, else the first.
+  const lastGoodDraft = lintLoop === null ? draftPath : lintLoop.before;
+  // The lens redraft is the group's next round after the lint loop's, so its fix keys carry on from there (the attempts it reports count from this).
+  const carried = lintLoop === null
+    ? { spawned: 0, priorRollbacks: rolledBack }
+    : { spawned: lintLoop.spawned, priorRollbacks: lintLoop.failedAttempts, priorAttempts: lintLoop.attempts, priorLessons: lintLoop.lessons };
+  // The lenses get the files' paths, not the draft's contents, so each lens reads what it needs itself.
+  const lensSubject = {
+    pr_body: '.pairingbuddy/run/pr-body.md',
+    draft: lastGoodDraft,
+    unit: '.pairingbuddy/run/unit.json',
+    subject_diff: '.pairingbuddy/run/subject.diff',
+  };
+  lensResult = await lensAttack({
+    stage,
+    attempt: args.attempt,
+    ...wiredLensConfig(LENSES, stage),
+    agentBudget: agentBudget - carried.spawned,
+    corpus,
+    subject: lensSubject,
+    schema: LENS_SCHEMA,
+    checkSchema: COURSE_VERDICT_SCHEMA,
+    maxAttempts: LENSES.maxAttempts,
+    priorRollbacks: carried.priorRollbacks,
+    priorAttempts: carried.priorAttempts,
+    priorLessons: carried.priorLessons,
+    fix: redraftFix(lastGoodDraft),
+  });
+  const lensStopped = await fixStop(stage, lensResult, ROUND.finish);
+  if (lensStopped !== null) return lensStopped;
+}
+
+const runner = await runCommands(stage, ['pr lint', 'stage finish'], { round: ROUND.finish });
+
+return { started: true, pbKey, label, result, snapshot, lint, lensAttack: lensResult, runner };

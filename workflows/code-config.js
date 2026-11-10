@@ -46,8 +46,30 @@ async function courseCheck(config) {
   return accepted;
 }
 
-// The fix loop of lensAttack: one fix agent per group of surviving findings, run one group at a time. It needs these names from elsewhere: buildKey, buildLabel and fixAttemptRound (from the stage's pb-inline-module lines: keys, labels), lensOfFinding (from the pb-inline-module line for shared-node/lens-merge.mjs), mistakeKey and normalizeApproach (from the pb-inline-module line for shared-node/mistake-check.mjs), asPromptData, pinnedKey and taskBlock (from the other shared sources), relayedJson (from relayed-json.mjs), courseCheck (from course-check.mjs), runCommands (from the stage runtime) and agent (from the workflow runtime).
-// Config fields read: stage, attempt, maxAttempts and checkSchema (the course verdict schema passed to courseCheck) are required. priorRollbacks is optional: the stage's rollbacks made before this loop, where failedAttempts starts (default 0). config.fix is required: instruction, agentType, schemaByAgentType, and optionally agentTypeByLens (agent type per lens, else agentType). In artifact mode only, fix.mode is 'artifact', fix.paths are the fix agent's inputs and fix.before is the artifact the first group is judged against; in the default (code) mode fix.paths are the inputs and fix.mode and fix.before are unused.
+// The fix loop of lensAttack: one fix agent per group of surviving findings, run one group at a time.
+// It needs these names from elsewhere:
+//   buildKey, buildLabel, fixAttemptRound: the stage's pb-inline-module lines (keys, labels)
+//   lensOfFinding: the pb-inline-module line for shared-node/lens-merge.mjs
+//   mistakeKey, normalizeApproach: the pb-inline-module line for shared-node/mistake-check.mjs
+//   asPromptData, pinnedKey, taskBlock: the other shared sources
+//   relayedJson, lintReportOf: relayed-json.mjs
+//   courseCheck: course-check.mjs
+//   runCommands: the stage runtime; agent: the workflow runtime
+// Config fields read:
+//   required: stage, attempt, maxAttempts, checkSchema (the course verdict schema passed to courseCheck)
+//   priorRollbacks (optional, default 0): the stage's rollbacks made before this loop, where failedAttempts starts
+//   priorAttempts (optional, default 0): the fix attempts an earlier loop in the same stage made, so this loop's fix keys continue after theirs
+//   priorLessons (optional, default []): the notes an earlier loop in the same stage wrote, where this loop's lessons start
+//   fix (required): instruction, agentType, schemaByAgentType, and optionally agentTypeByLens (agent type per lens, else agentType)
+//   fix.paths: the fix agent's inputs (in artifact mode too)
+//   artifact mode only (code mode ignores these):
+//     fix.mode: 'artifact'
+//     fix.before: the artifact the first group is judged against
+//     fix.beforeKey (required in artifact mode): the name under which the fix agent is given the latest kept artifact's path among its inputs; without it the key becomes the string 'undefined'
+//     fix.lint (optional, true for a lint loop): each kept-or-not decision starts with a lone 'pr lint' run after the fix
+
+// The lens whose findings are lint failures. pr-draft names its lint findings `${LINT_LENS}-<n>` and lensOfFinding strips the number, so the stage and this loop meet on this name.
+const LINT_LENS = 'lint';
 
 const TESTS_FAILED = /^pb: the tests failed, so nothing was committed/m;
 const FIX_DIFF_PATH = '.pairingbuddy/run/fix.diff';
@@ -63,8 +85,16 @@ function fixGroupsOf(survivors) {
 
 const fixArtifactPathOf = (key) => `.pairingbuddy/run/task/artifacts/${key}.json`;
 
-// One fix attempt for attempt.group; attempt is { group, fixAttempt, notes, failedAttempts, before, artifactMode, retry, mustChangeApproach, rejectedApproaches (default []) }. Returns { outcome, key }; red, rejected, repeated and kept also return the fix's approach, rejected also returns the verdict, and kept in artifact mode also returns the kept artifact's path.
-// Outcomes: 'failed': no fix returned, the checkpoint was refused for a reason other than red tests, or the checker gave no verdict (null); nothing is rolled back and the loop stops. 'red': the tests failed, so the fix is rolled back (code mode only: artifact mode has no checkpoint, so it never goes red). 'kept': the checker found it better; in artifact mode the kept artifact becomes the next group's `before`. 'rejected': any other verdict, rolled back. 'repeated': the fix's approach equals (once normalized) one of attempt.rejectedApproaches; refused before any checkpoint or checker, rolled back. (fixLoop also stops with step-failed when a rollback is refused.)
+// One fix attempt for attempt.group; attempt is { group, fixAttempt, notes, failedAttempts, before, artifactMode, retry, mustChangeApproach, rejectedApproaches (default []) }.
+// Returns { outcome, key }; red, lint-failed, rejected, repeated and kept also return the fix's approach, rejected also returns the verdict, and kept in artifact mode also returns the kept artifact's path.
+// Outcomes:
+//   'failed': no fix returned, the checkpoint was refused for a reason other than red tests, the lint relay (fix.lint) was not a readable verdict, or the checker gave no verdict (null); nothing is rolled back and the loop stops.
+//   'red': the tests failed, so the fix is rolled back (code mode only: artifact mode has no checkpoint, so it never goes red).
+//   'kept': the checker found it better, or (fix.lint, a LINT_LENS group) the lint passed, with no checker; in artifact mode the kept artifact becomes the next group's `before`.
+//   'lint-failed' (artifact mode with fix.lint only): the lint ran and reported ok false, so the redraft is rolled back without a checker.
+//   'rejected': any other verdict, rolled back.
+//   'repeated': the fix's approach equals (once normalized) one of attempt.rejectedApproaches; refused before any checkpoint or checker, rolled back.
+// (fixLoop also stops with step-failed when a rollback is refused.)
 async function fixGroup(config, attempt, spent) {
   const { group, fixAttempt, notes, failedAttempts, before, artifactMode, retry, mustChangeApproach, rejectedApproaches = [] } = attempt;
   const fix = config.fix;
@@ -77,7 +107,7 @@ async function fixGroup(config, attempt, spent) {
     `Return pb_key exactly as: ${key}`,
     '',
     '<paths>',
-    asPromptData(artifactMode ? { ...fix.paths, scenarios: before } : fix.paths),
+    asPromptData(artifactMode ? { ...fix.paths, [fix.beforeKey]: before } : fix.paths),
     '</paths>',
     ...taskBlock(),
     '<findings>',
@@ -103,6 +133,14 @@ async function fixGroup(config, attempt, spent) {
     if (relay.cli_exit_code !== 0 && TESTS_FAILED.test(relay.cli_output ?? '')) return { outcome: 'red', key, approach };
     if (relay.cli_exit_code !== 0) return { outcome: 'failed', key };
   }
+  if (fix.lint && artifactMode) {
+    spent.count += 1;
+    const { result: lintRelay } = await runCommands(config.stage, ['pr lint'], { item: group.id, round });
+    const lintReport = lintReportOf(lintRelay);
+    if (lintReport === null) return { outcome: 'failed', key };
+    if (!lintReport.ok) return { outcome: 'lint-failed', key, approach };
+    if (group.lens === LINT_LENS) return { outcome: 'kept', key, approach, artifact: fixArtifactPathOf(key) };
+  }
   spent.count += 1;
   const diff = artifactMode ? { before, after: fixArtifactPathOf(key) } : { fix_diff: FIX_DIFF_PATH };
   const verdict = await courseCheck({ stage: config.stage, attempt: config.attempt, group, fixAttempt, rollbacks: failedAttempts, diff, schema: config.checkSchema });
@@ -119,31 +157,32 @@ async function rollbackGroup(config, { group, fixAttempt, artifactMode }, fixKey
   return { ok: true, relayed: relayedJson(result.cli_output ?? '') };
 }
 
-// The mistake keys of one rolled-back attempt: a red rollback has one 'tests-red' key per finding in the group, a rejected verdict has its one key. The verdict's finding_id always names a group finding: courseCheck (acceptGroupVerdict) turns any other verdict into null, which stops the loop before this runs.
+// The mistake keys of one rolled-back attempt: a red rollback has one 'tests-red' key per finding in the group, a lint-failed one has one 'lint-failed' key per finding, a rejected verdict has its one key. The verdict's finding_id always names a group finding: courseCheck (acceptGroupVerdict) turns any other verdict into null, which stops the loop before this runs.
 function mistakeKeysOf(outcome, group, verdict) {
   if (outcome === 'red') return group.findings.map((finding) => mistakeKey(finding, 'tests-red'));
+  if (outcome === 'lint-failed') return group.findings.map((finding) => mistakeKey(finding, 'lint-failed'));
   const finding = group.findings.find((f) => f.id === verdict.finding_id);
   return [mistakeKey(finding, verdict.mistake)];
 }
 
-// Returns { attempts, failedAttempts, lessons, stopReason }. lessons is the stage's growing note: one list for the whole loop, shown only in a retry's prompt.
+// Returns { attempts, failedAttempts, lessons, stopReason, before }. attempts is the running count including priorAttempts, so a caller can pass it on. before is the last kept artifact's path, or the starting fix.before. lessons is the stage's growing note: one list for the whole loop, shown only in a retry's prompt. It starts from config.priorLessons when an earlier loop of the same stage (the lint loop) already wrote notes, since the note is the stage's.
 async function fixLoop(config, survivors, budget = Infinity) {
   const spent = { count: 0 };
-  let attempts = 0;
+  let attempts = config.priorAttempts ?? 0;
   let failedAttempts = config.priorRollbacks ?? 0;
-  const lessons = [];
+  const lessons = [...(config.priorLessons ?? [])];
   const artifactMode = config.fix.mode === 'artifact';
   let before = config.fix.before;
   let stopRecorded = false;
   // Loop-wide on purpose: a mistake key seen in any earlier fix group counts as a repeat in this stage.
   const seenMistakes = new Set();
-  const stop = (stopReason) => ({ spawned: spent.count, attempts, failedAttempts, lessons, stopReason, stopRecorded });
+  const stop = (stopReason) => ({ spawned: spent.count, attempts, failedAttempts, lessons, stopReason, stopRecorded, before });
   for (const group of fixGroupsOf(survivors)) {
     let retry = false;
     let mustChangeApproach = false;
     const rejectedApproaches = [];
     for (;;) {
-      // An attempt spawns up to 4 agents (fix, checkpoint runner, checker, rollback runner), each charged to spent when spawned. 4 is the code-mode worst case; artifact mode skips the checkpoint runner (at most 3), and the check stays at 4 in both modes.
+      // An attempt spawns up to 4 agents (fix, checkpoint runner, checker, rollback runner), each charged to spent when spawned. The worst case is 4 in code mode (fix, checkpoint, checker, rollback) and in artifact mode with fix.lint (fix, lint, checker, rollback); plain artifact mode spawns at most 3. The check stays at 4 in every mode.
       if (budget - spent.count < 4) return stop('agent-budget');
       attempts += 1;
       const attempt = { group, fixAttempt: attempts, notes: retry ? lessons : [], retry, mustChangeApproach, rejectedApproaches, failedAttempts, before, artifactMode };
@@ -317,6 +356,15 @@ function relayedJson(text) {
   } catch {
     return null;
   }
+}
+
+// The verdict of a relayed 'pr lint' run as { ok, failures }, or null when the step is broken: the exit code is not 0, the JSON is unreadable, ok is not a boolean, or ok is false without a failures array. failures is [] when ok is true.
+function lintReportOf(relay) {
+  if (relay.cli_exit_code !== 0) return null;
+  const report = relayedJson(relay.cli_output ?? '');
+  if (typeof report?.ok !== 'boolean') return null;
+  if (report.ok) return { ok: true, failures: [] };
+  return Array.isArray(report.failures) ? { ok: false, failures: report.failures } : null;
 }
 
 // The corpus is what pb snapshot found, relayed by the runner as the JSON the CLI printed. A snapshot that failed is no
