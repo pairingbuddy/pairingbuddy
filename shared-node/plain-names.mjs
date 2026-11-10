@@ -50,6 +50,7 @@ const PLAIN_NAMES = {
   "commit-failed": "the commit failed",
   "no-selector-template": "can't run one test on its own",
   "human-stopped": "you asked it to stop",
+  "attempt-cap": "it ran out of fix attempts",
   "agent-budget": "the agent budget ran out",
   "step-failed": "a step kept failing",
   // task types

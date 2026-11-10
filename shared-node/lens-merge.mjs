@@ -7,6 +7,11 @@ function tagFinding(lensName, finding, n) {
   return { ...finding, id: `${lensName}-${n + 1}`, ...(hasRule ? { blocking: true } : { blocking: false, severity: 'low' }) };
 }
 
+// The lens a finding came from: tagFinding's id rule (`<lens>-<n>`) read backwards. Keep the two together.
+export function lensOfFinding(finding) {
+  return finding.id.replace(/-\d+$/, '');
+}
+
 // A stage's lens config from its row in lenses.json: the one shape lensAttack is given and the report reads, so both
 // apply the same lenses, refute setting and caps. stage is the stage name, which a row names bare or with the code- prefix. A row with taskTypes (the
 // safety-net rows, one per task type) is picked by taskType and wires all its lenses. Any other row wires one lens, the

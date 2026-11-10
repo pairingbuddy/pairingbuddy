@@ -9,6 +9,9 @@ export const meta = { name: 'code-safety-net', description: 'Internal stage, sta
 // pb-inline LENSES contracts/lenses.json
 // pb-inline LENS_SCHEMA contracts/schemas/lens-result.schema.json
 // pb-inline REFUTER_SCHEMA contracts/schemas/refuter-verdict.schema.json
+// pb-inline REFACTOR_CODE_SCHEMA contracts/schemas/refactor-code-result.schema.json
+// pb-inline REFACTOR_TESTS_SCHEMA contracts/schemas/refactor-tests-result.schema.json
+// pb-inline COURSE_VERDICT_SCHEMA contracts/schemas/course-verdict.schema.json
 // pb-inline STAGES contracts/stages.json
 
 const missing = missingArgument();
@@ -18,9 +21,10 @@ const stage = 'code-safety-net';
 const snapshot = await runCommands(stage, ['snapshot'], { round: 1 });
 const { paths: corpus, taskType } = snapshotResult(snapshot);
 
-// Three spawns are reserved: the snapshot runner (already spawned), the docs agent and the finishing runner (still to come).
+// Spawns that are not lens agents: the snapshot runner (already spawned), the docs agent and the finishing runner (still to come).
+const reserved = 3;
 const maxAgents = STAGES.stageMaxAgents[stage] ?? STAGES.maxAgents;
-const agentBudget = maxAgents - 3;
+const agentBudget = maxAgents - reserved;
 
 const lensResult = await lensAttack({
   stage,
@@ -31,7 +35,20 @@ const lensResult = await lensAttack({
   subject: { subject_diff: '.pairingbuddy/run/subject.diff', changed: '.pairingbuddy/run/changed.json' },
   schema: LENS_SCHEMA,
   refuterSchema: REFUTER_SCHEMA,
+  checkSchema: COURSE_VERDICT_SCHEMA,
+  maxAttempts: LENSES.maxAttempts,
+  fix: {
+    mode: 'commit',
+    agentType: 'pairingbuddy:refactor-code',
+    agentTypeByLens: { tests: 'pairingbuddy:refactor-tests' },
+    schemaByAgentType: { 'pairingbuddy:refactor-code': REFACTOR_CODE_SCHEMA, 'pairingbuddy:refactor-tests': REFACTOR_TESTS_SCHEMA },
+    instruction: 'Fix the findings below. Change only what the findings name.',
+    paths: { test_config: '.pairingbuddy/test-config.json', human_guidance: '.pairingbuddy/human-guidance.json' },
+  },
 });
+
+const stopped = await fixStop(stage, lensResult, 2);
+if (stopped !== null) return stopped;
 
 phase('update-documentation');
 

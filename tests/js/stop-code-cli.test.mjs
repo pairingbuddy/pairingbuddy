@@ -47,6 +47,7 @@ const askedRepo = () => makeRepo({
 const STOPPING_PATHS = {
   "stage stop agent-budget": () => { const repo = makeRepo(); return { repo, result: pb(repo, "stage", "stop", "agent-budget") }; },
   "stage stop step-failed": () => { const repo = makeRepo(); return { repo, result: pb(repo, "stage", "stop", "step-failed") }; },
+  "stage stop attempt-cap": () => { const repo = makeRepo(); return { repo, result: pb(repo, "stage", "stop", "attempt-cap") }; },
   "stage finish with no artifact": () => { const repo = makeRepo(); return { repo, result: pb(repo, "stage", "finish") }; },
   "commit plan that shows no change": () => {
     const repo = makeRepo();
@@ -73,10 +74,10 @@ const stopOn = (name) => STOPPING_PATHS[name]();
 
 describe("stage-stop-writes-code-per-reason", () => {
   test("the reasons covered are the reasons that exist", () => {
-    assert.deepEqual(Object.keys(STAGE_STOP_REASONS).sort(), ["agent-budget", "step-failed"], "the reasons this suite covers");
+    assert.deepEqual(Object.keys(STAGE_STOP_REASONS).sort(), ["agent-budget", "attempt-cap", "step-failed"], "the reasons this suite covers");
   });
 
-  for (const reason of ["agent-budget", "step-failed"]) {
+  for (const reason of ["agent-budget", "attempt-cap", "step-failed"]) {
     test(reason, () => {
       const { repo, result } = stopOn(`stage stop ${reason}`);
 

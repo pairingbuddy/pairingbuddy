@@ -3,11 +3,11 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-import { CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep } from "../shared-node/checkpoint.mjs";
+import { CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
 import { PUBLISH_GATE, answeredGate, askReason, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, isPublishRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
@@ -19,13 +19,14 @@ import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-nod
 import { abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
+import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
-import { buildReport, closeStage, finishProblems, lensRecordOf, newestReturn, perTestOf, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
+import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
-import { COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
+import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, readDraftArtifact, readUnit, runPrLint } from "../shared-node/pr-lint-run.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
@@ -33,6 +34,7 @@ export { KINDS };
 
 const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 
+const FIX_ROLE = "fix";
 const SCENARIOS_ROLE = "enumerate-scenarios-and-test-cases";
 const TESTS_ROLE = "create-test-placeholders";
 
@@ -217,8 +219,10 @@ function runLedgerPath() {
   return { root, path };
 }
 
+const fixDiffPathOf = (root) => join(ensureRunRoot(root), "fix.diff");
 const taskDirOf = (root) => join(root, ".pairingbuddy", "run", "task");
 const artifactsDirOf = (root) => join(taskDirOf(root), "artifacts");
+const notesDirOf = (root) => join(taskDirOf(root), "notes");
 const reportPathOf = (root) => join(taskDirOf(root), "report.json");
 
 function recordAuto(ledger, gate) {
@@ -511,14 +515,23 @@ function commitPlan({ step, key, root, path, branch, record }, plan, head, evide
   return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
 }
 
+// Only a step that types its commit by paths needs the test directories, so the others never read the test config.
+function scopeFor({ step, root, ledger }) {
+  if (!typesByPaths(step)) return null;
+  const config = readTestConfig(root, ledger.configHash);
+  return { testDirectories: Object.values(config.runners).map(({ test_directory: directory }) => directory) };
+}
+
 // A step with no change runs no test. The tests run code in the repo, so what they could change is looked at again
 // before the commit.
 async function suiteCheckpoint(context) {
-  const plan = planFor(context);
+  const plan = planFor(context, scopeFor(context));
   if (plan === null) return noChange(context);
   const head = headOf(context.root);
   await requirePassingTests(context.root, context.path, context.ledger);
-  return commitPlan(context, plan, head);
+  const done = commitPlan(context, plan, head);
+  if (writesDiff(context.step)) writeFileSync(fixDiffPathOf(context.root), diffOfCommit(context.root, done.sha));
+  return done;
 }
 
 const SELECTOR_FIELDS = ["runner_id", "test_file", "test_function"];
@@ -775,7 +788,8 @@ function tddState(args) {
   const ledger = readLedger(path);
   assertStageActive(ledger, "report on");
   const artifactsDir = artifactsDirOf(root);
-  const scenarios = newestReturn(artifactsDir, SCENARIOS_ROLE, ({ stage, attempt }) => !isVoidedAttempt(ledger, stage, attempt));
+  const standingScenarios = ({ role, item, stage, attempt }) => ((role === SCENARIOS_ROLE && item === null) || (role === FIX_ROLE && stage === "code-scenarios")) && !isVoidedAttempt(ledger, stage, attempt);
+  const scenarios = newestReturnMatching(artifactsDir, standingScenarios);
   if (scenarios === null) throw new Refusal("no scenarios return stands, so there is nothing to write tests from");
   return { ok: true, taskType: ledger.taskType, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered"), testRunners: testRunnersOf(readTestConfig(root, ledger.configHash)) };
 }
@@ -906,6 +920,16 @@ function writeJsonAtomic(path, value, { exclusive = false } = {}) {
   }
 }
 
+// The task's lessons: each stage's rollback notes, files by name, entries in file order.
+function taskLessons(root) {
+  const notesDir = notesDirOf(root);
+  if (!existsSync(notesDir)) return [];
+  return readdirSync(notesDir)
+    .filter((file) => file.endsWith(".md"))
+    .sort((a, b) => a.localeCompare(b))
+    .flatMap((file) => parseFixNotes(readFileSync(join(notesDir, file), "utf8")).map((entry) => ({ stage: basename(file, ".md"), ...entry })));
+}
+
 // What taskEnd needs to record the task, read with the other refusals: the open unit and HEAD, or null with no unit.
 // A corrupt unit.json, one without a tasks list, or no commit refuses here, before anything changes.
 function readUnitForRecord(root, ledger) {
@@ -920,7 +944,8 @@ function readUnitForRecord(root, ledger) {
   if (!Array.isArray(unit?.tasks)) throw new Refusal("run/unit.json has no tasks list, so the task cannot end. Nothing was touched");
   const headSha = headOf(root);
   if (headSha === null) throw new Refusal("there is no commit yet, so the task cannot end. Nothing was touched");
-  return { path, unit, record: newTaskRecord({ ledger, headSha }), commits: ledger.commits };
+  const lessons = taskLessons(root);
+  return { path, unit, record: newTaskRecord({ ledger, headSha, lessons }), commits: ledger.commits };
 }
 
 // A retry after a crash finds its own record last, and appends nothing more.
@@ -1467,21 +1492,24 @@ const failedRunsExcerpts = ({ runs }) => runs.filter(({ exitCode }) => exitCode 
 
 // The note's entry number: one sequence per stage within this task, for all three kinds of rollback.
 // It is not the git ref number, which is the next free ref and can be higher because refs outlive the task.
-const noteNumber = (ledger, stage) => (ledger.fixes?.rollbacks ?? []).filter((r) => parseKey(r.key).stage === stage).length + 1;
+// Counts this rollback too, so it is both the failed-attempt count and the note entry number.
+const failedAttemptsOf = (ledger, stage) => rolledBackCount(ledger, stage) + 1;
 
 // Add one entry to the stage's rollback notes, so the next attempt sees what went wrong.
 function appendRollbackNote(root, stage, number, key, body) {
-  const notes = join(taskDirOf(root), "notes");
+  const notes = notesDirOf(root);
   mkdirSync(notes, { recursive: true });
-  appendFileSync(join(notes, `${stage}.md`), `## Rollback ${number}: ${key}\n\n${body}\n\n`);
+  appendFileSync(join(notes, `${stage}.md`), `${rollbackHeading(number, key)}\n\n${body}\n\n`);
 }
 
 // Record a rollback in the ledger, optionally dropping a commit that is no longer one of the run's commits.
-function recordRollback(path, entry, droppedSha) {
+// When `capReason` is given it becomes the run's stop in the same update, so the rollback and the stop land together.
+function recordRollback(path, entry, droppedSha, capReason) {
   updateLedger(path, (current) => ({
     ...current,
     commits: droppedSha ? current.commits.filter((c) => c !== droppedSha) : current.commits,
     fixes: { ...current.fixes, rollbacks: [...(current.fixes?.rollbacks ?? []), entry] },
+    ...(capReason ? { stop: { reason: capReason, seq: current.seq + 1, code: ATTEMPT_CAP } } : {}),
   }));
 }
 
@@ -1550,7 +1578,7 @@ function rollback(args) {
   if (!artifactForm) assertTreeRollsBack(root, record, own, ledger, key);
   // A committed fix's or an artifact's note holds the checker's account of what went wrong; an uncommitted (red) fix's note holds the failed test runs' output.
   const wrong = kind !== "red" ? checkerAccount(root, parts) : failedRunsExcerpts(ledger.tests.checkpoint);
-  const number = noteNumber(ledger, parts.stage);
+  const failedAttempts = failedAttemptsOf(ledger, parts.stage);
   let entry = { key, kind, ref: null, sha: null, base: null };
   if (kind === "artifact") {
     rollbackArtifact(root, key);
@@ -1559,9 +1587,14 @@ function rollback(args) {
     const done = kind === "commit" ? rollbackCommitted(root, { key, prefix, sha: record.sha }) : rollbackUncommitted(root, { key, prefix, paths: own });
     entry = { key, kind, ref: done.ref, sha: done.sha, base: done.base };
   }
-  appendRollbackNote(root, parts.stage, number, key, wrong);
-  recordRollback(path, entry, record?.sha);
-  return { ok: true, key };
+  appendRollbackNote(root, parts.stage, failedAttempts, key, wrong);
+  // The lenses contract test pins maxAttempts at 5, so it is always present here.
+  const maxAttempts = LENS_MAP.maxAttempts;
+  const stopped = failedAttempts >= maxAttempts;
+  const capReason = stopped ? `${ATTEMPT_CAP}: stage ${parts.stage} rolled back ${failedAttempts} fix attempts, its cap of ${maxAttempts}` : null;
+  recordRollback(path, entry, record?.sha, capReason);
+  if (stopped) writeReport(reportPathOf(root), buildReport(readLedger(path), artifactsDirOf(root)));
+  return { ok: true, key, note: wrong, failedAttempts, maxAttempts, stopped };
 }
 
 export const VERBS = {

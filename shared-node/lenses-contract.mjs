@@ -13,6 +13,12 @@ function capProblems(row) {
   return CAPS.filter((cap) => (refutes || row[cap] !== undefined) && !isPositiveInt(row[cap])).map((cap) => `${row.row}: ${cap} must be a positive integer${refutes ? " (a refuting row needs it)" : ""}`);
 }
 
+// The optional maxAttempts, when named, must be a positive integer.
+function maxAttemptsProblems(contract) {
+  if (contract.maxAttempts === undefined || isPositiveInt(contract.maxAttempts)) return [];
+  return ["maxAttempts must be a positive integer"];
+}
+
 // The optional lightReview block: catalog names fit the key rule, and each rule focus names a catalog entry.
 function lightReviewProblems(block) {
   if (block === undefined) return [];
@@ -23,7 +29,7 @@ function lightReviewProblems(block) {
 }
 
 export function lensMapProblems(contract) {
-  return [...lightReviewProblems(contract.lightReview), ...contract.rows.flatMap((row) => {
+  return [...maxAttemptsProblems(contract), ...lightReviewProblems(contract.lightReview), ...contract.rows.flatMap((row) => {
     if (!Array.isArray(row.lenses)) return [`${row.row}: needs a lenses list`];
     return [...capProblems(row), ...row.lenses.flatMap((lens) => {
       if (!KEY_TOKEN.test(lens.name)) return [`${row.row}: lens ${lens.name} name ${KEY_RULE}`];

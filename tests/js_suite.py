@@ -113,6 +113,10 @@ JS_TEST_FILES = [
     "tests/js/unit-open.test.mjs",
     "tests/js/unit-files-safeguards.test.mjs",
     "tests/js/verbs.test.mjs",
+    "tests/js/fix-reporting.test.mjs",
+    "tests/js/lens-attack-fix-loop.test.mjs",
+    "tests/js/pb-fix-checkpoint.test.mjs",
+    "tests/js/pb-rollback-cap.test.mjs",
 ]
 
 

@@ -7,16 +7,18 @@ import { dirname, basename, isAbsolute, join, normalize, relative, resolve, sep 
 import { parseKey } from "./keys.mjs";
 import { REFACTOR_TASK_TYPES } from "./labels.mjs";
 
-// A config step exists to change something, so its return must account for any change that is not there. tests says
-// what must run before the commit: the whole suite, the one test the key names, every test of the task a cycle closed,
-// or nothing, since a placeholder proves nothing. A key names a test exactly when its step works on one test's cycle.
-// A refactor is one fix group, typed by what it touched (D16), and only new_feature refactors per cycle.
+// config and fix exist to change something, so their return must account for any change that is not there
+// (provesChange). tests says what must run before the commit: the whole suite, the one test the key names, every test of
+// the task a cycle closed, or nothing, since a placeholder proves nothing. A key names a test exactly when its step
+// works on one test's cycle. refactor and fix are typed by the paths they touched (typeOfPaths, D16); a refactor is one
+// fix group, and only new_feature refactors per cycle. writesDiff makes pb save the fix commit's diff after it lands.
 const STEPS = {
   config: { type: "chore", roles: ["apply-config-change"], provesChange: true, tests: "full", namesTest: false },
   docs: { type: "docs", roles: ["update-documentation"], provesChange: false, tests: "full", namesTest: false },
   placeholders: { type: "test", roles: ["create-test-placeholders"], provesChange: false, tests: "none", namesTest: false },
   red: { type: "test", roles: ["implement-tests"], provesChange: false, tests: "selected", namesTest: true },
   green: { types: { bug_fix: "fix", new_feature: "feat" }, roles: ["implement-code"], provesChange: false, tests: "selected", namesTest: true },
+  fix: { typeOfPaths: true, writesDiff: true, roles: ["fix"], provesChange: true, tests: "full", namesTest: false, namesGroup: true },
   refactor: { typeOfPaths: true, roles: ["refactor-code", "refactor-tests"], provesChange: false, tests: "closed", namesTest: true, taskTypes: REFACTOR_TASK_TYPES },
 };
 const STATE_DIRECTORY = ".pairingbuddy";
@@ -64,12 +66,17 @@ const rolesText = (step) => STEPS[step].roles.join(" or ");
 // Whether a step runs for this task type. A step with no list runs for any.
 export const stepRunsFor = (step, taskType) => STEPS[step].taskTypes === undefined || STEPS[step].taskTypes.includes(taskType);
 
+export const typesByPaths = (step) => STEPS[step].typeOfPaths === true;
+export const writesDiff = (step) => STEPS[step].writesDiff === true;
+const namesGroup = (step) => STEPS[step].namesGroup === true;
+// A step whose key carries an item: a test, or for fix a group.
+const namesItem = (step) => namesTest(step) || namesGroup(step);
 export const taskTypesOfStep = (step) => STEPS[step].taskTypes;
 
-// The one key this step can use: one of its own roles, with a test exactly when the step takes one. The gate allows no other.
+// The one key this step can use: one of its own roles, with an item (a test, or for fix a group) exactly when the step takes one. The gate allows no other.
 export function keyFitsStep(step, key) {
   const { role, item } = parseKey(key);
-  return STEPS[step].roles.includes(role) && (item !== null) === namesTest(step);
+  return STEPS[step].roles.includes(role) && (item !== null) === namesItem(step);
 }
 
 // ---------- git ----------
@@ -118,6 +125,7 @@ export function fileAtCommit(root, sha, path) {
   return status === 0 ? stdout : null;
 }
 
+export const diffOfCommit = (root, sha) => runGit(root, ["show", "--format=", sha]).stdout;
 export const isOnHead = (root, sha) => runGit(root, ["merge-base", "--is-ancestor", sha, "HEAD"]).status === 0;
 
 // ---------- the key ----------
@@ -134,7 +142,7 @@ export function assertCurrentKey(step, key, { stage }) {
   const { role } = parseKey(key);
   assertKeyIsCurrent(key, stage);
   if (!STEPS[step].roles.includes(role)) throw new CheckpointRefused(`${key} is from role ${role}, and step ${step} takes role ${rolesText(step)}`);
-  if (namesTest(step) && parseKey(key).item === null) throw new CheckpointRefused(`${key} names no test, and step ${step} takes one`);
+  if (namesItem(step) && parseKey(key).item === null) throw new CheckpointRefused(`${key} names no ${namesTest(step) ? "test" : "group"}, and step ${step} takes one`);
 }
 
 function parsedOrNull(path) {
@@ -215,7 +223,7 @@ const typeOfPaths = (paths, { testDirectories }) => (paths.every((path) => testD
 
 function commitType(step, taskType, paths, scope) {
   const { type, types } = STEPS[step];
-  if (STEPS[step].typeOfPaths) return typeOfPaths(paths, scope);
+  if (typesByPaths(step)) return typeOfPaths(paths, scope);
   if (type !== undefined) return type;
   if (types !== undefined && Object.hasOwn(types, taskType ?? "")) return types[taskType];
   throw new CheckpointRefused(`step ${step} has no commit type for task type ${taskType}`);

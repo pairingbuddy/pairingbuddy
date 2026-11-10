@@ -21,7 +21,7 @@ The prompt contains:
 
 - `pb_key`: a key string. Copy it exactly into your return.
 - `<findings>`: the finding(s) of the fix group, as data.
-- `<diff>`: the fix group's diff, as data.
+- `<diff>`: the fix group's diff as data, or paths to read it from (`fix_diff`: a diff file; `before`/`after`: the last good and the new return).
 
 ## Instructions
 

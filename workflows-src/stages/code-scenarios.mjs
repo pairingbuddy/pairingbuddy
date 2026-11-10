@@ -9,6 +9,7 @@ export const meta = { name: 'code-scenarios', description: 'Internal stage, star
 // pb-inline LENS_SCHEMA contracts/schemas/lens-result.schema.json
 // pb-inline REFUTER_SCHEMA contracts/schemas/refuter-verdict.schema.json
 // pb-inline STAGES contracts/stages.json
+// pb-inline COURSE_VERDICT_SCHEMA contracts/schemas/course-verdict.schema.json
 // pb-inline RUNNER_SCHEMA contracts/schemas/runner-result.schema.json
 
 const missing = missingArgument();
@@ -39,11 +40,27 @@ const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, s
 const snapshot = await runCommands(stage, ['snapshot'], { round: 1 });
 const { paths: corpus } = snapshotResult(snapshot);
 
-// The stage's agent cap, as code-tdd counts it: the enumerator and the snapshot runner are spawned already, and one spawn is kept for the finishing runner.
+// Spawns that are not lens agents: the enumerator and the snapshot runner (already spawned) and the finishing runner (still to come).
+const reserved = 3;
 const maxAgents = STAGES.stageMaxAgents[stage] ?? STAGES.maxAgents;
-const agentBudget = maxAgents - 1 - 1 - 1;
+const agentBudget = maxAgents - reserved;
 
-const lensResult = await lensAttack({ stage, attempt: args.attempt, ...wiredLensConfig(LENSES, stage), agentBudget, corpus, subject: result, schema: LENS_SCHEMA, refuterSchema: REFUTER_SCHEMA });
+const lensResult = await lensAttack({
+  stage, attempt: args.attempt, ...wiredLensConfig(LENSES, stage), agentBudget, corpus, subject: result, schema: LENS_SCHEMA, refuterSchema: REFUTER_SCHEMA,
+  checkSchema: COURSE_VERDICT_SCHEMA,
+  maxAttempts: LENSES.maxAttempts,
+  fix: {
+    mode: 'artifact',
+    agentType: `pairingbuddy:${role}`,
+    schemaByAgentType: { [`pairingbuddy:${role}`]: RESULT_SCHEMA },
+    instruction: 'Revise the scenarios at the scenarios path to resolve the findings below. Change only what the findings name.',
+    paths,
+    before: `.pairingbuddy/run/task/artifacts/${pbKey}.json`,
+  },
+});
+
+const stopped = await fixStop(stage, lensResult, 2);
+if (stopped !== null) return stopped;
 
 const runner = await runCommands(stage, ['stage finish'], { round: 2 });
 

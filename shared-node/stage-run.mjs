@@ -4,7 +4,8 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { lensSlug } from "./keys.mjs";
+import { parseFixNotes } from "./fix-notes.mjs";
+import { lensSlug, parseKey } from "./keys.mjs";
 import { acceptVerdict, mergeLensReturns, wiredLensConfig } from "./lens-merge.mjs";
 import { evidenceFor, maxAgentsOf, returnFileKey } from "./stages.mjs";
 import { TestRunRefused, testRows } from "./test-run.mjs";
@@ -36,15 +37,18 @@ export function readReturn(artifactsDir, pbKey) {
   }
 }
 
-// The newest return of a role under any key with no item, or null. keep decides which attempts count.
-export function newestReturn(artifactsDir, role, keep = () => true) {
+// The newest return under any key that match accepts, newest by attempt then round, or null.
+export function newestReturnMatching(artifactsDir, match) {
   const found = readdirSync(artifactsDir)
     .filter((file) => file.endsWith(".json") && !file.startsWith("."))
     .map((file) => ({ pbKey: file.slice(0, -".json".length), ...returnFileKey(file) }))
-    .filter((key) => key.role === role && key.item === null && keep(key))
+    .filter(match)
     .sort((a, b) => b.attempt - a.attempt || b.round - a.round);
   return found[0]?.pbKey ?? null;
 }
+
+// The newest return of a role under any key with no item, or null. keep decides which attempts count.
+export const newestReturn = (artifactsDir, role, keep = () => true) => newestReturnMatching(artifactsDir, (key) => key.role === role && key.item === null && keep(key));
 
 // ---------- evidence ----------
 
@@ -179,7 +183,7 @@ const LENS_ROLE = "lens";
 const REFUTER_ROLE = "refuter";
 
 // Read once per process: which lenses a stage runs comes from the same map and wiredLensConfig rule the workflow uses.
-const LENS_MAP = JSON.parse(readFileSync(new URL("../contracts/lenses.json", import.meta.url), "utf8"));
+export const LENS_MAP = JSON.parse(readFileSync(new URL("../contracts/lenses.json", import.meta.url), "utf8"));
 
 // The same merge the workflow runs, over what the tap recorded: a lens with no recorded return is uncovered. A return counts
 // for the lens its key names (the tap only files a lens key from a lens agent, and each call's schema pins its own key, so
@@ -227,6 +231,19 @@ function coverageGaps(current, returns) {
   return Array.isArray(newest?.artifact.gaps) ? newest.artifact.gaps : [];
 }
 
+// The fix attempts of the stage: distinct fix keys across its checkpoints and rollbacks, and the lessons its notes hold.
+export const rolledBackCount = (ledger, stage) => (ledger.fixes?.rollbacks ?? []).filter((r) => parseKey(r.key).stage === stage).length;
+
+export function fixesOf(ledger, artifactsDir, lensMap = LENS_MAP) {
+  const { name } = ledger.stage;
+  // pb rollback refuses any non-fix key, so every rollback key is a fix key. attempts counts every fix attempt, kept or
+  // rolled back; the rollback cap counts only the rolled-back ones.
+  const keys = [...(ledger.checkpoints ?? []).filter(({ step, stage }) => step === "fix" && stage === name).map(({ key }) => key),
+    ...(ledger.fixes?.rollbacks ?? []).map(({ key }) => key).filter((key) => parseKey(key).stage === name)];
+  const notes = join(dirname(artifactsDir), "notes", `${name}.md`);
+  return { attempts: new Set(keys).size, rolledBack: rolledBackCount(ledger, name), maxAttempts: lensMap.maxAttempts, lessons: existsSync(notes) ? parseFixNotes(readFileSync(notes, "utf8")) : [] };
+}
+
 // Built from what was recorded, never from a model's summary of it. A coverage check is no lens round, so its gaps join
 // the lists apart from the lens returns.
 // lensMap is a test seam: production passes none and gets contracts/lenses.json.
@@ -260,6 +277,7 @@ export function buildReport(ledger, artifactsDir, lensMap = LENS_MAP) {
     },
     ...lists,
     ambiguities,
+    fixes: fixesOf(ledger, artifactsDir, lensMap),
     redEvidence: red,
     covered: coveredEvidence(ledger),
     notCovered: notCovered(lists, tests, lensReturns, red, lensRan),

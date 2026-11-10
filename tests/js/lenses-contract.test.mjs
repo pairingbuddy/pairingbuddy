@@ -114,3 +114,17 @@ test("catalog-name-breaking-key-rule-reported", () => {
 
   assert.match(problems.join("\n"), /lightReview: .*Code Smell.*key rule/, `a catalog name that fails the key rule is reported, got: ${JSON.stringify(problems)}`);
 });
+
+// Scenario: attempt-cap-contract. The lenses contract carries the hard cap of fix attempts per stage (node tests, shared-node)
+// Test case: lenses-max-attempts-is-5
+test("contracts/lenses.json has a top-level maxAttempts of 5", () => {
+  assert.equal(REAL_LENS_MAP.maxAttempts, 5, "the lenses contract caps fix attempts per stage at 5");
+});
+// Test case: lens-map-refuses-bad-max-attempts
+test("lensMapProblems reports a problem when maxAttempts is not a positive integer (e.g. 0 or 2.5)", () => {
+  const withCap = (maxAttempts) => ({ ...REAL_LENS_MAP, maxAttempts });
+
+  assert.match(lensMapProblems(withCap(0)).join("\n"), /maxAttempts/, "a zero cap is reported");
+  assert.match(lensMapProblems(withCap(2.5)).join("\n"), /maxAttempts/, "a fractional cap is reported");
+  assert.deepEqual(lensMapProblems(withCap(5)), [], "a positive integer cap passes");
+});

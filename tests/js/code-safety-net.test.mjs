@@ -214,12 +214,16 @@ test("code-safety-net-config-change-lenses", async () => {
   assert.deepEqual(spawnedLenses(calls).map(({ name, model }) => `${name}:${model}`), ["config-fit:sonnet", "corpus-misalignment:sonnet"]);
 });
 
+const keyOfPrompt = (prompt) => /^Return pb_key exactly as: (.+)$/m.exec(prompt)[1];
 const sentIdOf = (prompt) => /^Finding id: (.+)$/m.exec(prompt)[1];
 const manyFindings = (n) => Array.from({ length: n }, (_, i) => ({ rule: "a rule", severity: "medium", kind: "fix-here", claim: `claim ${i + 1}`, where: "src/x.mjs" }));
+const oneFinding = manyFindings(1);
 const attackingAgent = (taskType, findings = manyFindings(4)) => async (prompt, { agentType }) => {
-  if (agentType === "pairingbuddy:runner") return relayedSnapshot(taskType, ["CLAUDE.md"]);
+  if (agentType === "pairingbuddy:runner") return runnerRole(prompt, agentType) === "checkpoint" ? { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true }) } : relayedSnapshot(taskType, ["CLAUDE.md"]);
   if (agentType === "pairingbuddy:lens") return { pb_key: "k", ambiguity: null, findings };
   if (agentType === "pairingbuddy:refuter") return { pb_key: "k", finding_id: sentIdOf(prompt), verdict: "survives", ambiguity: null };
+  if (agentType === "pairingbuddy:refactor-code" || agentType === "pairingbuddy:refactor-tests") return { pb_key: keyOfPrompt(prompt), ambiguity: "", commit_subject: "fix it", files_changed: ["src/x.mjs"] };
+  if (agentType === "pairingbuddy:course-checker") return { pb_key: keyOfPrompt(prompt), finding_id: JSON.parse(blockOf(prompt, "findings"))[0].id, verdict: "better", mistake: "none", what_went_wrong: "" };
   return {};
 };
 for (const taskType of ["config_change", "refactoring", "new_feature"]) {
@@ -245,12 +249,24 @@ test("code-safety-net-agent-budget-reserves-snapshot-docs-finish", async (t) => 
   assert.equal(countOf(calls, "pairingbuddy:runner"), 2, "the snapshot and the finishing runner both run");
 });
 
+// Names a runner call by the command it runs; other agents keep their agent type.
+const runnerRole = (prompt, agentType = "pairingbuddy:runner") => {
+  if (agentType !== "pairingbuddy:runner") return agentType;
+  const commands = blockOf(prompt, "commands");
+  if (commands.includes(" snapshot")) return "snapshot";
+  if (commands.includes(" stage finish")) return "finishing";
+  if (commands.includes(" stage stop")) return "stage-stop";
+  if (commands.includes(" rollback")) return "rollback";
+  if (commands.includes("checkpoint --step fix")) return "checkpoint";
+  return "other runner";
+};
+
 test("code-safety-net-order-lens-round-docs-finishing-runner", async () => {
   const order = [];
   const inner = attackingAgent("new_feature");
   await runStage(ARGS, async (prompt, opts) => {
     const { agentType } = opts;
-    const role = agentType === "pairingbuddy:runner" ? (blockOf(prompt, "commands").includes(" snapshot") ? "snapshot" : "finishing") : agentType;
+    const role = runnerRole(prompt, agentType);
     order.push(`start ${role}`);
     await new Promise((resolve) => setTimeout(resolve, 5));
     order.push(`end ${role}`);
@@ -300,4 +316,174 @@ test("code-safety-net-lens-prompts-name-the-snapshot-subject-diff-and-changed-fi
   for (const prompt of prompts) {
     assert.deepEqual(JSON.parse(blockOf(prompt, "subject")), { subject_diff: ".pairingbuddy/run/subject.diff", changed: ".pairingbuddy/run/changed.json" }, "the lens reads the snapshot files, never git");
   }
+});
+
+// Scenario: stage-wiring. code-safety-net and code-scenarios wire the fix loop and handle its stop reasons
+// Test case: safety-net-wires-commit-mode-agents
+test("Safety net fix agents are pairingbuddy:refactor-tests for the tests lens and pairingbuddy:refactor-code otherwise, in order lens round, fixes, docs, finish", async () => {
+  const FIXERS = ["pairingbuddy:refactor-code", "pairingbuddy:refactor-tests"];
+  const order = [];
+  const agent = async (prompt, opts) => {
+    const { agentType } = opts;
+    const role = runnerRole(prompt, agentType);
+    order.push(`start ${role}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    order.push(`end ${role}`);
+    if (role === "snapshot") return relayedSnapshot("new_feature", ["CLAUDE.md"]);
+    if (role === "checkpoint") return { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true }) };
+    if (role === "finishing") return {};
+    if (agentType === "pairingbuddy:lens") return { pb_key: "k", ambiguity: null, findings: ["code", "tests"].includes(JSON.parse(blockOf(prompt, "lens"))) ? oneFinding : [] };
+    if (agentType === "pairingbuddy:refuter") return { pb_key: "k", finding_id: sentIdOf(prompt), verdict: "survives", ambiguity: null };
+    if (FIXERS.includes(agentType)) return { pb_key: keyOfPrompt(prompt), ambiguity: "", commit_subject: "fix it", files_changed: ["src/x.mjs"] };
+    if (agentType === "pairingbuddy:course-checker") return { pb_key: keyOfPrompt(prompt), finding_id: JSON.parse(blockOf(prompt, "findings"))[0].id, verdict: "better", mistake: "none", what_went_wrong: "" };
+    return {};
+  };
+
+  const { calls } = await runStage(ARGS, agent);
+
+  const fixes = calls.filter(({ opts }) => FIXERS.includes(opts.agentType));
+  assert.deepEqual(fixes.map(({ opts }) => opts.agentType), ["pairingbuddy:refactor-code", "pairingbuddy:refactor-tests"], "the code group goes to refactor-code and the tests group to refactor-tests");
+  assert.ok(/\.fix\.g1\./.test(keyOfPrompt(fixes[0].prompt)), "the first fix key has role fix and item g1");
+  assert.ok(/\.fix\.g2\./.test(keyOfPrompt(fixes[1].prompt)), "the second fix key has role fix and item g2");
+  const lastRefuterEnd = order.lastIndexOf("end pairingbuddy:refuter");
+  const docsStart = order.indexOf("start pairingbuddy:update-documentation");
+  const lastLensEnd = order.lastIndexOf("end pairingbuddy:lens");
+  const firstLensStart = order.indexOf("start pairingbuddy:lens");
+  const firstCodeFixStart = order.indexOf("start pairingbuddy:refactor-code");
+  assert.notEqual(lastRefuterEnd, -1, "a refuter ran");
+  assert.notEqual(docsStart, -1, "the docs agent ran");
+  assert.notEqual(firstLensStart, -1, "a lens ran");
+  assert.notEqual(firstCodeFixStart, -1, "the code fix agent ran");
+  assert.ok(order.indexOf("end snapshot") < firstLensStart, "the snapshot ends before the first lens starts");
+  assert.ok(lastLensEnd < firstCodeFixStart, "the lens round ends before the first fix starts");
+  const fixLoop = order.map((entry, i) => ({ entry, i })).filter(({ entry }) => /^(start|end) (pairingbuddy:refactor-code|pairingbuddy:refactor-tests|pairingbuddy:course-checker|checkpoint)$/.test(entry));
+  assert.ok(fixLoop.length > 0, "the fix loop ran");
+  for (const { entry, i } of fixLoop) {
+    assert.ok(i > lastRefuterEnd, `"${entry}" is after the last refuter ends`);
+    assert.ok(i < docsStart, `"${entry}" is before the docs agent starts`);
+  }
+  assert.ok(order.lastIndexOf("end pairingbuddy:update-documentation") < order.indexOf("start finishing"), "docs ends before the finishing runner starts");
+});
+// Test case: safety-net-attempt-cap-spawns-no-docs-or-finish
+test("On attempt-cap the safety net returns at once with no docs agent and no finishing runner", async () => {
+  let failedAttempts = 0;
+  const agent = async (prompt, opts) => {
+    const { agentType } = opts;
+    const role = runnerRole(prompt, agentType);
+    if (role === "snapshot") return relayedSnapshot("config_change", ["CLAUDE.md"]);
+    if (role === "checkpoint") return { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true }) };
+    if (role === "rollback") {
+      failedAttempts += 1;
+      return { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true, note: "what went wrong", failedAttempts, maxAttempts: 5, stopped: failedAttempts === 5 }) };
+    }
+    if (agentType === "pairingbuddy:lens") return { pb_key: "k", ambiguity: null, findings: JSON.parse(blockOf(prompt, "lens")) === "config-fit" ? oneFinding : [] };
+    if (agentType === "pairingbuddy:refuter") return { pb_key: "k", finding_id: sentIdOf(prompt), verdict: "survives", ambiguity: null };
+    if (agentType === "pairingbuddy:refactor-code") return { pb_key: keyOfPrompt(prompt), ambiguity: "", commit_subject: "fix it", files_changed: ["src/x.mjs"] };
+    if (agentType === "pairingbuddy:course-checker") return { pb_key: keyOfPrompt(prompt), finding_id: JSON.parse(blockOf(prompt, "findings"))[0].id, verdict: "wrong-direction", mistake: "wrong", what_went_wrong: "off course" };
+    return {};
+  };
+
+  const { calls, result } = await runStage(ARGS, agent);
+
+  const commandsOf = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:runner").map(({ prompt }) => blockOf(prompt, "commands"));
+  assert.equal(result.lensAttack.stopReason, "attempt-cap", "the lens attack stops on the attempt cap");
+  assert.equal(result.stopReason, "attempt-cap", "the stage reports the stop reason");
+  assert.equal(countOf(calls, "pairingbuddy:update-documentation"), 0, "no docs agent runs");
+  assert.equal(commandsOf.some((c) => c.includes(" stage finish")), false, "no finishing runner");
+  assert.equal(commandsOf.some((c) => c.includes(" stage stop")), false, "no stage stop runner, the CLI already recorded the stop");
+});
+// Test case: safety-net-step-failed-runs-stage-stop
+test("On step-failed the safety net runs one runner `stage stop step-failed` and returns", async () => {
+  const agent = async (prompt, opts) => {
+    const { agentType } = opts;
+    const role = runnerRole(prompt, agentType);
+    if (role === "snapshot") return relayedSnapshot("config_change", ["CLAUDE.md"]);
+    if (agentType === "pairingbuddy:lens") return { pb_key: "k", ambiguity: null, findings: JSON.parse(blockOf(prompt, "lens")) === "config-fit" ? oneFinding : [] };
+    if (agentType === "pairingbuddy:refuter") return { pb_key: "k", finding_id: sentIdOf(prompt), verdict: "survives", ambiguity: null };
+    if (agentType === "pairingbuddy:refactor-code") return null;
+    return {};
+  };
+
+  const { calls, result } = await runStage(ARGS, agent);
+
+  const commandsOf = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:runner").map(({ prompt }) => blockOf(prompt, "commands"));
+  const afterSnapshot = commandsOf.filter((c) => !c.includes(" snapshot"));
+  assert.equal(result.lensAttack.stopReason, "step-failed", "the lens attack stops on the failed fix call");
+  assert.equal(afterSnapshot.length, 1, "exactly one runner after the lens round");
+  assert.deepEqual(afterSnapshot[0].split("\n"), [`node ${PLUGIN_ROOT}/cli/pb.mjs stage stop step-failed`], "the one runner records the stop");
+  assert.equal(countOf(calls, "pairingbuddy:update-documentation"), 0, "no docs agent runs");
+  assert.equal(commandsOf.some((c) => c.includes(" stage finish")), false, "no finishing runner");
+  assert.equal(result.stopReason, "step-failed", "the stage reports the stop reason");
+});
+// Test case: safety-net-attempt-cap-unconfirmed-records-the-stop
+test("On an attempt-cap the CLI did not confirm, the safety net records the stop itself with stage stop attempt-cap", async () => {
+  const agent = async (prompt, opts) => {
+    const { agentType } = opts;
+    const role = runnerRole(prompt, agentType);
+    if (role === "snapshot") return relayedSnapshot("config_change", ["CLAUDE.md"]);
+    if (role === "checkpoint") return { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true }) };
+    if (role === "rollback") return { cli_exit_code: 0, cli_output: "ok" };
+    if (agentType === "pairingbuddy:lens") return { pb_key: "k", ambiguity: null, findings: JSON.parse(blockOf(prompt, "lens")) === "config-fit" ? oneFinding : [] };
+    if (agentType === "pairingbuddy:refuter") return { pb_key: "k", finding_id: sentIdOf(prompt), verdict: "survives", ambiguity: null };
+    if (agentType === "pairingbuddy:refactor-code") return { pb_key: keyOfPrompt(prompt), ambiguity: "", commit_subject: "fix it", files_changed: ["src/x.mjs"] };
+    if (agentType === "pairingbuddy:course-checker") return { pb_key: keyOfPrompt(prompt), finding_id: JSON.parse(blockOf(prompt, "findings"))[0].id, verdict: "wrong-direction", mistake: "wrong", what_went_wrong: "off course" };
+    return {};
+  };
+
+  const { calls, result } = await runStage(ARGS, agent);
+
+  const commandsOf = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:runner").map(({ prompt }) => blockOf(prompt, "commands"));
+  const afterRollback = commandsOf.slice(commandsOf.map((c) => c.includes(" rollback")).lastIndexOf(true) + 1);
+  assert.equal(result.stopReason, "attempt-cap", "the stage reports the stop reason");
+  assert.equal(afterRollback.length, 1, "exactly one runner after the last rollback");
+  assert.deepEqual(afterRollback[0].split("\n"), [`node ${PLUGIN_ROOT}/cli/pb.mjs stage stop attempt-cap`], "the one runner records the stop");
+  assert.equal(countOf(calls, "pairingbuddy:update-documentation"), 0, "no docs agent runs");
+  assert.equal(commandsOf.some((c) => c.includes(" stage finish")), false, "no finishing runner");
+});
+// Fixture: a config_change run with one config-fit finding; the checker answers `verdicts` in order (then better) and rollbacks relay ok.
+const fixingAgent = (verdicts) => {
+  let checks = 0;
+  return async (prompt, { agentType }) => {
+    const role = runnerRole(prompt, agentType);
+    if (role === "snapshot") return relayedSnapshot("config_change", ["CLAUDE.md"]);
+    if (role === "checkpoint") return { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true }) };
+    if (role === "rollback") return { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true, note: "a lesson", failedAttempts: 1, maxAttempts: 5, stopped: false }) };
+    if (agentType === "pairingbuddy:lens") return { pb_key: "k", ambiguity: null, findings: JSON.parse(blockOf(prompt, "lens")) === "config-fit" ? oneFinding : [] };
+    if (agentType === "pairingbuddy:refuter") return { pb_key: "k", finding_id: sentIdOf(prompt), verdict: "survives", ambiguity: null };
+    if (agentType === "pairingbuddy:refactor-code") return { pb_key: keyOfPrompt(prompt), ambiguity: "", commit_subject: "fix it", files_changed: ["src/x.mjs"] };
+    if (agentType === "pairingbuddy:course-checker") {
+      const verdict = verdicts[checks++] ?? "better";
+      return { pb_key: keyOfPrompt(prompt), finding_id: JSON.parse(blockOf(prompt, "findings"))[0].id, verdict, mistake: verdict === "better" ? "none" : "wrong", what_went_wrong: verdict === "better" ? "" : "off course" };
+    }
+    return {};
+  };
+};
+// Test case: safety-net-fix-loop-runs-in-commit-mode
+test("The safety net's fix loop runs checkpoint --step fix --from the fix key after each fix and rolls back with rollback --from, with no --artifact, on a bad verdict", async () => {
+  const { calls } = await runStage(ARGS, fixingAgent(["wrong-direction", "better"]));
+
+  const fixKeys = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:refactor-code").map(({ prompt }) => keyOfPrompt(prompt));
+  const loopCommands = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:runner").map(({ prompt }) => blockOf(prompt, "commands")).filter((c) => c.includes(" checkpoint --step fix") || c.includes(" rollback"));
+  assert.equal(fixKeys.length, 2, "the bad verdict retries the fix once");
+  assert.deepEqual(loopCommands, [
+    `node ${PLUGIN_ROOT}/cli/pb.mjs checkpoint --step fix --from ${fixKeys[0]}`,
+    `node ${PLUGIN_ROOT}/cli/pb.mjs rollback --from ${fixKeys[0]}`,
+    `node ${PLUGIN_ROOT}/cli/pb.mjs checkpoint --step fix --from ${fixKeys[1]}`,
+  ], "checkpoint after each fix, rollback from the first fix key, none with --artifact");
+});
+// Test case: safety-net-fix-prompt-paths
+test("The safety net fix prompt's paths hold exactly the test config and the human guidance", async () => {
+  const { calls } = await runStage(ARGS, fixingAgent([]));
+
+  const fix = calls.find(({ opts }) => opts.agentType === "pairingbuddy:refactor-code");
+  assert.deepEqual(JSON.parse(blockOf(fix.prompt, "paths")), { test_config: ".pairingbuddy/test-config.json", human_guidance: ".pairingbuddy/human-guidance.json" });
+});
+// Test case: safety-net-step-failed-return-carries-the-stop-runner
+test("The safety net's step-failed early return carries the stop runner, keyed as its own runner", async () => {
+  const failingFix = async (prompt, opts) => (opts.agentType === "pairingbuddy:refactor-code" ? null : fixingAgent([])(prompt, opts));
+
+  const { result } = await runStage(ARGS, failingFix);
+
+  assert.equal(result.stopReason, "step-failed", "the stage stops on the failed fix");
+  assert.equal(result.runner.pbKey, "code-safety-net.runner.-.r2.a2", "the early return carries the stop runner's key");
 });
