@@ -146,13 +146,13 @@ test("Recorded calls are the enumerator, then one pairingbuddy:lens call at the 
   const row = contractOf(LENSES_CONTRACT).rows.find(({ row }) => row === "scenarios");
   const [firstLens] = row.lenses;
   const finding = { rule: "a rule", severity: "high", claim: "a claim", where: "scenario 1" };
-  const agent = async (_prompt, { agentType }) => (agentType === "pairingbuddy:lens" ? { pb_key: "k", ambiguity: null, findings: [finding] } : {});
+  const agent = async (_prompt, { agentType }) => (agentType === "pairingbuddy:lens" ? { pb_key: "k", ambiguity: null, findings: [finding] } : agentType === "pairingbuddy:refuter" ? { pb_key: "k", finding_id: `${lensSlug(firstLens.name)}-1`, verdict: "survives", ambiguity: null } : {});
 
   const { calls, result } = await runStage(ARGS, agent);
 
-  assert.deepEqual(calls.map(({ opts }) => opts.agentType), [`pairingbuddy:${AGENT}`, "pairingbuddy:lens", "pairingbuddy:runner"], "enumerator, one lens, then the runner");
+  assert.deepEqual(calls.map(({ opts }) => opts.agentType), [`pairingbuddy:${AGENT}`, "pairingbuddy:lens", "pairingbuddy:refuter", "pairingbuddy:runner"], "enumerator, one lens, its finding's refuter, then the runner");
   assert.equal(calls[1].opts.model, firstLens.model, "the lens runs at the model its row entry names");
-  assert.equal(result.lensAttack.agentsUsed, 1, "the stage return carries the lensAttack result");
+  assert.equal(result.lensAttack.agentsUsed, 2, "the stage return carries the lensAttack result");
   assert.deepEqual(result.lensAttack.survivors.map(({ claim }) => claim), [finding.claim], "the lens finding is a survivor");
 });
 
@@ -169,7 +169,7 @@ test("The built code-scenarios.js contains lensAttack and the scenarios row from
 
 // Runs the built stage, files every keyed return through the real tap (hooks/tap.mjs) in a repo whose ledger has this
 // stage active, and builds the report from what the tap recorded, as pb stage finish does.
-function reportAfterStage(lensReturn) {
+function reportAfterStage(lensReturn, refuterReturn = () => ({ finding_id: `${lensSlug(contractOf(LENSES_CONTRACT).rows.find(({ row }) => row === "scenarios").lenses[0].name)}-1`, verdict: "survives", ambiguity: null })) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "code-scenarios-report-")));
   const taskDir = join(dir, ".pairingbuddy", "run", "task");
   const artifactsDir = join(taskDir, "artifacts");
@@ -188,7 +188,7 @@ function reportAfterStage(lensReturn) {
   writeLedger(join(taskDir, "ledger.json"), ledger);
   const returned = new Map();
   const agent = async (prompt, opts) => {
-    const value = opts.agentType === "pairingbuddy:lens" ? lensReturn : {};
+    const value = opts.agentType === "pairingbuddy:lens" ? lensReturn : opts.agentType === "pairingbuddy:refuter" ? refuterReturn(prompt) : {};
     returned.set(opts, value);
     return value;
   };
@@ -244,6 +244,63 @@ test("Of two recorded returns for one lens the latest round speaks, and the earl
     [lensKey(lensSlug(WIRED_LENS), 2)]: { findings: [finding("latest round")] },
   });
 
-  assert.deepEqual(report.survivors.map(({ claim }) => claim), ["latest round"]);
+  assert.deepEqual(report.unrefuted.map(({ claim }) => claim), ["latest round"]);
   assert.deepEqual(report.uncovered, []);
+});
+
+test("report-moves-finding-with-refuted-verdict-to-refuted", async () => {
+  const [{ name: lensName }] = contractOf(LENSES_CONTRACT).rows.find(({ row }) => row === "scenarios").lenses;
+  const findingId = `${lensSlug(lensName)}-1`;
+
+  const report = await reportAfterStage({ pb_key: "k", ambiguity: null, findings: [finding("a refuted claim")] }, () => ({ finding_id: findingId, verdict: "refuted", ambiguity: null }));
+
+  assert.deepEqual(report.refuted.map(({ id }) => id), [findingId], "report.refuted lists the finding with the refuted verdict");
+  assert.deepEqual(report.survivors.map(({ id }) => id), [], "report.survivors no longer holds it");
+});
+
+test("report-lists-finding-without-verdict-as-unrefuted", async () => {
+  const [{ name: lensName }] = contractOf(LENSES_CONTRACT).rows.find(({ row }) => row === "scenarios").lenses;
+  const findingId = `${lensSlug(lensName)}-1`;
+
+  const report = await reportAfterStage({ pb_key: "k", ambiguity: null, findings: [finding("an unanswered claim")] }, () => null);
+
+  assert.deepEqual(report.unrefuted.map(({ id }) => id), [findingId], "report.unrefuted lists the finding no verdict was filed for");
+  assert.deepEqual(report.survivors.map(({ id }) => id), [], "report.survivors does not hold it");
+});
+
+// Wiring: the stage fills lensAttack's caps from its lenses.json row, and its agent budget from stages.json.
+const SCENARIOS_ROW = contractOf(LENSES_CONTRACT).rows.find(({ row }) => row === "scenarios");
+const manyFindings = (n) => Array.from({ length: n }, (_, i) => ({ ...finding(`claim ${i + 1}`), severity: "medium" }));
+const sentIdOf = (prompt) => /^Finding id: (.+)$/m.exec(prompt)[1];
+const answering = (findings) => async (prompt, { agentType }) => (agentType === "pairingbuddy:lens" ? { pb_key: "k", ambiguity: null, findings }
+  : agentType === "pairingbuddy:refuter" ? { pb_key: "k", finding_id: sentIdOf(prompt), verdict: "survives", ambiguity: null } : {});
+const countOf = (calls, agentType) => calls.filter(({ opts }) => opts.agentType === agentType).length;
+
+test("The built scenarios stage applies the row's maxFindingsPerLens and maxRefuters", async () => {
+  const total = SCENARIOS_ROW.maxFindingsPerLens + 5;
+
+  const { calls, result, logs } = await runStage(ARGS, answering(manyFindings(total)));
+
+  assert.equal(countOf(calls, "pairingbuddy:refuter"), SCENARIOS_ROW.maxRefuters, "one refuter per finding up to maxRefuters");
+  assert.equal(result.lensAttack.survivors.length, SCENARIOS_ROW.maxRefuters, "the refuted-nothing top findings survive");
+  assert.equal(result.lensAttack.unrefuted.length, SCENARIOS_ROW.maxFindingsPerLens - SCENARIOS_ROW.maxRefuters, "the findings kept past the refuter cut are unrefuted");
+  assert.ok(logs.some((message) => message.includes("trimmed 5 finding(s)")), "the findings past maxFindingsPerLens are trimmed and logged");
+});
+
+test("The built scenarios stage gives lensAttack the stage's maxAgents less the enumerator, the lens and the runner's reserve", async () => {
+  // maxAgents 5: the enumerator and the runner's reserve leave 3 for lensAttack, so one lens and two refuters.
+  const bundle = readFileSync(STAGE, "utf8");
+  const stages = JSON.parse(/^const STAGES = (.*);$/m.exec(bundle)[1]);
+  const capped = bundle.replace(/^const STAGES = .*;$/m, `const STAGES = ${JSON.stringify({ ...stages, stageMaxAgents: { ...stages.stageMaxAgents, "code-scenarios": 5 } })};`);
+  const dir = mkdtempSync(join(tmpdir(), "code-scenarios-budget-"));
+  const cappedPath = join(dir, "code-scenarios.js");
+  writeFileSync(cappedPath, capped);
+
+  const { calls, result } = await runScript(cappedPath, { args: ARGS, agent: answering(manyFindings(4)) });
+  rmSync(dir, { recursive: true, force: true });
+
+  assert.equal(countOf(calls, "pairingbuddy:refuter"), 2, "two refuters fit the budget");
+  assert.equal(result.lensAttack.stopReason, "agent-budget");
+  assert.equal(result.lensAttack.unrefuted.length, 2, "the two findings left without a refuter are unrefuted");
+  assert.equal(countOf(calls, "pairingbuddy:runner"), 1, "the runner still runs");
 });

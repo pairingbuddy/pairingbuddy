@@ -2,12 +2,15 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runScript } from "./harness.mjs";
+import { buildLabel } from "../../shared-node/labels.mjs";
+import { wiredLensConfig } from "../../shared-node/lens-merge.mjs";
+import { buildReport } from "../../shared-node/stage-run.mjs";
 
 // Real workflows are built by scripts/build-workflows.mjs, so the wrapper stage goes through that bundler (same preamble, same inlined modules). The temp root only links shared-node and the real shared sources, so nothing in the repo is written.
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
@@ -39,6 +42,26 @@ const TWO_LENSES = configWith([{ name: "necessity", model: "sonnet" }, { name: "
 const ONE_LENS = configWith([{ name: "necessity", model: "sonnet" }]);
 const lensReturn = (findings) => ({ pb_key: "k", ambiguity: null, findings });
 const runLensAttack = (config, agent) => runScript(wrapperPath, { args: config, agent });
+
+const REFUTER = "pairingbuddy:refuter";
+const isRefuter = ({ agentType }) => agentType === REFUTER;
+const refuterCallsOf = (calls) => calls.filter(({ opts }) => isRefuter(opts));
+// One necessity lens, refuting its top maxRefuters findings.
+const refutingConfig = (maxRefuters, extra = {}) => ({ ...ONE_LENS, refute: "one", maxRefuters, ...extra });
+const sentIdOf = (prompt) => /^Finding id: (.+)$/m.exec(prompt)[1];
+// The lens call answers lensFindings (a list, or a function of the call's opts); each refuter answers about the finding it was sent, echoing its id.
+const refuterStandIn = (lensFindings, verdict = "survives") => async (prompt, opts) => {
+  if (!isRefuter(opts)) return lensReturn(typeof lensFindings === "function" ? lensFindings(opts) : lensFindings);
+  const finding_id = sentIdOf(prompt);
+  return { pb_key: "k", finding_id, verdict: typeof verdict === "function" ? verdict(finding_id) : verdict, ambiguity: null };
+};
+const ranked = (n) => ({ rule: `R${n}`, severity: "medium", kind: "risk", claim: `claim ${n}`, where: `a.mjs:${n}` });
+// Two lenses, a finding each, so a refuter is needed for each: the budget tests cut that short.
+const BUDGET_FINDINGS = {
+  sonnet: [{ rule: "R1", severity: "high", kind: "fix-here", claim: "claim one", where: "a.mjs:1" }],
+  opus: [{ rule: "R2", severity: "medium", kind: "risk", claim: "claim two", where: "b.mjs:2" }],
+};
+const budgetStandIn = refuterStandIn(({ model }) => BUDGET_FINDINGS[model]);
 
 // lens-spawn
 test("With two lenses naming sonnet and opus, the recorded agent() calls pass opts.model sonnet and opus respectively", async () => {
@@ -104,11 +127,11 @@ test("Survivors list lens 1 findings in their returned order, then lens 2 findin
   const findingsByModel = {
     sonnet: [
       { rule: "R1", severity: "high", claim: "claim one", where: "a.mjs:1" },
-      { rule: "R2", severity: "low", claim: "claim two", where: "a.mjs:2" },
+      { rule: "R2", severity: "high", claim: "claim two", where: "a.mjs:2" },
     ],
     opus: [
       { rule: "R3", severity: "high", claim: "claim three", where: "b.mjs:3" },
-      { rule: "R4", severity: "low", claim: "claim four", where: "b.mjs:4" },
+      { rule: "R4", severity: "high", claim: "claim four", where: "b.mjs:4" },
     ],
   };
   const comparable = ({ rule, claim, where, severity }) => ({ rule, claim, where, severity });
@@ -124,7 +147,7 @@ test("Each finding gets an id from its lens name and its position, ignoring any 
   const findingsByModel = {
     sonnet: [
       { id: "model-made-up", rule: "R1", severity: "high", claim: "claim one", where: "a.mjs:1" },
-      { rule: "R2", severity: "low", claim: "claim two", where: "a.mjs:2" },
+      { rule: "R2", severity: "high", claim: "claim two", where: "a.mjs:2" },
     ],
     opus: [{ rule: "R3", severity: "high", claim: "claim three", where: "b.mjs:3" }],
   };
@@ -148,7 +171,8 @@ test("A finding whose rule is empty or whitespace is kept but marked non-blockin
 
   const { result } = await runLensAttack(config, respond);
 
-  const [empty, blank, ruled] = result.survivors;
+  const byClaim = (claim) => result.survivors.find((finding) => finding.claim === claim);
+  const [empty, blank, ruled] = ["empty rule", "blank rule", "ruled"].map(byClaim);
   assert.equal(result.survivors.length, 3, "all findings are kept");
   assert.equal(empty.blocking, false, "empty rule is non-blocking");
   assert.equal(blank.blocking, false, "whitespace rule is non-blocking");
@@ -202,4 +226,356 @@ test("The result carries every return field, with neutral values for the ones la
   assert.equal(result.attempts, 0, "attempts is neutral");
   assert.deepEqual(result.lessons, [], "lessons is neutral");
   assert.equal(result.stopReason, null, "stopReason is neutral");
+});
+
+test("merge-keeps-kind-on-survivor", async () => {
+  const config = ONE_LENS;
+  const findings = [{ rule: "R1", severity: "high", kind: "risk", claim: "a risk", where: "a.mjs:1" }];
+
+  const { result } = await runLensAttack(config, async () => (lensReturn(findings)));
+
+  assert.equal(result.survivors.length, 1, "the finding survives");
+  assert.equal(result.survivors[0].kind, "risk", "the survivor still carries kind risk");
+});
+
+test("rank-orders-by-kind", async () => {
+  const config = ONE_LENS;
+  const findings = [
+    { rule: "R1", severity: "medium", kind: "drift", claim: "a drift", where: "a.mjs:1" },
+    { rule: "R2", severity: "medium", kind: "risk", claim: "a risk", where: "a.mjs:2" },
+    { rule: "R3", severity: "medium", kind: "fix-here", claim: "a fix", where: "a.mjs:3" },
+  ];
+
+  const { result } = await runLensAttack(config, async () => (lensReturn(findings)));
+
+  assert.deepEqual(result.survivors.map(({ kind }) => kind), ["fix-here", "risk", "drift"], "survivors are ordered fix-here, risk, drift");
+});
+
+test("rank-orders-by-severity-within-kind", async () => {
+  const config = ONE_LENS;
+  const findings = [
+    { rule: "R1", severity: "high", kind: "drift", claim: "a high drift", where: "a.mjs:1" },
+    { rule: "R2", severity: "low", kind: "risk", claim: "a low risk", where: "a.mjs:2" },
+    { rule: "R3", severity: "high", kind: "risk", claim: "a high risk", where: "a.mjs:3" },
+    { rule: "R4", severity: "low", kind: "fix-here", claim: "a low fix", where: "a.mjs:4" },
+    { rule: "R5", severity: "medium", kind: "risk", claim: "a medium risk", where: "a.mjs:5" },
+  ];
+
+  const { result } = await runLensAttack(config, async () => (lensReturn(findings)));
+
+  assert.deepEqual(result.survivors.map(({ kind, severity }) => `${kind}:${severity}`), ["fix-here:low", "risk:high", "risk:medium", "risk:low", "drift:high"], "kind outranks severity, and within a kind high precedes medium precedes low");
+});
+
+test("rank-is-stable-for-ties", async () => {
+  const config = TWO_LENSES;
+  const tied = (rule, claim) => ({ rule, severity: "medium", kind: "risk", claim, where: "a.mjs:1" });
+  const returns = {
+    necessity: lensReturn([tied("R1", "necessity first"), tied("R2", "necessity second")]),
+    patterns: lensReturn([tied("R3", "patterns first"), tied("R4", "patterns second")]),
+  };
+
+  const { result } = await runLensAttack(config, async (prompt, opts) => returns[opts.label.includes("patterns") ? "patterns" : "necessity"]);
+
+  assert.deepEqual(result.survivors.map(({ id, claim }) => `${id}:${claim}`), ["necessity-1:necessity first", "necessity-2:necessity second", "patterns-1:patterns first", "patterns-2:patterns second"], "tied findings keep lens order then returned order, with ids assigned before ranking");
+});
+
+test("findings-at-cap-all-kept", async () => {
+  const config = { ...ONE_LENS, maxFindingsPerLens: 3 };
+  const findings = [1, 2, 3].map(ranked);
+
+  const { result, logs } = await runLensAttack(config, async () => (lensReturn(findings)));
+
+  assert.equal(result.survivors.length, 3, "a lens returning exactly the cap keeps all its findings");
+  assert.deepEqual(logs, [], "no trim is logged at the cap");
+});
+
+test("findings-past-cap-trimmed-and-logged", async () => {
+  const config = { ...ONE_LENS, maxFindingsPerLens: 3 };
+  const findings = [
+    { rule: "R1", severity: "low", kind: "risk", claim: "the lowest ranked", where: "a.mjs:1" },
+    { rule: "R2", severity: "high", kind: "risk", claim: "high one", where: "a.mjs:2" },
+    { rule: "R3", severity: "medium", kind: "risk", claim: "medium one", where: "a.mjs:3" },
+    { rule: "R4", severity: "high", kind: "risk", claim: "high two", where: "a.mjs:4" },
+  ];
+
+  const { result, logs } = await runLensAttack(config, async () => (lensReturn(findings)));
+
+  assert.deepEqual(result.survivors.map(({ claim }) => claim), ["high one", "high two", "medium one"], "the cap keeps N findings and drops the lowest-ranked one");
+  assert.equal(logs.length, 1, "one trim is logged");
+  assert.match(logs[0], /necessity/, "the log names the lens");
+  assert.match(logs[0], /\b1\b/, "the log records the dropped count");
+});
+
+test("cap-applies-per-lens-not-total", async () => {
+  const config = { ...configWith([{ name: "necessity", model: "sonnet" }, { name: "patterns", model: "sonnet" }]), maxFindingsPerLens: 2 };
+  const found = (prefix) => [1, 2].map((n) => ({ ...ranked(n), claim: `${prefix} ${n}` }));
+  const returns = { necessity: lensReturn(found("necessity")), patterns: lensReturn(found("patterns")) };
+
+  const { result, logs } = await runLensAttack(config, async (prompt, opts) => returns[opts.label.includes("patterns") ? "patterns" : "necessity"]);
+
+  assert.equal(result.survivors.length, 4, "each lens at its cap keeps all its findings, so the merged total exceeds the cap");
+  assert.deepEqual(logs, [], "no trim is logged when every lens is at its cap");
+});
+
+test("refuters-spawn-for-top-n-only", async () => {
+  const config = refutingConfig(2);
+  const findings = [
+    { rule: "R1", severity: "low", kind: "risk", claim: "rank four", where: "a.mjs:1" },
+    { rule: "R2", severity: "high", kind: "fix-here", claim: "rank one", where: "a.mjs:2" },
+    { rule: "R3", severity: "medium", kind: "risk", claim: "rank three", where: "a.mjs:3" },
+    { rule: "R4", severity: "high", kind: "risk", claim: "rank two", where: "a.mjs:4" },
+  ];
+  const standIn = refuterStandIn(findings, "survives");
+
+  const { calls } = await runLensAttack(config, standIn);
+
+  const refuterCalls = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:refuter");
+  assert.equal(refuterCalls.length, 2, "exactly maxRefuters refuter calls are made");
+  assert.ok(refuterCalls[0].prompt.includes("rank one") && refuterCalls[1].prompt.includes("rank two"), "the refuters go to the two top-ranked findings");
+});
+
+test("findings-at-refuter-cap-all-refuted-attempted", async () => {
+  const config = refutingConfig(2);
+  const findings = [
+    { rule: "R1", severity: "high", kind: "fix-here", claim: "claim one", where: "a.mjs:1" },
+    { rule: "R2", severity: "medium", kind: "risk", claim: "claim two", where: "a.mjs:2" },
+  ];
+  const standIn = refuterStandIn(findings, "survives");
+
+  const { calls, result } = await runLensAttack(config, standIn);
+
+  const refuterCalls = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:refuter");
+  assert.equal(refuterCalls.length, 2, "every finding gets a refuter when findings equal maxRefuters");
+  assert.deepEqual(result.unrefuted, [], "nothing is left unrefuted at the cap");
+});
+
+test("findings-past-cap-returned-unrefuted-and-logged", async () => {
+  const config = refutingConfig(2);
+  const findings = [
+    { rule: "R1", severity: "low", kind: "risk", claim: "rank four", where: "a.mjs:1" },
+    { rule: "R2", severity: "high", kind: "fix-here", claim: "rank one", where: "a.mjs:2" },
+    { rule: "R3", severity: "medium", kind: "risk", claim: "rank three", where: "a.mjs:3" },
+    { rule: "R4", severity: "high", kind: "risk", claim: "rank two", where: "a.mjs:4" },
+  ];
+  const standIn = refuterStandIn(findings, "survives");
+
+  const { result, logs } = await runLensAttack(config, standIn);
+
+  assert.deepEqual(result.unrefuted.map(({ claim }) => claim), ["rank three", "rank four"], "the findings below the cut are returned in unrefuted");
+  assert.ok(result.unrefuted.every(({ id }) => !result.survivors.some((survivor) => survivor.id === id)), "unrefuted findings are not survivors");
+  assert.ok(result.unrefuted.every(({ id }) => logs.some((message) => message.includes(id))), "log() records each unrefuted id");
+});
+
+test("unrefuted-findings-are-non-blocking", async () => {
+  const config = refutingConfig(1);
+  const findings = [
+    { rule: "R1", severity: "high", kind: "fix-here", claim: "rank one", where: "a.mjs:1" },
+    { rule: "R2", severity: "low", kind: "risk", claim: "rank two", where: "a.mjs:2" },
+  ];
+  const standIn = refuterStandIn(findings, "survives");
+
+  const { result } = await runLensAttack(config, standIn);
+
+  assert.equal(result.unrefuted.length, 1, "one finding is left unrefuted");
+  assert.ok(result.unrefuted[0].rule, "the unrefuted finding carries a rule");
+  assert.equal(result.unrefuted[0].blocking, false, "an unrefuted finding is non-blocking even with a rule");
+});
+
+test("refute-none-spawns-no-refuter", async () => {
+  const config = refutingConfig(2, { refute: "none" });
+  const findings = [
+    { rule: "R1", severity: "high", kind: "fix-here", claim: "claim one", where: "a.mjs:1" },
+    { rule: "R2", severity: "low", kind: "risk", claim: "claim two", where: "a.mjs:2" },
+  ];
+  const standIn = refuterStandIn(findings, "refuted");
+
+  const { calls, result } = await runLensAttack(config, standIn);
+
+  assert.equal(calls.filter(({ opts }) => opts.agentType === "pairingbuddy:refuter").length, 0, "no refuter call is made with refute none");
+  assert.deepEqual(result.survivors.map(({ claim }) => claim).sort(), ["claim one", "claim two"], "all findings stay survivors");
+});
+
+test("high-severity-refuter-uses-opus", async () => {
+  const config = refutingConfig(2);
+  const findings = [
+    { rule: "R1", severity: "high", kind: "fix-here", claim: "the high claim", where: "a.mjs:1" },
+    { rule: "R2", severity: "medium", kind: "risk", claim: "the medium claim", where: "a.mjs:2" },
+  ];
+  const standIn = refuterStandIn(findings, "survives");
+
+  const { calls } = await runLensAttack(config, standIn);
+
+  const refuterCalls = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:refuter");
+  const highCall = refuterCalls.find(({ prompt }) => prompt.includes("the high claim"));
+  assert.equal(highCall.opts.model, "opus", "the refuter for a high-severity finding is called with model opus");
+});
+
+test("non-high-refuter-uses-sonnet", async () => {
+  const config = refutingConfig(2);
+  const findings = [
+    { rule: "R1", severity: "medium", kind: "risk", claim: "the medium claim", where: "a.mjs:1" },
+    { rule: "R2", severity: "low", kind: "risk", claim: "the low claim", where: "a.mjs:2" },
+  ];
+  const standIn = refuterStandIn(findings, "survives");
+
+  const { calls } = await runLensAttack(config, standIn);
+
+  const refuterCalls = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:refuter");
+  const mediumCall = refuterCalls.find(({ prompt }) => prompt.includes("the medium claim"));
+  const lowCall = refuterCalls.find(({ prompt }) => prompt.includes("the low claim"));
+  assert.equal(mediumCall.opts.model, "sonnet", "the refuter for a medium-severity finding is called with model sonnet");
+  assert.equal(lowCall.opts.model, "sonnet", "the refuter for a low-severity finding is called with model sonnet");
+});
+
+test("refuter-call-has-agent-type-and-finding-id", async () => {
+  const config = refutingConfig(2);
+  const findings = [{ rule: "R1", severity: "high", kind: "fix-here", claim: "the unique-claim-5521", where: "a.mjs:1" }];
+  const standIn = refuterStandIn(findings, "survives");
+
+  const { calls } = await runLensAttack(config, standIn);
+
+  const refuterCalls = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:refuter");
+  assert.equal(refuterCalls.length, 1, "one refuter call is made for the one finding");
+  const [{ prompt, opts }] = refuterCalls;
+  assert.equal(opts.label, buildLabel({ stage: "scenarios", phase: null, role: "refuter", item: "necessity-1", round: 1 }), "the label has role refuter and the finding id as item");
+  assert.ok(prompt.includes("necessity-1"), "the prompt carries the finding id");
+  assert.ok(prompt.includes("the unique-claim-5521"), "the prompt carries the finding claim");
+});
+
+test("refuted-verdict-moves-finding-to-refuted", async () => {
+  const config = refutingConfig(2);
+  const findings = [{ rule: "R1", severity: "high", kind: "fix-here", claim: "the doomed claim", where: "a.mjs:1" }];
+  const standIn = refuterStandIn(findings, "refuted");
+
+  const { result } = await runLensAttack(config, standIn);
+
+  assert.deepEqual(result.survivors.map(({ id }) => id), [], "the refuted finding leaves survivors");
+  assert.deepEqual(result.refuted.map(({ id }) => id), ["necessity-1"], "the refuted finding appears in refuted");
+});
+
+test("survives-verdict-keeps-finding-survivor", async () => {
+  const config = refutingConfig(2);
+  const findings = [{ rule: "R1", severity: "high", kind: "fix-here", claim: "the sturdy claim", where: "a.mjs:1" }];
+  const standIn = refuterStandIn(findings, "survives");
+
+  const { result } = await runLensAttack(config, standIn);
+
+  assert.deepEqual(result.survivors.map(({ id }) => id), ["necessity-1"], "the finding whose refuter returned survives stays a survivor");
+  assert.deepEqual(result.refuted.map(({ id }) => id), [], "the surviving finding is not in refuted");
+});
+
+test("null-refuter-return-leaves-finding-unrefuted", async () => {
+  const config = refutingConfig(2);
+  const findings = [{ rule: "R1", severity: "high", kind: "fix-here", claim: "the unanswered claim", where: "a.mjs:1" }];
+  const standIn = async (prompt, opts) => (isRefuter(opts) ? null : lensReturn(findings));
+
+  const { result } = await runLensAttack(config, standIn);
+
+  assert.deepEqual(result.unrefuted.map(({ id }) => id), ["necessity-1"], "the finding whose refuter returned null is in unrefuted");
+  assert.deepEqual(result.refuted.map(({ id }) => id), [], "no verdict was filed, so the finding is not in refuted");
+});
+
+test("spawns-up-to-agent-budget-allowed", async () => {
+  const config = { ...TWO_LENSES, refute: "one", maxRefuters: 2, agentBudget: 4 };
+
+  const { calls, result } = await runLensAttack(config, budgetStandIn);
+
+  assert.equal(calls.length, 4, "two lens calls and two refuter calls are all made");
+  assert.equal(result.agentsUsed, 4, "agentsUsed equals the budget");
+  assert.equal(result.stopReason, null, "no stop when the budget is exactly enough");
+});
+
+test("spawn-past-agent-budget-not-made", async () => {
+  const config = { ...TWO_LENSES, refute: "one", maxRefuters: 2, agentBudget: 3 };
+
+  const { calls, result, logs } = await runLensAttack(config, budgetStandIn);
+
+  assert.equal(calls.length, 3, "only the budget's calls are recorded, one below the four needed");
+  assert.equal(result.agentsUsed, calls.length, "agentsUsed equals the number of calls made");
+  assert.ok(result.unrefuted.every(({ id }) => logs.some((message) => message.includes(id))), "the budget-skipped finding is logged");
+});
+
+test("budget-stop-records-stop-reason", async () => {
+  const config = { ...TWO_LENSES, refute: "one", maxRefuters: 2, agentBudget: 3 };
+
+  const { result, logs } = await runLensAttack(config, budgetStandIn);
+
+  assert.equal(result.stopReason, "agent-budget", "the budget prevented a refuter spawn");
+  assert.deepEqual(result.unrefuted.map(({ id }) => id), ["patterns-1"], "the finding whose refuter was not spawned is unrefuted");
+  assert.match(logs.join("\n"), /patterns-1.*agent budget/, "the log names the budget as the reason");
+});
+
+// trust: a verdict counts only for the finding its refuter was sent
+test("verdict-for-another-finding-is-ignored", async () => {
+  const config = refutingConfig(2);
+  const findings = [ranked(1), ranked(2)];
+  const lyingStandIn = async (prompt, opts) => (isRefuter(opts)
+    ? { pb_key: "k", finding_id: "necessity-2", verdict: "refuted", ambiguity: null }
+    : lensReturn(findings));
+
+  const { result } = await runLensAttack(config, lyingStandIn);
+
+  assert.deepEqual(result.refuted.map(({ id }) => id), ["necessity-2"], "only the refuter sent necessity-2 may refute it");
+  assert.deepEqual(result.unrefuted.map(({ id }) => id), ["necessity-1"], "necessity-1's refuter named another finding, so it is unrefuted");
+  assert.deepEqual(result.survivors.map(({ id }) => id), [], "nothing else survives");
+});
+
+test("verdict-for-a-finding-never-sent-is-ignored", async () => {
+  const config = refutingConfig(1);
+  const stray = async (prompt, opts) => (isRefuter(opts)
+    ? { pb_key: "k", finding_id: "necessity-9", verdict: "refuted", ambiguity: null }
+    : lensReturn([ranked(1)]));
+
+  const { result } = await runLensAttack(config, stray);
+
+  assert.deepEqual(result.unrefuted.map(({ id }) => id), ["necessity-1"]);
+  assert.deepEqual(result.refuted, []);
+});
+
+// parity: the stage report reads the same returns and verdicts the workflow produced. The config is the real scenarios row's.
+const REAL_LENS_MAP = JSON.parse(readFileSync(join(REPO, "contracts", "lenses.json"), "utf8"));
+async function workflowAndReport(lensFor, refuterFor, agentBudget) {
+  const wired = wiredLensConfig(REAL_LENS_MAP, "code-scenarios");
+  const config = { stage: "code-scenarios", subject: "task", attempt: 1, ...wired, agentBudget };
+  const filed = [];
+  const agent = async (prompt, opts) => {
+    const returned = isRefuter(opts) ? refuterFor(sentIdOf(prompt)) : lensFor();
+    filed.push({ key: /Return pb_key exactly as: (\S+)/.exec(prompt)[1], returned });
+    return returned;
+  };
+  const { result } = await runLensAttack(config, agent);
+  const artifactsDir = mkdtempSync(join(tmpdir(), "pb-parity-"));
+  try {
+    for (const { key, returned } of filed) if (returned !== null) writeFileSync(join(artifactsDir, `${key}.json`), JSON.stringify({ ...returned, pb_key: key }));
+    const stage = { name: "code-scenarios", status: "active", runId: "wf_1", attempt: 1, startedAt: null };
+    return { result, report: buildReport({ stage, tests: {}, checkpoints: [] }, artifactsDir) };
+  } finally {
+    rmSync(artifactsDir, { recursive: true, force: true });
+  }
+}
+const idsOf = (list) => list.map(({ id }) => id);
+
+test("report-and-workflow-agree-on-survivors-refuted-unrefuted-and-uncovered", async () => {
+  const verdictFor = { "necessity-1": "refuted", "necessity-2": "survives", "necessity-3": null };
+  const refuterFor = (id) => (id === "necessity-4" ? { pb_key: "k", finding_id: "necessity-5", verdict: "refuted", ambiguity: null }
+    : verdictFor[id] === null ? null : { pb_key: "k", finding_id: id, verdict: verdictFor[id] ?? "survives", ambiguity: null });
+  const eight = lensReturn([1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ ...ranked(n), severity: n <= 4 ? "high" : "low" })));
+
+  // maxRefuters is 6 and one lens call counts against the budget of 4, so three findings are sent and the rest are not.
+  const { result, report } = await workflowAndReport(() => eight, refuterFor, 4);
+
+  assert.equal(result.stopReason, "agent-budget", "the budget cut a refuter");
+  assert.ok(result.refuted.length > 0 && result.unrefuted.length > 0 && result.survivors.length > 0, "the case covers refuted, unrefuted and surviving findings");
+  assert.deepEqual(idsOf(report.survivors), idsOf(result.survivors), "survivors match");
+  assert.deepEqual(idsOf(report.refuted), idsOf(result.refuted), "refuted match");
+  assert.deepEqual(idsOf(report.unrefuted), idsOf(result.unrefuted), "unrefuted match");
+  assert.deepEqual(report.uncovered, result.uncovered, "uncovered match");
+});
+
+test("report-and-workflow-agree-when-the-lens-returned-nothing", async () => {
+  const { result, report } = await workflowAndReport(() => null, () => null, 10);
+
+  assert.deepEqual(result.uncovered, ["necessity"]);
+  assert.deepEqual(report.uncovered, result.uncovered, "uncovered match");
+  assert.deepEqual(idsOf(report.survivors), idsOf(result.survivors), "survivors match");
 });

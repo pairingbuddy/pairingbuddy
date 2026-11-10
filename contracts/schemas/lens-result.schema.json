@@ -15,10 +15,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["rule", "severity", "claim", "where"],
+        "required": ["rule", "severity", "kind", "claim", "where"],
         "properties": {
           "rule": { "type": "string" },
           "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+          "kind": { "type": "string", "enum": ["fix-here", "risk", "drift"] },
           "claim": { "type": "string", "description": "What is wrong, in one or two sentences, grounded in evidence the agent read" },
           "where": { "type": "string", "description": "A file path with an optional line, or the subject item" }
         }

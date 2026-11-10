@@ -4,7 +4,7 @@
   "maxAgents": 1000,
   "stageMaxAgents": { "code-tdd": 600 },
   "migratedTypes": ["config_change", "bug_fix", "new_feature"],
-  "newPathAgents": ["apply-config-change", "lens", "runner"],
+  "newPathAgents": ["apply-config-change", "lens", "refuter", "runner"],
   "gateClasses": {
     "continue": { "auto": "passes when evidence is complete and no stop condition applies" },
     "conditional": { "auto": "passes only when the classifier reports certain" },

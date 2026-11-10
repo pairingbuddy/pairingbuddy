@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { violations } from "./schema-check.mjs";
 
 const schema = JSON.parse(readFileSync(new URL("../../contracts/schemas/lens-result.schema.json", import.meta.url), "utf8"));
-const finding = { rule: "no-magic-numbers", severity: "high", claim: "A literal 42 is used without a name.", where: "src/a.py:12" };
+const finding = { rule: "no-magic-numbers", severity: "high", kind: "fix-here", claim: "A literal 42 is used without a name.", where: "src/a.py:12" };
 const valid = () => ({ pb_key: "k", ambiguity: null, findings: [{ ...finding }] });
 
 test("a valid result passes", () => {
@@ -71,4 +71,11 @@ test("an extra finding field such as a model-supplied id is rejected", () => {
   result.findings[0].id = "f-1";
 
   assert.notDeepEqual(violations(schema, result), [], "findings carry no model-supplied id");
+});
+
+test("lens-result-schema-requires-finding-kind", () => {
+  const item = schema.properties.findings.items;
+
+  assert.ok(item.required.includes("kind"), "kind is required on a finding");
+  assert.deepEqual(item.properties.kind?.enum, ["fix-here", "risk", "drift"], "kind enum is fix-here | risk | drift");
 });
