@@ -207,19 +207,24 @@ function workflowReturn(stream) {
 }
 
 function assertSpend({ artifacts, entry }, stage, keys, report, wfReturn, refuterSpawns) {
-  // The finishing runner's return is filed after the stage finish it ran, so the stage's spend cannot count it; the
-  // snapshot runner's, round 1, is filed before and counts.
+  // The finishing runner's return is filed after the stage finish it ran, so stage finish counts that runner from the
+  // harness transcript instead; the snapshot runner's, round 1, is filed before and counts as a return.
   const filed = returnsAt(artifacts, stage).filter(({ role, round }) => !(role === RUNNER_ROLE && round > 1));
   check(filed.some(({ role, round }) => role === RUNNER_ROLE && round === 1), `no snapshot runner return (runner r1) is filed at attempt ${stage.attempt}`);
   const lensFiled = filed.filter(({ role }) => role === LENS_ROLE).map(({ pbKey }) => pbKey);
   check(isDeepStrictEqual(lensFiled, keys.map(({ key }) => key).sort()), `lens returns at attempt ${stage.attempt} are ${lensFiled}`);
-  check(report.spend.agents === filed.length && entry.spend.agents === filed.length, `spend agents is ${report.spend.agents} in the report and ${entry.spend.agents} in the ledger, with ${filed.length} returns filed before stage finish (snapshot runner and lens included)`);
+  const counted = filed.length + 1;
+  check(report.spend.agents === counted && entry.spend.agents === counted, `spend agents is ${report.spend.agents} in the report and ${entry.spend.agents} in the ledger, with ${filed.length} returns filed before stage finish (snapshot runner and lens included) and the finishing runner`);
+  check(/runner that ran stage finish/.test(report.spend.agentsSource), `the report's agentsSource is ${JSON.stringify(report.spend.agentsSource)}, so stage finish did not find its runner in the transcript`);
+  // D9's live check: budget.spent() reached stage finish through the transcript, as output tokens.
+  check(report.spend.tokensKnown === true && report.spend.tokens > 0 && report.spend.tokensUnit === "output tokens", `the report's token figure is ${JSON.stringify(report.spend)}`);
+  check(entry.spend.tokensKnown === true && entry.spend.tokens === report.spend.tokens, `the ledger's stage spend is ${JSON.stringify(entry.spend)}`);
   check(wfReturn !== null, "no code-scenarios workflow return was found in the stream's task output files");
   check(wfReturn.lensAttack.agentsUsed === keys.length + refuterSpawns, `lensAttack.agentsUsed is ${wfReturn.lensAttack.agentsUsed}, expected ${keys.length} lenses + ${refuterSpawns} refuters`);
   for (const list of ["survivors", "refuted", "unrefuted", "uncovered"]) {
     check(isDeepStrictEqual(wfReturn.lensAttack[list], report[list]), `the workflow's merged ${list} differs from the report's`);
   }
-  return { filed: filed.length, agentsUsed: wfReturn.lensAttack.agentsUsed };
+  return { filed: filed.length, counted, agentsUsed: wfReturn.lensAttack.agentsUsed, tokens: report.spend.tokens };
 }
 
 const transcriptModels = (path) => [...new Set(readFileSync(path, "utf8").trim().split("\n").map((line) => JSON.parse(line)).filter(({ type }) => type === "assistant").map(({ message }) => message.model))];
@@ -423,6 +428,8 @@ async function runS4(budget, record, out, type, task, pluginDir) {
     }
     result.refuters = { findings, sent: refuting.plan.sent.length, spawned: result.caps.refuters, filed: refuting.filed, note: findings === 0 ? "no findings to refute: the refuter checks hold vacuously" : "" };
     if (findings === 0) console.log("S4: the lens returned no findings, so no findings to refute; the refuter checks hold vacuously");
+    // What each stage recorded through pb stage finish, for the spend record.
+    result.stageSpend = Object.fromEntries((recorder.last?.stages ?? []).map(({ name, spend }) => [name, spend ?? null]));
     result.keys = keys.map(({ key }) => key);
     result.counts = { survivors: report.survivors.length, refuted: report.refuted.length, unrefuted: report.unrefuted.length, uncovered: report.uncovered.length };
     result.passed = true;
