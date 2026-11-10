@@ -324,3 +324,48 @@ test("built-code-tdd-has-no-identify-reference", () => {
 
   assert.doesNotMatch(built, /pairingbuddy:identify-(test|code)-issues/, "the built stage names no identify agent");
 });
+
+test("code-tdd-light-review-snapshot-relay-with-no-paths-is-retried", async () => {
+  let relays = 0;
+  const { calls, result } = await runStage({ runner: (commands) => (commands[0] === "snapshot" && ++relays === 1 ? { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true }) } : undefined) });
+
+  assert.equal(calls.filter((call) => isRunner(call) && commandsOf(call)[0] === "snapshot").length, 2);
+  assert.equal(result.stopReason, null);
+});
+
+test("code-tdd-light-review-snapshot-runner-is-labelled-refactor-for-the-cycle", async () => {
+  const { calls } = await runStage();
+
+  const snapshot = calls.find((call) => isRunner(call) && commandsOf(call)[0] === "snapshot");
+  assert.equal(readLabel(snapshot.opts.label).phase, "REFACTOR");
+  assert.equal(readLabel(snapshot.opts.label).item, "t1");
+});
+
+test("code-tdd-light-review-subject-names-the-cycle-and-the-snapshot-diff", async () => {
+  const { calls } = await runStage();
+
+  const subject = JSON.parse(blockOf(callsOf(calls, LENS)[0].prompt, "subject"));
+  assert.equal(subject.test_id, "t1");
+  assert.equal(subject.subject_diff, ".pairingbuddy/run/subject.diff");
+});
+
+test("code-tdd-light-review-corpus-is-the-snapshot-paths", async () => {
+  const paths = ["CLAUDE.md", "docs/a.md"];
+  const { calls } = await runStage({ runner: (commands) => (commands[0] === "snapshot" ? { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true, paths }) } : undefined) });
+
+  assert.deepEqual(blockOf(callsOf(calls, LENS)[0].prompt, "corpus").split("\n").map((line) => JSON.parse(line)), paths);
+});
+
+test("code-tdd-light-review-retried-reviewer-label-carries-its-round", async () => {
+  let spawned = 0;
+  const { calls } = await runStage({ worker: (agentType) => (agentType === LENS && ++spawned === 1 ? null : undefined) });
+
+  assert.deepEqual(callsOf(calls, LENS).map(({ opts }) => opts.label), ["pb1 code-tdd REFACTOR lens t1 r1", "pb1 code-tdd REFACTOR lens t1 r2"]);
+});
+
+test("code-tdd-light-review-a-fixer-stop-keeps-the-cycle-review-record", async () => {
+  const { result } = await runStage({ runner: ([command]) => (command.startsWith("checkpoint --step refactor") ? refused("the tests failed") : undefined) });
+
+  assert.equal(result.stopReason, "step-failed");
+  assert.deepEqual(result.lightReviews, [{ item: "t1", focuses: ["code-smell", "test-quality"], findings: 2 }]);
+});

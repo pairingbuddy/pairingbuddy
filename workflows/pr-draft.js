@@ -114,7 +114,7 @@ async function lightReview(config) {
   const result = await (config.spawn ?? agent)(prompt, {
     agentType: 'pairingbuddy:lens',
     model: config.lightReview.model,
-    label: buildLabel({ stage, phase: config.phase ?? null, role: 'lens', item: config.item, round: config.round ?? 1 }),
+    label: buildLabel({ stage, phase: config.phase, role: 'lens', item: config.item, round: config.round ?? 1 }),
     ...(config.schema === undefined ? {} : { schema: pinnedKey(config.schema, key) }),
   });
   if (result === null || result === undefined || !Array.isArray(result.findings)) {
