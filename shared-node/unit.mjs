@@ -21,6 +21,7 @@ export function newTaskRecord({ ledger, headSha }) {
     title: ledger.task,
     stages: ledger.stages.map((stage) => stage.name),
     gateSources,
+    lenses: ledger.lenses,
     headSha,
     reportSummary: null,
     blocking: [],

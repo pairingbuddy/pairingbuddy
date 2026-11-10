@@ -144,8 +144,28 @@
       }
     },
     "lenses": {
-      "description": "Lens records by name (the one the publish gate reads is \"safety-net\"). Nothing writes it until T5c; this is the minimal shape, and T5c adds the per-stage fields. May be absent.",
+      "description": "Lens records by name (the one the publish gate reads is \"safety-net\"). `pb stage finish` on a safety-net stage writes \"safety-net\": the stage, the attempt, the lenses that ran with their models, the counts of surviving, refuted and unrefuted findings, and the names of uncovered lenses. It holds no finding content. May be absent.",
       "type": "object",
+      "properties": {
+        "safety-net": {
+          "type": "object",
+          "properties": {
+            "stage": { "type": "string" },
+            "attempt": { "type": "integer" },
+            "lenses": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": { "name": { "type": "string" }, "model": { "type": "string" } }
+              }
+            },
+            "survivors": { "type": "integer", "minimum": 0 },
+            "refuted": { "type": "integer", "minimum": 0 },
+            "unrefuted": { "type": "integer", "minimum": 0 },
+            "uncovered": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
       "additionalProperties": { "type": "object" }
     },
     "acceptances": {

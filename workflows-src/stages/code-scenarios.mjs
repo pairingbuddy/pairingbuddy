@@ -36,22 +36,8 @@ const prompt = [
 
 const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
-// The corpus is what pb snapshot found, relayed by the runner as the JSON the CLI printed. A snapshot that failed is no corpus.
-function snapshotPaths(run) {
-  const { cli_exit_code: exitCode, cli_output: output } = run.result;
-  let printed = null;
-  try {
-    printed = JSON.parse(output);
-  } catch {
-    // Left null: the check below names the failure.
-  }
-  const usable = exitCode === 0 && printed !== null && printed.ok === true && Array.isArray(printed.paths) && printed.paths.every((p) => typeof p === 'string');
-  if (!usable) throw new Error(`pb snapshot gave no corpus (exit ${exitCode}): ${output}`);
-  return printed.paths;
-}
-
 const snapshot = await runCommands(stage, ['snapshot'], { round: 1 });
-const corpus = snapshotPaths(snapshot);
+const { paths: corpus } = snapshotResult(snapshot);
 
 // The stage's agent cap, as code-tdd counts it: the enumerator and the snapshot runner are spawned already, and one spawn is kept for the finishing runner.
 const maxAgents = STAGES.stageMaxAgents[stage] ?? STAGES.maxAgents;

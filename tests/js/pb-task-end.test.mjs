@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { COMMIT_FAILED, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
-import { makeRepo as makeRepoWithRemote } from "./cli-repo-fixture.mjs";
+import { makeRepo as makeRepoWithRemote, recordCleanLensReturns } from "./cli-repo-fixture.mjs";
 import { readUnitRecord } from "./publish-fixture.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
@@ -544,6 +544,7 @@ describe("the real verbs carry a no-change docs step to the end", () => {
 
     assert.equal(run(repo, "checkpoint", "--step", "docs", "--from", DOCS_KEY).committed, false);
     run(repo, "test", "--full");
+    recordCleanLensReturns(repo, NET, "config_change", 1);
     run(repo, "stage", "finish");
     assert.equal(run(repo, "gate", "eval").result, "auto-pass");
     run(repo, "task", "end");
@@ -576,7 +577,7 @@ describe("the real verbs carry a no-change docs step to the end", () => {
 
 describe("the task record carries the full-suite result", IN_PARALLEL, () => {
   // A repo whose task is finished and whose unit is open, with the full-suite result pb test --full records.
-  function finishedTaskInUnit() {
+  function finishedTaskInUnit(extraLedger = {}) {
     const repo = makeRepoWithRemote({ openTask: false, remote: true });
     const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
     assert.equal(opened.status, 0, `unit open: ${opened.stderr}`);
@@ -590,6 +591,7 @@ describe("the task record carries the full-suite result", IN_PARALLEL, () => {
       configHash: createHash("sha256").update(configText).digest("hex"),
       ...FINISHED,
       tests: { full: { stage: NET, attempt: 1, passed: true, red: false, runs: [], head } },
+      ...extraLedger,
     });
     return { repo, head };
   }
@@ -601,5 +603,15 @@ describe("the task record carries the full-suite result", IN_PARALLEL, () => {
 
     const [record] = readUnitRecord(repo).tasks;
     assert.deepEqual(record.fullSuite, { passed: true, head }, "the task record carries the full-suite result of the task ledger");
+  });
+
+  test("task_end_record_carries_lenses", () => {
+    const lenses = { "safety-net": { stage: NET, attempt: 1, lenses: [{ name: "config-fit", model: "sonnet" }], survivors: 0, refuted: 0, unrefuted: 0, uncovered: [] } };
+    const { repo } = finishedTaskInUnit({ lenses });
+
+    ok(repo);
+
+    const [record] = readUnitRecord(repo).tasks;
+    assert.deepEqual(record.lenses, lenses, "the task record carries the lens record of the task ledger");
   });
 });

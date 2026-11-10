@@ -14,6 +14,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { recordCleanLensReturns } from "./cli-repo-fixture.mjs";
+import { lensRow } from "./lens-return-fixture.mjs";
+import { lensSlug } from "../../shared-node/keys.mjs";
 import { loadStages, pipelineAgents, validateStages } from "../../shared-node/stages.mjs";
 import { COMMIT_FAILED, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
 
@@ -862,6 +865,7 @@ describe("a checkpoint orphaned by stage fail", { concurrency: 4 }, () => {
     const docsKey = restartAtTwo(repo, plugin, NET, "update-documentation");
     ok(repo, "checkpoint", "--step", "docs", "--from", docsKey);
     ok(repo, "test", "--full");
+    recordCleanLensReturns(repo, NET, "config_change", ATTEMPT);
     ok(repo, "stage", "finish");
     assert.equal(ok(repo, "gate", "eval").result, "auto-pass");
 
@@ -962,7 +966,7 @@ describe("the report states what ran and what was not covered", IN_PARALLEL, () 
     assert.deepEqual(report.survivors, [{ class: "decide" }]);
     assert.deepEqual(report.refuted, [{ id: "f1" }]);
     assert.deepEqual(report.unrefuted, [{ severity: "high" }]);
-    assert.deepEqual(report.uncovered, ["lens-a"]);
+    assert.deepEqual(report.uncovered, ["lens-a", ...lensRow(NET, "config_change").lenses.map((l) => lensSlug(l.name))], "the return's own list, then the config_change lenses that recorded nothing");
     assert.deepEqual(report.ambiguities, [{ key: DOCS_KEY, ambiguity: "which file?" }]);
     assert.ok(report.notCovered.includes("lens-a"));
     assert.equal(report.notCovered.some((line) => /lens round/.test(line)), false);
@@ -1159,4 +1163,40 @@ describe("verb classes, through the real gate", IN_PARALLEL, () => {
       assert.notEqual(bash(makeRepo(), command, RUNNER_AGENT).kind, "allow");
     });
   }
+});
+
+// Placeholders for lens-record: stage finish writes the safety-net lens record to the ledger.
+test("stage_finish_writes_safety_net_lens_record", () => {
+  const repo = atSafetyNet(activeStage(NET));
+  const row = lensRow(NET, "config_change");
+  const claims = ["config-fit claim one", "config-fit claim two"];
+  const lensKey = `${NET}.lens.config-fit.r1.a${ATTEMPT}`;
+  writeReturn(repo, lensKey, { ambiguity: null, findings: claims.map((claim) => ({ rule: "a rule", severity: "medium", kind: "fix-here", claim, where: "src/secret-place.mjs" })) });
+  const refuterKey = `${NET}.refuter.config-fit-1.r1.a${ATTEMPT}`;
+  writeReturn(repo, refuterKey, { finding_id: "config-fit-1", verdict: "survives", ambiguity: null });
+  writeReturn(repo, DOCS_KEY);
+  ok(repo, "checkpoint", "--step", "docs", "--from", DOCS_KEY);
+  ok(repo, "test", "--full");
+
+  ok(repo, "stage", "finish");
+
+  const record = repo.ledger().lenses?.["safety-net"];
+  assert.deepEqual(record, {
+    stage: NET,
+    attempt: ATTEMPT,
+    lenses: row.lenses.map(({ name, model }) => ({ name, model })),
+    survivors: 1,
+    refuted: 0,
+    unrefuted: 1,
+    uncovered: ["corpus-misalignment"],
+  });
+  for (const claim of claims) assert.ok(!JSON.stringify(record).includes(claim), "the record holds no finding content");
+  assert.ok(!JSON.stringify(record).includes("secret-place"), "the record holds no finding location");
+});
+test("stage_finish_other_stage_leaves_no_lens_record", () => {
+  const repo = finishableConfig();
+
+  ok(repo, "stage", "finish");
+
+  assert.equal(repo.ledger().lenses?.["safety-net"], undefined, "finishing a stage other than safety-net writes no safety-net lens record");
 });

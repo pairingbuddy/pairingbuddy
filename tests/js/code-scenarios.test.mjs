@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { blockOf, runScript } from "./harness.mjs";
+import { withStageMaxAgents } from "./stage-cap-fixture.mjs";
 import { lensSlug } from "../../shared-node/keys.mjs";
 import { readLabel } from "../../shared-node/labels.mjs";
 import { writeLedger } from "../../shared-node/ledger.mjs";
@@ -343,17 +344,11 @@ test("The built scenarios stage applies the row's maxFindingsPerLens and maxRefu
   assert.ok(logs.some((message) => message.includes("trimmed 5 finding(s)")), "the findings past maxFindingsPerLens are trimmed and logged");
 });
 
-test("The built scenarios stage gives lensAttack the stage's maxAgents less the enumerator, the lens and the runner's reserve", async () => {
+test("The built scenarios stage gives lensAttack the stage's maxAgents less the enumerator, the lens and the runner's reserve", async (t) => {
   // maxAgents 5: the enumerator, the snapshot runner and the finishing runner's reserve leave 2 for lensAttack, so one lens and one refuter.
-  const bundle = readFileSync(STAGE, "utf8");
-  const stages = JSON.parse(/^const STAGES = (.*);$/m.exec(bundle)[1]);
-  const capped = bundle.replace(/^const STAGES = .*;$/m, `const STAGES = ${JSON.stringify({ ...stages, stageMaxAgents: { ...stages.stageMaxAgents, "code-scenarios": 5 } })};`);
-  const dir = mkdtempSync(join(tmpdir(), "code-scenarios-budget-"));
-  const cappedPath = join(dir, "code-scenarios.js");
-  writeFileSync(cappedPath, capped);
+  const cappedPath = withStageMaxAgents(STAGE, "code-scenarios", 5, t);
 
   const { calls, result } = await runScript(cappedPath, { args: ARGS, agent: answering(manyFindings(4)) });
-  rmSync(dir, { recursive: true, force: true });
 
   assert.equal(countOf(calls, "pairingbuddy:refuter"), 1, "one refuter fits the budget");
   assert.equal(result.lensAttack.stopReason, "agent-budget");

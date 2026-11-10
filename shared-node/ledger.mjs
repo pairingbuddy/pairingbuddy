@@ -124,7 +124,7 @@ export function validateLedger(ledger) {
     configAcceptances: [Array.isArray, "an array"],
     checkpoints: [Array.isArray, "an array"],
     configApproval: [() => true, ""],
-    lenses: [isObject, "an object"], // nothing writes it until T5c; the schema documents the minimal shape
+    lenses: [isObject, "an object"], // pb stage finish writes "safety-net" (counts and lens names, no finding content); the schema documents it
     voidedGates: [Array.isArray, "an array"],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
   }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "voidedGates"] });

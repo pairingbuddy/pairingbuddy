@@ -18,6 +18,11 @@
       "items": {
         "type": "object",
         "properties": {
+          "lenses": {
+            "description": "The task ledger's lens records when the task ended (the safety-net record: stage, attempt, lenses, counts, uncovered names); absent when none was written.",
+            "type": "object",
+            "additionalProperties": { "type": "object" }
+          },
           "fullSuite": {
             "description": "The task ledger's full-suite result when the task ended; null when none was run.",
             "type": ["object", "null"],

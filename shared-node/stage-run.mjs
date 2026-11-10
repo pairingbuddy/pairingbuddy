@@ -204,9 +204,9 @@ function corpusPaths(artifactsDir) {
   return paths;
 }
 
-function mergedLensRound(current, artifactsDir, stageName, lensMap) {
+function mergedLensRound(current, artifactsDir, stageName, lensMap, taskType) {
   const recorded = current.filter(({ role }) => role === LENS_ROLE);
-  const config = { ...wiredLensConfig(lensMap, stageName), corpus: corpusPaths(artifactsDir) };
+  const config = { ...wiredLensConfig(lensMap, stageName, taskType), corpus: corpusPaths(artifactsDir) };
   const latestByLens = config.lenses.map((lens) => ({
     lens,
     latest: recorded.filter(({ item }) => item === lensSlug(lens.name)).sort((a, b) => b.round - a.round)[0],
@@ -236,7 +236,7 @@ export function buildReport(ledger, artifactsDir, lensMap = LENS_MAP) {
   const returns = current.map(({ pbKey }) => readReturn(artifactsDir, pbKey) ?? {});
   const lensReturns = returns.filter((_, i) => ![COVERAGE_ROLE, LENS_ROLE, REFUTER_ROLE].includes(current[i].role));
   const found = Object.fromEntries(REPORT_LISTS.map((key) => [key, lensReturns.flatMap((artifact) => artifact[key] ?? [])]));
-  const { merged, lensRan } = mergedLensRound(current, artifactsDir, name, lensMap);
+  const { merged, lensRan } = mergedLensRound(current, artifactsDir, name, lensMap, ledger.taskType);
   const lists = {
     ...found,
     survivors: [...found.survivors, ...merged.survivors],
@@ -264,6 +264,20 @@ export function buildReport(ledger, artifactsDir, lensMap = LENS_MAP) {
     covered: coveredEvidence(ledger),
     notCovered: notCovered(lists, tests, lensReturns, red, lensRan),
     spend: { agents: current.length, agentsSource: "recorded returns", tokens: 0, tokensKnown: false, tokensUnit: TOKENS_UNIT },
+  };
+}
+
+// Built from the report by code, never from a model, and it carries no finding content: names, models and counts only.
+export function lensRecordOf(ledger, report, lensMap = LENS_MAP) {
+  const { name: stage, attempt } = ledger.stage;
+  return {
+    stage,
+    attempt,
+    lenses: wiredLensConfig(lensMap, stage, ledger.taskType).lenses.map(({ name, model }) => ({ name, model })),
+    survivors: report.survivors.length,
+    refuted: report.refuted.length,
+    unrefuted: report.unrefuted.length,
+    uncovered: report.uncovered,
   };
 }
 

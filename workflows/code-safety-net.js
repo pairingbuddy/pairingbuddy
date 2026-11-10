@@ -4,6 +4,10 @@ if (args === undefined) return { started: false };
 
 const RESULT_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Update Documentation Result","description":"Return of the update-documentation agent when its prompt gives paths: the pb key it was given, any open ambiguity, the proposed commit subject and the docs it changed, which pb checkpoint reads. An empty list means no change","type":"object","required":["pb_key","ambiguity","commit_subject","files_changed"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question about the docs that a human should settle, or an empty string"},"commit_subject":{"type":"string","description":"Proposed commit subject line, or an empty string when nothing changed"},"files_changed":{"type":"array","description":"Repo-relative paths of files the agent modified","items":{"type":"string","pattern":"^(?!/)"}}},"additionalProperties":false};
 const RUNNER_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Runner Result","description":"Return of the runner agent: the pb key it was given and the CLI's last exit code and its output, relayed unchanged. Evidence lives in the ledger, written by the CLI","type":"object","required":["pb_key","cli_exit_code","cli_output"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"cli_exit_code":{"type":"integer","description":"Exit code of the last pb command run: 0 when it was recorded, not when the tests passed"},"cli_output":{"type":"string","description":"What each pb command printed, unchanged, in order"}},"additionalProperties":false};
+const LENSES = {"rows":[{"row":"intake","stage":"intake","lenses":[{"name":"classification","model":"sonnet"}],"refute":"none","fix":"course-checker"},{"row":"plan-requirements","stage":"plan-requirements","lenses":[{"name":"ambiguity","model":"sonnet"},{"name":"testability","model":"sonnet"},{"name":"scope","model":"sonnet"},{"name":"conflict","model":"sonnet"},{"name":"unknowns","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"bias":true,"synth":true,"refute":"one","maxRefuters":10,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"plan-architecture","stage":"plan-architecture","lenses":[{"name":"enforcement","model":"opus"},{"name":"simplicity","model":"sonnet"},{"name":"testability","model":"sonnet"},{"name":"migration","model":"opus"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"bias":true,"synth":true,"refute":"one","maxRefuters":10,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"plan-tracers","stage":"plan-tracers","lenses":[{"name":"slice-thinness","model":"sonnet"},{"name":"ordering","model":"sonnet"},{"name":"pr-unit-fit","model":"sonnet"},{"name":"dependency-truth","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"synth":true,"refute":"one","maxRefuters":10,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"plan-sequence","stage":"plan-sequence","lenses":[{"name":"ordering","model":"sonnet"},{"name":"task-size","model":"sonnet"},{"name":"testable-acceptance-criteria","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"scenarios","stage":"scenarios","lenses":[{"name":"necessity","model":"sonnet"},{"name":"pyramid-level","model":"sonnet"},{"name":"patterns","model":"sonnet"},{"name":"anti-patterns","model":"sonnet"}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"tdd","stage":"tdd","lenses":[],"agents":[{"role":"lens","phase":"REFACTOR","item":"t3"}],"refute":"none","fix":"none"},{"row":"refactor-scope","stage":"refactor-scope","lenses":[{"name":"scope-serves-intent","model":"sonnet"}],"refute":"none","fix":"none"},{"row":"refactor-apply","stage":"refactor-apply","lenses":[],"agents":[{"role":"refactor-code","item":"step1"}],"refute":"none","fix":"none"},{"row":"config","stage":"code-config","lenses":[],"agents":[{"role":"apply-config-change","item":null}],"refute":"none","fix":"none"},{"row":"safety-net, new_feature and bug_fix","stage":"code-safety-net","taskTypes":["new_feature","bug_fix"],"lenses":[{"name":"code","model":"sonnet"},{"name":"tests","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"safety-net, refactoring","stage":"code-safety-net","taskTypes":["refactoring"],"lenses":[{"name":"behaviour-preservation","model":"opus"},{"name":"tests","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"safety-net, config_change","stage":"code-safety-net","taskTypes":["config_change"],"lenses":[{"name":"config-fit","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":2,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"spike-unit","stage":"spike-unit","lenses":[],"agents":[{"role":"explore-spike-unit","item":"u1"}],"refute":"none","fix":"none"},{"row":"spike-document","stage":"spike-document","lenses":[{"name":"claims-against-recorded-evidence","model":"sonnet"}],"refute":"none","fix":"course-checker"},{"row":"pr-draft","stage":"pr-draft","lenses":[{"name":"claims","model":"sonnet"},{"name":"permanence","model":"sonnet"}],"refute":"none","fix":"course-checker"},{"row":"design-domain, design-gallery","stage":"design-domain","lenses":[],"agents":[{"role":"design-ux-explorer","item":null}],"refute":"none","fix":"none"},{"row":"design-domain, design-gallery","stage":"design-gallery","lenses":[],"agents":[{"role":"design-ux-gallery-generator","item":null}],"refute":"none","fix":"none"},{"row":"design-build critique","stage":"design-build","lenses":[{"name":"mental-model-alignment","model":"sonnet"},{"name":"information-architecture","model":"sonnet"},{"name":"affordances","model":"sonnet"},{"name":"cognitive-load","model":"sonnet"},{"name":"state-design","model":"sonnet"},{"name":"flow-integrity","model":"sonnet"}],"refute":"none","fix":"none"}],"lightReview":{"model":"sonnet","maxFocuses":2,"rule":{"test":"test-quality","production":"code-smell"},"catalog":[{"name":"code-smell","brief":"Look for long functions, deep nesting, dead code, magic values and needless complexity. Do not suggest behaviour the tests do not require."},{"name":"naming-and-domain","brief":"Look for names that hide intent or drift from the domain terms used elsewhere."},{"name":"duplication-against-corpus","brief":"Look for logic that repeats something that already exists in the corpus or elsewhere in the change."},{"name":"test-quality","brief":"Look for unclear test structure, missing or weak assertions, logic in tests, shared state and other test smells. Do not report missing scenarios or coverage gaps."},{"name":"test-level","brief":"Look for a test at the wrong pyramid level, mocking what it should exercise or exercising what it should mock."},{"name":"design-fit","brief":"Look for responsibilities, coupling and dependencies that do not fit the surrounding design. Do not suggest behaviour the tests do not require."}]}};
+const LENS_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Lens Result","description":"Return of the lens agent: the pb key it was given, any open ambiguity and its findings","type":"object","required":["pb_key","ambiguity","findings"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":["string","null"],"description":"An open question that affected the review, or null"},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["rule","severity","kind","claim","where"],"properties":{"rule":{"type":"string"},"severity":{"type":"string","enum":["high","medium","low"]},"kind":{"type":"string","enum":["fix-here","risk","drift"]},"claim":{"type":"string","description":"What is wrong, in one or two sentences, grounded in evidence the agent read"},"where":{"type":"string","description":"A file path with an optional line, or the subject item"}}}}},"additionalProperties":false};
+const REFUTER_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Refuter Verdict","description":"Return of a refuter: the finding it attacked and whether that finding stood. The finding id is the same value as the item in its pb_key and label, so a verdict joins to its finding without reading text","type":"object","required":["pb_key","finding_id","verdict","ambiguity"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"finding_id":{"type":"string","pattern":"^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*-[1-9][0-9]*$","description":"The finding this refuter attacked: the item in its pb_key"},"verdict":{"type":"string","enum":["survives","refuted"],"description":"survives: the attack failed and the finding stands. refuted: the assumption it stood on does not hold"},"ambiguity":{"type":["string","null"],"description":"What in the finding or its evidence was unclear enough to affect the verdict, or null when nothing was"}},"additionalProperties":false};
+const STAGES = {"v":1,"defaultTaskType":"config_change","maxAgents":1000,"stageMaxAgents":{"code-tdd":600},"migratedTypes":["config_change","bug_fix","new_feature"],"newPathAgents":["apply-config-change","lens","refuter","runner"],"gateClasses":{"continue":{"auto":"passes when evidence is complete and no stop condition applies"},"conditional":{"auto":"passes only when the classifier reports certain"},"decide":{"auto":"always asks the human"}},"taskTypes":{"config_change":{"nodes":[{"name":"code-config","gate":null,"evidence":["artifact:apply-config-change","checkpoint:config"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:task-end":{"class":"continue"}}},"bug_fix":{"nodes":[{"name":"code-scenarios","gate":"G:scenarios","evidence":["artifact:enumerate-scenarios-and-test-cases"]},{"name":"code-tdd","gate":null,"evidence":["artifact:create-test-placeholders","checkpoint:placeholders","tests:cycle","artifact:verify-test-coverage"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:scenarios":{"class":"continue"},"G:task-end":{"class":"continue"}}},"new_feature":{"nodes":[{"name":"code-scenarios","gate":"G:scenarios","evidence":["artifact:enumerate-scenarios-and-test-cases"]},{"name":"code-tdd","gate":null,"evidence":["artifact:create-test-placeholders","checkpoint:placeholders","tests:cycle","artifact:verify-test-coverage"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:scenarios":{"class":"continue"},"G:task-end":{"class":"continue"}}},"publish":{"nodes":[{"name":"pr-draft","gate":"G:publish","evidence":["artifact:draft-pull-request"]}],"gates":{"G:publish":{"class":"continue"}}}}};
 
 // One read-only lens agent per lens, each at its own model. rankLensReturns, settleLensRound and acceptVerdict come from the stage's pb-inline-module line.
 // config.schema is the lens-result schema; each call pins its own key into it, so the tap files the return. The tests'
@@ -136,6 +140,22 @@ function asPromptData(value) {
 // The corpus paths are evidence to read, one escaped JSON line per path, or 'none' when the corpus is empty or not an array.
 function corpusBlock(corpus) {
   return Array.isArray(corpus) && corpus.length > 0 ? corpus.map(asPromptData).join('\n') : 'none';
+}
+
+// The corpus is what pb snapshot found, relayed by the runner as the JSON the CLI printed. A snapshot that failed is no
+// corpus. Returns { paths, taskType }: the paths to attack and the task type pb snapshot printed beside them, for choosing
+// the lens row.
+function snapshotResult(run) {
+  const { cli_exit_code: exitCode, cli_output: output } = run.result;
+  let printed = null;
+  try {
+    printed = JSON.parse(output);
+  } catch {
+    // Left null: the check below names the failure.
+  }
+  const usable = exitCode === 0 && printed !== null && printed.ok === true && Array.isArray(printed.paths) && printed.paths.every((p) => typeof p === 'string');
+  if (!usable) throw new Error(`pb snapshot gave no corpus (exit ${exitCode}): ${output}`);
+  return { paths: printed.paths, taskType: printed.taskType };
 }
 
 // What every stage does alike. RUNNER_SCHEMA comes from the stage's own pb-inline line, and buildKey, buildLabel and
@@ -328,6 +348,101 @@ function readLabel(text) {
   }
 }
 
+// Ranks, caps and settles what the lenses returned. Pure, with no imports, so the bundler can inline it into a workflow
+// and the stage report can run the same rules over the recorded returns.
+
+// A finding with a rule is blocking; one without is demoted to low severity.
+function tagFinding(lensName, finding, n) {
+  const hasRule = String(finding.rule ?? '').trim() !== '';
+  return { ...finding, id: `${lensName}-${n + 1}`, ...(hasRule ? { blocking: true } : { blocking: false, severity: 'low' }) };
+}
+
+// A stage's lens config from its row in lenses.json: the one shape lensAttack is given and the report reads, so both
+// apply the same lenses, refute setting and caps. stage is the stage name, which a row names bare or with the code- prefix. A row with taskTypes (the
+// safety-net rows, one per task type) is picked by taskType and wires all its lenses. Any other row wires one lens, the
+// first. The stages whose rows have no lens call yet get no lenses.
+function wiredLensConfig(lensMap, stage, taskType) {
+  const rows = lensMap.rows.filter((candidate) => candidate.stage === stage || `code-${candidate.stage}` === stage);
+  const row = rows.find((candidate) => candidate.taskTypes?.includes(taskType)) ?? rows.find((candidate) => candidate.taskTypes === undefined);
+  if (row === undefined) return { lenses: [] };
+  const { refute, maxRefuters, maxFindingsPerLens } = row;
+  return { lenses: row.taskTypes === undefined ? row.lenses.slice(0, 1) : row.lenses, refute, maxRefuters, maxFindingsPerLens };
+}
+
+// A verdict counts only for the finding it was sent for: the refuter returns the finding_id it believes it attacked, and a
+// verdict naming another id is dropped, so that finding stays unrefuted. sentId is the id the workflow sent, which the
+// refuter's key and label carry too. Returns the verdict, or null.
+function acceptVerdict(sentId, verdict) {
+  return verdict !== null && verdict !== undefined && verdict.finding_id === sentId ? verdict : null;
+}
+
+const KIND_ORDER = ['fix-here', 'risk', 'drift'];
+const SEVERITY_ORDER = ['high', 'medium', 'low'];
+// A missing or unknown value sorts last. Array.prototype.sort is stable, so ties keep lens then finding order.
+const rankIn = (field, order) => (finding) => {
+  const at = order.indexOf(finding[field]);
+  return at === -1 ? order.length : at;
+};
+const kindRank = rankIn('kind', KIND_ORDER);
+const severityRank = rankIn('severity', SEVERITY_ORDER);
+const byRank = (a, b) => kindRank(a) - kindRank(b) || severityRank(a) - severityRank(b);
+
+const hasFindings = (result) => result !== null && result !== undefined && Array.isArray(result.findings);
+
+// config: { refute, maxRefuters, maxFindingsPerLens }, as in wiredLensConfig. How many top-ranked findings get a refuter;
+// null when the stage does not refute.
+function refuterCountOf({ refute, maxRefuters }) {
+  return refute === undefined || refute === 'none' ? null : maxRefuters;
+}
+
+// returns: one { lens: { name }, result } per configured lens, in lens order. A null or missing result means that lens is uncovered.
+// Each lens's findings are tagged and ranked and cut to config.maxFindingsPerLens (no cap keeps all), then all are ranked
+// together. The plan splits that list: sent is what goes to a refuter (the top maxRefuters, or everything when the stage
+// does not refute), pastCut is the rest, which nobody attacks.
+function rankLensReturns(returns, config) {
+  const refuterCount = refuterCountOf(config);
+  const perLens = returns.map(({ lens, result }) => {
+    const covered = hasFindings(result) && !(lens.needsCorpus === true && Array.isArray(config.corpus) && config.corpus.length === 0);
+    const ranked = (covered ? result.findings.map((finding, n) => tagFinding(lens.name, finding, n)) : []).sort(byRank);
+    const kept = config.maxFindingsPerLens === undefined ? ranked : ranked.slice(0, config.maxFindingsPerLens);
+    return { lens: lens.name, covered, kept, dropped: ranked.length - kept.length };
+  });
+  const ranked = perLens.flatMap(({ kept }) => kept).sort(byRank);
+  const cut = refuterCount === null ? ranked.length : refuterCount;
+  return {
+    refuting: refuterCount !== null,
+    uncovered: perLens.filter(({ covered }) => !covered).map(({ lens }) => lens),
+    trimmed: perLens.filter(({ dropped }) => dropped > 0).map(({ lens, dropped }) => ({ lens, dropped })),
+    sent: ranked.slice(0, cut),
+    pastCut: ranked.slice(cut),
+  };
+}
+
+// verdicts: the verdicts acceptVerdict let through, one per finding at most. They count only when the plan refutes. A sent
+// finding with a "refuted" verdict moves from survivors to refuted; a sent finding with no verdict is unrefuted, like every
+// finding past the cut, and unrefuted findings never block.
+// stopReason, attempts and lessons are neutral: lensAttack sets stopReason, and later tasks fill the rest.
+function settleLensRound({ refuting, uncovered, sent, pastCut }, verdicts = []) {
+  const byId = new Map(refuting ? verdicts.map((verdict) => [verdict.finding_id, verdict]) : []);
+  const answered = refuting ? sent.filter(({ id }) => byId.has(id)) : sent;
+  const unanswered = refuting ? sent.filter(({ id }) => !byId.has(id)) : [];
+  const isRefuted = ({ id }) => byId.get(id)?.verdict === 'refuted';
+  return {
+    uncovered,
+    refuted: answered.filter(isRefuted),
+    unrefuted: [...unanswered, ...pastCut].map((finding) => ({ ...finding, blocking: false })),
+    attempts: 0,
+    lessons: [],
+    stopReason: null,
+    survivors: answered.filter((finding) => !isRefuted(finding)),
+  };
+}
+
+// The report's one call: rank, then settle over the verdicts the tap recorded.
+function mergeLensReturns(returns, config, verdicts = []) {
+  return settleLensRound(rankLensReturns(returns, config), verdicts);
+}
+
 // One shell word for a path or an argument, unchanged when a shell would read it as it stands. Workflow bundles inline
 // this file, so it imports nothing.
 const SHELL_SAFE = /^[\w@%+=:,./-]+$/;
@@ -337,9 +452,27 @@ const shellWord = (word) => (SHELL_SAFE.test(word) ? word : `'${word.replaceAll(
 const missing = missingArgument();
 if (missing !== null) return missing;
 
+const stage = 'code-safety-net';
+const snapshot = await runCommands(stage, ['snapshot'], { round: 1 });
+const { paths: corpus, taskType } = snapshotResult(snapshot);
+
+// Three spawns are reserved: the snapshot runner (already spawned), the docs agent and the finishing runner (still to come).
+const maxAgents = STAGES.stageMaxAgents[stage] ?? STAGES.maxAgents;
+const agentBudget = maxAgents - 3;
+
+const lensResult = await lensAttack({
+  stage,
+  attempt: args.attempt,
+  ...wiredLensConfig(LENSES, stage, taskType),
+  agentBudget,
+  corpus,
+  subject: { subject_diff: '.pairingbuddy/run/subject.diff', changed: '.pairingbuddy/run/changed.json' },
+  schema: LENS_SCHEMA,
+  refuterSchema: REFUTER_SCHEMA,
+});
+
 phase('update-documentation');
 
-const stage = 'code-safety-net';
 const role = 'update-documentation';
 const pbKey = buildKey({ stage, role, item: null, round: 1, attempt: args.attempt });
 const label = buildLabel({ stage, phase: null, role, item: null, round: 1 });
@@ -358,6 +491,6 @@ const prompt = [
 
 const result = await agent(prompt, { agentType: 'pairingbuddy:update-documentation', label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
-const runner = await runCommands(stage, [`checkpoint --step docs --from ${pbKey}`, 'test --full', 'stage finish']);
+const runner = await runCommands(stage, [`checkpoint --step docs --from ${pbKey}`, 'test --full', 'stage finish'], { round: 2 });
 
-return { started: true, pbKey, label, result, runner };
+return { started: true, pbKey, label, result, lensAttack: lensResult, runner };

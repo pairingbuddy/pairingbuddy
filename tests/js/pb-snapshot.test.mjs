@@ -295,3 +295,17 @@ test("corpus_sorts_by_code_point", () => {
 
   assert.deepEqual(nearest, [bmp, astral], "U+FF5E sorts before U+1F600, as its code point does, though its UTF-16 unit sorts after");
 });
+
+test("snapshot_prints_ledger_task_type", () => {
+  const repo = makeRepo({ openTask: true, remote: true, ledger: { taskType: "refactoring" } });
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
+  assert.equal(opened.code, 0, `setup: pb unit open, stderr: ${opened.stderr}`);
+
+  const result = pb(repo, "snapshot");
+
+  assert.equal(result.code, 0, `pb snapshot succeeds, stderr: ${result.stderr}`);
+  const printed = JSON.parse(result.stdout);
+  assert.equal(printed.ok, true, "the output says ok");
+  assert.ok(Array.isArray(printed.paths), "the output still carries the corpus paths");
+  assert.equal(printed.taskType, "refactoring", "the printed taskType is the run ledger's taskType");
+});

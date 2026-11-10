@@ -222,6 +222,7 @@
     {
       "row": "safety-net, new_feature and bug_fix",
       "stage": "code-safety-net",
+      "taskTypes": ["new_feature", "bug_fix"],
       "lenses": [
         {
           "name": "code",
@@ -245,6 +246,7 @@
     {
       "row": "safety-net, refactoring",
       "stage": "code-safety-net",
+      "taskTypes": ["refactoring"],
       "lenses": [
         {
           "name": "behaviour-preservation",
@@ -268,6 +270,7 @@
     {
       "row": "safety-net, config_change",
       "stage": "code-safety-net",
+      "taskTypes": ["config_change"],
       "lenses": [
         {
           "name": "config-fit",

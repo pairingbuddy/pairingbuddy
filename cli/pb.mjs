@@ -21,7 +21,7 @@ import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, cha
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
-import { buildReport, closeStage, finishProblems, newestReturn, perTestOf, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
+import { buildReport, closeStage, finishProblems, lensRecordOf, newestReturn, perTestOf, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
@@ -734,7 +734,9 @@ function stageFinish(args) {
     const report = buildReport(ledger, artifactsDir);
     writeReport(reportPathOf(root), report);
     finished = { stage: name, attempt, agents: report.spend.agents };
-    return closeStage(ledger, "done", report.spend.agents);
+    const closed = closeStage(ledger, "done", report.spend.agents);
+    if (!safetyNetStages(contract).includes(name)) return closed;
+    return { ...closed, lenses: { ...closed.lenses, "safety-net": lensRecordOf(ledger, report) } };
   });
   if (missing !== null) throw new Refusal(`${missing}. The run stopped: pb stage fail clears it`);
   return { ok: true, ...finished, report: reportPathOf(root) };
@@ -1409,7 +1411,9 @@ function snapshot(args) {
   const paths = buildCorpus(insideRepo(root, [...inRepoDocs(root), ...conventionPaths(root), "CLAUDE.md", ...nearest]), (p) => existsSync(join(root, p)));
   const runDir = join(root, ".pairingbuddy", "run");
   replaceFiles([[join(runDir, SUBJECT_DIFF_FILE), diff], [join(runDir, CHANGED_FILE), jsonText(changed)], [join(runDir, CORPUS_FILE), jsonText({ paths })]]);
-  return { ok: true, paths };
+  const ledgerPath = join(taskDirOf(root), "ledger.json");
+  const taskType = existsSync(ledgerPath) ? readLedger(ledgerPath).taskType : null;
+  return { ok: true, paths, taskType };
 }
 
 function insideRepo(root, candidates) {

@@ -4,6 +4,11 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { readFile } from "node:fs/promises";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { lensRow, writeCleanLensReturn } from "./lens-return-fixture.mjs";
+import { buildReport } from "../../shared-node/stage-run.mjs";
 import { graphFor } from "../../shared-node/stage-graph.mjs";
 import { plainName } from "../../shared-node/plain-names.mjs";
 import { renderReport } from "../../shared-node/report.mjs";
@@ -845,4 +850,22 @@ test("report-stays-self-contained-with-light-palette", async () => {
   assert.ok(usedBy(".badge.stopped", "--stopped"), "the STOPPED badge background uses the --stopped colour");
   assert.ok(usedBy(".badge.done", "--done"), "the DONE badge background uses the --done colour");
   assert.ok(usedBy(".looped p strong", "--amber"), "the amber looping label uses the --amber colour");
+});
+
+// buildReport merges the lens row of the ledger's taskType, the row the workflow ran.
+test("build-report-merges-by-ledger-task-type", async () => {
+  const [{ name: returned }, { name: notReturned }] = lensRow("code-safety-net", "config_change").lenses;
+  const attempt = 3;
+  const artifactsDir = mkdtempSync(join(tmpdir(), "report-task-type-"));
+  writeCleanLensReturn(artifactsDir, "code-safety-net", returned, attempt);
+  const ledger = { taskType: "config_change", stage: { name: "code-safety-net", status: "active", runId: "wf_1", attempt, startedAt: null }, tests: {}, checkpoints: [] };
+
+  let report;
+  try {
+    report = buildReport(ledger, artifactsDir);
+  } finally {
+    rmSync(artifactsDir, { recursive: true, force: true });
+  }
+
+  assert.deepEqual(report.uncovered, [notReturned], "the config_change row's other lens has no return, so it alone is uncovered");
 });
