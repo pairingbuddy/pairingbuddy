@@ -5,7 +5,10 @@
 // (code-scenarios.lens.<slug>) and matches lens-result.schema.json; the stage report's survivors and uncovered are arrays
 // and equal what shared-node/lens-merge.mjs merges from the recorded returns; the stage's spend and the workflow's
 // agentsUsed count the lens agent; and the lens agent ran at the model contracts/lenses.json names, as the smoke env maps
-// that alias. The run may go on past scenarios. The report and artifacts are copied the moment the ledger shows the stage
+// that alias. Refuters: the stage spawns at most its row's maxRefuters and its agents stay within maxAgents; each filed
+// verdict's finding_id is its key's item and names a finding the ranked lens return sent; the report's survivors, refuted
+// and unrefuted equal the shared merge over the filed lens returns and verdicts. With no findings the refuter checks hold
+// vacuously and S4 says so. The run may go on past scenarios. The report and artifacts are copied the moment the ledger shows the stage
 // done, because the next stage overwrites the report and pb task end removes the artifacts. S4 grows with each lens PR.
 //
 // Run it by hand, in a separate shell, from the repo root. It spends money, so no suite collects it:
@@ -18,7 +21,8 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { buildKey, lensSlug, parseKey } from "../../shared-node/keys.mjs";
-import { mergeLensReturns, wiredLenses } from "../../shared-node/lens-merge.mjs";
+import { parseLabel } from "../../shared-node/labels.mjs";
+import { acceptVerdict, mergeLensReturns, rankLensReturns, wiredLensConfig } from "../../shared-node/lens-merge.mjs";
 import { readReturn, returnsAt } from "../../shared-node/stage-run.mjs";
 import { violations } from "../js/schema-check.mjs";
 import { Budget, REPO_ROOT, SmokeError, cleanEnv, runClaude } from "./claude-run.mjs";
@@ -32,6 +36,12 @@ const LENS_ROLE = "lens";
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 const LENS_MAP = readJson(join(REPO_ROOT, "contracts", "lenses.json"));
 const LENS_SCHEMA = readJson(join(REPO_ROOT, "contracts", "schemas", "lens-result.schema.json"));
+const REFUTER_SCHEMA = readJson(join(REPO_ROOT, "contracts", "schemas", "refuter-verdict.schema.json"));
+const STAGES = readJson(join(REPO_ROOT, "contracts", "stages.json"));
+const REFUTER_ROLE = "refuter";
+const LENS_CONFIG = wiredLensConfig(LENS_MAP, STAGE);
+const ROW = LENS_MAP.rows.find(({ stage }) => `code-${stage}` === STAGE);
+const MAX_AGENTS = STAGES.stageMaxAgents[STAGE] ?? STAGES.maxAgents;
 // The only ANTHROPIC_ names a smoke run may carry: the alias-to-model mapping cleanEnv sets.
 const MODEL_ENV = (alias) => `ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`;
 
@@ -72,7 +82,7 @@ class ScenariosRecorder extends RunRecorder {
 }
 
 function lensKeys(stage) {
-  return wiredLenses(LENS_MAP, STAGE).map((lens) => ({ lens, key: buildKey({ stage: STAGE, role: LENS_ROLE, item: lensSlug(lens.name), round: 1, attempt: stage.attempt }) }));
+  return LENS_CONFIG.lenses.map((lens) => ({ lens, key: buildKey({ stage: STAGE, role: LENS_ROLE, item: lensSlug(lens.name), round: 1, attempt: stage.attempt }) }));
 }
 
 function assertLensReturns({ artifacts }, keys) {
@@ -89,12 +99,34 @@ function assertLensReturns({ artifacts }, keys) {
   });
 }
 
-function assertReport({ dir }, stage, returns) {
+// The verdicts filed at this attempt, each checked against its key and the findings the ranked lens return sent. The
+// latest round per finding speaks, through the same acceptVerdict the workflow and the report use.
+function assertVerdicts({ artifacts }, stage, returns) {
+  const plan = rankLensReturns(returns, LENS_CONFIG);
+  const sentIds = plan.sent.map(({ id }) => id);
+  const filed = returnsAt(artifacts, stage).filter(({ role }) => role === REFUTER_ROLE).sort((a, b) => a.round - b.round);
+  check(filed.length <= ROW.maxRefuters, `${filed.length} refuter verdicts are filed in ${STAGE}, over maxRefuters ${ROW.maxRefuters}`);
+  const latest = new Map();
+  for (const { item, pbKey } of filed) {
+    const verdict = readReturn(artifacts, pbKey);
+    check(verdict !== null, `the return under ${pbKey} does not echo its key`);
+    const problems = violations(REFUTER_SCHEMA, verdict);
+    check(problems.length === 0, `the return under ${pbKey} breaks refuter-verdict.schema.json: ${problems}`);
+    check(verdict.finding_id === item, `the verdict under ${pbKey} names finding ${verdict.finding_id}, its key names ${item}`);
+    check(sentIds.includes(item), `the verdict under ${pbKey} names ${item}, which the ranked lens return did not send (sent: ${sentIds})`);
+    latest.set(item, acceptVerdict(item, verdict));
+  }
+  return { plan, filed: filed.length, verdicts: [...latest.values()].filter((verdict) => verdict !== null) };
+}
+
+function assertReport({ dir }, stage, returns, verdicts) {
   const report = readJson(join(dir, "report.json"));
   check(report.stage === STAGE && report.attempt === stage.attempt, `the report is for ${report.stage} attempt ${report.attempt}`);
-  check(Array.isArray(report.survivors) && Array.isArray(report.uncovered), `survivors is ${typeof report.survivors}, uncovered is ${typeof report.uncovered}`);
-  const merged = mergeLensReturns(returns);
-  check(isDeepStrictEqual(report.survivors, merged.survivors), `report survivors differ from the merge of the recorded returns: ${report.survivors.length} vs ${merged.survivors.length}`);
+  for (const list of ["survivors", "refuted", "unrefuted", "uncovered"]) check(Array.isArray(report[list]), `report ${list} is ${typeof report[list]}`);
+  const merged = mergeLensReturns(returns, LENS_CONFIG, verdicts);
+  for (const list of ["survivors", "refuted", "unrefuted"]) {
+    check(isDeepStrictEqual(report[list], merged[list]), `report ${list} differ from the merge of the recorded returns and verdicts: ${report[list].length} vs ${merged[list].length}`);
+  }
   check(isDeepStrictEqual(report.uncovered, merged.uncovered), `report uncovered is ${JSON.stringify(report.uncovered)}, the merge gives ${JSON.stringify(merged.uncovered)}`);
   check(!report.notCovered.includes("no lens round ran in this stage"), "the report says no lens round ran");
   return { report, merged };
@@ -114,23 +146,46 @@ function workflowReturn(stream) {
   return null;
 }
 
-function assertSpend({ artifacts, entry }, stage, keys, report, wfReturn) {
+function assertSpend({ artifacts, entry }, stage, keys, report, wfReturn, refuterSpawns) {
   // The runner's own return is filed after the stage finish it ran, so the stage's spend cannot count it.
   const filed = returnsAt(artifacts, stage).filter(({ role }) => role !== "runner");
   const lensFiled = filed.filter(({ role }) => role === LENS_ROLE).map(({ pbKey }) => pbKey);
   check(isDeepStrictEqual(lensFiled, keys.map(({ key }) => key).sort()), `lens returns at attempt ${stage.attempt} are ${lensFiled}`);
   check(report.spend.agents === filed.length && entry.spend.agents === filed.length, `spend agents is ${report.spend.agents} in the report and ${entry.spend.agents} in the ledger, with ${filed.length} non-runner returns filed (lens included)`);
   check(wfReturn !== null, "no code-scenarios workflow return was found in the stream's task output files");
-  check(wfReturn.lensAttack.agentsUsed === keys.length, `lensAttack.agentsUsed is ${wfReturn.lensAttack.agentsUsed}, expected ${keys.length}`);
-  check(isDeepStrictEqual(wfReturn.lensAttack.survivors, report.survivors) && isDeepStrictEqual(wfReturn.lensAttack.uncovered, report.uncovered), "the workflow's merged result differs from the report's");
+  check(wfReturn.lensAttack.agentsUsed === keys.length + refuterSpawns, `lensAttack.agentsUsed is ${wfReturn.lensAttack.agentsUsed}, expected ${keys.length} lenses + ${refuterSpawns} refuters`);
+  for (const list of ["survivors", "refuted", "unrefuted", "uncovered"]) {
+    check(isDeepStrictEqual(wfReturn.lensAttack[list], report[list]), `the workflow's merged ${list} differs from the report's`);
+  }
   return { filed: filed.length, agentsUsed: wfReturn.lensAttack.agentsUsed };
 }
 
 const transcriptModels = (path) => [...new Set(readFileSync(path, "utf8").trim().split("\n").map((line) => JSON.parse(line)).filter(({ type }) => type === "assistant").map(({ message }) => message.model))];
 
+const labelOf = (text) => {
+  try {
+    return parseLabel(text);
+  } catch {
+    return null;
+  }
+};
+
+// Every agent the workflow spawned whose label names this stage, from the metas beside the transcripts.
+function stageAgents(stream) {
+  return transcriptDirs(stream).filter(existsSync).flatMap((dir) => readdirSync(dir).filter((file) => /^agent-.*\.meta\.json$/.test(file)).map((file) => ({ dir, file, meta: readJson(join(dir, file)) }))).filter(({ meta }) => labelOf(meta.description)?.stage === STAGE);
+}
+
+// The caps: refuter spawns within the row's maxRefuters, all the stage's agents within its maxAgents.
+function assertCaps(agents) {
+  const refuters = agents.filter(({ meta }) => meta.agentType === `pairingbuddy:${REFUTER_ROLE}`);
+  check(refuters.length <= ROW.maxRefuters, `${refuters.length} refuters spawned in ${STAGE}, over maxRefuters ${ROW.maxRefuters}`);
+  check(agents.length <= MAX_AGENTS, `${agents.length} agents spawned in ${STAGE}, over maxAgents ${MAX_AGENTS}`);
+  return { refuters: refuters.length, agents: agents.length, maxRefuters: ROW.maxRefuters, maxAgents: MAX_AGENTS };
+}
+
 // Each lens agent's transcript, beside the meta the recorder reads for its label, names the model that answered.
-function assertLensModels(stream, keys, env) {
-  const lensAgents = transcriptDirs(stream).filter(existsSync).flatMap((dir) => readdirSync(dir).filter((file) => /^agent-.*\.meta\.json$/.test(file)).map((file) => ({ dir, file, meta: readJson(join(dir, file)) }))).filter(({ meta }) => meta.agentType === "pairingbuddy:lens" && meta.description.includes(` ${STAGE} `));
+function assertLensModels(agents, keys, env) {
+  const lensAgents = agents.filter(({ meta }) => meta.agentType === "pairingbuddy:lens");
   check(lensAgents.length === keys.length, `${lensAgents.length} lens agents ran in ${STAGE}, expected ${keys.length}`);
   return keys.map(({ lens }) => {
     const expected = env[MODEL_ENV(lens.model)];
@@ -162,13 +217,19 @@ async function runS4(budget, record, out, type, task, pluginDir) {
     const stage = { name: STAGE, attempt: captured.entry.attempt };
     const keys = lensKeys(stage);
     const returns = assertLensReturns(captured, keys);
-    const { report } = assertReport(captured, stage, returns);
+    const refuting = assertVerdicts(captured, stage, returns);
+    const { report } = assertReport(captured, stage, returns, refuting.verdicts);
+    const agents = stageAgents(recorder.stream);
+    result.caps = assertCaps(agents);
     const wfReturn = workflowReturn(recorder.stream);
     if (wfReturn !== null) writeFileSync(join(captured.dir, "workflow-return.json"), JSON.stringify(wfReturn, null, 2));
-    result.spend = assertSpend(captured, stage, keys, report, wfReturn);
-    result.models = assertLensModels(recorder.stream, keys, env);
+    result.spend = assertSpend(captured, stage, keys, report, wfReturn, result.caps.refuters);
+    result.models = assertLensModels(agents, keys, env);
+    const findings = refuting.plan.sent.length + refuting.plan.pastCut.length;
+    result.refuters = { findings, sent: refuting.plan.sent.length, spawned: result.caps.refuters, filed: refuting.filed, note: findings === 0 ? "no findings to refute: the refuter checks hold vacuously" : "" };
+    if (findings === 0) console.log("S4: the lens returned no findings, so no findings to refute; the refuter checks hold vacuously");
     result.keys = keys.map(({ key }) => key);
-    result.counts = { survivors: report.survivors.length, uncovered: report.uncovered.length };
+    result.counts = { survivors: report.survivors.length, refuted: report.refuted.length, unrefuted: report.unrefuted.length, uncovered: report.uncovered.length };
     result.passed = true;
   } catch (e) {
     if (!(e instanceof SmokeError)) throw e;
