@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { lensMapProblems } from "../../shared-node/lenses-contract.mjs";
+import { KEY_TOKEN } from "../../shared-node/keys.mjs";
 const REAL_LENS_MAP = JSON.parse(readFileSync(new URL("../../contracts/lenses.json", import.meta.url), "utf8"));
 
 test("contracts/lenses.json parses and every row has a stage id and a lenses list whose entries each have a non-empty name, in the D8 lens-map shape the label-contract test already reads", () => {
@@ -59,4 +60,22 @@ test("A cap of 0 is reported, on a refuting row or a row that only names a cap",
   assert.match(refuting, /scenarios: maxFindingsPerLens must be a positive integer/);
   assert.match(named, /scenarios: maxFindingsPerLens must be a positive integer/);
   assert.deepEqual(lensMapProblems(zeroCap({ refute: "none" })), [], "a non-refuting row needs no caps");
+});
+
+// Scenario: misalignment-empty-corpus. A lens that needs a corpus declares "needsCorpus" as a boolean on its entry.
+test("misalignment_needs_corpus_boolean", () => {
+  const lensMap = (needsCorpus) => ({ rows: [{ row: "scenarios", stage: "scenarios", lenses: [{ name: "corpus-misalignment", model: "sonnet", needsCorpus }] }] });
+
+  assert.deepEqual(lensMapProblems(lensMap(true)), [], "a boolean true needsCorpus is accepted");
+  assert.deepEqual(lensMapProblems(lensMap(false)), [], "a boolean false needsCorpus is accepted");
+  assert.match(lensMapProblems(lensMap("yes")).join("\n"), /scenarios: lens corpus-misalignment needsCorpus must be a boolean/, "a non-boolean needsCorpus is reported");
+});
+
+test("A lens name that fails the key rule is reported, and every real lens name passes it", () => {
+  const named = (name) => ({ rows: [{ row: "scenarios", stage: "scenarios", lenses: [{ name, model: "sonnet" }] }] });
+
+  assert.match(lensMapProblems(named("pyramid level")).join("\n"), /scenarios: lens pyramid level name does not fit the key rule/, "a name with a space is reported");
+  assert.match(lensMapProblems(named("PR-unit-fit")).join("\n"), /scenarios: lens PR-unit-fit name does not fit the key rule/, "a name with a capital is reported");
+  assert.deepEqual(lensMapProblems(named("pyramid-level")), [], "a kebab-case name passes");
+  for (const { lenses } of REAL_LENS_MAP.rows) for (const { name } of lenses) assert.ok(KEY_TOKEN.test(name), `${name} fits the key rule`);
 });

@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { runScript } from "./harness.mjs";
 import { buildLabel } from "../../shared-node/labels.mjs";
 import { wiredLensConfig } from "../../shared-node/lens-merge.mjs";
+import { buildKey, lensSlug } from "../../shared-node/keys.mjs";
 import { buildReport } from "../../shared-node/stage-run.mjs";
 
 // Real workflows are built by scripts/build-workflows.mjs, so the wrapper stage goes through that bundler (same preamble, same inlined modules). The temp root only links shared-node and the real shared sources, so nothing in the repo is written.
@@ -578,4 +579,65 @@ test("report-and-workflow-agree-when-the-lens-returned-nothing", async () => {
   assert.deepEqual(result.uncovered, ["necessity"]);
   assert.deepEqual(report.uncovered, result.uncovered, "uncovered match");
   assert.deepEqual(idsOf(report.survivors), idsOf(result.survivors), "survivors match");
+});
+
+// Scenario: misalignment-empty-corpus. Merge marks needsCorpus lenses uncovered when config.corpus is [], never by lens name.
+test("misalignment_lens_uncovered_when_corpus_empty", async () => {
+  const config = { ...configWith([{ name: "corpus-misalignment", model: "sonnet", needsCorpus: true }]), corpus: [] };
+
+  const { result } = await runLensAttack(config, async () => lensReturn([]));
+
+  assert.deepEqual(result.uncovered, ["corpus-misalignment"], "a needsCorpus lens with an empty corpus is uncovered even though it returned no findings");
+});
+
+test("misalignment_lens_clean_when_corpus_nonempty", async () => {
+  const lenses = [{ name: "corpus-misalignment", model: "sonnet", needsCorpus: true }, { name: "necessity", model: "sonnet" }];
+  const nonEmpty = { ...configWith(lenses), corpus: ["docs/a.md"] };
+  const empty = { ...configWith(lenses), corpus: [] };
+
+  const { result: withCorpus } = await runLensAttack(nonEmpty, async () => lensReturn([]));
+  const { result: withoutCorpus } = await runLensAttack(empty, async () => lensReturn([]));
+
+  assert.deepEqual(withCorpus.uncovered, [], "a needsCorpus lens returning no findings is covered when the corpus is non-empty");
+  assert.deepEqual(withoutCorpus.uncovered, ["corpus-misalignment"], "only the needsCorpus lens is uncovered when the corpus is empty");
+});
+
+test("misalignment_report_agrees_with_workflow", async () => {
+  const lens = { name: "corpus-misalignment", model: "sonnet", needsCorpus: true };
+  const lensMap = { rows: [{ stage: "scenarios", lenses: [lens], refute: "none" }] };
+  const config = { ...wiredLensConfig(lensMap, "code-scenarios"), stage: "code-scenarios", subject: "task", attempt: 1, corpus: [] };
+  const key = buildKey({ stage: "code-scenarios", role: "lens", item: lensSlug(lens.name), round: 1, attempt: 1 });
+  const root = mkdtempSync(join(tmpdir(), "pb-corpus-"));
+  const artifactsDir = join(root, "run", "task", "artifacts");
+  mkdirSync(artifactsDir, { recursive: true });
+  // the corpus the stage used, as pb snapshot writes it: run/corpus.json, an empty manifest
+  writeFileSync(join(root, "run", "corpus.json"), JSON.stringify({ paths: [] }));
+  try {
+    const { result } = await runLensAttack(config, async () => lensReturn([]));
+    writeFileSync(join(artifactsDir, `${key}.json`), JSON.stringify({ ...lensReturn([]), pb_key: key }));
+    const stage = { name: "code-scenarios", status: "active", runId: "wf_1", attempt: 1, startedAt: null };
+
+    const report = buildReport({ stage, tests: {}, checkpoints: [] }, artifactsDir, lensMap);
+
+    assert.deepEqual(result.uncovered, [lens.name], "the workflow marks the needsCorpus lens uncovered");
+    assert.deepEqual(report.uncovered, result.uncovered, "the report, reading run/corpus.json, lists the same uncovered lens");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// buildReport reads the corpus pb snapshot wrote, and a file it cannot trust is a refusal, never an empty corpus.
+test("report_refuses_a_corpus_manifest_that_is_not_a_list_of_paths", () => {
+  const stage = { name: "code-scenarios", status: "active", runId: "wf_1", attempt: 1, startedAt: null };
+  for (const text of ["{not json", JSON.stringify({ paths: "docs/a.md" }), JSON.stringify({ paths: [1] }), JSON.stringify(null)]) {
+    const root = mkdtempSync(join(tmpdir(), "pb-corpus-bad-"));
+    const artifactsDir = join(root, "run", "task", "artifacts");
+    mkdirSync(artifactsDir, { recursive: true });
+    writeFileSync(join(root, "run", "corpus.json"), text);
+    try {
+      assert.throws(() => buildReport({ stage, tests: {}, checkpoints: [] }, artifactsDir), /corpus\.json/, `a manifest of ${text} is refused, naming the file`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
 });

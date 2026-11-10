@@ -37,8 +37,9 @@
           "model": "sonnet"
         },
         {
-          "name": "corpus misalignment",
-          "model": "sonnet"
+          "name": "corpus-misalignment",
+          "model": "sonnet",
+          "needsCorpus": true
         }
       ],
       "bias": true,
@@ -69,8 +70,9 @@
           "model": "opus"
         },
         {
-          "name": "corpus misalignment",
-          "model": "sonnet"
+          "name": "corpus-misalignment",
+          "model": "sonnet",
+          "needsCorpus": true
         }
       ],
       "bias": true,
@@ -85,7 +87,7 @@
       "stage": "plan-tracers",
       "lenses": [
         {
-          "name": "slice thinness",
+          "name": "slice-thinness",
           "model": "sonnet"
         },
         {
@@ -93,16 +95,17 @@
           "model": "sonnet"
         },
         {
-          "name": "PR-unit fit",
+          "name": "pr-unit-fit",
           "model": "sonnet"
         },
         {
-          "name": "dependency truth",
+          "name": "dependency-truth",
           "model": "sonnet"
         },
         {
-          "name": "corpus misalignment",
-          "model": "sonnet"
+          "name": "corpus-misalignment",
+          "model": "sonnet",
+          "needsCorpus": true
         }
       ],
       "synth": true,
@@ -120,16 +123,17 @@
           "model": "sonnet"
         },
         {
-          "name": "task size",
+          "name": "task-size",
           "model": "sonnet"
         },
         {
-          "name": "testable acceptance criteria",
+          "name": "testable-acceptance-criteria",
           "model": "sonnet"
         },
         {
-          "name": "corpus misalignment",
-          "model": "sonnet"
+          "name": "corpus-misalignment",
+          "model": "sonnet",
+          "needsCorpus": true
         }
       ],
       "refute": "one",
@@ -146,7 +150,7 @@
           "model": "sonnet"
         },
         {
-          "name": "pyramid level",
+          "name": "pyramid-level",
           "model": "sonnet"
         },
         {
@@ -182,7 +186,7 @@
       "stage": "refactor-scope",
       "lenses": [
         {
-          "name": "scope serves intent",
+          "name": "scope-serves-intent",
           "model": "sonnet"
         }
       ],
@@ -228,8 +232,9 @@
           "model": "sonnet"
         },
         {
-          "name": "corpus misalignment",
-          "model": "sonnet"
+          "name": "corpus-misalignment",
+          "model": "sonnet",
+          "needsCorpus": true
         }
       ],
       "refute": "one",
@@ -242,7 +247,7 @@
       "stage": "code-safety-net",
       "lenses": [
         {
-          "name": "behaviour preservation",
+          "name": "behaviour-preservation",
           "model": "opus"
         },
         {
@@ -250,8 +255,9 @@
           "model": "sonnet"
         },
         {
-          "name": "corpus misalignment",
-          "model": "sonnet"
+          "name": "corpus-misalignment",
+          "model": "sonnet",
+          "needsCorpus": true
         }
       ],
       "refute": "one",
@@ -264,12 +270,13 @@
       "stage": "code-safety-net",
       "lenses": [
         {
-          "name": "config fit",
+          "name": "config-fit",
           "model": "sonnet"
         },
         {
-          "name": "corpus misalignment",
-          "model": "sonnet"
+          "name": "corpus-misalignment",
+          "model": "sonnet",
+          "needsCorpus": true
         }
       ],
       "refute": "one",
@@ -295,7 +302,7 @@
       "stage": "spike-document",
       "lenses": [
         {
-          "name": "claims against recorded evidence",
+          "name": "claims-against-recorded-evidence",
           "model": "sonnet"
         }
       ],
@@ -349,11 +356,11 @@
       "stage": "design-build",
       "lenses": [
         {
-          "name": "mental model alignment",
+          "name": "mental-model-alignment",
           "model": "sonnet"
         },
         {
-          "name": "information architecture",
+          "name": "information-architecture",
           "model": "sonnet"
         },
         {
@@ -361,15 +368,15 @@
           "model": "sonnet"
         },
         {
-          "name": "cognitive load",
+          "name": "cognitive-load",
           "model": "sonnet"
         },
         {
-          "name": "state design",
+          "name": "state-design",
           "model": "sonnet"
         },
         {
-          "name": "flow integrity",
+          "name": "flow-integrity",
           "model": "sonnet"
         }
       ],

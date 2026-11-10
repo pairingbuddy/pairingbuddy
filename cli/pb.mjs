@@ -2,21 +2,22 @@
 // pb: deterministic workflow CLI. Verbs live in the VERBS table; later tasks add more.
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep } from "../shared-node/checkpoint.mjs";
 import { PUBLISH_GATE, answeredGate, askReason, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, isPublishRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
-import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches } from "../shared-node/gitconf.mjs";
+import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, boxLabelsUnder, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
 import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, targetBranch, upstreamArgv } from "../shared-node/publish.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
+import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
@@ -1203,9 +1204,10 @@ function flagValue(args, flag) {
 }
 
 // One runner for git and gh. `context` says what was reached and what to do next, and is appended to the failure.
-function run(cwd, command, args, { context = "", input } = {}) {
+function run(cwd, command, args, { context = "", input, trim = true, env } = {}) {
   try {
-    return execFileSync(command, args, { cwd, encoding: "utf8", input, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] }).trim();
+    const out = execFileSync(command, args, { cwd, encoding: "utf8", input, env: env === undefined ? process.env : { ...process.env, ...env }, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
+    return trim ? out.trim() : out;
   } catch (e) {
     const why = String(e.stderr ?? "").trim() || e.message;
     throw new Refusal(`${command} ${args.join(" ")} failed: ${why}${context === "" ? "" : `; ${context}`}`);
@@ -1365,7 +1367,70 @@ function refusing(fn) {
   }
 }
 
+function inRepoDocs(root) {
+  try {
+    const docs = JSON.parse(readFileSync(join(root, ".pairingbuddy", "doc-config.json"), "utf8")).in_repo_docs;
+    return Array.isArray(docs) ? docs : [];
+  } catch {
+    return [];
+  }
+}
+
+// All three files are written to temps first and only then renamed into place, so a failed write leaves the last snapshot whole.
+function replaceFiles(files) {
+  const temps = [];
+  try {
+    for (const [path, text] of files) {
+      const temp = `${path}.${randomUUID()}.tmp`;
+      temps.push(temp);
+      writeFileSync(temp, text);
+    }
+  } catch (e) {
+    for (const temp of temps) rmSync(temp, { force: true });
+    throw e;
+  }
+  files.forEach(([path], i) => renameSync(temps[i], path));
+}
+
+const jsonText = (value) => JSON.stringify(value, null, 2) + "\n";
+
+function snapshot(args) {
+  const root = toplevel();
+  const unit = readUnitOrRefuse(root);
+  assertNoArgs(args, "snapshot");
+  const git = (argv) => runGit(root, argv, { trim: false, env: GIT_ENV });
+  const diff = git(subjectDiffArgv(unit.baseSha));
+  const changed = parseChanged(git(changedArgv(unit.baseSha)));
+  const nearest = nearestFiles(parseTracked(git(trackedFilesArgv())), changed.map((c) => c.path));
+  const paths = buildCorpus(insideRepo(root, [...inRepoDocs(root), ...conventionPaths(root), "CLAUDE.md", ...nearest]), (p) => existsSync(join(root, p)));
+  const runDir = join(root, ".pairingbuddy", "run");
+  replaceFiles([[join(runDir, SUBJECT_DIFF_FILE), diff], [join(runDir, CHANGED_FILE), jsonText(changed)], [join(runDir, CORPUS_FILE), jsonText({ paths })]]);
+  return { ok: true, paths };
+}
+
+function insideRepo(root, candidates) {
+  const realRoot = realpathSync(root);
+  return candidates.map((c) => {
+    try {
+      const inside = repoRelative(realRoot, realpathSync(resolve(root, c)));
+      return inside === null ? null : repoRelative(realRoot, resolve(realRoot, c)) ?? inside;
+    } catch {
+      return null;
+    }
+  }).filter((p) => p !== null);
+}
+
+function conventionPaths(root) {
+  try {
+    const config = readGitConfig(root);
+    return [...(config.commit?.conventions ?? []), ...(config.pr?.conventions ?? [])];
+  } catch {
+    return [];
+  }
+}
+
 export const VERBS = {
+  snapshot,
   "unit open": unitOpen, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
   "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,

@@ -57,6 +57,7 @@ JS_TEST_FILES = [
     "tests/js/pb-red-green.test.mjs",
     "tests/js/pb-refactor.test.mjs",
     "tests/js/pb-run-open.test.mjs",
+    "tests/js/pb-snapshot.test.mjs",
     "tests/js/pb-stage.test.mjs",
     "tests/js/pb-task-end.test.mjs",
     "tests/js/pb-test.test.mjs",

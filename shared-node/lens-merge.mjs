@@ -53,7 +53,7 @@ function refuterCountOf({ refute, maxRefuters }) {
 export function rankLensReturns(returns, config) {
   const refuterCount = refuterCountOf(config);
   const perLens = returns.map(({ lens, result }) => {
-    const covered = hasFindings(result);
+    const covered = hasFindings(result) && !(lens.needsCorpus === true && Array.isArray(config.corpus) && config.corpus.length === 0);
     const ranked = (covered ? result.findings.map((finding, n) => tagFinding(lens.name, finding, n)) : []).sort(byRank);
     const kept = config.maxFindingsPerLens === undefined ? ranked : ranked.slice(0, config.maxFindingsPerLens);
     return { lens: lens.name, covered, kept, dropped: ranked.length - kept.length };
