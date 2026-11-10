@@ -64,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The tap now files fix-loop returns. A fix key's role is `fix` for every fixer, so the tap's check that the agent equals the key's role refused them all, and `pb checkpoint --step fix` and `pb rollback` found no artifact. Each stage now lists the fixers its workflow assigns (`refactor-code` and `refactor-tests` on the safety net, the scenario writer on scenarios); any other agent is still refused for a fix key.
 - On a re-run of a stage that already rolled back fixes, the first course check now runs on Opus: `pb snapshot` prints the stage's rollback count from the ledger and the fix loop starts its count there.
 - The gate now actually sees Read, Grep and Glob calls (they were missing from its hook matcher), so read confinement applies in real sessions; read tools skip the run-ledger checks.
 - Each lens prompt now lists the corpus files to check against.

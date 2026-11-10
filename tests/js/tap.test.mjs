@@ -150,6 +150,33 @@ for (const [name, agentType] of [
     }));
 }
 
+// A fix-loop return is keyed with the role "fix", not the fixer's own name, so the agents the workflows use as fixers
+// may file under it. Any other agent still may not, and a fixer may only file under its own stage's fix key.
+// The log column is what tap-errors.log must read: "none" when nothing is logged, else the reason word.
+const NO_LOG = /^null$/;
+const AGENT_MISMATCH = /agent mismatch/;
+for (const [stage, agentType, filed, log] of [
+  ["code-safety-net", "pairingbuddy:refactor-code", true, NO_LOG],
+  ["code-safety-net", "pairingbuddy:refactor-tests", true, NO_LOG],
+  ["code-scenarios", "pairingbuddy:enumerate-scenarios-and-test-cases", true, NO_LOG],
+  ["code-safety-net", "pairingbuddy:lens", false, AGENT_MISMATCH],
+  ["code-safety-net", "pairingbuddy:runner", false, AGENT_MISMATCH],
+  ["pr-draft", "pairingbuddy:refactor-code", false, AGENT_MISMATCH],
+  ["code-safety-net", "pairingbuddy:draft-pull-request", false, AGENT_MISMATCH],
+]) {
+  test(`${agentType} ${filed ? "files" : "cannot file"} a ${stage} fix return`, () =>
+    withRepo({ ledger: makeLedger({ name: stage, status: "active", runId: null, attempt: 1 }) }, async (repo) => {
+      const k = buildKey({ stage, role: "fix", item: "g1", round: 2, attempt: 1 });
+
+      const res = await runTap(structured(repo.dir, k, { answer: 42 }, agentType));
+
+      assert.equal(res.code, 0);
+      assert.equal(existsSync(repo.artifact(k)), filed, filed ? `${k} is filed under artifacts` : `${k} is not filed`);
+      assert.match(String(repo.errorLog()), log);
+      assert.equal(existsSync(join(repo.dir, ".pairingbuddy", "run", "pr-body.md")), false, "no pr-body.md is written");
+    }));
+}
+
 test("a return with no agent fields is not filed", () =>
   withRepo({}, async (repo) => {
     const k = key();
