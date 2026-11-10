@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Light Review Result",
+  "description": "Return of the lens agent in a light review: the pb key it was given, any open ambiguity, the focus changes it made and its findings, each tagged with a focus",
+  "type": "object",
+  "required": ["pb_key", "ambiguity", "focus_changes", "findings"],
+  "properties": {
+    "pb_key": { "type": "string", "description": "The key from the prompt, copied exactly" },
+    "ambiguity": {
+      "type": ["string", "null"],
+      "description": "An open question that affected the review, or null"
+    },
+    "focus_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["focus", "change", "reason"],
+        "properties": {
+          "focus": { "type": "string", "description": "The focus added or dropped" },
+          "change": { "type": "string", "enum": ["add", "drop"] },
+          "reason": { "type": "string", "description": "Why the focus was added or dropped" }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["focus", "rule", "severity", "kind", "claim", "where"],
+        "properties": {
+          "focus": { "type": "string", "description": "The focus the finding was found through" },
+          "rule": { "type": "string" },
+          "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+          "kind": { "type": "string", "enum": ["fix-here", "risk", "drift"] },
+          "claim": { "type": "string", "description": "What is wrong, in one or two sentences, grounded in evidence the agent read" },
+          "where": { "type": "string", "description": "A file path with an optional line, or the subject item" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

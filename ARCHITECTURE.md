@@ -118,7 +118,7 @@ pairingbuddy/
 │   ├── agent-config.yaml         # Agent structure requirements (single source of truth)
 │   ├── skill-config.yaml         # Skill + frontmatter requirements
 │   ├── test-terminology.yaml     # Shared definitions for test-related agents
-│   └── schemas/                  # JSON schemas for state contracts (58 total)
+│   └── schemas/                  # JSON schemas for state contracts (59 total)
 ├── skills/                        # Skills (run in main context)
 │   ├── coding/                   # TDD orchestrator skill
 │   ├── planning/                 # Planning orchestrator skill
