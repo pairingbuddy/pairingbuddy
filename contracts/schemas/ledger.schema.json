@@ -168,6 +168,29 @@
       },
       "additionalProperties": { "type": "object" }
     },
+    "fixes": {
+      "description": "Fix bookkeeping. rollbacks lists each rolled-back fix group, oldest first: its key, kind (commit, red or artifact), the rollback ref that keeps the rejected work, sha (the commit that ref points at: the fix commit, or the commit holding the saved dirty paths), and base (HEAD after the rollback). ref is a string for kind commit or red, and null only for kind artifact, which records no git ref. May be absent; when present it has rollbacks and no other keys.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rollbacks"],
+      "properties": {
+        "rollbacks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "kind", "ref", "sha", "base"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "kind": { "enum": ["commit", "red", "artifact"] },
+              "ref": { "type": ["string", "null"] },
+              "sha": { "type": ["string", "null"] },
+              "base": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
     "acceptances": {
       "description": "Each hand edit a human accepted with pb human accept, oldest first. May be absent. oldSha is the sha the edited file carried; newSha is the sha of the content as edited, before the acceptance was added; seq is the seq the acceptance wrote.",
       "type": "array",

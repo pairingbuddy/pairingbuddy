@@ -648,3 +648,26 @@ test("validity-table-has-run-id-rows", () => {
     "the invalid rows setting the top-level runId",
   );
 });
+
+const rollbackEntry = (overrides = {}) => ({ key: "refactor.fix.g1.r2.a1", kind: "commit", ref: "refs/pairingbuddy/feature/rollback/refactor/1", sha: "a".repeat(40), base: "b".repeat(40), ...overrides });
+
+test("ledger-accepts-fixes-rollbacks-of-each-kind-and-rejects-bad-ones", () => {
+  const withRollbacks = (rollbacks) => ({ ...baseLedger(), fixes: { rollbacks } });
+  const valid = withRollbacks([
+    rollbackEntry(),
+    rollbackEntry({ key: "refactor.fix.g1.r2.a2", kind: "red" }),
+    rollbackEntry({ key: "refactor.fix.g1.r2.a3", kind: "artifact", ref: null, sha: null, base: null }),
+  ]);
+  const badKind = withRollbacks([rollbackEntry({ kind: "revert" })]);
+  const unknownField = withRollbacks([rollbackEntry({ note: "extra" })]);
+
+  const accepted = validateLedger(valid);
+  const rejectedKind = validateLedger(badKind);
+  const rejectedField = validateLedger(unknownField);
+
+  assert.equal(accepted.valid, true, `commit, red and artifact entries are valid, got ${JSON.stringify(accepted.errors)}`);
+  assert.equal(rejectedKind.valid, false, "an unknown kind is invalid");
+  assert.ok(rejectedKind.errors.some((e) => e.path === "fixes.rollbacks.0.kind"), `an error names the kind, got ${JSON.stringify(rejectedKind.errors)}`);
+  assert.equal(rejectedField.valid, false, "an unknown field in an entry is invalid");
+  assert.ok(rejectedField.errors.some((e) => e.path.startsWith("fixes.rollbacks.0")), `an error names the entry, got ${JSON.stringify(rejectedField.errors)}`);
+});

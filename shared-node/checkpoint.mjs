@@ -44,6 +44,15 @@ export function isKey(text) {
   }
 }
 
+// The words after "pb rollback": an optional --artifact, then --from <key>, exactly two words. Returns the form and key,
+// or null for any other shape, so pb and the gate accept exactly the same commands.
+export function parseRollbackArgs(args) {
+  const artifactForm = args[0] === "--artifact";
+  const rest = artifactForm ? args.slice(1) : args;
+  if (rest.length !== 2 || rest[0] !== "--from" || !isKey(rest[1])) return null;
+  return { artifactForm, key: rest[1] };
+}
+
 export const isCheckpointCall = (step, key) => Object.hasOwn(STEPS, step) && isKey(key);
 
 export const testsOfStep = (step) => STEPS[step].tests;
@@ -113,11 +122,17 @@ export const isOnHead = (root, sha) => runGit(root, ["merge-base", "--is-ancesto
 
 // ---------- the key ----------
 
-export function assertCurrentKey(step, key, { stage: { name, status, attempt } }) {
-  const { stage: keyStage, role, attempt: keyAttempt } = parseKey(key);
+// The three checks every key must pass to be the current one; a step's role rules come on top (assertCurrentKey).
+export function assertKeyIsCurrent(key, { name, status, attempt }) {
+  const { stage: keyStage, attempt: keyAttempt } = parseKey(key);
   if (status !== "active") throw new CheckpointRefused(`no stage is active, so ${key} cannot be committed`);
   if (keyStage !== name) throw new CheckpointRefused(`${key} is from stage ${keyStage}, and the active stage is ${name}`);
   if (keyAttempt !== attempt) throw new CheckpointRefused(`${key} is from attempt ${keyAttempt}, and stage ${name} is at attempt ${attempt}`);
+}
+
+export function assertCurrentKey(step, key, { stage }) {
+  const { role } = parseKey(key);
+  assertKeyIsCurrent(key, stage);
   if (!STEPS[step].roles.includes(role)) throw new CheckpointRefused(`${key} is from role ${role}, and step ${step} takes role ${rolesText(step)}`);
   if (namesTest(step) && parseKey(key).item === null) throw new CheckpointRefused(`${key} names no test, and step ${step} takes one`);
 }
@@ -179,7 +194,7 @@ function isDirectory(path) {
   }
 }
 
-function checkedPath(root, listed) {
+export function checkedPath(root, listed) {
   if (typeof listed !== "string" || listed === "") throw new CheckpointRefused(`a listed path must be a non-empty string: ${JSON.stringify(listed)}`);
   if (isAbsolute(listed)) throw new CheckpointRefused(`${listed} is an absolute path`);
   const path = normalize(listed);

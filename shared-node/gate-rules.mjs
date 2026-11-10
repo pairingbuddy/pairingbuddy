@@ -4,7 +4,8 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 
-import { isCheckpointCall, isKey, keyFitsStep } from "./checkpoint.mjs";
+import { isCheckpointCall, isKey, keyFitsStep, parseRollbackArgs } from "./checkpoint.mjs";
+import { parseKey } from "./keys.mjs";
 import { answeredGate, blockingGate, gateQuestion, gatesFor, isGateQuestionCall } from "./gates.mjs";
 import { LedgerShaMismatch, readLedger, updateLedger } from "./ledger.mjs";
 import { d17Denial } from "./d17.mjs";
@@ -31,6 +32,7 @@ const PB_COMMAND = `node ${shellWord(join(PLUGIN_ROOT, "cli", "pb.mjs"))}`;
 const STAGE_STOPS = Object.keys(STAGE_STOP_REASONS).map((reason) => `stage stop ${reason}`);
 const RUNNER_COMMANDS = [...VERB_CLASSES.runner.filter((verb) => verb !== "stage stop"), ...STAGE_STOPS, "test --full"].map((args) => `${PB_COMMAND} ${args}`);
 const CHECKPOINT_START = `${PB_COMMAND} checkpoint --step `;
+const ROLLBACK_START = `${PB_COMMAND} rollback `;
 const ARTIFACT_CHECK_START = `${PB_COMMAND} artifact check `;
 const AUTO_ALLOW_REASON = "Runner CLI command, auto-allowed by the Pairing Buddy gate.";
 const PB_CALL = /(?<![\w.-])pb(?:\.mjs)?(?=\s+([\w.-]+)(?:\s+([\w.-]+))?)/g;
@@ -400,8 +402,15 @@ function isCheckpointCommand(command) {
 
 const isArtifactCheckCommand = (command) => command.startsWith(ARTIFACT_CHECK_START) && isKey(command.slice(ARTIFACT_CHECK_START.length));
 
+// A rollback names the fix key it undoes; one space between words and a parsed key leave no shell syntax to expand.
+function isRollbackCommand(command) {
+  if (!command.startsWith(ROLLBACK_START)) return false;
+  const parsed = parseRollbackArgs(command.slice(ROLLBACK_START.length).split(" "));
+  return parsed !== null && parseKey(parsed.key).role === "fix";
+}
+
 const isRunnerCommand = ({ tool_name: tool, agent_type: agentType, tool_input: toolInput }) =>
-  tool === "Bash" && agentType === RUNNER_AGENT && (RUNNER_COMMANDS.includes(toolInput.command) || isCheckpointCommand(toolInput.command) || isArtifactCheckCommand(toolInput.command));
+  tool === "Bash" && agentType === RUNNER_AGENT && (RUNNER_COMMANDS.includes(toolInput.command) || isCheckpointCommand(toolInput.command) || isArtifactCheckCommand(toolInput.command) || isRollbackCommand(toolInput.command));
 
 // ---------- entry ----------
 

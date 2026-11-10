@@ -15,10 +15,12 @@ const HEX64 = /^[0-9a-f]{64}$/;
 // Shape only, so a well-shaped impossible date stays readable and the gate can treat it as expired.
 const ISO_TIMESTAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
 export const KINDS = ["code", "plan", "publish"];
+// How a rolled-back fix group was kept: a fix commit, uncommitted work (red), or a saved artifact with no git ref.
+export const ROLLBACK_KINDS = ["commit", "red", "artifact"];
 
 // The one predicate for a publish run: kind and taskType agree (the validator holds them to it), so either says it.
 export const isPublishRun = (ledger) => ledger.kind === "publish";
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "voidedGates"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -125,9 +127,10 @@ export function validateLedger(ledger) {
     checkpoints: [Array.isArray, "an array"],
     configApproval: [() => true, ""],
     lenses: [isObject, "an object"], // pb stage finish writes "safety-net" (counts and lens names, no finding content); the schema documents it
+    fixes: [isObject, "an object"],
     voidedGates: [Array.isArray, "an array"],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
-  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "voidedGates"] });
+  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
@@ -161,6 +164,15 @@ export function validateLedger(ledger) {
         break;
       case "needsHuman":
         checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"], shown: [isObject, "an object"] }, errors, { optional: ["shown"] });
+        break;
+      case "fixes":
+        checkObject(ledger.fixes, "fixes", { rollbacks: [Array.isArray, "an array"] }, errors);
+        if (isObject(ledger.fixes) && Array.isArray(ledger.fixes.rollbacks)) {
+          ledger.fixes.rollbacks.forEach((r, i) => checkObject(r, `fixes.rollbacks.${i}`, {
+            key: [isNonEmptyString, "a non-empty string"], kind: [(x) => ROLLBACK_KINDS.includes(x), `one of ${ROLLBACK_KINDS.join(", ")}`],
+            ref: [isNullableString, "a string or null"], sha: [isNullableString, "a string or null"], base: [isNullableString, "a string or null"],
+          }, errors));
+        }
         break;
       case "voidedGates":
         if (Array.isArray(ledger.voidedGates)) {

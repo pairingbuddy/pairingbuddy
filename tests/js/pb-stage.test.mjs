@@ -1138,9 +1138,10 @@ describe("status", IN_PARALLEL, () => {
 
 describe("verb classes, through the real gate", IN_PARALLEL, () => {
   const PB = `node ${CLI}`;
+  const FIX_KEY = "safety-net.fix.g1.r2.a1";
   const bash = (repo, command, agentType) => decision(hook(GATE, payload(repo, "Bash", { command }, agentType === undefined ? {} : { agent_id: "a1", agent_type: agentType })));
 
-  for (const [args, owner] of [["stage finish", "runner"], [`artifact check ${CONFIG_KEY}`, "runner"], ["stage report", "main"], ["stage fail", "main"], ["status", "main"]]) {
+  for (const [args, owner] of [["stage finish", "runner"], [`artifact check ${CONFIG_KEY}`, "runner"], [`rollback --from ${FIX_KEY}`, "runner"], ["stage report", "main"], ["stage fail", "main"], ["status", "main"]]) {
     const others = owner === "runner" ? [undefined, "pairingbuddy:apply-config-change"] : [RUNNER_AGENT, "pairingbuddy:apply-config-change"];
     for (const agentType of others) {
       test(`${args} is denied to ${agentType ?? "the main context"}`, () => {
@@ -1158,7 +1159,14 @@ describe("verb classes, through the real gate", IN_PARALLEL, () => {
     assert.equal(bash(makeRepo(), `${PB} artifact check ${CONFIG_KEY}`, RUNNER_AGENT).kind, "allow");
   });
 
-  for (const command of [`${PB} stage finish --stage x`, `${PB} stage finish  `, `${PB} stage finish; ls`, `${PB} artifact check ../ledger`, `${PB} artifact check ${CONFIG_KEY} x`, `${PB} artifact check ${CONFIG_KEY}; ls`]) {
+  test("the runner's exact pb rollback --from <fix key> and --artifact variant are auto-allowed", () => {
+    const repo = makeRepo();
+
+    assert.equal(bash(repo, `${PB} rollback --from ${FIX_KEY}`, RUNNER_AGENT).kind, "allow");
+    assert.equal(bash(repo, `${PB} rollback --artifact --from ${FIX_KEY}`, RUNNER_AGENT).kind, "allow");
+  });
+
+  for (const command of [`${PB} stage finish --stage x`, `${PB} stage finish  `, `${PB} stage finish; ls`, `${PB} artifact check ../ledger`, `${PB} artifact check ${CONFIG_KEY} x`, `${PB} artifact check ${CONFIG_KEY}; ls`, `${PB} rollback --from safety-net.implement-code.t1.r1.a1`, `${PB} rollback --from ${FIX_KEY} now`, `${PB} rollback  --from ${FIX_KEY}`, `${PB} rollback --artifact --from ${FIX_KEY} now`, `${PB} rollback --artifact  --from ${FIX_KEY}`]) {
     test(`${command.slice(PB.length)} loses the auto-allow`, () => {
       assert.notEqual(bash(makeRepo(), command, RUNNER_AGENT).kind, "allow");
     });
