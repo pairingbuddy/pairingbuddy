@@ -15,8 +15,8 @@ const HEX64 = /^[0-9a-f]{64}$/;
 // Shape only, so a well-shaped impossible date stays readable and the gate can treat it as expired.
 const ISO_TIMESTAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
 export const KINDS = ["code", "plan", "publish"];
-// How a rolled-back fix group was kept: a fix commit, uncommitted work (red), or a saved artifact with no git ref.
-export const ROLLBACK_KINDS = ["commit", "red", "artifact"];
+// How a rolled-back fix group was kept: a fix commit, uncommitted work (red), a saved artifact with no git ref, or uncommitted work that repeated an approach already rolled back (repeated).
+export const ROLLBACK_KINDS = ["commit", "red", "artifact", "repeated"];
 
 // The one predicate for a publish run: kind and taskType agree (the validator holds them to it), so either says it.
 export const isPublishRun = (ledger) => ledger.kind === "publish";

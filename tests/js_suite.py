@@ -56,6 +56,7 @@ JS_TEST_FILES = [
     "tests/js/ledger.test.mjs",
     "tests/js/ledger-safeguards.test.mjs",
     "tests/js/looping-and-counts.test.mjs",
+    "tests/js/mistake-check.test.mjs",
     "tests/js/paths-mode-no-ask.test.mjs",
     "tests/js/pb-checkpoint.test.mjs",
     "tests/js/pb-cli-safeguards.test.mjs",

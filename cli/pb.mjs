@@ -19,6 +19,7 @@ import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-nod
 import { abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
+import { normalizeApproach } from "../shared-node/mistake-check.mjs";
 import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { buildKey, parseKey } from "../shared-node/keys.mjs";
@@ -1520,6 +1521,24 @@ function rollbackArtifact(root, key) {
   renameSync(join(artifactsDirOf(root), `${key}.json`), join(rejected, `${key}.json`));
 }
 
+// A fix's approach as its artifact states it.
+function approachOf(root, key) {
+  return String(readArtifact(root, key).approach ?? "");
+}
+
+// A fix repeats when its approach, normalized, equals one an earlier rolled-back fix of the same stage and item tried.
+function repeatedApproach(root, ledger, key) {
+  const { stage, item } = parseKey(key);
+  const approach = approachOf(root, key);
+  const target = normalizeApproach(approach);
+  if (target === "") return null;
+  const earlier = (ledger.fixes?.rollbacks ?? []).some((r) => {
+    const p = parseKey(r.key);
+    return p.stage === stage && p.item === item && normalizeApproach(approachOf(root, r.key)) === target;
+  });
+  return earlier ? approach : null;
+}
+
 // The ledger-and-disk reasons to refuse a rollback, checked before anything is touched so a refusal changes nothing.
 function assertRollbackAllowed(key, parts, ledger, root) {
   if (parts.role !== "fix") throw new Refusal(`only a fix group rolls back: ${key} is from role ${parts.role}. RED, GREEN and refactor-step commits never do, so nothing was touched`);
@@ -1537,14 +1556,15 @@ function assertRollbackAllowed(key, parts, ledger, root) {
 }
 
 // The tree-side reasons to refuse a git rollback: the fix must be the newest commit (when committed), and nothing
-// outside the group's own paths may be dirty. record is the fix's checkpoint, or undefined for an uncommitted (red) fix,
-// which also needs a failed test run and at least one of its listed paths changed.
-function assertTreeRollsBack(root, record, own, ledger, key) {
-  if (record === undefined) {
+// outside the group's own paths may be dirty (dirty is the tree's dirty paths, read once by the caller). record is the fix's checkpoint, or undefined for an uncommitted (red) fix,
+// which also needs a failed test run and at least one of its listed paths changed. A repeated fix (repeated true) skips
+// both checks, because the repeated approach is itself the reason to roll it back.
+function assertTreeRollsBack(root, record, own, ledger, key, repeated, dirty) {
+  if (record === undefined && !repeated) {
     // Uncommitted work is only undone after a failed (red) test run: without one there is nothing to roll back.
     if (ledger.tests.checkpoint?.passed !== false) throw new Refusal(`${key} has no commit and no red test run, so there is nothing to roll back and nothing was touched`);
     // A red fix that changed none of its listed paths has nothing to undo.
-    if (!remainingFiles(root).some((p) => own.includes(p))) throw new Refusal(`none of the paths ${key} lists has changed, so there is nothing to roll back and nothing was touched`);
+    if (!dirty.some((p) => own.includes(p))) throw new Refusal(`none of the paths ${key} lists has changed, so there is nothing to roll back and nothing was touched`);
   }
   // Only the newest commit can be undone cleanly: anything on top of the fix would be lost with it.
   if (record) {
@@ -1552,11 +1572,12 @@ function assertTreeRollsBack(root, record, own, ledger, key) {
     if (record.sha !== head) throw new Refusal(`the fix commit ${record.sha} is not HEAD (${head}): only the newest commit rolls back, so nothing was touched`);
   }
   // Anything dirty outside the group's own paths is the human's work: refuse rather than touch it.
-  const stray = remainingFiles(root).filter((p) => !own.includes(p));
+  const stray = dirty.filter((p) => !own.includes(p));
   if (stray.length) throw new Refusal(`the tree is dirty outside the fix group, so nothing was touched: ${stray.join(", ")}`);
 }
 
-// Undo a rejected fix group. Three cases: an artifact fix, a committed fix (the ledger has a record), or an uncommitted (red) one.
+// Undo a rejected fix group. Four kinds: an artifact fix, a committed fix (the ledger has a record), an uncommitted (red) one, or a repeated
+// approach, which is record-only (no git work) when none of its own paths is dirty.
 // The inputs are all read and every refusal is checked before anything moves, so a refusal or a missing checker artifact changes nothing.
 function rollback(args) {
   const usage = "usage: pb rollback --from <key> | pb rollback --artifact --from <key>";
@@ -1573,20 +1594,30 @@ function rollback(args) {
   assertRollbackAllowed(key, parts, ledger, root);
   // A recorded checkpoint means the fix was committed; otherwise it was only in the working tree (red).
   const record = artifactForm ? undefined : ledger.checkpoints.find((c) => c.key === key);
-  const kind = artifactForm ? "artifact" : record ? "commit" : "red";
+  const repeated = artifactForm || record ? null : repeatedApproach(root, ledger, key);
+  const kind = artifactForm ? "artifact" : record ? "commit" : repeated !== null ? "repeated" : "red";
   const own = kind === "artifact" ? [] : kind === "commit" ? pathsOfCommit(root, record.sha) : pathsOfArtifact(root, key);
-  if (!artifactForm) assertTreeRollsBack(root, record, own, ledger, key);
-  // A committed fix's or an artifact's note holds the checker's account of what went wrong; an uncommitted (red) fix's note holds the failed test runs' output.
-  const wrong = kind !== "red" ? checkerAccount(root, parts) : failedRunsExcerpts(ledger.tests.checkpoint);
+  const dirty = artifactForm ? [] : remainingFiles(root);
+  const ownChanged = dirty.some((p) => own.includes(p));
+  if (!artifactForm) assertTreeRollsBack(root, record, own, ledger, key, repeated !== null, dirty);
   const failedAttempts = failedAttemptsOf(ledger, parts.stage);
-  let entry = { key, kind, ref: null, sha: null, base: null };
-  if (kind === "artifact") {
-    rollbackArtifact(root, key);
-  } else {
-    const prefix = rollbackPrefix(branch, parts.stage);
-    const done = kind === "commit" ? rollbackCommitted(root, { key, prefix, sha: record.sha }) : rollbackUncommitted(root, { key, prefix, paths: own });
-    entry = { key, kind, ref: done.ref, sha: done.sha, base: done.base };
-  }
+  const prefix = rollbackPrefix(branch, parts.stage);
+  // Per kind: the note's account of what went wrong, and how the work is undone (the ledger entry it leaves).
+  // A committed fix's or an artifact's note holds the checker's account; a red fix's holds the failed test runs' output.
+  const none = { ref: null, sha: null, base: null };
+  const steps = {
+    artifact: { wrong: () => checkerAccount(root, parts), undo: () => (rollbackArtifact(root, key), none) },
+    commit: { wrong: () => checkerAccount(root, parts), undo: () => rollbackCommitted(root, { key, prefix, sha: record.sha }) },
+    red: { wrong: () => failedRunsExcerpts(ledger.tests.checkpoint), undo: () => rollbackUncommitted(root, { key, prefix, paths: own }) },
+    repeated: {
+      wrong: () => `The fix repeated an approach already rolled back for this group: ${repeated}`,
+      // Nothing of its own is dirty: record only, with the base at HEAD.
+      undo: () => (ownChanged ? rollbackUncommitted(root, { key, prefix, paths: own }) : { ...none, base: headOf(root) }),
+    },
+  };
+  const wrong = steps[kind].wrong();
+  const done = steps[kind].undo();
+  const entry = { key, kind, ref: done.ref, sha: done.sha, base: done.base };
   appendRollbackNote(root, parts.stage, failedAttempts, key, wrong);
   // The lenses contract test pins maxAttempts at 5, so it is always present here.
   const maxAttempts = LENS_MAP.maxAttempts;

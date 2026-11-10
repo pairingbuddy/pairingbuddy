@@ -169,7 +169,7 @@
       "additionalProperties": { "type": "object" }
     },
     "fixes": {
-      "description": "Fix bookkeeping. rollbacks lists each rolled-back fix group, oldest first: its key, kind (commit, red or artifact), the rollback ref that keeps the rejected work, sha (the commit that ref points at: the fix commit, or the commit holding the saved dirty paths), and base (HEAD after the rollback). ref is a string for kind commit or red, and null only for kind artifact, which records no git ref. May be absent; when present it has rollbacks and no other keys.",
+      "description": "Fix bookkeeping. rollbacks lists each rolled-back fix group, oldest first: its key, kind (commit, red, artifact or repeated, the last for a fix that repeated an approach already rolled back), the rollback ref that keeps the rejected work, sha (the commit that ref points at: the fix commit, or the commit holding the saved dirty paths), and base (HEAD after the rollback). ref is a string for kind commit or red, and for kind repeated when the fix changed something; it is null for kind artifact, which records no git ref, and for kind repeated when the fix changed nothing. May be absent; when present it has rollbacks and no other keys.",
       "type": "object",
       "additionalProperties": false,
       "required": ["rollbacks"],
@@ -182,7 +182,7 @@
             "required": ["key", "kind", "ref", "sha", "base"],
             "properties": {
               "key": { "type": "string", "minLength": 1 },
-              "kind": { "enum": ["commit", "red", "artifact"] },
+              "kind": { "enum": ["commit", "red", "artifact", "repeated"] },
               "ref": { "type": ["string", "null"] },
               "sha": { "type": ["string", "null"] },
               "base": { "type": ["string", "null"] }

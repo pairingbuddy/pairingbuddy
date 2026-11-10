@@ -724,4 +724,134 @@ describe("pb rollback", () => {
       assert.match(denial, /reset --hard, clean, checkout \., restore \. and branch -D are denied/, `${command}: the deny text lists the reverting commands`);
     }
   });
+
+  // Scenario: pb-rollback-repeated-kind (fix artifacts decide "repeated", not a model flag).
+  test("rollback-repeated-restores-tree-and-records: a repeated approach restores the group paths, quotes the approach in the note, records kind 'repeated', and counts toward failedAttempts", () => {
+    const repo = makeRepo();
+    writeArtifact(repo, FIX_KEY, { pb_key: FIX_KEY, ambiguity: "", commit_subject: "rename the helper", files_changed: ["src.mjs"], approach: "Extract helper" });
+    const first = rollback(repo, "--from", FIX_KEY);
+    assert.equal(first.code, 0, `setup: the first rollback exits 0, stderr: ${first.stderr}`);
+    const secondKey = `${STAGE}.fix.g1.r3.a${ATTEMPT}`;
+    writeArtifact(repo, secondKey, { pb_key: secondKey, ambiguity: "", commit_subject: "extract again", files_changed: ["src.mjs"], approach: "extract  HELPER!" });
+    writeFileSync(join(repo.dir, "src.mjs"), "second fix, uncommitted\n");
+
+    const result = rollback(repo, "--from", secondKey);
+
+    assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+    assert.equal(outsidePairingbuddy(repo.dir), "", "the tree is clean");
+    const entries = repo.ledger().fixes.rollbacks;
+    assert.equal(entries.length, 2, "the second rollback appended a second ledger entry");
+    assert.equal(entries[1].kind, "repeated", "the second ledger entry has kind repeated");
+    const note = readFileSync(notePath(repo), "utf8");
+    assert.ok(note.includes(`## Rollback 2: ${secondKey}`), "the note gains a second entry");
+    assert.ok(note.slice(note.indexOf(`## Rollback 2: ${secondKey}`)).includes("extract  HELPER!"), "the second entry quotes the approach");
+    assert.equal(JSON.parse(result.stdout).failedAttempts, 2, "it counts as the second failed attempt");
+  });
+  test("repeated-check-wins-over-stale-red-run: a stale red test run does not override a repeated approach, so the kind is 'repeated'", () => {
+    const repo = makeRedRepo();
+    writeArtifact(repo, FIX_KEY, { pb_key: FIX_KEY, ambiguity: "", commit_subject: "rename the helper", files_changed: ["src.mjs"], approach: "Extract helper" });
+    const first = rollback(repo, "--from", FIX_KEY);
+    assert.equal(first.code, 0, `setup: the red rollback exits 0, stderr: ${first.stderr}`);
+    assert.equal(repo.ledger().fixes.rollbacks[0].kind, "red", "setup: the first rollback is a red one");
+    assert.equal(repo.ledger().tests.checkpoint.passed, false, "setup: the failed checkpoint test run is still in the ledger");
+    const secondKey = `${STAGE}.fix.g1.r3.a${ATTEMPT}`;
+    writeArtifact(repo, secondKey, { pb_key: secondKey, ambiguity: "", commit_subject: "extract again", files_changed: ["src.mjs"], approach: "extract helper" });
+    writeFileSync(join(repo.dir, "src.mjs"), "second fix, uncommitted\n");
+
+    const result = rollback(repo, "--from", secondKey);
+
+    assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+    const entries = repo.ledger().fixes.rollbacks;
+    assert.equal(entries.length, 2, "the second rollback appended a second ledger entry");
+    assert.equal(entries[1].kind, "repeated", "the repeated approach wins over the stale red run");
+    const secondEntry = readFileSync(notePath(repo), "utf8");
+    const entryText = secondEntry.slice(secondEntry.indexOf(`## Rollback 2: ${secondKey}`));
+    assert.ok(entryText.includes("extract helper"), "the second note entry quotes the approach");
+    assert.ok(!entryText.includes("expected 3, got 4"), "the second note entry does not quote the stale test excerpt");
+  });
+  test("repeated-with-nothing-dirty-records-null-ref: a repeated rollback with no dirty group paths runs no git save and records ref null and sha null", () => {
+    const repo = makeRepo();
+    writeArtifact(repo, FIX_KEY, { pb_key: FIX_KEY, ambiguity: "", commit_subject: "rename the helper", files_changed: ["src.mjs"], approach: "Extract helper" });
+    const first = rollback(repo, "--from", FIX_KEY);
+    assert.equal(first.code, 0, `setup: the first rollback exits 0, stderr: ${first.stderr}`);
+    const secondKey = `${STAGE}.fix.g1.r3.a${ATTEMPT}`;
+    writeArtifact(repo, secondKey, { pb_key: secondKey, ambiguity: "", commit_subject: "extract again", files_changed: ["src.mjs"], approach: "extract  HELPER!" });
+    const refsBefore = git(repo.dir, "for-each-ref", "refs/pairingbuddy", "--format=%(refname)");
+
+    const result = rollback(repo, "--from", secondKey);
+
+    assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+    assert.equal(outsidePairingbuddy(repo.dir), "", "the tree is clean");
+    assert.equal(git(repo.dir, "for-each-ref", "refs/pairingbuddy", "--format=%(refname)"), refsBefore, "no new rollback ref was created");
+    const entries = repo.ledger().fixes.rollbacks;
+    assert.equal(entries.length, 2, "the second rollback appended a ledger entry");
+    assert.equal(entries[1].kind, "repeated", "the entry has kind repeated");
+    assert.equal(entries[1].ref, null, "the entry has ref null");
+    assert.equal(entries[1].sha, null, "the entry has sha null");
+    assert.equal(entries[1].base, repo.head(), "the entry has base at HEAD");
+    assert.equal(JSON.parse(result.stdout).failedAttempts, 2, "it counts as the second failed attempt");
+  });
+  test("repeated-needs-same-stage: an earlier rollback with the same approach in a different stage does not make a later uncommitted fix repeated", () => {
+    const repo = makeRepo();
+    const otherKey = `scenarios.fix.g1.r2.a${ATTEMPT}`;
+    writeArtifact(repo, otherKey, { pb_key: otherKey, ambiguity: "", commit_subject: "rename the helper", files_changed: ["src.mjs"], approach: "Extract helper" });
+    repo.updateLedger((ledger) => { ledger.fixes = { rollbacks: [{ key: otherKey, kind: "artifact", ref: null, sha: null, base: null }] }; });
+    const first = rollback(repo, "--from", FIX_KEY);
+    assert.equal(first.code, 0, `setup: the committed rollback exits 0, stderr: ${first.stderr}`);
+    const secondKey = `${STAGE}.fix.g1.r3.a${ATTEMPT}`;
+    writeArtifact(repo, secondKey, { pb_key: secondKey, ambiguity: "", commit_subject: "extract again", files_changed: ["src.mjs"], approach: "Extract helper" });
+    writeFileSync(join(repo.dir, "src.mjs"), "second fix, uncommitted\n");
+    const before = snapshot(repo);
+
+    const result = rollback(repo, "--from", secondKey);
+
+    assertRefused(repo, before, result, /no commit and no red test run/);
+  });
+  test("repeated-needs-same-group: an earlier rollback with the same approach for a different item of the stage does not make a later uncommitted fix repeated", () => {
+    const repo = makeRepo();
+    const otherKey = `${STAGE}.fix.g2.r2.a${ATTEMPT}`;
+    writeArtifact(repo, otherKey, { pb_key: otherKey, ambiguity: "", commit_subject: "rename the helper", files_changed: ["src.mjs"], approach: "Extract helper" });
+    repo.updateLedger((ledger) => { ledger.fixes = { rollbacks: [{ key: otherKey, kind: "artifact", ref: null, sha: null, base: null }] }; });
+    const first = rollback(repo, "--from", FIX_KEY);
+    assert.equal(first.code, 0, `setup: the committed rollback exits 0, stderr: ${first.stderr}`);
+    const secondKey = `${STAGE}.fix.g1.r3.a${ATTEMPT}`;
+    writeArtifact(repo, secondKey, { pb_key: secondKey, ambiguity: "", commit_subject: "extract again", files_changed: ["src.mjs"], approach: "Extract helper" });
+    writeFileSync(join(repo.dir, "src.mjs"), "second fix, uncommitted\n");
+    const before = snapshot(repo);
+
+    const result = rollback(repo, "--from", secondKey);
+
+    assertRefused(repo, before, result, /no commit and no red test run/);
+  });
+  test("no-approach-never-repeats: an earlier rollback without an approach and a later red fix without one roll back as kind 'red'", () => {
+    const repo = makeRedRepo();
+    const first = rollback(repo, "--from", FIX_KEY);
+    assert.equal(first.code, 0, `setup: the first red rollback exits 0, stderr: ${first.stderr}`);
+    const secondKey = `${STAGE}.fix.g1.r3.a${ATTEMPT}`;
+    writeArtifact(repo, secondKey, { pb_key: secondKey, ambiguity: "", commit_subject: "again", files_changed: ["src.mjs"] });
+    writeFileSync(join(repo.dir, "src.mjs"), "second fix, uncommitted\n");
+
+    const result = rollback(repo, "--from", secondKey);
+
+    assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+    const entries = repo.ledger().fixes.rollbacks;
+    assert.equal(entries.length, 2, "the second rollback appended a ledger entry");
+    assert.equal(entries[1].kind, "red", "with no approach on either side the second rollback is red, not repeated");
+  });
+  test("uncommitted-fix-new-approach-no-red-still-refused: an uncommitted fix with a new approach and no failed test run is still refused", () => {
+    const repo = makeRepo();
+    writeArtifact(repo, FIX_KEY, { pb_key: FIX_KEY, ambiguity: "", commit_subject: "rename the helper", files_changed: ["src.mjs"], approach: "Extract helper" });
+    const first = rollback(repo, "--from", FIX_KEY);
+    assert.equal(first.code, 0, `setup: the first rollback exits 0, stderr: ${first.stderr}`);
+    const secondKey = `${STAGE}.fix.g1.r3.a${ATTEMPT}`;
+    writeArtifact(repo, secondKey, { pb_key: secondKey, ambiguity: "", commit_subject: "inline it", files_changed: ["src.mjs"], approach: "Inline the call" });
+    writeFileSync(join(repo.dir, "src.mjs"), "second fix, uncommitted\n");
+    const before = snapshot(repo);
+
+    const result = rollback(repo, "--from", secondKey);
+
+    assertRefused(repo, before, result, /no commit and no red test run/);
+    assert.equal(repo.ledger().fixes.rollbacks.length, 1, "the ledger still holds only the first rollback");
+    assert.notEqual(outsidePairingbuddy(repo.dir), "", "the dirty file is still dirty");
+  });
 });
