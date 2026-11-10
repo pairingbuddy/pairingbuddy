@@ -71,3 +71,23 @@ for (const [name, repoOver, tapOver, key] of [
     assert.equal(existsSync(repo.body), false);
   });
 }
+
+// Scenario: pr-draft-cli-and-tap
+test("tap-writes-pr-body-for-pr-draft-fix-return", () => {
+  const redraft = "## Summary\n\nExport lands as one button, redrafted.\n";
+  const fixKey = `${STAGE}.fix.g1.r2.a1`;
+  const repo = makeRepo();
+  tap(repo);
+
+  tap(repo, { key: fixKey, fields: { body: redraft } });
+
+  assert.equal(readFileSync(repo.body, "utf8"), redraft, "the redraft replaces the first draft's body");
+});
+
+test("tap-writes-no-pr-body-for-another-stage-fix-return", () => {
+  const other = makeRepo({ stageName: "code-scenarios" });
+
+  tap(other, { agent: "pairingbuddy:enumerate-scenarios-and-test-cases", key: "code-scenarios.fix.g1.r2.a1", fields: { body: "## Summary\n\nRedrafted.\n" } });
+
+  assert.equal(existsSync(other.body), false, "a fix return from another stage writes no pr-body.md");
+});

@@ -28,7 +28,7 @@ import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, len
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
-import { PrLintRunRefused, prBodyPath, readDraftArtifact, readUnit, runPrLint } from "../shared-node/pr-lint-run.mjs";
+import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readUnit, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
@@ -1480,6 +1480,54 @@ function pathsOfArtifact(root, key) {
 // Where this stage's rollback refs live, under the unit's own ref prefix.
 const rollbackPrefix = (branch, stage) => `${unitRefPrefix(branch)}rollback/${stage}/`;
 
+// A pr-draft fix is undone for its failed lint: the failures, one `rule: text` each.
+// It counts only when the lint failed and was run on this fix's own body; a lint of another body says nothing about this fix.
+function failedLintAccount(root, key) {
+  const lint = readLintResult(root);
+  if (lint?.ok !== false || !Array.isArray(lint.failures)) return null;
+  const body = String(readArtifact(root, key).body ?? "");
+  if (lint.bodyHash !== sha256(body)) return null;
+  return `The PR lint failed: ${lint.failures.map(({ rule, text }) => `${rule}: ${text}`).join("; ")}`;
+}
+
+// Whatever lint result is on disk, passed or failed, or null when there is none or it cannot be read.
+function readLintResult(root) {
+  try {
+    return JSON.parse(readFileSync(prLintPath(root), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+// The newest standing draft of this attempt other than the one being rolled back: the body the PR keeps after the rollback.
+function remainingDraftBody(root, stage, key) {
+  const newest = newestDraftKey(artifactsDirOf(root), stage, key);
+  if (!newest) throw new Refusal(`no draft is left once ${key} is rolled back, so there is no PR body to restore and nothing was touched`);
+  return String(readArtifact(root, newest.pbKey).body ?? "");
+}
+
+// Put a body back as the PR body, whole or not at all, like the tap writes it.
+function writePrBody(root, body) {
+  const path = prBodyPath(root);
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, body);
+  renameSync(temp, path);
+}
+
+// A rolled-back pr-draft fix also takes its body off the PR, so the newest draft left stands again.
+// The body is read first, so a refusal leaves the artifact where it was.
+function rollbackArtifactStep(root, key, parts, ledger, none) {
+  const restored = parts.stage === "pr-draft" ? remainingDraftBody(root, ledger.stage, key) : null;
+  rollbackArtifact(root, key);
+  if (restored !== null) writePrBody(root, restored);
+  return none;
+}
+
+// The account for a rolled-back artifact: the failed lint for a pr-draft fix, else the course checker's.
+function artifactAccount(root, parts, key) {
+  return (parts.stage === "pr-draft" && failedLintAccount(root, key)) || checkerAccount(root, parts);
+}
+
 // The course-checker's account of what went wrong, one entry per rollback, so the next attempt sees it.
 function checkerAccount(root, parts) {
   const checkerKey = buildKey({ ...parts, role: "course-checker" });
@@ -1607,7 +1655,7 @@ function rollback(args) {
   // A committed fix's or an artifact's note holds the checker's account; a red fix's holds the failed test runs' output.
   const none = { ref: null, sha: null, base: null };
   const steps = {
-    artifact: { wrong: () => checkerAccount(root, parts), undo: () => (rollbackArtifact(root, key), none) },
+    artifact: { wrong: () => artifactAccount(root, parts, key), undo: () => rollbackArtifactStep(root, key, parts, ledger, none) },
     commit: { wrong: () => checkerAccount(root, parts), undo: () => rollbackCommitted(root, { key, prefix, sha: record.sha }) },
     red: { wrong: () => failedRunsExcerpts(ledger.tests.checkpoint), undo: () => rollbackUncommitted(root, { key, prefix, paths: own }) },
     repeated: {

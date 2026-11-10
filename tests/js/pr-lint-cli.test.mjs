@@ -73,3 +73,30 @@ test("pr-lint-verb-is-classified-for-the-runner", () => {
   assert.equal(classOf(verb), "runner");
   assert.equal(gateDecision(`node ${join(ROOT, "cli", "pb.mjs")} pr lint`), "allow", "the gate allows the runner's pr lint");
 });
+
+// Scenario: pr-draft-cli-and-tap
+const REDRAFT_KEY = "pr-draft.fix.g1.r2.a1";
+const redraft = (title) => ({ pb_key: REDRAFT_KEY, title, body: CLEAN_BODY, labels: [], base: "main", coordination: null });
+
+test("pr-lint-uses-newest-standing-draft", () => {
+  const { repo, runDir } = repoWithDrafts({ titles: { 1: "Added the first draft" }, body: CLEAN_BODY });
+  writeFileSync(join(runDir, "task", "artifacts", `${REDRAFT_KEY}.json`), JSON.stringify(redraft(CLEAN_TITLE)));
+
+  const result = pb(repo, "pr", "lint");
+
+  assert.equal(result.code, 0, result.stderr);
+  const printed = JSON.parse(result.stdout);
+  assert.deepEqual(printed.failures, [], "the kept redraft's good title is linted, not the first draft's bad one");
+  assert.equal(printed.ok, true);
+});
+
+test("pr-lint-ignores-rejected-redraft", () => {
+  const { repo, runDir } = repoWithDrafts({ titles: { 1: CLEAN_TITLE }, body: CLEAN_BODY });
+  mkdirSync(join(runDir, "task", "rejected"), { recursive: true });
+  writeFileSync(join(runDir, "task", "rejected", `${REDRAFT_KEY}.json`), JSON.stringify(redraft("Added a rejected redraft")));
+
+  const result = pb(repo, "pr", "lint");
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).ok, true, "a redraft moved to run/task/rejected is not used");
+});

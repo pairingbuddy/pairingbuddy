@@ -140,6 +140,26 @@ function makeArtifactRepo({ whatWentWrong }) {
   return repo;
 }
 
+// The pr-draft case: the draft (round 1, a good body) stands, the redraft (round 2, a bad body) is the fix artifact, and
+// run/pr-body.md holds the redraft's body because the tap writes it for either role. run/pr-lint.json is the lint of that
+// body. There is no course checker artifact: for pr-draft the lint is the judge.
+const PR_STAGE = "pr-draft";
+const PR_DRAFT_KEY = `${PR_STAGE}.draft-pull-request.-.r1.a${ATTEMPT}`;
+const PR_FIX_KEY = `${PR_STAGE}.fix.g1.r2.a${ATTEMPT}`;
+const GOOD_BODY = "Adds the retry cap so a stuck stage stops after five rollbacks.\n";
+const BAD_BODY = "A seamless upgrade of the retry cap.\n";
+const sha256 = (text) => createHash("sha256").update(text).digest("hex");
+function makePrDraftRepo() {
+  const repo = makeRepo({ committedFix: false, seedArtifacts: false });
+  repo.updateLedger((ledger) => { ledger.stage.name = PR_STAGE; });
+  writeArtifact(repo, PR_DRAFT_KEY, { pb_key: PR_DRAFT_KEY, title: "Cap the retries", body: GOOD_BODY });
+  writeArtifact(repo, PR_FIX_KEY, { pb_key: PR_FIX_KEY, title: "Cap the retries", body: BAD_BODY });
+  const runDir = join(repo.dir, ".pairingbuddy", "run");
+  writeFileSync(join(runDir, "pr-body.md"), BAD_BODY);
+  writeFileSync(join(runDir, "pr-lint.json"), JSON.stringify({ ok: false, failures: [{ rule: "hype", text: "seamless" }], bodyHash: sha256(BAD_BODY) }));
+  return { ...repo, runDir };
+}
+
 function pb(repo, ...args) {
   const { status, stdout, stderr } = spawnSync(process.execPath, [CLI, ...args], { cwd: repo.dir, encoding: "utf8", timeout: 30_000, env: gitEnv() });
   return { code: status, stdout, stderr };
@@ -854,4 +874,64 @@ describe("pb rollback", () => {
     assert.equal(repo.ledger().fixes.rollbacks.length, 1, "the ledger still holds only the first rollback");
     assert.notEqual(outsidePairingbuddy(repo.dir), "", "the dirty file is still dirty");
   });
+});
+
+// Scenario: pr-draft-cli-and-tap
+test("rollback-artifact-lint-failure-succeeds-and-restores-body", () => {
+  const repo = makePrDraftRepo();
+  const artifactPath = join(repo.taskDir, "artifacts", `${PR_FIX_KEY}.json`);
+  const rejectedPath = join(repo.taskDir, "rejected", `${PR_FIX_KEY}.json`);
+
+  const result = rollback(repo, "--artifact", "--from", PR_FIX_KEY);
+
+  assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+  const out = JSON.parse(result.stdout);
+  assert.equal(out.ok, true, "the result says ok");
+  assert.equal(out.failedAttempts, 1, "the result counts one failed attempt");
+  assert.equal(existsSync(artifactPath), false, "the redraft is gone from artifacts/");
+  assert.equal(existsSync(rejectedPath), true, "the redraft is in rejected/");
+  const note = readFileSync(join(repo.taskDir, "notes", `${PR_STAGE}.md`), "utf8");
+  assert.equal(note.split("\n").filter((line) => /^## Rollback \d+: /.test(line)).length, 1, "the note has one entry");
+  assert.match(note, /hype/, "the entry names the failed rule");
+  assert.match(note, /seamless/, "the entry names the failed text");
+  assert.deepEqual(repo.ledger().fixes.rollbacks, [{ key: PR_FIX_KEY, kind: "artifact", ref: null, sha: null, base: null }], "the rollback is recorded as an artifact rollback");
+  assert.equal(readFileSync(join(repo.runDir, "pr-body.md"), "utf8"), GOOD_BODY, "the PR body is the last good draft's body again");
+});
+// Without a course checker artifact the lint is the judge, so only a lint that failed THIS redraft's body may stand in
+// for it. A pass, a lint of some other body, or no lint at all leaves nothing to roll back on.
+test("rollback-artifact-refuses-without-matching-failed-lint", () => {
+  const rows = [
+    ["a lint that passed", (repo) => writeFileSync(join(repo.runDir, "pr-lint.json"), JSON.stringify({ ok: true, failures: [], bodyHash: sha256(BAD_BODY) }))],
+    ["a failed lint of another body", (repo) => writeFileSync(join(repo.runDir, "pr-lint.json"), JSON.stringify({ ok: false, failures: [{ rule: "hype", text: "seamless" }], bodyHash: sha256(GOOD_BODY) }))],
+    ["no lint file", (repo) => rmSync(join(repo.runDir, "pr-lint.json"))],
+    ["a failed lint with no failures list", (repo) => writeFileSync(join(repo.runDir, "pr-lint.json"), JSON.stringify({ ok: false, bodyHash: sha256(BAD_BODY) }))],
+  ];
+  for (const [label, arrange] of rows) {
+    const repo = makePrDraftRepo();
+    arrange(repo);
+    const before = snapshot(repo);
+    const bodyBefore = readFileSync(join(repo.runDir, "pr-body.md"), "utf8");
+
+    const result = rollback(repo, "--artifact", "--from", PR_FIX_KEY);
+
+    assertRefused(repo, before, result, /no course checker verdict|pr-lint/, label);
+    assert.equal(readFileSync(join(repo.runDir, "pr-body.md"), "utf8"), bodyBefore, `${label}: the PR body is untouched`);
+  }
+});
+// A late safeguard: when a course checker did judge the redraft, its verdict is the judge, so the note carries the
+// checker's text and not a lint text, and the PR body is still put back to the last good draft's.
+test("rollback-artifact-checker-verdict-restores-pr-body", () => {
+  const repo = makePrDraftRepo();
+  const checkerKey = `${PR_STAGE}.course-checker.g1.r2.a${ATTEMPT}`;
+  const checkerSays = "The redraft kept the hype and dropped the retry cap detail.";
+  writeArtifact(repo, checkerKey, { pb_key: checkerKey, finding_id: "pr-lint-1", verdict: "wrong-direction", mistake: "missed-finding", what_went_wrong: checkerSays });
+  writeFileSync(join(repo.runDir, "pr-lint.json"), JSON.stringify({ ok: true, failures: [], bodyHash: sha256(BAD_BODY) }));
+
+  const result = rollback(repo, "--artifact", "--from", PR_FIX_KEY);
+
+  assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+  const note = readFileSync(join(repo.taskDir, "notes", `${PR_STAGE}.md`), "utf8");
+  assert.ok(note.includes(checkerSays), "the note holds the checker's what_went_wrong");
+  assert.doesNotMatch(note, /seamless/, "the note holds no lint text");
+  assert.equal(readFileSync(join(repo.runDir, "pr-body.md"), "utf8"), GOOD_BODY, "the PR body is the first draft's body again");
 });

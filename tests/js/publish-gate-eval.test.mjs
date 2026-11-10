@@ -335,3 +335,19 @@ describe("publish-gate-refusals", () => {
     assert.doesNotMatch(refused.stderr, /unexpected failure/);
   });
 });
+
+// Scenario: auto-publish-lint-safeguard
+test("auto-policy-failed-lint-asks-human", () => {
+  const { repo, runDir } = publishRepo({ title: BAD_TITLE, mode: "auto" });
+  const lensRecord = { stage: "pr-draft", attempt: 1, lenses: ["correctness"], survivors: [], refuted: [], unrefuted: [], uncovered: [] };
+  updateLedger(ledgerPathOf(runDir), (ledger) => ({ ...ledger, lenses: { "safety-net": lensRecord } }));
+
+  const asked = evalGate(repo);
+
+  assert.equal(asked.result, "needs-human");
+  assert.equal(asked.gate, GATE);
+  assert.match(asked.reason, /lint/i, "the reason names the lint");
+  assert.match(asked.reason, /title-form/, "the reason names the failing rule");
+  assert.notEqual(asked.reason, HUMAN_ONLY_REASON, "a failed lint is not the never-by-auto reason");
+  assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, "no auto-pass is recorded");
+});
