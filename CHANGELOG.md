@@ -55,6 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The gate now actually sees Read, Grep and Glob calls (they were missing from its hook matcher), so read confinement applies in real sessions; read tools skip the run-ledger checks.
+- Each lens prompt now lists the corpus files to check against.
+- The recovery drill's gate-throw anchor follows the gate again, and a fast test fails if a line a drill patches moves.
 - `/pb` now answers and opens the pane.
 - With no run, the pane invents no steps.
 - The last run is kept after `pb task end` and shown as "last run finished", and the report button still works.

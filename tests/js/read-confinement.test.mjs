@@ -2,7 +2,7 @@
 // Placeholders: each test fails until the confinement rule is implemented. Skips are not allowed.
 import "./isolated-tmpdir.mjs";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { writeLedger } from "../../shared-node/ledger.mjs";
 import { sessionsDirectory } from "../../shared-node/run-root.mjs";
 import { fakeRepo, scratchDir } from "./d17-repos.mjs";
-import { assertAllowed, fixture, runGate } from "./gate-harness.mjs";
+import { ROOT, assertAllowed, fixture, runGate } from "./gate-harness.mjs";
 import { baseLedger } from "./ledger-fixture.mjs";
 
 // A fake repo with a run ledger, and a subagent payload (agent_id and agent_type) standing in it.
@@ -176,7 +176,7 @@ test("other_agents_and_main_unaffected", async () => {
 });
 test("linked_worktree_toplevel_is_the_boundary", async () => {
   const main = scratchDir("read-confinement-main-");
-  const git = (cwd, ...args) => execFileSync("git", args, { cwd, stdio: "pipe" });
+  const git = (cwd, ...args) => execFileSync("git", ["-c", "commit.gpgsign=false", ...args], { cwd, stdio: "pipe" });
   git(main, "init", "-q");
   writeFileSync(join(main, "main-only.txt"), "x");
   git(main, "-c", "user.name=t", "-c", "user.email=t@t", "add", ".");
@@ -298,4 +298,20 @@ test("confined_agent_structured_output_allowed_with_and_without_run", async () =
       assert.notEqual(denyDecision(await runGate(call)), "deny", `${agent} must be able to return StructuredOutput`);
     }
   }
+});
+// The registered matcher must reach the read tools, or the rule above never runs in a real session.
+test("gate_matcher_covers_the_read_tools", () => {
+  const { hooks } = JSON.parse(readFileSync(join(ROOT, "hooks", "hooks.json"), "utf8"));
+  const [entry] = hooks.PreToolUse.filter((e) => e.hooks.some((h) => h.command.includes("hooks/gate-boot.mjs")));
+  const matches = (tool) => new RegExp(`^(?:${entry.matcher || ".*"})$`).test(tool);
+  for (const tool of ["Read", "Grep", "Glob"]) assert.ok(matches(tool), `the gate's matcher must cover ${tool}`);
+});
+test("main_read_with_a_broken_ledger_allowed", async () => {
+  const dir = repoWithRun();
+  writeFileSync(join(dir, ".pairingbuddy", "run", "task", "ledger.json"), "{ not json");
+  const main = subagentCall(dir, undefined, "Read", { file_path: join(dir, "inside.txt") });
+  delete main.agent_type;
+  delete main.agent_id;
+
+  assertAllowed(await runGate(main));
 });

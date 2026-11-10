@@ -95,6 +95,18 @@ test("Each lens call's prompt carries its lens name and the serialized subject i
 });
 
 // lens-merge
+test("Each lens prompt has a <corpus> section listing the corpus paths, and says none when the corpus is empty", async () => {
+  const withCorpus = { ...ONE_LENS, corpus: ["src/a.mjs", "docs/b.md"] };
+  const emptyCorpus = { ...ONE_LENS, corpus: [] };
+
+  const listed = await runLensAttack(withCorpus, async () => ({ findings: [] }));
+  const empty = await runLensAttack(emptyCorpus, async () => ({ findings: [] }));
+
+  const section = (prompt) => /<corpus>\n([\s\S]*?)\n<\/corpus>/.exec(prompt)?.[1];
+  assert.ok(section(listed.calls[0].prompt).includes("src/a.mjs") && section(listed.calls[0].prompt).includes("docs/b.md"));
+  assert.match(section(empty.calls[0].prompt), /none/i);
+});
+
 test("Same lens returns, with the lenses completing in opposite orders, give a deep-equal result", async () => {
   const config = TWO_LENSES;
   const findingsByModel = {

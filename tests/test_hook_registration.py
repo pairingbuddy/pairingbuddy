@@ -55,6 +55,9 @@ def test_gate_registered_in_hooks_json():
     ]
 
     assert len(entries) == 1, "PreToolUse must contain one entry for gate-boot.mjs"
-    assert entries[0]["matcher"] == "Workflow|Agent|Write|Edit|NotebookEdit|Bash|AskUserQuestion"
+    assert (
+        entries[0]["matcher"]
+        == "Workflow|Agent|Write|Edit|NotebookEdit|Bash|AskUserQuestion|Read|Grep|Glob"
+    )
     for hook in entries[0]["hooks"]:
         assert hook["type"] == "command"

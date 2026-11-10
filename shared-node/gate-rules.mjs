@@ -422,6 +422,8 @@ function checkLedgerRun(root, { payload, targets, canonicalPath }) {
     recordSessionIfPossible(ledgerPath, payload);
     return;
   }
+  // A read tool is held only to the confinement checkRun ran, so a broken ledger never takes Read from the main context.
+  if (CONFINED_TOOLS.includes(payload.tool_name)) return;
   if (!existsSync(ledgerPath)) return;
   const ledger = readLedger(ledgerPath);
   const contract = loadStages(PLUGIN_ROOT);
