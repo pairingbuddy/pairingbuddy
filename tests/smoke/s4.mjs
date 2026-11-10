@@ -16,6 +16,9 @@
 // Read outside the repo, built from the lens agent's recorded ids, is denied by the real hooks/gate.mjs with the run's
 // state in place (the live one, or the captured copy put back), a Read inside it is not, and none of the lens agent's own
 // tool calls was denied, each read among them having passed the gate.
+// Light review (new_feature only, since only that type refactors per cycle): the code-tdd stage is copied the moment the
+// ledger shows it done, and each test whose GREEN that stage recorded has exactly one light-review return filed under
+// code-tdd.lens.<test id>, which matches light-review-result.schema.json, while no identify-* return is filed at all.
 //
 // Run it by hand, in a separate shell, from the repo root. It spends money, so no suite collects it:
 //
@@ -40,6 +43,8 @@ import { RECORDINGS, parseOptions, position } from "./s2.mjs";
 import { makeS3Repo } from "./s3.mjs";
 
 const STAGE = "code-scenarios";
+const TDD_STAGE = "code-tdd";
+const LIGHT_REVIEW_SCHEMA = JSON.parse(readFileSync(join(REPO_ROOT, "contracts", "schemas", "light-review-result.schema.json"), "utf8"));
 const LENS_ROLE = "lens";
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 const LENS_MAP = readJson(join(REPO_ROOT, "contracts", "lenses.json"));
@@ -74,10 +79,12 @@ class ScenariosRecorder extends RunRecorder {
     this.runDir = join(repo, ".pairingbuddy", "run");
     this.taskDir = join(this.runDir, "task");
     this.captured = null;
+    this.tdd = null;
   }
 
   poll() {
     super.poll();
+    this.pollTdd();
     if (this.captured !== null || this.last === null) return;
     const entry = this.last.stages?.find(({ name, status }) => name === STAGE && status === "done");
     if (entry === undefined) return;
@@ -93,6 +100,45 @@ class ScenariosRecorder extends RunRecorder {
     writeFileSync(join(dir, "ledger.json"), JSON.stringify(this.last, null, 2));
     this.captured = { dir, artifacts: join(dir, "artifacts"), run: join(dir, "run"), ledger: this.last, entry };
   }
+
+  // The tdd stage's returns, before pb task end removes them.
+  pollTdd() {
+    if (this.tdd !== null || this.last === null) return;
+    const entry = this.last.stages?.find(({ name, status }) => name === TDD_STAGE && status === "done");
+    if (entry === undefined) return;
+    const dir = join(this.out, "tdd");
+    try {
+      cpSync(join(this.taskDir, "artifacts"), join(dir, "artifacts"), { recursive: true });
+    } catch {
+      return;
+    }
+    writeFileSync(join(dir, "ledger.json"), JSON.stringify(this.last, null, 2));
+    this.tdd = { dir, artifacts: join(dir, "artifacts"), ledger: this.last, entry };
+  }
+}
+
+// One light reviewer per refactored cycle: each test whose GREEN code-tdd recorded at this attempt has exactly one lens
+// return filed for it, valid against the light-review schema, and the stage filed no identify-* return.
+function assertLightReviews(tdd) {
+  const stage = { name: TDD_STAGE, attempt: tdd.entry.attempt };
+  const filed = returnsAt(tdd.artifacts, stage);
+  const identify = filed.filter(({ role }) => role.startsWith("identify-"));
+  check(identify.length === 0, `${TDD_STAGE} filed identify-* returns: ${identify.map(({ pbKey }) => pbKey)}`);
+  const perTest = tdd.ledger.tests?.perTest ?? {};
+  const cycles = Object.keys(perTest).filter((id) => perTest[id].green?.done && perTest[id].green.stage === TDD_STAGE && perTest[id].green.attempt === stage.attempt);
+  check(cycles.length > 0, `${TDD_STAGE} recorded no GREEN, so no cycle was refactored`);
+  const lens = filed.filter(({ role }) => role === LENS_ROLE);
+  for (const id of cycles) {
+    const reviews = lens.filter(({ item }) => item === id);
+    check(reviews.length === 1, `cycle ${id} has ${reviews.length} light-review returns, expected 1: ${reviews.map(({ pbKey }) => pbKey)}`);
+    const result = readReturn(tdd.artifacts, reviews[0].pbKey);
+    check(result !== null, `the light-review return under ${reviews[0].pbKey} does not echo its key`);
+    const problems = violations(LIGHT_REVIEW_SCHEMA, result);
+    check(problems.length === 0, `the return under ${reviews[0].pbKey} breaks light-review-result.schema.json: ${problems}`);
+  }
+  const strays = lens.filter(({ item }) => !cycles.includes(item));
+  check(strays.length === 0, `light-review returns for no refactored cycle: ${strays.map(({ pbKey }) => pbKey)}`);
+  return { cycles: cycles.length, reviewers: lens.length };
 }
 
 function lensKeys(stage) {
@@ -371,6 +417,10 @@ async function runS4(budget, record, out, type, task, pluginDir) {
     result.snapshot = assertSnapshot(captured, stage, repo, agents, wfReturn);
     result.confinement = { ...assertOutOfCorpusReadDenied(captured, repo, outside, agents), lensCalls: assertLensCallsAllowed(agents), session: assertReadsReachGate(recorder.stream) };
     const findings = refuting.plan.sent.length + refuting.plan.pastCut.length;
+    if (type === "new_feature") {
+      check(recorder.tdd !== null, `the ${TDD_STAGE} stage never finished, so the light review cannot be judged; ${result.runNote}`);
+      result.lightReview = assertLightReviews(recorder.tdd);
+    }
     result.refuters = { findings, sent: refuting.plan.sent.length, spawned: result.caps.refuters, filed: refuting.filed, note: findings === 0 ? "no findings to refute: the refuter checks hold vacuously" : "" };
     if (findings === 0) console.log("S4: the lens returned no findings, so no findings to refute; the refuter checks hold vacuously");
     result.keys = keys.map(({ key }) => key);

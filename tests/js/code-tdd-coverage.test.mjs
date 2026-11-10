@@ -21,6 +21,8 @@ const MAX_LOOPS = 2;
 const RUNNER = "pairingbuddy:runner";
 const PLACEHOLDERS = "pairingbuddy:create-test-placeholders";
 const TESTS = "pairingbuddy:implement-tests";
+const CODE = "pairingbuddy:implement-code";
+const LENS = "pairingbuddy:lens";
 const COVERAGE = "pairingbuddy:verify-test-coverage";
 const artifact = (key) => `.pairingbuddy/run/task/artifacts/${key}.json`;
 
@@ -32,7 +34,7 @@ const pbKeyOf = ({ opts }) => opts.schema.properties.pb_key.enum[0];
 const callsOf = (calls, agentType) => calls.filter(({ opts }) => opts.agentType === agentType);
 
 const accepted = { cli_exit_code: 0, cli_output: "{\"ok\":true}" };
-const stateOutput = (over) => JSON.stringify({ ok: true, taskType: "bug_fix", scenarios: SCENARIOS_PATH, tests: null, red: [], green: [], covered: [], ...over });
+const stateOutput = (over) => JSON.stringify({ ok: true, taskType: "bug_fix", scenarios: SCENARIOS_PATH, tests: null, red: [], green: [], covered: [], testRunners: { node: { test_directory: "tests/js", file_pattern: "*.test.mjs" } }, ...over });
 const report = (gaps) => ({ ambiguity: "", status: gaps.length === 0 ? "complete" : "incomplete", scenarios_covered: 1, scenarios_total: 1, test_cases_covered: 1, test_cases_total: 1 + gaps.length, gaps });
 
 // Each placeholders call returns the next list of rows, and each coverage round the next list of gaps. The last stays.
@@ -41,12 +43,17 @@ function standIn({ rows = [[row("t1")]], gaps = [[]], state = {}, worker = () =>
   let rounds = 0;
   return async (prompt, opts) => {
     const pb_key = opts.schema.properties.pb_key.enum[0];
-    if (opts.agentType === RUNNER) return { pb_key, ...(commandsOf({ prompt })[0] === "tdd state" ? { cli_exit_code: 0, cli_output: stateOutput(state) } : accepted) };
+    if (opts.agentType === RUNNER) {
+      const [command] = commandsOf({ prompt });
+      if (command === "snapshot") return { pb_key, cli_exit_code: 0, cli_output: JSON.stringify({ ok: true, paths: [] }) };
+      return { pb_key, ...(command === "tdd state" ? { cli_exit_code: 0, cli_output: stateOutput(state) } : accepted) };
+    }
     const override = worker(opts.agentType, pb_key, prompt);
     if (override !== undefined) return override;
     if (opts.agentType === COVERAGE) return { pb_key, ...report(gaps[Math.min(rounds++, gaps.length - 1)]) };
     if (opts.agentType === PLACEHOLDERS) return { pb_key, ambiguity: "", commit_subject: "x", files_changed: [], tests: rows[Math.min(placeholders++, rows.length - 1)] };
-    return { pb_key, ambiguity: "", commit_subject: "x", files_changed: [], issues: [] };
+    if (opts.agentType === LENS) return { pb_key, ambiguity: null, focus_changes: [], findings: [] };
+    return { pb_key, ambiguity: "", commit_subject: "x", files_changed: opts.agentType === TESTS || opts.agentType === CODE ? ["tests/js/a.test.mjs"] : [] };
   };
 }
 
@@ -159,15 +166,13 @@ test("code-tdd-a-coverage-check-that-returns-nothing-is-spawned-again-then-stops
 });
 
 test("code-tdd-new-feature-refactors-the-cycles-the-loop-adds", async () => {
-  const issues = [{ file: "src/a.py", issue_type: "naming", description: "vague" }];
   const { calls } = await runStage({
     state: { taskType: "new_feature" },
     rows: [[row("t1")], [row("t1"), row("t2")]],
     gaps: [[gap], []],
-    worker: (agentType, pb_key) => (agentType.includes("identify-") ? { pb_key, ambiguity: "", issues } : undefined),
   });
 
-  assert.deepEqual(callsOf(calls, "pairingbuddy:identify-code-issues").map(({ prompt }) => blockOf(prompt, "test_id")), ["t1", "t2"]);
+  assert.deepEqual(callsOf(calls, LENS).map(pbKeyOf), ["code-tdd.lens.t1.r1.a1", "code-tdd.lens.t2.r1.a1"], "one light review per cycle: t1 and t2");
 });
 
 test("code-tdd-the-maxAgents-stop-covers-the-loop", async () => {
