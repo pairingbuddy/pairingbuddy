@@ -653,3 +653,17 @@ test("report_refuses_a_corpus_manifest_that_is_not_a_list_of_paths", () => {
     }
   }
 });
+
+// Scenario: lens-map-wires-pr-draft
+test("A lens with a brief gets a <brief> block after its </lens> line holding the brief as one escaped JSON line, and a lens without one gets no <brief> tag", async () => {
+  const brief = "Check <b>claims</b> against the diff.";
+  const config = configWith([{ name: "claims", model: "sonnet", brief }, { name: "patterns", model: "opus" }]);
+
+  const { calls } = await runLensAttack(config, async () => lensReturn([]));
+
+  const escapedBrief = JSON.stringify(brief).replace(/</g, "\\u003c");
+  const [briefed, plain] = calls.map(({ prompt }) => prompt);
+  assert.ok(briefed.includes(`<brief>\n${escapedBrief}\n</brief>`), "the briefed lens's prompt holds the escaped brief in a <brief> block");
+  assert.ok(briefed.indexOf("<brief>") > briefed.indexOf("</lens>"), "the <brief> block comes after the </lens> line");
+  assert.ok(!plain.includes("<brief"), "the lens without a brief has no <brief> tag");
+});

@@ -14,14 +14,14 @@ export function lensOfFinding(finding) {
 
 // A stage's lens config from its row in lenses.json: the one shape lensAttack is given and the report reads, so both
 // apply the same lenses, refute setting and caps. stage is the stage name, which a row names bare or with the code- prefix. A row with taskTypes (the
-// safety-net rows, one per task type) is picked by taskType and wires all its lenses. Any other row wires one lens, the
-// first. The stages whose rows have no lens call yet get no lenses.
+// safety-net rows, one per task type) is picked by taskType and wires all its lenses; so does a row with wiresAll true
+// (pr-draft, which has no task types). Any other row wires one lens, the first. The stages whose rows have no lens call yet get no lenses.
 export function wiredLensConfig(lensMap, stage, taskType) {
   const rows = lensMap.rows.filter((candidate) => candidate.stage === stage || `code-${candidate.stage}` === stage);
   const row = rows.find((candidate) => candidate.taskTypes?.includes(taskType)) ?? rows.find((candidate) => candidate.taskTypes === undefined);
   if (row === undefined) return { lenses: [] };
   const { refute, maxRefuters, maxFindingsPerLens } = row;
-  return { lenses: row.taskTypes === undefined ? row.lenses.slice(0, 1) : row.lenses, refute, maxRefuters, maxFindingsPerLens };
+  return { lenses: row.taskTypes === undefined && row.wiresAll !== true ? row.lenses.slice(0, 1) : row.lenses, refute, maxRefuters, maxFindingsPerLens };
 }
 
 // A verdict counts only for the finding it was sent for: the refuter returns the finding_id it believes it attacked, and a

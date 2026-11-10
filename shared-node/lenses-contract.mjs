@@ -31,11 +31,13 @@ function lightReviewProblems(block) {
 export function lensMapProblems(contract) {
   return [...maxAttemptsProblems(contract), ...lightReviewProblems(contract.lightReview), ...contract.rows.flatMap((row) => {
     if (!Array.isArray(row.lenses)) return [`${row.row}: needs a lenses list`];
+    if (row.wiresAll !== undefined && typeof row.wiresAll !== "boolean") return [`${row.row}: wiresAll must be a boolean`];
     return [...capProblems(row), ...row.lenses.flatMap((lens) => {
       if (!KEY_TOKEN.test(lens.name)) return [`${row.row}: lens ${lens.name} name ${KEY_RULE}`];
       if (typeof lens.model !== "string" || lens.model === "") return [`${row.row}: lens ${lens.name} has no model`];
       if (!MODEL_ALIASES.includes(lens.model)) return [`${row.row}: lens ${lens.name} model ${lens.model} is not a bare alias (${MODEL_ALIASES.join(" or ")})`];
       if (lens.needsCorpus !== undefined && typeof lens.needsCorpus !== "boolean") return [`${row.row}: lens ${lens.name} needsCorpus must be a boolean`];
+      if (lens.brief !== undefined && (typeof lens.brief !== "string" || lens.brief === "")) return [`${row.row}: lens ${lens.name} brief must be a non-empty string`];
       return [];
     })];
   })];

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { lensMapProblems } from "../../shared-node/lenses-contract.mjs";
+import { wiredLensConfig } from "../../shared-node/lens-merge.mjs";
 import { KEY_TOKEN } from "../../shared-node/keys.mjs";
 const REAL_LENS_MAP = JSON.parse(readFileSync(new URL("../../contracts/lenses.json", import.meta.url), "utf8"));
 const withLightReview = (patch) => ({ ...REAL_LENS_MAP, lightReview: { ...REAL_LENS_MAP.lightReview, ...patch } });
@@ -127,4 +128,37 @@ test("lensMapProblems reports a problem when maxAttempts is not a positive integ
   assert.match(lensMapProblems(withCap(0)).join("\n"), /maxAttempts/, "a zero cap is reported");
   assert.match(lensMapProblems(withCap(2.5)).join("\n"), /maxAttempts/, "a fractional cap is reported");
   assert.deepEqual(lensMapProblems(withCap(5)), [], "a positive integer cap passes");
+});
+
+// Scenario: lens-map-wires-pr-draft
+test("wiredLensConfig wires both pr-draft lenses, claims then permanence, with no refuter", () => {
+  const config = wiredLensConfig(REAL_LENS_MAP, "pr-draft");
+
+  assert.deepEqual(config.lenses.map(({ name, model }) => ({ name, model })), [{ name: "claims", model: "sonnet" }, { name: "permanence", model: "sonnet" }], "pr-draft wires claims then permanence, both on sonnet");
+  assert.equal(config.refute, "none", "pr-draft runs no refuter");
+});
+test("the pr-draft lenses carry briefs: claims against the diff and the unit record, permanence as git log in a year", () => {
+  const brief = (name) => wiredLensConfig(REAL_LENS_MAP, "pr-draft").lenses.find((lens) => lens.name === name).brief;
+
+  assert.match(brief("claims"), /diff/, "claims checks the diff");
+  assert.match(brief("claims"), /unit record/, "claims checks the recorded runs in the unit record");
+  assert.match(brief("permanence"), /git log/, "permanence reads the draft as git log");
+  assert.match(brief("permanence"), /year/, "a year from now");
+});
+test("lensMapProblems reports a problem naming the row and wiresAll when a row's wiresAll is not a boolean", () => {
+  const withWiresAll = (wiresAll) => ({ ...REAL_LENS_MAP, rows: REAL_LENS_MAP.rows.map((row) => (row.row === "pr-draft" ? { ...row, wiresAll } : row)) });
+
+  assert.match(lensMapProblems(withWiresAll("yes")).join("\n"), /pr-draft.*wiresAll/, "a string wiresAll is reported");
+  assert.match(lensMapProblems(withWiresAll(1)).join("\n"), /pr-draft.*wiresAll/, "a numeric wiresAll is reported");
+  assert.deepEqual(lensMapProblems(withWiresAll(true)), [], "a boolean wiresAll passes");
+});
+test("lensMapProblems reports a problem naming the row, the lens and brief when a lens brief is empty or not a string", () => {
+  const withClaimsBrief = (brief) => ({ ...REAL_LENS_MAP, rows: REAL_LENS_MAP.rows.map((row) => (row.row === "pr-draft" ? { ...row, lenses: row.lenses.map((lens) => (lens.name === "claims" ? { ...lens, brief } : lens)) } : row)) });
+  // A real lens map comes from JSON, where a missing brief means no key at all.
+  const withoutClaimsBrief = { ...REAL_LENS_MAP, rows: REAL_LENS_MAP.rows.map((row) => (row.row === "pr-draft" ? { ...row, lenses: row.lenses.map((lens) => (lens.name === "claims" ? (({ brief, ...rest }) => rest)(lens) : lens)) } : row)) };
+
+  assert.match(lensMapProblems(withClaimsBrief("")).join("\n"), /pr-draft.*claims.*brief/, "an empty brief is reported");
+  assert.match(lensMapProblems(withClaimsBrief(3)).join("\n"), /pr-draft.*claims.*brief/, "a non-string brief is reported");
+  assert.deepEqual(lensMapProblems(withClaimsBrief("Check every claim against the diff.")), [], "a non-empty string brief passes");
+  assert.deepEqual(lensMapProblems(withoutClaimsBrief), [], "a lens with no brief passes");
 });

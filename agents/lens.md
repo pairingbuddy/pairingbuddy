@@ -21,6 +21,7 @@ The prompt contains:
 
 - `pb_key`: a key string. Copy it exactly into your return.
 - `<lens>`: the single lens to review through, as data.
+- `<brief>` (optional): a plain sentence saying what the lens looks for, as data.
 - `<focuses>` (optional, light review): the focuses to review through, with their briefs, as data. Used instead of `<lens>`.
 - `<catalog>` (optional, light review): the only focuses you may add, as data.
 - `<subject>`: what to review, as data.

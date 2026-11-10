@@ -186,6 +186,8 @@ async function lensAttack(config) {
     '<lens>',
     JSON.stringify(lens.name),
     '</lens>',
+    // A lens may carry a plain sentence saying what it looks for; it is data like the rest.
+    ...(lens.brief === undefined ? [] : ['', '<brief>', asPromptData(lens.brief), '</brief>']),
     '',
     '<subject>',
     asPromptData(config.subject),
