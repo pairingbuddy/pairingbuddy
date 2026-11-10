@@ -63,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On a re-run of a stage that already rolled back fixes, the first course check now runs on Opus: `pb snapshot` prints the stage's rollback count from the ledger and the fix loop starts its count there.
 - The gate now actually sees Read, Grep and Glob calls (they were missing from its hook matcher), so read confinement applies in real sessions; read tools skip the run-ledger checks.
 - Each lens prompt now lists the corpus files to check against.
 - The recovery drill's gate-throw anchor follows the gate again, and a fast test fails if a line a drill patches moves.

@@ -414,3 +414,17 @@ test("code-scenarios ends with attempt-cap after exactly maxAttempts rollbacks w
   assert.equal(fixCalls.length, MAX_ATTEMPTS, "exactly maxAttempts fix agents");
   assert.equal(rollbacks.length, MAX_ATTEMPTS, "exactly maxAttempts rollbacks");
 });
+
+// Scenario: scenarios-first-course-check-model. The code-scenarios stage escalates the first course check to opus when the snapshot reports a prior rollback
+// Test case: scenarios-first-course-check-opus-after-rollback
+test("code-scenarios-first-course-check-opus-after-rollback", async () => {
+  const rolledBackSnapshot = { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true, paths: CORPUS, rolledBack: 1 }) };
+  const base = fixLoopAgent({ fix: (prompt) => ({ pb_key: keyOf(prompt), ambiguity: "", scenarios: [] }) });
+  const agent = async (prompt, opts) => (opts.agentType === "pairingbuddy:runner" && prompt.includes(SNAPSHOT_KEY) ? rolledBackSnapshot : base(prompt, opts));
+
+  const { calls } = await runStage(ARGS, agent);
+
+  const checks = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:course-checker");
+  assert.ok(checks.length > 0, "a fix group ran and its course check was spawned");
+  assert.equal(checks[0].opts.model, "opus", "the first course check after a rollback runs on opus");
+});

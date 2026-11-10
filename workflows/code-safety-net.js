@@ -54,7 +54,7 @@ async function courseCheck(config) {
 }
 
 // The fix loop of lensAttack: one fix agent per group of surviving findings, run one group at a time. It needs these names from elsewhere: buildKey, buildLabel and fixAttemptRound (from the stage's pb-inline-module lines: keys, labels), lensOfFinding (from the pb-inline-module line for shared-node/lens-merge.mjs), mistakeKey and normalizeApproach (from the pb-inline-module line for shared-node/mistake-check.mjs), asPromptData, pinnedKey and taskBlock (from the other shared sources), relayedJson (from relayed-json.mjs), courseCheck (from course-check.mjs), runCommands (from the stage runtime) and agent (from the workflow runtime).
-// Config fields read: stage, attempt, maxAttempts and checkSchema (the course verdict schema passed to courseCheck) are required. config.fix is required: instruction, agentType, schemaByAgentType, and optionally agentTypeByLens (agent type per lens, else agentType). In artifact mode only, fix.mode is 'artifact', fix.paths are the fix agent's inputs and fix.before is the artifact the first group is judged against; in the default (code) mode fix.paths are the inputs and fix.mode and fix.before are unused.
+// Config fields read: stage, attempt, maxAttempts and checkSchema (the course verdict schema passed to courseCheck) are required. priorRollbacks is optional: the stage's rollbacks made before this loop, where failedAttempts starts (default 0). config.fix is required: instruction, agentType, schemaByAgentType, and optionally agentTypeByLens (agent type per lens, else agentType). In artifact mode only, fix.mode is 'artifact', fix.paths are the fix agent's inputs and fix.before is the artifact the first group is judged against; in the default (code) mode fix.paths are the inputs and fix.mode and fix.before are unused.
 
 const TESTS_FAILED = /^pb: the tests failed, so nothing was committed/m;
 const FIX_DIFF_PATH = '.pairingbuddy/run/fix.diff';
@@ -137,7 +137,7 @@ function mistakeKeysOf(outcome, group, verdict) {
 async function fixLoop(config, survivors, budget = Infinity) {
   const spent = { count: 0 };
   let attempts = 0;
-  let failedAttempts = 0;
+  let failedAttempts = config.priorRollbacks ?? 0;
   const lessons = [];
   const artifactMode = config.fix.mode === 'artifact';
   let before = config.fix.before;
@@ -181,7 +181,7 @@ async function fixLoop(config, survivors, budget = Infinity) {
 
 // One read-only lens agent per lens, each at its own model. rankLensReturns, settleLensRound and acceptVerdict come from the stage's pb-inline-module line.
 // Outside names: buildKey, buildLabel, lensSlug (the stage's pb-inline-module lines), asPromptData, corpusBlock, pinnedKey (the other shared sources), fixLoop (fix-loop.mjs), agent and log (the workflow runtime).
-// Config fields read: stage, attempt, lenses (each { name, model }), subject, corpus, agentBudget (optional: what is left of the stage's maxAgents), and fix (optional: turns the fix loop on; fixLoop reads the rest). config.schema is the lens-result schema and config.refuterSchema the refuter-verdict schema; each call pins its own key into its schema, so the tap files the return. The tests' wrapper stage passes no schema, so the call then runs unpinned.
+// Config fields read: stage, attempt, lenses (each { name, model }), subject, corpus, agentBudget (optional: what is left of the stage's maxAgents), priorRollbacks (optional, passed to fixLoop) and fix (optional: turns the fix loop on; fixLoop reads the rest). config.schema is the lens-result schema and config.refuterSchema the refuter-verdict schema; each call pins its own key into its schema, so the tap files the return. The tests' wrapper stage passes no schema, so the call then runs unpinned.
 
 async function lensAttack(config) {
   const keyOf = (lens) => buildKey({ stage: config.stage, role: 'lens', item: lensSlug(lens.name), round: 1, attempt: config.attempt });
@@ -325,8 +325,8 @@ function relayedJson(text) {
 }
 
 // The corpus is what pb snapshot found, relayed by the runner as the JSON the CLI printed. A snapshot that failed is no
-// corpus. Returns { paths, taskType }: the paths to attack and the task type pb snapshot printed beside them, for choosing
-// the lens row.
+// corpus. Returns { paths, taskType, rolledBack }: the paths to attack, the task type pb snapshot printed beside them
+// (for choosing the lens row), and rolledBack, the stage's rollbacks already made as printed (0 unless a non-negative integer).
 function snapshotResult(run) {
   const { cli_exit_code: exitCode, cli_output: output } = run.result;
   let printed = null;
@@ -337,7 +337,8 @@ function snapshotResult(run) {
   }
   const usable = exitCode === 0 && printed !== null && printed.ok === true && Array.isArray(printed.paths) && printed.paths.every((p) => typeof p === 'string');
   if (!usable) throw new Error(`pb snapshot gave no corpus (exit ${exitCode}): ${output}`);
-  return { paths: printed.paths, taskType: printed.taskType };
+  const rolledBack = Number.isInteger(printed.rolledBack) && printed.rolledBack >= 0 ? printed.rolledBack : 0;
+  return { paths: printed.paths, taskType: printed.taskType, rolledBack };
 }
 
 // What every stage does alike. RUNNER_SCHEMA comes from the stage's own pb-inline line, and buildKey, buildLabel and
@@ -678,7 +679,7 @@ if (missing !== null) return missing;
 
 const stage = 'code-safety-net';
 const snapshot = await runCommands(stage, ['snapshot'], { round: 1 });
-const { paths: corpus, taskType } = snapshotResult(snapshot);
+const { paths: corpus, taskType, rolledBack } = snapshotResult(snapshot);
 
 // Spawns that are not lens agents: the snapshot runner (already spawned), the docs agent and the finishing runner (still to come).
 const reserved = 3;
@@ -690,6 +691,7 @@ const lensResult = await lensAttack({
   attempt: args.attempt,
   ...wiredLensConfig(LENSES, stage, taskType),
   agentBudget,
+  priorRollbacks: rolledBack,
   corpus,
   subject: { subject_diff: '.pairingbuddy/run/subject.diff', changed: '.pairingbuddy/run/changed.json' },
   schema: LENS_SCHEMA,

@@ -1,5 +1,5 @@
 // The fix loop of lensAttack: one fix agent per group of surviving findings, run one group at a time. It needs these names from elsewhere: buildKey, buildLabel and fixAttemptRound (from the stage's pb-inline-module lines: keys, labels), lensOfFinding (from the pb-inline-module line for shared-node/lens-merge.mjs), mistakeKey and normalizeApproach (from the pb-inline-module line for shared-node/mistake-check.mjs), asPromptData, pinnedKey and taskBlock (from the other shared sources), relayedJson (from relayed-json.mjs), courseCheck (from course-check.mjs), runCommands (from the stage runtime) and agent (from the workflow runtime).
-// Config fields read: stage, attempt, maxAttempts and checkSchema (the course verdict schema passed to courseCheck) are required. config.fix is required: instruction, agentType, schemaByAgentType, and optionally agentTypeByLens (agent type per lens, else agentType). In artifact mode only, fix.mode is 'artifact', fix.paths are the fix agent's inputs and fix.before is the artifact the first group is judged against; in the default (code) mode fix.paths are the inputs and fix.mode and fix.before are unused.
+// Config fields read: stage, attempt, maxAttempts and checkSchema (the course verdict schema passed to courseCheck) are required. priorRollbacks is optional: the stage's rollbacks made before this loop, where failedAttempts starts (default 0). config.fix is required: instruction, agentType, schemaByAgentType, and optionally agentTypeByLens (agent type per lens, else agentType). In artifact mode only, fix.mode is 'artifact', fix.paths are the fix agent's inputs and fix.before is the artifact the first group is judged against; in the default (code) mode fix.paths are the inputs and fix.mode and fix.before are unused.
 
 const TESTS_FAILED = /^pb: the tests failed, so nothing was committed/m;
 const FIX_DIFF_PATH = '.pairingbuddy/run/fix.diff';
@@ -82,7 +82,7 @@ function mistakeKeysOf(outcome, group, verdict) {
 async function fixLoop(config, survivors, budget = Infinity) {
   const spent = { count: 0 };
   let attempts = 0;
-  let failedAttempts = 0;
+  let failedAttempts = config.priorRollbacks ?? 0;
   const lessons = [];
   const artifactMode = config.fix.mode === 'artifact';
   let before = config.fix.before;

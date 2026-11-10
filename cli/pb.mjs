@@ -1443,8 +1443,9 @@ function snapshot(args) {
   const runDir = join(root, ".pairingbuddy", "run");
   replaceFiles([[join(runDir, SUBJECT_DIFF_FILE), diff], [join(runDir, CHANGED_FILE), jsonText(changed)], [join(runDir, CORPUS_FILE), jsonText({ paths })]]);
   const ledgerPath = join(taskDirOf(root), "ledger.json");
-  const taskType = existsSync(ledgerPath) ? readLedger(ledgerPath).taskType : null;
-  return { ok: true, paths, taskType };
+  const ledger = existsSync(ledgerPath) ? readLedger(ledgerPath) : null;
+  const taskType = ledger === null ? null : ledger.taskType;
+  return { ok: true, paths, taskType, rolledBack: ledger === null ? 0 : rolledBackCount(ledger, ledger.stage.name) };
 }
 
 function insideRepo(root, candidates) {

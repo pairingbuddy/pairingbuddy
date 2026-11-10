@@ -20,7 +20,7 @@ if (missing !== null) return missing;
 
 const stage = 'code-safety-net';
 const snapshot = await runCommands(stage, ['snapshot'], { round: 1 });
-const { paths: corpus, taskType } = snapshotResult(snapshot);
+const { paths: corpus, taskType, rolledBack } = snapshotResult(snapshot);
 
 // Spawns that are not lens agents: the snapshot runner (already spawned), the docs agent and the finishing runner (still to come).
 const reserved = 3;
@@ -32,6 +32,7 @@ const lensResult = await lensAttack({
   attempt: args.attempt,
   ...wiredLensConfig(LENSES, stage, taskType),
   agentBudget,
+  priorRollbacks: rolledBack,
   corpus,
   subject: { subject_diff: '.pairingbuddy/run/subject.diff', changed: '.pairingbuddy/run/changed.json' },
   schema: LENS_SCHEMA,

@@ -704,3 +704,14 @@ test("empty-normalized-approach-never-repeats: an approach that normalizes to em
   assert.equal(fixCallsOf(calls).length, 2, "two fix attempts");
   assert.equal(callsOf(calls, CHECKER).length, 2, "the second fix reaches the checker");
 });
+
+// Test case: prior-rollbacks-count-toward-the-cap
+test("prior-rollbacks-count-toward-the-cap", async () => {
+  const unreadable = () => ({ cli_exit_code: 0, cli_output: "no json here" });
+  const { respond } = scriptedAgents({ lenses: { code: [finding("R1", "one")] }, verdicts: Array(30).fill("wrong-direction"), rollbacks: unreadable });
+
+  const { calls, result } = await runFixLoop(baseConfig({ priorRollbacks: MAX_ATTEMPTS - 1 }), guardFixSpawns(respond));
+
+  assert.equal(result.stopReason, "attempt-cap", "the loop ends with attempt-cap");
+  assert.equal(fixCallsOf(calls).length, 1, "one fix agent: the count starts at the prior rollbacks");
+});

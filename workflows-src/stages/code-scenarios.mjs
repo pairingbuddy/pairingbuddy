@@ -39,7 +39,7 @@ const prompt = [
 const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
 const snapshot = await runCommands(stage, ['snapshot'], { round: 1 });
-const { paths: corpus } = snapshotResult(snapshot);
+const { paths: corpus, rolledBack } = snapshotResult(snapshot);
 
 // Spawns that are not lens agents: the enumerator and the snapshot runner (already spawned) and the finishing runner (still to come).
 const reserved = 3;
@@ -48,7 +48,7 @@ const agentBudget = maxAgents - reserved;
 
 const lensResult = await lensAttack({
   stage, attempt: args.attempt, ...wiredLensConfig(LENSES, stage), agentBudget, corpus, subject: result, schema: LENS_SCHEMA, refuterSchema: REFUTER_SCHEMA,
-  checkSchema: COURSE_VERDICT_SCHEMA,
+  checkSchema: COURSE_VERDICT_SCHEMA, priorRollbacks: rolledBack,
   maxAttempts: LENSES.maxAttempts,
   fix: {
     mode: 'artifact',

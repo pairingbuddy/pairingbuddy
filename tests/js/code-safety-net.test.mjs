@@ -487,3 +487,63 @@ test("The safety net's step-failed early return carries the stop runner, keyed a
   assert.equal(result.stopReason, "step-failed", "the stage stops on the failed fix");
   assert.equal(result.runner.pbKey, "code-safety-net.runner.-.r2.a2", "the early return carries the stop runner's key");
 });
+
+// Scenario: safety-net-first-course-check-model. The code-safety-net stage escalates the first course-checker call to opus when the snapshot reports a prior rollback
+function agentWithRolledBack(rolledBack) {
+  const snapshot = { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true, paths: ["CLAUDE.md"], taskType: "new_feature", rolledBack }) };
+  const base = attackingAgent("new_feature", oneFinding);
+  return async (prompt, opts) => (opts.agentType === "pairingbuddy:runner" && runnerRole(prompt, opts.agentType) === "snapshot" ? snapshot : base(prompt, opts));
+}
+
+async function firstCourseCheck(rolledBack) {
+  const { calls } = await runStage(ARGS, agentWithRolledBack(rolledBack));
+  const checks = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:course-checker");
+  assert.ok(checks.length > 0, "a fix group ran and its course check was spawned");
+  return checks[0];
+}
+
+// Test case: safety-net-first-course-check-opus-after-rollback
+test("code-safety-net-first-course-check-opus-after-rollback", async () => {
+  const check = await firstCourseCheck(1);
+
+  assert.equal(check.opts.model, "opus", "the first course check after a rollback runs on opus");
+});
+
+// Test case: safety-net-first-course-check-sonnet-without-rollback
+test("code-safety-net-first-course-check-sonnet-without-rollback", async () => {
+  const check = await firstCourseCheck(0);
+
+  assert.equal(check.opts.model, "sonnet", "the first course check without a rollback runs on sonnet");
+});
+
+// Test case: safety-net-non-integer-or-negative-rolled-back-counts-as-zero
+const INVALID_ROLLED_BACK = [
+  ["string", "1"],
+  ["negative", -1],
+  ["missing", undefined],
+];
+for (const [label, rolledBack] of INVALID_ROLLED_BACK) {
+  test(`code-safety-net-non-integer-or-negative-rolled-back-counts-as-zero-${label}`, async () => {
+    const check = await firstCourseCheck(rolledBack);
+
+    assert.equal(check.opts.model, "sonnet", `rolledBack ${JSON.stringify(rolledBack)} is treated as 0`);
+  });
+}
+
+// Test case: safety-net-negative-rolled-back-does-not-raise-the-cap
+test("code-safety-net-negative-rolled-back-does-not-raise-the-cap", async () => {
+  const snapshot = { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true, paths: ["CLAUDE.md"], taskType: "config_change", rolledBack: -1 }) };
+  const base = fixingAgent(Array(20).fill("wrong-direction"));
+  const unconfirmedRollback = { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true }) };
+  const agent = async (prompt, opts) => {
+    const role = opts.agentType === "pairingbuddy:runner" ? runnerRole(prompt, opts.agentType) : null;
+    if (role === "snapshot") return snapshot;
+    if (role === "rollback") return unconfirmedRollback;
+    return base(prompt, opts);
+  };
+
+  const { calls, result } = await runStage(ARGS, agent);
+
+  assert.equal(result.stopReason, "attempt-cap", "the stage stops on the attempt cap");
+  assert.equal(countOf(calls, "pairingbuddy:refactor-code"), 5, "a negative rolledBack counts as 0, so exactly maxAttempts fix agents run");
+});
