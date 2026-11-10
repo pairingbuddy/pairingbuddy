@@ -671,3 +671,21 @@ test("built-script-runs-bare-without-args", async () => {
 
   assert.deepEqual(sut.result, { started: false }, "the guard line returns early when args is undefined");
 });
+
+// Scenario: harness-agent-type-enforcement. The harness rejects calls whose agentType does not match their role.
+test("harness-rejects-course-checker-without-agent-type", async () => {
+  const seen = [];
+  const agent = async (prompt) => (seen.push(prompt), {});
+  const schema = JSON.stringify({ type: "object", properties: { pb_key: { type: "string", enum: ["code-review.course-checker.g1.r2.a1"] } } });
+  const noAgentType = `await agent("p", { schema: ${schema} });`;
+  const wrongAgentType = `await agent("p", { agentType: "pairingbuddy:curate-guidance", schema: ${schema} });`;
+  const rightAgentType = `await agent("p", { agentType: "pairingbuddy:course-checker", schema: ${schema} });`;
+  const expectedMessage = /A course-checker call must name agentType "pairingbuddy:course-checker"/;
+
+  await assert.rejects(run(noAgentType, { agent }), expectedMessage);
+  await assert.rejects(run(wrongAgentType, { agent }), expectedMessage);
+  assert.deepEqual(seen, [], "the responder is never called for a rejected call");
+
+  await run(rightAgentType, { agent });
+  assert.deepEqual(seen, ["p"], "the course-checker call with pairingbuddy:course-checker reaches the responder");
+});

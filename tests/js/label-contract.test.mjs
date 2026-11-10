@@ -240,3 +240,105 @@ test("keys and labels agree on what a finding id is, and inline into one scope",
   }
   assert.equal(sut.readLabel("pb1 scenarios - refuter - r1").unknown, true);
 });
+
+// Scenario: fix-group-keys-and-labels. Keys and labels for course-checker and fix roles require a fix group item g<n>,
+// and the fix role never takes the lens round. Placeholders: each test fails until the rule is implemented.
+test("key-course-checker-item-must-be-fix-group", async (t) => {
+  const build = (item) => buildKey({ stage: "scenarios", role: "course-checker", item, round: 2, attempt: 1 });
+
+  for (const item of [null, "necessity", "g0", "g", "g1a", "code-1"]) {
+    await t.test(`rejects ${JSON.stringify(item)}`, () => {
+      assert.throws(() => build(item), /fix group/);
+    });
+  }
+  for (const item of ["g1", "g12"]) {
+    await t.test(`accepts ${item} and round-trips it through parseKey`, () => {
+      assert.equal(parseKey(build(item)).item, item);
+    });
+  }
+  await t.test("parseKey rejects a lens slug as a course-checker item", () => {
+    assert.throws(() => parseKey("scenarios.course-checker.necessity.r2.a1"), /fix group/);
+  });
+});
+
+test("label-course-checker-item-must-be-fix-group", async (t) => {
+  const build = (item) => buildLabel({ stage: "scenarios", phase: null, role: "course-checker", item, round: 2 });
+
+  for (const item of [null, "necessity", "g0", "g", "g1a", "code-1"]) {
+    await t.test(`rejects ${JSON.stringify(item)}`, () => {
+      assert.throws(() => build(item), /fix group/);
+    });
+  }
+  for (const item of ["g1", "g12"]) {
+    await t.test(`accepts ${item} and round-trips it through parseLabel`, () => {
+      assert.equal(parseLabel(build(item)).item, item);
+    });
+  }
+  await t.test("parseLabel takes g1 as a course-checker item but throws on a lens slug", () => {
+    const ok = parseLabel("pb1 scenarios - course-checker g1 r2");
+    assert.equal(ok.role, "course-checker", "role comes back for the g1 label");
+    assert.equal(ok.item, "g1", "item comes back for the g1 label");
+    assert.throws(() => parseLabel("pb1 scenarios - course-checker necessity r2"), /malformed label/, "lens slug item is refused");
+  });
+});
+
+test("key-fix-role-item-must-be-fix-group", async (t) => {
+  const build = (item) => buildKey({ stage: "scenarios", role: "fix", item, round: 2, attempt: 1 });
+
+  for (const item of [null, "necessity", "g0", "g", "g1a", "code-1"]) {
+    await t.test(`rejects ${JSON.stringify(item)}`, () => {
+      assert.throws(() => build(item), /fix group/);
+    });
+  }
+  for (const item of ["g1", "g12"]) {
+    await t.test(`accepts ${item} and round-trips it through parseKey`, () => {
+      assert.equal(parseKey(build(item)).item, item);
+    });
+  }
+  await t.test("parseKey rejects a lens slug as a fix item", () => {
+    assert.throws(() => parseKey("scenarios.fix.necessity.r2.a1"), /fix group/);
+  });
+});
+
+test("label-fix-role-item-must-be-fix-group", async (t) => {
+  const build = (item) => buildLabel({ stage: "scenarios", phase: null, role: "fix", item, round: 2 });
+
+  for (const item of [null, "necessity", "g0", "g", "g1a", "code-1"]) {
+    await t.test(`rejects ${JSON.stringify(item)}`, () => {
+      assert.throws(() => build(item), /fix group/, `fix label item ${JSON.stringify(item)} must be refused`);
+    });
+  }
+  for (const item of ["g1", "g12"]) {
+    await t.test(`accepts ${item} and round-trips it through parseLabel`, () => {
+      assert.equal(parseLabel(build(item)).item, item, `fix label item ${item} must round-trip`);
+    });
+  }
+  await t.test("parseLabel takes g1 as a fix item but throws on a lens slug", () => {
+    const ok = parseLabel("pb1 scenarios - fix g1 r2");
+    assert.equal(ok.role, "fix", "role comes back for the g1 label");
+    assert.equal(ok.item, "g1", "item comes back for the g1 label");
+    assert.throws(() => parseLabel("pb1 scenarios - fix necessity r2"), /malformed label/, "lens slug item is refused");
+  });
+});
+
+test("fix-role-never-lens-round-key", () => {
+  const fix = (round) => ({ stage: "scenarios", role: "fix", item: "g1", round, attempt: 1 });
+
+  assert.throws(() => buildKey(fix(1)), /never the lens round/, "buildKey refuses the lens round 1 for a fix");
+  assert.throws(() => parseKey("scenarios.fix.g1.r1.a1"), /never the lens round/, "parseKey refuses r1 for a fix");
+
+  const firstFixRound = fixAttemptRound(1);
+  const key = buildKey(fix(firstFixRound));
+  assert.deepEqual(parseKey(key), fix(firstFixRound), "the first fix round is accepted and round-trips");
+});
+
+test("fix-role-never-lens-round-label", () => {
+  const fix = (round) => ({ stage: "scenarios", phase: null, role: "fix", item: "g1", round });
+
+  assert.throws(() => buildLabel(fix(1)), /never the lens round/, "buildLabel refuses the lens round 1 for a fix");
+  assert.throws(() => parseLabel("pb1 scenarios - fix g1 r1"), /malformed label/, "parseLabel refuses r1 for a fix");
+
+  const firstFixRound = fixAttemptRound(1);
+  const label = buildLabel(fix(firstFixRound));
+  assert.deepEqual(parseLabel(label), fix(firstFixRound), "the first fix round is accepted and round-trips");
+});

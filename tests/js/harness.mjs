@@ -35,6 +35,7 @@ const ROLE_AGENT_TYPES = {
   lens: "pairingbuddy:lens",
   refuter: "pairingbuddy:refuter",
   synthesizer: "pairingbuddy:synthesizer",
+  "course-checker": "pairingbuddy:course-checker",
 };
 
 function isRoleKey(text, role) {

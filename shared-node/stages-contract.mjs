@@ -13,6 +13,7 @@ export default {
   ],
   "newPathAgents": [
     "apply-config-change",
+    "course-checker",
     "lens",
     "refuter",
     "runner"

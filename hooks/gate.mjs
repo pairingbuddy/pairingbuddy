@@ -250,7 +250,7 @@ async function denyD17WithNoRun(payload, cwd) {
 
 // A confined agent stays confined with no run. The roster mirrors CONFINED_AGENTS in gate-rules.mjs, kept apart so the main
 // context never pays for that import: only a confined payload loads it, and if the load fails the call is denied.
-const CONFINED_AGENT = /^pairingbuddy:(?:lens|refuter|synthesizer)$/;
+const CONFINED_AGENT = /^pairingbuddy:(?:lens|refuter|synthesizer|course-checker)$/;
 async function denyConfinedCallWithNoRun(payload, cwd, reads) {
   if (!CONFINED_AGENT.test(payload.agent_type)) return;
   try {

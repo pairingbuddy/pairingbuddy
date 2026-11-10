@@ -58,6 +58,7 @@ schemas:
   - refactor-code-result.schema.json
   - verify-test-coverage-result.schema.json
   - refuter-verdict.schema.json
+  - course-verdict.schema.json
   - git-config.schema.json
   - unit.schema.json
 
@@ -112,6 +113,23 @@ agents:
     outputs:
       refuter_verdict:
         schema: refuter-verdict.schema.json
+        return_only: true
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
+  course-checker:
+    color: cyan
+    model: sonnet
+    tools: [Read, Grep, Glob]
+    skills: []
+    inputs: {}
+    outputs:
+      course_verdict:
+        schema: course-verdict.schema.json
         return_only: true
     sections:
       - heading: "## Purpose"

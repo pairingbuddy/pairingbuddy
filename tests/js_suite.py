@@ -20,6 +20,8 @@ JS_TEST_FILES = [
     "tests/js/committing-changes-skill.test.mjs",
     "tests/js/config-hash-in-ledger.test.mjs",
     "tests/js/configured-branch-rules.test.mjs",
+    "tests/js/course-check-call.test.mjs",
+    "tests/js/course-verdict-schema.test.mjs",
     "tests/js/curate-guidance-drops-suggestions.test.mjs",
     "tests/js/current-test.test.mjs",
     "tests/js/d17-guard.test.mjs",

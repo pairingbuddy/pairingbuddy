@@ -94,7 +94,7 @@ function assertNotProtected(root, targets, canonicalPath) {
 
 // ---------- confined agents ----------
 
-const CONFINED_AGENTS = [`${PREFIX}lens`, `${PREFIX}refuter`, `${PREFIX}synthesizer`];
+const CONFINED_AGENTS = [`${PREFIX}lens`, `${PREFIX}refuter`, `${PREFIX}synthesizer`, `${PREFIX}course-checker`];
 
 const CONFINED_TOOLS = ["Read", "Grep", "Glob"];
 

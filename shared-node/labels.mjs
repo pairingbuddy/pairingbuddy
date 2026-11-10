@@ -9,8 +9,9 @@ export const REFACTOR_TASK_TYPES = ["new_feature"];
 export function refactorsPerCycle(taskType) {
   return REFACTOR_TASK_TYPES.includes(taskType);
 }
-const [REFUTER, COURSE_CHECKER] = ["refuter", "course-checker"];
+const [REFUTER, COURSE_CHECKER, LABEL_FIX] = ["refuter", "course-checker", "fix"];
 export const ROLES = [REFUTER, COURSE_CHECKER];
+const LABEL_FIX_GROUP_ROLES = [LABEL_FIX, COURSE_CHECKER];
 
 const PHASE_ALTERNATION = PHASES.join("|");
 const LABEL_PHASE = new RegExp(`^(?:${PHASE_ALTERNATION})$`);
@@ -36,9 +37,15 @@ function labelPhaseText(phase) {
   return phase;
 }
 
+// keys.mjs holds the same pattern (FIX_GROUP).
+const LABEL_FIX_GROUP = /^g[1-9]\d*$/;
+
 function labelRoleProblem({ role, item, round }) {
   if (role === REFUTER && !LABEL_FINDING_ID.test(String(item))) return `label refuter item must be the finding id it attacks: ${JSON.stringify(item)}`;
-  if (role === COURSE_CHECKER && round === 1) return "label course-checker round must be a fix attempt's round, never the lens round: 1";
+  if (LABEL_FIX_GROUP_ROLES.includes(role)) {
+    if (!LABEL_FIX_GROUP.test(String(item))) return `label ${role} item must be its fix group id (g1, g2, ...): ${JSON.stringify(item)}`;
+    if (round === 1) return `label ${role} round must be a fix attempt's round, never the lens round: 1`;
+  }
   return null;
 }
 
