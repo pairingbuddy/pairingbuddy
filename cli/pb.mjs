@@ -1599,7 +1599,7 @@ function assertRollbackAllowed(key, parts, ledger, root) {
   // Only the newest fix group of an attempt can be undone: an older one sits under a later group (a fix or its course checker).
   const artifactsDir = artifactsDirOf(root);
   const onDisk = existsSync(artifactsDir) ? returnsAt(artifactsDir, { name: parts.stage, attempt: parts.attempt }) : [];
-  const recorded = ledger.checkpoints.filter(({ key: k }) => isKey(k)).map(({ key: k }) => ({ pbKey: k, ...parseKey(k) }));
+  const recorded = (ledger.checkpoints ?? []).filter(({ key: k }) => isKey(k)).map(({ key: k }) => ({ pbKey: k, ...parseKey(k) }));
   const newer = [...recorded, ...onDisk].find((other) => other.stage === parts.stage && other.attempt === parts.attempt && other.round > parts.round);
   if (newer) throw new Refusal(`${key} is not the newest fix group: ${newer.pbKey} came after it, so nothing was touched`);
 }
@@ -1642,7 +1642,7 @@ function rollback(args) {
   const parts = parseKey(key);
   assertRollbackAllowed(key, parts, ledger, root);
   // A recorded checkpoint means the fix was committed; otherwise it was only in the working tree (red).
-  const record = artifactForm ? undefined : ledger.checkpoints.find((c) => c.key === key);
+  const record = artifactForm ? undefined : (ledger.checkpoints ?? []).find((c) => c.key === key);
   const repeated = artifactForm || record ? null : repeatedApproach(root, ledger, key);
   const kind = artifactForm ? "artifact" : record ? "commit" : repeated !== null ? "repeated" : "red";
   const own = kind === "artifact" ? [] : kind === "commit" ? pathsOfCommit(root, record.sha) : pathsOfArtifact(root, key);

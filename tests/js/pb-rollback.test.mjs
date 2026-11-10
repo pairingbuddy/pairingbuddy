@@ -288,6 +288,18 @@ describe("pb rollback", () => {
     assert.equal(outsidePairingbuddy(repo.dir), "", "the tree is clean outside .pairingbuddy");
   });
 
+  test("a red rollback succeeds when the ledger has no checkpoints field", () => {
+    const repo = makeRedRepo({ newFile: true });
+    repo.updateLedger((ledger) => { delete ledger.checkpoints; });
+
+    const result = rollback(repo, "--from", FIX_KEY);
+
+    assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+    assert.equal(existsSync(join(repo.dir, "helper.mjs")), false, "the new untracked file is gone from disk");
+    assert.equal(readFileSync(join(repo.dir, "src.mjs"), "utf8"), "original code\n", "src.mjs is back to its seed content");
+    assert.equal(repo.ledger().fixes.rollbacks[0].kind, "red", "the rollback is recorded as a red one");
+  });
+
   test("a red rollback leaves HEAD and the index unchanged", () => {
     const repo = makeRedRepo({ newFile: true });
     const branchRef = "refs/heads/feature";
@@ -367,6 +379,22 @@ describe("pb rollback", () => {
     assert.deepEqual(repo.ledger().fixes.rollbacks, [{ key: ARTIFACT_FIX_KEY, kind: "artifact", ref: null, sha: null, base: null }], "the rollback is recorded as an artifact rollback");
     assert.equal(repo.head(), headBefore, "HEAD is unchanged");
     assert.equal(git(repo.dir, "for-each-ref", "refs/pairingbuddy"), "", "no refs under refs/pairingbuddy");
+  });
+
+  // `ledger.checkpoints` is optional and `pb run open` does not write it, so a fresh run's stage has none.
+  test("an artifact rollback succeeds when the ledger has no checkpoints field", () => {
+    const repo = makeArtifactRepo({ whatWentWrong: "the redraft dropped the refusal scenarios" });
+    repo.updateLedger((ledger) => { delete ledger.checkpoints; });
+    const artifactPath = join(repo.taskDir, "artifacts", `${ARTIFACT_FIX_KEY}.json`);
+    const rejectedPath = join(repo.taskDir, "rejected", `${ARTIFACT_FIX_KEY}.json`);
+    const bytesBefore = readFileSync(artifactPath);
+
+    const result = rollback(repo, "--artifact", "--from", ARTIFACT_FIX_KEY);
+
+    assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+    assert.equal(existsSync(artifactPath), false, "the artifact is gone from artifacts/");
+    assert.deepEqual(readFileSync(rejectedPath), bytesBefore, "rejected/ holds the same bytes");
+    assert.deepEqual(repo.ledger().fixes.rollbacks, [{ key: ARTIFACT_FIX_KEY, kind: "artifact", ref: null, sha: null, base: null }], "the rollback is recorded as an artifact rollback");
   });
 
   // Refusals: each prints "pb: ...", exits 1 (usage errors exit 2) and touches nothing.
