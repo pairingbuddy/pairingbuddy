@@ -22,6 +22,7 @@ const WRAPPER_STAGE = [
   "// pb-inline-module shared-node/lens-merge.mjs",
   "// pb-inline-module shared-node/mistake-check.mjs",
   "// pb-inline-module shared-node/shell-word.mjs",
+  "// pb-inline-module shared-node/spent-line.mjs",
   "// pb-inline RUNNER_SCHEMA contracts/schemas/runner-result.schema.json",
   "",
   "return await lensAttack(args.config);",

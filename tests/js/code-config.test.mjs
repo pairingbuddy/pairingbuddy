@@ -33,8 +33,8 @@ test("code-config-bare-invocation-returns-not-started-without-agent", async () =
 const KEY_FOR_ATTEMPT = (attempt) => `code-config.apply-config-change.-.r1.a${attempt}`;
 const ANSWER = { pb_key: "x", ambiguity: "", commit_subject: "chore: x", files_changed: [] };
 
-async function runWith(args) {
-  return runScript(STAGE, { args: { pluginRoot: PLUGIN_ROOT, ...args }, agent: async () => ANSWER });
+async function runWith(args, { spent } = {}) {
+  return runScript(STAGE, { args: { pluginRoot: PLUGIN_ROOT, ...args }, agent: async () => ANSWER, spent });
 }
 
 test("code-config-label-is-built-by-build-label", async () => {
@@ -173,6 +173,19 @@ test("code-config-runner-gets-the-checkpoint-then-stage-finish-exactly", async (
     `node ${PLUGIN_ROOT}/cli/pb.mjs stage finish`,
   ]);
   assert.ok(prompt.includes("Return pb_key exactly as: code-config.runner.-.r1.a2"), "prompt names the expected key");
+});
+
+test("code-config-finish-runner-prompt-has-spent-line-before-commands", async () => {
+  const SPENT_AT_START = 100;
+  const SPENT_AT_FINISH = 1300;
+  const expectedLine = `pb_spent_output_tokens: ${SPENT_AT_FINISH - SPENT_AT_START}`;
+  const { calls } = await runWith({ attempt: 2, task: "t" }, { spent: [SPENT_AT_START, SPENT_AT_FINISH] });
+
+  const prompt = calls[1].prompt;
+  assert.ok(prompt.includes("pb.mjs stage finish"), "this is the finish runner prompt");
+  const spentLines = prompt.split("\n").filter((line) => line.startsWith("pb_spent_output_tokens:"));
+  assert.deepEqual(spentLines, [expectedLine], "exactly one spent line with the delta");
+  assert.ok(prompt.indexOf(expectedLine) < prompt.indexOf("<commands>"), "the spent line comes before <commands>");
 });
 
 test("code-config-quotes-a-plugin-path-that-needs-it", async () => {

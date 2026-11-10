@@ -5,6 +5,7 @@ export const meta = { name: 'code-tdd', description: 'Internal stage, started by
 // pb-inline-module shared-node/lens-merge.mjs
 // pb-inline-module shared-node/limits.mjs
 // pb-inline-module shared-node/shell-word.mjs
+// pb-inline-module shared-node/spent-line.mjs
 // pb-inline-module shared-node/glob-match.mjs
 // pb-inline-module shared-node/light-review.mjs
 // pb-inline-module shared-node/snapshot.mjs

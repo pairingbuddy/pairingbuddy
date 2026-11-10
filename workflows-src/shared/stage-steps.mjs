@@ -1,5 +1,13 @@
-// What every stage does alike. RUNNER_SCHEMA comes from the stage's own pb-inline line, and buildKey, buildLabel and
-// shellWord from its pb-inline-module lines.
+// What every stage does alike. RUNNER_SCHEMA comes from the stage's own pb-inline line, and buildKey, buildLabel,
+// shellWord and the spent-line wording from its pb-inline-module lines.
+
+// The output tokens the run had spent when this stage began, so the finish runner can report what the stage itself spent.
+const spentAtStart = budget.spent();
+// Only the finish runner reports the stage's own spend, never less than zero.
+const spentLines = (commands) =>
+  commands.some(isFinishWords)
+    ? [spentTokensLine(Math.max(0, Math.floor(budget.spent() - spentAtStart)))]
+    : [];
 
 const isMissing = (value) => value === undefined || value === null || value === '';
 
@@ -28,7 +36,8 @@ async function runCommands(stage, commands, { tddPhase = null, item = null, roun
   const label = buildLabel({ stage, phase: tddPhase, role, item, round });
   const prompt = [
     'Run the commands below, in order, exactly as written.',
-    `Return pb_key exactly as: ${pbKey}`,
+    returnKeyLine(pbKey),
+    ...spentLines(commands),
     '',
     '<commands>',
     ...commands.map(pbCommand),

@@ -17,6 +17,7 @@ const WRAPPER_STAGE = [
   "// pb-inline-module shared-node/labels.mjs",
   "// pb-inline-module shared-node/lens-merge.mjs",
   "// pb-inline-module shared-node/shell-word.mjs",
+  "// pb-inline-module shared-node/spent-line.mjs",
   "// pb-inline-module shared-node/glob-match.mjs",
   "// pb-inline-module shared-node/light-review.mjs",
   "",

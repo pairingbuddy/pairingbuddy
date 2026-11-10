@@ -5,6 +5,7 @@ export const meta = { name: 'code-safety-net', description: 'Internal stage, sta
 // pb-inline-module shared-node/lens-merge.mjs
 // pb-inline-module shared-node/mistake-check.mjs
 // pb-inline-module shared-node/shell-word.mjs
+// pb-inline-module shared-node/spent-line.mjs
 // pb-inline RESULT_SCHEMA contracts/schemas/update-documentation-result.schema.json
 // pb-inline RUNNER_SCHEMA contracts/schemas/runner-result.schema.json
 // pb-inline LENSES contracts/lenses.json

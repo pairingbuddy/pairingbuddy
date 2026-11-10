@@ -5,6 +5,7 @@ export const meta = { name: 'pr-draft', description: 'Internal stage, started by
 // pb-inline-module shared-node/lens-merge.mjs
 // pb-inline-module shared-node/mistake-check.mjs
 // pb-inline-module shared-node/shell-word.mjs
+// pb-inline-module shared-node/spent-line.mjs
 // pb-inline RESULT_SCHEMA contracts/schemas/draft-pull-request-result.schema.json
 // pb-inline LENSES contracts/lenses.json
 // pb-inline LENS_SCHEMA contracts/schemas/lens-result.schema.json

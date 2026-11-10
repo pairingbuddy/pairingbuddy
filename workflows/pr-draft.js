@@ -388,8 +388,16 @@ function snapshotResult(run) {
   return { paths: printed.paths, taskType: printed.taskType, rolledBack };
 }
 
-// What every stage does alike. RUNNER_SCHEMA comes from the stage's own pb-inline line, and buildKey, buildLabel and
-// shellWord from its pb-inline-module lines.
+// What every stage does alike. RUNNER_SCHEMA comes from the stage's own pb-inline line, and buildKey, buildLabel,
+// shellWord and the spent-line wording from its pb-inline-module lines.
+
+// The output tokens the run had spent when this stage began, so the finish runner can report what the stage itself spent.
+const spentAtStart = budget.spent();
+// Only the finish runner reports the stage's own spend, never less than zero.
+const spentLines = (commands) =>
+  commands.some(isFinishWords)
+    ? [spentTokensLine(Math.max(0, Math.floor(budget.spent() - spentAtStart)))]
+    : [];
 
 const isMissing = (value) => value === undefined || value === null || value === '';
 
@@ -418,7 +426,8 @@ async function runCommands(stage, commands, { tddPhase = null, item = null, roun
   const label = buildLabel({ stage, phase: tddPhase, role, item, round });
   const prompt = [
     'Run the commands below, in order, exactly as written.',
-    `Return pb_key exactly as: ${pbKey}`,
+    returnKeyLine(pbKey),
+    ...spentLines(commands),
     '',
     '<commands>',
     ...commands.map(pbCommand),
@@ -720,6 +729,33 @@ const mistakeKey = (finding, mistake) => JSON.stringify([finding.rule, fileOfWhe
 const SHELL_SAFE = /^[\w@%+=:,./-]+$/;
 
 const shellWord = (word) => (SHELL_SAFE.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`);
+
+// The runner prompt's own wording, written by a workflow stage and read back from the harness transcript by stage-run.
+// Workflow bundles inline this file, so it imports nothing.
+const RETURN_KEY_PREFIX = 'Return pb_key exactly as: ';
+const FINISH_WORDS = 'stage finish';
+const SPENT_TOKENS_PREFIX = 'pb_spent_output_tokens: ';
+const TOKENS_UNIT = 'output tokens';
+
+const returnKeyLine = (pbKey) => `${RETURN_KEY_PREFIX}${pbKey}`;
+
+// The pb key text of a return key line, or null for any other line.
+const returnKeyOf = (line) => (line.startsWith(RETURN_KEY_PREFIX) ? line.slice(RETURN_KEY_PREFIX.length) : null);
+
+const spentTokensLine = (tokens) => `${SPENT_TOKENS_PREFIX}${tokens}`;
+
+// The token count of a spent line, or null for any other line.
+const spentTokensOf = (line) => {
+  if (!line.startsWith(SPENT_TOKENS_PREFIX)) return null;
+  const count = line.slice(SPENT_TOKENS_PREFIX.length);
+  return /^\d+$/.test(count) ? Number(count) : null;
+};
+
+// Whether a command words string finishes the stage.
+const isFinishWords = (words) => words === FINISH_WORDS;
+
+// Whether a rendered command line is the stage finish command: a pb.mjs path, shell-quoted or not, then the finish words.
+const isFinishCommand = (line) => line.endsWith(`pb.mjs ${FINISH_WORDS}`) || line.endsWith(`pb.mjs' ${FINISH_WORDS}`);
 
 const missing = missingArgument();
 if (missing !== null) return missing;

@@ -48,6 +48,20 @@ test("code-scenarios-enumerates-then-runs-the-runner", async () => {
   assert.deepEqual(phases, [AGENT, "runner", "runner"], "the lens call opens no phase of its own");
 });
 
+test("code-scenarios-snapshot-runner-prompt-has-no-spent-line", async () => {
+  const answers = { "pairingbuddy:lens": { findings: [] }, "pairingbuddy:runner": relayed(["CLAUDE.md"]) };
+  const agent = async (_prompt, { agentType }) => answers[agentType] ?? {};
+
+  const { calls } = await runScript(STAGE, { args: ARGS, agent, spent: [100, 700, 1300] });
+
+  const runnerPrompts = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:runner").map(({ prompt }) => prompt);
+  assert.equal(runnerPrompts.length, 2, "the stage runs a snapshot runner and a finish runner");
+  const [snapshotPrompt, finishPrompt] = runnerPrompts;
+  assert.ok(snapshotPrompt.includes("pb.mjs snapshot") && !snapshotPrompt.includes("stage finish"), "the first runner is not the finish runner");
+  assert.ok(!snapshotPrompt.includes("pb_spent_output_tokens"), "a runner whose commands are not stage finish carries no spent line");
+  assert.ok(finishPrompt.includes("pb_spent_output_tokens:"), "the finish runner still carries its spent line");
+});
+
 test("code-scenarios-does-not-start-the-runner-until-the-agent-returned", async () => {
   const order = [];
   await runStage(ARGS, async (_prompt, { agentType }) => {

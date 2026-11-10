@@ -230,7 +230,7 @@ function parseMeta(source) {
 
 // Runs inside the vm context. Everything the script can reach is created here, in the context's
 // own realm, and talks to the host only through `bridge`, which takes and returns JSON strings.
-const BOOTSTRAP = `(function (bridge, metaJson, argsJson) {
+const BOOTSTRAP = `(function (bridge, metaJson, argsJson, spentJson) {
   "use strict";
   const send = async (kind, payload) => {
     const reply = JSON.parse(await bridge(kind, JSON.stringify(payload)));
@@ -259,7 +259,11 @@ const BOOTSTRAP = `(function (bridge, metaJson, argsJson) {
 
   globalThis.meta = JSON.parse(metaJson);
   globalThis.args = argsJson === undefined ? undefined : JSON.parse(argsJson);
-  globalThis.budget = { total: null, spent: () => 0, remaining: () => Infinity };
+  const spentSequence = spentJson === undefined ? [0] : JSON.parse(spentJson);
+  let spentCalls = 0;
+  // The nth call returns spentSequence[n]; calls past the end keep returning the last value.
+  const spent = () => spentSequence[Math.min(spentCalls++, spentSequence.length - 1)];
+  globalThis.budget = { total: null, spent, remaining: () => Infinity };
   globalThis.agent = async (prompt, opts = {}) => send("agent", { prompt, opts });
   globalThis.workflow = async (name, args) => send("workflow", { name, args });
   globalThis.phase = (name) => { send("phase", { name }); };
@@ -280,7 +284,7 @@ const BOOTSTRAP = `(function (bridge, metaJson, argsJson) {
     );
 })`;
 
-export async function runScript(path, { args, agent, workflow } = {}) {
+export async function runScript(path, { args, agent, workflow, spent } = {}) {
   const source = readFileSync(path, "utf8");
   const { meta, body } = parseMeta(source);
   const calls = [];
@@ -331,7 +335,7 @@ export async function runScript(path, { args, agent, workflow } = {}) {
   };
 
   const context = vm.createContext({});
-  vm.runInContext(BOOTSTRAP, context)(bridge, JSON.stringify(meta), args === undefined ? undefined : JSON.stringify(args));
+  vm.runInContext(BOOTSTRAP, context)(bridge, JSON.stringify(meta), args === undefined ? undefined : JSON.stringify(args), spent === undefined ? undefined : JSON.stringify(spent));
 
   let result;
   let failure;

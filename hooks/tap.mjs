@@ -93,7 +93,8 @@ function tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, toolInpu
       mismatch = ledger.stage.name;
       return ledger;
     }
-    return { ...ledger, stage: { ...ledger.stage, runId } };
+    const transcriptDir = toolResponse?.transcriptDir;
+    return { ...ledger, stage: { ...ledger.stage, runId, ...(typeof transcriptDir === "string" ? { transcriptDir } : {}) } };
   });
   if (mismatch !== null) logError(taskDir, `workflow mismatch: ${JSON.stringify(toolInput?.name)} for stage ${mismatch}`);
 }

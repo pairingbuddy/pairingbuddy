@@ -24,7 +24,7 @@ import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
-import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
+import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
@@ -753,7 +753,7 @@ function stageFinish(args) {
     const report = buildReport(ledger, artifactsDir);
     writeReport(reportPathOf(root), report);
     finished = { stage: name, attempt, agents: report.spend.agents };
-    const closed = closeStage(ledger, "done", report.spend.agents);
+    const closed = closeStage(ledger, "done", report.spend);
     if (!safetyNetStages(contract).includes(name)) return closed;
     return { ...closed, lenses: { ...closed.lenses, "safety-net": lensRecordOf(ledger, report) } };
   });
@@ -824,7 +824,7 @@ function stageFail(args) {
     }
     assertStageActive(ledger, "fail");
     const clearedStop = ledger.stop?.reason ?? null;
-    const closed = closeStage(ledger, FAILED_STATUS, returnsAt(artifactsDirOf(root), ledger.stage).length, clearedStop === null ? {} : { clearedStop });
+    const closed = closeStage(ledger, FAILED_STATUS, unknownSpend(returnsAt(artifactsDirOf(root), ledger.stage).length), clearedStop === null ? {} : { clearedStop });
     failed = { stage: name, attempt, nextAttempt: nextAttempt(closed, name), clearedStop };
     return { ...closed, stop: null };
   });

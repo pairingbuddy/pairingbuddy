@@ -436,10 +436,21 @@ test("workflow payload stores runId and leaves other fields intact", () =>
     assert.equal(res.stdout, "");
     const after = readLedger(repo.ledgerPath);
     assert.equal(after.stage.runId, "wf_e86eab30-6a7");
-    assert.deepEqual({ ...after.stage, runId: null }, { ...before.stage, runId: null });
+    const tapOwned = (stage) => ({ ...stage, runId: null, transcriptDir: null });
+    assert.deepEqual(tapOwned(after.stage), tapOwned(before.stage), "the tap changes only runId and transcriptDir");
     const { seq: _s, sha: _h, stage: _st, ...restAfter } = after;
     const { seq: _s2, sha: _h2, stage: _st2, ...restBefore } = before;
     assert.deepEqual(restAfter, restBefore);
+  }));
+
+test("workflow payload records transcriptDir next to runId", () =>
+  withRepo({}, async (repo) => {
+    const res = await runTap(workflow(repo.dir));
+
+    assert.equal(res.code, 0);
+    const { stage } = readLedger(repo.ledgerPath);
+    assert.equal(stage.runId, "wf_e86eab30-6a7", "runId is recorded");
+    assert.equal(stage.transcriptDir, "/home/user/.claude/projects/encoded-project/c5990cf0-b08a-4f0b-b44e-0a07c1ce733f/subagents/workflows/wf_e86eab30-6a7", "transcriptDir is recorded with it");
   }));
 
 test("workflow for another name or attempt leaves runId alone and is logged", () =>
