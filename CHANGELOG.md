@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The lens-attack diagram (`docs/diagrams/05-lens-attack`) shows the course-checked fix loop instead of re-auditing the fix diff: the fix agent takes one group at a time, the course checker keeps a better fix, a bad verdict rolls back and retries (cap 5 per stage), and a repeated mistake must change approach.
 - The refuter verdict now carries `ambiguity`, like every other return.
 - `/code` on the new path opens a unit first (`pb unit open --type feat|fix|refactor|chore --slug`). The model runs only the command a refusal prints for it, and the human confirms the branch otherwise. An open, empty unit on its branch is resumed.
 - After `pb task end`, `/code` opens a publish run (`pb run open --kind publish`, refused unless every unit task has a record, no task run is open and no publish run exists) and follows `pb status --action` through `pr-draft` and `G:publish`. On approval or nothing to publish it runs `pb publish` and reports url, warnings and `pendingComment`.
