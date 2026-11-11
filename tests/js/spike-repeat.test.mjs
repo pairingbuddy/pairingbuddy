@@ -27,7 +27,7 @@ test("stages-contract-accepts-repeat", async (t) => {
 
   await t.test("contracts/stages.json holds the spike graph with a repeating code-spike-unit node", () => {
     assert.deepEqual(spikeNode(committed), { name: "code-spike-unit", gate: "G:unit", repeat: true, evidence: ["artifact:explore-spike-unit", "checkpoint:spike-unit"] }, "the spike node");
-    assert.deepEqual(committed.taskTypes.spike.gates, { "G:unit": { class: "continue" } }, "the spike gates");
+    assert.deepEqual(committed.taskTypes.spike.gates["G:unit"], { class: "continue" }, "the G:unit gate");
   });
 
   await t.test("shared-node/stages-contract.mjs mirrors the committed spike graph", () => {
@@ -52,12 +52,8 @@ test("stages-contract-accepts-repeat", async (t) => {
     assert.match(problems, /repeat/, "the problem names repeat");
     assert.match(problems, /checkpoint/, "the problem names checkpoint");
   });
-
-  await t.test("spike is not a migrated type", () => {
-    assert.ok(!committed.migratedTypes.includes("spike"), "stages.json migratedTypes");
-    assert.ok(!mirror.migratedTypes.includes("spike"), "mirror migratedTypes");
-  });
 });
+
 const UNIT_KEY = "code-spike-unit.explore-spike-unit.u1.r1.a1";
 const unit = (id) => ({ id, name: id, description: `Explore ${id}`, execution: { language: "node", run_command: "node x.mjs", working_directory: `spike/${id}` } });
 const SPIKE = { goal: "Learn X", code_location: "spike", exploration_mode: "questions", doc_path: "docs/spikes/learn-x.md", units: [unit("u1"), unit("u2")] };
@@ -133,7 +129,7 @@ function arrangeLastUnit(t, ledger = {}) {
   return arranged;
 }
 
-function assertStaysDone({ plugin, repo }) {
+function assertUnitStageDoneAndDocumentNext({ plugin, repo }) {
   const ledger = repo.ledger();
   const entry = ledger.stages.find((stage) => stage.name === "code-spike-unit");
   assert.deepEqual(entry.explored, ["u1", "u2"], "the stage entry lists both units as explored");
@@ -143,19 +139,19 @@ function assertStaysDone({ plugin, repo }) {
   const action = pbFrom(plugin, repo, "status", "--action");
   const output = `${action.stdout}${action.stderr}`;
   const { next, action: advice } = JSON.parse(action.stdout);
-  assert.equal(next, null, `status --action's next is null: ${output}`);
+  assert.deepEqual(next, { stage: "code-spike-document", attempt: 1 }, `status --action's next is code-spike-document at attempt 1: ${output}`);
+  assert.match(advice, /code-spike-document/, `the action names code-spike-document: ${output}`);
   assert.doesNotMatch(advice, /code-spike-unit/, `the action no longer names code-spike-unit: ${output}`);
-  assert.match(advice, /every stage and gate is done/i, `the action says everything is done: ${output}`);
 }
 
-test("gate-pass-last-unit-stays-done", async (t) => {
+test("gate-pass-last-unit-advances-to-document", async (t) => {
   await t.test("pb gate eval auto-pass", (st) => {
     const arranged = arrangeLastUnit(st);
 
     const result = pbFrom(arranged.plugin, arranged.repo, "gate", "eval");
 
     assert.equal(result.code, 0, `gate eval exits 0: ${result.stdout}${result.stderr}`);
-    assertStaysDone(arranged);
+    assertUnitStageDoneAndDocumentNext(arranged);
   });
 
   await t.test("pb human approve G:unit", (st) => {
@@ -164,7 +160,7 @@ test("gate-pass-last-unit-stays-done", async (t) => {
     const result = pbFrom(arranged.plugin, arranged.repo, "human", "approve", "G:unit");
 
     assert.equal(result.code, 0, `human approve exits 0: ${result.stdout}${result.stderr}`);
-    assertStaysDone(arranged);
+    assertUnitStageDoneAndDocumentNext(arranged);
   });
 });
 const PAYLOADS = join(ROOT, "tests", "probes", "fixtures", "payloads");

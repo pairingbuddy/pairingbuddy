@@ -27,7 +27,7 @@ test("spike-state-prints-next-unit", (t) => {
   const r = spikeStateIn(plugin, { explored: ["u1"] });
 
   assert.equal(r.code, 0, `spike state succeeds, stdout ${r.stdout}, stderr ${r.stderr}`);
-  assert.deepEqual(JSON.parse(r.stdout), { ok: true, taskType: "spike", spike: ".pairingbuddy/run/task/spike.json", units: ["u1", "u2"], explored: ["u1"], next: U2 }, "state lists the unit ids, the explored ids and the first unexplored unit in full");
+  assert.deepEqual(JSON.parse(r.stdout), { ok: true, taskType: "spike", spike: ".pairingbuddy/run/task/spike.json", units: ["u1", "u2"], explored: ["u1"], next: U2, findings: [] }, "state lists the unit ids, the explored ids and the first unexplored unit in full");
 });
 
 test("spike-state-refuses-when-all-explored", (t) => {

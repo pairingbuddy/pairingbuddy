@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Document Spike Result",
+  "description": "Return of the document-spike agent when its prompt gives paths: the pb key it was given, any open ambiguity, the whole write-up as markdown, and the map from each recorded finding to the section that covers it",
+  "type": "object",
+  "required": ["pb_key", "ambiguity", "document", "finding_map"],
+  "properties": {
+    "pb_key": { "type": "string", "description": "The key from the prompt, copied exactly" },
+    "ambiguity": { "type": "string", "description": "An open question a human should settle, or an empty string" },
+    "document": { "type": "string", "minLength": 1, "description": "The whole write-up as markdown, covering every recorded finding" },
+    "finding_map": {
+      "type": "array",
+      "description": "One entry per recorded finding, naming the section of the document that covers it",
+      "items": {
+        "type": "object",
+        "required": ["unit_id", "section"],
+        "properties": {
+          "unit_id": { "type": "string", "description": "ID of the unit whose finding this entry maps" },
+          "section": { "type": "string", "description": "Heading of the document section that covers the finding" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

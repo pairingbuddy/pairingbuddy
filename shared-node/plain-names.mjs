@@ -9,6 +9,7 @@ const PLAIN_NAMES = {
   "code-refactor-apply": "tidy up step by step",
   "pr-draft": "write the pull request",
   "code-spike-unit": "try one experiment",
+  "code-spike-document": "write up the findings",
   // gates
   "G:scenarios": "your OK on the scenarios",
   "G:task-end": "your sign-off at the end",

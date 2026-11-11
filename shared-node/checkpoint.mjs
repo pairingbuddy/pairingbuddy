@@ -26,6 +26,7 @@ const STEPS = {
   refactor: { typeOfPaths: true, roles: REFACTOR_ROLES, provesChange: false, tests: "closed", item: "test", taskTypes: REFACTOR_TASK_TYPES },
   "refactor-step": { typeOfPaths: true, roles: REFACTOR_ROLES, provesChange: true, tests: "full", item: "step", taskTypes: ["refactoring"] },
   "spike-unit": { type: "chore", roles: ["explore-spike-unit"], provesChange: false, tests: "none", item: "unit", taskTypes: ["spike"] },
+  "spike-doc": { type: "docs", roles: ["document-spike", "fix"], provesChange: false, tests: "none", taskTypes: ["spike"], verb: "spike write" },
 };
 const STATE_DIRECTORY = ".pairingbuddy";
 const REFUSED_DIRECTORIES = [STATE_DIRECTORY, ".git"];
@@ -42,6 +43,12 @@ export class CheckpointRefused extends Error {}
 export class CheckpointStopped extends Error {}
 
 export const checkpointSteps = () => Object.keys(STEPS);
+// The steps the generic checkpoint verb runs: a step with a verb of its own is written by that verb.
+export const checkpointVerbSteps = () => Object.keys(STEPS).filter((step) => STEPS[step].verb === undefined);
+// The conventional-commit type of a step that has one fixed type.
+export const stepCommitType = (step) => STEPS[step].type;
+// The roles whose returns a step takes.
+export const stepRoles = (step) => STEPS[step].roles;
 
 export function isKey(text) {
   try {
@@ -61,7 +68,7 @@ export function parseRollbackArgs(args) {
   return { artifactForm, key: rest[1] };
 }
 
-export const isCheckpointCall = (step, key) => Object.hasOwn(STEPS, step) && isKey(key);
+export const isCheckpointCall = (step, key) => Object.hasOwn(STEPS, step) && STEPS[step].verb === undefined && isKey(key);
 
 const rolesText = (step) => STEPS[step].roles.join(" or ");
 

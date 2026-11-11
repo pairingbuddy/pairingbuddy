@@ -43,14 +43,15 @@ export function readPrSubject(root) {
   }
 }
 
-// The newest standing draft key of a pr-draft attempt: the highest-round draft-pull-request or fix artifact, or null when
-// there is none. exceptKey leaves one key out, for the draft being rolled back. A redraft that `pb rollback --artifact` set
-// aside (after a bad course-checker verdict or a failed lint) is no longer in the artifacts dir, so it is never seen here.
-export function newestDraftKey(artifactsDir, stage, exceptKey = null) {
+// The newest standing key of a stage attempt: the highest-round artifact whose role is in roles (the pr-draft roles,
+// draft-pull-request or fix, by default), or null when there is none. exceptKey leaves one key out, for the draft being
+// rolled back. A redraft that `pb rollback --artifact` set aside (after a bad course-checker verdict or a failed lint) is no
+// longer in the artifacts dir, so it is never seen here.
+export function newestDraftKey(artifactsDir, stage, exceptKey = null, roles = ["draft-pull-request", "fix"]) {
   // returnsAt sorts by key string, so r10 comes before r2: pick the newest by numeric round.
   const drafts = existsSync(artifactsDir) ? returnsAt(artifactsDir, stage) : [];
   return drafts
-    .filter((key) => key.pbKey !== exceptKey && (key.role === "draft-pull-request" || key.role === "fix"))
+    .filter((key) => key.pbKey !== exceptKey && roles.includes(key.role))
     .reduce((best, key) => (!best || key.round > best.round ? key : best), null);
 }
 

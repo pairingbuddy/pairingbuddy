@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Spike runs on the new path (`spike` is in `migratedTypes`): `setting-up-spike` in main, `code-spike-unit` with a repeating `G:unit`, `code-spike-document`, then `G:task-end`. `pb task end` closes the unit kept-local, with no publish stage.
+- The `code-spike-document` stage runs `document-spike` under the one input rule (new `document-spike-result.schema.json`), then one Sonnet claims-against-recorded-evidence lens with a brief and a course-checked artifact-mode fix loop capped at 5.
+- `pb spike write` commits the standing write-up to `doc_path` as a `docs:` commit with the `spike-doc` checkpoint (`pb checkpoint` does not take `spike-doc`). `pb spike state` now prints the findings.
+- Smoke S5 now also runs a spike task.
 - The `setting-up-spike` skill guides `setup-spike`. `pb run open` records the spike setup in `run/task/spike.json` and refuses a spike whose setup is missing or malformed. `pb spike state` lists a spike's units and the next one to run. `pb checkpoint --step spike-unit` commits one explored unit.
 - `explore-spike-unit` runs under the one input rule with a new `explore-spike-unit-result.schema.json`. The `code-spike-unit` stage explores one unit, and the spike graph repeats `G:unit` per unit. The spike graph lands ahead of its flip (spike is not yet in `migratedTypes`).
 - Refactoring now runs on the new path (`refactoring` is in `migratedTypes`): scope, apply, then the safety net, whose lens row adds a refactoring lens (behaviour-preservation, at Opus). `G:task-end` follows the safety net.

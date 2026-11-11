@@ -10,7 +10,8 @@ export default {
     "config_change",
     "bug_fix",
     "new_feature",
-    "refactoring"
+    "refactoring",
+    "spike"
   ],
   "newPathAgents": [
     "apply-config-change",
@@ -211,10 +212,21 @@ export default {
             "artifact:explore-spike-unit",
             "checkpoint:spike-unit"
           ]
+        },
+        {
+          "name": "code-spike-document",
+          "gate": "G:task-end",
+          "evidence": [
+            "artifact:document-spike",
+            "checkpoint:spike-doc"
+          ]
         }
       ],
       "gates": {
         "G:unit": {
+          "class": "continue"
+        },
+        "G:task-end": {
           "class": "continue"
         }
       }

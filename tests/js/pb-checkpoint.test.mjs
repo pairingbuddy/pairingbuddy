@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { CheckpointStopped, commitPaths } from "../../shared-node/checkpoint.mjs";
+import { CheckpointStopped, commitPaths, isCheckpointCall } from "../../shared-node/checkpoint.mjs";
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { COMMIT_FAILED } from "../../shared-node/verbs.mjs";
 
@@ -830,6 +830,25 @@ describe("arguments", IN_PARALLEL, () => {
       assert.equal(repo.head(), seed);
     });
   }
+});
+
+describe("the spike-doc step belongs to pb spike write", IN_PARALLEL, () => {
+  const SPIKE_DOC_KEY = "code-spike-document.document-spike.-.r1.a1";
+
+  test("pb checkpoint --step spike-doc is a usage error that does not list it", () => {
+    const repo = changedRepo();
+    const seed = repo.head();
+
+    const result = pb(repo, ["--step", "spike-doc", "--from", SPIKE_DOC_KEY]);
+
+    assert.equal(result.code, 2, result.stderr);
+    assert.match(result.stderr, /usage: pb checkpoint/);
+    assert.doesNotMatch(result.stderr, /spike-doc/, "the usage text lists only the steps this verb runs");
+    assert.equal(repo.head(), seed);
+  });
+  test("the gate rule does not take a spike-doc checkpoint call", () => {
+    assert.equal(isCheckpointCall("spike-doc", SPIKE_DOC_KEY), false);
+  });
 });
 
 describe("git runs with nothing that skips a check", IN_PARALLEL, () => {
