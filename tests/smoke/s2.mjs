@@ -83,9 +83,10 @@ function writeTree(repo, files) {
 }
 
 // A fresh repo on a branch a human made from main, or left on main with onMain. Signing is off, so a signer cannot flake the run.
-export function makeRepo(parent, type = "bug_fix", { onMain = false } = {}) {
+// files adds sample files of the caller's own to the first commit.
+export function makeRepo(parent, type = "bug_fix", { onMain = false, files = {} } = {}) {
   const repo = join(parent, "repo");
-  writeTree(repo, { ...BASE_FILES, ...TYPES[type].files, ".pairingbuddy/test-config.json": JSON.stringify(TEST_CONFIG), ".pairingbuddy/doc-config.json": JSON.stringify(NO_DOCS) });
+  writeTree(repo, { ...BASE_FILES, ...TYPES[type].files, ...files, ".pairingbuddy/test-config.json": JSON.stringify(TEST_CONFIG), ".pairingbuddy/doc-config.json": JSON.stringify(NO_DOCS) });
   git(repo, "init", "-q", "-b", "main");
   git(repo, "config", "user.email", "smoke@example.invalid");
   git(repo, "config", "user.name", "smoke");

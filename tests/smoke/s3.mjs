@@ -8,7 +8,9 @@
 //
 // Run 1, `/pairingbuddy:code <S2 bug task>` under the auto policy, in the open unit: S2's control flow on the task's ledger, then the unit
 // record (branch, base, baseSha, one task record with a green full suite at HEAD, its commits), the publish run done
-// with pr-draft and stopped at G:publish with needsHuman and the "no lens record yet" reason, the PR lint result, nothing
+// with pr-draft and stopped at G:publish with needsHuman for a reason other than a missing lens record (since Task 85
+// the auto policy passes G:publish by itself once every task has its safety-net lens record and the lint passes, and
+// smoke S4 covers that path; S3 covers the human's), the PR lint result, nothing
 // pushed and no `gh pr create`. Then, as the human, from this script's own shell: `pb human approve G:publish`, and the
 // gate binding it records in the ledger (HEAD, target, body hash) is kept before the run closes it.
 //
@@ -62,9 +64,9 @@ const remoteHeads = (remote) => Object.fromEntries(bare(remote, "for-each-ref", 
 const remotePrivateRefs = (remote) => bare(remote, "for-each-ref", "--format=%(refname)", "refs/pairingbuddy/").split("\n").filter(Boolean);
 
 // S2's repo left on main, with a bare origin that has main and develop at the same commit, and pr.base_branch develop
-// in git-config.json before anything reads it, so the unit's git-config hash is this file's.
-export function makeS3Repo(record, type = "bug_fix") {
-  const repo = makeRepo(record, type, { onMain: true });
+// in git-config.json before anything reads it, so the unit's git-config hash is this file's. files goes to makeRepo.
+export function makeS3Repo(record, type = "bug_fix", files = {}) {
+  const repo = makeRepo(record, type, { onMain: true, files });
   const remote = join(record, "origin.git");
   execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote], { env: cleanEnv() });
   git(repo, "remote", "add", "origin", remote);
@@ -104,11 +106,12 @@ function assertUnitRecord(repo, remote, unit) {
   check(commits.length > 0 && JSON.stringify(unit.commits) === JSON.stringify(commits), `unit commits ${JSON.stringify(unit.commits)}, expected ${JSON.stringify(commits)}`);
 }
 
-// Where run 1 must stop: the publish run, pr-draft done, G:publish asked with the lens reason, the lint on file.
+// Where run 1 must stop: the publish run, pr-draft done, G:publish asked for a reason the human answers, the lint on file.
 function assertStoppedAtPublish(repo, ledger) {
   check(ledger.kind === "publish", `the open run is a ${ledger.kind} run, expected publish`);
   check(ledger.stages.some(({ name, status }) => name === "pr-draft" && status === "done"), `pr-draft is not done: ${JSON.stringify(ledger.stages)}`);
-  check(ledger.needsHuman?.gate === GATE && ledger.needsHuman.reason === LENS_REASON, `needsHuman is ${JSON.stringify(ledger.needsHuman)}, expected ${GATE} with "${LENS_REASON}"`);
+  check(ledger.needsHuman?.gate === GATE, `needsHuman is ${JSON.stringify(ledger.needsHuman)}, expected ${GATE}; an auto pass is S4's path`);
+  check(ledger.needsHuman.reason !== LENS_REASON, `${GATE} asks for a lens record, which the safety net should have left: "${LENS_REASON}"`);
   check(!Object.hasOwn(ledger.gates, GATE), `${GATE} is recorded already: ${JSON.stringify(ledger.gates[GATE])}`);
   check(ledger.stop === null, `the publish run stopped: ${JSON.stringify(ledger.stop)}`);
   check(ledger.policy?.mode === "auto", `the publish policy is ${JSON.stringify(ledger.policy)}`);
