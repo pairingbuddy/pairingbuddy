@@ -1,0 +1,11 @@
+1-lens-round at 60 columns: the lenses have returned and the refuters are attacking their findings
+┌──────────────────────────────────────────────────────────────┐
+│ review round · safety-net review                             │
+│ lenses  ✓ the code 1 · ✓ the tests 1 · ✓ docs and plan 1     │
+│ findings  3 found · 3 being challenged                       │
+│   being challenged  tests/test_discount.py:21  The new test… │
+│   being challenged  README.md:3  README.md line 3 documents… │
+│   being challenged  tests/test_discount.py:20-25  The new t… │
+│ 7 agents of 1000                                             │  (dim)
+│   output tokens unknown until this step ends                 │  (dim)
+└──────────────────────────────────────────────────────────────┘

@@ -1,0 +1,11 @@
+4-uncovered at 60 columns: one lens finished without a usable answer (its answer taken out by hand)
+┌──────────────────────────────────────────────────────────────┐
+│ review round · safety-net review                             │
+│ lenses  ✓ the code 1 · ✓ the tests 1 · ✗ docs and plan       │
+│ not covered: docs and plan                                   │  (warning)
+│ findings  2 found · 2 being challenged                       │
+│   being challenged  tests/test_discount.py:21  The new test… │
+│   being challenged  tests/test_discount.py:20-25  The new t… │
+│ 7 agents of 1000                                             │  (dim)
+│   output tokens unknown until this step ends                 │  (dim)
+└──────────────────────────────────────────────────────────────┘

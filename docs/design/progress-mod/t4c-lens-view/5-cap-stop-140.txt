@@ -1,0 +1,17 @@
+5-cap-stop at 140 columns: five fixes were undone, so the run stopped at the cap (fixes put in by hand)
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ review round · safety-net review                                                                                                             │
+│ lenses  ✓ the code 1 · ✓ the tests 1 · ✓ docs and plan 1                                                                                     │
+│ findings  3 found · 3 standing                                                                                                               │
+│   stands  tests/test_discount.py:21  The new test binds `sut = apply_discount` and calls `sut(100, 10)` for no reason. Calling apply_discou… │
+│   stands  README.md:3  README.md line 3 documents that apply_discount(price, percent) returns the discount amount, so apply_discount(100, 1… │
+│   stands  tests/test_discount.py:20-25  The new test binds `sut = apply_discount` before calling it, which adds an indirection that the oth… │
+│ fixes  5 tried · 5 undone of 5 allowed                                                                                                       │
+│   1 earlier                                                                                                                                  │  (dim)
+│   fix 2  undone: it repeated an approach already undone                                                                                      │
+│   fix 3  undone: the tests went red                                                                                                          │
+│   fix 4  undone: it repeated an approach already undone                                                                                      │
+│   fix 5  undone: the tests went red                                                                                                          │
+│ stopped: it ran out of fix attempts                                                                                                          │  (error)
+│ 19 agents of 1000 · output tokens unknown until this step ends                                                                               │  (dim)
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
