@@ -826,3 +826,18 @@ The three product bugs were each fixed test-first in their own commit. The last 
   ask, so S4 answers them as the human and says so in its result. A run that reaches the auto pass at G:publish needs
   none of the pr-draft returns to leave a question; run 4 had none.
 - S3 was updated for the lens record and not run live (decision 68).
+
+## T6a verification: S5 refactoring run
+
+`node tests/smoke/s5.mjs` ran once live on the cheap model, with `ANTHROPIC_API_KEY` unset and only the alias-to-model
+mapping in the child env, the recording `gh` shim and S3's repo with S2's `cart.py` as the sample.
+
+| Run | Result | Cost (USD) | Of the $3 cap | Notes |
+|---|---|---|---|---|
+| `s5-run1` | PASS | 0.3051 | 10.2% | 251 s; scope (4 agents), apply (6), safety net (11), then a draft PR |
+
+The run went scope, apply, safety net in order. One `refactor-step` commit landed (`refactor:`), and the second step came
+back as nothing left to change, with its reason, since the first step had already done it. No feat or fix commit was
+made. The safety-net lens record names behaviour-preservation at opus, tests and corpus-misalignment at sonnet. G:scope,
+G:task-end and G:publish each asked once, every time for an open question in a Haiku return, and S5 answered them as
+the human, as S4 does. No bugs were found live. The spike half of S5 comes with T6b.
