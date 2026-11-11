@@ -67,6 +67,21 @@ const PLAIN_NAMES = {
   "refuter": "attacking a finding",
   "synthesizer": "consolidating the findings",
   "course-checker": "checking the course",
+  "fix": "fixing a finding",
+  // lenses
+  "code": "the code",
+  "tests": "the tests",
+  "corpus-misalignment": "docs and plan",
+  "necessity": "needed or not",
+  "pyramid-level": "test level",
+  "patterns": "good patterns",
+  "anti-patterns": "bad patterns",
+  "claims": "what it claims",
+  "permanence": "how long it lasts",
+  "behaviour-preservation": "same behaviour",
+  "config-fit": "fit with the config",
+  "scope-serves-intent": "scope fits the goal",
+  "claims-against-recorded-evidence": "claims checked against evidence",
 };
 
 export function plainName(id) {

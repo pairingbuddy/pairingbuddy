@@ -731,6 +731,9 @@ function mergeLensReturns(returns, config, verdicts = []) {
 // How often one step is tried before the stage stops: a re-run starts these over, and a human stands between re-runs.
 const MAX_TRIES = 3;
 
+// How many fix attempts the lenses allow before the stage stops; keep equal to maxAttempts in contracts/lenses.json.
+const MAX_FIX_UNDOS = 5;
+
 // One shell word for a path or an argument, unchanged when a shell would read it as it stands. Workflow bundles inline
 // this file, so it imports nothing.
 const SHELL_SAFE = /^[\w@%+=:,./-]+$/;

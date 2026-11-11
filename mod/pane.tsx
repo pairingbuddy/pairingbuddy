@@ -1,4 +1,6 @@
 import { plainName } from '../shared-node/plain-names.mjs'
+import { lensLines } from '../shared-node/lens-round.mjs'
+import type { LensRound } from '../shared-node/lens-round.mjs'
 import { fitLegend, fitProgress, fitTries } from '../shared-node/now-building.mjs'
 import { stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
@@ -45,11 +47,12 @@ export type Suggestion = { state: 'pending'; nextAgent?: string } | { state: 'de
 const toneProps = (tone?: string) => (tone === 'dim' ? { dimColor: true } : tone ? { color: tone } : {})
 const stepProps = (line: string) => (line.startsWith('▸') ? { color: 'claude', bold: true } : line.startsWith('✓') ? { color: 'success' } : {})
 
-export function Pane({ Box, Text, Button, Input, rows, rowTones = {}, columns = 0, nowBuilding, ledger, ended = false, unknownLabels, note = null, suggestion, onDismiss, onReport = () => {}, onSuggest = () => {} }: PaneTags & {
+export function Pane({ Box, Text, Button, Input, rows, rowTones = {}, columns = 0, nowBuilding, lensRound, ledger, ended = false, unknownLabels, note = null, suggestion, onDismiss, onReport = () => {}, onSuggest = () => {} }: PaneTags & {
   rows: Rows
   rowTones?: RowTones
   columns?: number
   nowBuilding?: NowBuilding
+  lensRound?: LensRound
   ledger: Ledger
   ended?: boolean
   unknownLabels: string[]
@@ -67,6 +70,7 @@ export function Pane({ Box, Text, Button, Input, rows, rowTones = {}, columns = 
       ])}
       {stepLines(ledger, ended).map(line => <Text key={line} {...stepProps(line)}>{line}</Text>)}
       {nowBuilding && <NowBuildingBlock Box={Box} Text={Text} block={nowBuilding} columns={columns} />}
+      {lensLines(lensRound, columns).map((line: { text: string; tone?: string }, i: number) => <Text key={`lens-${i}`} wrap="truncate-end" {...toneProps(line.tone)}>{line.text}</Text>)}
       {unknownLabels.map((raw, i) => <Text key={`unknown-${i}`}>{raw}</Text>)}
       {unknownLabels.length > 0 && <Text dimColor>{`${unknownLabels.length} label${unknownLabels.length === 1 ? '' : 's'} unknown`}</Text>}
       <Text dimColor>Pairing Buddy only watches; it never changes your run</Text>

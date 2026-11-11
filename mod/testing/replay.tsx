@@ -10,12 +10,13 @@ import { POLL_MS } from '../poll'
 
 type Recorded = { t: number; [key: string]: unknown }
 
-export type Recording = { ledger: Recorded[]; spawns: Recorded[]; timing: unknown }
+// `calls` is optional, so recordings made before it still replay: `{t, kind: 'tool_call', tool, agentId, input}` rows read from the agents' transcripts.
+export type Recording = { ledger: Recorded[]; spawns: Recorded[]; timing: unknown; calls?: Recorded[] }
 
 export type Step = {
   t: number
-  kind: 'ledger' | 'spawn' | 'finish'
-  // The snapshot served at this step (ledger steps), the recorded spawn (spawn steps), or the spawn that finishes (finish steps).
+  kind: 'ledger' | 'spawn' | 'finish' | 'call'
+  // The snapshot served at this step (ledger steps), the recorded spawn (spawn steps), the spawn that finishes (finish steps), or the recorded tool call (call steps).
   recorded: Recorded
   // The mocked clock at this step, and the time the poll reads: epoch + `t`, or one poll interval after the previous
   // step if that is later, rounded up to a whole interval from the epoch so the poll is due exactly then.
@@ -64,6 +65,7 @@ export function setupReplay(on: Function): Rig {
   on('agent.spawn', () => ({ model: 'recorded', agentId: `recorded-${++rig.spawned}` }))
   // The end of a recorded agent's turn: the mod hears it above this, which only answers it.
   on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
+  on('tool.call', () => ({ result: 'ok' }))
   on('session.root', () => ({ value: ROOT }))
   on('session.start', () => ({ cwd: ROOT }))
   on('fs.read', (_: unknown, e: { path: string }) => {
@@ -88,6 +90,8 @@ export function setupReplay(on: Function): Rig {
 // the spawn's `name`. A `Workflow` record is no agent, so it is not raised. Every step then redraws.
 // A finish step raises `turn.complete` for a spawn that recorded a duration, at its `t` plus its `seconds`, with the
 // agentId the spawn resolved: that event carries a workflow agent's agentId (`agent.list` leaves workflow agents out).
+// A call step raises `tool.call` for a recorded StructuredOutput call at its `t`, with the arguments it recorded and the
+// agentId it recorded; the rig's own bottom handler answers it, so only the mod's recording of it is under test.
 // The mocked clock reads the recording's wall time: the first active stage's `startedAt` is at its `t`.
 export async function* replay(
   $: any,
@@ -113,6 +117,7 @@ export async function* replay(
   const events = [
     ...recording.ledger.map(recorded => ({ kind: 'ledger' as const, recorded })),
     ...recording.spawns.map(recorded => ({ kind: 'spawn' as const, recorded })),
+    ...(recording.calls ?? []).map(recorded => ({ kind: 'call' as const, recorded })),
     ...recording.spawns
       .filter(recorded => typeof recorded.seconds === 'number')
       .map(recorded => ({ kind: 'finish' as const, recorded })),
@@ -130,6 +135,8 @@ export async function* replay(
       fed.push(recorded)
       const agentId = await feed($, recorded)
       if (agentId) agentIds.set(recorded, agentId)
+    } else if (kind === 'call') {
+      await $.tool.call({ tool: 'StructuredOutput', ...(recorded.input as object), agentId: recorded.agentId })
     } else {
       await finish($, recorded, agentIds.get(recorded))
     }

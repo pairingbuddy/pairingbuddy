@@ -46,7 +46,7 @@ export const isLooping = (tries) => tries >= MAX_TRIES;
 
 const testPosition = (step, tests) => tests.indexOf(step?.item) + 1;
 const agentCount = (spawns) => spawns.filter((spawn) => spawn && AGENT_KINDS.includes(spawn.kind)).length;
-const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+export const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 // What is left after the current test: "N more tests" / "this test". `more` says whether to word it "N more tests" or "N tests".
 function remainingTests(step, tests, { more, complete }) {
@@ -55,7 +55,7 @@ function remainingTests(step, tests, { more, complete }) {
   if (position === 0) return undefined;
   const count = tests.length - position;
   if (count === 0) return "this test";
-  return more ? `${count} more test${count === 1 ? "" : "s"}` : plural(count, "test");
+  return more ? plural(count, "more test") : plural(count, "test");
 }
 
 // A recorded run knows how long it ran (ranFor, seconds) even when its start was not kept; otherwise it is now minus the start.
@@ -70,7 +70,7 @@ export const runStart = (ledger) => (ledger?.stages?.length > 0 ? ledger.stages[
 function spentRow({ ledger, spawns, now, ranFor }) {
   const agents = agentCount(spawns);
   const tokens = ledger?.spend?.tokensKnown === true ? `${ledger.spend.tokens} ${TOKENS_UNIT}` : "tokens unknown";
-  return `${agents} ${agents === 1 ? "agent" : "agents"} · ${elapsed(runStart(ledger), now, ranFor)} · ${tokens} · % of plan unknown`;
+  return `${plural(agents, "agent")} · ${elapsed(runStart(ledger), now, ranFor)} · ${tokens} · % of plan unknown`;
 }
 
 function nowRow(step, tests, ledger, complete) {
@@ -109,7 +109,7 @@ function bandLeft(step, tests, complete) {
 
 function bandSpent({ ledger, spawns, now }) {
   const agents = agentCount(spawns);
-  return `${elapsed(runStart(ledger), now)} · ${agents} ${agents === 1 ? "agent" : "agents"}`;
+  return `${elapsed(runStart(ledger), now)} · ${plural(agents, "agent")}`;
 }
 
 const STOPPED = "stopped";
