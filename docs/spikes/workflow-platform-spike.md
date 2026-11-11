@@ -781,3 +781,48 @@ the runs after them passed the same points.
 - Worst stacks every worst case on one stage. Treat it as a bound, not a forecast.
 - A lens cost $0.07 to $0.11 here and $0.57 to $1.07 in T1c. Sonnet's price is a factor of 2 of that; shorter reads
   and the cheaper 5-minute cache are the rest. A larger diff will cost more.
+
+## T5 verification: S4 to a draft PR
+
+Question: does auto mode now reach a draft PR, with the safety net's lens record, a rolled-back fix with its private ref,
+and no finding text in the record or the PR? Claude Code 2.1.322, 2026-11-11, `bug_fix` sample, every agent on Haiku
+5.5 through S4's forced cheap model, `ANTHROPIC_API_KEY` unset in every child (S4 refuses any `ANTHROPIC_` name but the
+two model aliases). Total live spend was **$0.78 of the $6 limit**, four runs, each under its $3 cap.
+
+**Headline: run 4 passed end to end for $0.21, 7% of the cap, in 313 s. G:publish passed under the auto policy with its
+binding, and `pb publish` opened one `--draft` PR on the shim into `develop`.** The safety net's three lenses kept 3
+findings, the first fix was forced red and rolled back under
+`refs/pairingbuddy/fix/apply-discount-percent/rollback/code-safety-net/1`, the retry was kept, and none of the 6 lens
+claims showed verbatim in any ledger snapshot, the unit record, or the PR's title and body. G:task-end asked once, for
+open questions in a fix and two refuter returns, and S4 answered it as the human.
+
+| Run | Result | $ | Share of the $3 cap | What it showed |
+|---|---|---|---|---|
+| `s4-t85-run1` | FAIL | 0.1985 | 6.6% | Scenarios passed with the task now in the lens prompt. Lens record, red rollback with its ref. G:publish asked: the claims lens left an open question, and S4 did not answer G:publish yet |
+| `s4-t85-run2` | FAIL | 0.1498 | 5.0% | First live auto pass at G:publish, with its binding. The main session then held `pb publish` back on its own. The safety net found nothing, so no fix ran and no rollback could be forced |
+| `s4-t85-run3` | FAIL | 0.2241 | 7.5% | The stale README gave the corpus lens a true finding. Red, then repeated-approach rollback. G:publish asked for an open question, S4 approved as the human, the draft PR opened. S4's own gate check then put a copied `unit.json` back |
+| `s4-t85-run4` | PASS | 0.2108 | 7.0% | Everything above, with G:publish passed by the auto policy |
+
+How the rollback is forced, test-only: S4's sample carries a README the bug fix makes wrong, so the corpus lens has a true
+finding, and the sample's test command runs behind `tests/smoke/force-red.mjs`, which fails the first test run of the
+first safety-net fix once. Only S4's throwaway test config names it.
+
+### Bugs the live runs found
+
+The three product bugs were each fixed test-first in their own commit. The last one was in S4 itself, which has no tests of its own, and was fixed with the rest of S4. Run 4 passed on all four.
+
+- **A lens never saw the task.** The scenarios lens got the scenarios, the corpus and its lens name, and said it could not
+  tell which bug the task named, so G:scenarios asked a human in both T84c runs. The lens prompt now carries the task.
+- **The main session ignored an auto pass at G:publish.** It read the pr-draft findings that a kept fix had dealt with as
+  blocking and declined to run `pb publish`. The coding skill now says the auto pass is the approval.
+- **A kept artifact-mode fix was not counted.** The pr-draft report said `fixes.attempts` 0 after a kept redraft, since only
+  checkpoints and rollbacks were counted. Filed fix returns now count too.
+- **S4's own confinement check left a copy of the run behind.** It put the captured run back to test a read and removed it
+  only when `run/` had been missing, so a copied `unit.json` outlived the publish. It now removes only what it added.
+
+### What stays open
+
+- G:task-end asked in 3 of 4 runs and G:publish in 2, each for an open question in a Haiku return. The gates are right to
+  ask, so S4 answers them as the human and says so in its result. A run that reaches the auto pass at G:publish needs
+  none of the pr-draft returns to leave a question; run 4 had none.
+- S3 was updated for the lens record and not run live (decision 68).
