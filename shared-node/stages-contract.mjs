@@ -132,6 +132,23 @@ export default {
         }
       }
     },
+    "refactoring": {
+      "nodes": [
+        {
+          "name": "code-refactor-scope",
+          "gate": "G:scope",
+          "evidence": [
+            "tests:full",
+            "artifact:scope-refactoring"
+          ]
+        }
+      ],
+      "gates": {
+        "G:scope": {
+          "class": "continue"
+        }
+      }
+    },
     "publish": {
       "nodes": [
         {

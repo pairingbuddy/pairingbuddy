@@ -93,12 +93,24 @@ const isReport = (report) => report !== null && typeof report === "object" && RE
 // A report carries its stage and attempt, and one with no stamp keeps counting, since nothing shows it is stale.
 const isVoidedReport = (report, ledger) => typeof report.stage === "string" && isVoidedAttempt(ledger, report.stage, report.attempt);
 
-// A report that cannot be read stops too: it may be hiding any of these.
-function reportStop(path, ledger) {
+const taskReportPath = (root) => join(root, ".pairingbuddy", "run", "task", "report.json");
+
+const UNREADABLE = Symbol("unreadable report");
+
+// The one rule for which report counts: the report when it is readable and not voided, null when it is missing or
+// voided, UNREADABLE when it cannot be read.
+function standingReport(path, ledger) {
   if (!existsSync(path)) return null;
   const report = parsedOrNull(path);
-  if (!isReport(report)) return `${path} cannot be read`;
-  if (isVoidedReport(report, ledger)) return null;
+  if (!isReport(report)) return UNREADABLE;
+  return isVoidedReport(report, ledger) ? null : report;
+}
+
+// A report that cannot be read stops too: it may be hiding any of these.
+function reportStop(path, ledger) {
+  const report = standingReport(path, ledger);
+  if (report === null) return null;
+  if (report === UNREADABLE) return `${path} cannot be read`;
   const { survivors = [], gaps = [], uncovered = [], unrefuted = [] } = report;
   if (survivors.some((finding) => finding?.class === "decide")) return "a decide finding survived";
   if (gaps.length > 0) return `coverage gaps remain: ${gaps.length}`;
@@ -199,7 +211,7 @@ function stopReason(contract, ledger, root) {
   if (ledger.stop !== null) return `the run stopped: ${ledger.stop.reason}`;
   const artifacts = join(taskDir, "artifacts");
   const settled = settledStages(contract, ledger);
-  return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(artifacts, ledger, settled) ?? coverageStop(artifacts, ledger, settled) ?? reportStop(join(taskDir, "report.json"), ledger);
+  return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(artifacts, ledger, settled) ?? coverageStop(artifacts, ledger, settled) ?? reportStop(taskReportPath(root), ledger);
 }
 
 // ---------- the decision ----------
@@ -214,9 +226,25 @@ function policyReason({ policy: { mode } }) {
   return mode === "" ? "no gate policy is recorded" : `the gate policy is ${mode}, not auto`;
 }
 
+const SCOPE_GATE = "G:scope";
+
+// The scope lens may flag that the scope does not serve the stated intent; a survivor asks even under auto unless it is explicitly non-blocking (blocking: false).
+function scopeReason(root, ledger) {
+  const report = standingReport(taskReportPath(root), ledger);
+  if (report === null) return null;
+  const blocked = (report.survivors ?? []).some((finding) => finding?.blocking !== false);
+  return blocked ? "the scope lens found the scope may not serve the stated intent" : null;
+}
+
+// The reasons only one gate has, by gate name.
+const GATE_REASONS = {
+  [SCOPE_GATE]: ({ root, ledger }) => scopeReason(root, ledger),
+  [PUBLISH_GATE]: ({ root, ledger, voided }) => publishReason(ledger, root, voided),
+};
+
 // Why this gate must ask a human, or null when it passes under the recorded policy.
 export const askReason = (contract, ledger, gate, root, voided = null) =>
-  stopReason(contract, ledger, root) ?? (gate.name === PUBLISH_GATE ? publishReason(ledger, root, voided) : null) ?? CLASS_REASONS[gate.class] ?? policyReason(ledger);
+  stopReason(contract, ledger, root) ?? GATE_REASONS[gate.name]?.({ root, ledger, voided }) ?? CLASS_REASONS[gate.class] ?? policyReason(ledger);
 
 // ---------- G:publish ----------
 

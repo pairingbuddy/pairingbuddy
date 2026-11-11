@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Scope Refactoring Result",
+  "description": "Return of the scope-refactoring agent when its prompt gives paths: the pb key it was given, any open ambiguity, and the code and test issues in the shape of issues.schema.json",
+  "type": "object",
+  "required": ["pb_key", "ambiguity", "code_issues", "test_issues"],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "ambiguity": {
+      "type": "string",
+      "description": "An open question the task left unresolved, or an empty string"
+    },
+    "code_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "issue_type", "description"],
+        "properties": {
+          "file": { "type": "string", "description": "File path where issue was found" },
+          "line": { "type": "integer", "description": "Line number (optional)" },
+          "issue_type": { "type": "string", "description": "Category of issue" },
+          "description": { "type": "string", "description": "What the issue is" },
+          "suggestion": { "type": "string", "description": "How to fix it (optional)" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "test_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "issue_type", "description"],
+        "properties": {
+          "file": { "type": "string", "description": "File path where issue was found" },
+          "line": { "type": "integer", "description": "Line number (optional)" },
+          "issue_type": { "type": "string", "description": "Category of issue" },
+          "description": { "type": "string", "description": "What the issue is" },
+          "suggestion": { "type": "string", "description": "How to fix it (optional)" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

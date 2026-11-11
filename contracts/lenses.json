@@ -188,7 +188,8 @@
       "lenses": [
         {
           "name": "scope-serves-intent",
-          "model": "sonnet"
+          "model": "sonnet",
+          "brief": "Check that every issue in the scope serves the refactoring the task states, that the scope leaves out nothing the task asks for, and that no issue would change behaviour."
         }
       ],
       "refute": "none",

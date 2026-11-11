@@ -57,6 +57,7 @@ schemas:
   - refactor-tests-result.schema.json
   - refactor-code-result.schema.json
   - verify-test-coverage-result.schema.json
+  - scope-refactoring-result.schema.json
   - refuter-verdict.schema.json
   - course-verdict.schema.json
   - git-config.schema.json
@@ -669,6 +670,9 @@ agents:
       test_issues:
         schema: issues.schema.json
         file: .pairingbuddy/test-issues.json
+      scope_result:
+        schema: scope-refactoring-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Input"
