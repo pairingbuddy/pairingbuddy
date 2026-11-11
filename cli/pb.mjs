@@ -3,11 +3,12 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
+import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
+import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, isPublishRun, isRefreshRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
@@ -22,7 +23,7 @@ import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted 
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
 import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
-import { buildKey, parseKey } from "../shared-node/keys.mjs";
+import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
 import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
@@ -41,6 +42,9 @@ const SCENARIOS_ROLE = "enumerate-scenarios-and-test-cases";
 const TESTS_ROLE = "create-test-placeholders";
 const SCOPE_ROLE = "scope-refactoring";
 const SCOPE_STAGE = "code-refactor-scope";
+const SPIKE_UNIT_STAGE = "code-spike-unit";
+const SPIKE_SETUP_FILE = "spike.json";
+const SPIKE_SETUP_PATH = `.pairingbuddy/run/task/${SPIKE_SETUP_FILE}`;
 
 class UsageError extends Error {}
 class Refusal extends Error {}
@@ -83,6 +87,10 @@ function parseKind(args) {
   const kind = i === -1 ? undefined : args[i + 1];
   if (!RUN_OPEN_KINDS.includes(kind)) throw new UsageError(`usage: pb run open --kind ${RUN_OPEN_KINDS.join("|")}`);
   return kind;
+}
+
+function refuseMissing(path) {
+  throw new Refusal(`${path} is missing, so no run was opened`);
 }
 
 function readStateJson(path) {
@@ -169,8 +177,8 @@ function assertPublishable(root) {
   if (unrecorded !== null) throw new Refusal(`${unrecorded}, so no publish run was opened. End each task with ${pbCommand("task end")} first`);
 }
 
-// Claims run/task and writes the first ledger.
-function claimRun({ root, kind, taskType, task, configHash }) {
+// Claims run/task and writes the spike setup (when given) and the first ledger; a failed write removes the claim.
+function claimRun({ root, kind, taskType, task, configHash, spike = null }) {
   const runRoot = ensureRunRoot(root);
   const dir = join(runRoot, "task");
   // A non-recursive mkdir is the claim: exactly one concurrent opener wins, and an existing
@@ -183,6 +191,8 @@ function claimRun({ root, kind, taskType, task, configHash }) {
   }
   try {
     mkdirSync(join(dir, "artifacts"));
+    // The spike setup lands before the ledger, so a reader never sees a spike run without its setup.
+    if (spike) writeJsonAtomic(join(dir, SPIKE_SETUP_FILE), spike);
     // runId is the pb run identity, set once here; stage.runId is the separate workflow run id per stage attempt.
     writeLedger(join(dir, "ledger.json"), {
       v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType, runId: randomUUID(),
@@ -214,9 +224,58 @@ function runOpen(args) {
   const taskType = kind === "code" ? classifiedTaskType(root) : kind === "publish" ? "publish" : null;
   assertTestsSelectable(root, configHash, taskType);
   const task = storedTask(root);
+  const spike = taskType === "spike" ? spikeSetupOf(root) : null;
 
-  const dir = claimRun({ root, kind, taskType, task, configHash });
+  const dir = claimRun({ root, kind, taskType, task, configHash, spike });
   return { ok: true, kind, branch, runDir: dir };
+}
+
+// The spike setup recorded next to the ledger: the config's goal, code location, mode and doc path, and each unit's id,
+// name, description and execution.
+function spikeSetupOf(root) {
+  const read = (name) => {
+    const path = join(root, ".pairingbuddy", name);
+    return readStateJson(path) ?? refuseMissing(path);
+  };
+  const { goal, code_location, exploration_mode, doc_path } = read("spike-config.json");
+  const rawUnits = read("spike-questions.json").units;
+  assertSpikeUnits(rawUnits);
+  assertRepoRelative("code_location", code_location);
+  assertRepoRelative("doc_path", doc_path);
+  if (!doc_path.endsWith(".md")) throw new Refusal(`doc_path ${doc_path} does not end in .md, so no run was opened`);
+  assertUnitsInside(code_location, rawUnits);
+  const units = rawUnits.map(({ id, name, description, execution }) => ({ id, name, description, execution }));
+  return { goal, code_location, exploration_mode, doc_path, units };
+}
+
+function assertRepoRelative(label, path) {
+  const bad = (why) => new Refusal(`${label} ${JSON.stringify(path)} ${why}, so no run was opened`);
+  if (typeof path !== "string" || path === "") throw bad("is not a path");
+  if (isAbsolute(path)) throw bad("is absolute");
+  const parts = path.split("/");
+  if (parts.includes("..")) throw bad("goes up with ..");
+  const first = posix.normalize(path).split("/")[0];
+  if (first === ".pairingbuddy" || first === ".git") throw bad(`is inside ${first}/`);
+}
+
+function assertUnitsInside(code_location, units) {
+  const prefix = `${code_location.replace(/\/$/, "")}/`;
+  for (const { execution } of units) {
+    const wd = execution?.working_directory;
+    assertRepoRelative("a unit working_directory", wd);
+    const inside = wd === code_location || wd.startsWith(prefix);
+    if (!inside) throw new Refusal(`a unit working_directory ${JSON.stringify(wd)} is not inside code_location ${code_location}, so no run was opened`);
+  }
+}
+
+function assertSpikeUnits(units) {
+  if (!Array.isArray(units) || units.length === 0) throw new Refusal("spike-questions.json has no unit, so no run was opened");
+  const seen = new Set();
+  for (const { id } of units) {
+    if (typeof id !== "string" || !KEY_TOKEN.test(id)) throw new Refusal(`spike unit id ${JSON.stringify(id)} does not fit the key rule, so no run was opened`);
+    if (seen.has(id)) throw new Refusal(`spike unit id ${id} repeats, so no run was opened`);
+    seen.add(id);
+  }
 }
 
 // Phase 1 of pb pr refresh: records the PR as it stands and opens a refresh run for the draft stage.
@@ -352,7 +411,7 @@ function gateEval(args) {
     if (gate === PUBLISH_GATE && shown === null) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
     reason = askReason(contract, open, due, root, voided);
     if (reason === null && gate === PUBLISH_GATE && autoBinding === undefined) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
-    if (reason === null) return recordAuto(open, gate, autoBinding);
+    if (reason === null) return repeatedAfter(contract, recordAuto(open, gate, autoBinding), gate, root);
     const facts = gate === PUBLISH_GATE ? { shown: { headSha: shown.headSha, base: shown.base, target: shown.target } } : {};
     return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, ...facts } };
   });
@@ -434,7 +493,8 @@ function awaitedGate(ledger, gates) {
 }
 
 function approved(ledger, gate, root) {
-  const gates = gatesFor(loadStages(PLUGIN_ROOT), ledger.taskType);
+  const contract = loadStages(PLUGIN_ROOT);
+  const gates = gatesFor(contract, ledger.taskType);
   const awaited = awaitedGate(ledger, gates);
   if (gate !== awaited) {
     throw new Refusal(`gate ${gate} is neither due nor pending. ${awaited === undefined ? "No gate is waiting." : `Gate ${awaited} is waiting.`}`);
@@ -442,7 +502,12 @@ function approved(ledger, gate, root) {
   // The question's shown HEAD binds the answer here as it does in the tap: a commit since then is not approved.
   const shown = ledger.needsHuman?.gate === gate ? ledger.needsHuman.shown : null;
   const binding = gate === PUBLISH_GATE ? refusing(() => publishBinding(root, ledger, shown)) : undefined;
-  return recordApproval(ledger, gate, gates, binding);
+  return repeatedAfter(contract, recordApproval(ledger, gate, gates, binding), gate, root);
+}
+
+// A passed gate on a repeating node sends the stage round again while units remain; the unit ids are only read for such a node.
+function repeatedAfter(contract, ledger, gate, root) {
+  return repeatingNode(contract, ledger.taskType, gate) !== undefined ? repeatAfterPass(contract, ledger, gate, readSpikeSetup(root).units.map(({ id }) => id)) : ledger;
 }
 
 function humanApprove(args) {
@@ -807,7 +872,38 @@ async function refactorCheckpoint(context) {
   return commitPlan(context, plan, head);
 }
 
-const CHECKPOINT_FLOWS = { full: suiteCheckpoint, none: placeholdersCheckpoint, selected: cycleCheckpoint, closed: refactorCheckpoint };
+// The spike setup of the open run; a run opened before the setup was recorded has none.
+function readSpikeSetup(root) {
+  let setup;
+  try {
+    setup = readStateJson(join(taskDirOf(root), SPIKE_SETUP_FILE));
+  } catch {
+    throw new Refusal(`${SPIKE_SETUP_PATH} is not valid JSON, so this spike run cannot go on`);
+  }
+  if (setup === null || !Array.isArray(setup.units)) throw new Refusal(`this spike run has no usable ${SPIKE_SETUP_PATH}; it was opened before the spike setup was recorded`);
+  return setup;
+}
+
+// A spike unit proves nothing by tests: its exploratory code is committed as it stands.
+function spikeUnitCheckpoint(context) {
+  const id = parseKey(context.key).item;
+  const unit = readSpikeSetup(context.root).units.find((candidate) => candidate.id === id);
+  if (unit === undefined) throw new Refusal(`unit ${id} is not in spike.json`);
+  const plan = planFor(context, { workingDirectory: unit.execution?.working_directory });
+  return plan === null ? noChange(context) : commitPlan(context, plan, headOf(context.root));
+}
+
+const CHECKPOINT_FLOWS = {
+  config: suiteCheckpoint,
+  docs: suiteCheckpoint,
+  fix: suiteCheckpoint,
+  "refactor-step": suiteCheckpoint,
+  placeholders: placeholdersCheckpoint,
+  red: cycleCheckpoint,
+  green: cycleCheckpoint,
+  refactor: refactorCheckpoint,
+  "spike-unit": spikeUnitCheckpoint,
+};
 
 // Every check that costs no test run comes first.
 async function checkpoint(args) {
@@ -818,7 +914,7 @@ async function checkpoint(args) {
   if (!stepRunsFor(step, ledger.taskType)) throw new Refusal(`step ${step} runs for ${taskTypesOfStep(step).join(", ")} only, and this task is ${ledger.taskType}`);
   const branch = currentBranch(root);
   assertBranchNotProtected(loadGitConfigOrRefuse(root), root, branch, "commit");
-  return CHECKPOINT_FLOWS[testsOfStep(step)]({ step, key, root, path, ledger, branch });
+  return CHECKPOINT_FLOWS[step]({ step, key, root, path, ledger, branch });
 }
 
 function assertNoArgs(args, verb) {
@@ -908,6 +1004,20 @@ function refactorState(args) {
   const { code_issues = [], test_issues = [] } = standing;
   const issues = [...code_issues.map((issue) => ({ role: REFACTOR_CODE_ROLE, issue })), ...test_issues.map((issue) => ({ role: REFACTOR_TESTS_ROLE, issue }))];
   return { ok: true, taskType: ledger.taskType, scope: artifactPath(scope), steps: issues.map(({ role, issue }, index) => ({ item: `step${index + 1}`, role, issue })) };
+}
+
+// What the spike unit stage cannot see for itself: the unit ids, which are explored, and the first unexplored unit.
+function spikeState(args) {
+  if (args.length > 0) throw new UsageError("usage: pb spike state");
+  const { root, path } = runLedgerPath();
+  const ledger = readLedger(path);
+  assertStageActive(ledger, "report on");
+  if (ledger.taskType !== "spike") throw new Refusal(`pb spike state runs for spike tasks only, and this task is ${ledger.taskType}`);
+  const { units } = readSpikeSetup(root);
+  const explored = ledger.stages.find(({ name }) => name === SPIKE_UNIT_STAGE)?.explored ?? [];
+  const next = units.find(({ id }) => !explored.includes(id));
+  if (next === undefined) throw new Refusal("every unit is explored");
+  return { ok: true, taskType: ledger.taskType, spike: SPIKE_SETUP_PATH, units: units.map(({ id }) => id), explored, next };
 }
 
 const testRunnersOf = ({ runners }) => Object.fromEntries(Object.entries(runners).map(([id, { test_directory, file_pattern }]) => [id, { test_directory, file_pattern }]));
@@ -1796,7 +1906,7 @@ export const VERBS = {
   snapshot,
   "unit open": unitOpen, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
-  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 async function runVerb(name, args) {

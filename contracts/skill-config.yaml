@@ -175,3 +175,14 @@ skills:
       - heading: "## Workflow"
         requires_python_code_block: true
       - heading: "## Orchestrator Behavior"
+
+  # ---------------------------------------------------------------------------
+  # Conversational skills (run in the main context)
+  # ---------------------------------------------------------------------------
+  setting-up-spike:
+    category: conversational
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Conversation"
+      - heading: "## When No Human Can Answer"
+      - heading: "## Output"

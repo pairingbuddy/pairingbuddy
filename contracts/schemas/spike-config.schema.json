@@ -3,7 +3,11 @@
   "title": "Spike Configuration",
   "description": "Global spike configuration defining goal, code location, and exploration mode",
   "type": "object",
-  "required": ["goal", "code_location", "exploration_mode"],
+  "required": [
+    "goal",
+    "code_location",
+    "exploration_mode"
+  ],
   "properties": {
     "goal": {
       "type": "string",
@@ -15,8 +19,16 @@
     },
     "exploration_mode": {
       "type": "string",
-      "enum": ["questions", "approaches", "comparison"],
+      "enum": [
+        "questions",
+        "approaches",
+        "comparison"
+      ],
       "description": "How exploration is structured"
+    },
+    "doc_path": {
+      "type": "string",
+      "description": "Repo-relative path of the markdown write-up (e.g., 'docs/spikes/learn-x.md')"
     }
   }
 }

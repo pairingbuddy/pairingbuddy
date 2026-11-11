@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The `setting-up-spike` skill guides `setup-spike`. `pb run open` records the spike setup in `run/task/spike.json` and refuses a spike whose setup is missing or malformed. `pb spike state` lists a spike's units and the next one to run. `pb checkpoint --step spike-unit` commits one explored unit.
+- `explore-spike-unit` runs under the one input rule with a new `explore-spike-unit-result.schema.json`. The `code-spike-unit` stage explores one unit, and the spike graph repeats `G:unit` per unit. The spike graph lands ahead of its flip (spike is not yet in `migratedTypes`).
 - Refactoring now runs on the new path (`refactoring` is in `migratedTypes`): scope, apply, then the safety net, whose lens row adds a refactoring lens (behaviour-preservation, at Opus). `G:task-end` follows the safety net.
 - The `code-refactor-apply` stage applies the scope one step at a time, code issues then test issues. Each step is committed by `pb checkpoint --step refactor-step` only when the full suite is green, typed `refactor` or `test` by its paths and never `feat` or `fix`. `pb refactor state` lists the scope's issues as numbered steps.
 - Smoke S5 (`tests/smoke/s5.mjs`) runs a refactoring task through scope, apply and the safety net.

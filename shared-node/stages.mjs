@@ -40,6 +40,8 @@ function nodeProblems(taskType, graph, classes) {
     if (typeof node.name !== "string" || node.name === "") problems.push(`${taskType}: a node has no name`);
     if (!Array.isArray(node.evidence)) problems.push(`${taskType}: node ${node.name} has no evidence list`);
     else for (const entry of node.evidence.filter((item) => !isEvidence(item))) problems.push(`${taskType}: node ${node.name} has unknown evidence ${JSON.stringify(entry)}`);
+    if (node.repeat !== undefined && typeof node.repeat !== "boolean") problems.push(`${taskType}: node ${node.name} has a non-boolean repeat`);
+    if (node.repeat === true && Array.isArray(node.evidence) && !node.evidence.some((item) => typeof item === "string" && item.startsWith("checkpoint:"))) problems.push(`${taskType}: node ${node.name} repeats but has no checkpoint: evidence entry`);
     if (node.gate !== null && !Object.hasOwn(gates, node.gate)) problems.push(`${taskType}: node ${node.name} names unknown gate ${node.gate}`);
   }
   if (seen.size === 0) problems.push(`${taskType}: has no nodes`);

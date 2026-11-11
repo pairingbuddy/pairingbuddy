@@ -9,8 +9,8 @@ import { REFACTOR_TASK_TYPES } from "./labels.mjs";
 
 // config and fix exist to change something, so their return must account for any change that is not there
 // (provesChange). tests says what must run before the commit: the whole suite, the one test the key names, every test of
-// the task a cycle closed, or nothing, since a placeholder proves nothing. item says what a key carries: a test when its step
-// works on one test's cycle, a group (fix) or a step (refactor-step); left out when it carries none. refactor, refactor-step and fix are typed by the paths they touched (typeOfPaths, D16); a
+// the task a cycle closed, or nothing, since a placeholder proves nothing (a spike unit runs no tests either: exploratory code proves nothing). item says what a key carries: a test when its step
+// works on one test's cycle, a group (fix), a step (refactor-step) or a unit (spike-unit); left out when it carries none. refactor, refactor-step and fix are typed by the paths they touched (typeOfPaths, D16); a
 // refactor is one fix group, and only new_feature refactors per cycle. refactor-step is the task-end refactor: one fix
 // group, typed by its paths, proved by the full suite. writesDiff makes pb save the fix commit's diff after it lands.
 export const REFACTOR_CODE_ROLE = "refactor-code";
@@ -25,6 +25,7 @@ const STEPS = {
   fix: { typeOfPaths: true, writesDiff: true, roles: ["fix"], provesChange: true, tests: "full", item: "group" },
   refactor: { typeOfPaths: true, roles: REFACTOR_ROLES, provesChange: false, tests: "closed", item: "test", taskTypes: REFACTOR_TASK_TYPES },
   "refactor-step": { typeOfPaths: true, roles: REFACTOR_ROLES, provesChange: true, tests: "full", item: "step", taskTypes: ["refactoring"] },
+  "spike-unit": { type: "chore", roles: ["explore-spike-unit"], provesChange: false, tests: "none", item: "unit", taskTypes: ["spike"] },
 };
 const STATE_DIRECTORY = ".pairingbuddy";
 const REFUSED_DIRECTORIES = [STATE_DIRECTORY, ".git"];
@@ -61,8 +62,6 @@ export function parseRollbackArgs(args) {
 }
 
 export const isCheckpointCall = (step, key) => Object.hasOwn(STEPS, step) && isKey(key);
-
-export const testsOfStep = (step) => STEPS[step].tests;
 
 const rolesText = (step) => STEPS[step].roles.join(" or ");
 
@@ -277,6 +276,11 @@ const SCOPE_CHECKS = {
   },
   refactor: refactorScope,
   "refactor-step": refactorScope,
+  "spike-unit"(_root, listed, { workingDirectory }) {
+    if (typeof workingDirectory !== "string" || workingDirectory === "") throw new CheckpointRefused("the unit has no working_directory in spike.json, so its files have no place to be committed");
+    const stray = listed.find((path) => !isInside(path, workingDirectory));
+    if (stray !== undefined) throw new CheckpointRefused(`${stray} is outside the unit's working_directory ${workingDirectory}, and a spike unit changes files there alone`);
+  },
 };
 
 // What to commit, or null for no change. Every check that needs no test run is here, so a refusal costs none.

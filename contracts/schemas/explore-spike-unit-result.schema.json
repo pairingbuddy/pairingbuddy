@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Explore Spike Unit Result",
+  "description": "Return of the explore-spike-unit agent when its prompt gives paths: the pb key it was given, any open ambiguity, and the finding for the unit with the commit subject and the files it changed",
+  "type": "object",
+  "required": ["pb_key", "ambiguity", "unit_id", "summary", "code_references", "recommendation", "commit_subject", "files_changed"],
+  "properties": {
+    "pb_key": { "type": "string", "description": "The key from the prompt, copied exactly" },
+    "ambiguity": { "type": "string", "description": "An open question a human should settle, or an empty string" },
+    "unit_id": { "type": "string", "description": "ID of the unit explored" },
+    "summary": { "type": "string", "description": "Summary of the findings for this unit" },
+    "code_references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "description"],
+        "properties": {
+          "file": { "type": "string", "description": "Path to a file containing relevant code" },
+          "description": { "type": "string", "description": "What this code demonstrates" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "recommendation": { "type": "string", "description": "Recommendation based on the findings, or an empty string" },
+    "commit_subject": { "type": "string", "description": "Subject line for the commit of the exploratory code" },
+    "files_changed": { "type": "array", "items": { "type": "string" }, "description": "Repo-relative paths of every file the exploration created or changed" }
+  },
+  "additionalProperties": false
+}

@@ -58,6 +58,7 @@ schemas:
   - refactor-code-result.schema.json
   - verify-test-coverage-result.schema.json
   - scope-refactoring-result.schema.json
+  - explore-spike-unit-result.schema.json
   - refuter-verdict.schema.json
   - course-verdict.schema.json
   - git-config.schema.json
@@ -748,6 +749,9 @@ agents:
       spike_findings:
         schema: spike-findings.schema.json
         file: .pairingbuddy/spike-findings.json
+      explore_result:
+        schema: explore-spike-unit-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Input"

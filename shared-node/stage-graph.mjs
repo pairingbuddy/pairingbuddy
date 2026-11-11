@@ -47,6 +47,9 @@ export const isStageActive = (ledger) => ledger?.stage?.status === "active";
 // so it re-runs at the following attempt.
 export const REDO_STATUS = "redo";
 
+// The status of a repeating stage that passed its gate while units remain unexplored. It is not done, so it is next again.
+export const REPEAT_STATUS = "repeat";
+
 // The status pb stage fail leaves. It is not done either, and its attempt is void from that moment.
 export const FAILED_STATUS = "failed";
 

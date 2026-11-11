@@ -200,6 +200,24 @@ export default {
           "class": "continue"
         }
       }
+    },
+    "spike": {
+      "nodes": [
+        {
+          "name": "code-spike-unit",
+          "gate": "G:unit",
+          "repeat": true,
+          "evidence": [
+            "artifact:explore-spike-unit",
+            "checkpoint:spike-unit"
+          ]
+        }
+      ],
+      "gates": {
+        "G:unit": {
+          "class": "continue"
+        }
+      }
     }
   }
 }

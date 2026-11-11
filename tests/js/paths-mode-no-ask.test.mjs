@@ -112,6 +112,7 @@ test("every agent that still has a legacy caller keeps its legacy branch", () =>
     [
       "create-test-placeholders",
       "enumerate-scenarios-and-test-cases",
+      "explore-spike-unit",
       "implement-code",
       "implement-tests",
       "refactor-code",
