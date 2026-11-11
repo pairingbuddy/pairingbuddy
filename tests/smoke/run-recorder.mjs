@@ -1,4 +1,4 @@
-// Test tooling only. Saves spawn events, ledger snapshots, what `pb task end` printed and timing from a real run, for the T4a replay rig (S8).
+// Test tooling only. Saves spawn events, ledger snapshots, the structured calls agents made (calls.jsonl), what `pb task end` printed and timing from a real run, for the T4a replay rig (S8).
 // It sits outside the run: a timer reads the ledger, the smoke harness hands it stream lines, and it writes only to its
 // own directory. No hook, CLI verb or workflow loads it, so a run cannot tell it is there.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -31,6 +31,11 @@ function toolEvents({ t, event }) {
 
 export const spawnEvents = (stream) => stream.flatMap((line) => [...toolEvents(line), ...taskEvent(line)]);
 
+// Reads every transcript file in the given directories that matches the pattern.
+function agentFiles(dirs, pattern, read) {
+  return dirs.filter((dir) => existsSync(dir)).flatMap((dir) => readdirSync(dir).filter((file) => pattern.test(file)).flatMap((file) => read(dir, file)));
+}
+
 function readAgent(dir, file, startedAt) {
   const id = file.slice("agent-".length, -".meta.json".length);
   try {
@@ -45,7 +50,31 @@ function readAgent(dir, file, startedAt) {
 
 // The agents a workflow spawns never reach the stream: their transcripts hold the label and the span.
 export function workflowAgents(dirs, startedAt) {
-  return dirs.filter((dir) => existsSync(dir)).flatMap((dir) => readdirSync(dir).filter((file) => /^agent-.*\.meta\.json$/.test(file)).flatMap((file) => readAgent(dir, file, startedAt)));
+  return agentFiles(dirs, /^agent-.*\.meta\.json$/, (dir, file) => readAgent(dir, file, startedAt));
+}
+
+function readCalls(dir, file, startedAt) {
+  const agentId = file.slice("agent-".length, -".jsonl".length);
+  let lines;
+  try {
+    lines = readFileSync(join(dir, file), "utf8").split("\n");
+  } catch {
+    return [];
+  }
+  return lines.flatMap((line) => {
+    try {
+      const event = JSON.parse(line);
+      const t = (Date.parse(event.timestamp) - startedAt) / 1000;
+      return toolUses(event).filter(({ name }) => name === "StructuredOutput").map(({ name, input }) => ({ t, kind: "tool_call", tool: name, agentId, input }));
+    } catch {
+      return [];
+    }
+  });
+}
+
+// Each StructuredOutput call an agent made is the structured answer the lens round hands back.
+export function structuredCalls(dirs, startedAt) {
+  return agentFiles(dirs, /^agent-.*\.jsonl$/, (dir, file) => readCalls(dir, file, startedAt)).sort((a, b) => a.t - b.t);
 }
 
 export const transcriptDirs = (stream) => [...new Set(stream.flatMap(({ event }) => [...JSON.stringify(event).matchAll(TRANSCRIPT_DIR)].map(([, dir]) => dir)))];
@@ -125,14 +154,16 @@ export class RunRecorder {
     }
   }
 
-  spawns() {
-    return [...spawnEvents(this.stream), ...workflowAgents(transcriptDirs(this.stream), this.startedAt)].sort((a, b) => a.t - b.t);
+  spawns(dirs = transcriptDirs(this.stream)) {
+    return [...spawnEvents(this.stream), ...workflowAgents(dirs, this.startedAt)].sort((a, b) => a.t - b.t);
   }
 
   stop() {
     clearInterval(this.timer);
     const stageSeconds = Object.fromEntries(Object.keys(this.stageEnded).map((name) => [name, Number((this.stageEnded[name] - this.stageStarted[name]).toFixed(3))]));
-    writeFileSync(join(this.out, "spawns.jsonl"), jsonl(this.spawns()));
+    const dirs = transcriptDirs(this.stream);
+    writeFileSync(join(this.out, "spawns.jsonl"), jsonl(this.spawns(dirs)));
+    writeFileSync(join(this.out, "calls.jsonl"), jsonl(structuredCalls(dirs, this.startedAt)));
     writeFileSync(join(this.out, "task-end.jsonl"), jsonl(this.taskEnds));
     writeFileSync(join(this.out, "timing.json"), JSON.stringify({ seconds: this.seconds(), stageSeconds }));
   }
