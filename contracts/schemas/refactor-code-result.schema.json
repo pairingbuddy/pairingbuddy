@@ -17,7 +17,7 @@
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question, or an issue the agent could not fix without changing behaviour, or an empty string"
+      "description": "An open question, or an issue the agent could not fix without changing behaviour, or why a fix changed nothing, or an empty string"
     },
     "commit_subject": {
       "type": "string",

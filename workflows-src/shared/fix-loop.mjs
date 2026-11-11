@@ -84,6 +84,8 @@ async function fixGroup(config, attempt, spent) {
     const { result: relay } = await runCommands(config.stage, [`checkpoint --step fix --from ${key}`], { item: group.id, round });
     if (relay.cli_exit_code !== 0 && TESTS_FAILED.test(relay.cli_output ?? '')) return { outcome: 'red', key, approach };
     if (relay.cli_exit_code !== 0) return { outcome: 'failed', key };
+    // No commit means fix.diff is stale (pb only accepts a no-change fix with a reason in ambiguity, which reaches the human), so skip the checker.
+    if (relayedJson(relay.cli_output ?? '')?.committed === false) return { outcome: 'kept', key, approach };
   }
   if (fix.lint && artifactMode) {
     spent.count += 1;

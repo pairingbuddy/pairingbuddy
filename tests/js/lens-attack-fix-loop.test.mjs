@@ -104,6 +104,7 @@ const scriptedAgents = ({ lenses = {}, verdicts = [], checkpoints = [], fixes = 
     const [command] = commandsOf(prompt);
     if (command.includes(" checkpoint ")) {
       const refusal = checkpoints[checkpointCount++];
+      if (refusal !== undefined && typeof refusal === "object") return { cli_exit_code: 0, cli_output: JSON.stringify(refusal) };
       return refusal === undefined
         ? { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true, committed: true, sha: "abc1234" }) }
         : { cli_exit_code: 1, cli_output: refusal };
@@ -223,6 +224,19 @@ test("In commit mode a runner runs checkpoint --step fix --from the fix key, and
   assert.deepEqual(dataBlock(checkerCalls[0].prompt, "diff"), { fix_diff: ".pairingbuddy/run/fix.diff" }, "the diff block names fix_diff");
   assert.deepEqual(dataBlock(checkerCalls[0].prompt, "findings").map(({ claim }) => claim), [codeFinding.claim], "findings block holds the group's findings");
   assert.ok(events.indexOf("end run:g1") < events.indexOf("start check:g1"), "the checker starts only after the runner ended");
+});
+// Test case: unchanged-fix-is-kept-without-checker
+test("A fix whose checkpoint relays committed false is kept with no checker and no rollback, and the next group's fix agent is spawned", async () => {
+  const config = baseConfig();
+  const g1Key = fixKeyFor(config, "g1", 1);
+  const { respond } = scriptedAgents({ lenses: { code: [finding("R1", "one")], tests: [finding("R3", "three")] }, checkpoints: [{ ok: true, step: "fix", key: g1Key, committed: false }] });
+
+  const { calls } = await runFixLoop(config, respond);
+
+  const checkerItems = callsOf(calls, CHECKER).map(({ prompt }) => itemOfPrompt(prompt));
+  assert.ok(!checkerItems.includes("g1"), "no course checker is spawned for g1, whose fix changed nothing");
+  assert.equal(rollbackCallsOf(calls).length, 0, "no rollback runner runs for g1");
+  assert.deepEqual(fixCallsOf(calls).map(({ prompt }) => itemOfPrompt(prompt)), ["g1", "g2"], "g2's fix agent is spawned next");
 });
 // Test case: better-moves-to-next-group
 test("A better verdict keeps the commit and the next fix attempt is for the next group", async () => {
