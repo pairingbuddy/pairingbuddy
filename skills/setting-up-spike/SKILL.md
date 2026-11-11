@@ -13,15 +13,18 @@ Read `.pairingbuddy/task.json` (description, context) and `.pairingbuddy/human-g
 
 ## Conversation
 
-1. Work out the goal: what the spike should learn or answer.
-2. Pick the exploration mode:
+1. Check whether a human can answer.
+   - There is no human when AskUserQuestion is not available, or when you run under `claude -p`, in auto permission mode, or with PAIRINGBUDDY_SOLO=true.
+   - With no human, skip the rest of the conversation. Never ask in chat instead. Write the default setup files (see When No Human Can Answer) and return, so the coding workflow goes straight on to `pb unit open`.
+2. Work out the goal: what the spike should learn or answer.
+3. Pick the exploration mode:
    - `questions`: answering specific questions ("Can we use X for Y?")
    - `approaches`: comparing implementation approaches
    - `comparison`: comparing technologies or libraries
-3. Break the goal into 2-5 units. Each is small, independent and has a clear success criterion. Give each an id (`u1`, `u2`, ...), a name, a description, and an execution config: language, run command, optional setup command, optional environment, and a working directory under the code location.
-4. Ask where the spike code lives (a directory such as `spike/`, or a branch) and where the write-up goes. The default write-up path is `docs/spikes/<kebab-goal>.md`.
-5. Present everything with AskUserQuestion, with full detail: goal, mode, code location, write-up path, and for each unit its name, description, language, working directory and run command.
-6. If the human gives feedback, append it to `.pairingbuddy/human-guidance.json` first (read the file, or start from `{"guidance": []}`; add an entry with agent, timestamp, context, feedback), then redo steps 1-4 and ask again. Leave the loop only on explicit approval or an explicit stop. Plain approvals need no entry.
+4. Break the goal into 2-5 units. Each is small, independent and has a clear success criterion. Give each an id (`u1`, `u2`, ...), a name, a description, and an execution config: language, run command, optional setup command, optional environment, and a working directory under the code location.
+5. Ask where the spike code lives (a directory such as `spike/`, or a branch) and where the write-up goes. The default write-up path is `docs/spikes/<kebab-goal>.md`.
+6. Present everything with AskUserQuestion, with full detail: goal, mode, code location, write-up path, and for each unit its name, description, language, working directory and run command.
+7. If the human gives feedback, append it to `.pairingbuddy/human-guidance.json` first (read the file, or start from `{"guidance": []}`; add an entry with agent, timestamp, context, feedback), then redo steps 2-5 and ask again. Leave the loop only on explicit approval or an explicit stop. Plain approvals need no entry.
 
 ## When No Human Can Answer
 
