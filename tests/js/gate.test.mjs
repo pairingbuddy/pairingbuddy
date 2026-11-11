@@ -1963,3 +1963,11 @@ for (const [label, drift] of [
       assertAllowed(await runGate({ ...writeCall(repo.dir, "src/app.py"), ...drift }));
     }));
 }
+
+test("skill-coding-names-pr-refresh", () => {
+  const skill = readFileSync(join(ROOT, "skills", "coding", "SKILL.md"), "utf8");
+
+  assert.match(skill, /pb pr refresh/, "the coding skill names pb pr refresh");
+  assert.match(skill, /review fixes/, "the coding skill ties pb pr refresh to review fixes");
+  assert.match(skill, /never[^.\n]*gh pr edit|gh pr edit[^.\n]*never/i, "the coding skill says never to run gh pr edit yourself");
+});

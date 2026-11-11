@@ -136,9 +136,26 @@ test("lens-subject-carries-paths", async () => {
       draft: ".pairingbuddy/run/task/artifacts/pr-draft.draft-pull-request.-.r1.a1.json",
       unit: ".pairingbuddy/run/unit.json",
       subject_diff: ".pairingbuddy/run/subject.diff",
+      refresh: ".pairingbuddy/run/refresh.json",
+      old_body: ".pairingbuddy/run/refresh-body.md",
     }, `${lens} lens: the subject names the files, not the draft's contents`);
     assert.deepEqual(blockOf(prompt, "corpus").split("\n").map((line) => JSON.parse(line)), ["CLAUDE.md"], `${lens} lens: the corpus lists the snapshot's paths`);
     assert.equal(JSON.parse(blockOf(prompt, "brief")), row.brief, `${lens} lens: the prompt carries its row's brief`);
+  }
+});
+
+test("stage-paths-name-refresh-and-old-body", async () => {
+  const { calls } = await runStage();
+
+  const refreshPaths = { refresh: ".pairingbuddy/run/refresh.json", old_body: ".pairingbuddy/run/refresh-body.md" };
+  const drafterPaths = JSON.parse(blockOf(calls[0].prompt, "paths"));
+  assert.deepEqual({ refresh: drafterPaths.refresh, old_body: drafterPaths.old_body }, refreshPaths, "the drafter's paths name the refresh record and the old body");
+  assert.equal(drafterPaths.unit, ".pairingbuddy/run/unit.json", "unit is still named");
+  const lensCalls = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:lens");
+  assert.equal(lensCalls.length, 2, "both lenses are spawned");
+  for (const call of lensCalls) {
+    const subject = JSON.parse(blockOf(call.prompt, "subject"));
+    assert.deepEqual({ refresh: subject.refresh, old_body: subject.old_body }, refreshPaths, `${lensNameOf(call)} lens: the subject names the refresh record and the old body`);
   }
 });
 

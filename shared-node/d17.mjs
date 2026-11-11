@@ -40,7 +40,7 @@ const REASONS = {
     runState === "none"
       ? `A subagent never pushes to a protected branch, and never force-pushes, deletes, mirrors or pushes all refs, or pushes a target it cannot read. ${ROUTE}`
       : `git push is denied during a run. ${ROUTE}`,
-  "pr-write": () => `gh pr create, edit, ready, revert and update-branch are denied during a run. ${ROUTE}`,
+  "pr-write": () => `gh pr create, edit, ready, revert and update-branch are denied during a run. ${ROUTE} An open pull request's title and body are refreshed with pb pr refresh.`,
   "pr-merge": (runState) => (runState === "none" ? `A subagent never merges a pull request. ${ROUTE}` : `gh pr merge is denied during a run. ${ROUTE}`),
   revert: (runState) =>
     runState === "none"

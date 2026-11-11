@@ -30,6 +30,9 @@ const paths = {
   unit: '.pairingbuddy/run/unit.json',
   git_config: '.pairingbuddy/git-config.json',
   human_guidance: '.pairingbuddy/human-guidance.json',
+  // A refresh run has no unit record, so its agents read these instead.
+  refresh: '.pairingbuddy/run/refresh.json',
+  old_body: '.pairingbuddy/run/refresh-body.md',
 };
 
 const prompt = [
@@ -114,8 +117,10 @@ if (!lintBudgetEnded) {
   const lensSubject = {
     pr_body: '.pairingbuddy/run/pr-body.md',
     draft: lastGoodDraft,
-    unit: '.pairingbuddy/run/unit.json',
+    unit: paths.unit,
     subject_diff: '.pairingbuddy/run/subject.diff',
+    refresh: paths.refresh,
+    old_body: paths.old_body,
   };
   lensResult = await lensAttack({
     stage,

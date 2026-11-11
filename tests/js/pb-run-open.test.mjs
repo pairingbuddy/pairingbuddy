@@ -147,6 +147,16 @@ test("runs-when-invoked-through-a-symlink", (t) => {
   assert.equal(JSON.parse(r.stdout).ok, true, "the symlinked entry point still runs main");
 });
 
+test("run-open-refuses-kind-refresh", (t) => {
+  const root = makeRepo(t);
+
+  const r = pb(root, "run", "open", "--kind", "refresh");
+
+  assert.equal(r.status, 2, "a kind run open does not take is a usage error");
+  assert.match(r.stderr, /usage: pb run open --kind code\|plan\|publish(?!\|)/, "stderr names the kinds run open takes, not refresh");
+  assert.equal(existsSync(runDir(root)), false, "no run directory is opened");
+});
+
 test("an-unexpected-failure-exits-1-and-says-so", (t) => {
   const root = makeRepo(t);
   writeFileSync(join(root, ".pairingbuddy", "run"), "a file where the run directory should be");
@@ -282,7 +292,7 @@ test("importing-pb-does-not-run-main-and-the-kinds-are-shared", (t) => {
   const r = spawnSync("node", ["--input-type=module", "-e", script], { cwd: root, encoding: "utf8" });
 
   assert.equal(r.status, 0, `importing must not run main or exit: ${r.stderr}`);
-  assert.deepEqual(JSON.parse(r.stdout), { same: true, kinds: ["code", "plan", "publish"] }, "pb.mjs and ledger.mjs export one KINDS constant");
+  assert.deepEqual(JSON.parse(r.stdout), { same: true, kinds: ["code", "plan", "publish", "refresh"] }, "pb.mjs and ledger.mjs export one KINDS constant");
 });
 
 test("open-writes-a-gitignore-that-hides-run-state", (t) => {

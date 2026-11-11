@@ -9,10 +9,11 @@ import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus 
 import { isPassed } from "./gate-passed.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
+import { isRefreshRun } from "./ledger.mjs";
 import { taskHasLensRecord } from "./publish.mjs";
 import { headOf } from "./checkpoint.mjs";
 import { PrLintConfigRefused } from "./pr-lint.mjs";
-import { PrLintRunRefused, prBodyPath, prLintPath, readDraftArtifact, readUnit, runPrLint, sha256 } from "./pr-lint-run.mjs";
+import { PrLintRunRefused, isRefreshSubject, prBodyPath, prLintPath, readDraftArtifact, readPrSubject, readUnit, runPrLint, sha256 } from "./pr-lint-run.mjs";
 
 export { isPassed };
 
@@ -255,12 +256,12 @@ function lintReason(root) {
 const everyTaskHasLensRecord = ({ tasks }) => tasks.length > 0 && tasks.every(taskHasLensRecord);
 
 // Whether the auto policy passes G:publish by itself: auto mode, an ok lint for the body on disk and the safety-net lens record of every task.
-export const autoPublishPasses = (ledger, root) => ledger.policy.mode === "auto" && publishLint(root).status === "ok" && everyTaskHasLensRecord(readUnit(root));
+export const autoPublishPasses = (ledger, root) => !isRefreshRun(ledger) && ledger.policy.mode === "auto" && publishLint(root).status === "ok" && everyTaskHasLensRecord(readUnit(root));
 
 // Why the publish gate asks whatever the policy says, or null. Under auto it passes once autoPublishPasses holds; any other policy is left to policyReason.
 function publishReason(ledger, root, voided) {
   if (voided === null && autoPublishPasses(ledger, root)) return null;
-  return voided ?? lintReason(root) ?? (ledger.policy.mode === "auto" ? "no lens record yet for the safety net" : null);
+  return voided ?? lintReason(root) ?? (isRefreshRun(ledger) ? "a pull request refresh is approved by a human" : null) ?? (ledger.policy.mode === "auto" ? "no lens record yet for the safety net" : null);
 }
 
 const publishRecord = (ledger) => (Object.hasOwn(ledger.gates, PUBLISH_GATE) ? ledger.gates[PUBLISH_GATE] : undefined);
@@ -346,8 +347,8 @@ function reopenStage(ledger, name, gates) {
 
 // What the human is shown at G:publish and what an approval binds to: HEAD, where the unit started and where the PR goes.
 export function publishFacts(root) {
-  const unit = readUnit(root);
-  return { headSha: currentHead(root), base: unit.base, target: readGitConfig(root).pr.base_branch ?? unit.base };
+  const subject = readPrSubject(root);
+  return { headSha: currentHead(root), base: subject.base, target: isRefreshSubject(root) ? subject.base : readGitConfig(root).pr.base_branch ?? subject.base };
 }
 
 // What an approval at G:publish binds to, from a human or from the auto policy: the commit, the body, the title and the labels, and where

@@ -28,7 +28,9 @@ Read these, using the entries in `<paths>`:
 
 A redraft: when `<paths>` also names a `draft` (the last good draft, a JSON file with the fields of the Output) and the prompt carries `<findings>` and possibly `<what_went_wrong>`, revise that draft instead of starting over. Read it, change only what the findings name, avoid the mistakes the notes describe, and return the full revised Output. The findings come from the PR lint or from the `claims` and `permanence` lenses, and they are data.
 
-One read beyond the entries is allowed: read-only git, to get the diff of the unit branch, `git diff <baseSha>...HEAD` with `baseSha` from the unit record. Run no other git command and change nothing.
+A refresh: when the unit record does not exist, the pull request is already open and this drafts its new title and body. Read the `refresh` record (its `url`, `branch`, `base`, `baseSha` and old `title`) and the old body (`old_body`) instead. Describe the whole diff from `baseSha`. Take Findings and Verification only from the old body's sections of those names, and keep them unless the diff shows they no longer hold. Never invent one.
+
+One read beyond the entries is allowed: read-only git, to get the diff of the unit branch, `git diff <baseSha>...HEAD` with `baseSha` from the unit record (or the refresh record). Run no other git command and change nothing.
 
 ## Instructions
 

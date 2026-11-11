@@ -25,7 +25,7 @@ const PB = `node ${CLI}`;
 
 // D5, written out here so the test does not read its answer from the table it checks.
 const RUNNER_VERBS = ["test", "checkpoint", "stage finish", "stage stop", "tdd state", "snapshot", "artifact check", "pr lint", "rollback"];
-const MAIN_VERBS = ["unit open", "run open", "stage report", "stage fail", "gate eval", "task end", "plan next", "publish", "status", "git doctor"];
+const MAIN_VERBS = ["unit open", "run open", "stage report", "stage fail", "gate eval", "task end", "plan next", "publish", "pr refresh", "status", "git doctor"];
 const HUMAN_VERBS = ["human approve", "human abandon", "human approve-config", "human accept"];
 
 // Rows of the class matrix. A human row carries an argument because the real calls have one, and so does stage stop,

@@ -320,7 +320,7 @@
         {
           "name": "claims",
           "model": "sonnet",
-          "brief": "Check every statement in the title and body against the unit diff (subject_diff) and the recorded runs in the unit record (reportSummary, gateSources, blocking, lessons). Flag any claim the diff or the record does not show, and any claim stated more strongly than they show."
+          "brief": "Check every statement in the title and body against the unit diff (subject_diff) and the recorded runs in the unit record (reportSummary, gateSources, blocking, lessons). Flag any claim the diff or the record does not show, and any claim stated more strongly than they show. In a refresh there is no unit record: check against the diff and the Findings and Verification sections of the old body (old_body)."
         },
         {
           "name": "permanence",
