@@ -1919,6 +1919,7 @@ function rollback(args) {
   const ledger = readLedger(path);
   const parts = parseKey(key);
   assertRollbackAllowed(key, parts, ledger, root);
+  if (artifactForm && readReturn(artifactsDirOf(root), key) === null) throw new Refusal(`the fix artifact ${key} is missing, so there is nothing to set aside and nothing was touched`);
   // A recorded checkpoint means the fix was committed; otherwise it was only in the working tree (red).
   const record = artifactForm ? undefined : (ledger.checkpoints ?? []).find((c) => c.key === key);
   const repeated = artifactForm || record ? null : repeatedApproach(root, ledger, key);
