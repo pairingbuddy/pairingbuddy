@@ -320,12 +320,12 @@
         {
           "name": "claims",
           "model": "sonnet",
-          "brief": "Check every statement in the title and body against the unit diff (subject_diff) and the recorded runs in the unit record (reportSummary, gateSources, blocking, lessons). Flag any claim the diff or the record does not show."
+          "brief": "Check every statement in the title and body against the unit diff (subject_diff) and the recorded runs in the unit record (reportSummary, gateSources, blocking, lessons). Flag any claim the diff or the record does not show, and any claim stated more strongly than they show."
         },
         {
           "name": "permanence",
           "model": "sonnet",
-          "brief": "Read the title and body as they will read in git log on main a year from now. Flag text that is true only while the pull request is open, such as review requests, stacking notes, links to temporary state, 'this PR', 'for now' and dates relative to today."
+          "brief": "Read the title and body as they will read in git log on main a year from now, and for each sentence ask whether that reader would need it. Flag text that is true only while the pull request is open, such as review requests, stacking notes, links to temporary state, 'this PR', 'for now' and dates relative to today. Flag sentences that reader would not need: filler, hype, restating what the diff already shows, or repeating another section."
         }
       ],
       "wiresAll": true,

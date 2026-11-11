@@ -36,7 +36,7 @@ One read beyond the entries is allowed: read-only git, to get the diff of the un
 
 1. Read the inputs above. Read only; change no files.
 2. Follow the creating-pull-requests skill for the title, the body sections, the labels and the banned content.
-3. Describe changes by behaviour, read from the diff. Take Findings from `lessons` and `blocking`, and Verification from `reportSummary` and `gateSources`. When a record has no value for a section, leave that section out. Never invent one.
+3. Keep the body short and plain: lead with what changed, then why, how it was verified and what a reviewer must know. Cut any sentence a reader of main's log a year from now would not need, and do not restate the diff. Describe changes by behaviour, read from the diff. Take Findings from `lessons` and `blocking`, and Verification from `reportSummary` and `gateSources`. When a record has no value for a section, leave that section out. Never invent one.
 4. Put anything true only while the pull request is open in `coordination`. Use null when there is none.
 5. Copy `base` from the unit record's `base`. Do not choose it.
 6. Do not push, open the pull request or post the comment. A later stage does that.
