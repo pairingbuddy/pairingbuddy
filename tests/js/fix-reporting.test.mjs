@@ -67,6 +67,32 @@ test("buildReport returns fixes {attempts, rolledBack, maxAttempts, lessons} wit
     rmSync(run, { recursive: true, force: true });
   }
 });
+// Test case: kept-artifact-fix-counts-as-an-attempt
+test("buildReport counts a kept artifact-mode fix (a fix return filed with no checkpoint) as a fix attempt", () => {
+  const run = mkdtempSync(join(tmpdir(), "fix-reporting-"));
+  try {
+    const artifacts = join(run, "task", "artifacts");
+    mkdirSync(artifacts, { recursive: true });
+    const kept = "pr-draft.fix.g1.r2.a1";
+    const rolledBack = "pr-draft.fix.g2.r2.a1";
+    writeFileSync(join(artifacts, `${kept}.json`), JSON.stringify({ pb_key: kept }));
+    const ledger = {
+      stage: { name: "pr-draft", status: "active", runId: "wf_1", attempt: 1, startedAt: null },
+      tests: {},
+      taskType: "new_feature",
+      checkpoints: [],
+      fixes: { rollbacks: [] },
+    };
+
+    const keptOnly = buildReport(ledger, artifacts).fixes.attempts;
+    const withRollback = buildReport({ ...ledger, fixes: { rollbacks: [{ key: rolledBack, kind: "red" }] } }, artifacts).fixes.attempts;
+
+    assert.equal(keptOnly, 1, "a kept artifact-mode fix, filed with no checkpoint, is one attempt");
+    assert.equal(withRollback, 2, "the kept fix and the rolled-back one (its return moved out of artifacts) are two attempts, not three");
+  } finally {
+    rmSync(run, { recursive: true, force: true });
+  }
+});
 // Test case: notes-parser-reads-rollback-headings
 test("The notes parser turns '## Rollback <n>: <key>' sections into [{number, key, text}] and returns an empty list for empty input", () => {
   const key1 = "code-safety-net.fix.g1.r2.a1";

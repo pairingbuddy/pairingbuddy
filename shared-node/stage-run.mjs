@@ -295,7 +295,8 @@ function coverageGaps(current, returns) {
   return Array.isArray(newest?.artifact.gaps) ? newest.artifact.gaps : [];
 }
 
-// The fix attempts of the stage: distinct fix keys across its checkpoints and rollbacks, and the lessons its notes hold.
+// The fix attempts of the stage: distinct fix keys across its checkpoints, rollbacks and filed fix returns (an
+// artifact-mode fix has no checkpoint, so a kept one shows only as its return), and the lessons its notes hold.
 export const rolledBackCount = (ledger, stage) => (ledger.fixes?.rollbacks ?? []).filter((r) => parseKey(r.key).stage === stage).length;
 
 export function fixesOf(ledger, artifactsDir, lensMap = LENS_MAP) {
@@ -303,7 +304,8 @@ export function fixesOf(ledger, artifactsDir, lensMap = LENS_MAP) {
   // pb rollback refuses any non-fix key, so every rollback key is a fix key. attempts counts every fix attempt, kept or
   // rolled back; the rollback cap counts only the rolled-back ones.
   const keys = [...(ledger.checkpoints ?? []).filter(({ step, stage }) => step === "fix" && stage === name).map(({ key }) => key),
-    ...(ledger.fixes?.rollbacks ?? []).map(({ key }) => key).filter((key) => parseKey(key).stage === name)];
+    ...(ledger.fixes?.rollbacks ?? []).map(({ key }) => key).filter((key) => parseKey(key).stage === name),
+    ...stageReturns(artifactsDir, name).filter(({ role }) => role === "fix").map(({ pbKey }) => pbKey)];
   const notes = join(dirname(artifactsDir), "notes", `${name}.md`);
   return { attempts: new Set(keys).size, rolledBack: rolledBackCount(ledger, name), maxAttempts: lensMap.maxAttempts, lessons: existsSync(notes) ? parseFixNotes(readFileSync(notes, "utf8")) : [] };
 }
