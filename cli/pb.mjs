@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
-import { PUBLISH_GATE, answeredGate, askReason, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
+import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, isPublishRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
@@ -226,8 +226,8 @@ const artifactsDirOf = (root) => join(taskDirOf(root), "artifacts");
 const notesDirOf = (root) => join(taskDirOf(root), "notes");
 const reportPathOf = (root) => join(taskDirOf(root), "report.json");
 
-function recordAuto(ledger, gate) {
-  return { ...ledger, gates: { ...ledger.gates, [gate]: { source: "auto" } } };
+function recordAuto(ledger, gate, binding = {}) {
+  return { ...ledger, gates: { ...ledger.gates, [gate]: gate === PUBLISH_GATE ? approvalRecord("auto", binding) : { source: "auto" } } };
 }
 
 // Takes no arguments: the gate comes from the ledger, and the policy from what the gate hook recorded.
@@ -250,8 +250,10 @@ function gateEval(args) {
     if (voided !== null) updateLedger(path, (ledger) => voidPublish(ledger, voided));
     return skipped;
   }
-  // The shown block is built before anything is written, so a missing body or runner leaves the ledger untouched.
+  // The shown block is built before the ledger is written, so a missing body or runner leaves the ledger untouched.
   const shown = dueGate(gatesFor(contract, standing.taskType), standing)?.name === PUBLISH_GATE ? publishShown(root, standing) : null;
+  // The binding re-runs the lint (it rewrites run/pr-lint.json), so it is read only when the gate will pass by itself.
+  const autoBinding = shown !== null && voided === null && autoPublishPasses(standing, root) ? refusing(() => publishBinding(root, standing, shown)) : undefined;
   let gate;
   let reason;
   // One transaction: the void of a stale approval, the due gate and the question, so no state sits between them.
@@ -262,7 +264,8 @@ function gateEval(args) {
     gate = due.name;
     if (gate === PUBLISH_GATE && shown === null) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
     reason = askReason(contract, open, due, root, voided);
-    if (reason === null) return recordAuto(open, gate);
+    if (reason === null && gate === PUBLISH_GATE && autoBinding === undefined) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
+    if (reason === null) return recordAuto(open, gate, autoBinding);
     const facts = gate === PUBLISH_GATE ? { shown: { headSha: shown.headSha, base: shown.base, target: shown.target } } : {};
     return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, ...facts } };
   });
@@ -1069,7 +1072,7 @@ function publish(args) {
   const bound = commits.length === 0 ? null : readBound(root, ledger);
   const voidReason = bound === null ? null : refusing(() => publishVoidReason(ledger, root, bound.current));
   const facts = {
-    unit, runStop: ledger.stop, publishMode: mode, coordination: bound?.draft.coordination ?? null, commits, changedConfigs: changedConfigs(unit, root), approval: publishApproval(ledger), voidReason,
+    unit, runStop: ledger.stop, publishMode: mode, coordination: bound?.draft.coordination ?? null, commits, changedConfigs: changedConfigs(unit, root), approval: publishApproval(ledger), voidReason, lint: bound === null ? null : publishLint(root, bound.current.bodyHash),
     taskRunOpen: !isPublishRun(ledger),
     ...(bound === null || mode === "none" ? {} : publishingFacts(root, unit, gitConfig, bound.current.headSha)),
   };

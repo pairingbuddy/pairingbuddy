@@ -12,6 +12,7 @@ import { updateLedger } from "../../shared-node/ledger.mjs";
 import { newTaskRecord } from "../../shared-node/unit.mjs";
 import { env, makeRepo, pb, pbWithEnv, ROOT } from "./cli-repo-fixture.mjs";
 import { FAKE_PR_URL, installGhShim } from "./gh-shim-fixture.mjs";
+import { writeCleanLensReturn } from "./lens-return-fixture.mjs";
 import { SESSION, fixture, runTap, sha256 } from "./tap-fixture.mjs";
 import {
   DRAFT_KEY, GATE,
@@ -245,7 +246,14 @@ function fileDraft(repo, draft) {
 // runner's two commands, pb pr lint and pb stage finish. Only the unit around it is built by publishableUnit (its task
 // records are seeded, see there), and that unit's own hand-written run/task is thrown away; the draft's fields are
 // carried over as the agent's answer. approve false leaves G:publish unanswered; other options go to publishableUnit.
-export function publishRun({ approve = true, mode = "default", ...options } = {}) {
+// Files a clean return for every lens of the pr-draft row, so stage finish finds no uncovered lens by itself.
+function fileCleanPrDraftLenses(repo) {
+  const { rows } = JSON.parse(readFileSync(join(ROOT, "contracts", "lenses.json"), "utf8"));
+  const row = rows.find((r) => r.row === "pr-draft");
+  for (const { name } of row.lenses) writeCleanLensReturn(join(taskDirOf(repo), "artifacts"), "pr-draft", name, 1);
+}
+
+export function publishRun({ approve = true, mode = "default", cleanLenses = false, ...options } = {}) {
   const unit = publishableUnit({ approval: "none", mode, ...options });
   const { repo } = unit;
   const draft = JSON.parse(readFileSync(join(taskDirOf(repo), "artifacts", `${DRAFT_KEY}.json`), "utf8"));
@@ -254,6 +262,7 @@ export function publishRun({ approve = true, mode = "default", ...options } = {}
   openRun(repo, "publish");
   startWorkflow(repo, mode);
   fileDraft(repo, draft);
+  if (cleanLenses) fileCleanPrDraftLenses(repo);
   const lint = pb(repo, "pr", "lint");
   assert.equal(lint.code, 0, `pr lint: ${lint.stderr}`);
   const finished = pb(repo, "stage", "finish");

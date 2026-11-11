@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { PUBLISH_GATE, answeredGate, blockingGate, gatesFor, publishApproval } from "./gates.mjs";
+import { PUBLISH_GATE, answeredGate, blockingGate, gatesFor, isPublishApproved, publishApproval } from "./gates.mjs";
 import { LedgerShaMismatch, isPublishRun, readLedger } from "./ledger.mjs";
 import { coveredTests, fixesOf, spendTotals } from "./stage-run.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, startLeaseSecondsLeft } from "./stages.mjs";
@@ -58,7 +58,7 @@ export function nextAction(contract, ledger, root, pluginRoot) {
   if (gate !== undefined) return `Gate ${gate.name} is due. Run ${pbCommand("gate eval")}.`;
   const step = nextStep(contract, ledger);
   if (step !== null) return startAction(step, pluginRoot, ledger.task);
-  if (isPublishRun(ledger)) return publishApproval(ledger) === "human" ? `Every stage and gate is done and ${PUBLISH_GATE} is approved. Run ${pbCommand("publish")}.` : `Gate ${PUBLISH_GATE} is due. Run ${pbCommand("gate eval")}.`;
+  if (isPublishRun(ledger)) return isPublishApproved(ledger) ? `Every stage and gate is done and ${PUBLISH_GATE} is approved. Run ${pbCommand("publish")}.` : `Gate ${PUBLISH_GATE} is due. Run ${pbCommand("gate eval")}.`;
   return `Every stage and gate is done. Run ${pbCommand("task end")}.`;
 }
 
