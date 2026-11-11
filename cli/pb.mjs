@@ -7,7 +7,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-import { CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
+import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
 import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, isPublishRun, isRefreshRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
@@ -39,6 +39,8 @@ const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/,
 const FIX_ROLE = "fix";
 const SCENARIOS_ROLE = "enumerate-scenarios-and-test-cases";
 const TESTS_ROLE = "create-test-placeholders";
+const SCOPE_ROLE = "scope-refactoring";
+const SCOPE_STAGE = "code-refactor-scope";
 
 class UsageError extends Error {}
 class Refusal extends Error {}
@@ -612,11 +614,11 @@ function commitPlan({ step, key, root, path, branch, record }, plan, head, evide
   return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
 }
 
-// Only a step that types its commit by paths needs the test directories, so the others never read the test config.
-function scopeFor({ step, root, ledger }) {
+// Only a step that types its commit by paths needs a scope: the test directories, and the key's role for a refactor scope check. The others never read the test config.
+function scopeFor({ step, key, root, ledger }) {
   if (!typesByPaths(step)) return null;
   const config = readTestConfig(root, ledger.configHash);
-  return { testDirectories: Object.values(config.runners).map(({ test_directory: directory }) => directory) };
+  return { testDirectories: Object.values(config.runners).map(({ test_directory: directory }) => directory), role: parseKey(key).role };
 }
 
 // A step with no change runs no test. The tests run code in the repo, so what they could change is looked at again
@@ -889,6 +891,23 @@ function tddState(args) {
   const scenarios = newestReturnMatching(artifactsDir, standingScenarios);
   if (scenarios === null) throw new Refusal("no scenarios return stands, so there is nothing to write tests from");
   return { ok: true, taskType: ledger.taskType, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered"), testRunners: testRunnersOf(readTestConfig(root, ledger.configHash)) };
+}
+
+// What the refactor-apply stage cannot see for itself: the scope's issues as numbered steps, code issues first.
+function refactorState(args) {
+  if (args.length > 0) throw new UsageError("usage: pb refactor state");
+  const { root, path } = runLedgerPath();
+  const ledger = readLedger(path);
+  assertStageActive(ledger, "report on");
+  if (!stepRunsFor("refactor-step", ledger.taskType)) throw new Refusal(`pb refactor state runs for refactoring tasks only, and this task is ${ledger.taskType}`);
+  const artifactsDir = artifactsDirOf(root);
+  const standingScope = ({ role, item, stage, attempt }) => role === SCOPE_ROLE && item === null && stage === SCOPE_STAGE && !isVoidedAttempt(ledger, stage, attempt);
+  const scope = newestReturnMatching(artifactsDir, standingScope);
+  const standing = scope === null ? null : readReturn(artifactsDir, scope);
+  if (standing === null) throw new Refusal("no scope return stands, so there is nothing to refactor");
+  const { code_issues = [], test_issues = [] } = standing;
+  const issues = [...code_issues.map((issue) => ({ role: REFACTOR_CODE_ROLE, issue })), ...test_issues.map((issue) => ({ role: REFACTOR_TESTS_ROLE, issue }))];
+  return { ok: true, taskType: ledger.taskType, scope: artifactPath(scope), steps: issues.map(({ role, issue }, index) => ({ item: `step${index + 1}`, role, issue })) };
 }
 
 const testRunnersOf = ({ runners }) => Object.fromEntries(Object.entries(runners).map(([id, { test_directory, file_pattern }]) => [id, { test_directory, file_pattern }]));
@@ -1777,7 +1796,7 @@ export const VERBS = {
   snapshot,
   "unit open": unitOpen, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
-  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 async function runVerb(name, args) {

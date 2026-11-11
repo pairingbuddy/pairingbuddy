@@ -20,26 +20,6 @@ const { pbCommand } = await import("../../shared-node/verbs.mjs");
 // scope-refactoring agent contract. Contract files are read inside the test bodies through readRepoFile.
 const readRepoFile = (path) => readFileSync(join(ROOT, path), "utf8");
 
-// Scenario: refactoring-stage-contract (unit tests on contracts/stages.json; see stages-safeguards, stage-graph-safeguards, stage-names)
-test("refactoring-graph-has-scope-node", () => {
-  // The refactoring graph's only node is code-refactor-scope with gate G:scope, evidence tests:full and artifact:scope-refactoring, and G:scope is a continue-class gate.
-  const contract = JSON.parse(readRepoFile("contracts/stages.json"));
-
-  const graph = contract.taskTypes.refactoring;
-
-  assert.ok(graph, "contracts/stages.json has a refactoring task type");
-  assert.deepEqual(graph.nodes, [{ name: "code-refactor-scope", gate: "G:scope", evidence: ["tests:full", "artifact:scope-refactoring"] }], "the refactoring graph's only node is code-refactor-scope");
-  assert.equal(graph.gates?.["G:scope"]?.class, "continue", "G:scope is a continue-class gate");
-});
-
-test("refactoring-not-migrated", () => {
-  // refactoring is absent from migratedTypes, so pb run open still refuses it (the existing refusal test must keep passing; this asserts the list).
-  const contract = JSON.parse(readRepoFile("contracts/stages.json"));
-
-  assert.ok(Array.isArray(contract.migratedTypes), "contracts/stages.json lists migratedTypes");
-  assert.ok(!contract.migratedTypes.includes("refactoring"), "refactoring is not in migratedTypes, so pb run open still refuses it");
-});
-
 // Scenario: tests-red-stop-reason (unit tests: plain-names, gate runner allow-list)
 test("tests-red-allowed-in-runner-allow-list", async () => {
   // The gate's runner allow-list accepts 'stage stop tests-red' (built from STAGE_STOP_REASONS).

@@ -11,7 +11,7 @@ import { readLedger } from "../../shared-node/ledger.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CONFIG = `${JSON.stringify({ runners: { node: { command: "node --version", test_directory: ".", run_args: [] } }, default_runner: "node" })}\n`;
-const OLD_PATH_TYPES = ["refactoring", "spike"];
+const OLD_PATH_TYPES = ["spike"];
 
 function git(cwd, ...args) {
   const r = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -82,6 +82,17 @@ test("config_change: the run records the type and the status names its first sta
   assert.equal(r.status, 0, r.stderr);
   assert.equal(ledgerOf(root).taskType, "config_change");
   assert.deepEqual(JSON.parse(pb(root, ["status"]).stdout).next, { stage: "code-config", attempt: 1 });
+});
+
+test("refactoring: the run records the type and the status names its first stage", (t) => {
+  const root = makeRepo(t);
+  classifyAs(root, "refactoring");
+
+  const r = pb(root, OPEN);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(ledgerOf(root).taskType, "refactoring");
+  assert.deepEqual(JSON.parse(pb(root, ["status"]).stdout).next, { stage: "code-refactor-scope", attempt: 1 });
 });
 
 test("no classification file: the taskType stays null, for a run opened before classification", (t) => {
@@ -200,7 +211,7 @@ test("the skill's migrated types are the contract's, and each has a stage graph"
   const listed = JSON.parse(/^MIGRATED_TYPES = (\[.*\])$/m.exec(pseudocode())[1]);
   const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
 
-  assert.deepEqual(listed, ["config_change", "bug_fix", "new_feature"]);
+  assert.deepEqual(listed, ["config_change", "bug_fix", "new_feature", "refactoring"]);
   assert.deepEqual(listed, contract.migratedTypes);
   assert.ok(listed.every((type) => Object.hasOwn(contract.taskTypes, type)));
 });

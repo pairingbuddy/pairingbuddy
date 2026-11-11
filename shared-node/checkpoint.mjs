@@ -9,17 +9,22 @@ import { REFACTOR_TASK_TYPES } from "./labels.mjs";
 
 // config and fix exist to change something, so their return must account for any change that is not there
 // (provesChange). tests says what must run before the commit: the whole suite, the one test the key names, every test of
-// the task a cycle closed, or nothing, since a placeholder proves nothing. A key names a test exactly when its step
-// works on one test's cycle. refactor and fix are typed by the paths they touched (typeOfPaths, D16); a refactor is one
-// fix group, and only new_feature refactors per cycle. writesDiff makes pb save the fix commit's diff after it lands.
+// the task a cycle closed, or nothing, since a placeholder proves nothing. item says what a key carries: a test when its step
+// works on one test's cycle, a group (fix) or a step (refactor-step); left out when it carries none. refactor, refactor-step and fix are typed by the paths they touched (typeOfPaths, D16); a
+// refactor is one fix group, and only new_feature refactors per cycle. refactor-step is the task-end refactor: one fix
+// group, typed by its paths, proved by the full suite. writesDiff makes pb save the fix commit's diff after it lands.
+export const REFACTOR_CODE_ROLE = "refactor-code";
+export const REFACTOR_TESTS_ROLE = "refactor-tests";
+const REFACTOR_ROLES = [REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE];
 const STEPS = {
-  config: { type: "chore", roles: ["apply-config-change"], provesChange: true, tests: "full", namesTest: false },
-  docs: { type: "docs", roles: ["update-documentation"], provesChange: false, tests: "full", namesTest: false },
-  placeholders: { type: "test", roles: ["create-test-placeholders"], provesChange: false, tests: "none", namesTest: false },
-  red: { type: "test", roles: ["implement-tests"], provesChange: false, tests: "selected", namesTest: true },
-  green: { types: { bug_fix: "fix", new_feature: "feat" }, roles: ["implement-code"], provesChange: false, tests: "selected", namesTest: true },
-  fix: { typeOfPaths: true, writesDiff: true, roles: ["fix"], provesChange: true, tests: "full", namesTest: false, namesGroup: true },
-  refactor: { typeOfPaths: true, roles: ["refactor-code", "refactor-tests"], provesChange: false, tests: "closed", namesTest: true, taskTypes: REFACTOR_TASK_TYPES },
+  config: { type: "chore", roles: ["apply-config-change"], provesChange: true, tests: "full" },
+  docs: { type: "docs", roles: ["update-documentation"], provesChange: false, tests: "full" },
+  placeholders: { type: "test", roles: ["create-test-placeholders"], provesChange: false, tests: "none" },
+  red: { type: "test", roles: ["implement-tests"], provesChange: false, tests: "selected", item: "test" },
+  green: { types: { bug_fix: "fix", new_feature: "feat" }, roles: ["implement-code"], provesChange: false, tests: "selected", item: "test" },
+  fix: { typeOfPaths: true, writesDiff: true, roles: ["fix"], provesChange: true, tests: "full", item: "group" },
+  refactor: { typeOfPaths: true, roles: REFACTOR_ROLES, provesChange: false, tests: "closed", item: "test", taskTypes: REFACTOR_TASK_TYPES },
+  "refactor-step": { typeOfPaths: true, roles: REFACTOR_ROLES, provesChange: true, tests: "full", item: "step", taskTypes: ["refactoring"] },
 };
 const STATE_DIRECTORY = ".pairingbuddy";
 const REFUSED_DIRECTORIES = [STATE_DIRECTORY, ".git"];
@@ -59,8 +64,6 @@ export const isCheckpointCall = (step, key) => Object.hasOwn(STEPS, step) && isK
 
 export const testsOfStep = (step) => STEPS[step].tests;
 
-const namesTest = (step) => STEPS[step].namesTest;
-
 const rolesText = (step) => STEPS[step].roles.join(" or ");
 
 // Whether a step runs for this task type. A step with no list runs for any.
@@ -68,12 +71,11 @@ export const stepRunsFor = (step, taskType) => STEPS[step].taskTypes === undefin
 
 export const typesByPaths = (step) => STEPS[step].typeOfPaths === true;
 export const writesDiff = (step) => STEPS[step].writesDiff === true;
-const namesGroup = (step) => STEPS[step].namesGroup === true;
-// A step whose key carries an item: a test, or for fix a group.
-const namesItem = (step) => namesTest(step) || namesGroup(step);
+// A step whose key carries an item: a test, a group (fix) or a step (refactor-step).
+const namesItem = (step) => STEPS[step].item !== undefined;
 export const taskTypesOfStep = (step) => STEPS[step].taskTypes;
 
-// The one key this step can use: one of its own roles, with an item (a test, or for fix a group) exactly when the step takes one. The gate allows no other.
+// The one key this step can use: one of its own roles, with an item (a test, a group for fix, a step for refactor-step) exactly when the step takes one. The gate allows no other.
 export function keyFitsStep(step, key) {
   const { role, item } = parseKey(key);
   return STEPS[step].roles.includes(role) && (item !== null) === namesItem(step);
@@ -142,7 +144,7 @@ export function assertCurrentKey(step, key, { stage }) {
   const { role } = parseKey(key);
   assertKeyIsCurrent(key, stage);
   if (!STEPS[step].roles.includes(role)) throw new CheckpointRefused(`${key} is from role ${role}, and step ${step} takes role ${rolesText(step)}`);
-  if (namesItem(step) && parseKey(key).item === null) throw new CheckpointRefused(`${key} names no ${namesTest(step) ? "test" : "group"}, and step ${step} takes one`);
+  if (namesItem(step) && parseKey(key).item === null) throw new CheckpointRefused(`${key} names no ${STEPS[step].item}, and step ${step} takes one`);
 }
 
 function parsedOrNull(path) {
@@ -261,6 +263,9 @@ function assertInTestDirectory(listed, directories) {
 
 // What each step may touch, so a test cannot be written by the step that makes it pass, or left out of the commit
 // that says it failed. scope is null for a step with no test, and holds the row's file for a step with one.
+const refactorScope = (_root, listed, { testDirectories, role }) => {
+  if (role === "refactor-tests") assertInTestDirectory(listed, testDirectories);
+};
 const SCOPE_CHECKS = {
   placeholders: (_root, listed, { testDirectories }) => assertInTestDirectory(listed, testDirectories),
   red(root, listed, { testDirectories, testFile }) {
@@ -270,9 +275,8 @@ const SCOPE_CHECKS = {
   green(root, listed, { testFile }) {
     if (listed.includes(normalize(testFile)) || statusEntries(root, [testFile]).length > 0) throw new CheckpointRefused(`${testFile} changed: GREEN changes the code and leaves the test as RED committed it`);
   },
-  refactor(_root, listed, { testDirectories, role }) {
-    if (role === "refactor-tests") assertInTestDirectory(listed, testDirectories);
-  },
+  refactor: refactorScope,
+  "refactor-step": refactorScope,
 };
 
 // What to commit, or null for no change. Every check that needs no test run is here, so a refusal costs none.

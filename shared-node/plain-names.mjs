@@ -6,6 +6,7 @@ const PLAIN_NAMES = {
   "code-tdd": "build test by test",
   "code-safety-net": "safety-net review",
   "code-refactor-scope": "decide what to tidy up",
+  "code-refactor-apply": "tidy up step by step",
   "pr-draft": "write the pull request",
   // gates
   "G:scenarios": "your OK on the scenarios",
