@@ -9,13 +9,13 @@ import { join } from "node:path";
 
 import { targetBranch } from "../../shared-node/publish.mjs";
 import { FAKE_PR_URL, flagValues, GH_FAILURE, viewEnv } from "./gh-shim-fixture.mjs";
-import { pb } from "./cli-repo-fixture.mjs";
+import { pb, pushFromSecondClone } from "./cli-repo-fixture.mjs";
 import { sha256 } from "./tap-fixture.mjs";
-import { CLEAN_BODY, CLEAN_TITLE, DRAFT_KEY, commitMore, evalGate, git, gitConfigPath, readUnitRecord, REFUSED, unitFile } from "./publish-fixture.mjs";
+import { CLEAN_BODY, CLEAN_TITLE, DRAFT_KEY, commitMore, approvedThroughTap, evalGate, git, gitConfigPath, readUnitRecord, REFUSED, unitFile } from "./publish-fixture.mjs";
 import {
   OTHER_UNIT_REF, PLAN, RUN_FILES, SAFETY_NET,
   changeLedger, changeUnit, divergeRemote, localRefs, makePrivateRefs, planFile, privateRefsOf, publishableUnit, publishUnit,
-  installPrePushHook, planBecomesDirectoryAtPush, prLinePattern, remoteRef, remoteRefs, runFile, unitWithRecordedPr, withPlan,
+  installPrePushHook, planBecomesDirectoryAtPush, prLinePattern, remoteRef, remoteRefs, runFile, taskRecord, unitWithRecordedPr, withPlan,
 } from "./publishable-unit-fixture.mjs";
 
 // Publishes a fresh publishable unit and returns what the tests look at.
@@ -795,5 +795,99 @@ describe("pb-publish-accepts-auto-pass", () => {
     const stderr = refused(unit);
 
     assert.match(stderr, /passed by the auto policy, but the PR lint does not pass at the current body: title-form/, "the refusal is the auto-policy lint refusal and names the failing rule");
+  });
+});
+
+describe("publish-moved-base-guard", () => {
+  test("publish-refuses-on-moved-base-before-push", () => {
+    const unit = publishableUnit();
+    const { repo, branch } = unit;
+    const unitBefore = readFileSync(unitFile(repo), "utf8");
+    const newTip = pushFromSecondClone(repo, "moved.txt");
+    assert.notEqual(newTip, readUnitRecord(repo).baseSha, "origin/main moved past the unit's recorded base");
+
+    const { gh, result } = publishUnit(unit);
+
+    assert.equal(result.code, REFUSED, `pb publish refuses, stdout ${result.stdout}, stderr ${result.stderr}`);
+    assert.match(result.stderr, /base .*moved/i, "the refusal says the base moved");
+    assert.match(result.stderr, /git rebase --onto origin\/main \S+ \S+/, "the refusal carries the rebase --onto recipe line");
+    assert.ok(result.stderr.includes(branch), "the recipe names the unit branch");
+    assert.equal(remoteRef(repo, `refs/heads/${branch}`), null, "nothing was pushed to the remote");
+    assert.deepEqual(gh.prCreates(), [], "gh saw no pr create");
+    assert.equal(readFileSync(unitFile(repo), "utf8"), unitBefore, "unit.json is unchanged");
+  });
+  test("publish-refuses-on-moved-base-when-branch-already-pushed", () => {
+    const unit = publishableUnit();
+    const { repo, branch } = unit;
+    git(repo, "push", "-q", "origin", branch);
+    const pushedTip = remoteRef(repo, `refs/heads/${branch}`);
+    pushFromSecondClone(repo, "moved.txt");
+
+    const { gh, result } = publishUnit(unit);
+
+    assert.equal(result.code, REFUSED, `pb publish refuses, stdout ${result.stdout}, stderr ${result.stderr}`);
+    assert.match(result.stderr, /base .*moved/i, "the refusal says the base moved");
+    assert.equal(remoteRef(repo, `refs/heads/${branch}`), pushedTip, "the pushed branch is untouched");
+    assert.deepEqual(gh.prCreates(), [], "gh saw no pr create");
+  });
+  test("publish-keeps-local-and-skips-despite-unreachable-or-moved-base", () => {
+    const cases = {
+      "a keep-local record while origin is unreachable": {
+        make: () => publishableUnit({ approval: "none" }),
+        arrange: (unit) => {
+          changeLedger(unit.repo, (ledger) => ({ gates: { ...ledger.gates, "G:publish": { source: "human", answer: "keep-local" } } }));
+          git(unit.repo, "remote", "set-url", "origin", join(unit.repo.dir, "no-such-remote"));
+        },
+        result: "kept-local",
+      },
+      "a keep-local record while the base moved": {
+        make: () => publishableUnit({ approval: "none" }),
+        arrange: (unit) => {
+          changeLedger(unit.repo, (ledger) => ({ gates: { ...ledger.gates, "G:publish": { source: "human", answer: "keep-local" } } }));
+          pushFromSecondClone(unit.repo, "moved.txt");
+        },
+        result: "kept-local",
+      },
+      "a unit with no commits while origin is unreachable": {
+        make: () => publishableUnit({ commits: 0, approval: "none" }),
+        arrange: (unit) => git(unit.repo, "remote", "set-url", "origin", join(unit.repo.dir, "no-such-remote")),
+        result: "skip",
+      },
+      "a unit with no commits while the base moved": {
+        make: () => publishableUnit({ commits: 0, approval: "none" }),
+        arrange: (unit) => pushFromSecondClone(unit.repo, "moved.txt"),
+        result: "skip",
+      },
+    };
+    for (const [name, { make, arrange, result: expected }] of Object.entries(cases)) {
+      const unit = make();
+      arrange(unit);
+
+      const { gh, result } = publishUnit(unit);
+
+      assert.equal(result.code, 0, `pb publish closes instead of refusing (${name}), stdout ${result.stdout}, stderr ${result.stderr}`);
+      assert.equal(JSON.parse(result.stdout).result, expected, `the result is ${expected} (${name})`);
+      assert.deepEqual(gh.calls(), [], `gh was not called (${name})`);
+    }
+  });
+  test("publish-refuses-when-rebased-but-pb-unit-status-not-run", () => {
+    const unit = publishableUnit({ approval: "none" });
+    const { repo, branch } = unit;
+    const oldBase = readUnitRecord(repo).baseSha;
+    pushFromSecondClone(repo, "moved.txt");
+    git(repo, "fetch", "-q", "origin");
+    git(repo, "rebase", "-q", "--onto", "origin/main", oldBase, branch);
+    const head = git(repo, "rev-parse", "HEAD");
+    changeUnit(repo, { commits: git(repo, "rev-list", "--reverse", `${oldBase}..HEAD`).split("\n"), tasks: [taskRecord(head)] });
+    approvedThroughTap(repo);
+    const unitBefore = readFileSync(unitFile(repo), "utf8");
+
+    const { gh, result } = publishUnit(unit);
+
+    assert.equal(result.code, REFUSED, `pb publish refuses, stdout ${result.stdout}, stderr ${result.stderr}`);
+    assert.match(result.stderr, /needs reconciling.*unit status/s, "the refusal tells the human to run pb unit status");
+    assert.equal(remoteRef(repo, `refs/heads/${branch}`), null, "nothing was pushed to the remote");
+    assert.deepEqual(gh.prCreates(), [], "gh saw no pr create");
+    assert.equal(readFileSync(unitFile(repo), "utf8"), unitBefore, "unit.json is unchanged");
   });
 });

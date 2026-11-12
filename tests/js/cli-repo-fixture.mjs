@@ -98,3 +98,22 @@ export function writePlan(repo, content) {
 export function recordCleanLensReturns(repo, stage, taskType, attempt) {
   for (const { name } of lensRow(stage, taskType).lenses) writeCleanLensReturn(join(repo.taskDir, "artifacts"), stage, name, attempt);
 }
+
+// Pushes a new commit to main on the bare remote from a throwaway second clone, as someone else moving origin/main, and
+// returns the new tip. The clone is removed afterwards.
+export function pushFromSecondClone(repo, file) {
+  const clone = realpathSync(mkdtempSync(join(tmpdir(), "pb-clone-")));
+  try {
+    const cloneGit = (...args) => execFileSync("git", args, { cwd: clone, env: env(), encoding: "utf8" }).trim();
+    execFileSync("git", ["clone", "-q", repo.remoteDir, clone], { env: env(), stdio: "ignore" });
+    cloneGit("config", "user.name", "Other");
+    cloneGit("config", "user.email", "other@example.com");
+    writeFileSync(join(clone, file), `${file}\n`);
+    cloneGit("add", file);
+    cloneGit("commit", "-q", "-m", `add ${file}`);
+    cloneGit("push", "-q", "origin", "main");
+    return cloneGit("rev-parse", "HEAD");
+  } finally {
+    rmSync(clone, { recursive: true, force: true });
+  }
+}

@@ -16,6 +16,7 @@ import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, boxLabelsUnder, planFile, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
 import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, refreshPrReason, targetBranch, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
+import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { SPIKE_SETUP_FILE, abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
@@ -1485,6 +1486,8 @@ function publish(args) {
   if (voidReason !== null) updateLedger(path, (current) => voidPublish(current, voidReason));
   const plan = publishSteps(facts);
   if (plan.refusals.length > 0) throw new Refusal(`not published: ${plan.refusals.join("; ")}`);
+  // publishSteps only emits a push in a plan that also has open-pr, so open-pr alone marks a publishing plan.
+  if (plan.steps.some((step) => step.do === "open-pr")) assertBaseCurrent(root, unit, gitConfig);
   return executePublish(plan.steps, { root, unit, gitConfig, ledger, bound });
 }
 
@@ -1697,6 +1700,81 @@ function renderBranchOrRefuse(template, values) {
   }
 }
 
+// Fetches the remote, then applies the pure D18 rule to the unit's base. A failed fetch or a base gone from the remote is a refusal.
+// A moved or merged base is a refusal carrying the recipe the human types; a reconciled status rewrites run/unit.json,
+// the one write this verb makes.
+function unitStatus() {
+  const root = toplevel();
+  const unit = readUnitOrRefuse(root);
+  const gitConfig = loadGitConfigOrRefuse(root);
+  const result = baseStatusFor(root, unit, gitConfig);
+  refuseRebaseNeeded(unit, result);
+  if (result.status === "reconciled") writeJsonAtomic(unitPathOf(root), reconciledUnit(unit, result));
+  if (result.status === "current") return { ok: true, status: "current", base: unit.base, baseSha: unit.baseSha };
+  return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack };
+}
+
+// Fetches, reads the inputs and applies the pure rule; the rule's own refusals become Refusals.
+function baseStatusFor(root, unit, gitConfig) {
+  fetchOrRefuse(root, gitConfig.remote);
+  const inputs = statusInputsOf(root, unit, gitConfig);
+  try {
+    return baseStatusOf({ unit, remote: gitConfig.remote, ...inputs });
+  } catch (e) {
+    if (e instanceof UnitStatusRefused) throw new Refusal(e.message);
+    throw e;
+  }
+}
+
+// Publish goes on only when the base is current; it never writes the unit, so a reconciled result is sent to pb unit status.
+function assertBaseCurrent(root, unit, gitConfig) {
+  const result = baseStatusFor(root, unit, gitConfig);
+  if (result.status === "reconciled") throw new Refusal(`not published: the base of ${unit.branch} needs reconciling. Nothing was pushed or opened: run ${pbCommand("unit status")} first`);
+  refuseRebaseNeeded(unit, result);
+}
+
+// A failed fetch leaves the remote tips untrusted, so it is a refusal.
+function fetchOrRefuse(root, remote) {
+  try {
+    execFileSync("git", ["fetch", remote], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  } catch (e) {
+    const why = String(e.stderr ?? e.message).trim();
+    throw new Refusal(`git fetch failed for ${remote}, so the base tip cannot be trusted. Nothing was touched: ${why}`);
+  }
+}
+
+// The reads the pure rule needs. The unstacked base and its tip matter only for a stacked unit, so only a stacked unit reads them.
+function statusInputsOf(root, unit, gitConfig) {
+  const { remote } = gitConfig;
+  const tipOf = (branch) => tryGit(root, ["rev-parse", "--verify", `refs/remotes/${remote}/${branch}`]);
+  const inputs = {
+    baseTip: tipOf(unit.base),
+    headContains: (sha) => tryGit(root, ["merge-base", "--is-ancestor", sha, "HEAD"]) !== null,
+  };
+  if (!unit.stackedOn) return inputs;
+  const dependencyState = prViewOf(root, unit.stackedOn, "so the dependency PR could not be checked").state;
+  const unstackedBase = baseBranch(gitConfig, defaultBranchOf(root, remote));
+  if (unstackedBase === null) throw new Refusal("the base branch cannot be told, so the unit cannot move off its dependency. Nothing was touched");
+  const unstackedTip = tipOf(unstackedBase);
+  if (unstackedTip === null) throw new Refusal(`${unstackedBase} is gone from the remote, so the unit cannot move off its dependency. Nothing was touched`);
+  return { ...inputs, dependencyState, unstackedBase, unstackedTip };
+}
+
+// A moved or merged result is a refusal carrying the recipe the human types; any other result passes through.
+function refuseRebaseNeeded(unit, result) {
+  const refuse = (lead) => {
+    throw new Refusal(`${lead}. ${NOTHING_CHANGED_BUT_FETCH}. The human types:\n${result.recipe}`);
+  };
+  if (result.status === "moved") refuse(`the base ${result.base} moved from ${result.from} to ${result.to}`);
+  if (result.status === "merged") refuse(`${unit.stackedOn.unit}'s PR merged, so the unit moves onto ${result.base} at ${result.to}`);
+}
+
+// The unit record after a reconcile: the new base and tip, and stackedOn dropped only when the unit unstacks.
+function reconciledUnit(unit, result) {
+  const { stackedOn, ...unstacked } = unit;
+  return { ...(result.unstack ? unstacked : unit), base: result.base, baseSha: result.baseSha };
+}
+
 // A plain call opens the template branch; --branch names another. The CLI reads no gate policy and asks nobody to confirm.
 // The refusals come first and touch nothing, with one accepted exception: loadGitConfigOrRefuse bootstraps
 // .pairingbuddy/git-config.json when it is missing, since the branch refusals need its template and protected list.
@@ -1760,7 +1838,7 @@ function stackStopMessage(stop) {
 // Throws a Refusal when the rule refuses or stops.
 function stackOnOf(root, { next, units }, gitConfig) {
   const prs = {};
-  for (const dep of dependencyChainOf(units, next.unit)) if (dep.pr) prs[dep.pr] = prViewOf(root, dep);
+  for (const dep of dependencyChainOf(units, next.unit)) if (dep.pr) prs[dep.pr] = prViewOf(root, dep, "so its state is unknown and the unit cannot open");
   let result;
   try {
     result = stackFor({ units, unit: next.unit, prs, stackDepth: gitConfig.pr?.stack_depth });
@@ -1772,13 +1850,13 @@ function stackOnOf(root, { next, units }, gitConfig) {
   return result.stackOn;
 }
 
-// A dependency PR gh cannot show, or shows as non-JSON, leaves its state unknown, so the unit refuses.
-function prViewOf(root, { unit, pr }) {
+// A dependency PR gh cannot show, or shows as non-JSON, leaves its state unknown, so the unit refuses; the caller says what that means for it.
+function prViewOf(root, { unit, pr }, consequence) {
   try {
     return JSON.parse(gh(root, ["pr", "view", "--json", "state,headRefName", "--", pr]));
   } catch (e) {
     // A failed gh call's message carries its stderr; a parse error's carries what was wrong.
-    throw new Refusal(`gh pr view could not show unit "${unit}"'s PR ${pr}, so its state is unknown and the unit cannot open. Nothing was changed but the fetch: ${e.message}`);
+    throw new Refusal(`gh pr view could not show unit "${unit}"'s PR ${pr}, ${consequence}. ${NOTHING_CHANGED_BUT_FETCH}: ${e.message}`);
   }
 }
 
@@ -2142,7 +2220,7 @@ function keptTypeOf(root, attempt) {
 export const VERBS = {
   rollback,
   snapshot,
-  "unit open": unitOpen, "git doctor": gitDoctor, "pr lint": prLint,
+  "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
   "plan next": planNext, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };

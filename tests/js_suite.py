@@ -145,6 +145,9 @@ JS_TEST_FILES = [
     "tests/js/lens-attack-fix-loop.test.mjs",
     "tests/js/pb-fix-checkpoint.test.mjs",
     "tests/js/pb-rollback-cap.test.mjs",
+    "tests/js/unit-status-rule.test.mjs",
+    "tests/js/unit-status.test.mjs",
+    "tests/js/stacking-branches-skill.test.mjs",
 ]
 
 

@@ -90,6 +90,12 @@ skills:
       - heading: "## Contents"
       - heading: "## Quick Reference"
 
+  stacking-branches:
+    category: reference
+    sections:
+      - heading: "## Contents"
+      - heading: "## Quick Reference"
+
   differentiating-designs:
     category: reference
     sections:
