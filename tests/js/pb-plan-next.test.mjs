@@ -6,7 +6,7 @@ import { describe, test } from "node:test";
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { makeRepo, pb, writePlan } from "./cli-repo-fixture.mjs";
+import { makeRepo, pb, pbWithEnv, writePlan } from "./cli-repo-fixture.mjs";
 
 const PLAN = [
   "# Plan",
@@ -171,8 +171,8 @@ describe("pb-plan-next-cli", () => {
     assert.deepEqual(
       out.units,
       [
-        { unit: "Parser", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, state: "open", tasks: [{ title: "Parse units", checked: true }, { title: "Parse tasks", checked: false }] },
-        { unit: "Verb", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, state: "open", tasks: [{ title: "Parse tasks", checked: false }] },
+        { unit: "Parser", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, state: "open", tasks: [{ title: "Parse units", checked: true, human: false }, { title: "Parse tasks", checked: false, human: false }] },
+        { unit: "Verb", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, state: "open", tasks: [{ title: "Parse tasks", checked: false, human: false }] },
       ],
       "units with their tasks, the Requirements heading not a unit",
     );
@@ -259,5 +259,87 @@ describe("pb-plan-next-cli", () => {
     } finally {
       rmSync(outside, { force: true });
     }
+  });
+
+  // With PAIRINGBUDDY_SOLO=true (and without it), an unchecked [HUMAN] task stops pb plan next: exit 1, no next task, stderr names the unit and task title, prints the task's body steps, says only a person does it and ticks the box; the repo is unchanged
+  test("human-stop-refuses-under-solo-and-writes-nothing", () => {
+    const repo = makeRepo({ openTask: false });
+    writePlan(
+      repo,
+      ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Release", "", "- [ ] **[HUMAN] Sign the release**", "", "  1. Open the signing console.", "  2. Approve the build artifact.", ""].join("\n"),
+    );
+    const before = snapshot(repo.dir);
+
+    const solo = pbWithEnv(repo, { PAIRINGBUDDY_SOLO: "true" }, "plan", "next", "docs/plan.md");
+    const plain = pbWithEnv(repo, { PAIRINGBUDDY_SOLO: "" }, "plan", "next", "docs/plan.md");
+
+    for (const [label, result] of [["solo", solo], ["not solo", plain]]) {
+      assert.equal(result.code, 1, `${label} exit code (stderr: ${result.stderr})`);
+      assert.equal(result.stdout, "", `${label} prints no next task`);
+      assert.match(result.stderr, /unit "Release"/, `${label} stderr names the unit`);
+      assert.ok(result.stderr.includes("[HUMAN] Sign the release"), `${label} stderr names the task title (stderr: ${result.stderr})`);
+      assert.ok(result.stderr.includes("1. Open the signing console."), `${label} stderr prints the first body step (stderr: ${result.stderr})`);
+      assert.ok(result.stderr.includes("2. Approve the build artifact."), `${label} stderr prints the second body step (stderr: ${result.stderr})`);
+      assert.match(result.stderr, /only a person/i, `${label} stderr says only a person does the task`);
+      assert.match(result.stderr, /tick/i, `${label} stderr says the person ticks the box`);
+    }
+    assert.deepEqual(snapshot(repo.dir), before, "the human stop writes nothing, solo or not");
+  });
+
+  // A hand-ticked unit whose only unticked tasks are [HUMAN] still says a hand-ticked box earns nothing, names the human tasks and prints both options (accept --legacy after doing them, or untick the hand-ticked tasks); with an unticked agent task left it prints no accept --legacy. Both exit 1 and write nothing
+  test("hand-ticked-stop-prints-human-options-when-only-human-tasks-remain", () => {
+    const unitLines = (tasks) => ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Release", "", ...tasks, ""];
+    const humanOnly = makeRepo({ openTask: false });
+    writePlan(humanOnly, unitLines(["- [x] **Build it**", "- [x] **Wire it**", "- [ ] **[HUMAN] Sign the release**", "- [ ] **[HUMAN] Announce it**"]).join("\n"));
+    writeUnitJson(humanOnly, "Release", ["Build it"]);
+    const humanBefore = snapshot(humanOnly.dir);
+    const withAgent = makeRepo({ openTask: false });
+    writePlan(withAgent, unitLines(["- [x] **Build it**", "- [x] **Wire it**", "- [ ] **Ship it**", "- [ ] **[HUMAN] Sign the release**"]).join("\n"));
+    writeUnitJson(withAgent, "Release", ["Build it"]);
+    const agentBefore = snapshot(withAgent.dir);
+
+    const onlyHuman = pb(humanOnly, "plan", "next", "docs/plan.md");
+    const agentLeft = pb(withAgent, "plan", "next", "docs/plan.md");
+
+    assert.equal(onlyHuman.code, 1, `human-only exit code (stderr: ${onlyHuman.stderr})`);
+    assert.equal(onlyHuman.stdout, "", "human-only prints no next task");
+    assert.match(onlyHuman.stderr, /earns nothing/, "human-only stderr still says a box ticked by hand earns nothing");
+    assert.match(onlyHuman.stderr, /no task record: Wire it\./, `human-only stderr lists only the task ticked without a record as hand-ticked (stderr: ${onlyHuman.stderr})`);
+    assert.ok(onlyHuman.stderr.includes("[HUMAN] Sign the release"), `human-only stderr names the first human task (stderr: ${onlyHuman.stderr})`);
+    assert.ok(onlyHuman.stderr.includes("[HUMAN] Announce it"), `human-only stderr names the second human task (stderr: ${onlyHuman.stderr})`);
+    assert.ok(onlyHuman.stderr.includes("human accept --legacy Release --plan docs/plan.md"), `human-only stderr prints the exact accept --legacy command (stderr: ${onlyHuman.stderr})`);
+    assert.match(onlyHuman.stderr, /untick Wire it so they run again/, `human-only untick option names only the task ticked without a record (stderr: ${onlyHuman.stderr})`);
+    assert.deepEqual(snapshot(humanOnly.dir), humanBefore, "the human-only stop writes nothing");
+    assert.equal(agentLeft.code, 1, `agent-left exit code (stderr: ${agentLeft.stderr})`);
+    assert.match(agentLeft.stderr, /earns nothing/, "agent-left stderr says a box ticked by hand earns nothing");
+    assert.ok(!agentLeft.stderr.includes("accept --legacy"), `agent-left stderr prints no accept --legacy (stderr: ${agentLeft.stderr})`);
+    assert.deepEqual(snapshot(withAgent.dir), agentBefore, "the agent-left stop writes nothing");
+  });
+
+  // --dry-run exits 0 and each task summary is { title, checked, human }; with one agent and one [HUMAN] task the stop is { reason: "human", unit, title, body } naming the human task, next is null, and nothing is written
+  test("dry-run-lists-human-tasks-and-names-the-stop", () => {
+    const repo = makeRepo({ openTask: false });
+    writePlan(
+      repo,
+      ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Release", "", "- [ ] **[HUMAN] Sign the release**", "", "  1. Open the signing console.", "  2. Approve the build artifact.", "", "- [ ] **Build it**", ""].join("\n"),
+    );
+    const before = snapshot(repo.dir);
+
+    const result = pb(repo, "plan", "next", "docs/plan.md", "--dry-run");
+
+    assert.equal(result.code, 0, `exit code (stderr: ${result.stderr})`);
+    const out = JSON.parse(result.stdout);
+    assert.deepEqual(
+      out.units[0].tasks,
+      [{ title: "[HUMAN] Sign the release", checked: false, human: true }, { title: "Build it", checked: false, human: false }],
+      "each task summary says whether it is human",
+    );
+    assert.deepEqual(
+      out.stop,
+      { reason: "human", unit: "Release", title: "[HUMAN] Sign the release", body: "1. Open the signing console.\n2. Approve the build artifact." },
+      "the stop names the human task and its steps",
+    );
+    assert.equal(out.next, null, "a stop means no next task");
+    assert.deepEqual(snapshot(repo.dir), before, "nothing under the repo changed");
   });
 });

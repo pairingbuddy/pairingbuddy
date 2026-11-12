@@ -22,7 +22,7 @@ import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, cha
 import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
 import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
-import { parsePlan, planStep, unitStates } from "../shared-node/plan.mjs";
+import { isHumanTitle, parsePlan, planStep, unitStates } from "../shared-node/plan.mjs";
 import { shellWord } from "../shared-node/shell-word.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
@@ -1176,7 +1176,7 @@ function status(args) {
 }
 
 // The units list leaves out task bodies: only `next` carries one.
-const unitSummary = ({ unit, tracer, pr, legacy, tasks }, state) => ({ unit, tracer, pr, legacy, state, tasks: tasks.map(({ title, checked }) => ({ title, checked })) });
+const unitSummary = ({ unit, tracer, pr, legacy, tasks }, state) => ({ unit, tracer, pr, legacy, state, tasks: tasks.map(({ body, ...task }) => task) });
 
 // The open unit from run/unit.json, or null when none is open. A corrupt file or one without a tasks list refuses,
 // saying what could not be done (the consequence) and that nothing was changed (the outcome).
@@ -1195,9 +1195,15 @@ function readUnitJson(root, consequence, outcome) {
 
 const readOpenUnit = (root) => readUnitJson(root, "the plan cannot be read", "Nothing was written");
 
-function planStopMessage(root, plan, { reason, unit, tasks }) {
-  if (reason === "legacy") return `unit "${unit}" is fully checked with no PR: line. Nothing was written: ask the human to type ${humanCommand(root, `accept --legacy ${shellWord(unit)} --plan ${shellWord(plan)}`)}`;
-  if (reason === "hand-ticked") return `unit "${unit}" has ticked tasks with no task record: ${tasks.join(", ")}. A box ticked by hand earns nothing. Nothing was written`;
+function planStopMessage(root, plan, { reason, unit, tasks, title, body, humanLeft }) {
+  const acceptCommand = humanCommand(root, `accept --legacy ${shellWord(unit)} --plan ${shellWord(plan)}`);
+  if (reason === "human") return `unit "${unit}"'s next task "${title}" is a human task: only a person does it and ticks its box. Nothing was written. Its steps:\n${body}`;
+  if (reason === "legacy") return `unit "${unit}" is fully checked with no PR: line. Nothing was written: ask the human to type ${acceptCommand}`;
+  if (reason === "hand-ticked") {
+    const message = `unit "${unit}" has ticked tasks with no task record: ${tasks.join(", ")}. A box ticked by hand earns nothing. Nothing was written`;
+    if (humanLeft === undefined) return message;
+    return `${message}. The only unticked tasks are human tasks (${humanLeft.join(", ")}): either do them and tick their boxes, then type ${acceptCommand}; or untick ${tasks.join(", ")} so they run again`;
+  }
   return `unit "${unit}" is done but not published. Nothing was written: publish it with ${pbCommand("run open --kind publish")}`;
 }
 
@@ -1346,6 +1352,7 @@ function taskEnd(args) {
   const ledger = readLedger(path);
   if (isPublishRun(ledger)) throw new Refusal(`this is a publish run, which has no task to end. Nothing was touched: run ${pbCommand("publish")} once G:publish is approved`);
   if (isRefreshRun(ledger)) throw new Refusal(`a refresh run has no task to end. Nothing was touched: run ${pbCommand("pr refresh")} once G:publish is approved`);
+  if (ledger.plan?.title && isHumanTitle(ledger.plan.title)) throw new Refusal(`the task "${ledger.plan.title}" is a human task: only a person ticks its box, so the task cannot end. Nothing was touched`);
   assertTaskFinished(ledger);
   assertCommitsOnHead(root, ledger);
   assertGreenRunStands(root, ledger);

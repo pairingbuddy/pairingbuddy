@@ -1,4 +1,4 @@
-// Scenarios: plan-parsing-units, plan-parsing-tasks-and-lines, plan-next-task (parser half), plan-format-problems.
+// Scenarios: plan-parsing-units, plan-parsing-tasks-and-lines, plan-next-task (parser half), plan-format-problems, human-task-parsing.
 // Tests for the pure plan parser in shared-node/plan.mjs.
 // Never use { skip } here: the JS suite treats skipped tests as failures.
 import "./isolated-tmpdir.mjs";
@@ -552,5 +552,45 @@ describe("plan-format-problems", () => {
     const onlyStray = ["# Plan", "", "## Tasks", "", "- [ ] **Task 0: Stray**", ""].join("\n");
 
     assert.deepEqual(parsePlan(onlyStray).problems, ['the task "Task 0: Stray" is not under a tracer'], "a stray box counts as a task, so the plan is not also reported as having none");
+  });
+});
+
+describe("human-task-parsing", () => {
+  // A task is human when its title starts with [HUMAN], bare or after a leading "Task <id>:" prefix; lowercase, mid-title and bracketless markers are not
+  test("human-marker-with-or-without-task-prefix", () => {
+    const text = [
+      "# Plan",
+      "",
+      "## Tasks",
+      "",
+      "### Tracer 1: Walking skeleton",
+      "",
+      "- [ ] **[HUMAN] Bare marker**",
+      "- [ ] **Task 5: [HUMAN] Prefixed marker**",
+      "- [ ] **[human] Lowercase marker**",
+      "- [ ] **Do X [HUMAN] mid title**",
+      "- [ ] **HUMAN without brackets**",
+      "- [ ] **Task 6: Plain agent task**",
+      "- [ ] **Task 7 and 8: [HUMAN] Two ids**",
+      "- [ ] **[HUMANS] Plural marker**",
+      "",
+    ].join("\n");
+
+    const tasks = parsePlan(text).units[0].tasks.map((t) => ({ title: t.title, human: t.human }));
+
+    assert.deepEqual(
+      tasks,
+      [
+        { title: "[HUMAN] Bare marker", human: true },
+        { title: "Task 5: [HUMAN] Prefixed marker", human: true },
+        { title: "[human] Lowercase marker", human: false },
+        { title: "Do X [HUMAN] mid title", human: false },
+        { title: "HUMAN without brackets", human: false },
+        { title: "Task 6: Plain agent task", human: false },
+        { title: "Task 7 and 8: [HUMAN] Two ids", human: false },
+        { title: "[HUMANS] Plural marker", human: false },
+      ],
+      "only an uppercase bracketed [HUMAN] at the start of the title, or right after Task <id>:, marks a human task",
+    );
   });
 });

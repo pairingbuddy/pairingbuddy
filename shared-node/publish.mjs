@@ -1,16 +1,18 @@
 // Pure planning for pb publish: which evidence refuses, which steps run in which order, and the argv of the commands.
 // No I/O here; the CLI gathers the facts and executes what this plans.
+import { isHumanTitle } from "./plan.mjs";
 
 const GATE_SOURCES = ["auto", "human", "human-cli"];
 const short = (sha) => String(sha).slice(0, 7);
 const list = (items) => items.join(", ");
 
-// Plan boxes under the unit's heading with no task record. With no boxes to go by, the unit must have a record at all.
+// Agent (non-human) plan boxes under the unit's heading with no task record. With no agent boxes to go by, the unit must have a record at all.
 export const recordedTasks = ({ unit, planBoxes, planProblem }) => {
   if (planProblem) return planProblem;
-  if (planBoxes === null || planBoxes.length === 0) return unit.tasks.length > 0 ? null : "the unit has no task records";
+  const agentBoxes = (planBoxes ?? []).filter((label) => !isHumanTitle(label));
+  if (agentBoxes.length === 0) return unit.tasks.length > 0 ? null : "the unit has no task records";
   const titles = new Set(unit.tasks.map((task) => task.title));
-  const missing = planBoxes.filter((label) => !titles.has(label));
+  const missing = agentBoxes.filter((label) => !titles.has(label));
   return missing.length === 0 ? null : `the plan has tasks with no task record: ${list(missing)}`;
 };
 

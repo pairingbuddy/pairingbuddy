@@ -10,6 +10,8 @@ const TRACER_LEVEL = 3;
 const SECTION_LEVEL = 2;
 const TASKS_SECTION = "Tasks";
 const NON_TASK_SECTIONS = ["Requirements", "Architecture"];
+const HUMAN_TITLE = /^(?:Task\s+[^:\s]+:\s*)?\[HUMAN\]/; // [HUMAN] opens a title, or follows a leading "Task <id>:"
+export const isHumanTitle = (title) => HUMAN_TITLE.test(title);
 
 // A level-1/2 heading opens a section; the task area is ## Tasks, or without it everything but Requirements and Architecture.
 function inTaskArea(section, hasTasks) {
@@ -72,11 +74,16 @@ function continuesBody(line) {
   return !line.trim() || isIndented(line);
 }
 
+// A task as the plan reports it: with its unit and tracer.
+const taskInUnit = ({ unit, tracer }, { title, body }) => ({ unit, tracer, title, body });
+
+const firstUncheckedTask = (unit) => unit.tasks.find(({ checked }) => !checked);
+
 // The first unchecked task in document order with its unit and tracer, or null when every task is checked.
 function firstUnchecked(units) {
-  for (const { unit, tracer, tasks } of units) {
-    const task = tasks.find(({ checked }) => !checked);
-    if (task) return { unit, tracer, title: task.title, body: task.body };
+  for (const unit of units) {
+    const task = firstUncheckedTask(unit);
+    if (task) return taskInUnit(unit, task);
   }
   return null;
 }
@@ -162,11 +169,12 @@ export function parsePlan(text) {
     if (pending && !fenced) notePendingLine(pending, line);
     if (!box) continue;
     if (!unit && pending) unit = openUnit(pending, tracer);
+    const title = boxLabel(box.label);
     if (!unit) {
-      strays.push(boxLabel(box.label));
+      strays.push(title);
       continue;
     }
-    const task = { title: boxLabel(box.label), checked: box.ticked, body: "" };
+    const task = { title, checked: box.ticked, human: isHumanTitle(title), body: "" };
     unit.tasks.push(task);
     openBody = { task, lines: [] };
   }
@@ -182,21 +190,30 @@ function recordedTitles(unit, plan, openUnit) {
   return new Set((matches ? openUnit.tasks : []).map((task) => task.title));
 }
 
-// Titles of the checked tasks of a unit that have no record: a box ticked by hand earns nothing.
-const handTicked = (unit, recorded) => unit.tasks.filter((task) => task.checked && !recorded.has(task.title)).map((task) => task.title);
+// Titles of the checked non-human tasks of a unit that have no record: a box ticked by hand earns nothing, but a [HUMAN] task is the human's to tick.
+const handTicked = (unit, recorded) => unit.tasks.filter((task) => task.checked && !task.human && !recorded.has(task.title)).map((task) => task.title);
+
+// What a hand-ticked stop adds: the hand-ticked task titles, and the unchecked titles when every unchecked task is a human's.
+function handTickedStop(unit, recorded) {
+  const stop = { tasks: handTicked(unit, recorded) };
+  const unchecked = unit.tasks.filter(({ checked }) => !checked);
+  if (unchecked.every(({ human }) => human)) stop.humanLeft = unchecked.map(({ title }) => title);
+  return stop;
+}
 
 // The per-unit state:
 //   published   - the unit has a PR: line.
-//   open        - it has unchecked tasks and every checked one has a record.
-//   hand-ticked - it has a checked task with no record, next to unchecked ones.
+//   open        - it has unchecked tasks and every checked non-human one has a record.
+//   hand-ticked - it has a checked non-human task with no record, next to unchecked ones.
 //   accepted    - it is fully checked and marked Legacy: accepted.
-//   unpublished - it is fully checked and every task is recorded.
-//   legacy      - it is fully checked and a task has no record.
+//   unpublished - it is fully checked, has an agent task, and every agent task is recorded (human tasks need no record).
+//   legacy      - it is fully checked and an agent task has no record, or it has no agent task.
 function unitState(unit, recorded) {
   if (unit.pr) return "published";
   if (unit.tasks.some((task) => !task.checked)) return handTicked(unit, recorded).length > 0 ? "hand-ticked" : "open";
   if (unit.legacy) return "accepted";
-  return unit.tasks.every((task) => recorded.has(task.title)) ? "unpublished" : "legacy";
+  const agentTasks = unit.tasks.filter((task) => !task.human);
+  return agentTasks.length > 0 && agentTasks.every((task) => recorded.has(task.title)) ? "unpublished" : "legacy";
 }
 
 // The state of every unit, in order, under the same records planStep uses.
@@ -210,8 +227,12 @@ export function planStep(units, context) {
   const at = states.findIndex((state) => state !== "published" && state !== "accepted");
   if (at === -1) return { next: null, stop: null };
   const [unit, state] = [units[at], states[at]];
-  if (state === "open") return { next: firstUnchecked([unit]), stop: null };
+  if (state === "open") {
+    const task = firstUncheckedTask(unit);
+    if (task.human) return { next: null, stop: { reason: "human", unit: unit.unit, title: task.title, body: task.body } };
+    return { next: taskInUnit(unit, task), stop: null };
+  }
   const stop = { reason: state, unit: unit.unit };
-  if (state === "hand-ticked") stop.tasks = handTicked(unit, recordedTitles(unit, context.plan, context.openUnit));
+  if (state === "hand-ticked") Object.assign(stop, handTickedStop(unit, recordedTitles(unit, context.plan, context.openUnit)));
   return { next: null, stop };
 }

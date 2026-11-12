@@ -115,6 +115,23 @@ describe("evidence reasons", () => {
     assert.doesNotMatch(evidenceRefusals(facts({ unit: { ...facts().unit, tasks: [] }, planBoxes: [] })).join(), /full-suite/);
   });
 
+  test("publish-evidence-exempts-human-boxes: a [HUMAN] plan box needs no task record, an agent box without one still refuses", () => {
+    const built = { ...facts().unit, tasks: [task({ title: "Build it" })] };
+
+    const humanOnly = evidenceRefusals(facts({ unit: built, planBoxes: ["Build it", "Task 2: [HUMAN] Sign it", "[HUMAN] Sign it too"] }));
+    const agentMissing = evidenceRefusals(facts({ unit: built, planBoxes: ["Build it", "Wire it", "[HUMAN] Sign it"] }));
+
+    assert.deepEqual(humanOnly, [], "a bare or numbered [HUMAN] box is not asked for a record");
+    assert.equal(agentMissing.length, 1, "the agent box without a record is refused");
+    assert.match(agentMissing[0], /no task record: Wire it$/, "the refusal names only the agent box");
+  });
+
+  test("publish-all-human-unit-needs-a-record: a unit whose plan boxes are all [HUMAN] and that has no task records still refuses", () => {
+    const refusals = evidenceRefusals(facts({ unit: { ...facts().unit, tasks: [] }, planBoxes: ["Task 1: [HUMAN] Sign it", "[HUMAN] Sign it too"] }));
+
+    assert.deepEqual(refusals, ["the unit has no task records"], "a unit with nothing built by an agent has nothing to publish");
+  });
+
   test("a plan that cannot be read is a refusal", () => {
     assert.match(evidenceRefusals(facts({ planProblem: "the plan p.md cannot be read: ENOENT" })).join(), /p\.md cannot be read/);
   });

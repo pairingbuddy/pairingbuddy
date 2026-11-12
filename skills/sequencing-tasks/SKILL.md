@@ -51,6 +51,15 @@ Each task must be self-contained — copyable to `/code` as-is:
   ...
 ```
 
+### Human Tasks
+
+A task whose title starts with `[HUMAN]` is a human task, written `- [ ] **Task N: [HUMAN] Title**`.
+Write `[HUMAN]` exactly, uppercase and in brackets, right after `Task N:` or at the very start of the title.
+No agent runs a human task, and it needs no task record.
+`pb plan next` stops at a human task, names it and prints its steps.
+Only a person does the work and ticks its box.
+Give it a stop line and Steps and Done when, like any other task.
+
 ### Task Sizing
 
 | Guideline | Rationale |

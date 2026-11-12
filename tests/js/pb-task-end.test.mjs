@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { COMMIT_FAILED, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
 import { makeRepo as makeRepoWithRemote, recordCleanLensReturns } from "./cli-repo-fixture.mjs";
-import { readUnitRecord } from "./publish-fixture.mjs";
+import { readUnitRecord, unitFile } from "./publish-fixture.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CLI = join(ROOT, "cli", "pb.mjs");
@@ -464,6 +464,24 @@ describe("the plan checkbox", IN_PARALLEL, () => {
 
     assertRefused(taskEnd(repo), /G:task-end/);
     assert.equal(planOf(repo), PLAN_TEXT);
+  });
+
+  test("a ledger.plan title naming a human task is refused by name, and nothing is touched", () => {
+    const humanTitle = "Task 4: [HUMAN] Sign it";
+    const humanPlan = `${PLAN_TEXT}- [ ] **${humanTitle}**\n`;
+    const repo = untouchedPlanRepo(planLedger(humanTitle), humanPlan);
+    const unitPath = unitFile(repo);
+    const unitText = JSON.stringify({ base: "feature", baseSha: git(repo.dir, "rev-parse", "HEAD"), tasks: [], commits: [] });
+    writeFileSync(unitPath, unitText);
+
+    const result = taskEnd(repo);
+
+    assertRefused(result, /Task 4: \[HUMAN\] Sign it/);
+    assert.match(result.stderr, /human task/);
+    assert.match(result.stderr, /only a person ticks/);
+    assert.equal(planOf(repo), humanPlan);
+    assertRunKept(repo);
+    assert.equal(readFileSync(unitPath, "utf8"), unitText);
   });
 });
 
