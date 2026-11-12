@@ -18,8 +18,10 @@ export const checkboxes = (text) =>
 // A box's label as a task title: the bold a plan puts around it is not part of the title.
 export const boxLabel = (label) => label.replace(BOLD, "$1");
 
-const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
-const headingName = (text) => text.replace(/^PR:\s*/, "").trim();
+export const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
+const PR_PREFIX = /^PR:\s*/;
+export const isPrHeading = (text) => PR_PREFIX.test(text);
+export const headingName = (text) => text.replace(PR_PREFIX, "").trim();
 
 // The index of the line holding the unit's heading, or -1. A "PR:" prefix on the heading is not part of its name.
 const unitHeadingIndex = (lines, unit) =>
@@ -39,7 +41,8 @@ export function boxLabelsUnder(text, unit) {
   return checkboxes(lines.slice(start + 1, end === -1 ? undefined : end).join("\n")).map(({ label }) => boxLabel(label));
 }
 
-const PR_LINE = /^PR:\s/;
+// The "PR: <url>" line pb publish writes under a unit's heading; capture 1 is the url.
+export const PR_LINE = /^PR:\s+(\S*)/;
 
 // The text with "line" directly under the unit's heading, replacing a PR: line already there. Null with no such heading.
 export function withPrLine(text, unit, line) {
@@ -60,9 +63,11 @@ export function writePrLine(root, plan, unit, line) {
   return true;
 }
 
-const hasTitle = ({ label }, title) => boxLabel(label) === title;
+// Every box in the whole text titled "title": what pb task end looks for, and what the plan parser counts.
+export const boxesTitled = (text, title) => checkboxes(text).filter(({ label }) => boxLabel(label) === title);
 
-function planFile(root, path) {
+// The real path of the plan under root. Refuses (PlanRefused) when it is outside the repo, unreadable, or a symlink that lands outside.
+export function planFile(root, path) {
   const realRoot = realpathSync(root);
   if (isOutside(relative(realRoot, resolve(realRoot, path)))) throw new PlanRefused(`the plan ${path} is outside the repo`);
   let real;
@@ -76,7 +81,7 @@ function planFile(root, path) {
 }
 
 function boxOf(text, { path, title }) {
-  const boxes = checkboxes(text).filter((box) => hasTitle(box, title));
+  const boxes = boxesTitled(text, title);
   if (boxes.length === 0) throw new PlanRefused(`the plan ${path} has no box titled ${JSON.stringify(title)}`);
   if (boxes.length > 1) throw new PlanRefused(`the plan ${path} has ${boxes.length} boxes titled ${JSON.stringify(title)}`);
   return boxes[0];

@@ -55,7 +55,7 @@ pairingbuddy/
 ├── mod/              # Claude Code mod (register.tsx, band.tsx, pane.tsx, view.ts, inputs.ts, poll.ts, alert.ts, pane-open.ts, report.ts, suggest.ts, assets/, *.test.tsx, testing/, fixtures/); writes only reports/ and human-guidance.json, isolated from the shell hooks
 ├── shared-node/      # Pure ESM shared by the CLI, hooks, workflows and the mod (labels, ledger, stage graph, glance, plain names, gate-passed rule, now-building block)
 ├── commands/         # Slash commands (/pairingbuddy:code, /pairingbuddy:plan, /pairingbuddy:design-ux)
-└── tests/            # Structural tests (~1121)
+└── tests/            # Structural tests (~2114)
 ```
 
 ## Key Conventions

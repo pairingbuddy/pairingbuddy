@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- New `pb plan next <plan.md> [--dry-run]` (parser in `shared-node/plan.mjs`) reads a plan and prints its next unchecked task with its unit and tracer. It refuses when the plan has format problems, naming each one. `--dry-run` lists the units, the next task and the problems and never refuses. Neither form writes anything yet.
 - New conversational `curating-guidance` skill curates human guidance in the main context outside Solo and plan tasks; the `curate-guidance` agent stays for Solo and plan tasks.
 - The `intake` stage runs `classify-task` under the one input rule with a confidence (new `classify-task-result.schema.json`) and comes first in every task path. `G:type` is now conditional: under `auto` it passes only when the classifier is certain, and it asks when a runner lacks `selector_template` (moved from `pb run open`).
 - Intake (Task 92a) runs one Sonnet classification lens with no refuters. A finding re-runs `classify-task` with the note through the course-checked fix loop (artifact rollback, cap 5). `G:type` also asks while a blocking classification finding stands with no kept fix. The run's type follows the kept classification, and an artifact rollback at intake puts the kept type back.
