@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, posix, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
@@ -22,7 +22,8 @@ import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, cha
 import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
 import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
-import { parsePlan } from "../shared-node/plan.mjs";
+import { parsePlan, planStep, unitStates } from "../shared-node/plan.mjs";
+import { shellWord } from "../shared-node/shell-word.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
@@ -538,8 +539,43 @@ function acceptedConfig(root, path) {
   return accepted;
 }
 
+// The repo toplevel, the plan's resolved path and its text, for the verbs that read a plan.
+function readPlan(plan) {
+  const root = toplevel();
+  const realPlan = planFile(root, plan);
+  return { root, realPlan, text: readFileSync(realPlan, "utf8") };
+}
+
+// Refuses, writing nothing, when the plan has format problems.
+function refusePlanProblems(problems) {
+  if (problems.length > 0) throw new Refusal(`the plan has format problems, so nothing was written: ${problems.join("; ")}`);
+}
+
+// Records Legacy: accepted directly under the unit's own heading line, found by the parser rather than by name.
+function acceptLegacy(unit, plan) {
+  const { realPlan, text } = readPlan(plan);
+  const { units, problems } = parsePlan(text);
+  refusePlanProblems(problems);
+  const found = units.find((u) => u.unit === unit);
+  if (!found) throw new Refusal(`no unit named "${unit}", so nothing was written`);
+  if (found.pr) throw new Refusal(`unit "${unit}" is already published (it has a PR: line), so nothing was written`);
+  if (found.tasks.some((t) => !t.checked)) throw new Refusal(`unit "${unit}" is not fully checked: legacy is only for a fully checked unit, so nothing was written`);
+  if (found.legacy) return { ok: true, unit, plan, legacy: "already accepted" };
+  const lines = text.split("\n");
+  lines.splice(found.headingLine + 1, 0, "Legacy: accepted");
+  replaceFile(realPlan, lines.join("\n"));
+  return { ok: true, unit, plan, legacy: "accepted" };
+}
+
+function legacyArgs(args) {
+  const [flag, unit, planFlag, plan] = args;
+  const ok = args.length === 4 && flag === "--legacy" && planFlag === "--plan" && !unit.startsWith("-") && !plan.startsWith("-");
+  if (!ok) throw new UsageError("usage: pb human accept [--legacy <unit> --plan <plan.md>]");
+  return [unit, plan];
+}
+
 function humanAccept(args) {
-  if (args.length > 0) throw new UsageError("usage: pb human accept");
+  if (args.length > 0) return acceptLegacy(...legacyArgs(args));
   const { root, path } = runLedgerPath();
   const edit = acceptedEdit(path);
   const config = acceptedConfig(root, path);
@@ -1140,7 +1176,30 @@ function status(args) {
 }
 
 // The units list leaves out task bodies: only `next` carries one.
-const unitSummary = ({ unit, tracer, pr, legacy, tasks }) => ({ unit, tracer, pr, legacy, tasks: tasks.map(({ title, checked }) => ({ title, checked })) });
+const unitSummary = ({ unit, tracer, pr, legacy, tasks }, state) => ({ unit, tracer, pr, legacy, state, tasks: tasks.map(({ title, checked }) => ({ title, checked })) });
+
+// The open unit from run/unit.json, or null when none is open. A corrupt file or one without a tasks list refuses,
+// saying what could not be done (the consequence) and that nothing was changed (the outcome).
+function readUnitJson(root, consequence, outcome) {
+  const path = unitPathOf(root);
+  if (!existsSync(path)) return null;
+  let unit;
+  try {
+    unit = JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    throw new Refusal(`run/unit.json is unreadable, so ${consequence}. ${outcome}: ${e.message}`);
+  }
+  if (!Array.isArray(unit?.tasks)) throw new Refusal(`run/unit.json has no tasks list, so ${consequence}. ${outcome}`);
+  return unit;
+}
+
+const readOpenUnit = (root) => readUnitJson(root, "the plan cannot be read", "Nothing was written");
+
+function planStopMessage(root, plan, { reason, unit, tasks }) {
+  if (reason === "legacy") return `unit "${unit}" is fully checked with no PR: line. Nothing was written: ask the human to type ${humanCommand(root, `accept --legacy ${shellWord(unit)} --plan ${shellWord(plan)}`)}`;
+  if (reason === "hand-ticked") return `unit "${unit}" has ticked tasks with no task record: ${tasks.join(", ")}. A box ticked by hand earns nothing. Nothing was written`;
+  return `unit "${unit}" is done but not published. Nothing was written: publish it with ${pbCommand("run open --kind publish")}`;
+}
 
 // Reads the plan under the repo toplevel and reports its units, next task and format problems. Writes nothing.
 function planNext(args) {
@@ -1148,10 +1207,18 @@ function planNext(args) {
   const dryRun = args.includes("--dry-run");
   if (paths.length !== 1 || args.some((a) => a.startsWith("-") && a !== "--dry-run")) throw new UsageError("usage: pb plan next <plan.md> [--dry-run]");
   const [plan] = paths;
-  const { units, next, problems } = parsePlan(readFileSync(planFile(toplevel(), plan), "utf8"));
-  if (!dryRun && problems.length > 0) throw new Refusal(`the plan has format problems, so nothing was written: ${problems.join("; ")}`);
-  if (!dryRun) return { ok: true, plan, next };
-  return { ok: true, dryRun: true, plan, units: units.map(unitSummary), next, problems };
+  const { root, realPlan, text } = readPlan(plan);
+  const { units, problems } = parsePlan(text);
+  if (!dryRun) refusePlanProblems(problems);
+  const context = { plan: relative(realpathSync(root), realPlan), openUnit: readOpenUnit(root) };
+  const { next, stop } = planStep(units, context);
+  if (!dryRun) {
+    if (stop) throw new Refusal(planStopMessage(root, plan, stop));
+    return { ok: true, plan, next };
+  }
+  const states = unitStates(units, context);
+  const summaries = units.map((u, i) => unitSummary(u, states[i]));
+  return { ok: true, dryRun: true, plan, units: summaries, stop, next, problems };
 }
 
 function assertTaskFinished(ledger) {
@@ -1218,15 +1285,9 @@ function taskLessons(root) {
 // What taskEnd needs to record the task, read with the other refusals: the open unit and HEAD, or null with no unit.
 // A corrupt unit.json, one without a tasks list, or no commit refuses here, before anything changes.
 function readUnitForRecord(root, ledger) {
+  const unit = readUnitJson(root, "the task cannot end", "Nothing was touched");
+  if (unit === null) return null;
   const path = unitPathOf(root);
-  if (!existsSync(path)) return null;
-  let unit;
-  try {
-    unit = JSON.parse(readFileSync(path, "utf8"));
-  } catch (e) {
-    throw new Refusal(`run/unit.json is unreadable, so the task cannot end. Nothing was touched: ${e.message}`);
-  }
-  if (!Array.isArray(unit?.tasks)) throw new Refusal("run/unit.json has no tasks list, so the task cannot end. Nothing was touched");
   const headSha = headOf(root);
   if (headSha === null) throw new Refusal("there is no commit yet, so the task cannot end. Nothing was touched");
   const lessons = taskLessons(root);

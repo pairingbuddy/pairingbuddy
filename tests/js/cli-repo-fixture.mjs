@@ -87,6 +87,12 @@ export function pbWithEnv(repo, extraEnv, ...args) {
 
 export const pb = (repo, ...args) => pbWithEnv(repo, {}, ...args);
 
+// Writes content to docs/plan.md in the repo, creating docs/ when needed.
+export function writePlan(repo, content) {
+  mkdirSync(join(repo.dir, "docs"), { recursive: true });
+  writeFileSync(join(repo.dir, "docs", "plan.md"), content);
+}
+
 // Records a clean lens return for every lens of the stage's row for the task type, at the stage's current attempt, so a
 // stage whose lenses are not under test reaches an auto-pass gate rather than reporting its lenses uncovered.
 export function recordCleanLensReturns(repo, stage, taskType, attempt) {

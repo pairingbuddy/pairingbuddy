@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `pb plan next` now stops (refuses) at the first unit that needs attention: a ticked task with no task record in the open unit (hand-ticked), a fully checked unit with no `PR:` line (legacy; it prints the `!pb human accept --legacy <unit> --plan <plan.md>` line to type), or a finished unit not yet published. Units with a `PR:` line or `Legacy: accepted` are skipped, and a stop means no skip-ahead. `--dry-run` adds each unit's state and the stop and never refuses. New human-only `pb human accept --legacy <unit> --plan <plan.md>` writes `Legacy: accepted` under the unit's heading.
 - New `pb plan next <plan.md> [--dry-run]` (parser in `shared-node/plan.mjs`) reads a plan and prints its next unchecked task with its unit and tracer. It refuses when the plan has format problems, naming each one. `--dry-run` lists the units, the next task and the problems and never refuses. Neither form writes anything yet.
 - New conversational `curating-guidance` skill curates human guidance in the main context outside Solo and plan tasks; the `curate-guidance` agent stays for Solo and plan tasks.
 - The `intake` stage runs `classify-task` under the one input rule with a confidence (new `classify-task-result.schema.json`) and comes first in every task path. `G:type` is now conditional: under `auto` it passes only when the classifier is certain, and it asks when a runner lacks `selector_template` (moved from `pb run open`).

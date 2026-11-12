@@ -6,7 +6,7 @@ import { describe, test } from "node:test";
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { makeRepo, pb } from "./cli-repo-fixture.mjs";
+import { makeRepo, pb, writePlan } from "./cli-repo-fixture.mjs";
 
 const PLAN = [
   "# Plan",
@@ -48,17 +48,117 @@ function snapshot(dir) {
   return files;
 }
 
-// Writes content to docs/plan.md in the repo, creating docs/ when needed.
-function writePlan(repo, content) {
-  mkdirSync(join(repo.dir, "docs"), { recursive: true });
-  writeFileSync(join(repo.dir, "docs", "plan.md"), content);
+// Writes .pairingbuddy/run/unit.json in the repo: the record of the unit's tasks (by title) that were done through the workflow, creating the directory when needed.
+function writeUnitJson(repo, unit, titles) {
+  mkdirSync(join(repo.dir, ".pairingbuddy", "run"), { recursive: true });
+  writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit, plan: "docs/plan.md", tasks: titles.map((title) => ({ title })) }));
 }
 
 describe("pb-plan-next-cli", () => {
-  // --dry-run prints ok, dryRun, units, next and problems as JSON, exits 0 even with format problems, and leaves the plan file and .pairingbuddy untouched
+  // Without --dry-run a stop exits 1 writing nothing: a fully checked unit with no PR: line names the human command, a hand-ticked task and an unpublished unit say so, and a unit with a PR: line is skipped
+  test("plan-next-stop-refuses-with-human-command", () => {
+    const heading = (name) => ["## Tasks", "", "### Tracer 1: Skeleton", "", `#### PR: ${name}`, ""];
+
+    const legacyRepo = makeRepo({ openTask: false });
+    writePlan(legacyRepo, [...heading("Done"), "- [x] **One**", "- [x] **Two**", ""].join("\n"));
+    const legacyBefore = snapshot(legacyRepo.dir);
+    const legacy = pb(legacyRepo, "plan", "next", "docs/plan.md");
+
+    const tickedRepo = makeRepo({ openTask: false });
+    writePlan(tickedRepo, [...heading("Half"), "- [x] **One**", "- [x] **Two**", "- [ ] **Three**", ""].join("\n"));
+    writeUnitJson(tickedRepo, "Half", ["One"]);
+    const tickedBefore = snapshot(tickedRepo.dir);
+    const ticked = pb(tickedRepo, "plan", "next", "docs/plan.md");
+
+    const unpublishedRepo = makeRepo({ openTask: false });
+    writePlan(unpublishedRepo, [...heading("Done"), "- [x] **One**", "- [x] **Two**", ""].join("\n"));
+    writeUnitJson(unpublishedRepo, "Done", ["One", "Two"]);
+    const unpublishedBefore = snapshot(unpublishedRepo.dir);
+    const unpublished = pb(unpublishedRepo, "plan", "next", "docs/plan.md");
+
+    const skipRepo = makeRepo({ openTask: false });
+    writePlan(skipRepo, [...heading("First"), "PR: https://example.com/pr/1 branch: first", "", "- [x] **One**", "", "#### PR: Second", "", "- [x] **Two**", "- [ ] **Three**", ""].join("\n"));
+    writeUnitJson(skipRepo, "Second", ["Two"]);
+    const skipped = pb(skipRepo, "plan", "next", "docs/plan.md");
+
+    const spacedRepo = makeRepo({ openTask: false });
+    writePlan(spacedRepo, [...heading("Two words"), "- [x] **One**", "", ""].join("\n"));
+    const spaced = pb(spacedRepo, "plan", "next", "docs/plan.md");
+
+    assert.equal(spaced.code, 1, `spaced-name exit code (stderr: ${spaced.stderr})`);
+    assert.ok(spaced.stderr.includes("--legacy 'Two words' --plan docs/plan.md"), `a unit name with a space is shell-quoted in the human command (stderr: ${spaced.stderr})`);
+    assert.equal(legacy.code, 1, `legacy exit code (stderr: ${legacy.stderr})`);
+    assert.match(legacy.stderr, /unit "Done"/, "legacy stderr names the unit");
+    assert.match(legacy.stderr, /no PR: line/, "legacy stderr says it has no PR: line");
+    assert.match(legacy.stderr, /!cd .* && node .*pb\.mjs human accept --legacy Done --plan docs\/plan\.md/, "legacy stderr gives the exact human command");
+    assert.deepEqual(snapshot(legacyRepo.dir), legacyBefore, "legacy stop writes nothing");
+    assert.equal(ticked.code, 1, `hand-ticked exit code (stderr: ${ticked.stderr})`);
+    assert.match(ticked.stderr, /Half/, "hand-ticked stderr names the unit");
+    assert.match(ticked.stderr, /no task record: Two\./, "hand-ticked stderr lists only the task ticked without a record");
+    assert.deepEqual(snapshot(tickedRepo.dir), tickedBefore, "hand-ticked stop writes nothing");
+    assert.equal(unpublished.code, 1, `unpublished exit code (stderr: ${unpublished.stderr})`);
+    assert.match(unpublished.stderr, /unit "Done"/, "unpublished stderr names the unit");
+    assert.match(unpublished.stderr, /done but not published/, "unpublished stderr says the unit is done but not published");
+    assert.match(unpublished.stderr, /run open --kind publish/, "unpublished stderr names the publish command");
+    assert.deepEqual(snapshot(unpublishedRepo.dir), unpublishedBefore, "unpublished stop writes nothing");
+    assert.equal(skipped.code, 0, `skip exit code (stderr: ${skipped.stderr})`);
+    assert.equal(JSON.parse(skipped.stdout).next.title, "Three", "the published unit is skipped, next is the second unit's task");
+  });
+
+  // --dry-run names every unit's state in order and reports the first stop with next null (a stop means no skip-ahead), writing nothing
+  test("plan-next-dry-run-reports-stop-and-unit-states", () => {
+    const repo = makeRepo({ openTask: false });
+    const unit = (name, lines) => [`#### PR: ${name}`, "", ...lines, ""];
+    writePlan(
+      repo,
+      [
+        "## Tasks",
+        "",
+        "### Tracer 1: Skeleton",
+        "",
+        ...unit("Shipped", ["PR: https://example.com/pr/1 branch: shipped", "", "- [x] **S one**"]),
+        ...unit("Old", ["Legacy: accepted", "", "- [x] **O one**"]),
+        ...unit("Done", ["- [x] **D one**"]),
+        ...unit("Also done", ["- [x] **A one**"]),
+        ...unit("Todo", ["- [ ] **T one**"]),
+      ].join("\n"),
+    );
+    const before = snapshot(repo.dir);
+
+    const result = pb(repo, "plan", "next", "docs/plan.md", "--dry-run");
+
+    assert.equal(result.code, 0, `exit code (stderr: ${result.stderr})`);
+    const out = JSON.parse(result.stdout);
+    assert.deepEqual(
+      out.units.map((u) => [u.unit, u.state]),
+      [["Shipped", "published"], ["Old", "accepted"], ["Done", "legacy"], ["Also done", "legacy"], ["Todo", "open"]],
+      "every unit's state, in document order",
+    );
+    assert.deepEqual(out.stop, { reason: "legacy", unit: "Done" }, "the first stop is the first legacy unit");
+    assert.equal(out.next, null, "a stop means no skip-ahead, even in the report");
+    assert.deepEqual(snapshot(repo.dir), before, "nothing under the repo changed");
+  });
+
+  // The plan argument may be an absolute path: it still matches unit.json's repo-relative plan, so a recorded unit is done-but-not-published, not legacy
+  test("plan-next-absolute-plan-path-finds-the-records", () => {
+    const repo = makeRepo({ openTask: false });
+    writePlan(repo, ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Done", "", "- [x] **One**", "- [x] **Two**", ""].join("\n"));
+    writeUnitJson(repo, "Done", ["One", "Two"]);
+    const before = snapshot(repo.dir);
+
+    const result = pb(repo, "plan", "next", join(repo.dir, "docs", "plan.md"));
+
+    assert.equal(result.code, 1, `exit code (stderr: ${result.stderr})`);
+    assert.match(result.stderr, /unit "Done"/, "stderr names the unit");
+    assert.match(result.stderr, /done but not published/, "stderr says the unit is done but not published, not legacy");
+    assert.deepEqual(snapshot(repo.dir), before, "the stop writes nothing");
+  });
+
+  // --dry-run prints ok, dryRun, units, next and problems as JSON, exits 0 even with format problems, and leaves the plan file and .pairingbuddy untouched. The unit.json record covers Parser's ticked "Parse units", so no stop applies, both units are open and next is the first unchecked task
   test("dry-run-reports-and-writes-nothing", () => {
     const repo = makeRepo({ openTask: false });
     writePlan(repo, PLAN);
+    writeUnitJson(repo, "Parser", ["Parse units"]);
     const before = snapshot(repo.dir);
 
     const result = pb(repo, "plan", "next", "docs/plan.md", "--dry-run");
@@ -71,8 +171,8 @@ describe("pb-plan-next-cli", () => {
     assert.deepEqual(
       out.units,
       [
-        { unit: "Parser", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, tasks: [{ title: "Parse units", checked: true }, { title: "Parse tasks", checked: false }] },
-        { unit: "Verb", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, tasks: [{ title: "Parse tasks", checked: false }] },
+        { unit: "Parser", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, state: "open", tasks: [{ title: "Parse units", checked: true }, { title: "Parse tasks", checked: false }] },
+        { unit: "Verb", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, state: "open", tasks: [{ title: "Parse tasks", checked: false }] },
       ],
       "units with their tasks, the Requirements heading not a unit",
     );
@@ -108,10 +208,10 @@ describe("pb-plan-next-cli", () => {
   // Editing an unchecked task in the plan file between two calls changes the next task reported by the second call
   test("rereads-plan-edits-between-calls", () => {
     const repo = makeRepo({ openTask: false });
-    writePlan(repo, ["## Tasks", "", "### Tracer 1: Skeleton", "", "- [x] **Done task**", "- [ ] **Old name**", "", "  Old body.", ""].join("\n"));
+    writePlan(repo, ["## Tasks", "", "### Tracer 1: Skeleton", "", "- [ ] **Old name**", "", "  Old body.", ""].join("\n"));
 
     const first = pb(repo, "plan", "next", "docs/plan.md");
-    writePlan(repo, ["## Tasks", "", "### Tracer 1: Skeleton", "", "- [x] **Done task**", "- [ ] **New name**", "", "  New body.", ""].join("\n"));
+    writePlan(repo, ["## Tasks", "", "### Tracer 1: Skeleton", "", "- [ ] **New name**", "", "  New body.", ""].join("\n"));
     const second = pb(repo, "plan", "next", "docs/plan.md");
 
     assert.equal(first.code, 0, `first exit code (stderr: ${first.stderr})`);
@@ -134,6 +234,13 @@ describe("pb-plan-next-cli", () => {
       const twoPaths = pb(repo, "plan", "next", "docs/plan.md", "docs/other.md");
       const missing = pb(repo, "plan", "next", "docs/missing.md");
       const outsideRepo = pb(repo, "plan", "next", "../outside.md");
+      writePlan(repo, ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Solo", "", "- [ ] **Only task**", ""].join("\n"));
+      mkdirSync(join(repo.dir, ".pairingbuddy", "run"), { recursive: true });
+      const unitPath = join(repo.dir, ".pairingbuddy", "run", "unit.json");
+      writeFileSync(unitPath, "{}");
+      const noTasks = pb(repo, "plan", "next", "docs/plan.md");
+      writeFileSync(unitPath, "{not json");
+      const badJson = pb(repo, "plan", "next", "docs/plan.md");
 
       assert.equal(noPath.code, 2, `no path exit code (stderr: ${noPath.stderr})`);
       assert.ok(noPath.stderr.includes(usage), `no path prints the usage (stderr: ${noPath.stderr})`);
@@ -145,6 +252,10 @@ describe("pb-plan-next-cli", () => {
       assert.match(missing.stderr, /cannot be read/, "missing plan says it cannot be read");
       assert.equal(outsideRepo.code, 1, `outside path exit code (stderr: ${outsideRepo.stderr})`);
       assert.match(outsideRepo.stderr, /outside the repo/, "outside path says it is outside the repo");
+      assert.equal(noTasks.code, 1, `unit.json without tasks exit code (stderr: ${noTasks.stderr})`);
+      assert.match(noTasks.stderr, /no tasks list/, "unit.json of {} says it has no tasks list");
+      assert.equal(badJson.code, 1, `invalid unit.json exit code (stderr: ${badJson.stderr})`);
+      assert.match(badJson.stderr, /unreadable/, "invalid unit.json says it is unreadable");
     } finally {
       rmSync(outside, { force: true });
     }

@@ -162,7 +162,7 @@ describe("pb human accept", () => {
 
   test("an argument is a usage error", () => {
     const repo = makeRepo();
-    assert.equal(refused(pb(repo, "human", "accept", "all"), 2), "pb: usage: pb human accept\n");
+    assert.equal(refused(pb(repo, "human", "accept", "all"), 2), "pb: usage: pb human accept [--legacy <unit> --plan <plan.md>]\n");
   });
 
   test("a changed test-config with no ledger edit pins the new hash and records the acceptance, and nothing else", () => {

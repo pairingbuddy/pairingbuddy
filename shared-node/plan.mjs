@@ -1,6 +1,7 @@
 // Plan parser: turns plan markdown into units (one per PR: group, or per tracer that has no PR group) with their tasks.
-// It does no I/O itself: it imports only the plan-boxes heading, title and unit name rules, so the titles and names it
-// reports are the ones pb task end and pb publish look for.
+// It does no I/O itself: it imports only node:path's posix normalise and the plan-boxes heading, title and unit name
+// rules, so the titles and names it reports are the ones pb task end and pb publish look for.
+import { posix } from "node:path";
 import { boxesTitled, boxLabel, checkboxes, HEADING, headingName, isPrHeading, PR_LINE } from "./plan-boxes.mjs";
 
 const FENCE = /^\s*(```|~~~)/;
@@ -50,7 +51,7 @@ function bodyText(bodyLines) {
 const isIndented = (line) => /^\s/.test(line);
 
 // A unit waiting for its first box: its name and the PR: / Legacy lines seen under its heading.
-const opening = (name, direct) => ({ name, direct, pr: null, legacy: false });
+const opening = (name, direct, headingLine) => ({ name, direct, headingLine, pr: null, legacy: false });
 
 // What a heading opens: { direct, name } for a PR: group (direct false) or a level-3 tracer (direct true), or null when it
 // opens neither. The name may be empty.
@@ -126,7 +127,7 @@ export function parsePlan(text) {
   const lines = linesWithFences(text);
   const hasTasks = lines.some(({ line, fenced }) => !fenced && isTasksHeading(headingOf(line)));
   const openUnit = (waiting, owner) => {
-    const opened = { unit: waiting.name, tracer: owner?.name ?? null, pr: waiting.pr, legacy: waiting.legacy, tasks: [] };
+    const opened = { unit: waiting.name, tracer: owner?.name ?? null, pr: waiting.pr, legacy: waiting.legacy, headingLine: waiting.headingLine, tasks: [] };
     units.push(opened);
     if (waiting.direct) directUnits.push({ opened, owner });
     else if (owner) groupedTracers.add(owner);
@@ -136,7 +137,7 @@ export function parsePlan(text) {
     if (openBody) openBody.task.body = bodyText(openBody.lines);
     openBody = null;
   };
-  for (const { line, fenced } of lines) {
+  for (const [index, { line, fenced }] of lines.entries()) {
     const heading = fenced ? null : headingOf(line);
     const [box] = fenced || isIndented(line) ? [] : checkboxes(line);
     if (openBody && continuesBody(line)) {
@@ -155,7 +156,7 @@ export function parsePlan(text) {
     if (opens) {
       const { direct, name } = opens;
       if (direct) tracer = { name };
-      pending = direct || tracer ? opening(name, direct) : null; // a PR: group with no tracer opens no unit; any unit heading ends the previous one
+      pending = direct || tracer ? opening(name, direct, index) : null; // a PR: group with no tracer opens no unit; any unit heading ends the previous one
       unit = null;
     }
     if (pending && !fenced) notePendingLine(pending, line);
@@ -173,4 +174,44 @@ export function parsePlan(text) {
   const misplaced = directUnits.filter(({ owner }) => groupedTracers.has(owner)).map(({ opened }) => opened);
   const unitsOut = units.filter((u) => !misplaced.includes(u));
   return { units: unitsOut, next: firstUnchecked(unitsOut), problems: formatProblems(strays, misplaced, unitsOut, text) };
+}
+
+// Titles of the tasks recorded for a unit: the open unit's records count only for that unit, in the same plan (paths compare normalised).
+function recordedTitles(unit, plan, openUnit) {
+  const matches = openUnit?.unit === unit.unit && typeof openUnit.plan === "string" && posix.normalize(openUnit.plan) === posix.normalize(plan);
+  return new Set((matches ? openUnit.tasks : []).map((task) => task.title));
+}
+
+// Titles of the checked tasks of a unit that have no record: a box ticked by hand earns nothing.
+const handTicked = (unit, recorded) => unit.tasks.filter((task) => task.checked && !recorded.has(task.title)).map((task) => task.title);
+
+// The per-unit state:
+//   published   - the unit has a PR: line.
+//   open        - it has unchecked tasks and every checked one has a record.
+//   hand-ticked - it has a checked task with no record, next to unchecked ones.
+//   accepted    - it is fully checked and marked Legacy: accepted.
+//   unpublished - it is fully checked and every task is recorded.
+//   legacy      - it is fully checked and a task has no record.
+function unitState(unit, recorded) {
+  if (unit.pr) return "published";
+  if (unit.tasks.some((task) => !task.checked)) return handTicked(unit, recorded).length > 0 ? "hand-ticked" : "open";
+  if (unit.legacy) return "accepted";
+  return unit.tasks.every((task) => recorded.has(task.title)) ? "unpublished" : "legacy";
+}
+
+// The state of every unit, in order, under the same records planStep uses.
+export function unitStates(units, { plan, openUnit }) {
+  return units.map((unit) => unitState(unit, recordedTitles(unit, plan, openUnit)));
+}
+
+// The pure rule behind pb plan next: which task is next and whether anything stops the plan.
+export function planStep(units, context) {
+  const states = unitStates(units, context);
+  const at = states.findIndex((state) => state !== "published" && state !== "accepted");
+  if (at === -1) return { next: null, stop: null };
+  const [unit, state] = [units[at], states[at]];
+  if (state === "open") return { next: firstUnchecked([unit]), stop: null };
+  const stop = { reason: state, unit: unit.unit };
+  if (state === "hand-ticked") stop.tasks = handTicked(unit, recordedTitles(unit, context.plan, context.openUnit));
+  return { next: null, stop };
 }
