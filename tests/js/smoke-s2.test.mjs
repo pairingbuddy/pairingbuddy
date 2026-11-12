@@ -5,10 +5,11 @@ import assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { Budget, SmokeError, SpendCapError, claudeCommand, cleanEnv, refuseRepoInsidePlugin, runClaude } from "../smoke/claude-run.mjs";
-import { FEATURE_TASK, TASK, assertControlFlow, makeRepo, parseOptions } from "../smoke/s2.mjs";
+import { FEATURE_TASK, TASK, assertControlFlow, assertTaskEnded, codeLedger, makeRepo, makeS2Repo, parseOptions } from "../smoke/s2.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 
@@ -288,4 +289,34 @@ test("a used-up budget spawns nothing", async () => {
   budget.charge(1);
 
   await assert.rejects(runClaude(tmpdir(), "go", budget), SpendCapError);
+});
+
+test("unit open succeeds in an S2 repo", (t) => {
+  const { repo } = makeS2Repo(tempDir(t));
+
+  const run = spawnSync(process.execPath, [join(ROOT, "cli", "pb.mjs"), "unit", "open", "--type", "fix", "--slug", "x"], { cwd: repo, env: cleanEnv(), encoding: "utf8" });
+
+  assert.equal(run.status, 0, `pb unit open exited ${run.status}: ${run.stderr}${run.stdout}`);
+  assert.equal(JSON.parse(run.stdout).ok, true, run.stdout);
+});
+
+test("ledger choice picks last code snapshot before publish", () => {
+  const [codeA, codeB, publishC] = [{ kind: "code", id: "A" }, { kind: "code", id: "B" }, { kind: "publish", id: "C" }];
+
+  assert.equal(codeLedger([codeA, codeB, publishC]), codeB, "the last code snapshot, not the publish one");
+  assert.equal(codeLedger([]), null, "no snapshots means no ledger");
+});
+
+test("task ended check passes on pb task end output and fails without it", () => {
+  const ended = { t: 1, command: "pb task end", output: '{"ok":true,"removed":"/x/.pairingbuddy/run/task"}', isError: false };
+  const refused = { t: 2, command: "pb task end", output: "pb: stage code-tdd is not finished, so the task cannot end", isError: true };
+
+  assert.doesNotThrow(() => assertTaskEnded([refused, ended]), "a successful pb task end output passes");
+  assert.throws(() => assertTaskEnded([]), SmokeError, "no pb task end call fails");
+  assert.throws(() => assertTaskEnded([refused]), SmokeError, "only refused pb task end calls fail");
+  assert.throws(
+    () => assertTaskEnded([{ t: 3, command: "pb task end", output: '{"ok":false}', isError: false }]),
+    SmokeError,
+    "a non-error call whose JSON output lacks ok:true fails",
+  );
 });

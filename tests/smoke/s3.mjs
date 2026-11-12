@@ -41,7 +41,7 @@ import { readDraftArtifact } from "../../shared-node/pr-lint-run.mjs";
 import { FAKE_PR_URL, flagValues, installGhShim } from "../js/gh-shim.mjs";
 import { BUDGET_USD, Budget, REPO_ROOT, SmokeError, cleanEnv, runClaude } from "./claude-run.mjs";
 import { RunRecorder } from "./run-recorder.mjs";
-import { RECORDINGS, TASK, assertControlFlow, git, makeRepo, position, runLog } from "./s2.mjs";
+import { RECORDINGS, TASK, assertControlFlow, claudeEnv, codeLedger, codeSnapshots, git, makeS2Repo, position, runLog } from "./s2.mjs";
 
 const BASE = "develop";
 const UNIT = { type: "fix", slug: "apply-discount" };
@@ -64,14 +64,10 @@ const remoteHeads = (remote) => Object.fromEntries(bare(remote, "for-each-ref", 
 const remotePrivateRefs = (remote) => bare(remote, "for-each-ref", "--format=%(refname)", "refs/pairingbuddy/").split("\n").filter(Boolean);
 
 // S2's repo left on main, with a bare origin that has main and develop at the same commit, and pr.base_branch develop
-// in git-config.json before anything reads it, so the unit's git-config hash is this file's. files goes to makeRepo.
+// in git-config.json before anything reads it, so the unit's git-config hash is this file's. files goes to makeS2Repo.
 export function makeS3Repo(record, type = "bug_fix", files = {}) {
-  const repo = makeRepo(record, type, { onMain: true, files });
-  const remote = join(record, "origin.git");
-  execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote], { env: cleanEnv() });
-  git(repo, "remote", "add", "origin", remote);
-  git(repo, "push", "-q", "origin", "main", `main:refs/heads/${BASE}`);
-  git(repo, "remote", "set-head", "origin", "main");
+  const { repo, remote } = makeS2Repo(record, type, { files });
+  git(repo, "push", "-q", "origin", `main:refs/heads/${BASE}`);
   writeFileSync(join(repo, ".pairingbuddy", "git-config.json"), `${JSON.stringify({ ...DEFAULTS, pr: { ...DEFAULTS.pr, base_branch: BASE } }, null, 2)}\n`);
   return { repo, remote };
 }
@@ -81,16 +77,6 @@ function humanPb(repo, gh, pluginDir, ...args) {
   const { status, stdout, stderr } = spawnSync(process.execPath, [join(pluginDir, "cli", "pb.mjs"), ...args], { cwd: repo, env: { ...cleanEnv(), ...gh.env() }, encoding: "utf8" });
   return { code: status, stdout, stderr };
 }
-
-// The env every claude run gets: S2's clean env with the shim first on PATH. No ANTHROPIC_API_KEY may reach a run.
-function claudeEnv(gh) {
-  const env = { ...cleanEnv(), ...gh.env() };
-  check(!Object.hasOwn(env, "ANTHROPIC_API_KEY") && !Object.hasOwn(env, "ANTHROPIC_AUTH_TOKEN"), "an Anthropic key would reach the run");
-  return env;
-}
-
-// The task's own ledger: the last snapshot of the code run, which pb task end removed before the publish run opened.
-const codeLedger = (snapshots) => snapshots.filter(({ kind }) => kind === "code").at(-1) ?? null;
 
 function assertUnitRecord(repo, remote, unit) {
   const head = git(repo, "rev-parse", "HEAD").trim();
@@ -262,7 +248,7 @@ async function runS3({ budgetUsd, record, out, pluginDir }) {
     result.runs.run1 = runSummary(current.budget, current.recorder);
     const task = codeLedger(current.recorder.snapshots);
     check(task !== null, "no code run was seen");
-    assertControlFlow(task, runLog(repo), { snapshots: current.recorder.snapshots.filter(({ kind }) => kind === "code"), agents: current.recorder.spawns() });
+    assertControlFlow(task, runLog(repo), { snapshots: codeSnapshots(current.recorder.snapshots), agents: current.recorder.spawns() });
     check(existsSync(ledgerOf(repo)), "no publish run is open after run 1");
     const unit = readJson(join(runDirOf(repo), "unit.json"));
     assertUnitRecord(repo, remote, unit);
