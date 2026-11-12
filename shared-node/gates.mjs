@@ -7,6 +7,7 @@ import { isDeepStrictEqual } from "node:util";
 
 import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus } from "./stages.mjs";
 import { buildKey } from "./keys.mjs";
+import { keptIntakeReturn } from "./stage-run.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
@@ -230,11 +231,14 @@ function policyReason({ policy: { mode } }) {
 
 const SCOPE_GATE = "G:scope";
 
-// The scope lens may flag that the scope does not serve the stated intent; a survivor asks even under auto unless it is explicitly non-blocking (blocking: false).
+// A lens survivor counts as open unless it is explicitly non-blocking (blocking: false).
+const blockingSurvivors = (report) => (report.survivors ?? []).filter((finding) => finding?.blocking !== false);
+
+// The scope lens may flag that the scope does not serve the stated intent; a blocking survivor asks even under auto.
 function scopeReason(root, ledger) {
   const report = standingReport(taskReportPath(root), ledger);
   if (report === null) return null;
-  const blocked = (report.survivors ?? []).some((finding) => finding?.blocking !== false);
+  const blocked = blockingSurvivors(report).length > 0;
   return blocked ? "the scope lens found the scope may not serve the stated intent" : null;
 }
 
@@ -252,12 +256,21 @@ function selectorReason(root, ledger, contract) {
 }
 
 function classifierReason(root, ledger) {
-  const pbKey = buildKey({ stage: "intake", role: "classify-task", item: null, round: 1, attempt: ledger.stage.attempt });
-  const confidence = parsedOrNull(join(artifactsDir(root), `${pbKey}.json`))?.confidence;
+  const confidence = keptIntakeReturn(artifactsDir(root), ledger.stage.attempt)?.content?.confidence;
   return confidence === "certain" ? null : "the classifier does not report certain";
 }
 
-const typeReason = (root, ledger, contract) => selectorReason(root, ledger, contract) ?? classifierReason(root, ledger);
+function lensReason(root, ledger) {
+  const report = standingReport(taskReportPath(root), ledger);
+  if (report === null) return null;
+  // Intake has one lens, so one kept fix group covers all its findings. G:type is due only after intake is done, and that needs
+  // `stage finish`, which the script reaches only after fixStop let it through: a fix still standing then was kept by the course
+  // check (a stop before the check asks at every gate first). A rolled-back fix was moved to rejected/, so the kept return is a fix.
+  const fixed = keptIntakeReturn(artifactsDir(root), ledger.stage.attempt)?.role === "fix";
+  return blockingSurvivors(report).length > 0 && !fixed ? "the classification lens has an open finding" : null;
+}
+
+const typeReason = (root, ledger, contract) => selectorReason(root, ledger, contract) ?? classifierReason(root, ledger) ?? lensReason(root, ledger);
 
 // The reasons only one gate has, by gate name.
 const GATE_REASONS = {

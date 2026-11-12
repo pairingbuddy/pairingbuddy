@@ -70,6 +70,9 @@ export function validateStages(contract) {
   return [...problems, ...stageCapProblems(contract)];
 }
 
+// The task type when the contract migrates it, else null: the one rule for what the ledger taskType may hold.
+export const migratedType = (stages, taskType) => (stages.migratedTypes.includes(taskType) ? taskType : null);
+
 export function loadStages(pluginRoot) {
   const path = join(pluginRoot, "contracts", "stages.json");
   const contract = JSON.parse(readFileSync(path, "utf8"));

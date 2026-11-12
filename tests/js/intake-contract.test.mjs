@@ -65,3 +65,17 @@ test("classify-task-states-the-one-input-rule-and-never-waits-for-a-human", () =
   assert.match(agent, /With a `<paths>` block: where the steps below say to ask the human, do not guess and do not ask\. No human is reachable from a stage/, "the agent asks no human under a paths block");
   assert.match(agent, /With a `<paths>` block: write no files/, "File Creation Restrictions say a paths block writes no files");
 });
+
+test("intake-row-classification-sonnet-brief-refute-none", () => {
+  const lenses = JSON.parse(readFileSync(new URL("../../contracts/lenses.json", import.meta.url), "utf8"));
+
+  const row = lenses.rows.find((candidate) => candidate.stage === "intake");
+
+  assert.equal(row.lenses.length, 1, "intake has exactly one lens");
+  assert.equal(row.lenses[0].name, "classification", "the lens is classification");
+  assert.equal(row.lenses[0].model, "sonnet", "the classification lens runs at sonnet");
+  assert.equal(typeof row.lenses[0].brief, "string", "the classification lens has a brief");
+  assert.notEqual(row.lenses[0].brief.trim(), "", "the brief is not empty");
+  assert.equal(row.refute, "none", "intake has no refuters");
+  assert.equal(row.fix, "course-checker", "intake fixes through the course-checker");
+});

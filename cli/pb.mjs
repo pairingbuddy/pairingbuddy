@@ -25,8 +25,8 @@ import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
-import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
-import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, nextAttempt, nextStage } from "../shared-node/stages.mjs";
+import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
+import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
@@ -1826,9 +1826,11 @@ function appendRollbackNote(root, stage, number, key, body) {
 
 // Record a rollback in the ledger, optionally dropping a commit that is no longer one of the run's commits.
 // When `capReason` is given it becomes the run's stop in the same update, so the rollback and the stop land together.
-function recordRollback(path, entry, droppedSha, capReason) {
+// `restoredType` is only given for an intake rollback, where null clears the type; leave the key out to keep it as is.
+function recordRollback(path, entry, { droppedSha, capReason, ...restored }) {
   updateLedger(path, (current) => ({
     ...current,
+    ...("restoredType" in restored ? { taskType: restored.restoredType } : {}),
     commits: droppedSha ? current.commits.filter((c) => c !== droppedSha) : current.commits,
     fixes: { ...current.fixes, rollbacks: [...(current.fixes?.rollbacks ?? []), entry] },
     ...(capReason ? { stop: { reason: capReason, seq: current.seq + 1, code: ATTEMPT_CAP } } : {}),
@@ -1945,9 +1947,14 @@ function rollback(args) {
   const maxAttempts = LENS_MAP.maxAttempts;
   const stopped = failedAttempts >= maxAttempts;
   const capReason = stopped ? `${ATTEMPT_CAP}: stage ${parts.stage} rolled back ${failedAttempts} fix attempts, its cap of ${maxAttempts}` : null;
-  recordRollback(path, entry, record?.sha, capReason);
+  const restored = parts.stage === "intake" ? { restoredType: keptTypeOf(root, parts.attempt) } : {};
+  recordRollback(path, entry, { droppedSha: record?.sha, capReason, ...restored });
   if (stopped) writeReport(reportPathOf(root), buildReport(readLedger(path), artifactsDirOf(root)));
   return { ok: true, key, note: wrong, failedAttempts, maxAttempts, stopped };
+}
+
+function keptTypeOf(root, attempt) {
+  return migratedType(loadStages(PLUGIN_ROOT), keptIntakeReturn(artifactsDirOf(root), attempt)?.content?.task_type);
 }
 
 export const VERBS = {

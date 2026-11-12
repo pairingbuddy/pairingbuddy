@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The `intake` stage runs `classify-task` under the one input rule with a confidence (new `classify-task-result.schema.json`) and comes first in every task path. `G:type` is now conditional: under `auto` it passes only when the classifier is certain, and it asks when a runner lacks `selector_template` (moved from `pb run open`).
+- Intake (Task 92a) runs one Sonnet classification lens with no refuters. A finding re-runs `classify-task` with the note through the course-checked fix loop (artifact rollback, cap 5). `G:type` also asks while a blocking classification finding stands with no kept fix. The run's type follows the kept classification, and an artifact rollback at intake puts the kept type back.
 - `pb run open` no longer reads `task-classification.json`; the tap writes `taskType` from the intake return. The prose path keeps its legacy file.
 - New `pb spike setup` records the spike setup in `run/task/spike.json` after `G:type`, with the refusals `pb run open` had.
 - The coding router no longer classifies before a non-Solo run; the branch type is the main session's guess.

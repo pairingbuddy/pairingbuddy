@@ -3,6 +3,11 @@ export const meta = { name: 'intake', description: 'Internal stage, started by t
 if (args === undefined) return { started: false };
 
 const RESULT_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Classify Task Result","description":"Return of the classify-task agent when its prompt gives paths: the pb key it was given, any open ambiguity, the task type, how sure it is, and why","type":"object","required":["pb_key","ambiguity","task_type","confidence","rationale"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question the task left unresolved, or an empty string"},"task_type":{"type":"string","enum":["new_feature","bug_fix","refactoring","config_change","spike"],"description":"The classification of the task"},"confidence":{"type":"string","enum":["certain","likely","unsure"],"description":"certain only when the task leaves no reasonable doubt between types"},"rationale":{"type":"string","description":"Why this classification was chosen"}},"additionalProperties":false};
+const LENSES = {"maxAttempts":5,"rows":[{"row":"intake","stage":"intake","lenses":[{"name":"classification","model":"sonnet","brief":"Check that the task type fits what the task text asks for (new feature, bug fix, refactoring, config change or spike), and that the stated confidence is justified by the text."}],"refute":"none","fix":"course-checker"},{"row":"plan-requirements","stage":"plan-requirements","lenses":[{"name":"ambiguity","model":"sonnet"},{"name":"testability","model":"sonnet"},{"name":"scope","model":"sonnet"},{"name":"conflict","model":"sonnet"},{"name":"unknowns","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"bias":true,"synth":true,"refute":"one","maxRefuters":10,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"plan-architecture","stage":"plan-architecture","lenses":[{"name":"enforcement","model":"opus"},{"name":"simplicity","model":"sonnet"},{"name":"testability","model":"sonnet"},{"name":"migration","model":"opus"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"bias":true,"synth":true,"refute":"one","maxRefuters":10,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"plan-tracers","stage":"plan-tracers","lenses":[{"name":"slice-thinness","model":"sonnet"},{"name":"ordering","model":"sonnet"},{"name":"pr-unit-fit","model":"sonnet"},{"name":"dependency-truth","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"synth":true,"refute":"one","maxRefuters":10,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"plan-sequence","stage":"plan-sequence","lenses":[{"name":"ordering","model":"sonnet"},{"name":"task-size","model":"sonnet"},{"name":"testable-acceptance-criteria","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"scenarios","stage":"scenarios","lenses":[{"name":"necessity","model":"sonnet"},{"name":"pyramid-level","model":"sonnet"},{"name":"patterns","model":"sonnet"},{"name":"anti-patterns","model":"sonnet"}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"tdd","stage":"tdd","lenses":[],"agents":[{"role":"lens","phase":"REFACTOR","item":"t3"}],"refute":"none","fix":"none"},{"row":"refactor-scope","stage":"refactor-scope","lenses":[{"name":"scope-serves-intent","model":"sonnet","brief":"Check that every issue in the scope serves the refactoring the task states, that the scope leaves out nothing the task asks for, and that no issue would change behaviour."}],"refute":"none","fix":"none"},{"row":"refactor-apply","stage":"refactor-apply","lenses":[],"agents":[{"role":"refactor-code","item":"step1"}],"refute":"none","fix":"none"},{"row":"config","stage":"code-config","lenses":[],"agents":[{"role":"apply-config-change","item":null}],"refute":"none","fix":"none"},{"row":"safety-net, new_feature and bug_fix","stage":"code-safety-net","taskTypes":["new_feature","bug_fix"],"lenses":[{"name":"code","model":"sonnet"},{"name":"tests","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"safety-net, refactoring","stage":"code-safety-net","taskTypes":["refactoring"],"lenses":[{"name":"behaviour-preservation","model":"opus"},{"name":"tests","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":6,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"safety-net, config_change","stage":"code-safety-net","taskTypes":["config_change"],"lenses":[{"name":"config-fit","model":"sonnet"},{"name":"corpus-misalignment","model":"sonnet","needsCorpus":true}],"refute":"one","maxRefuters":2,"maxFindingsPerLens":10,"fix":"course-checker"},{"row":"spike-unit","stage":"spike-unit","lenses":[],"agents":[{"role":"explore-spike-unit","item":"u1"}],"refute":"none","fix":"none"},{"row":"spike-document","stage":"spike-document","lenses":[{"name":"claims-against-recorded-evidence","model":"sonnet","brief":"Check every claim in the write-up (the document in the subject) against the recorded findings, the spike setup and the spike code they reference (the committed code under the setup's code_location). Flag any claim they do not show, any claim stated more strongly than they show, and any recorded finding the write-up leaves out or misstates."}],"refute":"none","fix":"course-checker"},{"row":"pr-draft","stage":"pr-draft","lenses":[{"name":"claims","model":"sonnet","brief":"Check every statement in the title and body against the unit diff (subject_diff) and the recorded runs in the unit record (reportSummary, gateSources, blocking, lessons). Flag any claim the diff or the record does not show, and any claim stated more strongly than they show. In a refresh there is no unit record: check against the diff and the Findings and Verification sections of the old body (old_body)."},{"name":"permanence","model":"sonnet","brief":"Read the title and body as they will read in git log on main a year from now, and for each sentence ask whether that reader would need it. Flag text that is true only while the pull request is open, such as review requests, stacking notes, links to temporary state, 'this PR', 'for now' and dates relative to today. Flag sentences that reader would not need: filler, hype, restating what the diff already shows, or repeating another section."}],"wiresAll":true,"refute":"none","fix":"course-checker"},{"row":"design-domain, design-gallery","stage":"design-domain","lenses":[],"agents":[{"role":"design-ux-explorer","item":null}],"refute":"none","fix":"none"},{"row":"design-domain, design-gallery","stage":"design-gallery","lenses":[],"agents":[{"role":"design-ux-gallery-generator","item":null}],"refute":"none","fix":"none"},{"row":"design-build critique","stage":"design-build","lenses":[{"name":"mental-model-alignment","model":"sonnet"},{"name":"information-architecture","model":"sonnet"},{"name":"affordances","model":"sonnet"},{"name":"cognitive-load","model":"sonnet"},{"name":"state-design","model":"sonnet"},{"name":"flow-integrity","model":"sonnet"}],"refute":"none","fix":"none"}],"lightReview":{"model":"sonnet","maxFocuses":2,"rule":{"test":"test-quality","production":"code-smell"},"catalog":[{"name":"code-smell","brief":"Look for long functions, deep nesting, dead code, magic values and needless complexity. Do not suggest behaviour the tests do not require."},{"name":"naming-and-domain","brief":"Look for names that hide intent or drift from the domain terms used elsewhere."},{"name":"duplication-against-corpus","brief":"Look for logic that repeats something that already exists in the corpus or elsewhere in the change."},{"name":"test-quality","brief":"Look for unclear test structure, missing or weak assertions, logic in tests, shared state and other test smells. Do not report missing scenarios or coverage gaps."},{"name":"test-level","brief":"Look for a test at the wrong pyramid level, mocking what it should exercise or exercising what it should mock."},{"name":"design-fit","brief":"Look for responsibilities, coupling and dependencies that do not fit the surrounding design. Do not suggest behaviour the tests do not require."}]}};
+const LENS_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Lens Result","description":"Return of the lens agent: the pb key it was given, any open ambiguity and its findings","type":"object","required":["pb_key","ambiguity","findings"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":["string","null"],"description":"An open question that affected the review, or null"},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["rule","severity","kind","claim","where"],"properties":{"rule":{"type":"string"},"severity":{"type":"string","enum":["high","medium","low"]},"kind":{"type":"string","enum":["fix-here","risk","drift"]},"claim":{"type":"string","description":"What is wrong, in one or two sentences, grounded in evidence the agent read"},"where":{"type":"string","description":"A file path with an optional line, or the subject item"}}}}},"additionalProperties":false};
+const REFUTER_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Refuter Verdict","description":"Return of a refuter: the finding it attacked and whether that finding stood. The finding id is the same value as the item in its pb_key and label, so a verdict joins to its finding without reading text","type":"object","required":["pb_key","finding_id","verdict","ambiguity"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"finding_id":{"type":"string","pattern":"^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*-[1-9][0-9]*$","description":"The finding this refuter attacked: the item in its pb_key"},"verdict":{"type":"string","enum":["survives","refuted"],"description":"survives: the attack failed and the finding stands. refuted: the assumption it stood on does not hold"},"ambiguity":{"type":["string","null"],"description":"What in the finding or its evidence was unclear enough to affect the verdict, or null when nothing was"}},"additionalProperties":false};
+const STAGES = {"v":1,"defaultTaskType":"config_change","maxAgents":1000,"stageMaxAgents":{"code-tdd":600},"migratedTypes":["config_change","bug_fix","new_feature","refactoring","spike"],"newPathAgents":["apply-config-change","course-checker","lens","refuter","runner"],"gateClasses":{"continue":{"auto":"passes when evidence is complete and no stop condition applies"},"conditional":{"auto":"passes only when the classifier reports certain"},"decide":{"auto":"always asks the human"}},"taskTypes":{"config_change":{"nodes":[{"name":"intake","gate":"G:type","evidence":["artifact:classify-task"]},{"name":"code-config","gate":null,"evidence":["artifact:apply-config-change","checkpoint:config"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:type":{"class":"conditional"},"G:task-end":{"class":"continue"}}},"bug_fix":{"nodes":[{"name":"intake","gate":"G:type","evidence":["artifact:classify-task"]},{"name":"code-scenarios","gate":"G:scenarios","evidence":["artifact:enumerate-scenarios-and-test-cases"]},{"name":"code-tdd","gate":null,"evidence":["artifact:create-test-placeholders","checkpoint:placeholders","tests:cycle","artifact:verify-test-coverage"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:type":{"class":"conditional"},"G:scenarios":{"class":"continue"},"G:task-end":{"class":"continue"}}},"new_feature":{"nodes":[{"name":"intake","gate":"G:type","evidence":["artifact:classify-task"]},{"name":"code-scenarios","gate":"G:scenarios","evidence":["artifact:enumerate-scenarios-and-test-cases"]},{"name":"code-tdd","gate":null,"evidence":["artifact:create-test-placeholders","checkpoint:placeholders","tests:cycle","artifact:verify-test-coverage"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:type":{"class":"conditional"},"G:scenarios":{"class":"continue"},"G:task-end":{"class":"continue"}}},"refactoring":{"nodes":[{"name":"intake","gate":"G:type","evidence":["artifact:classify-task"]},{"name":"code-refactor-scope","gate":"G:scope","evidence":["tests:full","artifact:scope-refactoring"]},{"name":"code-refactor-apply","gate":null,"evidence":["checkpoint:refactor-step"]},{"name":"code-safety-net","gate":"G:task-end","evidence":["artifact:update-documentation","checkpoint:docs","tests:full"]}],"gates":{"G:type":{"class":"conditional"},"G:scope":{"class":"continue"},"G:task-end":{"class":"continue"}}},"publish":{"nodes":[{"name":"pr-draft","gate":"G:publish","evidence":["artifact:draft-pull-request"]}],"gates":{"G:publish":{"class":"continue"}}},"refresh":{"nodes":[{"name":"pr-draft","gate":"G:publish","evidence":["artifact:draft-pull-request"]}],"gates":{"G:publish":{"class":"continue"}}},"spike":{"nodes":[{"name":"intake","gate":"G:type","evidence":["artifact:classify-task"]},{"name":"code-spike-unit","gate":"G:unit","repeat":true,"evidence":["artifact:explore-spike-unit","checkpoint:spike-unit"]},{"name":"code-spike-document","gate":"G:task-end","evidence":["artifact:document-spike","checkpoint:spike-doc"]}],"gates":{"G:type":{"class":"conditional"},"G:unit":{"class":"continue"},"G:task-end":{"class":"continue"}}}}};
+const COURSE_VERDICT_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Course Verdict","description":"Return of a course checker: its judgement of one fix group's diff against the group's finding(s)","type":"object","required":["pb_key","finding_id","verdict","mistake","what_went_wrong"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"finding_id":{"type":"string","pattern":"^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*-[1-9][0-9]*$","description":"The finding that decided the verdict"},"verdict":{"type":"string","enum":["better","wrong-direction","broke-something"],"description":"How the fix went: better means it moved toward the finding, wrong-direction means it moved away from the finding, broke-something means it broke working behaviour"},"mistake":{"type":"string","enum":["none","missed-finding","changed-behaviour","out-of-scope","weakened-tests","new-defect","other"],"description":"The kind of mistake the fix made; none only with better"},"what_went_wrong":{"type":"string","description":"What went wrong, empty for better"}},"additionalProperties":false};
 const RUNNER_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Runner Result","description":"Return of the runner agent: the pb key it was given and the CLI's last exit code and its output, relayed unchanged. Evidence lives in the ledger, written by the CLI","type":"object","required":["pb_key","cli_exit_code","cli_output"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"cli_exit_code":{"type":"integer","description":"Exit code of the last pb command run: 0 when it was recorded, not when the tests passed"},"cli_output":{"type":"string","description":"What each pb command printed, unchanged, in order"}},"additionalProperties":false};
 
 // One course-checker call per fix group. It needs these names from elsewhere: buildKey, buildLabel and fixAttemptRound (from the stage's pb-inline-module lines: keys, labels), asPromptData and pinnedKey (from the other shared sources), and agent (from the workflow runtime).
@@ -617,6 +622,113 @@ function readLabel(text) {
   }
 }
 
+// Ranks, caps and settles what the lenses returned. Pure, with no imports, so the bundler can inline it into a workflow
+// and the stage report can run the same rules over the recorded returns.
+
+// A finding with a rule is blocking; one without is demoted to low severity.
+function tagFinding(lensName, finding, n) {
+  const hasRule = String(finding.rule ?? '').trim() !== '';
+  return { ...finding, id: `${lensName}-${n + 1}`, ...(hasRule ? { blocking: true } : { blocking: false, severity: 'low' }) };
+}
+
+// The lens a finding came from: tagFinding's id rule (`<lens>-<n>`) read backwards. Keep the two together.
+function lensOfFinding(finding) {
+  return finding.id.replace(/-\d+$/, '');
+}
+
+// A stage's lens config from its row in lenses.json: the one shape lensAttack is given and the report reads, so both
+// apply the same lenses, refute setting and caps. stage is the stage name, which a row names bare or with the code- prefix. A row with taskTypes (the
+// safety-net rows, one per task type) is picked by taskType and wires all its lenses; so does a row with wiresAll true
+// (pr-draft, which has no task types). Any other row wires one lens, the first. The stages whose rows have no lens call yet get no lenses.
+function wiredLensConfig(lensMap, stage, taskType) {
+  const rows = lensMap.rows.filter((candidate) => candidate.stage === stage || `code-${candidate.stage}` === stage);
+  const row = rows.find((candidate) => candidate.taskTypes?.includes(taskType)) ?? rows.find((candidate) => candidate.taskTypes === undefined);
+  if (row === undefined) return { lenses: [] };
+  const { refute, maxRefuters, maxFindingsPerLens } = row;
+  return { lenses: row.taskTypes === undefined && row.wiresAll !== true ? row.lenses.slice(0, 1) : row.lenses, refute, maxRefuters, maxFindingsPerLens };
+}
+
+// A verdict counts only for the finding it was sent for: the refuter returns the finding_id it believes it attacked, and a
+// verdict naming another id is dropped, so that finding stays unrefuted. sentId is the id the workflow sent, which the
+// refuter's key and label carry too. Returns the verdict, or null.
+function acceptVerdict(sentId, verdict) {
+  return verdict !== null && verdict !== undefined && verdict.finding_id === sentId ? verdict : null;
+}
+
+const KIND_ORDER = ['fix-here', 'risk', 'drift'];
+const SEVERITY_ORDER = ['high', 'medium', 'low'];
+// A missing or unknown value sorts last. Array.prototype.sort is stable, so ties keep lens then finding order.
+const rankIn = (field, order) => (finding) => {
+  const at = order.indexOf(finding[field]);
+  return at === -1 ? order.length : at;
+};
+const kindRank = rankIn('kind', KIND_ORDER);
+const severityRank = rankIn('severity', SEVERITY_ORDER);
+const byRank = (a, b) => kindRank(a) - kindRank(b) || severityRank(a) - severityRank(b);
+
+const hasFindings = (result) => result !== null && result !== undefined && Array.isArray(result.findings);
+
+// config: { refute, maxRefuters, maxFindingsPerLens }, as in wiredLensConfig. How many top-ranked findings get a refuter;
+// null when the stage does not refute.
+function refuterCountOf({ refute, maxRefuters }) {
+  return refute === undefined || refute === 'none' ? null : maxRefuters;
+}
+
+// returns: one { lens: { name }, result } per configured lens, in lens order. A null or missing result means that lens is uncovered.
+// Each lens's findings are tagged and ranked and cut to config.maxFindingsPerLens (no cap keeps all), then all are ranked
+// together. The plan splits that list: sent is what goes to a refuter (the top maxRefuters, or everything when the stage
+// does not refute), pastCut is the rest, which nobody attacks.
+function rankLensReturns(returns, config) {
+  const refuterCount = refuterCountOf(config);
+  const perLens = returns.map(({ lens, result }) => {
+    const covered = hasFindings(result) && !(lens.needsCorpus === true && Array.isArray(config.corpus) && config.corpus.length === 0);
+    const ranked = (covered ? result.findings.map((finding, n) => tagFinding(lens.name, finding, n)) : []).sort(byRank);
+    const kept = config.maxFindingsPerLens === undefined ? ranked : ranked.slice(0, config.maxFindingsPerLens);
+    return { lens: lens.name, covered, kept, dropped: ranked.length - kept.length };
+  });
+  const ranked = perLens.flatMap(({ kept }) => kept).sort(byRank);
+  const cut = refuterCount === null ? ranked.length : refuterCount;
+  return {
+    refuting: refuterCount !== null,
+    uncovered: perLens.filter(({ covered }) => !covered).map(({ lens }) => lens),
+    trimmed: perLens.filter(({ dropped }) => dropped > 0).map(({ lens, dropped }) => ({ lens, dropped })),
+    sent: ranked.slice(0, cut),
+    pastCut: ranked.slice(cut),
+  };
+}
+
+// verdicts: the verdicts acceptVerdict let through, one per finding at most. They count only when the plan refutes. A sent
+// finding with a "refuted" verdict moves from survivors to refuted; a sent finding with no verdict is unrefuted, like every
+// finding past the cut, and unrefuted findings never block.
+// stopReason, attempts and lessons are neutral: lensAttack sets stopReason, and later tasks fill the rest.
+function settleLensRound({ refuting, uncovered, sent, pastCut }, verdicts = []) {
+  const byId = new Map(refuting ? verdicts.map((verdict) => [verdict.finding_id, verdict]) : []);
+  const answered = refuting ? sent.filter(({ id }) => byId.has(id)) : sent;
+  const unanswered = refuting ? sent.filter(({ id }) => !byId.has(id)) : [];
+  const isRefuted = ({ id }) => byId.get(id)?.verdict === 'refuted';
+  return {
+    uncovered,
+    refuted: answered.filter(isRefuted),
+    unrefuted: [...unanswered, ...pastCut].map((finding) => ({ ...finding, blocking: false })),
+    attempts: 0,
+    lessons: [],
+    stopReason: null,
+    survivors: answered.filter((finding) => !isRefuted(finding)),
+  };
+}
+
+// The report's one call: rank, then settle over the verdicts the tap recorded.
+function mergeLensReturns(returns, config, verdicts = []) {
+  return settleLensRound(rankLensReturns(returns, config), verdicts);
+}
+
+// Helpers for the mistake check: compare approaches and findings across attempts. No imports, no Node APIs.
+const normalizeApproach = (approach) => String(approach ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+// The file part of a finding's where: drops a trailing :line or :line-line suffix.
+const fileOfWhere = (where) => where.replace(/:\d+(-\d+)?$/, "");
+// The identity of a mistake: its rule, the file it is in and the mistake name, so line moves do not change it.
+const mistakeKey = (finding, mistake) => JSON.stringify([finding.rule, fileOfWhere(finding.where), mistake]);
+
 // One shell word for a path or an argument, unchanged when a shell would read it as it stands. Workflow bundles inline
 // this file, so it imports nothing.
 const SHELL_SAFE = /^[\w@%+=:,./-]+$/;
@@ -674,6 +786,32 @@ const prompt = [
 
 const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
-const runner = await runCommands(stage, ['stage finish']);
+const snapshot = await runCommands(stage, ['snapshot'], { round: 1 });
+const { paths: corpus, rolledBack } = snapshotResult(snapshot);
 
-return { started: true, pbKey, label, result, runner };
+// Spawns that are not lens agents: the classifier and the snapshot runner (already spawned) and the finishing runner (still to come).
+const reserved = 3;
+const maxAgents = STAGES.stageMaxAgents[stage] ?? STAGES.maxAgents;
+const agentBudget = maxAgents - reserved;
+
+const lensResult = await lensAttack({
+  stage, attempt: args.attempt, ...wiredLensConfig(LENSES, stage), agentBudget, corpus, subject: result, schema: LENS_SCHEMA, refuterSchema: REFUTER_SCHEMA,
+  checkSchema: COURSE_VERDICT_SCHEMA, priorRollbacks: rolledBack,
+  maxAttempts: LENSES.maxAttempts,
+  fix: {
+    mode: 'artifact',
+    beforeKey: 'classification',
+    agentType: `pairingbuddy:${role}`,
+    schemaByAgentType: { [`pairingbuddy:${role}`]: RESULT_SCHEMA },
+    instruction: 'Classify the task again from the classification at the classification path, resolving the findings below. Keep the classification where the findings do not show it is wrong.',
+    paths,
+    before: `.pairingbuddy/run/task/artifacts/${pbKey}.json`,
+  },
+});
+
+const stopped = await fixStop(stage, lensResult, 2);
+if (stopped !== null) return stopped;
+
+const runner = await runCommands(stage, ['stage finish'], { round: 2 });
+
+return { started: true, pbKey, label, result, snapshot, lensAttack: lensResult, runner };

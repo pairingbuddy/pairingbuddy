@@ -52,6 +52,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 With a `<paths>` block: where the steps below say to ask the human, do not guess and do not ask. No human is reachable from a stage. Report any doubt in `ambiguity` and lower `confidence`: `certain` only when the task leaves no reasonable doubt between types. `ambiguity` is only for a question a human must settle; with nothing open, return an empty string.
 
+With a `<paths>` block that includes `classification` (an earlier classification) and a prompt that lists findings, classify again taking the findings into account, and still return the same shape.
+
 1. Read the task from `.pairingbuddy/task.json`
 2. Analyze the task description and context
 3. Classify into one of five types:

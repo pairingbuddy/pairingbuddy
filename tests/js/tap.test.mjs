@@ -615,16 +615,6 @@ test("an intake classify-task return with an unmigrated task_type leaves the led
     assert.equal(res.code, 0);
     assert.equal(JSON.parse(readFileSync(repo.ledgerPath, "utf8")).taskType, null, "an unmigrated task type is not recorded");
   }));
-test("an intake fix return leaves the ledger taskType alone", () =>
-  withRepo({ ledger: { ...makeLedger({ name: "intake", status: "active", runId: null, attempt: 1 }), taskType: "bug_fix" } }, async (repo) => {
-    const k = buildKey({ stage: "intake", role: "fix", item: "g1", round: 2, attempt: 1 });
-
-    const res = await runTap(structured(repo.dir, k, { task_type: "spike" }, "pairingbuddy:classify-task"));
-
-    assert.equal(res.code, 0);
-    assert.ok(existsSync(repo.artifact(k)), "the fix return is filed");
-    assert.equal(JSON.parse(readFileSync(repo.ledgerPath, "utf8")).taskType, "bug_fix", "only the classify-task return sets the task type");
-  }));
 test("a classify-task return at a stage other than intake leaves the ledger taskType alone", () =>
   withRepo({ ledger: { ...makeLedger({ name: "code-scenarios", status: "active", runId: null, attempt: 1 }), taskType: "bug_fix" } }, async (repo) => {
     const k = buildKey({ stage: "code-scenarios", role: "classify-task", item: null, round: 1, attempt: 1 });
@@ -634,4 +624,15 @@ test("a classify-task return at a stage other than intake leaves the ledger task
     assert.equal(res.code, 0);
     assert.ok(existsSync(repo.artifact(k)), "the return is filed");
     assert.equal(JSON.parse(readFileSync(repo.ledgerPath, "utf8")).taskType, "bug_fix", "only the intake stage sets the task type");
+  }));
+
+test("an intake fix return from classify-task sets the ledger taskType", () =>
+  withRepo({ ledger: { ...makeLedger({ name: "intake", status: "active", runId: null, attempt: 1 }), taskType: "bug_fix" } }, async (repo) => {
+    const k = buildKey({ stage: "intake", role: "fix", item: "g1", round: 2, attempt: 1 });
+
+    const res = await runTap(structured(repo.dir, k, { task_type: "new_feature" }, "pairingbuddy:classify-task"));
+
+    assert.equal(res.code, 0);
+    assert.ok(existsSync(repo.artifact(k)), "the fix return is filed");
+    assert.equal(JSON.parse(readFileSync(repo.ledgerPath, "utf8")).taskType, "new_feature", "the kept classification sets the task type");
   }));

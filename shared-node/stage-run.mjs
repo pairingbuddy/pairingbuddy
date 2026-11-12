@@ -50,6 +50,14 @@ export function newestReturnMatching(artifactsDir, match) {
 // The newest return of a role under any key with no item, or null. keep decides which attempts count.
 export const newestReturn = (artifactsDir, role, keep = () => true) => newestReturnMatching(artifactsDir, (key) => key.role === role && key.item === null && keep(key));
 
+// The return the intake stage keeps standing at this attempt: its newest classify-task or fix return, as { role, content }, or null when none.
+// A rolled-back fix was moved to rejected/, so whatever stands here is the kept one.
+export function keptIntakeReturn(artifactsDir, attempt) {
+  const pbKey = newestReturnMatching(artifactsDir, (key) => key.stage === "intake" && key.attempt === attempt && (key.role === "classify-task" || key.role === "fix"));
+  if (pbKey === null) return null;
+  return { role: returnFileKey(`${pbKey}.json`).role, content: readReturn(artifactsDir, pbKey) };
+}
+
 // ---------- evidence ----------
 
 function artifactProblem(role, { artifactsDir, ledger: { stage } }) {
