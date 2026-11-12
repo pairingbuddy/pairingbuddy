@@ -347,7 +347,7 @@ class TestStrandedStage:
         recover(clone, tmp_path, "stranded-stage")
 
         assert ledger_of(clone)["stage"]["status"] == "failed"
-        assert_allowed(workflow_call(clone, tmp_path, "code-config", 2))
+        assert_allowed(workflow_call(clone, tmp_path, "intake", 2))
         assert ledger_of(clone)["stage"]["attempt"] == 2
 
 
@@ -365,7 +365,7 @@ class TestKilledSession:
         assert "drill-half-done.txt" in result.stdout
         assert not (clone / f"{LEDGER}.lock").exists()
         assert ledger_of(clone)["stage"]["status"] == "failed"
-        assert_allowed(workflow_call(clone, tmp_path, "code-config", 2))
+        assert_allowed(workflow_call(clone, tmp_path, "intake", 2))
 
 
 class TestKilledAtGate:
@@ -414,7 +414,7 @@ class TestSecondSession:
 
         recover(clone, tmp_path, "second-session")
 
-        assert_allowed(workflow_call(clone, tmp_path, "code-config", 2, mode="acceptEdits"))
+        assert_allowed(workflow_call(clone, tmp_path, "intake", 2, mode="acceptEdits"))
         ledger = ledger_of(clone)
         assert ledger["owner"]["sessionId"] == SESSION_B
         assert ledger["policy"]["mode"] == "acceptEdits"
