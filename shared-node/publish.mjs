@@ -101,8 +101,9 @@ const reasonsOf = (checks, facts) => checks.map((check) => check(facts)).filter(
 // Every reason that the evidence refuses the publish; empty when it stands.
 export const evidenceRefusals = (facts) => reasonsOf(EVIDENCE_CHECKS, facts);
 
-// The target branch: the configured pr.base_branch, else where the unit started.
-export const targetBranch = (gitConfig, unit) => gitConfig.pr?.base_branch ?? unit.base;
+// The target branch: a stacked unit targets its own base (the branch it is stacked on), since pr.base_branch
+// would skip the PR below it; otherwise the configured pr.base_branch, else where the unit started.
+export const targetBranch = (gitConfig, unit) => (unit.stackedOn ? unit.base : (gitConfig.pr?.base_branch ?? unit.base));
 
 // A unit branch the argv can carry: not a flag, and neither a forced (+) nor a split (:) refspec. git's own
 // check-ref-format is the CLI's second half of this.

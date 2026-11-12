@@ -22,6 +22,7 @@ import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, cha
 import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
 import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
+import { StackRefused, dependencyChainOf, stackFor } from "../shared-node/stack.mjs";
 import { isHumanTitle, parsePlan, planStep, unitStates } from "../shared-node/plan.mjs";
 import { shellWord } from "../shared-node/shell-word.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
@@ -214,7 +215,7 @@ function steppedPlan(plan) {
   refusePlanProblems(problems);
   const { next, stop } = planStep(units, context);
   if (stop) throw new Refusal(planStopMessage(root, plan, stop));
-  return { next, context };
+  return { next, context, units };
 }
 
 // Refuses when the open unit cannot take the plan's next task: it is a different unit, or it is fresh but already holds
@@ -1231,7 +1232,7 @@ function status(args) {
 }
 
 // The units list leaves out task bodies: only `next` carries one.
-const unitSummary = ({ unit, tracer, pr, legacy, tasks }, state) => ({ unit, tracer, pr, legacy, state, tasks: tasks.map(({ body, ...task }) => task) });
+const unitSummary = ({ unit, tracer, pr, legacy, dependsOn, tasks }, state) => ({ unit, tracer, pr, legacy, dependsOn, state, tasks: tasks.map(({ body, ...task }) => task) });
 
 // The open unit from run/unit.json, or null when none is open. A corrupt file or one without a tasks list refuses,
 // saying what could not be done (the consequence) and that nothing was changed (the outcome).
@@ -1704,14 +1705,18 @@ function renderBranchOrRefuse(template, values) {
 function unitOpen(args) {
   const type = flagValue(args, "--type");
   const slug = flagValue(args, "--slug");
-  const usage = "usage: pb unit open --type <type> --slug <slug> [--branch <name>]";
+  const usage = "usage: pb unit open --type <type> --slug <slug> [--branch <name>] [--plan <plan.md>]";
   if (args.includes("--yes")) throw new UsageError(`--yes is no longer accepted: pb unit open has no confirm step. ${usage}`);
   if (!type || !slug) throw new UsageError(usage);
+  const plan = args.includes("--plan") ? flagValue(args, "--plan") : null;
+  if (plan !== null && (!plan || plan.startsWith("--"))) throw new UsageError(usage);
   const chosen = chosenBranch(args);
   const root = toplevel();
   if (existsSync(unitPathOf(root))) throw new Refusal("a unit is already open (run/unit.json exists); nothing was touched");
   const dirty = remainingFiles(root);
   if (dirty.length > 0) throw new Refusal(`the tree is dirty, so the unit cannot open. Commit or remove these, nothing was touched: ${dirty.join(", ")}`);
+  const planned = plan === null ? null : steppedPlan(plan);
+  if (planned && !planned.next) throw new Refusal(`the plan ${plan} has no task left, nothing was touched`);
   const gitConfig = loadGitConfigOrRefuse(root);
   const branch = chosen ?? renderBranchOrRefuse(gitConfig.branch_template, { type, slug });
   assertUsableBranch(root, gitConfig, branch);
@@ -1722,16 +1727,59 @@ function unitOpen(args) {
   if (base === null) throw new Refusal("cannot tell the base branch");
   const git = (...a) => runGit(root, a);
   git("fetch", gitConfig.remote);
-  const baseSha = git("rev-parse", `${gitConfig.remote}/${base}`);
+  const stackOn = planned ? stackOnOf(root, planned, gitConfig) : undefined;
+  const parent = stackOn?.branch ?? base;
+  const baseSha = git("rev-parse", `${gitConfig.remote}/${parent}`);
   ensureRunRoot(root);
-  writeJsonAtomic(unitPathOf(root), newUnit({ branch, base, baseSha, configHash, gitConfigHash }), { exclusive: true });
+  const unit = newUnit({ branch, base: parent, baseSha, configHash, gitConfigHash });
+  if (stackOn) unit.stackedOn = withoutDepth(stackOn);
+  if (planned) Object.assign(unit, { unit: planned.next.unit, plan: planned.context.plan, tracer: planned.next.tracer });
+  writeJsonAtomic(unitPathOf(root), unit, { exclusive: true });
   try {
     git("switch", "-c", branch, baseSha);
   } catch (e) {
     rmSync(unitPathOf(root), { force: true });
     throw e;
   }
-  return { ok: true, branch, base, baseSha, doctor: doctorReport(root) };
+  return { ok: true, branch, base: parent, baseSha, doctor: doctorReport(root) };
+}
+
+// The stack rule's depth is for the rule's own cap; unit.json records only where the unit stacks.
+function withoutDepth({ depth: _depth, ...stackedOn }) {
+  return stackedOn;
+}
+
+const NOTHING_CHANGED_BUT_FETCH = "Nothing was changed but the fetch";
+
+// What a unit refused for its stack depth tells the human; only the gh fetch has happened by then.
+function stackStopMessage(stop) {
+  return `unit "${stop.unit}" stops at ${stop.gate}, reason ${stop.reason}: it would stack at depth ${stop.depth}, past the cap ${stop.cap} (pr.stack_depth). ${NOTHING_CHANGED_BUT_FETCH}; it waits until a base merges`;
+}
+
+// Reads with gh the PRs on the next unit's Depends on chain and returns where the D18 rule stacks it (undefined means the base).
+// Throws a Refusal when the rule refuses or stops.
+function stackOnOf(root, { next, units }, gitConfig) {
+  const prs = {};
+  for (const dep of dependencyChainOf(units, next.unit)) if (dep.pr) prs[dep.pr] = prViewOf(root, dep);
+  let result;
+  try {
+    result = stackFor({ units, unit: next.unit, prs, stackDepth: gitConfig.pr?.stack_depth });
+  } catch (e) {
+    if (e instanceof StackRefused) throw new Refusal(`unit "${next.unit}" cannot open: ${e.message}. ${NOTHING_CHANGED_BUT_FETCH}`);
+    throw e;
+  }
+  if (result.stop) throw new Refusal(stackStopMessage(result.stop));
+  return result.stackOn;
+}
+
+// A dependency PR gh cannot show, or shows as non-JSON, leaves its state unknown, so the unit refuses.
+function prViewOf(root, { unit, pr }) {
+  try {
+    return JSON.parse(gh(root, ["pr", "view", "--json", "state,headRefName", "--", pr]));
+  } catch (e) {
+    // A failed gh call's message carries its stderr; a parse error's carries what was wrong.
+    throw new Refusal(`gh pr view could not show unit "${unit}"'s PR ${pr}, so its state is unknown and the unit cannot open. Nothing was changed but the fetch: ${e.message}`);
+  }
 }
 
 const GH_UNAVAILABLE = "gh is unavailable: the git settings were not checked.";

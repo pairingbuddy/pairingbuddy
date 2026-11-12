@@ -6,8 +6,9 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { writeLedger } from "../../shared-node/ledger.mjs";
 import { join } from "node:path";
-import { env, makeRepo, pb, pbWithEnv } from "./cli-repo-fixture.mjs";
+import { env, makeRepo, pb, pbWithEnv, writePlan } from "./cli-repo-fixture.mjs";
 import { violations } from "./schema-check.mjs";
+import { FAKE_PR_URL, GH_FAILURE, installGhShim, viewEnv, viewsEnv } from "./gh-shim-fixture.mjs";
 
 const gitIn = (repo, ...args) => execFileSync("git", args, { cwd: repo.dir, env: env(), encoding: "utf8" }).trim();
 
@@ -412,4 +413,290 @@ test("task-end-with-refusal-or-missing-unit-leaves-state-untouched", () => {
   assert.equal(ended.code, 0, `without a unit, task end still ends the task: ${ended.stderr}`);
   assert.equal(existsSync(taskDir(noUnit)), false, "run/task is removed");
   assert.equal(existsSync(join(noUnit.dir, ".pairingbuddy", "run", "unit.json")), false, "no unit.json was created");
+});
+
+// unit-open-plan-cli: pb unit open --plan (scenarios.json).
+
+// Plan markdown builders. planUnit is one "#### PR:" group: an optional Depends on line, an optional PR line with its
+// branch, then its task lines. tracerPlan wraps units in a tracer under "## Tasks".
+const planUnit = (name, { pr, branch, dependsOn, tasks = [] } = {}) => [
+  `#### PR: ${name}`, "",
+  ...(dependsOn ? [`Depends on: ${dependsOn}`, ""] : []),
+  ...(pr ? [`PR: ${pr} branch: ${branch}`, ""] : []),
+  ...tasks, "",
+];
+const tracerPlan = (title, ...units) => ["## Tasks", "", `### ${title}`, "", ...units.flat()];
+
+// Commits the plan lines as docs/plan.md, pushes it to origin/main and returns the base tip.
+const publishPlan = (repo, lines) => {
+  writePlan(repo, lines.join("\n"));
+  gitIn(repo, "add", "docs/plan.md");
+  gitIn(repo, "commit", "-q", "-m", "add plan");
+  gitIn(repo, "push", "-q", "origin", "main");
+  return gitIn(repo, "rev-parse", "origin/main");
+};
+
+// Runs pb unit open --plan against a fresh gh shim. ghEnv is extra shim environment (viewEnv/viewsEnv, GH_SHIM_FAIL).
+const openPlanUnit = (repo, slug, ghEnv = {}) =>
+  pbUnitOpen(repo, { ...installGhShim().env(), ...ghEnv }, "--type", "feat", "--slug", slug, "--plan", "docs/plan.md");
+
+const exitMessage = (result, expectation = "exits 0") => `${expectation}\nstderr: ${result.stderr}\nstdout: ${result.stdout}`;
+
+test("independent-unit-branches-from-base-with-earlier-pr-open", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  const baseTip = publishPlan(repo, tracerPlan(
+    "Tracer 1: Skeleton",
+    planUnit("First", { pr: FAKE_PR_URL, branch: "first-branch", tasks: ["- [x] **One**"] }),
+    planUnit("Second", { tasks: ["- [ ] **Two**"] }),
+  ));
+
+  const result = openPlanUnit(repo, "second", viewEnv({ head: "first-branch", state: "OPEN" }));
+
+  assert.equal(result.code, 0, `pb unit open --plan ${exitMessage(result)}`);
+  assert.equal(gitIn(repo, "rev-parse", "feat/second"), baseTip, "the branch starts at the tip of origin/main, not at the open PR's branch");
+  const unit = JSON.parse(readFileSync(unitPath(repo), "utf8"));
+  assert.equal(unit.base, "main", "unit.base is the default base");
+  assert.equal(unit.baseSha, baseTip, "unit.baseSha is the base tip");
+  assert.equal("stackedOn" in unit, false, "an independent unit has no stackedOn");
+  assert.equal(unit.unit, "Second", "unit.unit is the plan unit name");
+  assert.equal(unit.plan, "docs/plan.md", "unit.plan is the plan path");
+  assert.equal(unit.tracer, "Tracer 1: Skeleton", "unit.tracer is the plan tracer");
+});
+
+test("dependent-unit-with-open-pr-stacks-and-records-stackedOn", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  publishPlan(repo, tracerPlan(
+    "Tracer 1: Skeleton",
+    planUnit("First", { pr: FAKE_PR_URL, branch: "first-branch", tasks: ["- [x] **One**"] }),
+    planUnit("Second", { dependsOn: "First", tasks: ["- [ ] **Two**"] }),
+  ));
+  const depTip = pushFromSecondClone(repo, "first-branch", "dep.txt");
+
+  const result = openPlanUnit(repo, "second", viewsEnv({ [FAKE_PR_URL]: { head: "first-branch", state: "OPEN" } }));
+
+  assert.equal(result.code, 0, `pb unit open --plan ${exitMessage(result)}`);
+  const unit = JSON.parse(readFileSync(unitPath(repo), "utf8"));
+  assert.equal(unit.base, "first-branch", "unit.base is the dependency's head branch");
+  assert.equal(unit.baseSha, depTip, "unit.baseSha is the dependency's pushed tip, as fetched from origin/first-branch");
+  assert.equal(gitIn(repo, "rev-parse", "feat/second"), depTip, "the new branch starts at the dependency's tip");
+  assert.deepEqual(unit.stackedOn, { unit: "First", pr: FAKE_PR_URL, branch: "first-branch" }, "unit.json records stackedOn");
+  assert.equal(JSON.parse(result.stdout).base, "first-branch", "the JSON pb prints has base = the dependency branch");
+});
+
+test("merged-dependency-branches-from-fetched-base", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  const planTip = publishPlan(repo, tracerPlan(
+    "Tracer 1: Skeleton",
+    planUnit("First", { pr: FAKE_PR_URL, branch: "first-branch", tasks: ["- [x] **One**"] }),
+    planUnit("Second", { dependsOn: "First", tasks: ["- [ ] **Two**"] }),
+  ));
+  const movedTip = pushFromSecondClone(repo, "main", "merged.txt");
+  assert.notEqual(movedTip, planTip, "main moved on origin after the plan was pushed");
+
+  const result = openPlanUnit(repo, "second", viewsEnv({ [FAKE_PR_URL]: { head: "first-branch", state: "MERGED" } }));
+
+  assert.equal(result.code, 0, `pb unit open --plan ${exitMessage(result)}`);
+  assert.equal(gitIn(repo, "rev-parse", "feat/second"), movedTip, "the branch starts at the fetched new tip of origin/main");
+  const unit = JSON.parse(readFileSync(unitPath(repo), "utf8"));
+  assert.equal(unit.base, "main", "unit.base is the default base, not the merged dependency's branch");
+  assert.equal(unit.baseSha, movedTip, "unit.baseSha is the fetched new base tip");
+  assert.equal("stackedOn" in unit, false, "a merged dependency records no stackedOn");
+});
+
+test("depth-cap-stop-writes-nothing-and-makes-no-branch", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  publishPlan(repo, tracerPlan(
+    "Tracer 1: Skeleton",
+    planUnit("First", { pr: FAKE_PR_URL, branch: "first-branch", tasks: ["- [x] **One**"] }),
+    planUnit("Second", { dependsOn: "First", tasks: ["- [ ] **Two**"] }),
+  ));
+  writeFileSync(join(repo.dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ pr: { stack_depth: 0 } }));
+  const before = snapshotRepo(repo);
+
+  const result = openPlanUnit(repo, "second", viewsEnv({ [FAKE_PR_URL]: { head: "first-branch", state: "OPEN" } }));
+
+  assert.notEqual(result.code, 0, "an open dependency with stack_depth 0 stops");
+  const message = result.stderr + result.stdout;
+  assert.ok(message.includes("G:next-unit"), `the stop names G:next-unit: ${message}`);
+  assert.ok(message.includes("stack-depth"), `the stop names the reason stack-depth: ${message}`);
+  assert.match(message, /depth 1\b/, `the stop names the depth 1: ${message}`);
+  assert.match(message, /cap 0\b/, `the stop names the cap 0: ${message}`);
+  assert.match(message, /until a base merges/, `the stop says it waits until a base merges: ${message}`);
+  assertUntouched(repo, before, "the depth cap stop");
+});
+
+function stackedOnOpenFirst() {
+  const repo = makeRepo({ openTask: false, remote: true });
+  publishPlan(repo, tracerPlan(
+    "Tracer 1: Skeleton",
+    planUnit("First", { pr: FAKE_PR_URL, branch: "first-branch", tasks: ["- [x] **One**"] }),
+    planUnit("Second", { dependsOn: "First", tasks: ["- [ ] **Two**"] }),
+  ));
+  return repo;
+}
+
+function assertDeliberateRefusal(message) {
+  assert.doesNotMatch(message, /unexpected failure|\n\s+at /, `the refusal is deliberate, not a crash or stack trace: ${message}`);
+}
+
+test("gh-failure-refuses-and-touches-nothing", () => {
+  const repo = stackedOnOpenFirst();
+  const before = snapshotRepo(repo);
+
+  const result = openPlanUnit(repo, "second", { GH_SHIM_FAIL: "pr view" });
+
+  assert.equal(result.code, 1, `a failing gh pr view ${exitMessage(result, "refuses with exit 1")}`);
+  const message = result.stderr + result.stdout;
+  assertDeliberateRefusal(message);
+  assert.match(message, new RegExp(`gh pr view.*${FAKE_PR_URL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), `the refusal names the gh pr view call and the dependency PR URL: ${message}`);
+  assertUntouched(repo, before, "the gh failure");
+});
+
+test("closed-dependency-refuses-and-touches-nothing", () => {
+  const repo = stackedOnOpenFirst();
+  const before = snapshotRepo(repo);
+
+  const result = openPlanUnit(repo, "second", viewsEnv({ [FAKE_PR_URL]: { head: "first-branch", state: "CLOSED" } }));
+
+  assert.equal(result.code, 1, `a closed dependency PR ${exitMessage(result, "refuses with exit 1")}`);
+  const message = result.stderr + result.stdout;
+  assertDeliberateRefusal(message);
+  assert.match(message, /First: its PR was closed without merging/, `the refusal names First as the dependency whose PR was closed: ${message}`);
+  assert.ok(message.includes("Nothing was changed but the fetch"), `the refusal says only the fetch happened: ${message}`);
+  assertUntouched(repo, before, "the closed dependency");
+});
+
+for (const [label, depth] of [["negative", -1], ["fractional", 1.5], ["string", "3"]]) {
+  test(`invalid-stack-depth-refused-${label}`, () => {
+    const repo = stackedOnOpenFirst();
+    writeFileSync(join(repo.dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ pr: { stack_depth: depth } }));
+    const before = snapshotRepo(repo);
+
+    const result = openPlanUnit(repo, "second", viewsEnv({ [FAKE_PR_URL]: { head: "first-branch", state: "OPEN" } }));
+
+    assert.equal(result.code, 1, `pr.stack_depth ${JSON.stringify(depth)} ${exitMessage(result, "refuses with exit 1")}`);
+    const message = result.stderr + result.stdout;
+    assertDeliberateRefusal(message);
+    assert.ok(message.includes("pr.stack_depth"), `the refusal names pr.stack_depth: ${message}`);
+    assert.match(message, /non-negative integer/, `the refusal says it must be a non-negative integer: ${message}`);
+    assertUntouched(repo, before, `stack_depth ${JSON.stringify(depth)}`);
+  });
+}
+
+test("plan-flag-without-a-value-is-a-usage-error", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  const before = snapshotRepo(repo);
+
+  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--plan");
+
+  assert.notEqual(result.code, 0, "--plan with no value fails");
+  assert.match(result.stderr + result.stdout, /usage: pb unit open/, "the failure is the usage message");
+  assertUntouched(repo, before, "--plan without a value");
+});
+
+test("plan-with-no-task-left-refuses-and-touches-nothing", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  publishPlan(repo, tracerPlan("Tracer 1: Skeleton", planUnit("Done", { pr: FAKE_PR_URL, branch: "done-branch", tasks: ["- [x] **One**"] })));
+  const before = snapshotRepo(repo);
+
+  const result = openPlanUnit(repo, "x");
+
+  assert.notEqual(result.code, 0, "a plan with no task left refuses");
+  assert.match(result.stderr + result.stdout, /no task left/, "the refusal says no task is left");
+  assertUntouched(repo, before, "a plan with no task left");
+});
+
+test("plan-flag-followed-by-branch-is-a-usage-error-and-touches-nothing", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  const before = snapshotRepo(repo);
+
+  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--plan", "--branch", "foo");
+
+  assert.equal(result.code, 2, "--plan swallowing --branch is a usage error with exit code 2");
+  assert.match(result.stderr + result.stdout, /usage: pb unit open/, "the failure is the usage message");
+  assertUntouched(repo, before, "--plan --branch foo");
+});
+
+const SECOND_PR_URL = "https://github.com/example/repo/pull/8";
+
+test("three-unit-chain-stacks-on-the-second-and-views-both-prs", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  publishPlan(repo, tracerPlan(
+    "Tracer 1: Skeleton",
+    planUnit("First", { pr: FAKE_PR_URL, branch: "first-branch", tasks: ["- [x] **One**"] }),
+    planUnit("Second", { pr: SECOND_PR_URL, branch: "second-branch", dependsOn: "First", tasks: ["- [x] **Two**"] }),
+    planUnit("Third", { dependsOn: "Second", tasks: ["- [ ] **Three**"] }),
+  ));
+  const secondTip = pushFromSecondClone(repo, "second-branch", "second.txt");
+  const shim = installGhShim();
+  const views = viewsEnv({
+    [FAKE_PR_URL]: { head: "first-branch", state: "OPEN" },
+    [SECOND_PR_URL]: { head: "second-branch", state: "OPEN" },
+  });
+
+  const result = pbUnitOpen(repo, { ...shim.env(), ...views }, "--type", "feat", "--slug", "third", "--plan", "docs/plan.md");
+
+  assert.equal(result.code, 0, `pb unit open --plan ${exitMessage(result)}`);
+  const unit = JSON.parse(readFileSync(unitPath(repo), "utf8"));
+  assert.equal(unit.base, "second-branch", "the third unit stacks on the second unit's branch");
+  assert.equal(unit.baseSha, secondTip, "the base is the second branch's pushed tip");
+  const viewed = shim.prViews().map(({ argv }) => argv[argv.length - 1]).sort();
+  assert.deepEqual(viewed, [FAKE_PR_URL, SECOND_PR_URL].sort(), "gh pr view ran for both PR urls of the chain");
+});
+
+test("dependency-without-a-pr-line-opens-on-the-base-without-calling-gh-pr-view", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  const baseTip = publishPlan(repo, tracerPlan(
+    "Tracer 1: Skeleton",
+    planUnit("First", { tasks: ["Legacy: accepted", "", "- [x] **One**"] }),
+    planUnit("Second", { dependsOn: "First", tasks: ["- [ ] **Two**"] }),
+  ));
+  const shim = installGhShim();
+
+  const result = pbUnitOpen(repo, shim.env(), "--type", "feat", "--slug", "second", "--plan", "docs/plan.md");
+
+  assert.equal(result.code, 0, `pb unit open --plan ${exitMessage(result)}`);
+  assert.equal(JSON.parse(readFileSync(unitPath(repo), "utf8")).baseSha, baseTip, "the unit branches from the base tip");
+  assert.deepEqual(shim.prViews(), [], "no gh pr view call was made");
+});
+
+test("dependency-pr-is-viewed-with-exact-argv", () => {
+  const repo = stackedOnOpenFirst();
+  pushFromSecondClone(repo, "first-branch", "dep.txt");
+  const shim = installGhShim();
+
+  const result = pbUnitOpen(repo, { ...shim.env(), ...viewsEnv({ [FAKE_PR_URL]: { head: "first-branch", state: "OPEN" } }) }, "--type", "feat", "--slug", "second", "--plan", "docs/plan.md");
+
+  assert.equal(result.code, 0, `pb unit open --plan ${exitMessage(result)}`);
+  assert.deepEqual(shim.prViews().map(({ argv }) => argv), [["pr", "view", "--json", "state,headRefName", "--", FAKE_PR_URL]], "gh is called with exactly this argv, once");
+});
+
+test("gh-failure-refusal-carries-the-gh-stderr", () => {
+  const repo = stackedOnOpenFirst();
+
+  const result = openPlanUnit(repo, "second", { GH_SHIM_FAIL: "pr view" });
+
+  assert.equal(result.code, 1, `a failing gh pr view ${exitMessage(result, "refuses with exit 1")}`);
+  assert.ok((result.stderr + result.stdout).includes(GH_FAILURE), `the refusal includes gh's own stderr text: ${result.stderr + result.stdout}`);
+});
+
+test("gh-answering-non-json-refuses-with-the-parse-error", () => {
+  const repo = stackedOnOpenFirst();
+  const before = snapshotRepo(repo);
+  const parseError = (() => {
+    try {
+      JSON.parse("not json\n");
+    } catch (error) {
+      return error.message;
+    }
+    return assert.fail("JSON.parse was expected to throw");
+  })();
+
+  const result = openPlanUnit(repo, "second", { GH_SHIM_VIEW: "not json" });
+
+  assert.equal(result.code, 1, `non-JSON from gh ${exitMessage(result, "refuses with exit 1")}`);
+  const message = result.stderr + result.stdout;
+  assert.ok(message.includes("state is unknown"), `the refusal says the state is unknown: ${message}`);
+  assert.ok(message.includes(parseError), `the refusal carries the JSON parse error "${parseError}": ${message}`);
+  assertUntouched(repo, before, "non-JSON from gh");
 });

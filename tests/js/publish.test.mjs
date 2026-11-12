@@ -7,6 +7,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { targetBranch } from "../../shared-node/publish.mjs";
 import { FAKE_PR_URL, flagValues, GH_FAILURE, viewEnv } from "./gh-shim-fixture.mjs";
 import { pb } from "./cli-repo-fixture.mjs";
 import { sha256 } from "./tap-fixture.mjs";
@@ -249,6 +250,15 @@ describe("publish-target-base", () => {
     const { argv } = published();
 
     assert.deepEqual(flagValues(argv, "--base"), ["main"], "--base is the unit base");
+  });
+
+  test("publish-target-branch-is-unit-base-when-stacked", () => {
+    const gitConfig = { pr: { base_branch: "develop" } };
+    const unit = { base: "feat/first", stackedOn: { unit: "First", pr: "https://github.com/o/r/pull/1", branch: "feat/first" } };
+
+    const target = targetBranch(gitConfig, unit);
+
+    assert.equal(target, "feat/first", "a stacked unit targets its own base, not pr.base_branch");
   });
 });
 

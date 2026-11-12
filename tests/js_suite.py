@@ -90,6 +90,7 @@ JS_TEST_FILES = [
     "tests/js/plan-boxes-safeguards.test.mjs",
     "tests/js/plan-parse.test.mjs",
     "tests/js/plan-step.test.mjs",
+    "tests/js/stack-rule.test.mjs",
     "tests/js/pr-body-tap.test.mjs",
     "tests/js/pr-draft-contracts.test.mjs",
     "tests/js/pr-draft.test.mjs",

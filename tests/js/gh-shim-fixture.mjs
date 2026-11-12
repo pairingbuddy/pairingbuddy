@@ -2,4 +2,4 @@
 // isolated-tmpdir.mjs removes on exit.
 import "./isolated-tmpdir.mjs";
 
-export { FAKE_PR_URL, GH_FAILURE, flagValues, installGhShim, viewEnv } from "./gh-shim.mjs";
+export { FAKE_PR_URL, GH_FAILURE, flagValues, installGhShim, viewEnv, viewsEnv } from "./gh-shim.mjs";

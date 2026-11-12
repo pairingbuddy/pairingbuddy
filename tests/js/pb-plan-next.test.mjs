@@ -208,8 +208,8 @@ describe("pb-plan-next-cli", () => {
     assert.deepEqual(
       out.units,
       [
-        { unit: "Parser", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, state: "open", tasks: [{ title: "Parse units", checked: true, human: false }, { title: "Parse tasks", checked: false, human: false }] },
-        { unit: "Verb", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, state: "open", tasks: [{ title: "Parse tasks", checked: false, human: false }] },
+        { unit: "Parser", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, state: "open", dependsOn: null, tasks: [{ title: "Parse units", checked: true, human: false }, { title: "Parse tasks", checked: false, human: false }] },
+        { unit: "Verb", tracer: "Tracer 1: Skeleton", pr: null, legacy: false, state: "open", dependsOn: null, tasks: [{ title: "Parse tasks", checked: false, human: false }] },
       ],
       "units with their tasks, the Requirements heading not a unit",
     );
@@ -413,5 +413,26 @@ describe("pb-plan-next-cli", () => {
     const message = refusal.stderr.replace(/^pb: /, "").replace(/\n$/, "");
     assert.ok(message.includes("accept --legacy"), `the refusal carries the options (stderr: ${refusal.stderr})`);
     assert.equal(JSON.parse(dryRun.stdout).stop.says, message, "the dry run's stop.says is the refusal's message");
+  });
+});
+
+describe("pb-plan-next-dry-run-depends-on", () => {
+  // Each unit summary in the dry-run report carries dependsOn: the "Depends on:" name, or null for a unit without the line
+  test("dry-run-unit-summaries-include-dependsOn", () => {
+    const repo = makeRepo({ openTask: false });
+    writePlan(
+      repo,
+      ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Parser", "", "- [ ] **Parse units**", "", "#### PR: Verb", "", "Depends on: Parser", "", "- [ ] **Parse verbs**", ""].join("\n"),
+    );
+
+    const result = pb(repo, "plan", "next", "docs/plan.md", "--dry-run");
+
+    assert.equal(result.code, 0, `exit code (stderr: ${result.stderr})`);
+    const out = JSON.parse(result.stdout);
+    assert.deepEqual(
+      out.units.map((u) => [u.unit, u.dependsOn]),
+      [["Parser", null], ["Verb", "Parser"]],
+      "the first unit has dependsOn null and the second names the unit it depends on",
+    );
   });
 });

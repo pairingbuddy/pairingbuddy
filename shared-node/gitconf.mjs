@@ -80,7 +80,20 @@ function kindOf(v) {
   return Array.isArray(v) ? "array" : v === null ? "null" : typeof v;
 }
 
-// Null defaults accept null or a string; integer defaults require an integer; other known fields must match the default's kind.
+// What a default allows: null defaults take null or a string; integer defaults take a non-negative integer (every integer
+// default must be non-negative, so a future integer field inherits that rule); other defaults must match the default's kind.
+function expectation(want) {
+  if (want === null) return { accepts: (v) => v === null || typeof v === "string", describe: "a string or null" };
+  if (Number.isInteger(want)) return { accepts: (v) => Number.isInteger(v) && v >= 0, describe: "a non-negative integer" };
+  return { accepts: (v) => kindOf(v) === kindOf(want), describe: "of type " + kindOf(want) };
+}
+
+// Numbers show their value (-1, 1.5) because "got number" would not say what was wrong.
+function describeGot(value) {
+  return typeof value === "number" ? JSON.stringify(value) : kindOf(value);
+}
+
+// Checks each known field against expectation(); nested objects recurse.
 function validateTypes(over, defaults, path = "") {
   for (const [key, value] of Object.entries(over)) {
     if (!Object.hasOwn(defaults, key)) continue;
@@ -91,10 +104,8 @@ function validateTypes(over, defaults, path = "") {
       if (Object.keys(want).length) validateTypes(value, want, name + ".");
       continue;
     }
-    const got = kindOf(value);
-    const wantsInteger = Number.isInteger(want);
-    const ok = want === null ? got === "null" || got === "string" : got === kindOf(want) && (!wantsInteger || Number.isInteger(value));
-    if (!ok) throw new GitConfigRefused(`git-config.json: field "${name}" must be ${want === null ? "a string or null" : wantsInteger ? "an integer" : "of type " + kindOf(want)}, got ${got}`);
+    const expected = expectation(want);
+    if (!expected.accepts(value)) throw new GitConfigRefused(`git-config.json: field "${name}" must be ${expected.describe}, got ${describeGot(value)}`);
   }
 }
 

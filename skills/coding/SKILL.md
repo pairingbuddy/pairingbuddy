@@ -374,7 +374,7 @@ After each refactor cycle:
 Outside Solo, `_run_plan_loop(plan_path)` runs a plan one task at a time:
 
 1. Run `pb plan next <plan>` first. It says what to do next, or refuses. When it succeeds with no next task, the plan is done: report that and stop the loop.
-2. A unit is open when `.pairingbuddy/run/unit.json` exists. If no unit is open, run `pb unit open` as router step 1: a type you guess from the task and a short kebab-case slug made from the unit name. When it refuses with a `!` command, stop and show the human that command.
+2. A unit is open when `.pairingbuddy/run/unit.json` exists. If no unit is open, run `pb unit open` with `--type <type> --slug <slug> --plan <plan.md>` (router step 1: a type you guess from the task and a short kebab-case slug made from the unit name); `--plan` names the unit and stacks it on its `Depends on` unit's PR when that is open. When it refuses with a `!` command, stop and show the human that command. A refusal that names G:next-unit (reason stack-depth) or a refused dependency (PR closed without merging, state unknown, gh failed) also ends the loop: show it to the human.
 3. Run the curating-guidance skill in the main context before each task. Then clean the state files with `_cleanup_state_files()`.
 4. Run `pb run open --kind code --plan <plan>`, which takes the next task itself, so the session does not write `task.json` for it.
 5. Follow `pb status --action` and `pb gate eval` through the stages and G:task-end as router steps 3-4.
