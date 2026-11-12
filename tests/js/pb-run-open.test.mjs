@@ -51,6 +51,7 @@ function pb(cwd, ...args) {
 const open = (cwd, ...extra) => pb(cwd, "run", "open", "--kind", "code", ...extra);
 const runDir = (root) => join(root, ".pairingbuddy", "run", "task");
 const ledgerPath = (root) => join(runDir(root), "ledger.json");
+const unitPath = (root) => join(root, ".pairingbuddy", "run", "unit.json");
 // Ends the run the way `pb task end` does: removes the run directory.
 const endRun = (root) => rmSync(runDir(root), { recursive: true, force: true });
 
@@ -524,4 +525,269 @@ test("two-run-opens-give-different-run-ids", (t) => {
   assert.equal(r.status, 0, r.stderr);
   const second = readLedger(ledgerPath(root)).runId;
   assert.notEqual(second, first, "a second open of the same task gets a new runId");
+});
+
+// ---------- run open --plan hands the plan's next task to the run ----------
+
+const PLAN = [
+  "## Tasks",
+  "",
+  "### Tracer 1: Skeleton",
+  "",
+  "#### PR: Parser",
+  "",
+  "- [ ] **Task 1: Parse units**",
+  "",
+  "  Read the unit headings.",
+  "",
+  "- [ ] **Task 2: Parse tasks**",
+  "",
+].join("\n");
+
+// Writes a fresh open unit: `unit: null` means an open unit with no task recorded yet.
+// The branch is the one makeRepo checks out by default.
+// `overrides` replace fields of the fresh unit before it is written.
+// Returns the unit it wrote.
+function writeFreshUnit(root, overrides = {}) {
+  mkdirSync(join(root, ".pairingbuddy", "run"), { recursive: true });
+  const freshUnit = {
+    unit: null,
+    plan: null,
+    tracer: null,
+    branch: "feature/x",
+    base: "main",
+    baseSha: git(root, "rev-parse", "HEAD"),
+    configHash: "c",
+    gitConfigHash: "g",
+    tasks: [],
+    commits: [],
+    ...overrides,
+  };
+  writeFileSync(unitPath(root), JSON.stringify(freshUnit));
+  return freshUnit;
+}
+
+// PLAN with its second task renamed so two boxes share the title "Task 1: Parse units".
+const DUPLICATE_TITLE_PLAN = PLAN.replace("Task 2: Parse tasks", "Task 1: Parse units");
+
+// A plan whose only task is a [HUMAN] task, so pb plan next stops at it.
+const HUMAN_STOP_PLAN = [
+  "## Tasks",
+  "",
+  "### Tracer 1: Skeleton",
+  "",
+  "#### PR: Release",
+  "",
+  "- [ ] **Task 1: [HUMAN] Sign the release**",
+  "",
+  "  Sign the release tag with the release key.",
+  "",
+].join("\n");
+
+// Writes text (default PLAN) into the repo and returns its path relative to the repo root.
+function writePlan(root, text = PLAN) {
+  mkdirSync(join(root, "docs"));
+  writeFileSync(join(root, "docs", "plan.md"), text);
+  return "docs/plan.md";
+}
+
+test("open-plan-sets-run-task-and-plan", (t) => {
+  const root = makeRepo(t);
+  const plan = writePlan(root);
+  writeFreshUnit(root);
+
+  const r = open(root, "--plan", plan);
+
+  assert.equal(r.status, 0, r.stderr);
+  const ledger = readLedger(ledgerPath(root));
+  assert.deepEqual(ledger.plan, { path: plan, title: "Task 1: Parse units" }, "the ledger names the plan task to tick");
+  assert.equal(ledger.task, "Task 1: Parse units\n\nRead the unit headings.", "the run's task is the title, a blank line, then the body");
+});
+
+test("open-plan-names-fresh-unit", (t) => {
+  const root = makeRepo(t);
+  const plan = writePlan(root);
+  const freshUnit = writeFreshUnit(root);
+
+  const r = open(root, "--plan", plan);
+
+  assert.equal(r.status, 0, r.stderr);
+  const unit = JSON.parse(readFileSync(unitPath(root), "utf8"));
+  assert.deepEqual(unit, { ...freshUnit, unit: "Parser", plan, tracer: "Tracer 1: Skeleton" }, "only unit, plan and tracer change on the fresh unit");
+});
+
+test("open-plan-refuses-with-no-open-unit", (t) => {
+  const root = makeRepo(t);
+  const plan = writePlan(root);
+
+  const r = open(root, "--plan", plan);
+
+  assertCleanRefusal(r, /no unit is open/);
+  assert.match(r.stderr, /unit open --type <type> --slug <slug>/, "the refusal names the command that opens a unit");
+  assert.equal(existsSync(runDir(root)), false, "the refusal writes no run/task");
+  assert.equal(existsSync(unitPath(root)), false, "the refusal writes no unit.json");
+});
+
+test("open-plan-refuses-format-problems", (t) => {
+  const root = makeRepo(t);
+  const plan = writePlan(root, DUPLICATE_TITLE_PLAN);
+  writeFreshUnit(root);
+  const unitBefore = readFileSync(unitPath(root));
+
+  const r = open(root, "--plan", plan);
+
+  assertCleanRefusal(r, /the plan has format problems/);
+  assert.match(r.stderr, /2 tasks are titled "Task 1: Parse units"/, "the refusal names the duplicate title");
+  assert.equal(existsSync(runDir(root)), false, "the refusal writes no run/task");
+  assert.deepEqual(readFileSync(unitPath(root)), unitBefore, "unit.json is byte-identical");
+});
+
+test("open-plan-refuses-at-a-stop-writing-nothing", (t) => {
+  const root = makeRepo(t);
+  const plan = writePlan(root, HUMAN_STOP_PLAN);
+  writeFreshUnit(root);
+  const planNext = pb(root, "plan", "next", plan);
+  const unitBefore = readFileSync(unitPath(root));
+
+  const r = open(root, "--plan", plan);
+
+  assertCleanRefusal(r, /Sign the release/);
+  assert.equal(r.stderr, planNext.stderr, "the refusal is exactly what pb plan next says");
+  assert.equal(existsSync(runDir(root)), false, "the refusal writes no run/task");
+  assert.deepEqual(readFileSync(unitPath(root)), unitBefore, "unit.json is byte-identical");
+});
+
+test("open-plan-reports-the-stop-before-the-missing-unit", (t) => {
+  const root = makeRepo(t);
+  const plan = writePlan(root, HUMAN_STOP_PLAN);
+  const planNext = pb(root, "plan", "next", plan);
+
+  const r = open(root, "--plan", plan);
+
+  assertCleanRefusal(r, /Sign the release/);
+  assert.equal(r.stderr, planNext.stderr, "the refusal is exactly what pb plan next says");
+  assert.doesNotMatch(r.stderr, /unit open/, "the refusal does not send anyone to open a unit");
+  assert.equal(existsSync(runDir(root)), false, "the refusal writes no run/task");
+  assert.equal(existsSync(unitPath(root)), false, "the refusal writes no unit.json");
+});
+
+test("open-plan-refuses-when-open-unit-names-another-unit-or-has-non-plan-records", async (t) => {
+  await t.test("a unit already named for another unit is refused, naming both units", (t) => {
+    const root = makeRepo(t);
+    const plan = writePlan(root);
+    writeFreshUnit(root, { unit: "Other", plan, tracer: "Tracer 1: Skeleton" });
+    const unitBefore = readFileSync(unitPath(root));
+
+    const r = open(root, "--plan", plan);
+
+    assertCleanRefusal(r, /Other/);
+    assert.match(r.stderr, /Parser/, "the refusal names the next task's unit");
+    assert.equal(existsSync(runDir(root)), false, "the refusal writes no run/task");
+    assert.deepEqual(readFileSync(unitPath(root)), unitBefore, "unit.json is byte-identical");
+  });
+
+  await t.test("a unit named Parser but from another plan is refused, naming both plan paths", (t) => {
+    const root = makeRepo(t);
+    const plan = writePlan(root);
+    writeFreshUnit(root, { unit: "Parser", plan: "docs/other-plan.md", tracer: "Tracer 1: Skeleton" });
+    const unitBefore = readFileSync(unitPath(root));
+
+    const r = open(root, "--plan", plan);
+
+    assertCleanRefusal(r, /docs\/other-plan\.md/);
+    assert.ok(r.stderr.includes(plan), "the refusal names the plan the run open was given");
+    assert.equal(existsSync(runDir(root)), false, "the refusal writes no run/task");
+    assert.deepEqual(readFileSync(unitPath(root)), unitBefore, "unit.json is byte-identical");
+  });
+
+  await t.test("a fresh-looking unit with a non-plan task record is refused", (t) => {
+    const root = makeRepo(t);
+    const plan = writePlan(root);
+    writeFreshUnit(root, { tasks: [{ title: "Fix the typo in the readme" }] });
+    const unitBefore = readFileSync(unitPath(root));
+
+    const r = open(root, "--plan", plan);
+
+    assertCleanRefusal(r, /already holds a task that is not from a plan/);
+    assert.match(r.stderr, /Publish or close it first/, "the refusal says what to do next");
+    assert.equal(existsSync(runDir(root)), false, "the refusal writes no run/task");
+    assert.deepEqual(readFileSync(unitPath(root)), unitBefore, "unit.json is byte-identical");
+  });
+});
+
+test("open-plan-takes-the-next-task-of-the-unit-it-names", (t) => {
+  const root = makeRepo(t);
+  const plan = writePlan(root, PLAN.replace("- [ ] **Task 1: Parse units**", "- [x] **Task 1: Parse units**"));
+  writeFreshUnit(root, { unit: "Parser", plan, tracer: "Tracer 1: Skeleton", tasks: [{ title: "Task 1: Parse units" }] });
+  const unitBefore = readFileSync(unitPath(root));
+
+  const r = open(root, "--plan", plan);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readLedger(ledgerPath(root)).plan.title, /^Task 2: /, "the run opens on the second task");
+  assert.deepEqual(readFileSync(unitPath(root)), unitBefore, "unit.json is byte-identical");
+});
+
+test("open-plan-refuses-when-every-unit-is-published", (t) => {
+  const root = makeRepo(t);
+  const plan = writePlan(root, [
+    "## Tasks",
+    "",
+    "### Tracer 1: Skeleton",
+    "",
+    "#### PR: Parser",
+    "",
+    // the PR: line marks the only unit as published, so no unit is left to take
+    "PR: https://example.com/pr/1 branch: x",
+    "",
+    "- [x] **Task 1: Parse units**",
+    "",
+    "- [x] **Task 2: Parse tasks**",
+    "",
+  ].join("\n"));
+  writeFreshUnit(root);
+  const unitBefore = readFileSync(unitPath(root));
+
+  const r = open(root, "--plan", plan);
+
+  assertCleanRefusal(r, /no task left/);
+  assert.equal(existsSync(runDir(root)), false, "the refusal writes no run/task");
+  assert.deepEqual(readFileSync(unitPath(root)), unitBefore, "unit.json is byte-identical");
+});
+
+test("open-plan-needs-a-plan-path", async (t) => {
+  for (const args of [["--kind", "code", "--plan"], ["--plan", "--kind", "code"]]) {
+    await t.test(`pb run open ${args.join(" ")}`, (t) => {
+      const root = makeRepo(t);
+      writePlan(root);
+      writeFreshUnit(root);
+      const unitBefore = readFileSync(unitPath(root));
+
+      const r = pb(root, "run", "open", ...args);
+
+      assert.equal(r.status, 2, `a missing --plan value is a usage error: ${r.stderr}`);
+      assert.match(r.stderr, /--plan <plan\.md>/, "stderr names the flag and its value");
+      assert.doesNotMatch(r.stderr, /unexpected failure/, "a usage error is not an unexpected failure");
+      assert.equal(existsSync(runDir(root)), false, "no run/task is written");
+      assert.deepEqual(readFileSync(unitPath(root)), unitBefore, "unit.json is byte-identical");
+    });
+  }
+});
+
+test("open-plan-only-with-kind-code", async (t) => {
+  for (const kind of ["publish", "plan"]) {
+    await t.test(`pb run open --kind ${kind} --plan <plan>`, (t) => {
+      const root = makeRepo(t);
+      const plan = writePlan(root);
+      writeFreshUnit(root);
+      const unitBefore = readFileSync(unitPath(root));
+
+      const r = pb(root, "run", "open", "--kind", kind, "--plan", plan);
+
+      assert.equal(r.status, 2, `--plan with --kind ${kind} is a usage error: ${r.stderr}`);
+      assert.match(r.stderr, /--kind code \[--plan <plan\.md>\]/, "stderr names the only kind that takes --plan");
+      assert.equal(existsSync(runDir(root)), false, "no run/task is written");
+      assert.deepEqual(readFileSync(unitPath(root)), unitBefore, "unit.json is byte-identical");
+    });
+  }
 });

@@ -29,6 +29,8 @@ const refOf = (ref) => (ref.startsWith('"') ? ref.slice(1, -1) : verbs[ref]);
 //   passedCode:  a stop object with the shorthand `code`, fed by a variable (orStop's parameter, stageStop's argument)
 //   unclassified: any other `stop:` or `stop =` that is not a clear (null), a validity-table entry or a stop object, or an orStop call of another shape
 const PLAN_STOP_FILES = ["shared-node/plan.mjs"];
+// planNext's dry run returns `stop: reportedStop`, a plan stop ({reason, unit, ..., says}) like PLAN_STOP_FILES: pb plan next's
+// own report, never written to a ledger, so it has no stop code.
 
 function scanStopWrites() {
   const scan = { written: [], passedCode: [], unclassified: [] };
@@ -47,7 +49,7 @@ function scanStopWrites() {
           if (literal) scan.written.push({ file: path, ref: literal[1], code: refOf(literal[1]) });
           else if (/[{,]\s*code\s*[,}]/.test(body)) scan.passedCode.push({ file: path });
           else scan.unclassified.push({ file: path, text: body.slice(0, 80) });
-        } else if (!/^(null\b|\w+ \? null : ledger\.stop\b|\[\(\) =>)/.test(rest)) {
+        } else if (!/^(null\b|\w+ \? null : ledger\.stop\b|\[\(\) =>|reportedStop\b)/.test(rest)) {
           scan.unclassified.push({ file: path, text: rest.slice(0, 80) });
         }
       }

@@ -1,6 +1,6 @@
 ---
 name: curating-guidance
-description: Curates human guidance with the human in the main context at the start of a task, before cleanup, outside Solo and plan tasks.
+description: Curates human guidance with the human in the main context at the start of a task, before cleanup, outside Solo, plan tasks included.
 ---
 
 # Curating Guidance

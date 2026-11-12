@@ -161,7 +161,7 @@ function assertPublishable(root) {
 }
 
 // Claims run/task and writes the first ledger; a failed write removes the claim.
-function claimRun({ root, kind, taskType, task, configHash }) {
+function claimRun({ root, kind, taskType, task, configHash, plan = { path: "", title: "" } }) {
   const runRoot = ensureRunRoot(root);
   const dir = join(runRoot, "task");
   // A non-recursive mkdir is the claim: exactly one concurrent opener wins, and an existing
@@ -178,7 +178,7 @@ function claimRun({ root, kind, taskType, task, configHash }) {
     writeLedger(join(dir, "ledger.json"), {
       v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType, runId: randomUUID(),
       owner: { sessionId: null, lastSeen: null },
-      task, plan: { path: "", title: "" }, configHash, gitConfigHash: fileHash(gitConfigPath(root)),
+      task, plan, configHash, gitConfigHash: fileHash(gitConfigPath(root)),
       policy: { mode: "", source: "" },
       stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null },
       stages: [], gates: {}, tests: {}, commits: [], retries: {},
@@ -191,8 +191,52 @@ function claimRun({ root, kind, taskType, task, configHash }) {
   return dir;
 }
 
+// The plan's next task as the run's task (title, blank line, body) and the plan reference the ledger keeps, with the
+// open unit read once here, before the claim.
+function planTask(plan) {
+  const { next, context } = steppedPlan(plan);
+  if (!next) throw new Refusal(`the plan ${plan} has no task left, ${NO_RUN_OPENED}`);
+  if (context.openUnit === null) {
+    throw new Refusal(`a plan task runs inside a unit, and no unit is open, ${NO_RUN_OPENED}. Open one with ${pbCommand("unit open --type <type> --slug <slug>")}`);
+  }
+  assertUnitTakes(context.openUnit, next, context.plan);
+  return {
+    task: [next.title, next.body].filter(Boolean).join("\n\n"),
+    plan: { path: context.plan, title: next.title },
+    // The unit.json to write when the open unit is still unnamed; null when it already carries the planned unit.
+    namedUnit: context.openUnit.unit == null ? { ...context.openUnit, unit: next.unit, plan: context.plan, tracer: next.tracer } : null,
+  };
+}
+
+// Reads the plan and steps it, refusing on format problems and on a stop: the shared start of run open and pb plan next.
+function steppedPlan(plan) {
+  const { root, units, problems, context } = readPlanContext(plan);
+  refusePlanProblems(problems);
+  const { next, stop } = planStep(units, context);
+  if (stop) throw new Refusal(planStopMessage(root, plan, stop));
+  return { next, context };
+}
+
+// Refuses when the open unit cannot take the plan's next task: it is a different unit, or it is fresh but already holds
+// a task that is not from a plan.
+function assertUnitTakes(openUnit, next, planPath) {
+  if (openUnit.unit != null) {
+    if (openUnit.unit !== next.unit) {
+      throw new Refusal(`the open unit is "${openUnit.unit}", but the plan's next task is in "${next.unit}", ${NO_RUN_OPENED}. Publish or close the open unit first`);
+    }
+    if (openUnit.plan !== planPath) {
+      throw new Refusal(`the open unit "${openUnit.unit}" is from ${openUnit.plan}, but the plan's next task is from ${planPath}, ${NO_RUN_OPENED}. Publish or close the open unit first`);
+    }
+  } else if (openUnit.tasks.length > 0) {
+    throw new Refusal(`the open unit already holds a task that is not from a plan, ${NO_RUN_OPENED}. Publish or close it first`);
+  }
+}
+
 function runOpen(args) {
   const kind = parseKind(args);
+  const planPath = flagValue(args, "--plan");
+  const hasPlan = args.includes("--plan");
+  if (hasPlan && (kind !== "code" || planPath === undefined || planPath.startsWith("-"))) throw new UsageError("usage: pb run open --kind code [--plan <plan.md>]");
   if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Refusal("Solo stays on the old path until T10, so no run was opened");
   const root = toplevel();
   assertNotStopped(root);
@@ -203,9 +247,13 @@ function runOpen(args) {
 
   const configHash = validatedConfigHash(root);
   const taskType = kind === "publish" ? "publish" : null;
-  const task = storedTask(root);
+  const planned = hasPlan ? planTask(planPath) : null;
+  const task = planned ? planned.task : storedTask(root);
 
-  const dir = claimRun({ root, kind, taskType, task, configHash });
+  const dir = claimRun({ root, kind, taskType, task, configHash, plan: planned?.plan });
+  // A failed write is a disk error that leaves the run unnamed; `pb plan next` then reads its ticked box as hand-ticked
+  // and stops, which is the safe side.
+  if (planned?.namedUnit) writeJsonAtomic(unitPathOf(root), planned.namedUnit);
   return { ok: true, kind, branch, runDir: dir };
 }
 
@@ -544,6 +592,13 @@ function readPlan(plan) {
   const root = toplevel();
   const realPlan = planFile(root, plan);
   return { root, realPlan, text: readFileSync(realPlan, "utf8") };
+}
+
+// The plan read under the repo toplevel with its parsed units and problems, and the context planStep and unitStates take.
+function readPlanContext(plan) {
+  const { root, realPlan, text } = readPlan(plan);
+  const { units, problems } = parsePlan(text);
+  return { root, units, problems, context: { plan: relative(realpathSync(root), realPlan), openUnit: readOpenUnit(root) } };
 }
 
 // Refuses, writing nothing, when the plan has format problems.
@@ -1213,18 +1268,13 @@ function planNext(args) {
   const dryRun = args.includes("--dry-run");
   if (paths.length !== 1 || args.some((a) => a.startsWith("-") && a !== "--dry-run")) throw new UsageError("usage: pb plan next <plan.md> [--dry-run]");
   const [plan] = paths;
-  const { root, realPlan, text } = readPlan(plan);
-  const { units, problems } = parsePlan(text);
-  if (!dryRun) refusePlanProblems(problems);
-  const context = { plan: relative(realpathSync(root), realPlan), openUnit: readOpenUnit(root) };
+  if (!dryRun) return { ok: true, plan, next: steppedPlan(plan).next };
+  const { root, units, problems, context } = readPlanContext(plan);
   const { next, stop } = planStep(units, context);
-  if (!dryRun) {
-    if (stop) throw new Refusal(planStopMessage(root, plan, stop));
-    return { ok: true, plan, next };
-  }
   const states = unitStates(units, context);
   const summaries = units.map((u, i) => unitSummary(u, states[i]));
-  return { ok: true, dryRun: true, plan, units: summaries, stop, next, problems };
+  const reportedStop = stop && { ...stop, says: planStopMessage(root, plan, stop) };
+  return { ok: true, dryRun: true, plan, units: summaries, stop: reportedStop, next, problems };
 }
 
 function assertTaskFinished(ledger) {

@@ -104,8 +104,9 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_stop_if_run_open()` | The check in An Open Run Comes First. |
 | `_stop_if_unit_open()` | If `.pairingbuddy/run/unit.json` exists, stop and tell the human the open unit's branch (read from unit.json) and that the old path cannot run inside a unit. They can finish the unit's work on the new path, or leave it by running `pb human abandon` (human-only: they type `!cd <project root> && node <root>/cli/pb.mjs human abandon`, which removes the unit and task state and keeps every commit). |
 | `_write_task(task)` | Write the new task to `.pairingbuddy/task.json`. It waits for cleanup: curation reads the just-completed task from that file, and cleanup deletes it. |
-| `_curating_guidance(task)` | Runs the curating-guidance skill in the main context, before cleanup, outside Solo and plan tasks. With no human it carries guidance over silently. |
+| `_curating_guidance(task)` | Runs the curating-guidance skill in the main context, before cleanup, outside Solo (plan tasks included). With no human it carries guidance over silently. |
 | `_setting_up_spike(task)` | Runs the setting-up-spike skill in the main context. It runs inside `_run_new_path(task)`, after G:type, for a spike. |
+| `_run_plan_loop(plan_path)` | Runs a plan outside Solo, one task at a time, on the new path. See Plan Loop. |
 | `_run_new_path(task)` | Runs a migrated type through its workflow stages. See Migrated-Types Router. |
 | `_update_solo_report(event, details)` | **Solo mode only.** Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file if absent; on resume, **reconciles** existing entries against the current plan — drops entries for removed tasks, reorders to match plan, then appends session separator), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
 
@@ -122,6 +123,11 @@ _stop_if_run_open()
 # Plan execution mode: iterate through tasks from a plan MD file
 if _detect_plan_file(task):
     plan_path = task.plan_file
+    # Outside Solo, a plan runs on the new path, one task at a time (see Plan Loop)
+    if not _is_solo():
+        _run_plan_loop(plan_path)
+        _stop("Plan loop stopped.")
+    # Solo only from here: the old plan loop stays until T10
     plan_tasks = _read_plan_tasks(plan_path)
     _hydrate_claude_tasks(plan_tasks)
     _update_solo_report("start", {"plan_path": plan_path, "plan_tasks": plan_tasks})
@@ -140,7 +146,7 @@ if _detect_plan_file(task):
         task_classification = classify_task(task)
         _stop_if_unit_open()
         # ... (same old-path branches as below, based on task_type,
-        # never the migrated-types router: plan tasks stay on the old path until T7) ...
+        # never the migrated-types router: Solo plan tasks stay on the old path until T10) ...
 
         # After successful completion:
         _mark_task_complete(plan_path, plan_task.index)
@@ -180,7 +186,7 @@ task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refact
 # The old path cannot run inside an open unit
 _stop_if_unit_open()
 
-# Old path: plan tasks, and every type under Solo
+# Old path: Solo only
 if task_type == "new_feature":
     # Plan tasks and Solo only
     # Full TDD workflow with coverage verification loop
@@ -307,7 +313,7 @@ if _ask_human("All tests pass. Commit changes?"):
 
 ### Migrated-Types Router
 
-Outside Solo, every non-plan task runs through workflow stages instead of the branches above. Plan tasks and Solo runs stay on those branches and never open a run, so they have no run state.
+Outside Solo, every non-plan task runs through workflow stages instead of the branches above. Plans outside Solo run through the Plan Loop below, which opens runs too. Only Solo, plan or not, stays on those branches and never opens a run, so it has no run state.
 
 `_run_new_path(task)`:
 
@@ -342,7 +348,7 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 ### State File Management
 
 1. At cycle start, verify `.pairingbuddy/` is in `.gitignore`
-2. Curate guidance (before cleanup). The curating-guidance skill does this outside Solo and plan tasks; the `curate_guidance` agent does it for Solo and plan tasks:
+2. Curate guidance (before cleanup). The curating-guidance skill does this outside Solo, plan tasks included; the `curate_guidance` agent does it only in Solo:
    - If `human-guidance.json` has entries: review/curate existing guidance
    - If empty or missing: offer to add new persistent guidance
    - Approved entries get `"persistent": true` flag
@@ -363,7 +369,24 @@ After each refactor cycle:
 2. Human decides: continue, skip remaining, or stop
 3. Prevents infinite refactor loops
 
+### Plan Loop
+
+Outside Solo, `_run_plan_loop(plan_path)` runs a plan one task at a time:
+
+1. Run `pb plan next <plan>` first. It says what to do next, or refuses. When it succeeds with no next task, the plan is done: report that and stop the loop.
+2. A unit is open when `.pairingbuddy/run/unit.json` exists. If no unit is open, run `pb unit open` as router step 1: a type you guess from the task and a short kebab-case slug made from the unit name. When it refuses with a `!` command, stop and show the human that command.
+3. Run the curating-guidance skill in the main context before each task. Then clean the state files with `_cleanup_state_files()`.
+4. Run `pb run open --kind code --plan <plan>`, which takes the next task itself, so the session does not write `task.json` for it.
+5. Follow `pb status --action` and `pb gate eval` through the stages and G:task-end as router steps 3-4.
+6. Run `pb task end`, which ticks the box and records the task, then, unless its output has `closed`, run `pb plan next` again. If it has `closed`, report its `reason` and stop the loop: do not run `pb plan next` or `pb run open --kind publish`.
+7. If the unit is done but not published, run `pb run open --kind publish` and publish as router steps 6-8. Run `pb plan next` again only when `pb publish` returned a `url`. On `skip`, `local` or `kept-local`, or a needs-human stop, report as router step 8 says and stop the loop.
+8. For any other refusal (a human task, hand-ticked boxes, a legacy unit), show it to the human with its options, and stop the loop.
+
+The model never ticks a box and never types a `pb human` command.
+
 ### Plan Execution Mode
+
+This section describes Solo's old plan loop.
 
 When the task description references a plan MD file (produced by `/pairingbuddy:plan`), the orchestrator enters plan execution mode:
 

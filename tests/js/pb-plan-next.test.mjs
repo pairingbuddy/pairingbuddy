@@ -5,8 +5,14 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 
-import { makeRepo, pb, pbWithEnv, writePlan } from "./cli-repo-fixture.mjs";
+import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { newUnit } from "../../shared-node/unit.mjs";
+import { withIntake } from "./ledger-fixture.mjs";
+
+import { env, makeRepo, pb, pbWithEnv, writePlan } from "./cli-repo-fixture.mjs";
 
 const PLAN = [
   "# Plan",
@@ -52,6 +58,35 @@ function snapshot(dir) {
 function writeUnitJson(repo, unit, titles) {
   mkdirSync(join(repo.dir, ".pairingbuddy", "run"), { recursive: true });
   writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit, plan: "docs/plan.md", tasks: titles.map((title) => ({ title })) }));
+}
+
+// Opens the plan's first task with pb run open --plan, fast-forwards its ledger to a finished task and ends it with pb task end, returning the pb task end result.
+// The repo must be made with configGlobs ["**"] and a committed two-task plan at docs/plan.md.
+// The task is a config_change because it is the shortest path pb task end accepts: that type has no test-selection stages, and its file check runs against config_globs, which ["**"] satisfies (an empty list would need the human's approval).
+function finishPlanTaskThroughWorkflow(repo) {
+  const git = (...args) => execFileSync("git", args, { cwd: repo.dir, encoding: "utf8", env: env() }).trim();
+  const sha256 = (path) => createHash("sha256").update(readFileSync(join(repo.dir, path))).digest("hex");
+  writeFileSync(join(repo.dir, ".gitignore"), ".pairingbuddy/\n");
+  git("add", "-A");
+  git("commit", "-q", "-m", "docs: add the plan");
+  mkdirSync(join(repo.dir, ".pairingbuddy", "run"), { recursive: true });
+  writeFileSync(
+    join(repo.dir, ".pairingbuddy", "run", "unit.json"),
+    JSON.stringify(newUnit({ branch: "feature", base: "main", baseSha: git("rev-parse", "HEAD"), configHash: sha256(".pairingbuddy/test-config.json"), gitConfigHash: sha256(".pairingbuddy/git-config.json") })),
+  );
+
+  const opened = pb(repo, "run", "open", "--kind", "code", "--plan", "docs/plan.md");
+  assert.equal(opened.code, 0, `run open (stderr: ${opened.stderr})`);
+  const ledgerPath = join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json");
+  writeLedger(ledgerPath, withIntake({
+    ...readLedger(ledgerPath),
+    taskType: "config_change",
+    stage: { name: "code-safety-net", status: "done", runId: "wf_2", attempt: 1, startedAt: null },
+    stages: [{ name: "code-config", status: "done", attempt: 1 }, { name: "code-safety-net", status: "done", attempt: 1 }],
+    gates: { "G:task-end": { source: "auto" } },
+    tests: { full: { stage: "code-safety-net", attempt: 1, passed: true, red: false, runs: [], head: git("rev-parse", "HEAD") } },
+  }));
+  return pb(repo, "task", "end");
 }
 
 describe("pb-plan-next-cli", () => {
@@ -134,7 +169,9 @@ describe("pb-plan-next-cli", () => {
       [["Shipped", "published"], ["Old", "accepted"], ["Done", "legacy"], ["Also done", "legacy"], ["Todo", "open"]],
       "every unit's state, in document order",
     );
-    assert.deepEqual(out.stop, { reason: "legacy", unit: "Done" }, "the first stop is the first legacy unit");
+    const { says: legacySays, ...legacyStop } = out.stop;
+    assert.deepEqual(legacyStop, { reason: "legacy", unit: "Done" }, "the first stop is the first legacy unit");
+    assert.match(legacySays, /^unit "Done" is fully checked with no PR: line\. Nothing was written/, "the stop says what the refusal says");
     assert.equal(out.next, null, "a stop means no skip-ahead, even in the report");
     assert.deepEqual(snapshot(repo.dir), before, "nothing under the repo changed");
   });
@@ -316,7 +353,7 @@ describe("pb-plan-next-cli", () => {
     assert.deepEqual(snapshot(withAgent.dir), agentBefore, "the agent-left stop writes nothing");
   });
 
-  // --dry-run exits 0 and each task summary is { title, checked, human }; with one agent and one [HUMAN] task the stop is { reason: "human", unit, title, body } naming the human task, next is null, and nothing is written
+  // --dry-run exits 0 and each task summary is { title, checked, human }; with one agent and one [HUMAN] task the stop is { reason: "human", unit, title, body } naming the human task plus says, the sentence the refusal prints, next is null, and nothing is written
   test("dry-run-lists-human-tasks-and-names-the-stop", () => {
     const repo = makeRepo({ openTask: false });
     writePlan(
@@ -334,12 +371,47 @@ describe("pb-plan-next-cli", () => {
       [{ title: "[HUMAN] Sign the release", checked: false, human: true }, { title: "Build it", checked: false, human: false }],
       "each task summary says whether it is human",
     );
+    const { says, ...humanStop } = out.stop;
     assert.deepEqual(
-      out.stop,
+      humanStop,
       { reason: "human", unit: "Release", title: "[HUMAN] Sign the release", body: "1. Open the signing console.\n2. Approve the build artifact." },
       "the stop names the human task and its steps",
     );
+    assert.match(says, /^unit "Release"'s next task "\[HUMAN\] Sign the release" is a human task/, "the stop says which unit and task is the human task");
+    assert.ok(says.endsWith(humanStop.body), `the stop says ends with the task's steps (says: ${says})`);
     assert.equal(out.next, null, "a stop means no next task");
     assert.deepEqual(snapshot(repo.dir), before, "nothing under the repo changed");
+  });
+
+  // A plan task opened with pb run open --plan, finished and ended through the real CLI, ticks its box as recorded, so pb plan next moves on to the following task instead of refusing it as hand-ticked
+  test("next-task-follows-after-run-open-plan-and-task-end", () => {
+    const repo = makeRepo({ openTask: false, configGlobs: ["**"] });
+    writePlan(repo, ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Parser", "", "- [ ] **Task 1**", "", "  Read the headings.", "", "- [ ] **Task 2**", "", "  Read the tasks.", ""].join("\n"));
+
+    const ended = finishPlanTaskThroughWorkflow(repo);
+
+    assert.equal(ended.code, 0, `task end (stderr: ${ended.stderr})`);
+    assert.match(readFileSync(join(repo.dir, "docs", "plan.md"), "utf8"), /- \[x\] \*\*Task 1\*\*/, "the box for Task 1 is ticked");
+
+    const next = pb(repo, "plan", "next", "docs/plan.md");
+
+    assert.equal(next.code, 0, `plan next exit code (stderr: ${next.stderr})`);
+    assert.equal(JSON.parse(next.stdout).next.title, "Task 2", "the next task is the one after the task that ended");
+  });
+
+  // In a dry run at a stop, stop.says is the plain sentence the refusal prints for the same plan and state; a hand-ticked unit with only [HUMAN] tasks left carries the options in that sentence
+  test("dry-run-stop-says-equals-refusal-text", () => {
+    const repo = makeRepo({ openTask: false });
+    writePlan(repo, ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Release", "", "- [x] **Build it**", "- [x] **Wire it**", "- [ ] **[HUMAN] Sign the release**", ""].join("\n"));
+    writeUnitJson(repo, "Release", ["Build it"]);
+
+    const refusal = pb(repo, "plan", "next", "docs/plan.md");
+    const dryRun = pb(repo, "plan", "next", "docs/plan.md", "--dry-run");
+
+    assert.equal(refusal.code, 1, `refusal exit code (stderr: ${refusal.stderr})`);
+    assert.equal(dryRun.code, 0, `dry-run exit code (stderr: ${dryRun.stderr})`);
+    const message = refusal.stderr.replace(/^pb: /, "").replace(/\n$/, "");
+    assert.ok(message.includes("accept --legacy"), `the refusal carries the options (stderr: ${refusal.stderr})`);
+    assert.equal(JSON.parse(dryRun.stdout).stop.says, message, "the dry run's stop.says is the refusal's message");
   });
 });
