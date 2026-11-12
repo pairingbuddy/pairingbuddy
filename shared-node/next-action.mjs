@@ -8,6 +8,7 @@ import { LedgerShaMismatch, isPublishRun, isRefreshRun, readLedger } from "./led
 import { coveredTests, fixesOf, spendTotals } from "./stage-run.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, startLeaseSecondsLeft } from "./stages.mjs";
 import { humanCommand, pbCommand, shaMismatchRemedy } from "./verbs.mjs";
+import { SPIKE_SETUP_FILE } from "./unit-files.mjs";
 
 function nextStep(contract, ledger) {
   if (isStageActive(ledger)) return null;
@@ -58,6 +59,7 @@ export function nextAction(contract, ledger, root, pluginRoot) {
   const gate = blockingGate(gates, ledger);
   if (gate !== undefined) return `Gate ${gate.name} is due. Run ${pbCommand("gate eval")}.`;
   const step = nextStep(contract, ledger);
+  if (ledger.taskType === "spike" && !existsSync(join(root, ".pairingbuddy", "run", "task", SPIKE_SETUP_FILE))) return `The task is a spike and its setup is not recorded yet. Run the setting-up-spike skill in this conversation, then run ${pbCommand("spike setup")}, then run ${pbCommand("status --action")} again.`;
   if (step !== null) return startAction(step, pluginRoot, ledger.task);
   if (finishVerb !== null) return isPublishApproved(ledger) ? `Every stage and gate is done and ${PUBLISH_GATE} is approved. Run ${pbCommand(finishVerb)}.` : `Gate ${PUBLISH_GATE} is due. Run ${pbCommand("gate eval")}.`;
   return `Every stage and gate is done. Run ${pbCommand("task end")}.`;

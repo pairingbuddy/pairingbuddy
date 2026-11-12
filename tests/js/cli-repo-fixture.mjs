@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { lensRow, writeCleanLensReturn } from "./lens-return-fixture.mjs";
-import { baseLedger } from "./ledger-fixture.mjs";
+import { baseLedger, withIntake } from "./ledger-fixture.mjs";
 
 export const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CLI = join(ROOT, "cli", "pb.mjs");
@@ -67,13 +67,14 @@ export function makeRepo({ ledger = {}, openTask = true, remote = false, configG
   writeFileSync(join(dir, ".pairingbuddy", "test-config.json"), TEST_CONFIG);
   if (configGlobs) writeFileSync(join(dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ config_globs: configGlobs }));
   const ledgerPath = join(taskDir, "ledger.json");
-  writeLedger(ledgerPath, {
+  // The run is past intake: a done intake first in its stages and G:type passed, whatever stages and gates the test names.
+  writeLedger(ledgerPath, withIntake({
     ...baseLedger(),
     configHash: createHash("sha256").update(TEST_CONFIG).digest("hex"),
     stage: { name: "code-config", status: "active", runId: "wf_1", attempt: ATTEMPT, startedAt: null },
     stages: [],
     ...ledger,
-  });
+  }));
   if (!openTask) rmSync(taskDir, { recursive: true, force: true });
   return { dir, remoteDir, ledger: () => readLedger(ledgerPath) };
 }

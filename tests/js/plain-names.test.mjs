@@ -45,3 +45,12 @@ test("no plain name equals or contains a stage, gate, agent, task type, phase or
 
   assert.deepEqual(offenders, [], `plain names that hold an id: ${JSON.stringify(offenders)}`);
 });
+
+test("the intake stage, its type gate and the classify-task agent have plain names", () => {
+  for (const id of ["intake", "G:type", "classify-task"]) {
+    const name = plainName(id);
+
+    assert.ok(typeof name === "string" && name.trim() !== "", `${id} has a plain name`);
+    assert.notEqual(name, id, `${id} is not shown as its raw id`);
+  }
+});

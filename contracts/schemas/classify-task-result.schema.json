@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Classify Task Result",
+  "description": "Return of the classify-task agent when its prompt gives paths: the pb key it was given, any open ambiguity, the task type, how sure it is, and why",
+  "type": "object",
+  "required": ["pb_key", "ambiguity", "task_type", "confidence", "rationale"],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "ambiguity": {
+      "type": "string",
+      "description": "An open question the task left unresolved, or an empty string"
+    },
+    "task_type": {
+      "type": "string",
+      "enum": ["new_feature", "bug_fix", "refactoring", "config_change", "spike"],
+      "description": "The classification of the task"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["certain", "likely", "unsure"],
+      "description": "certain only when the task leaves no reasonable doubt between types"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Why this classification was chosen"
+    }
+  },
+  "additionalProperties": false
+}

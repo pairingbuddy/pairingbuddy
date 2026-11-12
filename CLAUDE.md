@@ -31,7 +31,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
 - Design philosophy (WHAT vs HOW separation)
 - Testing strategy (BDD outer-to-inner, test layers pyramid)
 - Agent and skill structure (36 agents, 19 skills)
-- State management via JSON files (63 schemas)
+- State management via JSON files (64 schemas)
 - Spike workflow (exploratory coding without TDD)
 - Planning workflow (tracer bullet methodology)
 - Design UX workflow (design systems with three-tier token architecture)
@@ -50,7 +50,7 @@ pairingbuddy/
 ├── contracts/        # Single source of truth
 │   ├── agent-config.yaml    # Agent definitions
 │   ├── skill-config.yaml    # Skill definitions
-│   └── schemas/             # JSON schemas for state (63 total)
+│   └── schemas/             # JSON schemas for state (64 total)
 ├── hooks/            # Claude Code hooks (SessionStart, PostToolUse)
 ├── mod/              # Claude Code mod (register.tsx, band.tsx, pane.tsx, view.ts, inputs.ts, poll.ts, alert.ts, pane-open.ts, report.ts, suggest.ts, assets/, *.test.tsx, testing/, fixtures/); writes only reports/ and human-guidance.json, isolated from the shell hooks
 ├── shared-node/      # Pure ESM shared by the CLI, hooks, workflows and the mod (labels, ledger, stage graph, glance, plain names, gate-passed rule, now-building block)

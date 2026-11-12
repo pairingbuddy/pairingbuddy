@@ -171,20 +171,21 @@ describe("report-content", () => {
   test("report-steps-with-times", async () => {
     const input = await recordedReportInput("probe-2", { outcome: "stopped" });
     const stages = [
+      { name: "intake", status: "done", attempt: 1, startedAt: "2026-11-03T02:16:08.000Z", end: "2026-11-03T02:16:08.000Z" },
       { name: "code-scenarios", status: "done", attempt: 1, startedAt: "2026-11-03T02:16:08.000Z", end: "2026-11-03T02:16:26.000Z" },
       { name: "code-tdd", status: "failed", attempt: 1, startedAt: "2026-11-03T02:16:26.000Z" },
     ];
     const graph = graphFor(await readStagesContract(), "bug_fix").stages;
-    assert.deepEqual(graph, ["code-scenarios", "code-tdd", "code-safety-net"], "the bug fix graph order the report must follow");
+    assert.deepEqual(graph, ["intake", "code-scenarios", "code-tdd", "code-safety-net"], "the bug fix graph order the report must follow");
 
     const report = renderReport({ ...input, ledger: { ...input.ledger, taskType: "bug_fix", stages } });
     const section = sectionOf(report, "STEPS");
     const rows = rowsOf(section);
 
     assert.deepEqual(rows.map(([name]) => name), graph.map(plainName), "one row per stage in graph order, named in plain words");
-    assert.deepEqual(rows[0], ["write scenarios", "0:00", "0:18", "0:18"], "a finished stage shows start, end and duration");
-    assert.deepEqual(rows[1], ["build test by test", "0:18", "unknown", "unknown"], "a stage with no recorded end shows unknown for end and duration");
-    assert.deepEqual(rows[2], [plainName("code-safety-net"), "not reached", "", ""], "a stage after the stop is marked not reached");
+    assert.deepEqual(rows[1], ["write scenarios", "0:00", "0:18", "0:18"], "a finished stage shows start, end and duration");
+    assert.deepEqual(rows[2], ["build test by test", "0:18", "unknown", "unknown"], "a stage with no recorded end shows unknown for end and duration");
+    assert.deepEqual(rows[3], [plainName("code-safety-net"), "not reached", "", ""], "a stage after the stop is marked not reached");
     assert.deepEqual(graph.filter((id) => section.includes(id)), [], "the section shows no stage ids");
   });
 

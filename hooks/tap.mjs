@@ -16,11 +16,12 @@ function logError(taskDir, message) {
 
 // The fix role's label is shared by every fixer the workflows assign (decision 26), so a fix key does not
 // name one agent. Each stage lists the fixers its workflow assigns; keep this in step with the fix configs in
-// workflows-src/stages/code-safety-net.mjs, code-scenarios.mjs, code-spike-document.mjs and pr-draft.mjs, and add a new fixer in both.
+// workflows-src/stages/code-safety-net.mjs, code-scenarios.mjs, code-spike-document.mjs, intake.mjs and pr-draft.mjs, and add a new fixer in both.
 const FIX_AGENTS_BY_STAGE = {
   "code-safety-net": ["pairingbuddy:refactor-code", "pairingbuddy:refactor-tests"],
   "code-scenarios": ["pairingbuddy:enumerate-scenarios-and-test-cases"],
   "code-spike-document": ["pairingbuddy:document-spike"],
+  "intake": ["pairingbuddy:classify-task"],
   "pr-draft": ["pairingbuddy:draft-pull-request"],
 };
 
@@ -31,7 +32,14 @@ function agentMayFile(parsed, agentType) {
   return agentType === `pairingbuddy:${parsed.role}`;
 }
 
-function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, { tool_input: toolInput, agent_type: agentType }) {
+const pluginRoot = () => process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url));
+
+// Only a migrated task type is recorded; any other leaves the ledger taskType null.
+function migratedTaskType(loadStages, taskType) {
+  return loadStages(pluginRoot()).migratedTypes.includes(taskType) ? taskType : null;
+}
+
+function tapStructuredOutput({ loadStages, parseKey, readLedger, updateLedger }, taskDir, ledgerPath, { tool_input: toolInput, agent_type: agentType }) {
   const pbKey = toolInput?.pb_key;
   if (typeof pbKey !== "string") return;
   let parsed;
@@ -65,6 +73,7 @@ function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, { to
   writeFileSync(temp, JSON.stringify(toolInput));
   renameSync(temp, join(dir, `${pbKey}.json`));
   writePrBody(taskDir, parsed, toolInput.body);
+  if (parsed.stage === "intake" && parsed.role === "classify-task") updateLedger(ledgerPath, (ledger) => ({ ...ledger, taskType: migratedTaskType(loadStages, toolInput.task_type) }));
 }
 
 // The draft and its redraft (a fix) both carry the PR body, so both roles write pr-body.md.
@@ -101,8 +110,7 @@ function tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, toolInpu
 }
 
 function runGates({ gatesFor, loadStages }, ledger) {
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url));
-  return gatesFor(loadStages(pluginRoot), ledger.taskType);
+  return gatesFor(loadStages(pluginRoot()), ledger.taskType);
 }
 
 function askedAnswer({ gateAnswer }, ledger, toolResponse) {
@@ -167,12 +175,12 @@ function closeKeptLocal(modules, root, ledger) {
 }
 
 function tapRun(modules, root, input) {
-  const { parseKey, readLedger, updateLedger } = modules;
+  const { loadStages, parseKey, readLedger, updateLedger } = modules;
   const taskDir = join(root, ".pairingbuddy", "run", "task");
   const ledgerPath = join(taskDir, "ledger.json");
   if (!existsSync(ledgerPath)) return;
   try {
-    if (input.tool_name === "StructuredOutput") tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, input);
+    if (input.tool_name === "StructuredOutput") tapStructuredOutput({ loadStages, parseKey, readLedger, updateLedger }, taskDir, ledgerPath, input);
     else if (input.tool_name === "Workflow") tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, input.tool_input, input.tool_response);
     else if (input.tool_name === "AskUserQuestion" && input.agent_id === undefined) tapQuestion(modules, root, ledgerPath, input.tool_response);
   } catch (e) {

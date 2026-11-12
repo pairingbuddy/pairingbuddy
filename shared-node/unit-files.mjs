@@ -5,6 +5,9 @@ import { join } from "node:path";
 // The files that belong to one unit: its record and the PR draft's body and lint result.
 export const UNIT_FILES = ["unit.json", "pr-body.md", "pr-lint.json"];
 
+// The spike setup a spike run records in run/task once G:type has passed.
+export const SPIKE_SETUP_FILE = "spike.json";
+
 function removeNamed(runDir, wanted) {
   const present = existsSync(runDir) ? readdirSync(runDir).filter((name) => name !== ".gitignore") : [];
   const names = wanted === null ? present : present.filter((name) => wanted.includes(name));

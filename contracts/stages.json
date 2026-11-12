@@ -14,6 +14,11 @@
     "config_change": {
       "nodes": [
         {
+          "name": "intake",
+          "gate": "G:type",
+          "evidence": ["artifact:classify-task"]
+        },
+        {
           "name": "code-config",
           "gate": null,
           "evidence": ["artifact:apply-config-change", "checkpoint:config"]
@@ -25,11 +30,17 @@
         }
       ],
       "gates": {
+        "G:type": { "class": "conditional" },
         "G:task-end": { "class": "continue" }
       }
     },
     "bug_fix": {
       "nodes": [
+        {
+          "name": "intake",
+          "gate": "G:type",
+          "evidence": ["artifact:classify-task"]
+        },
         {
           "name": "code-scenarios",
           "gate": "G:scenarios",
@@ -47,6 +58,7 @@
         }
       ],
       "gates": {
+        "G:type": { "class": "conditional" },
         "G:scenarios": { "class": "continue" },
         "G:task-end": { "class": "continue" }
       }
@@ -54,6 +66,11 @@
     "new_feature": {
       "nodes": [
         {
+          "name": "intake",
+          "gate": "G:type",
+          "evidence": ["artifact:classify-task"]
+        },
+        {
           "name": "code-scenarios",
           "gate": "G:scenarios",
           "evidence": ["artifact:enumerate-scenarios-and-test-cases"]
@@ -70,12 +87,18 @@
         }
       ],
       "gates": {
+        "G:type": { "class": "conditional" },
         "G:scenarios": { "class": "continue" },
         "G:task-end": { "class": "continue" }
       }
     },
     "refactoring": {
       "nodes": [
+        {
+          "name": "intake",
+          "gate": "G:type",
+          "evidence": ["artifact:classify-task"]
+        },
         {
           "name": "code-refactor-scope",
           "gate": "G:scope",
@@ -93,6 +116,7 @@
         }
       ],
       "gates": {
+        "G:type": { "class": "conditional" },
         "G:scope": { "class": "continue" },
         "G:task-end": { "class": "continue" }
       }
@@ -124,6 +148,11 @@
     "spike": {
       "nodes": [
         {
+          "name": "intake",
+          "gate": "G:type",
+          "evidence": ["artifact:classify-task"]
+        },
+        {
           "name": "code-spike-unit",
           "gate": "G:unit",
           "repeat": true,
@@ -136,6 +165,7 @@
         }
       ],
       "gates": {
+        "G:type": { "class": "conditional" },
         "G:unit": { "class": "continue" },
         "G:task-end": { "class": "continue" }
       }

@@ -202,7 +202,8 @@ const AFTER_SCENARIOS = {
   ...SNAPSHOT_RUNNING,
   seq: 6,
   stage: { name: 'code-scenarios', status: 'done', runId: 'wf_76c46091-82d', attempt: 1, startedAt: '2026-11-04T08:13:26.472Z' },
-  stages: [doneStage('code-scenarios', 0)],
+  stages: [doneStage('intake', 0), doneStage('code-scenarios', 1)],
+  gates: { ...SNAPSHOT_RUNNING.gates, 'G:type': { source: 'auto' } },
 }
 const nowRow = (shown: string[]) => shown.find(text => text.startsWith('NOW')) ?? ''
 
@@ -230,7 +231,7 @@ test('pane-now-run-open-has-no-band-label', async ($, on) => {
 })
 
 test('all-steps-done-before-task-end', async ($, on) => {
-  const everyStageDone = { ...AFTER_SCENARIOS, stages: ['code-scenarios', 'code-tdd', 'code-safety-net'].map(doneStage) }
+  const everyStageDone = { ...AFTER_SCENARIOS, stages: ['intake', 'code-scenarios', 'code-tdd', 'code-safety-net'].map(doneStage) }
   engine(on, everyStageDone)
   await start($)
 

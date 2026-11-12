@@ -483,7 +483,7 @@ test("pb status --action gives the next action, whose args the gate takes", (t) 
 
   const { action, next } = JSON.parse(pb(root, "status", "--action").stdout);
 
-  assert.deepEqual(next, { stage: "code-config", attempt: 1 });
+  assert.deepEqual(next, { stage: "intake", attempt: 1 });
   const args = JSON.parse(action.match(/with the args (\{.*\})\./)[1]);
   assert.deepEqual(args, { attempt: 1, pluginRoot: PLUGIN, task: { description: "Set the port" } });
 });

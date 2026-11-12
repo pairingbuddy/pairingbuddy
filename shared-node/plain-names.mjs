@@ -1,6 +1,7 @@
 // Plain-language names for the ids the UI would otherwise show. The UI shows these, never the ids.
 const PLAIN_NAMES = {
   // stages
+  intake: "work out the task type",
   "code-config": "make the config change",
   "code-scenarios": "write scenarios",
   "code-tdd": "build test by test",
@@ -11,6 +12,7 @@ const PLAIN_NAMES = {
   "code-spike-unit": "try one experiment",
   "code-spike-document": "write up the findings",
   // gates
+  "G:type": "your OK on the task type",
   "G:scenarios": "your OK on the scenarios",
   "G:task-end": "your sign-off at the end",
   "G:publish": "your OK to publish",

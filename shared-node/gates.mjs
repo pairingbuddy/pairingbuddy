@@ -6,10 +6,13 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus } from "./stages.mjs";
+import { buildKey } from "./keys.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
 import { isRefreshRun } from "./ledger.mjs";
+import { needsTestSelection } from "./stage-graph.mjs";
+import { readTestConfig, runnersWithoutSelector } from "./test-run.mjs";
 import { taskHasLensRecord } from "./publish.mjs";
 import { headOf } from "./checkpoint.mjs";
 import { PrLintConfigRefused } from "./pr-lint.mjs";
@@ -207,9 +210,8 @@ const CONFIG_STOPS = { "test-config.json": "the config hash changed during the r
 const configStop = (hashes, root) => CONFIG_STOPS[changedConfigs(hashes, root)[0]] ?? null;
 
 function stopReason(contract, ledger, root) {
-  const taskDir = join(root, ".pairingbuddy", "run", "task");
   if (ledger.stop !== null) return `the run stopped: ${ledger.stop.reason}`;
-  const artifacts = join(taskDir, "artifacts");
+  const artifacts = artifactsDir(root);
   const settled = settledStages(contract, ledger);
   return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(artifacts, ledger, settled) ?? coverageStop(artifacts, ledger, settled) ?? reportStop(taskReportPath(root), ledger);
 }
@@ -236,15 +238,40 @@ function scopeReason(root, ledger) {
   return blocked ? "the scope lens found the scope may not serve the stated intent" : null;
 }
 
+const TYPE_GATE = "G:type";
+
+const artifactsDir = (root) => join(root, ".pairingbuddy", "run", "task", "artifacts");
+
+// G:type asks when a runner has no selector_template (for task types that need test selection) or when the classifier is not certain.
+function selectorReason(root, ledger, contract) {
+  if (!needsTestSelection(contract, ledger.taskType)) return null;
+  const missing = runnersWithoutSelector(readTestConfig(root, ledger.configHash));
+  if (missing.length === 0) return null;
+  const [noun, verb] = missing.length === 1 ? ["runner", "has"] : ["runners", "have"];
+  return `${noun} ${missing.join(", ")} ${verb} no selector_template, so RED and GREEN cannot speak for one test. Ask the human to add selector_template to each runner in .pairingbuddy/test-config.json, then abandon this run with pb human abandon and start the task again`;
+}
+
+function classifierReason(root, ledger) {
+  const pbKey = buildKey({ stage: "intake", role: "classify-task", item: null, round: 1, attempt: ledger.stage.attempt });
+  const confidence = parsedOrNull(join(artifactsDir(root), `${pbKey}.json`))?.confidence;
+  return confidence === "certain" ? null : "the classifier does not report certain";
+}
+
+const typeReason = (root, ledger, contract) => selectorReason(root, ledger, contract) ?? classifierReason(root, ledger);
+
 // The reasons only one gate has, by gate name.
 const GATE_REASONS = {
   [SCOPE_GATE]: ({ root, ledger }) => scopeReason(root, ledger),
+  [TYPE_GATE]: ({ root, ledger, contract }) => typeReason(root, ledger, contract),
   [PUBLISH_GATE]: ({ root, ledger, voided }) => publishReason(ledger, root, voided),
 };
 
+// A gate with its own reason decides for itself; the class reason is for gates that have none.
+const gateOwnReason = (gate, args) => (GATE_REASONS[gate.name] ? GATE_REASONS[gate.name](args) : (CLASS_REASONS[gate.class] ?? null));
+
 // Why this gate must ask a human, or null when it passes under the recorded policy.
 export const askReason = (contract, ledger, gate, root, voided = null) =>
-  stopReason(contract, ledger, root) ?? GATE_REASONS[gate.name]?.({ root, ledger, voided }) ?? CLASS_REASONS[gate.class] ?? policyReason(ledger);
+  stopReason(contract, ledger, root) ?? gateOwnReason(gate, { root, ledger, voided, contract }) ?? policyReason(ledger);
 
 // ---------- G:publish ----------
 

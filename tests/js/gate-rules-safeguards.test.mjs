@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { baseLedger } from "./ledger-fixture.mjs";
+import { INTAKE_DONE, baseLedger, withTypePassed } from "./ledger-fixture.mjs";
 import { writeLedger } from "../../shared-node/ledger.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
@@ -75,9 +75,10 @@ test("edit-of-the-plan-whose-old-string-is-not-in-it-is-denied", () => {
 const SCENARIOS_DONE = {
   taskType: "bug_fix",
   stage: { name: "code-scenarios", status: "done", runId: "wf_1", attempt: 1 },
-  stages: [{ name: "code-scenarios", status: "done" }],
+  stages: [INTAKE_DONE, { name: "code-scenarios", status: "done" }],
+  gates: withTypePassed(),
 };
-const STOPPED_AT_SCENARIOS = { ...SCENARIOS_DONE, gates: { "G:scenarios": { source: "human", answer: "stop" } }, stop: STOP };
+const STOPPED_AT_SCENARIOS = { ...SCENARIOS_DONE, gates: withTypePassed({ "G:scenarios": { source: "human", answer: "stop" } }), stop: STOP };
 const halted = (root) => `Gate G:scenarios was answered stop. The run stopped: ${STOP.reason}. Only the human can go on from here: ask them to type ${humanCommand(root, "approve G:scenarios")} at the prompt.`;
 
 test("stage-start-after-an-answered-stop-names-the-stop", () => {

@@ -26,7 +26,7 @@ export const TASK = "Refactor line_total in cart.py: rename p, q and t to price,
 const PUBLISH_GATE = "G:publish";
 
 const LENS_MAP = JSON.parse(readFileSync(new URL("../../contracts/lenses.json", import.meta.url), "utf8"));
-const STAGES = ["code-refactor-scope", "code-refactor-apply", "code-safety-net"];
+const STAGES = ["intake", "code-refactor-scope", "code-refactor-apply", "code-safety-net"];
 
 export function assertRefactoringRun(ledger, log) {
   for (const prefix of ["feat", "fix"]) {
@@ -46,7 +46,7 @@ export function assertRefactoringRun(ledger, log) {
   return { refactorSteps };
 }
 
-const SPIKE_STAGES = ["code-spike-unit", "code-spike-document"];
+const SPIKE_STAGES = ["intake", "code-spike-unit", "code-spike-document"];
 export const SPIKE_UNITS = 2;
 const DOC_COMMIT = /^docs: record the spike findings in (.+)$/;
 
@@ -55,7 +55,7 @@ export function assertSpikeRun(ledger, log, opts = {}) {
   const names = (ledger.stages ?? []).map((s) => s.name);
   if (names.join() !== SPIKE_STAGES.join()) throw new SmokeError(`stages are [${names}], expected ${SPIKE_STAGES} in that order`);
   for (const stage of ledger.stages) if (stage.status !== "done") throw new SmokeError(`stage ${stage.name} is not done (${stage.status})`);
-  const explored = ledger.stages[0].explored ?? [];
+  const explored = ledger.stages.find((s) => s.name === "code-spike-unit")?.explored ?? [];
   if (explored.length < SPIKE_UNITS) throw new SmokeError(`the spike explored ${explored.length}, expected at least ${SPIKE_UNITS} units (explored: [${explored}])`);
   const committedUnits = new Set((ledger.checkpoints ?? []).filter((c) => c.step === "spike-unit" && c.committed).map((c) => parseKey(c.key).item));
   for (const unit of explored) if (!committedUnits.has(unit)) throw new SmokeError(`unit ${unit} has no committed spike-unit checkpoint in the ledger`);

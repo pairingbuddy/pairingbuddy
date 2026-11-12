@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { afterIntake, withTypePassed } from "./ledger-fixture.mjs";
 import { BOOT, ROOT, assertAllowed, assertDenied, fixture, runGate } from "./gate-harness.mjs";
 import { graphFor, loadStages, pipelineAgents, START_LEASE_SECONDS, validateStages } from "../../shared-node/stages.mjs";
 
@@ -61,8 +62,8 @@ function makeLedger({ stage = IDLE_STAGE, stages = [] } = {}) {
     v: 1, seq: 0, sha: "0".repeat(64), kind: "code", taskType: "config_change",
     owner: { sessionId: null, lastSeen: null }, task: "Task 23",
     plan: { path: "", title: "" }, configHash: "a".repeat(64),
-    policy: { mode: "", source: "" }, stage, stages,
-    gates: {}, tests: {}, commits: [], retries: {}, spend: { agents: 0, tokens: 0 },
+    policy: { mode: "", source: "" }, stage, stages: afterIntake(stages),
+    gates: withTypePassed(), tests: {}, commits: [], retries: {}, spend: { agents: 0, tokens: 0 },
     stop: null, needsHuman: null,
   };
 }
@@ -961,7 +962,7 @@ test("graphFor returns the named task type's graph", () => {
 });
 
 test("graphFor falls back to the default task type on null", () => {
-  assert.deepEqual(graphFor(twoTypeContract(), null), { taskType: "config_change", stages: [CONFIG, SAFETY_NET] });
+  assert.deepEqual(graphFor(twoTypeContract(), null), { taskType: "config_change", stages: ["intake", CONFIG, SAFETY_NET] });
 });
 
 test("graphFor throws on an unknown task type", () => {
@@ -1091,12 +1092,12 @@ test("the committed stage contract is valid and pins the config_change graph", (
   const contract = VALID_CONTRACT();
 
   assert.deepEqual(validateStages(contract), []);
-  assert.deepEqual(contract.taskTypes.config_change.nodes.map((n) => n.name), [CONFIG, SAFETY_NET]);
+  assert.deepEqual(contract.taskTypes.config_change.nodes.map((n) => n.name), ["intake", CONFIG, SAFETY_NET]);
 });
 
 test("a stage contract with a duplicate node is invalid", () => {
   const contract = VALID_CONTRACT();
-  contract.taskTypes.config_change.nodes.push(contract.taskTypes.config_change.nodes[0]);
+  contract.taskTypes.config_change.nodes.push(contract.taskTypes.config_change.nodes[1]);
 
   assert.match(validateStages(contract).join("\n"), /duplicate node code-config/);
 });
@@ -1134,7 +1135,7 @@ for (const [label, change, problem] of [
   ["a null task type", (c) => ({ ...c, taskTypes: { ...c.taskTypes, config_change: null } }), /config_change: has no nodes/],
   ["a node with no name", breakGraph((g) => delete g.nodes[0].name), /a node has no name/],
   ["a node with an empty name", breakGraph((g) => (g.nodes[0].name = "")), /a node has no name/],
-  ["a node with no evidence list", breakGraph((g) => delete g.nodes[0].evidence), /node code-config has no evidence list/],
+  ["a node with no evidence list", breakGraph((g) => delete g.nodes[1].evidence), /node code-config has no evidence list/],
   ["an empty node list", breakGraph((g) => (g.nodes = [])), /config_change: has no nodes/],
   ["no node list", breakGraph((g) => delete g.nodes), /config_change: has no nodes/],
   ["a null node", breakGraph((g) => g.nodes.push(null)), /config_change: a node is not an object/],

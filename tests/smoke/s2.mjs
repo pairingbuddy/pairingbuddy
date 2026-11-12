@@ -26,8 +26,8 @@ import { parseKey } from "../../shared-node/keys.mjs";
 import { BUDGET_USD, Budget, REPO_ROOT, SmokeError, cleanEnv, runClaude } from "./claude-run.mjs";
 import { RunRecorder } from "./run-recorder.mjs";
 
-const STAGES = ["code-scenarios", "code-tdd", "code-safety-net"];
-const GATES = ["G:scenarios", "G:task-end"];
+const STAGES = ["intake", "code-scenarios", "code-tdd", "code-safety-net"];
+const GATES = ["G:type", "G:scenarios", "G:task-end"];
 export const RECORDINGS = join(REPO_ROOT, "tests", "smoke", "recordings");
 export const TASK = "Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it should return 90. One regression test for exactly that case is the whole scope";
 export const FEATURE_TASK = "Add order_total(lines) to cart.py: it takes a list of (price, quantity) pairs and returns the sum of line_total(price, quantity) over them, so order_total([(10, 2), (4, 1)]) returns 30.0, which is 25.0 plus 5.0. One test for exactly that example is the whole scope";

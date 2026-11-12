@@ -338,8 +338,8 @@ const finishLedger = (repo, task) => {
     task,
     configHash: createHash("sha256").update(configText).digest("hex"),
     stage: { name: NET, status: "done", runId: "wf_2", attempt: 1, startedAt: null },
-    stages: [{ name: "code-config", status: "done", attempt: 1 }, { name: NET, status: "done", attempt: 1 }],
-    gates: { "G:task-end": { source: "auto" } },
+    stages: [{ name: "intake", status: "done" }, { name: "code-config", status: "done", attempt: 1 }, { name: NET, status: "done", attempt: 1 }],
+    gates: { "G:type": { source: "auto" }, "G:task-end": { source: "auto" } },
   });
 };
 

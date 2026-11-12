@@ -10,6 +10,7 @@ function goodLedger() {
   return {
     taskType: "spike",
     stages: [
+      { name: "intake", status: "done" },
       { name: "code-spike-unit", status: "done", explored: ["u1", "u2"] },
       { name: "code-spike-document", status: "done" },
     ],
@@ -34,7 +35,7 @@ test("s5-spike-accepts-a-conforming-spike-run", () => {
 
 const VIOLATIONS = [
   ["wrong task type", () => [{ ...goodLedger(), taskType: "new_feature" }, GOOD_LOG, GOOD_FACTS], /taskType.*new_feature/],
-  ["wrong stage list", () => [{ ...goodLedger(), stages: goodLedger().stages.slice(0, 1) }, GOOD_LOG, GOOD_FACTS], /stages are \[code-spike-unit\]/],
+  ["wrong stage list", () => [{ ...goodLedger(), stages: goodLedger().stages.slice(0, 2) }, GOOD_LOG, GOOD_FACTS], /stages are \[intake,code-spike-unit\]/],
   ["a stage not done", () => [withStage(goodLedger(), "code-spike-document", { status: "running" }), GOOD_LOG, GOOD_FACTS], /not done/],
   ["only one unit explored", () => [withStage(goodLedger(), "code-spike-unit", { explored: ["u1"] }), GOOD_LOG, GOOD_FACTS], /at least \d+ units/],
   ["an explored unit with no committed spike-unit checkpoint", () => [{ ...goodLedger(), checkpoints: goodLedger().checkpoints.map((c) => (c.sha === "s2" ? { ...c, committed: false } : c)) }, GOOD_LOG, GOOD_FACTS], /u2.*spike-unit checkpoint|spike-unit checkpoint.*u2/],

@@ -4,6 +4,7 @@ import "./isolated-tmpdir.mjs";
 //
 // A pointer is a file <os.tmpdir()>/pairingbuddy-sessions/<session_id> holding the run root. The gate writes it for
 // a main-context payload inside a run, and both hooks read it when the walk up from the cwd finds nothing.
+import { withIntake } from "./ledger-fixture.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -43,7 +44,7 @@ after(() => {
 const IDLE = { name: "", status: "", runId: null, attempt: 0, startedAt: null };
 
 function makeLedger(over = {}) {
-  return {
+  return withIntake({
     v: 1, seq: 0, sha: "0".repeat(64), kind: "code", taskType: "config_change",
     owner: { sessionId: null, lastSeen: null }, task: "M1",
     plan: { path: "", title: "" }, configHash: createHash("sha256").update(CONFIG_TEXT).digest("hex"),
@@ -51,7 +52,7 @@ function makeLedger(over = {}) {
     gates: {}, tests: {}, commits: [], retries: {}, spend: { agents: 0, tokens: 0 },
     stop: null, needsHuman: null,
     ...over,
-  };
+  });
 }
 
 function makeRepo({ ledger = {}, parent = null } = {}) {
