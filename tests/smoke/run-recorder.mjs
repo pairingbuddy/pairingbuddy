@@ -51,7 +51,8 @@ export function workflowAgents(dirs, startedAt) {
 export const transcriptDirs = (stream) => [...new Set(stream.flatMap(({ event }) => [...JSON.stringify(event).matchAll(TRANSCRIPT_DIR)].map(([, dir]) => dir)))];
 
 // The call that ends the task. Its output is the only place a leftover file shows, since a refusal leaves the ledger as it was.
-const TASK_END = /\bpb(?:\.mjs)?["']?\s+task end\b/;
+// The binary may be called as pb, pb.mjs, or through any shell variable ($PB, ${PB}), optionally quoted; the variable's value is not checked.
+const TASK_END = /(?:\bpb(?:\.mjs)?|\$(?:\w+|\{\w+\}))["']?\s+task end/;
 
 const textOf = (content) => (typeof content === "string" ? content : content.filter(({ type }) => type === "text").map(({ text }) => text).join(""));
 

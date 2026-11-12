@@ -76,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Smoke S2 answers asking gates as the human, the way S4 and S5 do: up to three `pb human approve` answers from its own shell, only for S2's own gates and only for judgment reasons (an open ambiguity, an uncertain classifier, a classification-lens finding, a decide finding, a high-severity finding past the cap), each listed in its result. It never answers a policy, coverage-gap, selector, retries or config-hash reason. `humanPb`, `sessionOf` and `readLedgerOrNull` moved to `tests/smoke/claude-run.mjs`. S2 also accepts the safety net's committed fix groups (typed `test` or `refactor`, a rolled-back one left out), and the run recorder now sees a `pb task end` called through any shell variable such as `$P`.
 - The lens-attack diagram (`docs/diagrams/05-lens-attack`) shows the course-checked fix loop instead of re-auditing the fix diff: the fix agent takes one group at a time, the course checker keeps a better fix, a bad verdict rolls back and retries (cap 5 per stage), and a repeated mistake must change approach.
 - The refuter verdict now carries `ambiguity`, like every other return.
 - `/code` on the new path opens a unit first (`pb unit open --type feat|fix|refactor|chore --slug`). The model runs only the command a refusal prints for it, and the human confirms the branch otherwise. An open, empty unit on its branch is resumed.

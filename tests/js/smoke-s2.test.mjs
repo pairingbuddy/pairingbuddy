@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { Budget, SmokeError, SpendCapError, claudeCommand, cleanEnv, refuseRepoInsidePlugin, runClaude } from "../smoke/claude-run.mjs";
-import { FEATURE_TASK, TASK, assertControlFlow, assertTaskEnded, codeLedger, makeRepo, makeS2Repo, parseOptions } from "../smoke/s2.mjs";
+import { FEATURE_TASK, TASK, assertControlFlow, assertTaskEnded, codeLedger, gateToAnswer, MAX_HUMAN_APPROVALS, makeRepo, makeS2Repo, parseOptions } from "../smoke/s2.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 
@@ -40,6 +40,50 @@ const GOOD_LOG = [commit("p", "test: add placeholder"), commit("r1", "test: pin 
 
 test("a run with a placeholder, then RED and GREEN per test, passes", () => {
   check(goodLedger(), GOOD_LOG);
+});
+
+const safetyNetFix = (sha, committed) => ({ step: "fix", stage: "code-safety-net", committed, ...(committed && { sha }) });
+
+for (const [what, fixSubject, trailing] of [
+  ["typed test", "test: call apply_discount directly", []],
+  ["typed refactor", "refactor: extract the discount", []],
+  ["typed test, then the docs commit", "test: call apply_discount directly", [commit("d", "docs: note it")]],
+]) {
+  test(`allows-committed-safety-net-fix: a committed code-safety-net fix group ${what} passes after the cycles`, () => {
+    const log = [...GOOD_LOG, commit("s1", fixSubject), ...trailing];
+    const ledger = goodLedger({ checkpoints: [...goodLedger().checkpoints, safetyNetFix("s1", true)], commits: log.map(({ sha }) => sha) });
+
+    assert.doesNotThrow(() => check(ledger, log), `a committed code-safety-net fix group ${what} passes after the cycles`);
+  });
+}
+
+test("a committed code-safety-net fix commit typed fix is rejected", () => {
+  const log = [...GOOD_LOG, commit("s1", "fix: more")];
+  const ledger = goodLedger({ checkpoints: [...goodLedger().checkpoints, safetyNetFix("s1", true)], commits: log.map(({ sha }) => sha) });
+
+  assert.throws(() => check(ledger, log), (error) => error instanceof SmokeError && /commit types/.test(error.message), "a safety-net fix commit may be typed test or refactor, never fix");
+});
+
+test("a committed safety-net fix then a committed code-safety-net docs checkpoint passes", () => {
+  const log = [...GOOD_LOG, commit("s1", "test: call apply_discount directly"), commit("d", "docs: note it")];
+  const docs = { step: "docs", stage: "code-safety-net", committed: true, sha: "d" };
+  const ledger = goodLedger({ checkpoints: [...goodLedger().checkpoints, safetyNetFix("s1", true), docs], commits: log.map(({ sha }) => sha) });
+
+  assert.doesNotThrow(() => check(ledger, log), "the docs checkpoint is not a fix group, so only the fix commit is expected before the docs commit");
+});
+
+test("an uncommitted code-safety-net fix group adds no expected commit", () => {
+  const ledger = goodLedger({ checkpoints: [...goodLedger().checkpoints, safetyNetFix(undefined, false)] });
+
+  assert.doesNotThrow(() => check(ledger, GOOD_LOG), "an uncommitted fix checkpoint expects no commit, so the cycle commits alone pass");
+});
+
+test("s2-safety-net-fixes.ignores-rolled-back-fix: a committed code-safety-net fix group that pb rollback undid adds no expected commit", () => {
+  const key = "code-safety-net.fix.g1.r2.a1";
+  const rolledBack = { ...safetyNetFix("s1", true), key };
+  const ledger = goodLedger({ checkpoints: [...goodLedger().checkpoints, rolledBack], commits: GOOD_LOG.map(({ sha }) => sha), fixes: { rollbacks: [{ key, kind: "commit" }] } });
+
+  assert.doesNotThrow(() => check(ledger, GOOD_LOG), "a rollback removes the sha from the ledger commits but leaves the checkpoint committed, so the rolled-back fix expects no commit");
 });
 
 test("a docs commit after the cycles is allowed", () => {
@@ -319,4 +363,130 @@ test("task ended check passes on pb task end output and fails without it", () =>
     SmokeError,
     "a non-error call whose JSON output lacks ok:true fails",
   );
+});
+
+// Scenario s2-answers-asking-gates: which asking gate S2 answers.
+const ALLOWLISTED_REASON = "the return code-tdd.coverage.json carries an open ambiguity";
+const askingLedger = (gate, reason) => ({ stop: null, needsHuman: { gate, reason } });
+const STOPPED = { code: "spend-cap", reason: "spend cap", seq: 1 };
+
+const ANSWERED = [
+  ["G:scenarios", "the return code-tdd.coverage.json carries an open ambiguity"],
+  ["G:scenarios", "these returns carry an open ambiguity: a.json, b.json"],
+  ["G:type", "the classifier does not report certain"],
+  ["G:type", "the classification lens has an open finding"],
+  ["G:task-end", "a decide finding survived"],
+  ["G:task-end", "an unrefuted high-severity finding is past the cap"],
+];
+
+for (const [gate, reason] of ANSWERED) {
+  test(`answers-allowlisted-reason: gateToAnswer returns {gate, reason} for ${gate} asking "${reason}"`, () => {
+    const ledger = askingLedger(gate, reason);
+    const approvals = [];
+
+    const answer = gateToAnswer(ledger, approvals);
+
+    assert.deepEqual(answer, { gate, reason }, "the asking gate and its reason are returned");
+  });
+}
+
+const NON_ALLOWLISTED_REASONS = [
+  "coverage gaps remain: 1, in code-tdd.coverage.json",
+  "coverage gaps remain: 2",
+  "the gate policy is default, not auto",
+  "no gate policy is recorded",
+  "a reason S2 has never heard of",
+  "runner pytest has no selector_template, so RED and GREEN cannot speak for one test. Ask the human how to run one test",
+  "retries are exhausted for code-tdd",
+  "the config hash changed during the run",
+];
+
+for (const reason of NON_ALLOWLISTED_REASONS) {
+  test(`never-answers-non-allowlisted-reason: gateToAnswer returns null for "${reason}"`, () => {
+    const gate = "G:task-end";
+    const ledger = askingLedger(gate, reason);
+    const approvals = [];
+
+    const answer = gateToAnswer(ledger, approvals);
+
+    assert.equal(answer, null, `S2 must not answer: ${reason}`);
+  });
+}
+
+test("never-answers-gate-outside-gates: gateToAnswer returns null for G:publish even with an allowlisted reason", () => {
+  const gate = "G:publish";
+  const reason = ALLOWLISTED_REASON;
+  const ledger = askingLedger(gate, reason);
+  const approvals = [];
+
+  const answer = gateToAnswer(ledger, approvals);
+
+  assert.equal(answer, null, "S2 must not answer a gate outside its GATES, whatever the reason");
+});
+
+test("stops-at-the-cap: gateToAnswer still answers with 2 approvals recorded and returns null with 3 (MAX_HUMAN_APPROVALS)", () => {
+  const gate = "G:task-end";
+  const ledger = askingLedger(gate, ALLOWLISTED_REASON);
+  const approval = (g) => ({ gate: g, reason: ALLOWLISTED_REASON });
+  const twoApprovals = [approval("G:type"), approval("G:scenarios")];
+  const threeApprovals = [...twoApprovals, approval("G:type")];
+
+  const belowCap = gateToAnswer(ledger, twoApprovals);
+  const atCap = gateToAnswer(ledger, threeApprovals);
+
+  assert.equal(MAX_HUMAN_APPROVALS, 3, "the cap is one approval per S2 gate");
+  assert.deepEqual(belowCap, { gate, reason: ALLOWLISTED_REASON }, "with 2 approvals the ask is still answered");
+  assert.equal(atCap, null, "with 3 approvals S2 answers nothing more");
+});
+
+const NOBODY_ASKED = [
+  ["ledger.stop is set, though needsHuman names an allowlisted gate", { ...askingLedger("G:task-end", ALLOWLISTED_REASON), stop: STOPPED }],
+  ["ledger.needsHuman is null", { stop: null, needsHuman: null }],
+  ["the ledger is null", null],
+];
+
+for (const [what, ledger] of NOBODY_ASKED) {
+  test(`nothing-when-stopped-or-nobody-asked: gateToAnswer returns null when ${what}`, () => {
+    const approvals = [];
+
+    const answer = gateToAnswer(ledger, approvals);
+
+    assert.equal(answer, null, `S2 must answer nothing when ${what}`);
+  });
+}
+
+const humanAnswered = (answers) =>
+  goodLedger({
+    gates: {
+      ...goodLedger().gates,
+      ...Object.fromEntries(Object.entries(answers).map(([gate, answer]) => [gate, { source: "human-cli", answer }])),
+    },
+  });
+
+// Scenario s2-assert-gates-human-answers: which gate sources assertControlFlow accepts.
+test("accepts-human-cli-approve-for-answered-gate: a human-cli approve on a gate in humanApprovals passes, other S2 gates stay auto", () => {
+  const gate = "G:task-end";
+  const ledger = humanAnswered({ [gate]: "approve" });
+  const humanApprovals = [{ gate, reason: ALLOWLISTED_REASON }];
+
+  assert.doesNotThrow(() => check(ledger, GOOD_LOG, { humanApprovals }), "a human-cli approve on an answered gate passes");
+});
+
+test("rejects-human-gate-not-answered: a human-cli approve fails with SmokeError when humanApprovals is empty or names another gate", () => {
+  const gate = "G:task-end";
+  const ledger = humanAnswered({ [gate]: "approve" });
+  const bothHuman = humanAnswered({ "G:type": "approve", [gate]: "approve" });
+  const noApprovals = [];
+  const otherGateApproved = [{ gate: "G:type", reason: ALLOWLISTED_REASON }];
+
+  assert.throws(() => check(ledger, GOOD_LOG, { humanApprovals: noApprovals }), (e) => e instanceof SmokeError && /G:task-end is human-cli, expected auto/.test(e.message), "no approvals means the gate must be auto");
+  assert.throws(() => check(bothHuman, GOOD_LOG, { humanApprovals: otherGateApproved }), (e) => e instanceof SmokeError && /G:task-end is human-cli, expected auto/.test(e.message), "an approval of another gate does not cover this one");
+});
+
+test("rejects-non-approve-answer: a human-cli answer of 'stop' on an answered gate fails with SmokeError", () => {
+  const gate = "G:task-end";
+  const ledger = humanAnswered({ [gate]: "stop" });
+  const humanApprovals = [{ gate, reason: ALLOWLISTED_REASON }];
+
+  assert.throws(() => check(ledger, GOOD_LOG, { humanApprovals }), (e) => e instanceof SmokeError && /G:task-end.*stop/.test(e.message), "only an approve answer passes");
 });

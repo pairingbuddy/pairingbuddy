@@ -16,11 +16,11 @@ import { parseArgs } from "node:util";
 import { parseKey } from "../../shared-node/keys.mjs";
 import { wiredLensConfig } from "../../shared-node/lens-merge.mjs";
 import { installGhShim } from "../js/gh-shim.mjs";
-import { Budget, SmokeError, SpendCapError, cleanEnv, runClaude } from "./claude-run.mjs";
+import { Budget, SmokeError, SpendCapError, cleanEnv, humanPb, readLedgerOrNull, runClaude, sessionOf } from "./claude-run.mjs";
 import { RunRecorder } from "./run-recorder.mjs";
 import { RECORDINGS, git, parseOptions, position } from "./s2.mjs";
 import { makeS3Repo } from "./s3.mjs";
-import { LENS_REASON, MAX_HUMAN_APPROVALS, RUN_TIMEOUT_MS, assertCleanEnv, assertDraftPr, codeSnapshots, humanPb, publishSnapshots, readLedgerOrNull, sessionOf } from "./s4.mjs";
+import { LENS_REASON, MAX_HUMAN_APPROVALS, RUN_TIMEOUT_MS, assertCleanEnv, assertDraftPr, codeSnapshots, publishSnapshots } from "./s4.mjs";
 
 export const TASK = "Refactor line_total in cart.py: rename p, q and t to price, quantity and total, and name the 1.25 VAT rate as a module constant. Behaviour must not change; the existing test is the whole check.";
 const PUBLISH_GATE = "G:publish";
