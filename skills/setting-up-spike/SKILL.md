@@ -1,13 +1,13 @@
 ---
 name: setting-up-spike
-description: Sets up a spike by talking with the human in the main context - goal, exploration units, where the code lives and where the write-up goes. Use before pb unit open and pb run open on a spike task.
+description: Sets up a spike by talking with the human in the main context - goal, exploration units, where the code lives and where the write-up goes. Use after G:type, once intake has classified the task as a spike and `pb status --action` says the spike setup is not recorded.
 ---
 
 # Setting Up a Spike
 
 ## Purpose
 
-Clarify the spike goal, split it into exploration units, and write the two setup files the spike run reads. This runs in the main context, before `pb unit open` / `pb run open`, because it needs a conversation. `pb run open` refuses to open a spike run without these files.
+Clarify the spike goal, split it into exploration units, and write the two setup files the spike run reads. This runs in the main context, after G:type, once intake has classified the task as a spike and `pb status --action` says the setup is not recorded. It needs a conversation. The coding workflow then runs `pb spike setup`, which reads these files and records the setup.
 
 Read `.pairingbuddy/task.json` (description, context) and `.pairingbuddy/human-guidance.json` if it exists, and apply that guidance.
 
@@ -15,7 +15,7 @@ Read `.pairingbuddy/task.json` (description, context) and `.pairingbuddy/human-g
 
 1. Check whether a human can answer.
    - There is no human when AskUserQuestion is not available, or when you run under `claude -p`, in auto permission mode, or with PAIRINGBUDDY_SOLO=true.
-   - With no human, skip the rest of the conversation. Never ask in chat instead. Write the default setup files (see When No Human Can Answer) and return, so the coding workflow goes straight on to `pb unit open`.
+   - With no human, skip the rest of the conversation. Never ask in chat instead. Write the default setup files (see When No Human Can Answer) and return, so the coding workflow goes on to `pb spike setup`.
 2. Work out the goal: what the spike should learn or answer.
 3. Pick the exploration mode:
    - `questions`: answering specific questions ("Can we use X for Y?")
@@ -67,8 +67,9 @@ Write both files with the Write tool (never shell redirection), then read them b
 }
 ```
 
-`pb run open` refuses, and opens no run, when:
+`pb spike setup` refuses, and records nothing, when:
 
+- the task is not a spike, G:type has not passed, or the setup is already recorded
 - either file is missing
 - there are no units
 - a unit id does not match `^[a-z0-9][a-z0-9_-]{0,63}$`, or two units share an id

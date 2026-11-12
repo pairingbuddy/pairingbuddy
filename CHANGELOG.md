@@ -87,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The recovery drill starts its wedges at `intake`, now the first stage of every task path, and the `setting-up-spike` skill says it runs after G:type and that `pb spike setup` records the setup.
 - The tap now files the spike write-up's fix returns (`code-spike-document` was missing from its fixer map), and a contract test holds every course-checked stage to an entry. `pb rollback --artifact` refuses cleanly when the artifact to set aside is missing.
 - The `setting-up-spike` skill checks first whether a human can answer: with no AskUserQuestion tool, under `claude -p`, in auto mode or under Solo it writes the default setup and goes on, instead of stopping to ask in chat.
 - A lens in a lens round now gets the run's task in a `<task>` block, marked as data, as context for what the subject is meant to do; it does not widen the lens. Before, the scenarios lens could not see which bug the task named and returned an open ambiguity, so `G:scenarios` asked a human. `agents/lens.md` lists the block for a lens review. The light review is unchanged. Live smoke S4 runs found it.
