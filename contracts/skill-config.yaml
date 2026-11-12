@@ -186,3 +186,11 @@ skills:
       - heading: "## Conversation"
       - heading: "## When No Human Can Answer"
       - heading: "## Output"
+
+  curating-guidance:
+    category: conversational
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Conversation"
+      - heading: "## When No Human Can Answer"
+      - heading: "## Output"

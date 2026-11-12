@@ -104,6 +104,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_stop_if_run_open()` | The check in An Open Run Comes First. |
 | `_stop_if_unit_open()` | If `.pairingbuddy/run/unit.json` exists, stop and tell the human the open unit's branch (read from unit.json) and that the old path cannot run inside a unit. They can finish the unit's work on the new path, or leave it by running `pb human abandon` (human-only: they type `!cd <project root> && node <root>/cli/pb.mjs human abandon`, which removes the unit and task state and keeps every commit). |
 | `_write_task(task)` | Write the new task to `.pairingbuddy/task.json`. It waits for cleanup: curation reads the just-completed task from that file, and cleanup deletes it. |
+| `_curating_guidance(task)` | Runs the curating-guidance skill in the main context, before cleanup, outside Solo and plan tasks. With no human it carries guidance over silently. |
 | `_setting_up_spike(task)` | Runs the setting-up-spike skill in the main context. It runs inside `_run_new_path(task)`, after G:type, for a spike. |
 | `_run_new_path(task)` | Runs a migrated type through its workflow stages. See Migrated-Types Router. |
 | `_update_solo_report(event, details)` | **Solo mode only.** Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file if absent; on resume, **reconciles** existing entries against the current plan — drops entries for removed tasks, reorders to match plan, then appends session separator), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
@@ -157,7 +158,10 @@ if _detect_plan_file(task):
 
 # Curate guidance from previous session (always runs - handles review and bootstrap, and with no human
 # it carries over silently and asks nothing)
-human_guidance = curate_guidance(human_guidance, task)
+if _is_solo():
+    human_guidance = curate_guidance(human_guidance, task)  # Solo keeps the agent until T10
+else:
+    _curating_guidance(task)  # the curating-guidance skill, in the main context
 
 # Clean up stale state files from previous task (MANDATORY - do not skip)
 _cleanup_state_files()
@@ -338,7 +342,7 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 ### State File Management
 
 1. At cycle start, verify `.pairingbuddy/` is in `.gitignore`
-2. Invoke `curate_guidance` agent (before cleanup):
+2. Curate guidance (before cleanup). The curating-guidance skill does this outside Solo and plan tasks; the `curate_guidance` agent does it for Solo and plan tasks:
    - If `human-guidance.json` has entries: review/curate existing guidance
    - If empty or missing: offer to add new persistent guidance
    - Approved entries get `"persistent": true` flag

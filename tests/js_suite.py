@@ -55,6 +55,7 @@ JS_TEST_FILES = [
     "tests/js/lens-schema.test.mjs",
     "tests/js/refuter-schema.test.mjs",
     "tests/js/setting-up-spike-skill.test.mjs",
+    "tests/js/curating-guidance-skill.test.mjs",
     "tests/js/refactor-scope-contracts.test.mjs",
     "tests/js/refactor-step-checkpoint.test.mjs",
     "tests/js/refactoring-flip.test.mjs",

@@ -193,6 +193,9 @@ test("the router stops the task, so a non-Solo task never falls into the old bra
 
 // The just-completed task is in task.json until cleanup, and classification applies all of human-guidance.json.
 const CURATE = "human_guidance = curate_guidance(human_guidance, task)";
+const SKILL_CURATE = "_curating_guidance(task)";
+// The first curation call in a code slice: the agent call or the skill call
+const curateAt = (part) => [part.indexOf(CURATE), part.indexOf(SKILL_CURATE)].filter((i) => i !== -1).sort((a, b) => a - b)[0] ?? -1;
 const CLEANUP = "_cleanup_state_files()";
 const CLASSIFY = "task_classification = classify_task(task)";
 
@@ -201,7 +204,8 @@ test("guidance curation comes before cleanup and classification, in the plan loo
   const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
 
   for (const [name, from, to] of [["plan loop", 0, planEnd], ["non-plan path", planEnd, code.length]]) {
-    const order = [CURATE, CLEANUP, CLASSIFY].map((step) => code.slice(from, to).indexOf(step));
+    const part = code.slice(from, to);
+    const order = [curateAt(part), part.indexOf(CLEANUP), part.indexOf(CLASSIFY)];
     assert.ok(!order.includes(-1), `${name} has all three steps`);
     assert.deepEqual([...order].sort((a, b) => a - b), order, `${name}: curate, cleanup, classify`);
   }
@@ -212,7 +216,8 @@ test("curation runs once on the non-plan path, ahead of the router", () => {
   const nonPlan = code.slice(code.indexOf('_stop("Plan execution paused/complete.")'));
 
   assert.equal(nonPlan.split(CURATE).length, 2);
-  assert.ok(nonPlan.indexOf(CURATE) < nonPlan.indexOf("_run_new_path(task)"));
+  assert.equal(nonPlan.split(SKILL_CURATE).length, 2);
+  assert.ok(curateAt(nonPlan) < nonPlan.indexOf("_run_new_path(task)"));
 });
 
 test("the new task reaches task.json only after cleanup, in both orders", () => {
@@ -584,4 +589,29 @@ test("router-keeps-classify-task-for-plan-and-solo", () => {
   assert.match(planLoop, /classify_task\(task\)/, "the plan loop still calls classify_task(task)");
   assert.ok(soloClassify !== -1 && soloBranch !== -1, "Solo's old path classifies and branches");
   assert.ok(soloClassify < soloBranch, "Solo calls classify_task(task) before the old branches");
+});
+
+test("router-uses-skill-in-main-context: outside Solo, guidance is curated by the curating-guidance skill before cleanup", () => {
+  const code = pseudocode();
+  const nonPlan = code.slice(code.indexOf('_stop("Plan execution paused/complete.")'));
+  const row = skill().split("\n").filter((line) => /^\|\s*`_curating_guidance\(task\)`/.test(line));
+
+  assert.ok(nonPlan.includes("_curating_guidance(task)"), "the non-plan path calls _curating_guidance(task)");
+  assert.ok(nonPlan.indexOf("_curating_guidance(task)") < nonPlan.indexOf(CLEANUP), "curation comes before cleanup");
+  const elseBranch = nonPlan.slice(nonPlan.indexOf("else:", nonPlan.indexOf("if _is_solo():")), nonPlan.indexOf(CLEANUP));
+  assert.ok(!elseBranch.includes("curate_guidance("), "the non-Solo branch does not call the curate_guidance agent");
+  assert.equal(row.length, 1, "the Orchestrator Functions table has a _curating_guidance(task) row");
+  assert.match(row[0], /curating-guidance/, "the row names the curating-guidance skill");
+});
+test("router-keeps-agent-for-plan-and-solo: the plan loop and the Solo branch still call the curate_guidance agent, which stays registered", () => {
+  const code = pseudocode();
+  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
+  const nonPlan = code.slice(planEnd);
+  const soloBranch = nonPlan.slice(nonPlan.indexOf("if _is_solo():"), nonPlan.indexOf("else:", nonPlan.indexOf("if _is_solo():")));
+  const config = readFileSync(join(ROOT, "contracts", "agent-config.yaml"), "utf8");
+
+  assert.ok(code.slice(0, planEnd).includes(CURATE), "the plan loop calls curate_guidance(human_guidance, task)");
+  assert.ok(soloBranch.includes(CURATE), "the Solo branch calls curate_guidance(human_guidance, task)");
+  assert.ok(existsSync(join(ROOT, "agents", "curate-guidance.md")), "agents/curate-guidance.md still exists");
+  assert.match(config, /^  curate-guidance:/m, "agent-config.yaml still lists curate-guidance");
 });

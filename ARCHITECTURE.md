@@ -131,6 +131,7 @@ pairingbuddy/
 │   ├── committing-changes/       # Reference: git commits
 │   ├── creating-pull-requests/   # Reference: stand-alone PR bodies
 │   ├── setting-up-spike/         # Reference: spike setup (goal, units, code location)
+│   ├── curating-guidance/        # Conversational: curates human guidance in main (non-Solo, non-plan tasks)
 │   ├── decomposing-tracer-bullets/ # Reference: tracer bullet methodology
 │   ├── sequencing-tasks/         # Reference: task sequencing for TDD
 │   ├── differentiating-designs/  # Reference: design differentiation
