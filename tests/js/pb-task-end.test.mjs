@@ -47,7 +47,8 @@ const FINISHED = {
   gates: { [GATE]: { source: "auto" } },
 };
 
-function makeRepo({ ledger = FINISHED, tracked = {}, ignored = ".pairingbuddy/\n" } = {}) {
+// configGlobs: the config_globs written to git-config.json; a config_change task may end only on files they cover.
+function makeRepo({ ledger = FINISHED, tracked = {}, ignored = ".pairingbuddy/\n", configGlobs = ["**"] } = {}) {
   const dir = makeDir("pb-task-end-");
   git(dir, "init", "-q", "-b", "feature");
   git(dir, "config", "user.name", "Test");
@@ -64,6 +65,7 @@ function makeRepo({ ledger = FINISHED, tracked = {}, ignored = ".pairingbuddy/\n
   const configText = JSON.stringify(TEST_CONFIG);
   writeFileSync(join(dir, ".pairingbuddy", "test-config.json"), configText);
   writeFileSync(join(dir, ".pairingbuddy", "human-guidance.json"), "{}\n");
+  if (configGlobs) writeFileSync(join(dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ config_globs: configGlobs }));
   const ledgerPath = join(taskDir, "ledger.json");
   writeLedger(ledgerPath, {
     v: 1, seq: 0, sha: "0".repeat(64), kind: "code", taskType: "config_change",

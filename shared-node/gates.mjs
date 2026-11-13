@@ -8,6 +8,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus } from "./stages.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
+import { gitConfigPath } from "./gitconf.mjs";
 
 export { isPassed };
 
@@ -160,9 +161,16 @@ function retriesStop({ retries }) {
   return exhausted === undefined ? null : `retries are exhausted for ${exhausted}`;
 }
 
-function configStop({ configHash }, root) {
+function gitConfigStop({ gitConfigHash }, root) {
+  if (gitConfigHash === undefined) return null;
+  const path = gitConfigPath(root);
+  return existsSync(path) && fileHash(path) === gitConfigHash ? null : "the git-config hash changed during the run";
+}
+
+function configStop({ configHash, gitConfigHash }, root) {
   const path = join(root, ".pairingbuddy", "test-config.json");
-  return existsSync(path) && fileHash(path) === configHash ? null : "the config hash changed during the run";
+  if (!existsSync(path) || fileHash(path) !== configHash) return "the config hash changed during the run";
+  return gitConfigStop({ gitConfigHash }, root);
 }
 
 function stopReason(contract, ledger, root) {

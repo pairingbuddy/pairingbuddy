@@ -88,7 +88,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 
 | Function | Behavior |
 |----------|----------|
-| `_cleanup_state_files()` | **MANDATORY.** Delete ALL `.pairingbuddy/*.json` files EXCEPT: `test-config.json`, `doc-config.json`, `human-guidance.json`. These three files persist across tasks, and the `.pairingbuddy/reports/` folder is kept too (the cleanup deletes only `*.json`). All other state files (task.json, task-classification.json, scenarios.json, tests.json, spike-*.json, etc.) MUST be deleted to start fresh. This prevents stale state from previous tasks from affecting the current task. |
+| `_cleanup_state_files()` | **MANDATORY.** Delete ALL `.pairingbuddy/*.json` files EXCEPT: `test-config.json`, `doc-config.json`, `git-config.json`, `human-guidance.json`. These four files persist across tasks, and the `.pairingbuddy/reports/` folder is kept too (the cleanup deletes only `*.json`). All other state files (task.json, task-classification.json, scenarios.json, tests.json, spike-*.json, etc.) MUST be deleted to start fresh. This prevents stale state from previous tasks from affecting the current task. |
 | `_filter_pending(tests)` | Filter tests.json to return only tests not yet processed in this session |
 | `_filter_pending(spike_questions)` | Filter spike-questions.json units to return only units with status "pending" |
 | `_mark_unit_answered(spike_questions, unit_id)` | Update unit status to "answered" in spike-questions.json |
@@ -102,6 +102,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_update_claude_task(task_id)` | Mark a Claude Code Task as completed (TaskUpdate) |
 | `_is_solo()` | True when the `PAIRINGBUDDY_SOLO` env var is `true`. |
 | `_stop_if_run_open()` | The check in An Open Run Comes First. |
+| `_stop_if_unit_open()` | If `.pairingbuddy/run/unit.json` exists, stop and tell the human the open unit's branch (read from unit.json) and that the old path cannot run inside a unit. They can finish the unit's work on the new path, or leave it by running `pb human abandon` (human-only: they type `!cd <project root> && node <root>/cli/pb.mjs human abandon`, which removes the unit and task state and keeps every commit). |
 | `_write_task(task)` | Write the new task to `.pairingbuddy/task.json`. It waits for cleanup: curation reads the just-completed task from that file, and cleanup deletes it. |
 | `_run_new_path(task)` | Runs a migrated type through its workflow stages. See Migrated-Types Router. |
 | `_update_solo_report(event, details)` | **Solo mode only.** Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file if absent; on resume, **reconciles** existing entries against the current plan — drops entries for removed tasks, reorders to match plan, then appends session separator), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
@@ -138,6 +139,7 @@ if _detect_plan_file(task):
         _cleanup_state_files()
         _write_task(task)
         task_classification = classify_task(task)
+        _stop_if_unit_open()
         # ... (same old-path branches as below, based on task_type,
         # never the migrated-types router: plan tasks stay on the old path until T7) ...
 
@@ -173,6 +175,9 @@ if task_type in MIGRATED_TYPES and not _is_solo():
     # Every type in MIGRATED_TYPES goes here outside Solo, and never the old branches below
     _run_new_path(task)
     _stop("Task complete.")
+
+# The old path cannot run inside an open unit
+_stop_if_unit_open()
 
 # Old path: refactoring and spike, plan tasks, and every type under Solo
 if task_type == "new_feature":
@@ -331,7 +336,7 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
    - If empty or missing: offer to add new persistent guidance
    - Approved entries get `"persistent": true` flag
    - With no human, under the auto policy or `claude -p`: it carries over silently and asks nothing
-3. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json`, `doc-config.json`, and `human-guidance.json`; the `.pairingbuddy/reports/` folder is kept too
+3. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json`, `doc-config.json`, `git-config.json`, and `human-guidance.json`; the `.pairingbuddy/reports/` folder is kept too
 4. Write the new task to `task.json`
 5. If `human-guidance.json` doesn't exist after curation, initialize with `{"guidance": []}`
 6. Keep files after run for human review

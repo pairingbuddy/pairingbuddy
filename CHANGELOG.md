@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `pb git doctor` warns (never blocks; read-only `gh` calls with a 10s timeout) when squash merges don't use the PR title and body (`squash_merge_commit_title` and `squash_merge_commit_message` must be `PR_TITLE` and `PR_BODY`) or the default branch has no protection. It notes when `gh` is unavailable or protection can't be read. `pb unit open` shows the same warnings.
+- `pb human abandon` (human-only) removes the unit and task state under `.pairingbuddy/run`. It keeps commits, the branch and the working tree, and works after a stop.
+- `pb task end` refuses a `config_change` whose diff (no rename detection, from the unit's last task head or base) touches files outside the git-config `config_globs`. With empty `config_globs` it asks the human to type `pb human approve-config` (human-only, per task).
+
 ### Fixed
 
 - `/pb` now answers and opens the pane.
@@ -40,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `pb unit open --type --slug [--yes | --branch <name>]` refuses a dirty tree, an open unit, and an existing, protected or invalid branch name. It fetches, branches from `pr.base_branch` or the remote default, and writes `.pairingbuddy/run/unit.json` (schema `contracts/schemas/unit.schema.json`). Without a flag it prints the proposed branch and asks the human to type the `!` command. The gate hook lets a model pass `--yes` or `--branch` only under the auto policy, and denies env-prefixed or shell-built `pb unit open` calls, with or without a run open. `pb run open` on a protected branch now points at `pb unit open`, and `pb task end` appends the task record to `unit.json` (skipped when no unit is open).
+- `.pairingbuddy/git-config.json` (D21), bootstrapped with defaults on the first `pb run open`, never overwritten, and refused when malformed. Protected branches come from the config plus the remote's default branch (the hard-coded `main`/`master` are removed), and `pr.base_branch` falls back to the default branch. Its hash is recorded in the ledger (`gitConfigHash`), and an edit mid-run stops the next gate check. Schema: `contracts/schemas/git-config.schema.json`.
 - The pane's "now building" block (Task 61, new `shared-node/now-building.mjs`): a per-test progress row (`✓` made to pass, `◌` already passed, `▸` now, `·` to do) that folds to `✓ n done · ◌ m covered`, shows `+ n more` only when the total is known, and fits the width. Below it, the current test with its scenario description (fallback: its id), and a compact cycle marker with the step's age. A bug fix drops REFACTOR from the marker, by the rule the CLI shares through `REFACTOR_TASK_TYPES` in `shared-node/labels.mjs`. Under LOOPING it lists each try. It shows active agents (cleared on `turn.complete`) and unknown agents, and ends with a legend line. The smoke check S2 for this block is a paid check and has not been run.
 - A dim rule above the band separates it from the transcript (`mod/band.tsx`).
 - T4a first-pane smoke (Task 59): `tests/smoke/s2.mjs` takes `--plugin-dir`, so S2 can run against another plugin copy. New `tests/smoke/broken-plugin.mjs` (`makeBrokenCopy`, with `load` and `render` modes) builds a deliberately broken plugin copy. New `tests/smoke/t4a-lab.mjs` sets up the lab (`setup` with `--broken`, `--ask` and `--sound off`) and has `show`. New `tests/smoke/T4A-RUNBOOK.md` guides the human session. S2 passes healthy and with both broken copies; results are in `docs/design/progress-mod/t4a-smoke/README.md`
@@ -126,6 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The mod's test list uses `tests.json` when it lists every test the ledger has seen; otherwise it keeps the ledger's tests.
+- The coding skill's old path stops when a unit is open (`.pairingbuddy/run/unit.json`) and tells the human to finish it on the new path or run `pb human abandon`.
 
 ## [0.7.0] - 2026-07-31
 

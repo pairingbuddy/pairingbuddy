@@ -65,7 +65,7 @@ pairingbuddy/
 - Skills provide language/framework-specific HOW
 - Each agent reads input JSON, performs one operation, writes output JSON
 - State files live in `.pairingbuddy/` at target project root
-- State is cleaned at task start (except `test-config.json`, `doc-config.json`, `human-guidance.json`; the `.pairingbuddy/reports/` folder is kept too)
+- State is cleaned at task start (except `test-config.json`, `doc-config.json`, `git-config.json`, `human-guidance.json`; the `.pairingbuddy/reports/` folder is kept too)
 
 ### Configuration
 - `contracts/agent-config.yaml` is the single source of truth for agents
