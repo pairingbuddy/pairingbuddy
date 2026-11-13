@@ -7,6 +7,16 @@ description: Orchestrates TDD workflow by invoking specialized agents. Manages s
 
 Orchestrates the TDD workflow by invoking specialized agents via the Task tool. Each agent reads input JSON, performs one operation, writes output JSON.
 
+## An Open Run Comes First
+
+Before anything else, run `pb status --action`. `<root>` is the plugin root the command passed. With none, it is two levels above this skill's base directory. `pb` here and below means `node <root>/cli/pb.mjs`.
+
+- If it refuses with `no run here`, no run is open: go on to the workflow.
+- If it prints a status, a run is open. Do not clean state or classify, do not curate guidance, and do not start the new task. Cleanup would delete what the run still needs. Report the status's `action`, which is the next action, and the new task you did not start, then stop.
+- If it refuses any other way, a run is there and cannot be read. Report the refusal and stop.
+
+Solo takes the same check: no stage starts under Solo, so a run left open stops it here.
+
 ## CRITICAL: Follow the Workflow Exactly
 
 **You MUST follow the workflow pseudocode exactly as specified.** Do not skip steps, reorder agents, or deviate from the sequence. The workflow exists because each agent depends on the output of prior agents.
@@ -90,6 +100,10 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_mark_task_complete(plan_path, task_index)` | Update `- [ ]` to `- [x]` in the MD file for the given task index |
 | `_hydrate_claude_tasks(plan_tasks)` | Create Claude Code Tasks (TaskCreate) for all plan tasks, marking completed ones. Provides in-session visibility. |
 | `_update_claude_task(task_id)` | Mark a Claude Code Task as completed (TaskUpdate) |
+| `_is_solo()` | True when the `PAIRINGBUDDY_SOLO` env var is `true`. |
+| `_stop_if_run_open()` | The check in An Open Run Comes First. |
+| `_write_task(task)` | Write the new task to `.pairingbuddy/task.json`. It waits for cleanup: curation reads the just-completed task from that file, and cleanup deletes it. |
+| `_run_new_path(task)` | Runs a migrated type through its workflow stages. See Migrated-Types Router. |
 | `_update_solo_report(event, details)` | **Solo mode only.** Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file if absent; on resume, **reconciles** existing entries against the current plan — drops entries for removed tasks, reorders to match plan, then appends session separator), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
 
 These functions handle coordination, human interaction, and control flow that doesn't belong in agents.
@@ -99,6 +113,12 @@ These functions handle coordination, human interaction, and control flow that do
 **Prerequisites:** Before starting, ensure `.pairingbuddy/test-config.json` exists. See "Bootstrap test-config.json" in Orchestrator Behavior.
 
 ```python
+# A run already open ends the task here, before anything touches state
+_stop_if_run_open()
+
+# Task types that run through workflow stages. Must match the task types in contracts/stages.json.
+MIGRATED_TYPES = ["config_change"]
+
 # Plan execution mode: iterate through tasks from a plan MD file
 if _detect_plan_file(task):
     plan_path = task.plan_file
@@ -110,14 +130,16 @@ if _detect_plan_file(task):
         if plan_task.checked:
             continue
 
-        # Write task.json with the rich task description from the plan
+        # The rich task description from the plan
         task = {"description": plan_task.description, "context": plan_task.context}
 
         # Run normal TDD workflow for this task (falls through to code below)
         human_guidance = curate_guidance(human_guidance, task)
         _cleanup_state_files()
+        _write_task(task)
         task_classification = classify_task(task)
-        # ... (same workflow as below, based on task_type) ...
+        # ... (same old-path branches as below, based on task_type,
+        # never the migrated-types router: plan tasks stay on the old path until T7) ...
 
         # After successful completion:
         _mark_task_complete(plan_path, plan_task.index)
@@ -133,15 +155,23 @@ if _detect_plan_file(task):
 
 # Normal (non-plan) execution continues below
 
-# Curate guidance from previous session (always runs - handles review and bootstrap)
+# Curate guidance from previous session (always runs - handles review and bootstrap, and with no human
+# it carries over silently and asks nothing)
 human_guidance = curate_guidance(human_guidance, task)
 
 # Clean up stale state files from previous task (MANDATORY - do not skip)
 _cleanup_state_files()
 
+_write_task(task)
+
 # Task classification
 task_classification = classify_task(task)
 task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refactoring" | "config_change"
+
+# Migrated-types router. Solo stays on the old path until T10.
+if task_type in MIGRATED_TYPES and not _is_solo():
+    _run_new_path(task)
+    _stop("Task complete.")
 
 if task_type == "new_feature":
     # Full TDD workflow with coverage verification loop
@@ -211,6 +241,7 @@ elif task_type == "refactoring":
         _stop("Refactoring broke tests")
 
 elif task_type == "config_change":
+    # Plan tasks and Solo only: the router takes every other config change
     # Config change: just make the change and verify tests still pass
     # No agents needed - orchestrator makes the change directly
     pass
@@ -262,6 +293,21 @@ if _ask_human("All tests pass. Commit changes?"):
 | **config_change** | Changing configuration values only | "Update API timeout to 30s" |
 | **spike** | Exploratory coding to answer questions, compare approaches, or evaluate technologies. No tests, throwaway code. | "Compare Redis vs Postgres for session storage" |
 
+### Migrated-Types Router
+
+A migrated type runs through workflow stages instead of the branches above. Everything else, including every plan task and every Solo run, stays on those branches and never opens a run, so it has no run state.
+
+`_run_new_path(task)`:
+
+1. Run `pb run open --kind code`. It reads `task_type` from `.pairingbuddy/task-classification.json` and picks the stage graph, and it stores the task from `.pairingbuddy/task.json`. If it refuses, stop and report the refusal. Do not make the change another way.
+2. Run `pb status`. Its `next` names the stage and attempt. While `next` is not null, start the workflow `pairingbuddy:<stage>` by name with the args `{"attempt": <attempt>, "pluginRoot": "<root>", "task": <task.json>}`, wait for it, and run `pb status` again.
+3. When `next` is null and no stage is active, run `pb gate eval`. On `auto-pass`, go on. On `needs-human`, show the human the question and `humanCommand`, and stop: only the human runs a `pb human` command.
+4. Run `pb task end`.
+
+`pb stage finish`, which the workflow's last agent runs, is the only proof a stage ran. Never read a workflow's reported status as a result: a workflow can report completed with no work done. After each workflow, `pb status` decides. If the stage did not finish, or `stop` is set, stop and report the `pb status` output.
+
+Never do a stage's work yourself, and never call its agents directly. Once a run exists, the gate denies a direct call to a pipeline agent and names the workflow to start instead. If a deny names a different `pluginRoot` or attempt, use the one it names.
+
 ## Orchestrator Behavior
 
 ### Bootstrap test-config.json
@@ -279,9 +325,11 @@ if _ask_human("All tests pass. Commit changes?"):
    - If `human-guidance.json` has entries: review/curate existing guidance
    - If empty or missing: offer to add new persistent guidance
    - Approved entries get `"persistent": true` flag
+   - With no human, under the auto policy or `claude -p`: it carries over silently and asks nothing
 3. Delete all `.pairingbuddy/*.json` EXCEPT `test-config.json`, `doc-config.json`, and `human-guidance.json`
-4. If `human-guidance.json` doesn't exist after curation, initialize with `{"guidance": []}`
-5. Keep files after run for human review
+4. Write the new task to `task.json`
+5. If `human-guidance.json` doesn't exist after curation, initialize with `{"guidance": []}`
+6. Keep files after run for human review
 
 **Note:** `human-guidance.json` serves two purposes:
 - **Session feedback:** Agents with Human Review checkpoints append corrections during the task

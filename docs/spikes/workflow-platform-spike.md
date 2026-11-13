@@ -347,3 +347,101 @@ come on top. This plan has 42 PRs and 138 tasks, median 2 per PR.
   in the source used, and contexts past 100K tokens pay five times the Haiku rate.
 - The smoke caps of $3 and $6 are not directly tested here. Smoke forces Haiku through P16, so this
   Opus data does not bear on them, but a Haiku lens run has never been measured.
+
+## T1 verification: S1 through `/pairingbuddy:code`
+
+2026-11-02. Claude Code 2.1.316, Haiku through P16's `default-env`, task `value`, $3 cap per run.
+Each run is one `claude -p` session on a branch made from main, with the plugin loaded from outside
+the cwd and no inherited policy env. Run it with `uv run python -m tests.smoke.s1`.
+
+**Result: after two fixes, 5 of 5 passed. The first two rounds went 2 of 5 and 3 of 5. That is not
+proof S1 is stable: 5 of 5 only puts the true pass rate above about 55% at 95% confidence, and these
+runs show that a cheap model can leave the route several ways.**
+
+| Round | Run | Result | Total s | Cost $ | Failure cause |
+|---|---|---|---|---|---|
+| A, no fix | 1 | PASS | 72.0 | 0.027762 | |
+| A | 2 | FAIL | 30.4 | 0.010812 | No run opened: took `code-config` as the skill, started it by hand |
+| A | 3 | FAIL | 28.9 | 0.010658 | No run opened: same, then called `apply-config-change` directly |
+| A | 4 | PASS | 71.1 | 0.026394 | |
+| A | 5 | FAIL | 92.0 | 0.021071 | No run opened: read the installed 0.6.0 skill and took its old path |
+| B, command fixed | 1 | FAIL | 18.1 | 0.009087 | No run opened: `curate-guidance` stopped for a human |
+| B | 2 | FAIL | 24.9 | 0.010396 | No run opened: `curate-guidance` stopped for a human |
+| B | 3 | PASS | 69.4 | 0.024520 | |
+| B | 4 | PASS | 74.9 | 0.025530 | |
+| B | 5 | PASS | 63.7 | 0.023168 | |
+| C, both fixed | 1 | PASS | 52.2 | 0.019232 | |
+| C | 2 | PASS | 58.7 | 0.020006 | |
+| C | 3 | PASS | 53.0 | 0.019095 | |
+| C | 4 | PASS | 54.5 | 0.019809 | |
+| C | 5 | PASS | 63.7 | 0.021464 | |
+
+Round C is the code as it stands. Each of its runs ended with one commit touching `app.ini` alone, a
+clean tree, `run/task` gone, stage order config then safety-net, and `G:task-end` from `auto`. Each stage
+took 7 to 10 s; the rest is the main loop. The session spent $0.33 of the $5 limit: one first trial
+that passed at $0.029827, the 15 runs above, and the Stop probe below. No run came near a cap.
+
+Out-of-order calls and the refused `pb stage finish` are checked without a model, on the real gate
+hook, tap and CLI, because a model cannot be made to misbehave on cue. Those checks passed in all
+11 passing runs, and they deny a stage ahead of its turn, a direct pipeline agent, and a stage start
+with no `task` or `pluginRoot`. No session produced a deny of its own, so S1 has not seen one reach a
+live model. Probe P1 did.
+
+### Causes and fixes
+
+- `commands/code.md` said "the coding skill". All 6 sessions before the fix, the first trial and
+  round A, called `pairingbuddy:code`, the command itself, which returns no text. The model then
+  guessed: the file by path, which is how all 3 passes got there, the `code-config` skill, or an
+  installed copy found with `find /`. The command now names
+  `pairingbuddy:coding` and its path, and warns off itself and the stages. Every later run loaded the
+  right skill.
+- `curate-guidance` ran ahead of the router and waits on a human, so a session with none ended there.
+  Moving it after the router fixed S1 and broke the old path: it reads the just-completed task, which
+  cleanup deletes, and classification read uncurated guidance. It is back before cleanup in both
+  orders, and under the auto policy or `claude -p` it now carries over silently and asks nothing.
+
+### Known risks
+
+- **Relayed `/code` text overriding an agent's task: not seen.** The 50 workflow agents of the 13 sessions
+  that ran them never used Skill, Agent or Workflow, and none of their recorded requests held the
+  `[Workflow harness - user request]` block or the `/pairingbuddy:code` text, which P13A saw
+  in an interactive session. Their API request records do hold the computed task, so the search reads
+  the right place. Why the block is absent here was not found, so an interactive run may still carry it.
+- **Skill-driven workflow start skipped: seen, and the main failure.** 5 of the 15 runs never opened a
+  run. Once no run exists, the gate allows everything by design, so nothing stops a stage: round A
+  runs 2 and 3 started `code-config` four and three times with no run, and run 2's agent edited
+  `app.ini` with no commit. **This hole is still open.** The fixes make it less likely, and a skill
+  listing still shows both stages: 4 of the 5 round C runs loaded a stage skill despite the warning.
+  They passed because the run was open and the args were right.
+- **Stranded stage: not seen.** No run ended with an active stage, and no stage needed a second
+  attempt. A start with no `task` or `pluginRoot` is now denied at the gate, in place of being refused
+  inside the workflow with the stage left active.
+
+### What drove the chain
+
+The Stop hook fired in every session and blocked in none of the S1 runs. Each stage's completion
+notification woke the model, and the skill's `pb status` loop went on from there. So S1 shows the
+harness does not sequence the stages, and does not show the Stop hook doing it.
+
+One separate session tested the hook, at $0.0148, not counted as an S1 run. With a run already open, the
+prompt told the model to reply and end its turn. Stop blocked 4 times: `code-config`, `code-safety-net`,
+`G:task-end`, then the needs-human text, and it stayed silent while each stage ran. The model started
+both stages from that text alone, and the run ended correctly at the human gate. It had made the
+edit itself first, so `apply-config-change` reported an ambiguity, which is what sent the gate to a
+human. So the chain works when the model stops, on one session.
+
+### Other findings
+
+- Nothing confines a run's Bash to the sample repo. Round A run 5 read the installed plugin, and in
+  round B run 2 `curate-guidance` reported 8 entries when the sample repo has none, matching this
+  worktree's `human-guidance.json`. Both were reads.
+- `commands/plan.md` and `commands/design-ux.md` now name their skill the same way as
+  `commands/code.md`, and warn off themselves. They were not run.
+- The ledger goes at `pb task end`, so S1 keeps its last copy by polling every 20 ms. A model that runs
+  `pb gate eval && pb task end` as one call could beat the poll and fail S1 falsely. It did not happen.
+
+### S1 after closing the no-run stage hole
+
+A stage call with no run is now denied, seen live once ($0.0032). S1 through `/pairingbuddy:code` then passed 5 of 5 at $0.018 to $0.022 and 49 to 56 s, on Haiku. 5 of 5 bounds the pass rate above about 55% at 95% confidence, so S1 is not proven stable.
+
+That first deny covered only a stage name and a byte-exact bundle, so it did not supersede the "still open" note above. With no run the gate now also denies a direct Agent call for an agent in `newPathAgents` in `contracts/stages.json`, a bundle copy differing only in trailing whitespace, and a script naming a stage or one of those agents literally. The hole narrows to Section 8's bypass, which stays open: an edited bundle that builds those names from string fragments passes.

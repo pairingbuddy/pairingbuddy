@@ -26,6 +26,9 @@ export function classOf(verb) {
 // The cd makes the line work from any cwd: a session can have left the run.
 export const typedCommand = (root, words) => `!cd ${shellWord(root)} && node ${shellWord(CLI_PATH)} ${words}`;
 
+// What a model runs: `pb` is on no PATH.
+export const pbCommand = (words) => `node ${shellWord(CLI_PATH)} ${words}`;
+
 export const humanCommand = (root, verb) => typedCommand(root, `human ${verb}`);
 
 export const shaMismatchRemedy = (message, root) => `${message}. Check the edit, then type ${humanCommand(root, "accept")}`;

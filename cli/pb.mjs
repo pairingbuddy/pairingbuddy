@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // pb: deterministic workflow CLI. Verbs live in the VERBS table; later tasks add more.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,14 +11,15 @@ import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, ac
 import { PlanRefused, tickPlanBox } from "../shared-node/plan-boxes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
-import { buildReport, closeStage, finishProblems, readReportOf, readReturn, returnsAt, spendTotals, writeReport } from "../shared-node/stage-run.mjs";
+import { nextAction, runStatus } from "../shared-node/next-action.mjs";
+import { buildReport, closeStage, finishProblems, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, fullSuitePlans, readTestConfig, runPlan, runRecord, selectedPlans, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
 
-const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 
 class UsageError extends Error {}
 class Refusal extends Error {}
@@ -45,13 +46,60 @@ function parseKind(args) {
   return kind;
 }
 
+function readStateJson(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    if (e.code === "ENOENT") return null;
+    throw new Refusal(`${path} is not valid JSON, so no run was opened`);
+  }
+}
+
+// The old path's classify-task writes this file until T7. No file means a run opened before classification.
+// A type with no stage graph is an old-path run, and an old-path run has no run state.
+function classifiedTaskType(root) {
+  const path = join(root, ".pairingbuddy", "task-classification.json");
+  if (!existsSync(path)) return null;
+  const type = readStateJson(path)?.task_type;
+  if (typeof type !== "string") throw new Refusal(`${path} has no task_type string, so no run was opened`);
+  if (!Object.hasOwn(loadStages(PLUGIN_ROOT).taskTypes, type)) throw new Refusal(`task type ${type} has no stage graph, so it stays on the old path and no run was opened`);
+  return type;
+}
+
+// The task, so that a later turn with no memory of it can still pass it to a stage. A run opened before the skill wrote
+// task.json stores none, and the text that starts a stage says so.
+function storedTask(root) {
+  const path = join(root, ".pairingbuddy", "task.json");
+  if (!existsSync(path)) return "";
+  const task = readStateJson(path);
+  if (typeof task?.description !== "string" || task.description === "") throw new Refusal(`${path} has no description, so no run was opened`);
+  return [task.description, task.context].filter(Boolean).join("\n\n");
+}
+
+// A task that ends removes run/task and a stopped one cannot end, so a stop stands in the way of any next open. It is
+// looked for from the cwd too, because a repository nested under the run has a toplevel of its own. An unreadable
+// ledger is not read as a stop: the claim in runOpen refuses that.
+function assertNotStopped(root) {
+  let stop;
+  try {
+    ({ stop } = readLedger(join(findRunRoot(process.cwd()) ?? root, ".pairingbuddy", "run", "task", "ledger.json")));
+  } catch {
+    return;
+  }
+  if (stop !== null) throw new Refusal(`the run has stopped, so no next task can open: ${stop.reason}`);
+}
+
 function runOpen(args) {
   const kind = parseKind(args);
+  if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Refusal("Solo stays on the old path until T10, so no run was opened");
   const root = toplevel();
+  assertNotStopped(root);
   const branch = currentBranch(root);
   if (isProtectedBranch(branch)) throw new Refusal(`refusing to open a run on protected branch ${branch}`);
 
   const configHash = validatedConfigHash(root);
+  const taskType = kind === "code" ? classifiedTaskType(root) : null;
+  const task = storedTask(root);
 
   const runRoot = join(root, ".pairingbuddy", "run");
   const dir = join(runRoot, "task");
@@ -72,9 +120,9 @@ function runOpen(args) {
   try {
     mkdirSync(join(dir, "artifacts"));
     writeLedger(join(dir, "ledger.json"), {
-      v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType: null,
+      v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType,
       owner: { sessionId: null, lastSeen: null },
-      task: "", plan: { path: "", title: "" }, configHash,
+      task, plan: { path: "", title: "" }, configHash,
       policy: { mode: "", source: "" },
       stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null },
       stages: [], gates: {}, tests: {}, commits: [], retries: {},
@@ -405,19 +453,16 @@ function artifactCheck(args) {
   return { ok: true, key, path: file, artifact };
 }
 
-function nextStep(contract, ledger) {
-  if (isStageActive(ledger)) return null;
-  const stage = nextStage(graphFor(contract, ledger.taskType), ledger);
-  return stage === undefined ? null : { stage, attempt: nextAttempt(ledger, stage) };
-}
-
+// The action stays behind a flag: plain status is what a stage's session reads, and an action there sends it past where
+// its prompt stopped.
 function status(args) {
-  assertNoArgs(args, "status");
+  const withAction = args.length === 1 && args[0] === "--action";
+  if (!withAction && args.length > 0) throw new UsageError("usage: pb status [--action]");
   const { root, path } = runLedgerPath();
-  const ledger = readLedger(path);
   const contract = loadStages(PLUGIN_ROOT);
-  const { stage, stop, needsHuman } = ledger;
-  return { ok: true, stage, next: nextStep(contract, ledger), stop, needsHuman, spend: spendTotals(ledger, artifactsDirOf(root), contract.maxAgents) };
+  const ledger = readLedger(path);
+  const state = runStatus(contract, ledger, artifactsDirOf(root));
+  return withAction ? { ok: true, ...state, action: nextAction(contract, ledger, root, PLUGIN_ROOT) } : { ok: true, ...state };
 }
 
 function assertTaskFinished(ledger) {

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// SessionStart hook — injects the using-pairingbuddy skill into session context.
+// SessionStart hook — injects the using-pairingbuddy skill into session context, and reports an open run.
+// After compaction guardian.mjs reports the run, so the report is not injected twice.
 
 import { readFileSync } from "fs";
-import { join, dirname } from "path";
+import { isAbsolute, join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -39,6 +40,31 @@ if (isSoloMode) {
     "</EXTREMELY_IMPORTANT>"
   );
 }
+
+function readPayload() {
+  try {
+    return JSON.parse(readFileSync(0, "utf8")) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+// A failure here must not cost the session the skill above.
+async function openRunReport({ cwd, session_id: sessionId, source }) {
+  if (source === "compact") return null;
+  try {
+    const { findSessionRoot } = await import("../shared-node/run-root.mjs");
+    const root = findSessionRoot(typeof cwd === "string" && isAbsolute(cwd) ? cwd : process.cwd(), sessionId);
+    if (root === null) return null;
+    const { readRun, runReport } = await import("../shared-node/next-action.mjs");
+    return runReport(readRun(pluginRoot, root));
+  } catch {
+    return null;
+  }
+}
+
+const runReportText = await openRunReport(readPayload());
+if (runReportText !== null) parts.push("", "<pairingbuddy-run>", runReportText, "</pairingbuddy-run>");
 
 const context = parts.join("\n");
 

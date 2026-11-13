@@ -30,6 +30,8 @@ The orchestrator classifies your task and runs the appropriate workflow:
 
 Supports plan execution mode: point `/code` at a plan MD file and it iterates through tasks with automatic checkbox tracking and Claude Code Task visibility.
 
+**Run it in Claude Code's auto mode.** There is no separate flag: auto mode is what lets a gate pass by itself when its evidence is complete. In manual mode the cost is yours to pay: you approve each workflow start in a permission dialog, and every gate stops and waits for you to type its approval at the prompt.
+
 ### Plan
 
 ```

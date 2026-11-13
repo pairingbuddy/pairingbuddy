@@ -1,23 +1,20 @@
 // Gate rules: what hooks/gate.mjs enforces once it has found run state. Every problem is thrown:
 // a Denied carries the reason meant for the caller, and any other error also denies.
 // Node built-ins only.
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { isCheckpointCall, isKey } from "./checkpoint.mjs";
 import { answeredGate, blockingGate, gateQuestion, gatesFor, isGateQuestionCall } from "./gates.mjs";
 import { LedgerShaMismatch, readLedger, updateLedger } from "./ledger.mjs";
 import { checkboxes } from "./plan-boxes.mjs";
 import { bindSession, sessionsDirectory } from "./run-root.mjs";
+import { PLUGIN_ROOT, PREFIX, bundlePath, calledStage, matchesBundle, suppliedScripts, workflowName } from "./stage-calls.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, pipelineAgents, startLeaseSecondsLeft } from "./stages.mjs";
 import { disguisesPb, pbInvocations, pbWithEnvironment } from "./shell-calls.mjs";
 import { shellWord } from "./shell-word.mjs";
 import { VERB_CLASSES, classOf, humanCommand, matchVerb, shaMismatchRemedy } from "./verbs.mjs";
 
-const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
-const PREFIX = "pairingbuddy:";
 const EXPECTED_FIELDS = ["session_id", "cwd", "tool_name", "permission_mode"];
 const AGENT_PAIR = ["agent_id", "agent_type"];
 const PROTECTED_CONFIGS = ["test-config.json", "git-config.json"];
@@ -33,10 +30,6 @@ const SHELL_QUOTING = /\\\n|\$(?=['"])|['"\\]/g;
 const PB_CALL = /(?<![\w.-])pb(?:\.mjs)?(?=\s+([\w.-]+)(?:\s+([\w.-]+))?)/g;
 const POLICY_ENV = "PAIRINGBUDDY_GATE_POLICY";
 const VERB_OWNERS = { runner: "the runner agent", main: "the main context" };
-
-const workflowName = (stage) => `${PREFIX}${stage}`;
-const bundlePath = (stage) => join(PLUGIN_ROOT, "workflows", `${stage}.js`);
-const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 
 // Thrown inside updateLedger so that a deny leaves the ledger unwritten.
 class Denied extends Error {
@@ -175,32 +168,6 @@ function recordSessionIfPossible(ledgerPath, payload) {
 
 // ---------- Workflow ----------
 
-function readTextOrNull(path) {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return null;
-  }
-}
-
-// Every script the call supplies, with null for a scriptPath that cannot be read.
-function suppliedScripts(toolInput, cwd) {
-  const scripts = [];
-  if (typeof toolInput.script === "string") scripts.push(toolInput.script);
-  if (typeof toolInput.scriptPath === "string") scripts.push(readTextOrNull(resolve(cwd, toolInput.scriptPath)));
-  return scripts;
-}
-
-function matchesBundle(stage, scripts) {
-  const bundle = readTextOrNull(bundlePath(stage));
-  return bundle !== null && scripts.every((script) => script !== null && sha256(script) === sha256(bundle));
-}
-
-function calledStage(toolInput) {
-  const { name } = toolInput;
-  return typeof name === "string" && name.startsWith(PREFIX) ? name.slice(PREFIX.length) : undefined;
-}
-
 // A stage reached any way but by its pairingbuddy: name. The tap would not recognise it, so it would run with no runId.
 function misnamedStage(toolInput, scripts, graph) {
   if (graph.stages.includes(toolInput.name)) return toolInput.name;
@@ -208,9 +175,18 @@ function misnamedStage(toolInput, scripts, graph) {
   return graph.stages.find((stage) => matchesBundle(stage, scripts));
 }
 
-function argsDenial(called, attempt, { args }) {
+// What the stage's own script refuses. It would refuse after this gate marked it active, stranding it, so it stops here.
+const isMissing = (value) => value === undefined || value === null || value === "";
+
+const PLACEHOLDER = /^\s*<[^<>]*>\s*$/;
+const isPlaceholder = (task) => PLACEHOLDER.test(typeof task === "object" ? task.description : task);
+const taskForm = (task) => (task === "" ? "an object with a description" : JSON.stringify({ description: task }));
+
+function argsDenial(called, attempt, { args }, task) {
   if (args?.attempt !== attempt) return `Wrong attempt for ${called}: got ${JSON.stringify(args?.attempt)}. Use attempt ${attempt}.`;
   if (args?.pluginRoot !== PLUGIN_ROOT) return `Wrong pluginRoot for ${called}: got ${JSON.stringify(args?.pluginRoot)}. Use pluginRoot ${PLUGIN_ROOT}.`;
+  if (isMissing(args?.task)) return `Missing task for ${called}: got ${JSON.stringify(args?.task)}. Pass the task as args.task, as ${taskForm(task)}.`;
+  if (isPlaceholder(args.task)) return `Placeholder task for ${called}: got ${JSON.stringify(args.task)}. Pass the task as args.task, as ${taskForm(task)}.`;
   return null;
 }
 
@@ -247,7 +223,7 @@ function stageDenial(stage, ledger, graph, toolInput, scripts) {
   const gate = blockingGate(graph.gates, ledger);
   if (gate !== undefined) return `Stage order: ${called} cannot start now. Gate ${gate.name} has not passed: run pb gate eval, and a human must approve it if it asks.`;
   if (!existsSync(bundlePath(stage))) return `Cannot start ${called}: its built bundle ${bundlePath(stage)} is missing.`;
-  const argsProblem = argsDenial(called, nextAttempt(ledger, stage), toolInput);
+  const argsProblem = argsDenial(called, nextAttempt(ledger, stage), toolInput, ledger.task);
   if (argsProblem) return argsProblem;
   if (scripts.length > 0 && !matchesBundle(stage, scripts)) {
     return `Script for ${called} does not match the built bundle ${bundlePath(stage)}. Call ${called} by name with no script.`;
@@ -278,6 +254,7 @@ function checkWorkflow({ ledgerPath, ledger, graph, payload }) {
   const scripts = suppliedScripts(toolInput, cwd);
   const stage = calledStage(toolInput);
   if (stage !== undefined) {
+    if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Denied(`Solo stays on the old path until T10, so ${workflowName(stage)} cannot start. The run stays as it is: report pb status.`);
     startStage(ledgerPath, stage, graph, payload, scripts);
     return;
   }

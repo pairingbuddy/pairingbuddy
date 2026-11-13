@@ -18,6 +18,19 @@ uv run ruff check .
 uv run ruff format .
 ```
 
+### Loading the plugin from a checkout
+
+A session never starts inside the directory it passes to `--plugin-dir`. Claude Code treats every path inside an inline `--plugin-dir` as sensitive, so with the cwd there, auto mode fails an in-repo Write with no verdict. Marketplace installs are not affected.
+
+Load the plugin from a separate checkout, and work somewhere else:
+
+```bash
+cd /path/to/your/worktree
+claude --plugin-dir /path/to/separate/pairingbuddy-checkout
+```
+
+Smoke and the recovery drill keep to this: `tests/smoke/runner.py` refuses a repo inside the plugin, and `force_wedge.mjs` prints a start line with two directories.
+
 ## Project Structure
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed architecture documentation.
@@ -155,7 +168,7 @@ node tests/drills/force_wedge.mjs --list
 node tests/drills/force_wedge.mjs --stranded-stage
 ```
 
-The script makes a clone with no remote and prints its path, the `claude --plugin-dir` line to start a session there, and the `export` line for `ROOT` and `PLUGIN`. It refuses this repo and any repo it did not make. `--clone <path>` resets one of its own clones and forces another wedge there.
+The script makes a clone with no remote, for the session to work in, and a checkout beside it, for the session to load the plugin from. It prints both paths, the `claude --plugin-dir` line to start a session, and the `export` line for `ROOT` and `PLUGIN`. It refuses this repo and any repo it did not make. `--clone <path>` resets one of its own clones and forces another wedge there.
 
 ### Before you start
 
@@ -260,7 +273,7 @@ If the file is not well-formed, `pb human accept` refuses: fix it by hand and ru
 
 ### Second session in the same worktree
 
-**What you see:** nothing warns you. The second session can call tools, but it does not own the run: its permission mode is not recorded, `pb run open` refuses with `a run is already active`, and a stage the first session holds denies the next one. Adopting a run explicitly does not exist yet.
+**What you see:** nothing warns you. The second session can call tools, but it does not own the run: its permission mode is not recorded, the Stop hook tells it nothing, `pb run open` refuses with `a run is already active`, and a stage the first session holds denies the next one. Adopting a run explicitly does not exist yet.
 
 If the first session is still working, close the second one, and that is the whole recovery.
 

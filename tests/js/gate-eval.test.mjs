@@ -107,7 +107,7 @@ function subagentBash(repo, mode) {
 function stageCall(repo, stage, mode = "default") {
   return {
     ...fixture("pretooluse-workflow.json"), session_id: SESSION, cwd: repo.dir, permission_mode: mode,
-    tool_input: { name: `pairingbuddy:${stage}`, args: { pluginRoot: repo.plugin, attempt: 1 } },
+    tool_input: { name: `pairingbuddy:${stage}`, args: { pluginRoot: repo.plugin, attempt: 1, task: { description: "set x" } } },
   };
 }
 

@@ -22,7 +22,7 @@ const workflowName = (stage) => `pairingbuddy:${stage}`;
 const BUNDLE_PATH = join(ROOT, "workflows", `${CONFIG}.js`);
 const BUNDLE = readFileSync(BUNDLE_PATH, "utf8");
 const SAFETY_NET_BUNDLE = "export const meta = { name: 'code-safety-net' };\n";
-const GOOD_ARGS = { pluginRoot: ROOT, attempt: 1 };
+const GOOD_ARGS = { pluginRoot: ROOT, attempt: 1, task: { description: "set x" } };
 
 // Deny mechanism: exit 0 with the JSON form the P1 probe proved, reason in permissionDecisionReason.
 // Allow: exit 0, nothing on stdout or stderr.
@@ -37,6 +37,8 @@ const MESSAGES = {
   unreadable: (path, position) => `Script file ${path} could not be read. ${position}`,
   attempt: (workflow, got, right) => `Wrong attempt for ${workflow}: got ${JSON.stringify(got)}. Use attempt ${right}.`,
   pluginRoot: (workflow, got) => `Wrong pluginRoot for ${workflow}: got ${JSON.stringify(got)}. Use pluginRoot ${ROOT}.`,
+  task: (workflow, got, task = "Task 23") => `Missing task for ${workflow}: got ${JSON.stringify(got)}. Pass the task as args.task, as ${JSON.stringify({ description: task })}.`,
+  placeholder: (workflow, got, task = "Task 23") => `Placeholder task for ${workflow}: got ${JSON.stringify(got)}. Pass the task as args.task, as ${JSON.stringify({ description: task })}.`,
   script: (workflow, bundle) => `Script for ${workflow} does not match the built bundle ${bundle}. Call ${workflow} by name with no script.`,
   inline: (next) => `Inline script containing pairingbuddy: is denied. The next stage is ${next}: call it by name.`,
   inlineActive: (stage, attempt) => `Inline script containing pairingbuddy: is denied. Stage ${stage} is active at attempt ${attempt}.`,
@@ -44,6 +46,10 @@ const MESSAGES = {
   agent: (agent, stage) => `Direct Agent call for ${agent} is denied during stage ${stage}. Start the workflow ${workflowName(stage)} instead.`,
   agentNext: (agent, next) => `Direct Agent call for ${agent} is denied during this run. Start the workflow ${next} instead.`,
   agentAllDone: (agent) => `Direct Agent call for ${agent} is denied during this run. All stages for config_change are done.`,
+  noRun: (stage) => `Stage ${stage} cannot start with no run open. Use /pairingbuddy:code, which opens the run.`,
+  noRunAgent: (agent) => `Agent ${workflowName(agent)} runs only inside a stage, and no run is open. Use /pairingbuddy:code, which opens the run.`,
+  solo: (workflow) => `Solo stays on the old path until T10, so ${workflow} cannot start. The run stays as it is: report pb status.`,
+  noHumanHere: "No human answers under the auto policy, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.",
 };
 
 const secondsAgo = (seconds) => new Date(Date.now() - seconds * 1000).toISOString();
@@ -147,6 +153,7 @@ function workflowCall(cwd, toolInput) {
 }
 
 const stageCall = (cwd, stage, args = GOOD_ARGS, extra = {}) => workflowCall(cwd, { name: workflowName(stage), args, ...extra });
+const stageNamed = (cwd, name) => workflowCall(cwd, { name, args: GOOD_ARGS });
 
 function agentCall(cwd, subagentType) {
   return {
@@ -220,9 +227,20 @@ test("gate-boot.mjs is the registered PreToolUse hook, covering Workflow and Age
 
 const OUTSIDE_RUN_CALLS = [
   ["the unmodified P1 fixture payload", (cwd) => ({ ...fixture("pretooluse-workflow.json"), cwd })],
-  ["an out-of-order stage", (cwd) => stageCall(cwd, SAFETY_NET, { pluginRoot: "/x", attempt: 9 })],
-  ["an inline script containing pairingbuddy:", (cwd) => workflowCall(cwd, { script: "agent({agentType:'pairingbuddy:x'})" })],
-  ["a direct pipeline Agent call", (cwd) => agentCall(cwd, "pairingbuddy:apply-config-change")],
+  ["a plugin workflow that is not a stage", (cwd) => workflowCall(cwd, { name: workflowName("helper"), args: GOOD_ARGS })],
+  ["a workflow of another plugin sharing a stage's name", (cwd) => stageNamed(cwd, `other:${CONFIG}`)],
+  ["a workflow from outside the plugin with its own script", (cwd) => workflowCall(cwd, { name: "mine", script: "export const meta = { name: 'mine' };" })],
+  ["a script with neither name nor bundle", (cwd) => workflowCall(cwd, { script: "export const meta = { name: 'mine' };" })],
+  ["a scriptPath that cannot be read", (cwd) => workflowCall(cwd, { name: "mine", scriptPath: join(cwd, "gone.js") })],
+  ["an inline script naming neither a stage nor a new-path agent", (cwd) => workflowCall(cwd, { script: "agent({agentType:'pairingbuddy:x'})" })],
+  ["an inline script naming an old-path agent", (cwd) => workflowCall(cwd, { script: "agent({agentType:'pairingbuddy:classify-task'})" })],
+  ["a direct old-path Agent call", (cwd) => agentCall(cwd, "pairingbuddy:classify-task")],
+  ["an Agent call for an agent both paths use", (cwd) => agentCall(cwd, "pairingbuddy:update-documentation")],
+  ["a project's own agent sharing a new-path agent's bare name", (cwd) => agentCall(cwd, "runner")],
+  ["another plugin's agent sharing a new-path agent's name", (cwd) => agentCall(cwd, "other:runner")],
+  ["an Agent call with no subagent_type", (cwd) => ({ ...agentCall(cwd, "x"), tool_input: { prompt: "p" } })],
+  ["a tool that is no Workflow but carries a stage's name", (cwd) => ({ ...agentCall(cwd, "general-purpose"), tool_input: { subagent_type: "general-purpose", name: CONFIG, prompt: "p" } })],
+  ["a tool that is no Workflow but carries a prefixed stage's name", (cwd) => ({ ...agentCall(cwd, "general-purpose"), tool_input: { subagent_type: "general-purpose", name: workflowName(CONFIG), script: BUNDLE, prompt: "p" } })],
 ];
 
 for (const [label, payload] of OUTSIDE_RUN_CALLS) {
@@ -234,8 +252,265 @@ for (const [label, payload] of OUTSIDE_RUN_CALLS) {
 
 test("a cwd outside any git repository allows silently", () =>
   withRepo({ ledger: null, git: false }, async (repo) => {
-    assertAllowed(await runGate(stageCall(repo.dir, SAFETY_NET)));
+    assertAllowed(await runGate(workflowCall(repo.dir, { name: "mine" })));
   }));
+
+// ---------- a stage with no run ----------
+
+const SCRIPT_COPIES = [
+  ["unnamed", () => ({ script: BUNDLE })],
+  ["under another name", () => ({ name: "mine", script: BUNDLE })],
+  ["under a plugin name that is not a stage", () => ({ name: workflowName("helper"), script: BUNDLE })],
+  ["read from its built path", () => ({ scriptPath: BUNDLE_PATH })],
+  ["read from a copy, by a path relative to the cwd", (cwd) => {
+    writeFileSync(join(cwd, "copy.js"), BUNDLE);
+    return { name: "mine", scriptPath: "copy.js" };
+  }],
+  ["beside a clean inline script", () => ({ name: "mine", script: "export const meta = { name: 'mine' };", scriptPath: BUNDLE_PATH })],
+  ["beside a scriptPath that cannot be read", (cwd) => ({ name: "mine", script: BUNDLE, scriptPath: join(cwd, "gone.js") })],
+];
+
+const STAGE_CALLS_WITH_NO_RUN = [
+  ["a stage with bad args", CONFIG, (cwd) => stageCall(cwd, CONFIG, { pluginRoot: "/x", attempt: 9 })],
+  ["a later stage", SAFETY_NET, (cwd) => stageCall(cwd, SAFETY_NET)],
+  ["a stage with no args", CONFIG, (cwd) => workflowCall(cwd, { name: workflowName(CONFIG) })],
+  ["a stage named without the prefix", CONFIG, (cwd) => stageNamed(cwd, CONFIG)],
+  ["a stage name over a different script", CONFIG, (cwd) => stageCall(cwd, CONFIG, GOOD_ARGS, { script: "export const meta = { name: 'mine' };" })],
+  ...SCRIPT_COPIES.map(([label, input]) => [`a bundle copy ${label}`, CONFIG, (cwd) => workflowCall(cwd, input(cwd))]),
+];
+
+for (const [label, stage, call] of STAGE_CALLS_WITH_NO_RUN) {
+  test(`no run state denies ${label}, pointing at /pairingbuddy:code`, () =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertDenied(await runGate(call(repo.dir)), MESSAGES.noRun(stage));
+
+      assert.equal(existsSync(join(repo.dir, ".pairingbuddy")), false, "a deny opens nothing");
+    }));
+}
+
+const FRAGMENTS = BUNDLE.replaceAll("pairingbuddy:", "pairingbuddy' + ':");
+
+const NEAR_COPIES = [
+  ["with a newline at its end", `${BUNDLE}\n`],
+  ["with spaces at its end", `${BUNDLE}   `],
+  ["with its last newline gone", BUNDLE.trimEnd()],
+  ["with spaces at the end of one line", BUNDLE.replace("\n", "  \n")],
+  ["with a carriage return on each line", BUNDLE.replaceAll("\n", "\r\n")],
+];
+
+for (const [label, text] of NEAR_COPIES) {
+  test(`no run state denies a bundle copy ${label}, as an inline script`, () =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertDenied(await runGate(workflowCall(repo.dir, { script: text })), MESSAGES.noRun(CONFIG));
+    }));
+
+  test(`no run state denies a bundle copy ${label}, read from a scriptPath`, () =>
+    withRepo({ ledger: null }, async (repo) => {
+      writeFileSync(join(repo.dir, "copy.js"), text);
+      assertDenied(await runGate(workflowCall(repo.dir, { name: "mine", scriptPath: "copy.js" })), MESSAGES.noRun(CONFIG));
+    }));
+}
+
+test("a run still takes only the exact bundle under a stage's name", () =>
+  withRepo({}, async (repo) => {
+    const payload = stageCall(repo.dir, CONFIG, GOOD_ARGS, { script: `${BUNDLE}\n` });
+    await assertDeniedWithoutWrite(repo, payload, MESSAGES.script(workflowName(CONFIG), BUNDLE_PATH));
+  }));
+
+const NO_RUN_SCRIPTS = [
+  ["a stage", `workflow('pairingbuddy:${SAFETY_NET}')`, MESSAGES.noRun(SAFETY_NET)],
+  ["a new-path agent", "agent('x', { agentType: 'pairingbuddy:apply-config-change' })", MESSAGES.noRunAgent("apply-config-change")],
+  ["the runner", 'agent("x", { agentType: "pairingbuddy:runner" })', MESSAGES.noRunAgent("runner")],
+];
+
+for (const [label, script, reason] of NO_RUN_SCRIPTS) {
+  test(`no run state denies an inline script naming ${label}`, () =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertDenied(await runGate(workflowCall(repo.dir, { script })), reason);
+    }));
+
+  test(`no run state denies a scriptPath naming ${label}, under a name of its own`, () =>
+    withRepo({ ledger: null }, async (repo) => {
+      writeFileSync(join(repo.dir, "mine.js"), script);
+      assertDenied(await runGate(workflowCall(repo.dir, { name: "mine", scriptPath: "mine.js" })), reason);
+    }));
+}
+
+test("a script that names its stage's agents only in fragments still passes: Section 8 accepts this bypass", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    assertAllowed(await runGate(workflowCall(repo.dir, { script: FRAGMENTS })));
+  }));
+
+for (const agent of ["apply-config-change", "runner"]) {
+  test(`no run state denies a direct Agent call for ${agent}`, () =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertDenied(await runGate(agentCall(repo.dir, workflowName(agent))), MESSAGES.noRunAgent(agent));
+      assert.equal(existsSync(join(repo.dir, ".pairingbuddy")), false, "a deny opens nothing");
+    }));
+}
+
+test("the agents denied with no run come from the contract, not from code", () =>
+  withPlugin({ contract: { ...loadStages(ROOT), newPathAgents: ["classify-task"] } }, (plugin) =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertDenied(await runGate(agentCall(repo.dir, "pairingbuddy:classify-task"), { pluginRoot: plugin }), MESSAGES.noRunAgent("classify-task"));
+      assertAllowed(await runGate(agentCall(repo.dir, "pairingbuddy:runner"), { pluginRoot: plugin }));
+    })));
+
+test("the contract's list holds exactly the agents only a stage spawns", () => {
+  const spawned = new Set(["code-config", "code-safety-net"].flatMap((stage) => [...readFileSync(join(ROOT, "workflows", `${stage}.js`), "utf8").matchAll(/agentType: 'pairingbuddy:([\w-]+)'/g)].map((match) => match[1])));
+  const skill = readFileSync(join(ROOT, "skills", "coding", "SKILL.md"), "utf8");
+  const onlyStages = [...spawned].filter((agent) => !skill.includes(`${agent.replaceAll("-", "_")}(`) && !skill.includes(agent));
+
+  assert.deepEqual(onlyStages.sort(), [...loadStages(ROOT).newPathAgents].sort());
+});
+
+test("validateStages refuses a contract whose new-path list is missing or holds no names", () => {
+  const { newPathAgents: _list, ...contract } = structuredClone(loadStages(ROOT));
+  for (const newPathAgents of [undefined, "runner", [1], [""]]) {
+    assert.match(validateStages({ ...contract, newPathAgents }).join(), /newPathAgents/);
+  }
+  assert.deepEqual(validateStages(loadStages(ROOT)), []);
+});
+
+test("an invalid stage contract leaves an Agent call allowed with no run state", () =>
+  withPlugin({ contract: { nope: true } }, (plugin) =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertAllowed(await runGate(agentCall(repo.dir, "pairingbuddy:runner"), { pluginRoot: plugin }));
+    })));
+
+// ---------- curate-guidance with nobody to ask ----------
+
+const question = (cwd, over = {}) => ({
+  ...fixture("pretooluse-workflow.json"),
+  cwd,
+  tool_name: "AskUserQuestion",
+  tool_input: { questions: [{ question: "Keep these entries?" }] },
+  permission_mode: "auto",
+  agent_id: "a1",
+  agent_type: "pairingbuddy:curate-guidance",
+  ...over,
+});
+
+test("curate-guidance asks nobody under the auto permission mode", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    assertDenied(await runGate(question(repo.dir)), MESSAGES.noHumanHere);
+  }));
+
+test("curate-guidance asks nobody under PAIRINGBUDDY_GATE_POLICY=auto", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    process.env.PAIRINGBUDDY_GATE_POLICY = "auto";
+    try {
+      assertDenied(await runGate(question(repo.dir, { permission_mode: "default" })), MESSAGES.noHumanHere);
+    } finally {
+      delete process.env.PAIRINGBUDDY_GATE_POLICY;
+    }
+  }));
+
+test("curate-guidance still asks a human outside the auto policy", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    assertAllowed(await runGate(question(repo.dir, { permission_mode: "default" })));
+  }));
+
+test("under the auto policy, every other question still reaches the human", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    assertAllowed(await runGate(question(repo.dir, { agent_type: "pairingbuddy:brainstorm-requirements" })));
+    const { agent_id: _id, agent_type: _type, ...fromTheMainContext } = question(repo.dir);
+    assertAllowed(await runGate(fromTheMainContext));
+  }));
+
+// ---------- Solo ----------
+
+async function withSolo(fn) {
+  process.env.PAIRINGBUDDY_SOLO = "true";
+  try {
+    await fn();
+  } finally {
+    delete process.env.PAIRINGBUDDY_SOLO;
+  }
+}
+
+test("Solo denies starting a new-path stage on a run it found open, and marks nothing", () =>
+  withRepo({}, (repo) =>
+    withSolo(() => assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG), MESSAGES.solo(workflowName(CONFIG))))));
+
+test("Solo denies a stage's restart too", () =>
+  withRepo({ ledger: makeLedger({ stage: unstartedStage(CONFIG) }) }, (repo) =>
+    withSolo(() => assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG), MESSAGES.solo(workflowName(CONFIG))))));
+
+test("PAIRINGBUDDY_SOLO=false starts a stage", () =>
+  withRepo({}, async (repo) => {
+    process.env.PAIRINGBUDDY_SOLO = "false";
+    try {
+      assertAllowed(await runGate(stageCall(repo.dir, CONFIG)));
+    } finally {
+      delete process.env.PAIRINGBUDDY_SOLO;
+    }
+  }));
+
+test("Solo leaves a workflow of its own alone on an open run", () =>
+  withRepo({}, (repo) =>
+    withSolo(async () => assertAllowed(await runGate(workflowCall(repo.dir, { name: "mine", script: "export const meta = { name: 'mine' };" }))))));
+
+test("a stage with no run is denied outside any git repository", () =>
+  withRepo({ ledger: null, git: false }, async (repo) => {
+    assertDenied(await runGate(stageCall(repo.dir, SAFETY_NET)), MESSAGES.noRun(SAFETY_NET));
+  }));
+
+test("an empty run directory is no run, so a stage is denied", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    mkdirSync(join(repo.dir, ".pairingbuddy", "run"), { recursive: true });
+
+    assertDenied(await runGate(stageCall(repo.dir, CONFIG)), MESSAGES.noRun(CONFIG));
+  }));
+
+test("a stage with no run is denied on a payload missing the fields a run requires", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    const { session_id: _session, permission_mode: _mode, ...payload } = stageCall(repo.dir, CONFIG);
+
+    assertDenied(await runGate(payload), MESSAGES.noRun(CONFIG));
+  }));
+
+const ADDED_STAGE = "code-added";
+const CONTRACT_WITH_ADDED_STAGE = () => {
+  const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
+  contract.taskTypes.other_type = { nodes: [{ name: ADDED_STAGE, gate: null, evidence: [] }], gates: {} };
+  return contract;
+};
+const ADDED_BUNDLE = "export const meta = { name: 'code-added' };\n";
+
+test("the stages come from the contract: a stage added to any task type is denied by name", () =>
+  withPlugin({ contract: CONTRACT_WITH_ADDED_STAGE() }, (pluginRoot) =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertDenied(await runGate(stageCall(repo.dir, ADDED_STAGE), { pluginRoot }), MESSAGES.noRun(ADDED_STAGE));
+    })));
+
+test("the stages come from the contract: a copy of an added stage's bundle is denied", () =>
+  withPlugin({ contract: CONTRACT_WITH_ADDED_STAGE(), bundles: { [ADDED_STAGE]: ADDED_BUNDLE } }, (pluginRoot) =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertDenied(await runGate(workflowCall(repo.dir, { script: ADDED_BUNDLE }), { pluginRoot }), MESSAGES.noRun(ADDED_STAGE));
+    })));
+
+test("a stage whose bundle is not built is still denied by name", () =>
+  withPlugin({ bundles: {} }, (pluginRoot) =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertDenied(await runGate(stageCall(repo.dir, CONFIG), { pluginRoot }), MESSAGES.noRun(CONFIG));
+    })));
+
+test("a Workflow outside a run does not load the rules module", async () => {
+  const plugin = realpathSync(mkdtempSync(join(tmpdir(), "gate-no-rules-")));
+  try {
+    for (const dir of ["hooks", "shared-node", "contracts"]) cpSync(join(ROOT, dir), join(plugin, dir), { recursive: true });
+    rmSync(join(plugin, "shared-node", "gate-rules.mjs"));
+
+    await withRepo({ ledger: null }, async (repo) => {
+      const gate = join(plugin, "hooks", "gate-boot.mjs");
+      assertDenied(await runGate(stageCall(repo.dir, CONFIG), { gate, pluginRoot: plugin }), MESSAGES.noRun(CONFIG));
+      assertAllowed(await runGate(workflowCall(repo.dir, { name: "mine" }), { gate, pluginRoot: plugin }));
+    });
+  } finally {
+    rmSync(plugin, { recursive: true, force: true });
+  }
+});
 
 // ---------- stage order ----------
 
@@ -256,7 +531,7 @@ test("the next stage is allowed once the previous one is done", () =>
     withRepo({ ledger: makeLedger(CONFIG_DONE) }, async (repo) => {
       const since = Date.now();
 
-      const result = await runGate(stageCall(repo.dir, SAFETY_NET, { pluginRoot, attempt: 1 }), { pluginRoot });
+      const result = await runGate(stageCall(repo.dir, SAFETY_NET, { pluginRoot, attempt: 1, task: { description: "set x" } }), { pluginRoot });
 
       assertAllowed(result);
       assertMarkedActive(readLedger(repo.ledgerPath).stage, SAFETY_NET, 1, since);
@@ -267,7 +542,7 @@ test("the next stage is denied and nothing is marked when its built bundle is mi
     withRepo({ ledger: makeLedger(CONFIG_DONE) }, (repo) =>
       assertDeniedWithoutWrite(
         repo,
-        stageCall(repo.dir, SAFETY_NET, { pluginRoot, attempt: 1 }),
+        stageCall(repo.dir, SAFETY_NET, { pluginRoot, attempt: 1, task: { description: "set x" } }),
         MESSAGES.missingBundle(workflowName(SAFETY_NET), join(pluginRoot, "workflows", `${SAFETY_NET}.js`)),
         { pluginRoot },
       ))));
@@ -304,7 +579,7 @@ test("a different stage is denied while one is active", () =>
 
 test("the active stage cannot be started a second time", () =>
   withRepo({ ledger: makeLedger({ stage: activeStage(CONFIG, 2) }) }, (repo) =>
-    assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 2 }), MESSAGES.secondActive(CONFIG, 2, workflowName(CONFIG)))));
+    assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 2, task: { description: "set x" } }), MESSAGES.secondActive(CONFIG, 2, workflowName(CONFIG)))));
 
 test("a stage the gate just started blocks the next call", () =>
   withRepo({}, async (repo) => {
@@ -349,7 +624,7 @@ test("a stage with no recorded run is denied within the lease, with the seconds 
   withRepo({ ledger: makeLedger({ stage: unstartedStage(CONFIG, 2, secondsAgo(30)) }) }, async (repo) => {
     const before = readFileSync(repo.ledgerPath, "utf8");
 
-    const result = await runGate(stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 2 }));
+    const result = await runGate(stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 2, task: { description: "set x" } }));
 
     assertDeniedWithinLease(result, CONFIG, 2, workflowName(CONFIG), START_LEASE_SECONDS - 40, START_LEASE_SECONDS - 29);
     assert.equal(readFileSync(repo.ledgerPath, "utf8"), before, "a deny leaves the ledger untouched");
@@ -369,10 +644,10 @@ test("a stage with no recorded run restarts at the same attempt after the lease,
   withRepo({ ledger: makeLedger({ stage: unstartedStage(CONFIG, 2, secondsAgo(START_LEASE_SECONDS + 1)) }) }, async (repo) => {
     const since = Date.now();
 
-    assertAllowed(await runGate(stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 2 })));
+    assertAllowed(await runGate(stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 2, task: { description: "set x" } })));
 
     assertMarkedActive(readLedger(repo.ledgerPath).stage, CONFIG, 2, since);
-    assertDeniedWithinLease(await runGate(stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 2 })), CONFIG, 2, workflowName(CONFIG), START_LEASE_SECONDS - 10, START_LEASE_SECONDS);
+    assertDeniedWithinLease(await runGate(stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 2, task: { description: "set x" } })), CONFIG, 2, workflowName(CONFIG), START_LEASE_SECONDS - 10, START_LEASE_SECONDS);
   }));
 
 const { startedAt: _dropped, ...STAGE_WITHOUT_STARTED_AT } = unstartedStage(CONFIG);
@@ -399,7 +674,7 @@ test("a recorded run stays active however old its startedAt", () =>
 
 test("a restart at a later attempt is denied with the same attempt as the right value", () =>
   withRepo({ ledger: makeLedger({ stage: unstartedStage(CONFIG, 2) }) }, (repo) =>
-    assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 3 }), MESSAGES.attempt(workflowName(CONFIG), 3, 2))));
+    assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 3, task: { description: "set x" } }), MESSAGES.attempt(workflowName(CONFIG), 3, 2))));
 
 test("a restart still needs the right pluginRoot", () =>
   withRepo({ ledger: makeLedger({ stage: unstartedStage(CONFIG) }) }, (repo) =>
@@ -429,7 +704,7 @@ test("a failed stage starts at the next attempt", () =>
   withRepo({ ledger: makeLedger(CONFIG_FAILED) }, async (repo) => {
     const since = Date.now();
 
-    const result = await runGate(stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 2 }));
+    const result = await runGate(stageCall(repo.dir, CONFIG, { pluginRoot: ROOT, attempt: 2, task: { description: "set x" } }));
 
     assertAllowed(result);
     assertMarkedActive(readLedger(repo.ledgerPath).stage, CONFIG, 2, since);
@@ -446,6 +721,45 @@ for (const wrong of ["/x", "", undefined]) {
     withRepo({}, (repo) =>
       assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG, { pluginRoot: wrong, attempt: 1 }), MESSAGES.pluginRoot(workflowName(CONFIG), wrong))));
 }
+
+// A stage refuses these inside the workflow, after the gate marked it active, and that strands it where no Stop hook speaks.
+const PLACEHOLDERS = [
+  { description: "<this task>" },
+  { description: " <this task> " },
+  { description: "<task>" },
+  { description: "<the task description>", context: "c" },
+  "<this task>",
+];
+
+for (const wrong of PLACEHOLDERS) {
+  test(`a placeholder for the task is denied: ${JSON.stringify(wrong)}`, () =>
+    withRepo({}, (repo) =>
+      assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG, { ...GOOD_ARGS, task: wrong }), MESSAGES.placeholder(workflowName(CONFIG), wrong))));
+}
+
+for (const task of [{ description: "Render <div> tags" }, { description: "a <b> c" }, "plain text"]) {
+  test(`a task that only holds angle brackets starts: ${JSON.stringify(task)}`, () =>
+    withRepo({}, async (repo) => {
+      assertAllowed(await runGate(stageCall(repo.dir, CONFIG, { ...GOOD_ARGS, task })));
+    }));
+}
+
+test("a run that stored no task asks for one without a placeholder in the deny", () =>
+  withRepo({ ledger: { ...makeLedger(), task: "" } }, async (repo) => {
+    const { permissionDecisionReason: reason } = JSON.parse((await runGate(stageCall(repo.dir, CONFIG, { ...GOOD_ARGS, task: undefined }))).stdout).hookSpecificOutput;
+    assert.doesNotMatch(reason, /<[^>]*>/);
+    assert.match(reason, /a description/);
+  }));
+
+for (const wrong of ["", null, undefined]) {
+  test(`task ${JSON.stringify(wrong)} is denied at the gate, so no stage is left active`, () =>
+    withRepo({}, (repo) =>
+      assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG, { ...GOOD_ARGS, task: wrong }), MESSAGES.task(workflowName(CONFIG), wrong))));
+}
+
+test("a restart still needs the task", () =>
+  withRepo({ stage: unstartedStage(CONFIG) }, (repo) =>
+    assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG, { ...GOOD_ARGS, task: undefined }), MESSAGES.task(workflowName(CONFIG), undefined))));
 
 test("a stage call with no args is denied, not crashed on", () =>
   withRepo({}, async (repo) => {
@@ -475,7 +789,7 @@ test("a stage cannot run another stage's bundle", () =>
     withRepo({ ledger: makeLedger(CONFIG_DONE) }, (repo) =>
       assertDeniedWithoutWrite(
         repo,
-        stageCall(repo.dir, SAFETY_NET, { pluginRoot, attempt: 1 }, { script: BUNDLE }),
+        stageCall(repo.dir, SAFETY_NET, { pluginRoot, attempt: 1, task: { description: "set x" } }, { script: BUNDLE }),
         MESSAGES.script(workflowName(SAFETY_NET), join(pluginRoot, "workflows", `${SAFETY_NET}.js`)),
         { pluginRoot },
       ))));
@@ -597,7 +911,7 @@ test("an unreadable scriptPath is denied with the position of an active stage", 
 test("CLAUDE_PLUGIN_ROOT decides which bundle and pluginRoot the gate compares against", () =>
   withPlugin({ bundles: { [CONFIG]: "export const meta = { name: 'code-config', scratch: true };\n" } }, (pluginRoot) =>
     withRepo({}, async (repo) => {
-      const args = { pluginRoot, attempt: 1 };
+      const args = { pluginRoot, attempt: 1, task: { description: "set x" } };
 
       await assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG, args, { script: BUNDLE }), MESSAGES.script(workflowName(CONFIG), join(pluginRoot, "workflows", `${CONFIG}.js`)), { pluginRoot });
       assertAllowed(await runGate(stageCall(repo.dir, CONFIG, args, { script: "export const meta = { name: 'code-config', scratch: true };\n" }), { pluginRoot }));
@@ -629,7 +943,7 @@ const OTHER_RUN = { plugin: { contract: twoTypeContract(), bundles: { [OTHER_FIR
 test("a stage from the ledger's task type is allowed", () =>
   withPlugin(OTHER_RUN.plugin, (pluginRoot) =>
     withRepo({ ledger: OTHER_RUN.ledger }, async (repo) => {
-      assertAllowed(await runGate(stageCall(repo.dir, OTHER_FIRST, { pluginRoot, attempt: 1 }), { pluginRoot }));
+      assertAllowed(await runGate(stageCall(repo.dir, OTHER_FIRST, { pluginRoot, attempt: 1, task: { description: "set x" } }), { pluginRoot }));
 
       assert.equal(readLedger(repo.ledgerPath).stage.name, OTHER_FIRST);
     })));
@@ -637,7 +951,7 @@ test("a stage from the ledger's task type is allowed", () =>
 test("a stage from the default task type is denied when the ledger holds another type", () =>
   withPlugin(OTHER_RUN.plugin, (pluginRoot) =>
     withRepo({ ledger: OTHER_RUN.ledger }, (repo) =>
-      assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG, { pluginRoot, attempt: 1 }), MESSAGES.order(workflowName(CONFIG), workflowName(OTHER_FIRST)), { pluginRoot }))));
+      assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG, { pluginRoot, attempt: 1, task: { description: "set x" } }), MESSAGES.order(workflowName(CONFIG), workflowName(OTHER_FIRST)), { pluginRoot }))));
 
 test("a direct pipeline Agent call names the next stage of the ledger's task type", () =>
   withPlugin(OTHER_RUN.plugin, (pluginRoot) =>
@@ -1331,7 +1645,7 @@ const INVALID_CONTRACT = () => {
 
 test("an invalid stage contract denies a stage call during a run", () =>
   withPlugin({ contract: INVALID_CONTRACT() }, (pluginRoot) =>
-    withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, stageCall(repo.dir, CONFIG, { pluginRoot, attempt: 1 }), /is invalid/, { pluginRoot }))));
+    withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, stageCall(repo.dir, CONFIG, { pluginRoot, attempt: 1, task: { description: "set x" } }), /is invalid/, { pluginRoot }))));
 
 test("a plugin root with no contracts denies a stage call during a run", () =>
   withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, stageCall(repo.dir, CONFIG), /ENOENT/, { pluginRoot: "/nonexistent/plugin" })));
@@ -1344,11 +1658,31 @@ test("a missing agent config denies a direct Agent call during a run", () =>
       return assertDeniedNamingWithoutWrite(repo, agentCall(repo.dir, "pairingbuddy:apply-config-change"), /ENOENT/, { pluginRoot });
     })));
 
-test("an invalid stage contract allows silently with no run state", () =>
+// With no contract nothing can say this plugin's name is not a stage, and only this plugin's workflows pay for that.
+test("an invalid stage contract denies a plugin workflow with no run state", () =>
   withPlugin({ contract: INVALID_CONTRACT() }, (pluginRoot) =>
     withRepo({ ledger: null }, async (repo) => {
-      assertAllowed(await runGate(stageCall(repo.dir, CONFIG, { pluginRoot, attempt: 1 }), { pluginRoot }));
+      assertDeniedNaming(await runGate(stageCall(repo.dir, CONFIG, { pluginRoot, attempt: 1, task: { description: "set x" } }), { pluginRoot }), /stages\.json is invalid/);
     })));
+
+test("a missing stage contract denies a plugin workflow with no run state", () =>
+  withPlugin({}, (pluginRoot) =>
+    withRepo({ ledger: null }, async (repo) => {
+      rmSync(join(pluginRoot, "contracts", "stages.json"));
+
+      assertDeniedNaming(await runGate(stageCall(repo.dir, CONFIG), { pluginRoot }), /ENOENT/);
+    })));
+
+for (const [label, input] of [
+  ["a workflow from outside the plugin", { name: "mine" }],
+  ["an unnamed inline script", { script: "export const meta = { name: 'mine' };" }],
+]) {
+  test(`an invalid stage contract allows ${label} silently with no run state`, () =>
+    withPlugin({ contract: INVALID_CONTRACT() }, (pluginRoot) =>
+      withRepo({ ledger: null }, async (repo) => {
+        assertAllowed(await runGate(workflowCall(repo.dir, input), { pluginRoot }));
+      })));
+}
 
 const BAD_TOOL_INPUTS = [
   ["a Workflow call with no tool_input", (cwd) => ({ ...workflowCall(cwd, {}), tool_input: undefined })],
@@ -1415,6 +1749,18 @@ test("a hook whose imports fail allows silently with no run state", () =>
   withBrokenGate((gate) =>
     withRepo({ ledger: null }, async (repo) => {
       assertAllowed(await runGate(writeCall(repo.dir, "src/app.py"), { gate }));
+    })));
+
+test("a hook whose imports fail denies a plugin workflow with no run state", () =>
+  withBrokenGate((gate) =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertDeniedNaming(await runGate(stageCall(repo.dir, CONFIG), { gate }), /./);
+    })));
+
+test("a hook whose imports fail allows a workflow from outside the plugin with no run state", () =>
+  withBrokenGate((gate) =>
+    withRepo({ ledger: null }, async (repo) => {
+      assertAllowed(await runGate(workflowCall(repo.dir, { name: "mine" }), { gate }));
     })));
 
 test("a hook whose imports fail denies a write into a run from outside it", () =>

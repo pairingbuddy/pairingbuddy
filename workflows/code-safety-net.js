@@ -1,4 +1,4 @@
-export const meta = { name: 'code-safety-net', description: 'Updates the docs for the task, then runs the full suite through the runner' };
+export const meta = { name: 'code-safety-net', description: 'Internal stage, started by the coding skill inside a run. Do not call it directly: use /pairingbuddy:code' };
 
 if (args === undefined) return { started: false };
 

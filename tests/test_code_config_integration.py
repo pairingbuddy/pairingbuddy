@@ -7,6 +7,9 @@ effects: the changed file, the artifact, the active stage the gate marks, the ru
 and an empty tap error log. A main context that calls the agent directly gets a deny, so it must
 recover by starting the workflow; if it does not, the file stays unchanged and this check fails.
 
+The Stop hook drives a run to its end from one prompt, so a check of one stage runs against a copy
+of the plugin with that hook left out.
+
 Skipped by default because it spends money on a real `claude -p` run. Enable with
 PB_INTEGRATION=1 and a `claude` binary on PATH. Agent models are pinned to haiku.
 """
@@ -62,6 +65,18 @@ def test_workflow_is_started_by_slash_command_without_naming_the_tool():
     assert "Workflow" not in prompt, "a prompt naming the tool made the agent do no work (P13A)"
 
 
+def plugin_without_stop_hook(tmp_path):
+    """A plugin copy whose run stops where a stage prompt stops. The gate reads its own root."""
+    plugin = tmp_path / "plugin"
+    skipped = shutil.ignore_patterns(".git", ".venv", "__pycache__", "docs", "tests", "worktrees")
+    shutil.copytree(REPO_ROOT, plugin, ignore=skipped)
+    hooks = plugin / "hooks" / "hooks.json"
+    config = json.loads(hooks.read_text())
+    del config["hooks"]["Stop"]
+    hooks.write_text(json.dumps(config))
+    return plugin
+
+
 def clean_env():
     env = {
         k: v
@@ -100,14 +115,14 @@ def open_run_repo(tmp_path, test_config=None, doc_config=None):
     return repo, repo / ".pairingbuddy" / "run" / "task"
 
 
-def run_claude(repo, prompt, *output_args):
+def run_claude(repo, prompt, plugin, *output_args):
     return subprocess.run(
         [
             "claude",
             "-p",
             prompt,
             "--plugin-dir",
-            str(REPO_ROOT),
+            str(plugin),
             "--model",
             "haiku",
             "--effort",
@@ -139,8 +154,9 @@ def test_code_config_stage_changes_the_file_and_lands_artifact_through_tap(tmp_p
         "description": "Set feature.enabled to true in settings.json",
         "context": "config change only",
     }
-    prompt = workflow_prompt({"attempt": 1, "pluginRoot": str(REPO_ROOT), "task": task})
-    run = run_claude(repo, prompt, "--output-format", "text")
+    plugin = plugin_without_stop_hook(tmp_path)
+    prompt = workflow_prompt({"attempt": 1, "pluginRoot": str(plugin), "task": task})
+    run = run_claude(repo, prompt, plugin, "--output-format", "text")
 
     output = f"stdout:\n{run.stdout}\nstderr:\n{run.stderr}"
     assert run.returncode == 0, output
@@ -175,9 +191,9 @@ def commit_subjects(repo):
     return subprocess.run(log, check=True, capture_output=True, text=True).stdout.split("\n")[:-1]
 
 
-def run_stage(repo, stage, task):
-    args = {"attempt": 1, "pluginRoot": str(REPO_ROOT), "task": task}
-    run = run_claude(repo, workflow_prompt(args, stage), "--output-format", "text")
+def run_stage(repo, stage, task, plugin):
+    args = {"attempt": 1, "pluginRoot": str(plugin), "task": task}
+    run = run_claude(repo, workflow_prompt(args, stage), plugin, "--output-format", "text")
     output = f"{stage}\nstdout:\n{run.stdout}\nstderr:\n{run.stderr}"
     assert run.returncode == 0, output
     return output
@@ -199,11 +215,12 @@ def test_both_stages_run_end_to_end_to_one_commit_and_no_run_state(tmp_path):
     repo, task_dir = open_run_repo(tmp_path, PASSING_TESTS, NO_DOCS)
     task = {"description": "Set feature.enabled to true in settings.json"}
 
-    output = run_stage(repo, "code-config", task)
+    plugin = plugin_without_stop_hook(tmp_path)
+    output = run_stage(repo, "code-config", task, plugin)
     assert json.loads((repo / "settings.json").read_text())["feature"]["enabled"] is True, output
     assert_stage_done(task_dir, "code-config", output)
 
-    output = run_stage(repo, "code-safety-net", task)
+    output = run_stage(repo, "code-safety-net", task, plugin)
     ledger = assert_stage_done(task_dir, "code-safety-net", output)
     assert ledger["tests"]["full"]["passed"] is True, output
     docs = [entry for entry in ledger["checkpoints"] if entry["step"] == "docs"]
@@ -228,7 +245,8 @@ def test_direct_pipeline_agent_call_is_denied_by_the_real_hook(tmp_path):
         "Call the Agent tool with subagent_type pairingbuddy:apply-config-change and ask it to "
         "set feature.enabled to true in settings.json."
     )
-    run = run_claude(repo, prompt, "--output-format", "stream-json", "--verbose")
+    plugin = plugin_without_stop_hook(tmp_path)
+    run = run_claude(repo, prompt, plugin, "--output-format", "stream-json", "--verbose")
 
     output = f"stdout:\n{run.stdout}\nstderr:\n{run.stderr}"
     assert "Direct Agent call for" in run.stdout, f"the gate must deny the call\n{output}"
