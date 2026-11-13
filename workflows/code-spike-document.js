@@ -728,6 +728,9 @@ function mergeLensReturns(returns, config, verdicts = []) {
 // How often one step is tried before the stage stops: a re-run starts these over, and a human stands between re-runs.
 const MAX_TRIES = 3;
 
+// How many fix attempts the lenses allow before the stage stops; keep equal to maxAttempts in contracts/lenses.json.
+const MAX_FIX_UNDOS = 5;
+
 // Helpers for the mistake check: compare approaches and findings across attempts. No imports, no Node APIs.
 const normalizeApproach = (approach) => String(approach ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 // The file part of a finding's where: drops a trailing :line or :line-line suffix.

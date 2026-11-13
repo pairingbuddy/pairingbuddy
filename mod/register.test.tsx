@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import { BAND, engine, start } from './testing/band'
 import { PANE_ID } from './pane-open'
+import { recordHooks } from './testing/hooks'
 
 test('registers with the kit and loads without error under claude plugin test', async ($) => {
   const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -56,4 +57,10 @@ test('pb-reopens-pane-with-focus', async ($, on) => {
   expect(calls.opened[1].id, 'it opens the pairingbuddy pane').toBe(PANE_ID)
   expect(calls.opened[1].focus, 'the pane takes the keys again, the documented recovery').toBe(true)
   expect(result.text.trim().length, 'the answer text is still given').toBeGreaterThan(0)
+})
+
+test('tool-call-hook-records-calls-and-passes-through', () => {
+  const registered = recordHooks().filter(hook => hook.event === 'tool.call')
+
+  expect(registered.map(hook => hook.matcher), 'the mod registers one tool.call hook, for StructuredOutput calls').toEqual([{ tool: 'StructuredOutput' }])
 })

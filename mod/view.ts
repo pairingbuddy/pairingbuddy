@@ -2,6 +2,8 @@ import type { ElementTable } from 'claude-code'
 import { currentStep, glance, needsYouLine } from '../shared-node/glance.mjs'
 import { isStageActive, stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
+import { lensRound } from '../shared-node/lens-round.mjs'
+import type { LensRound } from '../shared-node/lens-round.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { activeAgents, unknownAgents, cycleMarker, loopingTries, nameOf, progressRow, stepAge } from '../shared-node/now-building.mjs'
 import type { Inputs, Ledger } from './inputs'
@@ -25,7 +27,7 @@ export type NowBuilding = {
   unknown: number
 }
 
-export type View = { nowBuilding?: NowBuilding; ledger: Ledger; ended?: boolean; between?: string; running: boolean; rows: Rows; band: Segment[]; unknownLabels: string[]; rowTones?: RowTones; waiting?: boolean }
+export type View = { nowBuilding?: NowBuilding; lensRound?: LensRound; ledger: Ledger; ended?: boolean; between?: string; running: boolean; rows: Rows; band: Segment[]; unknownLabels: string[]; rowTones?: RowTones; waiting?: boolean }
 
 const NO_RUN_ROWS: Rows = { now: 'no run', spent: '-', left: '-', looping: '-', offTrack: '-' }
 
@@ -59,7 +61,7 @@ function toned(view: View): View {
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
   const view = toned(buildPlainView(inputs))
-  return inputs.ledger ? { ...view, nowBuilding: buildNowBuilding(inputs) } : view
+  return inputs.ledger ? { ...view, nowBuilding: buildNowBuilding(inputs), lensRound: lensRound({ ledger: inputs.ledger, calls: inputs.calls, spawns: inputs.spawns, contract }) } : view
 }
 
 // The now-building block, folded from the same inputs as the rows; only a run that has a test or a step shows one.

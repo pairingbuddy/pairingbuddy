@@ -3,8 +3,10 @@ import { BAND } from './testing/band'
 import { PANE, replay, setupReplay, type Rig, type Step } from './testing/replay'
 import gOpen1 from './fixtures/replay/g-open-1'
 import probe2 from './fixtures/replay/probe-2'
+import s4Rollback from './fixtures/replay/s4-rollback'
 import { bandColumns } from './band'
 import { fitBand, glance } from '../shared-node/glance.mjs'
+import { MAX_FIX_UNDOS } from '../shared-node/limits.mjs'
 import { PHASES, ROLES } from '../shared-node/labels.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
 
@@ -201,4 +203,62 @@ test('every-color-prop-is-a-theme-key: across every drawn Text in band and pane 
 
   expect(nodes, 'the band and pane drew text to check').toBeGreaterThan(100)
   expect([...colours], 'the recordings drew some colour at all').toEqual(expect.arrayContaining(['claude', 'success']))
+})
+
+// mod/fixtures/replay/s4-rollback/ is one S4 bug_fix run with a rolled-back fix, recorded in tests/smoke/recordings/s4-t85-run4/.
+const S4_TEST_IDS = ['apply-discount-10-percent-on-100-returns-90']
+
+const isSafetyNetActive = (step: { ledger: unknown }) => (step.ledger as any)?.stage?.name === 'code-safety-net' && (step.ledger as any)?.stage?.status === 'active'
+
+// The last step drawn while the code-safety-net stage was active; fails with a clear message when the recording has none.
+function lastSafetyNetStep<T extends { ledger: unknown; t: number }>(steps: T[]): T {
+  const safetyNet = steps.filter(isSafetyNetActive)
+  expect(safetyNet.length, 'the s4-rollback recording has active code-safety-net steps').toBeGreaterThan(0)
+  return safetyNet[safetyNet.length - 1]
+}
+
+const rollbacksIn = (snapshot: { ledger: unknown }): any[] => (snapshot.ledger as any)?.fixes?.rollbacks ?? []
+// Each ledger snapshot carries the rollbacks so far, so the full list is the longest one.
+const recordedRollbacks = () => s4Rollback.ledger.map(rollbacksIn).reduce((most, list) => (list.length > most.length ? list : most), [])
+
+test('replay-counts-match-recorded-lens-record', async ($, on) => {
+  const rig = setupReplay(on)
+  const steps = await drawn($, rig, s4Rollback, S4_TEST_IDS, PANE)
+  const last = lastSafetyNetStep(steps)
+  const recorded = s4Rollback.ledger.find(snapshot => snapshot.t > last.t && (snapshot.ledger as any)?.lenses?.['safety-net'])
+  expect(recorded, `the recording holds a safety-net lens record after t=${last.t}`).toBeDefined()
+  const record = (recorded!.ledger as any).lenses['safety-net']
+  expect([record.survivors, record.refuted, record.unrefuted], 'the recorded lens record: survivors, refuted, unrefuted').toEqual([3, 0, 0])
+  expect(record.uncovered, 'the recorded lens record has no uncovered lens').toEqual([])
+
+  const shown = paneTexts(last)
+
+  expect(shown.filter(text => text.startsWith('findings')), `the pane's findings line at t=${last.t}: ${JSON.stringify(shown)}`).toEqual(['findings  3 found · 3 standing'])
+  expect(shown.some(text => text.includes('being challenged')), 'nothing is still being challenged at the end of the stage').toBe(false)
+  expect(shown.some(text => text.startsWith('not covered')), 'no lens is left uncovered').toBe(false)
+})
+
+test('replay-fixes-match-recorded-rollbacks-and-verdicts', async ($, on) => {
+  const rig = setupReplay(on)
+  const steps = await drawn($, rig, s4Rollback, S4_TEST_IDS, PANE)
+  const last = lastSafetyNetStep(steps)
+  const rollbacks = recordedRollbacks()
+  expect(rollbacks.length, 'the recording holds exactly one rollback').toBe(1)
+  expect(rollbacks[0].kind, 'the recorded rollback was a red one').toBe('red')
+  const rolledAt = s4Rollback.ledger.find(snapshot => rollbacksIn(snapshot).length > 0)!.t
+
+  const shown = paneTexts(last)
+
+  const fixBlock = shown.slice(shown.findIndex(text => text.startsWith('fixes')))
+  expect(fixBlock.slice(0, 5), `the pane's fix block at t=${last.t}: ${JSON.stringify(shown)}`).toEqual([
+    `fixes  4 tried · 1 undone of ${MAX_FIX_UNDOS} allowed`,
+    '  fix 1  undone: the tests went red',
+    '  fix 2  kept',
+    '  fix 3  kept: the check said it is better',
+    '  fix 4  kept: the check said it is better',
+  ])
+  expect(shown.filter(text => /^ {2}fix \d+ /.test(text)).length, 'the pane draws exactly four fix lines').toBe(4)
+
+  const atRollback = at(steps, rolledAt)
+  expect(paneTexts(atRollback).filter(text => text.startsWith('fixes')), `the pane's fixes summary at the rollback's own step t=${rolledAt}`).toEqual([expect.stringContaining('1 undone')])
 })

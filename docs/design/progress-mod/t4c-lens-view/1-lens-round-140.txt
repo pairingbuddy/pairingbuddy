@@ -1,0 +1,10 @@
+1-lens-round at 140 columns: the lenses have returned and the refuters are attacking their findings
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ review round · safety-net review                                                                                                             │
+│ lenses  ✓ the code 1 · ✓ the tests 1 · ✓ docs and plan 1                                                                                     │
+│ findings  3 found · 3 being challenged                                                                                                       │
+│   being challenged  tests/test_discount.py:21  The new test binds `sut = apply_discount` and calls `sut(100, 10)` for no reason. Calling ap… │
+│   being challenged  README.md:3  README.md line 3 documents that apply_discount(price, percent) returns the discount amount, so apply_disco… │
+│   being challenged  tests/test_discount.py:20-25  The new test binds `sut = apply_discount` before calling it, which adds an indirection th… │
+│ 7 agents of 1000 · output tokens unknown until this step ends                                                                                │  (dim)
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

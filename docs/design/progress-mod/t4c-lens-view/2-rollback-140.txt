@@ -1,0 +1,13 @@
+2-rollback at 140 columns: the first fix turned the tests red and was undone; its retry is running
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ review round · safety-net review                                                                                                             │
+│ lenses  ✓ the code 1 · ✓ the tests 1 · ✓ docs and plan 1                                                                                     │
+│ findings  3 found · 3 standing                                                                                                               │
+│   stands  tests/test_discount.py:21  The new test binds `sut = apply_discount` and calls `sut(100, 10)` for no reason. Calling apply_discou… │
+│   stands  README.md:3  README.md line 3 documents that apply_discount(price, percent) returns the discount amount, so apply_discount(100, 1… │
+│   stands  tests/test_discount.py:20-25  The new test binds `sut = apply_discount` before calling it, which adds an indirection that the oth… │
+│ fixes  2 tried · 1 undone of 5 allowed                                                                                                       │
+│   fix 1  undone: the tests went red                                                                                                          │
+│   fix 2  fixing                                                                                                                              │
+│ 11 agents of 1000 · output tokens unknown until this step ends                                                                               │  (dim)
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

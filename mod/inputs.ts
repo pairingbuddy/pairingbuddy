@@ -24,7 +24,8 @@ export type Ledger = {
 } | undefined
 
 // names: test id to description, narrowed from tests.json and scenarios.json by the poller; absent means no names known.
-export type Inputs = { ledger: Ledger; spawns: Spawn[]; tests: string[]; testsComplete: boolean; now: number | undefined; names?: Record<string, string> }
+export type Call = { agentId?: unknown; at?: string; input: Record<string, unknown> }
+export type Inputs = { ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; names?: Record<string, string> }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {
@@ -106,6 +107,6 @@ export async function pollInputs($: EngineInterface): Promise<{ ledger: Ledger |
 type Polled = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; names?: Record<string, string> } | null
 
 // The one place the atom's loosely typed ledger is narrowed; null until the first poll, which reads as idle.
-export function fromPolled(polled: Polled, spawns: Spawn[]): Inputs {
-  return { ledger: (polled?.ledger ?? undefined) as Ledger, spawns, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined, names: polled?.names ?? undefined }
+export function fromPolled(polled: Polled, spawns: Spawn[], calls: Call[] = []): Inputs {
+  return { ledger: (polled?.ledger ?? undefined) as Ledger, spawns, calls, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined, names: polled?.names ?? undefined }
 }

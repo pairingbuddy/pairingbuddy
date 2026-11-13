@@ -1,5 +1,5 @@
 import { atom, read, type EngineInterface, type PluginOptions, type Register, type RenderElement, type RenderInput } from 'claude-code'
-import { fromPolled, spawnOf, startedAtOf, type Spawn } from './inputs'
+import { fromPolled, spawnOf, startedAtOf, type Call, type Spawn } from './inputs'
 import { newPollerState, startPoller, type PollerState } from './poll'
 import { nextAgent } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
@@ -41,6 +41,7 @@ function drawGlance(
   e: RenderInput,
   next: (e: RenderInput) => Promise<RenderElement>,
   spawns: Spawn[],
+  calls: Call[],
   draw: (tags: PaneTags, view: View, opened: boolean, note: string | null, pending: PendingSuggestion | null) => RenderElement,
 ) {
   if ((e.props as { hasSurvey?: boolean }).hasSurvey) {
@@ -51,7 +52,7 @@ function drawGlance(
 
   // Until the first poll lands there is nothing to draw from, so the view is the idle one.
   return Promise.all([read($, inputsAtom), read($, openedAtom), read($, noteAtom), read($, pendingAtom), read($, lastRunAtom), read($, endedAtAtom)]).then(([polled, opened, note, pending, lastRun, endedAt]) => {
-    const live = fromPolled(polled, spawns)
+    const live = fromPolled(polled, spawns, calls)
     // With no live ledger the last polled one is shown as a finished run.
     const snapshot = fromPolled(lastRun as Parameters<typeof fromPolled>[0], spawns)
     // The ended view measures to the moment the run ended, the same end time the report uses.
@@ -76,11 +77,13 @@ async function closePane($: EngineInterface) {
 
 export const register: Register = (on, options) => {
   const spawns: Spawn[] = []
+  const calls: Call[] = []
   const poller = newPollerState()
 
   // A new session starts with no agents; a count carried over would overstate the run's.
   on('session.start', ($, e, next) => {
     spawns.length = 0
+    calls.length = 0
     if (!e.isInteractive) {
       return next(e)
     }
@@ -92,7 +95,18 @@ export const register: Register = (on, options) => {
   on('session.end', ($, e, next) => {
     if (e.reason === 'clear') {
       spawns.length = 0
+      calls.length = 0
     }
+    return next(e)
+  })
+
+  // A StructuredOutput call is recorded with its own arguments; never held, denied or changed.
+  on('tool.call', { tool: 'StructuredOutput' }, ($, e, next) => {
+    const { tool, tool_use_id, agentId, requestMeta, consent, ...input } = e as Record<string, unknown>
+    const call: Call = { agentId, input }
+    calls.push(call)
+    // The stamp follows without holding the call; a failed clock leaves the call unstamped.
+    startedAtOf($).then((at) => { if (at) call.at = at }).catch(() => {})
     return next(e)
   })
 
@@ -120,16 +134,17 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button }, { band, running, waiting, ended, between }, opened) => (
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button }, { band, running, waiting, ended, between }, opened) => (
     <Band Box={Box} Text={Text} Button={Button} band={band} running={running} waiting={waiting} ended={ended} between={between} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($, true).catch(() => {}) }} />
   )))
 
-  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button, Input }, { rows, rowTones, ledger, ended, unknownLabels, nowBuilding }, _opened, note, pending) => (
+  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button, Input }, { rows, rowTones, ledger, ended, unknownLabels, nowBuilding, lensRound }, _opened, note, pending) => (
     <Pane
       Box={Box}
       Text={Text}
       Button={Button}
       Input={Input}
+      lensRound={lensRound}
       rows={rows}
       rowTones={rowTones}
       columns={e.props.bodyColumns}

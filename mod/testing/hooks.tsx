@@ -57,6 +57,17 @@ export function eventsFor(event: string, matcher: Record<string, unknown>): Even
       const turn = { answer: 'done', durationMs: 1000, isAborted: false, turnId: 't1', agentId: 'a1', reason: 'answer' }
       return { surveyed: turn, idle: turn }
     }
+    // A workflow agent's StructuredOutput call: the mod records it and hands on.
+    case 'tool.call': {
+      const call = {
+        tool: 'StructuredOutput',
+        tool_use_id: 'tu1',
+        agentId: 'a1',
+        pb_key: 'code-safety-net.lens.code.r1.a1',
+        findings: [],
+      }
+      return { surveyed: call, idle: call }
+    }
     default:
       throw new Error(`no representative events for the "${event}" hook: add a case to eventsFor`)
   }

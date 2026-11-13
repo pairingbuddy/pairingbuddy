@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { RunRecorder, assertOutsidePlans, spawnEvents, workflowAgents } from "../smoke/run-recorder.mjs";
+import { RunRecorder, assertOutsidePlans, spawnEvents, structuredCalls, workflowAgents } from "../smoke/run-recorder.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 
@@ -259,4 +259,57 @@ test("the recorder ships only as test tooling: nothing a run loads reaches it", 
   const reaching = files.filter((file) => /run-recorder|tests\/smoke/.test(readFileSync(join(ROOT, file), "utf8")));
 
   assert.deepEqual(reaching, []);
+});
+
+test("every StructuredOutput call in an agent transcript becomes a tool_call event, other lines skipped", (t) => {
+  const dir = tempDir(t);
+  const startedAt = Date.parse("2026-11-11T02:41:00.000Z");
+  const toolUse = (timestamp, name, input) => JSON.stringify({ type: "assistant", timestamp, message: { content: [{ type: "tool_use", name, input }] } });
+  writeFileSync(
+    join(dir, "agent-a1.jsonl"),
+    [
+      JSON.stringify({ type: "user", timestamp: "2026-11-11T02:41:01.000Z", message: { content: "go" } }),
+      toolUse("2026-11-11T02:41:02.000Z", "Read", { file_path: "/x" }),
+      toolUse("2026-11-11T02:41:38.453Z", "StructuredOutput", { pb_key: "k1", findings: [] }),
+    ].join("\n"),
+  );
+
+  const calls = structuredCalls([dir], startedAt);
+
+  assert.deepEqual(calls, [{ t: 38.453, kind: "tool_call", tool: "StructuredOutput", agentId: "a1", input: { pb_key: "k1", findings: [] } }]);
+});
+
+test("the recorder writes calls.jsonl next to its other outputs from the transcript dirs it finds, calls from two agents sorted by t", (t) => {
+  const dir = tempDir(t);
+  const { repo } = repoWithLedger(t);
+  const out = join(tempDir(t), "rec");
+  let clock = Date.parse("2026-11-11T02:41:00.000Z");
+  const recorder = new RunRecorder(repo, out, { intervalMs: 1000, now: () => clock }).start();
+  const call = (timestamp, input) => JSON.stringify({ type: "assistant", timestamp, message: { content: [{ type: "tool_use", name: "StructuredOutput", input }] } });
+  const earlier = { pb_key: "k1", findings: [] };
+  const later = { pb_key: "k2", findings: [] };
+  // The agent file listed first holds the later call, so file order and time order disagree.
+  writeFileSync(join(dir, "agent-a1.jsonl"), call("2026-11-11T02:41:50.000Z", later));
+  writeFileSync(join(dir, "agent-a2.jsonl"), call("2026-11-11T02:41:38.453Z", earlier));
+
+  clock += 1000;
+  recorder.line({ type: "user", message: { content: [{ type: "tool_result", content: `Transcript dir: ${dir}\n` }] } });
+  recorder.stop();
+
+  assert.ok(existsSync(join(out, "calls.jsonl")), "calls.jsonl is written in the out dir");
+  assert.deepEqual(readJsonl(join(out, "calls.jsonl")), [
+    { t: 38.453, kind: "tool_call", tool: "StructuredOutput", agentId: "a2", input: earlier },
+    { t: 50, kind: "tool_call", tool: "StructuredOutput", agentId: "a1", input: later },
+  ]);
+});
+
+test("structuredCalls finds no calls in a directory that does not exist", () => {
+  assert.deepEqual(structuredCalls(["/no/such/dir"], 0), []);
+});
+
+test("structuredCalls skips a transcript it cannot read", (t) => {
+  const dir = tempDir(t);
+  mkdirSync(join(dir, "agent-x.jsonl"));
+
+  assert.deepEqual(structuredCalls([dir], 0), []);
 });
