@@ -21,6 +21,7 @@ const fixture = (name) => JSON.parse(readFileSync(join(PAYLOADS, name), "utf8"))
 //   "stage mismatch"    - key stage differs from ledger.stage.name
 //   "attempt mismatch"  - key attempt differs from ledger.stage.attempt
 //   "workflow mismatch" - Workflow name or args.attempt does not belong to the current stage
+//   "agent mismatch"    - the payload's agent_type is not pairingbuddy:<the key's role>
 const STAGE = "build";
 const ATTEMPT = 2;
 
@@ -81,9 +82,11 @@ function runTap(stdin, script = TAP) {
   });
 }
 
-function structured(cwd, pbKey, extra = {}) {
+// The agent is the one the key names unless a test says otherwise: only that agent's return counts.
+function structured(cwd, pbKey, extra = {}, agentType = `pairingbuddy:${String(pbKey).split(".")[1]}`) {
   const payload = fixture("posttooluse-structuredoutput.json");
   payload.cwd = cwd;
+  payload.agent_type = agentType;
   payload.tool_input = pbKey === undefined ? { ...extra } : { pb_key: pbKey, ...extra };
   return payload;
 }
@@ -125,6 +128,40 @@ test("valid key writes artifact containing the agent's return", () =>
     assert.equal(res.code, 0);
     assert.equal(res.stdout, "", "stdout must be empty");
     assert.equal(JSON.parse(readFileSync(repo.artifact(k), "utf8")).answer, 42);
+  }));
+
+for (const [name, agentType] of [
+  ["a plain agent", "general-purpose"],
+  ["a plain workflow agent", "workflow-subagent"],
+  ["another pipeline agent", "pairingbuddy:other"],
+  ["the bare role", "worker"],
+  ["another plugin's agent of that name", "pbprobe:worker"],
+]) {
+  test(`${name} cannot file a return under the role's key`, () =>
+    withRepo({}, async (repo) => {
+      const k = key();
+
+      const res = await runTap(structured(repo.dir, k, { answer: 42 }, agentType));
+
+      assert.equal(res.code, 0);
+      assert.equal(existsSync(repo.artifact(k)), false);
+      assert.match(repo.errorLog(), /agent mismatch/);
+      assert.ok(repo.errorLog().includes(agentType), "the log names who sent it");
+    }));
+}
+
+test("a return with no agent fields is not filed", () =>
+  withRepo({}, async (repo) => {
+    const k = key();
+    const payload = structured(repo.dir, k, { answer: 42 });
+    delete payload.agent_id;
+    delete payload.agent_type;
+
+    const res = await runTap(payload);
+
+    assert.equal(res.code, 0);
+    assert.equal(existsSync(repo.artifact(k)), false);
+    assert.match(repo.errorLog(), /agent mismatch/);
   }));
 
 test("parallel same-type fan-out leaves every artifact intact", () =>

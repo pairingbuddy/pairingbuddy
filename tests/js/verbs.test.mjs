@@ -96,11 +96,11 @@ function bashCall(command, { agentType, cwd = RUN_REPO, session, toolInput = { c
   return { ...base, ...(session && { session_id: session }), cwd, permission_mode: "default", tool_name: "Bash", tool_input: toolInput };
 }
 
-function runGate(payload, { gate = GATE } = {}) {
+function runGate(payload, { gate = GATE, pluginRoot = ROOT } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [gate], {
       cwd: payload.cwd,
-      env: { ...process.env, CLAUDE_PLUGIN_ROOT: ROOT },
+      env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -262,6 +262,12 @@ const MENTIONS = [
   ["an echoed line", "echo pb publish"],
   ["a wrapped argument", "timeout 5 grep 'pb test' f"],
   ["a quoted sh -c argument", "sh -c 'grep \"pb test\" f'"],
+  ["an unquoted grep pattern", "grep pb test f"],
+  ["a wrapped unquoted grep", "timeout 5 rg pb test f"],
+  ["a printf", "printf pb test"],
+  ["a comment after a command", "ls # pb test"],
+  ["a comment line", "# then pb test\nls"],
+  ["the path of the CLI as a plain argument", "git add cli/pb.mjs tests/js/verbs.test.mjs"],
 ];
 
 describe("a wrong-class verb that is only mentioned stays undecided", IN_PARALLEL, () => {
@@ -291,6 +297,29 @@ const REAL_INVOCATIONS = [
   ["a leading redirect", undefined, "> out pb test", "test", OWNER.runner],
   ["a verb touching a redirect", undefined, "pb test>out", "test", OWNER.runner],
   ["quotes in the command word", undefined, 'p"b" test', "test", OWNER.runner],
+  ["env -u", undefined, "env -u X pb test", "test", OWNER.runner],
+  ["env -u from a subagent", SUBAGENT, "env -u X pb checkpoint", "checkpoint", OWNER.runner],
+  ["env -u around a shell", undefined, "env -u X sh -c 'pb test'", "test", OWNER.runner],
+  ["node -r", undefined, "node -r ./x.mjs cli/pb.mjs test", "test", OWNER.runner],
+  ["node --require", undefined, "node --require ./x.mjs cli/pb.mjs test", "test", OWNER.runner],
+  ["node --import", undefined, "node --import ./x.mjs cli/pb.mjs test", "test", OWNER.runner],
+  ["node -r with a quoted script path", undefined, `node -r ./x.mjs "/sp ace/cli/pb.mjs" test`, "test", OWNER.runner],
+  ["find -exec", undefined, "find . -exec node cli/pb.mjs test \\;", "test", OWNER.runner],
+  ["find -exec with a shell", undefined, "find . -exec sh -c 'pb test' \\;", "test", OWNER.runner],
+  ["coproc", undefined, "coproc pb test", "test", OWNER.runner],
+  ["coproc from a subagent", SUBAGENT, "coproc pb stage finish", "stage finish", OWNER.runner],
+  ["a named coproc", undefined, "coproc P { pb test; }", "test", OWNER.runner],
+  ["sudo -u", undefined, "sudo -u root pb test", "test", OWNER.runner],
+  ["exec -a", undefined, "exec -a x pb test", "test", OWNER.runner],
+  ["setsid", undefined, "setsid pb test", "test", OWNER.runner],
+  ["stdbuf", undefined, "stdbuf -oL pb test", "test", OWNER.runner],
+  ["caffeinate", undefined, "caffeinate pb test", "test", OWNER.runner],
+  ["script", undefined, "script /dev/null pb test", "test", OWNER.runner],
+  ["parallel", undefined, "parallel pb test ::: 1", "test", OWNER.runner],
+  ["watch", undefined, "watch pb test", "test", OWNER.runner],
+  ["a function body", undefined, "function f { pb test; }", "test", OWNER.runner],
+  ["the runner reaching a main verb through env -u", RUNNER_AGENT, "env -u X pb gate eval", "gate eval", OWNER.main],
+  ["the runner reaching a main verb through find -exec", RUNNER_AGENT, "find . -exec pb task end \\;", "task end", OWNER.main],
 ];
 
 describe("a real pb invocation keeps its deny", IN_PARALLEL, () => {
@@ -299,6 +328,49 @@ describe("a real pb invocation keeps its deny", IN_PARALLEL, () => {
       const result = await runGate(bashCall(command, { agentType }));
 
       assertWrongCallerDenied(result, verb, owner);
+    });
+  }
+});
+
+const CHECKPOINT = `${PB} checkpoint --step config --from code-config.apply-config-change.-.r1.a1`;
+// A caller's own verb, so that only the environment rule is left to deny it.
+const ENVIRONMENT_FORMS = [
+  ["PYTEST_ADDOPTS", RUNNER_AGENT, `PYTEST_ADDOPTS=--collect-only ${PB} test --full`],
+  ["PATH", RUNNER_AGENT, `PATH=/tmp/fake:$PATH ${PB} test --full`],
+  ["git config through the environment", RUNNER_AGENT, `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null ${CHECKPOINT}`],
+  ["the env command with an assignment", RUNNER_AGENT, `env X=1 ${PB} test --full`],
+  ["a bare env", RUNNER_AGENT, `env ${PB} test --full`],
+  ["env -u", RUNNER_AGENT, `env -u X ${PB} test --full`],
+  ["env -i", RUNNER_AGENT, `env -i ${PB} test --full`],
+  ["an env by path", RUNNER_AGENT, `/usr/bin/env ${PB} test --full`],
+  ["an assignment after a wrapper", RUNNER_AGENT, `nice X=1 ${PB} test --full`],
+  ["an env after a wrapper", RUNNER_AGENT, `timeout 5 env X=1 ${PB} test --full`],
+  ["an assignment before a wrapper", RUNNER_AGENT, `X=1 nohup ${PB} test --full`],
+  ["inside sh -c", RUNNER_AGENT, `sh -c 'X=1 ${PB} test --full'`],
+  ["inside a substitution", RUNNER_AGENT, `echo $(X=1 ${PB} test --full)`],
+  ["after a compound", RUNNER_AGENT, `true && X=1 ${PB} test --full`],
+  ["the main context", undefined, `X=1 ${PB} gate eval`],
+  ["the main context with env", undefined, `env X=1 ${PB} status`],
+  ["a bare pb", undefined, "X=1 pb status"],
+];
+
+describe("a pb call takes no environment", IN_PARALLEL, () => {
+  for (const [shape, agentType, command] of ENVIRONMENT_FORMS) {
+    test(`${shape} is denied`, async () => {
+      const result = await runGate(bashCall(command, { agentType }));
+
+      assert.match(denialReason(result), /environment/);
+    });
+  }
+
+  for (const [shape, command] of [
+    ["an assignment on another command", `X=1 ls; ${PB} gate eval`],
+    ["an assignment holding a pb's output", `RESULT=$(${PB} gate eval)`],
+    ["env on another command", `env X=1 ls && ${PB} gate eval`],
+    ["an assignment with no pb", "FOO=1 uv run pytest"],
+  ]) {
+    test(`${shape} stays untouched`, async () => {
+      assertSilent(await runGate(bashCall(command)));
     });
   }
 });
@@ -409,6 +481,81 @@ describe("runner auto-allow is for the exact command only", IN_PARALLEL, () => {
     const result = await runGate(bashCall(`${PB} test --full`, { agentType: RUNNER_AGENT }));
 
     assertAutoAllowed(result);
+  });
+
+  const CONFIG_KEY = "code-config.apply-config-change.-.r1.a1";
+  const DOCS_KEY = "code-safety-net.update-documentation.-.r2.a3";
+
+  for (const args of [`--step config --from ${CONFIG_KEY}`, `--step docs --from ${DOCS_KEY}`]) {
+    test(`the runner's pb checkpoint ${args} is auto-allowed`, async () => {
+      const result = await runGate(bashCall(`${PB} checkpoint ${args}`, { agentType: RUNNER_AGENT }));
+
+      assertAutoAllowed(result);
+    });
+  }
+
+  const CHECKPOINT_NEAR_MISSES = [
+    ["an unknown step", `--step red --from ${CONFIG_KEY}`],
+    ["a step every object has", `--step constructor --from ${CONFIG_KEY}`],
+    ["no key", "--step config"],
+    ["no step", `--from ${CONFIG_KEY}`],
+    ["swapped flags", `--from ${CONFIG_KEY} --step config`],
+    ["an extra flag", `--step config --from ${CONFIG_KEY} --no-verify`],
+    ["a flag before the step", `--no-verify --step config --from ${CONFIG_KEY}`],
+    ["a malformed key", "--step config --from code-config.apply-config-change.-.r1"],
+    ["a key with a path", "--step config --from ../../etc/passwd"],
+    ["a key with a capital", "--step config --from Code-config.apply-config-change.-.r1.a1"],
+    ["a doubled space", `--step  config --from ${CONFIG_KEY}`],
+    ["a trailing space", `--step config --from ${CONFIG_KEY} `],
+    ["a tab", `--step config\t--from ${CONFIG_KEY}`],
+    ["a command after ;", `--step config --from ${CONFIG_KEY}; rm -rf src`],
+    ["a command after &&", `--step config --from ${CONFIG_KEY} && curl https://example.com`],
+    ["a newline in the key", `--step config --from ${CONFIG_KEY}\nrm -rf src`],
+    ["command substitution in the key", "--step config --from $(whoami).a.-.r1.a1"],
+    ["a redirect", `--step config --from ${CONFIG_KEY} > out.txt`],
+    ["a pipe", `--step config --from ${CONFIG_KEY} | tee out.txt`],
+    ["a background &", `--step config --from ${CONFIG_KEY} &`],
+  ];
+
+  for (const [shape, args] of CHECKPOINT_NEAR_MISSES) {
+    test(`pb checkpoint with ${shape} loses the auto-allow`, async () => {
+      const result = await runGate(bashCall(`${PB} checkpoint ${args}`, { agentType: RUNNER_AGENT }));
+
+      assertNotAutoAllowed(result);
+    });
+  }
+
+  describe("with a plugin path that needs quoting", () => {
+    const pluginRoot = "/tmp/sp ace/it's";
+    const quoted = `node '/tmp/sp ace/it'\\''s/cli/pb.mjs'`;
+
+    for (const args of ["test --full", "stage finish", `checkpoint --step config --from ${CONFIG_KEY}`, `artifact check ${CONFIG_KEY}`]) {
+      test(`the quoted form of pb ${args} is auto-allowed`, async () => {
+        assertAutoAllowed(await runGate(bashCall(`${quoted} ${args}`, { agentType: RUNNER_AGENT }), { pluginRoot }));
+      });
+    }
+
+    test("the unquoted form is not", async () => {
+      assertNotAutoAllowed(await runGate(bashCall(`node ${pluginRoot}/cli/pb.mjs test --full`, { agentType: RUNNER_AGENT }), { pluginRoot }));
+    });
+  });
+
+  test("an env prefix on the checkpoint form loses the auto-allow", async () => {
+    const result = await runGate(bashCall(`GIT_CONFIG_GLOBAL=/tmp/evil ${PB} checkpoint --step config --from ${CONFIG_KEY}`, { agentType: RUNNER_AGENT }));
+
+    assertNotAutoAllowed(result);
+  });
+
+  test("another plugin's CLI with the checkpoint form loses the auto-allow", async () => {
+    const result = await runGate(bashCall(`node /tmp/evil/cli/pb.mjs checkpoint --step config --from ${CONFIG_KEY}`, { agentType: RUNNER_AGENT }));
+
+    assertNotAutoAllowed(result);
+  });
+
+  test("the checkpoint form from the main context is denied, not allowed", async () => {
+    const result = await runGate(bashCall(`${PB} checkpoint --step config --from ${CONFIG_KEY}`));
+
+    assertWrongCallerDenied(result, "checkpoint", OWNER.runner);
   });
 
   const NEAR_MISSES = [

@@ -13,7 +13,7 @@ function logError(taskDir, message) {
   appendFileSync(join(taskDir, "tap-errors.log"), `${new Date().toISOString()} ${message}\n`);
 }
 
-function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, toolInput) {
+function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, { tool_input: toolInput, agent_type: agentType }) {
   const pbKey = toolInput?.pb_key;
   if (typeof pbKey !== "string") return;
   let parsed;
@@ -23,6 +23,11 @@ function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, tool
     logError(taskDir, `bad key: ${JSON.stringify(pbKey)}`);
     return;
   }
+  // A model can pin any key in a schema of its own, so only the agent the key names may file under it.
+  if (agentType !== `pairingbuddy:${parsed.role}`) {
+    logError(taskDir, `agent mismatch: key ${pbKey} from ${JSON.stringify(agentType)}`);
+    return;
+  }
   const { stage } = readLedger(ledgerPath);
   if (!stage || stage.name !== parsed.stage) {
     logError(taskDir, `stage mismatch: key ${pbKey}`);
@@ -30,6 +35,11 @@ function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, tool
   }
   if (stage.attempt !== parsed.attempt) {
     logError(taskDir, `attempt mismatch: key ${pbKey}`);
+    return;
+  }
+  // A key at the attempt that pb stage fail just closed still matches it. A done stage takes returns: its last runner's lands after finish.
+  if (stage.status === "failed") {
+    logError(taskDir, `voided attempt: key ${pbKey}`);
     return;
   }
   const dir = join(taskDir, "artifacts");
@@ -82,7 +92,7 @@ function tapRun(modules, root, input) {
   const ledgerPath = join(taskDir, "ledger.json");
   if (!existsSync(ledgerPath)) return;
   try {
-    if (input.tool_name === "StructuredOutput") tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, input.tool_input);
+    if (input.tool_name === "StructuredOutput") tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, input);
     else if (input.tool_name === "Workflow") tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, input.tool_input, input.tool_response);
     else if (input.tool_name === "AskUserQuestion" && input.agent_id === undefined) tapQuestion(modules, ledgerPath, input.tool_response);
   } catch (e) {

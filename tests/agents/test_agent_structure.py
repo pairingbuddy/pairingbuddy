@@ -303,3 +303,10 @@ def test_apply_config_change_is_limited_to_read_and_edit():
     post = frontmatter.load(AGENTS_DIR / "apply-config-change.md")
 
     assert post.metadata.get("tools") == "Read, Edit"
+
+
+def test_runner_is_limited_to_bash():
+    """The runner relays CLI output, so it must not read, edit or spawn anything."""
+    post = frontmatter.load(AGENTS_DIR / "runner.md")
+
+    assert post.metadata.get("tools") == "Bash"

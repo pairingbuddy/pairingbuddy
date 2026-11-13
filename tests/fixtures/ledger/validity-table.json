@@ -70,6 +70,8 @@
     {"name": "acceptances-empty", "set": {"acceptances": []}},
     {"name": "acceptances-one", "set": {"acceptances": [{"oldSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "newSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 4}]}},
     {"name": "acceptances-two", "set": {"acceptances": [{"oldSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "newSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 4}, {"oldSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "newSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 4}]}},
+    {"name": "config-acceptances-empty", "set": {"configAcceptances": []}},
+    {"name": "config-acceptances-one", "set": {"configAcceptances": [{"oldHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "newHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 4}]}},
     {"name": "acceptance-seq-zero", "set": {"acceptances": [{"oldSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "newSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 0}]}}
   ],
   "invalid": [
@@ -205,6 +207,11 @@
     {"name": "extra-top-level-constructor", "set": {"constructor": 1}},
     {"name": "extra-top-level-toString", "set": {"toString": 1}},
     {"name": "extra-key-in-owner-hasOwnProperty", "set": {"owner.hasOwnProperty": 1}},
+    {"name": "config-acceptances-null", "set": {"configAcceptances": null}},
+    {"name": "config-acceptance-not-object", "set": {"configAcceptances": ["x"]}},
+    {"name": "config-acceptance-missing-newHash", "set": {"configAcceptances": [{"oldHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "seq": 4}]}},
+    {"name": "config-acceptance-oldHash-short", "set": {"configAcceptances": [{"oldHash": "abc", "newHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 4}]}},
+    {"name": "config-acceptance-extra-key", "set": {"configAcceptances": [{"oldHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "newHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 4, "note": "x"}]}},
     {"name": "acceptances-null", "set": {"acceptances": null}},
     {"name": "acceptances-object", "set": {"acceptances": {}}},
     {"name": "acceptance-not-object", "set": {"acceptances": ["x"]}},

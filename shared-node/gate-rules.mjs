@@ -6,11 +6,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isCheckpointCall, isKey } from "./checkpoint.mjs";
 import { answeredGate, blockingGate, gateQuestion, gatesFor, isGateQuestionCall } from "./gates.mjs";
 import { LedgerShaMismatch, readLedger, updateLedger } from "./ledger.mjs";
+import { checkboxes } from "./plan-boxes.mjs";
 import { bindSession, sessionsDirectory } from "./run-root.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, pipelineAgents, startLeaseSecondsLeft } from "./stages.mjs";
-import { disguisesPb, pbInvocations } from "./shell-calls.mjs";
+import { disguisesPb, pbInvocations, pbWithEnvironment } from "./shell-calls.mjs";
+import { shellWord } from "./shell-word.mjs";
 import { VERB_CLASSES, classOf, humanCommand, matchVerb, shaMismatchRemedy } from "./verbs.mjs";
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
@@ -20,9 +23,11 @@ const AGENT_PAIR = ["agent_id", "agent_type"];
 const PROTECTED_CONFIGS = ["test-config.json", "git-config.json"];
 const SETTINGS_FILES = ["settings.json", "settings.local.json"];
 const GATE_HEADER_START = "PB gate:";
-const CHECKBOX = /^\s*[-*+]\s+\[([ xX])\](.*)$/gm;
 const RUNNER_AGENT = `${PREFIX}runner`;
-const RUNNER_COMMANDS = [...VERB_CLASSES.runner, "test --full"].map((args) => `node ${join(PLUGIN_ROOT, "cli", "pb.mjs")} ${args}`);
+const PB_COMMAND = `node ${shellWord(join(PLUGIN_ROOT, "cli", "pb.mjs"))}`;
+const RUNNER_COMMANDS = [...VERB_CLASSES.runner, "test --full"].map((args) => `${PB_COMMAND} ${args}`);
+const CHECKPOINT_START = `${PB_COMMAND} checkpoint --step `;
+const ARTIFACT_CHECK_START = `${PB_COMMAND} artifact check `;
 const AUTO_ALLOW_REASON = "Runner CLI command, auto-allowed by the Pairing Buddy gate.";
 const SHELL_QUOTING = /\\\n|\$(?=['"])|['"\\]/g;
 const PB_CALL = /(?<![\w.-])pb(?:\.mjs)?(?=\s+([\w.-]+)(?:\s+([\w.-]+))?)/g;
@@ -75,8 +80,6 @@ function assertNotProtected(root, targets, canonicalPath) {
 }
 
 // ---------- plan checkboxes ----------
-
-const checkboxes = (text) => [...text.matchAll(CHECKBOX)].map(([, mark, label]) => ({ ticked: mark !== " ", label: label.trim() }));
 
 // Drops the boxes both sides share, so a moved line is no change. A title still on both sides then has a different
 // tick, since the title is what names a task (D12). What is left pairs up in order, which lets a relabelled box
@@ -335,6 +338,9 @@ function checkBash({ tool_input: toolInput, agent_type: agentType }) {
   if (disguisesPb(command)) {
     throw new Denied("pb takes literal words: nothing a shell expands ($, a backtick, {, a backslash, ?, *, [) may follow its name, xargs may not feed it, and pb.mjs takes no other letter case.");
   }
+  if (pbWithEnvironment(command)) {
+    throw new Denied("pb takes no environment of its own: an assignment before it, or the env command, could change what its tests run or skip a commit hook. Run it exactly as given.");
+  }
 }
 
 // ---------- AskUserQuestion ----------
@@ -351,8 +357,17 @@ function checkQuestion({ tool_input: toolInput }, ledgerPath) {
   }
 }
 
+// One space between words, and a key cannot hold shell syntax, so an exact match on the shape leaves nothing to expand.
+function isCheckpointCommand(command) {
+  if (!command.startsWith(CHECKPOINT_START)) return false;
+  const words = command.slice(CHECKPOINT_START.length).split(" ");
+  return words.length === 3 && words[1] === "--from" && isCheckpointCall(words[0], words[2]);
+}
+
+const isArtifactCheckCommand = (command) => command.startsWith(ARTIFACT_CHECK_START) && isKey(command.slice(ARTIFACT_CHECK_START.length));
+
 const isRunnerCommand = ({ tool_name: tool, agent_type: agentType, tool_input: toolInput }) =>
-  tool === "Bash" && agentType === RUNNER_AGENT && RUNNER_COMMANDS.includes(toolInput.command);
+  tool === "Bash" && agentType === RUNNER_AGENT && (RUNNER_COMMANDS.includes(toolInput.command) || isCheckpointCommand(toolInput.command) || isArtifactCheckCommand(toolInput.command));
 
 // ---------- entry ----------
 

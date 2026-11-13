@@ -2,8 +2,9 @@
 // Node built-ins only.
 import { fileURLToPath } from "node:url";
 
+import { shellWord } from "./shell-word.mjs";
+
 const CLI_PATH = fileURLToPath(new URL("../cli/pb.mjs", import.meta.url));
-const SHELL_SAFE = /^[\w@%+=:,./-]+$/;
 
 export const VERB_CLASSES = {
   runner: ["test", "checkpoint", "stage finish", "snapshot", "artifact check"],
@@ -22,9 +23,9 @@ export function classOf(verb) {
   return Object.keys(VERB_CLASSES).find((name) => VERB_CLASSES[name].includes(verb));
 }
 
-const shellWord = (word) => (SHELL_SAFE.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`);
-
 // The cd makes the line work from any cwd: a session can have left the run.
-export const humanCommand = (root, verb) => `!cd ${shellWord(root)} && node ${shellWord(CLI_PATH)} human ${verb}`;
+export const typedCommand = (root, words) => `!cd ${shellWord(root)} && node ${shellWord(CLI_PATH)} ${words}`;
+
+export const humanCommand = (root, verb) => typedCommand(root, `human ${verb}`);
 
 export const shaMismatchRemedy = (message, root) => `${message}. Check the edit, then type ${humanCommand(root, "accept")}`;

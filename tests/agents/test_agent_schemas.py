@@ -414,6 +414,43 @@ def test_apply_config_change_output_is_return_only():
     assert "config-change-result.json" not in agent_content
 
 
+def test_update_documentation_keeps_its_legacy_files_and_gains_a_return():
+    """Under the one input rule a prompt with no paths still gets the legacy flat files."""
+    agent = config["agents"]["update-documentation"]
+
+    for name, file in [
+        ("files_changed", ".pairingbuddy/files-changed.json"),
+        ("doc_config", ".pairingbuddy/doc-config.json"),
+        ("task", ".pairingbuddy/task.json"),
+    ]:
+        assert agent["inputs"][name]["file"] == file
+    assert agent["outputs"]["docs_updated"]["file"] == ".pairingbuddy/docs-updated.json"
+    assert agent["outputs"]["update_documentation_result"].get("return_only") is True
+
+
+def test_update_documentation_states_the_one_input_rule():
+    content = (AGENTS_DIR / "update-documentation.md").read_text()
+
+    assert "With no `<paths>` block" in content, "the legacy branch must stay stated"
+    assert "With a `<paths>` block" in content
+    assert "pb_key" in content.split("## Output")[-1]
+
+
+def test_update_documentation_with_paths_never_waits_for_a_human():
+    """A subagent has no AskUserQuestion, so a stage's docs step must not depend on it."""
+    content = (AGENTS_DIR / "update-documentation.md").read_text()
+
+    assert "With a `<paths>` block: skip Step 3" in content
+
+
+def test_runner_runs_a_list_of_commands_and_stops_at_the_first_failure():
+    content = (AGENTS_DIR / "runner.md").read_text()
+
+    assert "`<commands>`" in content
+    assert "stop at the first one that exits non-zero" in content
+    assert "<command>`" not in content
+
+
 @pytest.mark.parametrize("agent_name,input_name,schema_file", get_agent_input_refs())
 def test_agent_input_enum_values_match_canonical(agent_name, input_name, schema_file):
     """Test that enum values in agent's Input section match canonical schema."""
