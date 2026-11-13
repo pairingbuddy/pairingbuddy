@@ -116,6 +116,7 @@ test("every agent that still has a legacy caller keeps its legacy branch", () =>
       "implement-tests",
       "refactor-code",
       "refactor-tests",
+      "scope-refactoring",
       "update-documentation",
       "verify-test-coverage",
     ],

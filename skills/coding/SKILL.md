@@ -118,7 +118,7 @@ These functions handle coordination, human interaction, and control flow that do
 _stop_if_run_open()
 
 # Task types that run through workflow stages. Must match the task types in contracts/stages.json.
-MIGRATED_TYPES = ["config_change", "bug_fix", "new_feature"]
+MIGRATED_TYPES = ["config_change", "bug_fix", "new_feature", "refactoring"]
 
 # Plan execution mode: iterate through tasks from a plan MD file
 if _detect_plan_file(task):
@@ -179,7 +179,7 @@ if task_type in MIGRATED_TYPES and not _is_solo():
 # The old path cannot run inside an open unit
 _stop_if_unit_open()
 
-# Old path: refactoring and spike, plan tasks, and every type under Solo
+# Old path: spike, plan tasks, and every type under Solo
 if task_type == "new_feature":
     # Plan tasks and Solo only: the router takes every other new_feature
     # Full TDD workflow with coverage verification loop
@@ -227,6 +227,7 @@ elif task_type == "bug_fix":
         code_state = implement_code(test_state, test_config)      # fix makes it pass
 
 elif task_type == "refactoring":
+    # Plan tasks and Solo only: the router takes every other refactoring
     # Refactoring: work on existing code/tests per task intent
     # First verify all tests pass before refactoring
     all_tests_results = run_all_tests(test_config)

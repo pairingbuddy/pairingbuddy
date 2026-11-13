@@ -9,7 +9,8 @@ export default {
   "migratedTypes": [
     "config_change",
     "bug_fix",
-    "new_feature"
+    "new_feature",
+    "refactoring"
   ],
   "newPathAgents": [
     "apply-config-change",
@@ -125,6 +126,42 @@ export default {
       ],
       "gates": {
         "G:scenarios": {
+          "class": "continue"
+        },
+        "G:task-end": {
+          "class": "continue"
+        }
+      }
+    },
+    "refactoring": {
+      "nodes": [
+        {
+          "name": "code-refactor-scope",
+          "gate": "G:scope",
+          "evidence": [
+            "tests:full",
+            "artifact:scope-refactoring"
+          ]
+        },
+        {
+          "name": "code-refactor-apply",
+          "gate": null,
+          "evidence": [
+            "checkpoint:refactor-step"
+          ]
+        },
+        {
+          "name": "code-safety-net",
+          "gate": "G:task-end",
+          "evidence": [
+            "artifact:update-documentation",
+            "checkpoint:docs",
+            "tests:full"
+          ]
+        }
+      ],
+      "gates": {
+        "G:scope": {
           "class": "continue"
         },
         "G:task-end": {

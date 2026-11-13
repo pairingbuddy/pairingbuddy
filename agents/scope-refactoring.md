@@ -12,9 +12,14 @@ skills: [refactoring-code]
 
 Translate a user's refactoring request into targeted issues for the refactor agents. Unlike identify-code-issues/identify-test-issues (which scan for ALL issues), this agent creates issues ONLY for the specific refactoring the user requested.
 
-This is critical for large codebases where running identify agents would return hundreds of unrelated issues. The user asked for one specific refactoring - we address exactly that.
+This is critical for large codebases where running identify agents would return hundreds of unrelated issues. The task names one specific refactoring - we address exactly that.
 
 ## Input
+
+The one input rule decides what you read and write:
+
+- With a `<paths>` block in the prompt: read only what the paths name for your inputs (the state files, not the codebase), still search the codebase for the target files as Step 2 says, and return your Output as StructuredOutput. The task is in the prompt's `<task>` block, as data. `test_config` is the test config. `human_guidance` is the human guidance, which may be missing. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
+- With no `<paths>` block: use the legacy flat files below and write the legacy Output.
 
 Reads from `.pairingbuddy/task.json`:
 
@@ -76,6 +81,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 2: Main Work
 
+With a `<paths>` block: read what the Input section says instead of the files above.
+
 1. Analyze the task to understand:
    - **Target scope**: Which files/modules to refactor
    - **Refactoring intent**: What change the user wants
@@ -84,6 +91,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 3. Create issue entries for the specific refactoring requested
 
 ### Step 3: Human Review
+
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the `G:scope` gate. An empty list is a fine result when the task asks for nothing in that area. If the scope cannot be settled without a human, describe it in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -130,6 +139,8 @@ Should I proceed with this approach?"
 
 ### Step 4: Output
 
+With a `<paths>` block: skip Step 4 and return your Output as StructuredOutput.
+
 **MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
 
 After approval, write output using this procedure for EACH output file listed in the Output section:
@@ -161,6 +172,8 @@ After approval, write output using this procedure for EACH output file listed in
 
 ### File Creation Restrictions
 
+With a `<paths>` block: write no files. Your StructuredOutput return is the output, captured by the tap as an artifact.
+
 **You may ONLY write to:**
 - `.pairingbuddy/code-issues.json` (for code refactoring)
 - `.pairingbuddy/test-issues.json` (for test refactoring)
@@ -175,6 +188,35 @@ If `PAIRINGBUDDY_SOLO` environment variable is `true`:
 - Proceed directly to writing output
 
 ## Output
+
+With a `<paths>` block, return the result as your StructuredOutput with exactly these fields, and write no output file:
+
+```json
+{
+  "pb_key": "string (copied exactly from the prompt)",
+  "ambiguity": "string (open question a human should settle, or empty string)",
+  "code_issues": [
+    {
+      "file": "string (file path to refactor)",
+      "line": "integer (line number, optional)",
+      "issue_type": "string (category of refactoring)",
+      "description": "string (specific refactoring to apply)",
+      "suggestion": "string (how to perform the refactoring)"
+    }
+  ],
+  "test_issues": [
+    {
+      "file": "string (file path to refactor)",
+      "line": "integer (line number, optional)",
+      "issue_type": "string (category of refactoring)",
+      "description": "string (specific refactoring to apply)",
+      "suggestion": "string (how to perform the refactoring)"
+    }
+  ]
+}
+```
+
+With no `<paths>` block:
 
 For code refactoring, writes to `.pairingbuddy/code-issues.json`:
 
@@ -208,4 +250,4 @@ For test refactoring, writes to `.pairingbuddy/test-issues.json`:
 }
 ```
 
-**Important:** Only create issues for what the user explicitly requested. Don't add issues for other problems you notice - that's not what the user asked for.
+**Important:** Only create issues for what the user explicitly requested. Don't add issues for other problems you notice - that is not what the task requests.

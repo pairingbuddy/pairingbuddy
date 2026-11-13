@@ -5,11 +5,14 @@ const PLAIN_NAMES = {
   "code-scenarios": "write scenarios",
   "code-tdd": "build test by test",
   "code-safety-net": "safety-net review",
+  "code-refactor-scope": "decide what to tidy up",
+  "code-refactor-apply": "tidy up step by step",
   "pr-draft": "write the pull request",
   // gates
   "G:scenarios": "your OK on the scenarios",
   "G:task-end": "your sign-off at the end",
   "G:publish": "your OK to publish",
+  "G:scope": "your OK on what to tidy up",
   // agents
   "apply-config-change": "changing the config",
   "runner": "running the checks",
@@ -53,6 +56,7 @@ const PLAIN_NAMES = {
   "attempt-cap": "it ran out of fix attempts",
   "agent-budget": "the agent budget ran out",
   "step-failed": "a step kept failing",
+  "tests-red": "the tests were not green",
   // task types
   "config_change": "config change",
   "bug_fix": "bug fix",

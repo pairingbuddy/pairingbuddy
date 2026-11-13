@@ -82,11 +82,11 @@ const STALE_DOCS = {
 };
 // A gate that asks is answered by S4 as the human, from its own shell, at most this many times: G:scenarios,
 // G:task-end and G:publish can each ask once for an open ambiguity.
-const MAX_HUMAN_APPROVALS = 4;
+export const MAX_HUMAN_APPROVALS = 4;
 // G:publish asking for this reason means the lens-record rule failed, which S4 never answers for the human.
-const LENS_REASON = "no lens record yet for the safety net";
+export const LENS_REASON = "no lens record yet for the safety net";
 // The whole run, scenarios to a draft PR, is longer than one S2 task.
-const RUN_TIMEOUT_MS = 45 * 60_000;
+export const RUN_TIMEOUT_MS = 45 * 60_000;
 // What pb stage finish records for the safety net: names, models and counts, never a finding's words.
 const LENS_RECORD_KEYS = ["attempt", "lenses", "refuted", "stage", "survivors", "uncovered", "unrefuted"];
 // A claim shorter than this is too generic to call a leak when it shows up somewhere.
@@ -98,7 +98,7 @@ function check(condition, message) {
   if (!condition) throw new SmokeError(message);
 }
 
-function assertCleanEnv(env) {
+export function assertCleanEnv(env) {
   const anthropic = Object.keys(env).filter((name) => name.startsWith("ANTHROPIC_"));
   const allowed = ["opus", "sonnet"].map(MODEL_ENV);
   check(anthropic.every((name) => allowed.includes(name)), `the run env carries ${anthropic.filter((name) => !allowed.includes(name))}`);
@@ -465,18 +465,18 @@ function forceFirstFixRed(repo, marker) {
   writeFileSync(path, JSON.stringify(config));
 }
 
-const codeSnapshots = (snapshots) => snapshots.filter(({ kind }) => kind === "code");
+export const codeSnapshots = (snapshots) => snapshots.filter(({ kind }) => kind === "code");
 const publishSnapshots = (snapshots) => snapshots.filter(({ kind }) => kind === "publish");
 
 // The human's own pb call, from this shell: no claude, no policy env, the shim first on PATH.
-function humanPb(repo, gh, pluginDir, ...args) {
+export function humanPb(repo, gh, pluginDir, ...args) {
   const { status, stdout, stderr } = spawnSync(process.execPath, [join(pluginDir, "cli", "pb.mjs"), ...args], { cwd: repo, env: { ...cleanEnv(), ...gh.env() }, encoding: "utf8" });
   return { code: status, stdout, stderr };
 }
 
-const sessionOf = (stream) => stream.map(({ event }) => event.session_id).find((id) => typeof id === "string") ?? null;
+export const sessionOf = (stream) => stream.map(({ event }) => event.session_id).find((id) => typeof id === "string") ?? null;
 
-function readLedgerOrNull(repo) {
+export function readLedgerOrNull(repo) {
   try {
     return readJson(join(repo, ".pairingbuddy", "run", "task", "ledger.json"));
   } catch {
@@ -523,7 +523,7 @@ const bare = (remote, ...args) => execFileSync("git", ["--git-dir", remote, ...a
 // the bound HEAD, closed the unit and left no private ref anywhere. The pass is the auto policy's, unless the gate asked
 // for another reason than a missing lens record (an open ambiguity, say) and S4 approved it as the human; the draft flag
 // comes from the auto policy either way.
-function assertDraftPr(snapshots, gh, repo, remote, branch, humanApprovals) {
+export function assertDraftPr(snapshots, gh, repo, remote, branch, humanApprovals) {
   const lastPublish = publishSnapshots(snapshots).at(-1);
   check(lastPublish !== undefined, "no publish run was seen");
   check(lastPublish.needsHuman === null, `the publish run asks the human at ${lastPublish.needsHuman?.gate}: ${lastPublish.needsHuman?.reason}`);

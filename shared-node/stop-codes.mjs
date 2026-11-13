@@ -3,6 +3,7 @@
 export const STAGE_STOP_REASONS = {
   "agent-budget": "agent-budget: the stage spawned its maxAgents, and a re-run continues from tests{}",
   "attempt-cap": "attempt-cap: the stage reached its cap of fix attempts, see pb status for the attempts and lessons",
+  "tests-red": "tests-red: refactoring starts only from green tests, and the full suite was not green when the stage started",
   "step-failed": "step-failed: a step of the stage failed past its retries, and a re-run continues from tests{}",
 };
 
