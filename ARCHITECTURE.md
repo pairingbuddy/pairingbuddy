@@ -118,7 +118,7 @@ pairingbuddy/
 │   ├── agent-config.yaml         # Agent structure requirements (single source of truth)
 │   ├── skill-config.yaml         # Skill + frontmatter requirements
 │   ├── test-terminology.yaml     # Shared definitions for test-related agents
-│   └── schemas/                  # JSON schemas for state contracts (60 total)
+│   └── schemas/                  # JSON schemas for state contracts (63 total)
 ├── skills/                        # Skills (run in main context)
 │   ├── coding/                   # TDD orchestrator skill
 │   ├── planning/                 # Planning orchestrator skill
@@ -130,6 +130,7 @@ pairingbuddy/
 │   ├── enumerating-tests/        # Reference: test enumeration
 │   ├── committing-changes/       # Reference: git commits
 │   ├── creating-pull-requests/   # Reference: stand-alone PR bodies
+│   ├── setting-up-spike/         # Reference: spike setup (goal, units, code location)
 │   ├── decomposing-tracer-bullets/ # Reference: tracer bullet methodology
 │   ├── sequencing-tasks/         # Reference: task sequencing for TDD
 │   ├── differentiating-designs/  # Reference: design differentiation
@@ -733,7 +734,7 @@ skills/writing-tests/
 
 ### JSON Schemas
 
-39 JSON schemas define state contracts (all in `contracts/schemas/`):
+63 JSON schemas define state contracts (all in `contracts/schemas/`):
 
 **TDD/Spike schemas (21):**
 - task.schema.json, task-classification.schema.json
@@ -944,6 +945,10 @@ At the start of each task, the orchestrator runs `_cleanup_state_files()` to del
 **Refactor-scope stage (Task 88).** `workflows-src/stages/code-refactor-scope.mjs` (built to `workflows/code-refactor-scope.js`) opens the `refactoring` graph: it runs the full suite first and stops with `tests-red` when it is not green, then `scope-refactoring` under the one input rule (result schema `contracts/schemas/scope-refactoring-result.schema.json`), then one `scope-serves-intent` lens with a brief and no refuters or fix loop. `G:scope` follows and asks whenever a scope finding stands that is not marked non-blocking. `refactoring` is now in `migratedTypes` (the flip, Task 89), so a refactoring task runs the graph `code-refactor-scope`, `code-refactor-apply`, `code-safety-net` (`G:task-end`); the safety net's lens row adds a refactoring lens and behaviour-preservation runs at Opus.
 
 **Refactor-apply stage (Task 89).** `workflows-src/stages/code-refactor-apply.mjs` (built to `workflows/code-refactor-apply.js`) applies the scope one step at a time. `pb refactor state` (refactoring tasks only, needs an active stage) reads the standing scope return and lists its issues as numbered steps (`step1`, `step2`, ...), code issues first, then test issues, each with its role (`refactor-code` or `refactor-tests`). Each step runs its fixer, then `pb checkpoint --step refactor-step`: one fix group, typed by its paths (`refactor` or `test`, never `feat` or `fix`), committed only when the full suite is green; a `refactor-tests` step may touch only test directories. `refactor-step` is a checkpoint step for `refactoring` tasks, beside `refactor` (per-cycle, new_feature only). Smoke S5 (`tests/smoke/s5.mjs`) covers the run.
+
+**Spike-unit stage (Task 90).** The `setting-up-spike` skill guides `setup-spike`; `pb run open` records the spike setup in `run/task/spike.json` (goal, units, code location) and refuses a spike whose setup is missing or malformed. `pb spike state` (spike tasks only, needs an active stage) lists the units and the next one to run. `workflows-src/stages/code-spike-unit.mjs` (built to `workflows/code-spike-unit.js`) explores one unit with `explore-spike-unit` under the one input rule (result schema `contracts/schemas/explore-spike-unit-result.schema.json`), then `pb checkpoint --step spike-unit` commits that unit's changes. The spike graph repeats `G:unit` per unit (`shared-node/repeat.mjs`). Spike is now in `migratedTypes` (Task 91), so a spike task runs `setting-up-spike` in main, `code-spike-unit` (repeating `G:unit`), `code-spike-document`, then `G:task-end`.
+
+**Spike-document stage and close (Task 91).** `workflows-src/stages/code-spike-document.mjs` (built to `workflows/code-spike-document.js`) runs `document-spike` under the one input rule (result schema `contracts/schemas/document-spike-result.schema.json`), then one Sonnet claims-against-recorded-evidence lens with a brief, and a course-checked artifact-mode fix loop capped at 5. `pb spike write` commits the standing write-up to `doc_path` as a `docs:` commit under the `spike-doc` checkpoint; `pb checkpoint` does not take `spike-doc`. `pb spike state` also prints the findings. After `G:task-end`, `pb task end` closes the unit kept-local, with no publish stage. Smoke S5 covers the spike half.
 
 **Light review (new-path tdd refactor).** The old prose orchestrator above still uses the `identify-*` finders. On the new path, each new_feature cycle of `workflows-src/stages/code-tdd.mjs` (built to `workflows/code-tdd.js`) refactors after its accepted GREEN like this: the runner runs `pb snapshot` for the corpus, then one light review runs (`workflows-src/shared/light-review.mjs`, one Sonnet `lens` agent, `lightReview` in `contracts/lenses.json`, result schema `light-review-result`). The focus rule reads only the files that cycle's RED and GREEN changed, classed as tests by the runners `pb tdd state` relays (`testRunners`, each runner's `test_directory` and `file_pattern`; the state refuses with no test config). A review that returns no findings array is uncovered: it runs again at the next round and, after the stage's tries, the stage stops `step-failed`. Findings under `test-quality` or `test-level` go to `refactor-tests`, all others to `refactor-code`, tests first, as a `<findings>` prompt block instead of an issues path; a side with no findings spawns no fixer, and the CLI commits each fix group through `pb checkpoint --step refactor` only while every closed test passes. No refuter, lens round or course checker runs, and the reviewer counts against the stage's agent cap. The stage return lists one record per cycle (`lightReviews`: item, focuses, findings count). `buildReport` counts only returns of lenses the stage's row wires as a lens round, so a light review leaves "no lens round ran" in the code-tdd report and adds no findings to it.
 

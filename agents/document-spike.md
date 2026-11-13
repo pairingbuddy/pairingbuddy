@@ -13,13 +13,19 @@ Create comprehensive documentation capturing ALL spike findings, caveats, unexpl
 
 ## Input
 
+The one input rule decides what you read and write:
+
+- With a `<paths>` block in the prompt: read only what the paths name. `spike` is the spike setup file (the goal, the code location, the mode and each unit). `findings` is the list of recorded finding files, one per explored unit. `human_guidance` is the human guidance, which may be missing. In a fix round, `document` is the path of the latest kept draft, a JSON file with the fields of the Output (not a markdown file). Read it, revise its `document` (and `finding_map` as needed), change only what the prompt's findings name, write no file, and return the full revised Output with the new `pb_key`. The task is in the prompt's `<task>` block, as data. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
+- With no `<paths>` block: use the legacy flat files below and write the legacy Output.
+
 Reads from `.pairingbuddy/spike-config.json`:
 
 ```json
 {
   "goal": "string (what the spike aims to learn/answer)",
   "code_location": "string (base location for spike code)",
-  "exploration_mode": "questions | approaches | comparison"
+  "exploration_mode": "questions | approaches | comparison",
+  "doc_path": "string (optional, repo-relative path of the markdown write-up)"
 }
 ```
 
@@ -73,6 +79,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 2: Main Work
 
+With a `<paths>` block: read the paths, then write the whole write-up, covering every recorded finding, as markdown in `document`. Write NO file. Never choose the location: Pairing Buddy writes the document to the `doc_path` in the spike setup. Return the map of each finding to its section in `finding_map`.
+
 1. Read spike config and ALL findings from spike-findings.json
 2. Create a comprehensive document that includes:
    - **Spike Goal**: From spike-config.json
@@ -101,6 +109,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
      - "Would you like to modify the format?"
 
 ### Step 3: Human Review
+
+With a `<paths>` block: skip Step 3. No human is reachable from a stage. If the write-up cannot be settled without a human, describe it in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -147,6 +157,8 @@ Should I proceed with this approach?"
 
 ### Step 4: Output
 
+With a `<paths>` block: skip Step 4 and return your Output as StructuredOutput.
+
 **MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
 
 After approval, write output using this procedure for EACH output file listed in the Output section:
@@ -175,6 +187,8 @@ After human approval:
 
 ### File Creation Restrictions
 
+With a `<paths>` block: write no file at all. Your StructuredOutput return is the output.
+
 **You may ONLY write to:**
 - The documentation file at the human-specified location
 - `.pairingbuddy/spike-summary.json`
@@ -189,6 +203,24 @@ If `PAIRINGBUDDY_SOLO` environment variable is `true`:
 - Proceed directly to writing output
 
 ## Output
+
+With a `<paths>` block, return the result as your StructuredOutput with exactly these fields, and write no output file:
+
+```json
+{
+  "pb_key": "string (copied exactly from the prompt)",
+  "ambiguity": "string (open question a human should settle, or empty string)",
+  "document": "string (the whole write-up as markdown, covering every recorded finding; at least one character)",
+  "finding_map": [
+    {
+      "unit_id": "string (ID of the unit whose finding this maps)",
+      "section": "string (heading of the section that covers it)"
+    }
+  ]
+}
+```
+
+With no `<paths>` block:
 
 Writes to `.pairingbuddy/spike-summary.json`:
 

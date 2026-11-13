@@ -159,6 +159,7 @@ for (const [stage, agentType, filed, log] of [
   ["code-safety-net", "pairingbuddy:refactor-code", true, NO_LOG],
   ["code-safety-net", "pairingbuddy:refactor-tests", true, NO_LOG],
   ["code-scenarios", "pairingbuddy:enumerate-scenarios-and-test-cases", true, NO_LOG],
+  ["code-spike-document", "pairingbuddy:document-spike", true, NO_LOG],
   ["code-safety-net", "pairingbuddy:lens", false, AGENT_MISMATCH],
   ["code-safety-net", "pairingbuddy:runner", false, AGENT_MISMATCH],
   ["pr-draft", "pairingbuddy:refactor-code", false, AGENT_MISMATCH],
@@ -571,4 +572,24 @@ test("tap is listed in the hook registry test", () => {
   const registry = readFileSync(join(ROOT, "tests", "test_hook_registration.py"), "utf8");
 
   assert.match(registry, /tap\.mjs/);
+});
+
+// Contract: a stage whose fix loop is judged by a course checker and that has a built workflow must have a fixer entry in
+// the tap's map, or the tap refuses the fixer's return as an "agent mismatch" and the loop never sees the artifact.
+test("every built course-checked fix stage has an entry in the tap's fixer map", () => {
+  const tapSource = readFileSync(TAP, "utf8");
+  const mapBody = /const FIX_AGENTS_BY_STAGE = \{([\s\S]*?)\n\};/.exec(tapSource)?.[1] ?? "";
+  const mapped = new Set([...mapBody.matchAll(/^\s*"([^"]+)":/gm)].map((m) => m[1]));
+  const rows = JSON.parse(readFileSync(join(ROOT, "contracts", "lenses.json"), "utf8")).rows;
+  const builtStages = new Set();
+  for (const row of rows) {
+    if (row.fix !== "course-checker") continue;
+    const built = [row.stage, `code-${row.stage}`].find((name) => existsSync(join(ROOT, "workflows", `${name}.js`)));
+    if (built) builtStages.add(built);
+  }
+
+  const missing = [...builtStages].filter((stage) => !mapped.has(stage));
+
+  assert.ok(builtStages.size > 0, "the check found built course-checked stages to look at");
+  assert.deepEqual(missing, [], "every built course-checked stage has a FIX_AGENTS_BY_STAGE entry");
 });

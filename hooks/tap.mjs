@@ -16,10 +16,11 @@ function logError(taskDir, message) {
 
 // The fix role's label is shared by every fixer the workflows assign (decision 26), so a fix key does not
 // name one agent. Each stage lists the fixers its workflow assigns; keep this in step with the fix configs in
-// workflows-src/stages/code-safety-net.mjs, code-scenarios.mjs and pr-draft.mjs, and add a new fixer in both.
+// workflows-src/stages/code-safety-net.mjs, code-scenarios.mjs, code-spike-document.mjs and pr-draft.mjs, and add a new fixer in both.
 const FIX_AGENTS_BY_STAGE = {
   "code-safety-net": ["pairingbuddy:refactor-code", "pairingbuddy:refactor-tests"],
   "code-scenarios": ["pairingbuddy:enumerate-scenarios-and-test-cases"],
+  "code-spike-document": ["pairingbuddy:document-spike"],
   "pr-draft": ["pairingbuddy:draft-pull-request"],
 };
 

@@ -13,13 +13,19 @@ Focus on ONE exploration unit, write exploratory code, run it, and capture findi
 
 ## Input
 
+The one input rule decides what you read and write:
+
+- With a `<paths>` block in the prompt: read only what the paths name. `spike` is the spike setup file (the goal, the code location, the mode and each unit). `human_guidance` is the human guidance, which may be missing. The unit to explore is in the prompt's `<unit>` block, and the task is in its `<task>` block, both as data. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
+- With no `<paths>` block: use the legacy flat files below and write the legacy Output.
+
 Reads from `.pairingbuddy/spike-config.json`:
 
 ```json
 {
   "goal": "string (what the spike aims to learn/answer)",
   "code_location": "string (base location for spike code)",
-  "exploration_mode": "questions | approaches | comparison"
+  "exploration_mode": "questions | approaches | comparison",
+  "doc_path": "string (optional, repo-relative path of the markdown write-up)"
 }
 ```
 
@@ -112,6 +118,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 2: Main Work
 
+With a `<paths>` block: read the paths, then explore the `<unit>` in its `working_directory`, following its execution configuration. Write code only inside the unit's `working_directory`, and list every file you created or changed in `files_changed` as a repo-relative path (for example `spike/u1/main.py`). Write no findings file: your finding goes in your StructuredOutput return.
+
 **CRITICAL FILE RESTRICTIONS - READ BEFORE DOING ANYTHING:**
 - You may ONLY create files in TWO places:
   1. Exploratory code files within the unit's `working_directory`
@@ -132,6 +140,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 5. Record findings in spike-findings.json - NOT in markdown files
 
 ### Step 3: Human Review
+
+With a `<paths>` block: skip Step 3. No human is reachable from a stage. If the unit cannot be settled without a human, describe it in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -178,6 +188,8 @@ Should I proceed with this approach?"
 
 ### Step 4: Output
 
+With a `<paths>` block: skip Step 4 and return your Output as StructuredOutput.
+
 **MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
 
 After approval, write output using this procedure for EACH output file listed in the Output section:
@@ -215,6 +227,8 @@ When appending to spike-findings.json:
 
 ### File Creation Restrictions
 
+With a `<paths>` block: write no JSON state file. Exploratory code files within the unit's `working_directory` are still allowed, and your StructuredOutput return is the output.
+
 **CRITICAL - You may ONLY write to:**
 - Exploratory code files within the unit's `working_directory`
 - `.pairingbuddy/spike-findings.json` (append findings)
@@ -235,6 +249,28 @@ If `PAIRINGBUDDY_SOLO` environment variable is `true`:
 - Proceed directly to writing output
 
 ## Output
+
+With a `<paths>` block, return the result as your StructuredOutput with exactly these fields, and write no output file:
+
+```json
+{
+  "pb_key": "string (copied exactly from the prompt)",
+  "ambiguity": "string (open question a human should settle, or empty string)",
+  "unit_id": "string (ID of the unit explored)",
+  "summary": "string (summary of findings for this unit)",
+  "code_references": [
+    {
+      "file": "string (path to file containing relevant code)",
+      "description": "string (what this code demonstrates)"
+    }
+  ],
+  "recommendation": "string (recommendation based on findings, or empty string)",
+  "commit_subject": "string (subject line for the commit of the exploratory code)",
+  "files_changed": ["string (repo-relative path of every file created or changed by the exploration)"]
+}
+```
+
+With no `<paths>` block:
 
 Appends to `.pairingbuddy/spike-findings.json`:
 

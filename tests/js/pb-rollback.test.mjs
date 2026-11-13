@@ -575,6 +575,17 @@ describe("pb rollback", () => {
     }
   });
 
+  test("an artifact rollback whose fix artifact is missing is refused naming the artifact", () => {
+    const repo = makeArtifactRepo({ whatWentWrong: "the fixer's return was never filed" });
+    rmSync(join(repo.taskDir, "artifacts", `${ARTIFACT_FIX_KEY}.json`));
+    const before = snapshot(repo);
+
+    const result = rollback(repo, "--artifact", "--from", ARTIFACT_FIX_KEY);
+
+    assertRefused(repo, before, result, new RegExp(ARTIFACT_FIX_KEY.replaceAll(".", "\\.")));
+    assert.equal(existsSync(join(repo.taskDir, "rejected", `${ARTIFACT_FIX_KEY}.json`)), false, "nothing was moved into rejected/");
+  });
+
   test("a red rollback without a failed checkpoint run is refused", () => {
     const passedRun = { runner: "fake", argv: [], exitCode: 0, signal: null, timedOut: false, durationMs: 1, excerpt: "", excerptTruncated: false };
     const cases = [

@@ -8,10 +8,10 @@ import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readLedger } from "../../shared-node/ledger.mjs";
+import { pseudocode, routerSection, sentencesSaying, skill } from "./skill-router.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CONFIG = `${JSON.stringify({ runners: { node: { command: "node --version", test_directory: ".", run_args: [] } }, default_runner: "node" })}\n`;
-const OLD_PATH_TYPES = ["spike"];
 
 function git(cwd, ...args) {
   const r = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -103,7 +103,7 @@ test("no classification file: the taskType stays null, for a run opened before c
   assert.equal(ledgerOf(root).taskType, null);
 });
 
-for (const type of [...OLD_PATH_TYPES, "constructor"]) {
+for (const type of ["constructor"]) {
   test(`${type} is not migrated, so no run opens and the gate stays out of the old path`, (t) => {
     const root = makeRepo(t);
     classifyAs(root, type);
@@ -204,14 +204,12 @@ test("a run with no finished stage cannot end, whatever the model reports", (t) 
 
 // ---------- the skill's router ----------
 
-const skill = () => readFileSync(join(ROOT, "skills", "coding", "SKILL.md"), "utf8");
-const pseudocode = () => /## Workflow[\s\S]*?```python\n([\s\S]*?)```/.exec(skill())[1];
 
 test("the skill's migrated types are the contract's, and each has a stage graph", () => {
   const listed = JSON.parse(/^MIGRATED_TYPES = (\[.*\])$/m.exec(pseudocode())[1]);
   const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
 
-  assert.deepEqual(listed, ["config_change", "bug_fix", "new_feature", "refactoring"]);
+  assert.deepEqual(listed, ["config_change", "bug_fix", "new_feature", "refactoring", "spike"]);
   assert.deepEqual(listed, contract.migratedTypes);
   assert.ok(listed.every((type) => Object.hasOwn(contract.taskTypes, type)));
 });
@@ -519,24 +517,6 @@ except SmokeError as e:
 
 // ---------- the router around a unit and its publish run ----------
 
-const routerSection = () => /### Migrated-Types Router\n([\s\S]*?)\n## /.exec(skill())[1];
-
-// The router's steps are numbered list items, each a run of sentences. A sentence ends at . ! or ? followed by a space
-// and a capital letter or a backtick, so "step 2 and do not run `pb unit open` again." stays whole, and the list markers
-// are not sentences of their own.
-const listMarker = /^\s*(\d+\.|-)\s+/;
-const sentencesOf = (text) => text.split("\n").map((line) => line.replace(listMarker, "")).flatMap((line) => line.split(/(?<=[.!?])\s+(?=[A-Z`])/)).filter((sentence) => sentence.trim() !== "");
-
-// Every sentence of the text matching all of the patterns (regular expressions only, so each needle is visibly a pattern).
-const sentencesMatching = (text, ...patterns) => sentencesOf(text).filter((sentence) => patterns.every((pattern) => pattern.test(sentence)));
-
-// The sentences that say it, at least one: a claim nobody makes fails here, with what the router does say.
-function sentencesSaying(claim, text, ...patterns) {
-  const found = sentencesMatching(text, ...patterns);
-  assert.ok(found.length > 0, `no sentence says ${claim} (${patterns.join(" and ")}). The router's sentences:\n${sentencesOf(text).join("\n")}`);
-  return found;
-}
-
 describe("skill-opens-unit-before-code-run", () => {
   test("unit-open-precedes-run-open", () => {
     const section = routerSection();
@@ -592,13 +572,21 @@ describe("skill-opens-publish-run-after-task-end", () => {
   test("publish-open-after-task-end", () => {
     const section = routerSection();
 
-    sentencesSaying("to run pb task end and then open the publish run", section, /When it says every stage and gate is done, run `pb task end`, then `pb run open --kind publish`/);
+    sentencesSaying("to run pb task end when every stage and gate is done", section, /When it says every stage and gate is done, run `pb task end`/);
+    sentencesSaying("to open the publish run otherwise", section, /Otherwise run `pb run open --kind publish`/);
   });
 
   test("task-end-and-publish-open-refusals-stop-the-run", () => {
     const section = routerSection();
 
     sentencesSaying("that a refusal of either command stops and is reported", section, /If either refuses, stop and report the refusal/, /do not open the publish run by other means/);
+  });
+
+  test("a-closed-task-end-reports-its-reason-and-opens-no-publish-run", () => {
+    const section = routerSection();
+
+    sentencesSaying("that a closed pb task end result is reported with its reason and stops", section, /If its output has `closed`/, /report its `reason` and stop/);
+    sentencesSaying("that a closed result does not open the publish run", section, /If its output has `closed`/, /do not run `pb run open --kind publish`/);
   });
 
   test("publish-run-follows-action", () => {

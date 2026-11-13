@@ -466,7 +466,7 @@ function forceFirstFixRed(repo, marker) {
 }
 
 export const codeSnapshots = (snapshots) => snapshots.filter(({ kind }) => kind === "code");
-const publishSnapshots = (snapshots) => snapshots.filter(({ kind }) => kind === "publish");
+export const publishSnapshots = (snapshots) => snapshots.filter(({ kind }) => kind === "publish");
 
 // The human's own pb call, from this shell: no claude, no policy env, the shim first on PATH.
 export function humanPb(repo, gh, pluginDir, ...args) {

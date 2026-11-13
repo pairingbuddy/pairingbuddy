@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Spike runs on the new path (`spike` is in `migratedTypes`): `setting-up-spike` in main, `code-spike-unit` with a repeating `G:unit`, `code-spike-document`, then `G:task-end`. `pb task end` closes the unit kept-local, with no publish stage.
+- The `code-spike-document` stage runs `document-spike` under the one input rule (new `document-spike-result.schema.json`), then one Sonnet claims-against-recorded-evidence lens with a brief and a course-checked artifact-mode fix loop capped at 5.
+- `pb spike write` commits the standing write-up to `doc_path` as a `docs:` commit with the `spike-doc` checkpoint (`pb checkpoint` does not take `spike-doc`). `pb spike state` now prints the findings.
+- Smoke S5 now also runs a spike task.
+- The `setting-up-spike` skill guides `setup-spike`. `pb run open` records the spike setup in `run/task/spike.json` and refuses a spike whose setup is missing or malformed. `pb spike state` lists a spike's units and the next one to run. `pb checkpoint --step spike-unit` commits one explored unit.
+- `explore-spike-unit` runs under the one input rule with a new `explore-spike-unit-result.schema.json`. The `code-spike-unit` stage explores one unit, and the spike graph repeats `G:unit` per unit. The spike graph lands ahead of its flip (spike is not yet in `migratedTypes`).
 - Refactoring now runs on the new path (`refactoring` is in `migratedTypes`): scope, apply, then the safety net, whose lens row adds a refactoring lens (behaviour-preservation, at Opus). `G:task-end` follows the safety net.
 - The `code-refactor-apply` stage applies the scope one step at a time, code issues then test issues. Each step is committed by `pb checkpoint --step refactor-step` only when the full suite is green, typed `refactor` or `test` by its paths and never `feat` or `fix`. `pb refactor state` lists the scope's issues as numbered steps.
 - Smoke S5 (`tests/smoke/s5.mjs`) runs a refactoring task through scope, apply and the safety net.
@@ -76,6 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The tap now files the spike write-up's fix returns (`code-spike-document` was missing from its fixer map), and a contract test holds every course-checked stage to an entry. `pb rollback --artifact` refuses cleanly when the artifact to set aside is missing.
+- The `setting-up-spike` skill checks first whether a human can answer: with no AskUserQuestion tool, under `claude -p`, in auto mode or under Solo it writes the default setup and goes on, instead of stopping to ask in chat.
 - A lens in a lens round now gets the run's task in a `<task>` block, marked as data, as context for what the subject is meant to do; it does not widen the lens. Before, the scenarios lens could not see which bug the task named and returned an open ambiguity, so `G:scenarios` asked a human. `agents/lens.md` lists the block for a lens review. The light review is unchanged. Live smoke S4 runs found it.
 - The coding skill now says that an `auto-pass` at `G:publish` is the approval: run `pb publish` then, without holding it back for findings or asking the human first. A live S4 run's main session held the publish back on its own after the auto pass.
 - A kept fix in an artifact-mode stage (scenarios, pr-draft) now counts in `fixes.attempts` in the stage report and `pb status`. Those fixes make no checkpoint, so only rolled-back ones were counted. A live S4 run found it.

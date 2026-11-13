@@ -841,3 +841,18 @@ back as nothing left to change, with its reason, since the first step had alread
 made. The safety-net lens record names behaviour-preservation at opus, tests and corpus-misalignment at sonnet. G:scope,
 G:task-end and G:publish each asked once, every time for an open question in a Haiku return, and S5 answered them as
 the human, as S4 does. No bugs were found live. The spike half of S5 comes with T6b.
+
+## T6 verification: S5 refactoring and spike runs
+
+`node tests/smoke/s5.mjs` ran live on the cheap model, with `ANTHROPIC_API_KEY` unset in the child env, the recording
+`gh` shim, and one shared spend cap. Each half runs on its own fresh S3 repo.
+
+| Run | Result | Cost (USD) | Notes |
+|---|---|---|---|
+| `s5-t91-run1` | FAIL | 0.3322 | Refactoring passed. Spike: the main session stopped in setting-up-spike to ask in chat (no AskUserQuestion under `claude -p`), so no run opened. Fixed in b9d7a48. |
+| `s5-t91-run2` | FAIL | 0.4114 | Refactoring passed. Spike: both units ran and G:unit repeated once, but the tap dropped the write-up's fix return (no fixer entry for code-spike-document) and `pb rollback --artifact` crashed on the missing artifact, so the stage stopped step-failed. Fixed in 64d40aa. |
+| `s5-t91-run3` | PASS | 0.4846 | Refactoring: 1 refactor commit, no feat or fix commit, draft PR, 260 s. Spike: 2 units explored (two `chore:` commits), one `docs:` write-up commit, no publish run, no PR, unit closed, 259 s, $0.21. |
+
+All three runs together spent $1.23 of the $3 ceiling. In run 3, G:task-end and G:publish asked once each in the
+refactoring half, and G:unit and G:task-end once each in the spike half, every time for an open question in a cheap-model
+return. S5 answered them as the human, as S4 does.

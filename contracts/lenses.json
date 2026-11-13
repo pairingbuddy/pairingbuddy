@@ -308,7 +308,8 @@
       "lenses": [
         {
           "name": "claims-against-recorded-evidence",
-          "model": "sonnet"
+          "model": "sonnet",
+          "brief": "Check every claim in the write-up (the document in the subject) against the recorded findings, the spike setup and the spike code they reference (the committed code under the setup's code_location). Flag any claim they do not show, any claim stated more strongly than they show, and any recorded finding the write-up leaves out or misstates."
         }
       ],
       "refute": "none",

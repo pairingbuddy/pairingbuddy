@@ -104,6 +104,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_stop_if_run_open()` | The check in An Open Run Comes First. |
 | `_stop_if_unit_open()` | If `.pairingbuddy/run/unit.json` exists, stop and tell the human the open unit's branch (read from unit.json) and that the old path cannot run inside a unit. They can finish the unit's work on the new path, or leave it by running `pb human abandon` (human-only: they type `!cd <project root> && node <root>/cli/pb.mjs human abandon`, which removes the unit and task state and keeps every commit). |
 | `_write_task(task)` | Write the new task to `.pairingbuddy/task.json`. It waits for cleanup: curation reads the just-completed task from that file, and cleanup deletes it. |
+| `_setting_up_spike(task)` | Runs the setting-up-spike skill in the main context, before `_run_new_path(task)`, for a spike task outside Solo. |
 | `_run_new_path(task)` | Runs a migrated type through its workflow stages. See Migrated-Types Router. |
 | `_update_solo_report(event, details)` | **Solo mode only.** Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file if absent; on resume, **reconciles** existing entries against the current plan — drops entries for removed tasks, reorders to match plan, then appends session separator), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
 
@@ -118,7 +119,7 @@ These functions handle coordination, human interaction, and control flow that do
 _stop_if_run_open()
 
 # Task types that run through workflow stages. Must match the task types in contracts/stages.json.
-MIGRATED_TYPES = ["config_change", "bug_fix", "new_feature", "refactoring"]
+MIGRATED_TYPES = ["config_change", "bug_fix", "new_feature", "refactoring", "spike"]
 
 # Plan execution mode: iterate through tasks from a plan MD file
 if _detect_plan_file(task):
@@ -168,11 +169,13 @@ _write_task(task)
 
 # Task classification
 task_classification = classify_task(task)
-task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refactoring" | "config_change"
+task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refactoring" | "config_change" | "spike"
 
 # Migrated-types router. Solo stays on the old path until T10.
 if task_type in MIGRATED_TYPES and not _is_solo():
     # Every type in MIGRATED_TYPES goes here outside Solo, and never the old branches below
+    if task_type == "spike":
+        _setting_up_spike(task)  # the setting-up-spike skill, in the main context
     _run_new_path(task)
     _stop("Task complete.")
 
@@ -257,6 +260,7 @@ elif task_type == "config_change":
     pass
 
 elif task_type == "spike":
+    # Plan tasks and Solo only: the router takes every other spike
     # Spike: exploratory coding without TDD
     spike_config, spike_questions = setup_spike(task)
 
@@ -309,13 +313,13 @@ A migrated type runs through workflow stages instead of the branches above. Ever
 
 `_run_new_path(task)`:
 
-1. A non-plan `/code` task is a unit of one task, so the unit opens first. If an open unit has no task records and its branch is checked out, it is the one just opened: go on to step 2 and do not run `pb unit open` again. Otherwise run `pb unit open --type <type> --slug <slug>`, with the type mapped from `task_type` (`new_feature` to `feat`, `bug_fix` to `fix`, `refactoring` to `refactor`, `config_change` to `chore`) and a short kebab-case slug from the task. The CLI validates both.
+1. A non-plan `/code` task is a unit of one task, so the unit opens first. If an open unit has no task records and its branch is checked out, it is the one just opened: go on to step 2 and do not run `pb unit open` again. Otherwise run `pb unit open --type <type> --slug <slug>`, with the type mapped from `task_type` (`new_feature` to `feat`, `bug_fix` to `fix`, `refactoring` to `refactor`, `config_change` to `chore`, `spike` to `spike`) and a short kebab-case slug from the task. The CLI validates both.
    - There is no confirmation: a plain call opens the template branch, and `pb unit open` takes no `--yes`.
    - When it refuses with a command for the human to type, with a leading `!`, stop and show the human that command. Only the human types it. Resume at step 2 once they have.
 2. Run `pb run open --kind code`. It reads `task_type` from `.pairingbuddy/task-classification.json` and picks the stage graph, and it stores the task from `.pairingbuddy/task.json`. If it refuses, stop and report the refusal. Do not make the change another way.
 3. Run `pb status --action`. Its `action` is the one next step. A gate can fall between two stages, so follow `action`, not `next`, which names a stage even while a gate stands before it. When it says to start a stage, start that workflow by name with the args it gives, wait for it, and run `pb status --action` again.
 4. When it says a gate is due, run `pb gate eval`. On `auto-pass`, go back to step 3. On `needs-human`, show the human the question and `humanCommand`, and stop: only the human runs a `pb human` command.
-5. When it says every stage and gate is done, run `pb task end`, then `pb run open --kind publish`. If either refuses, stop and report the refusal: do not work around it, and do not open the publish run by other means.
+5. When it says every stage and gate is done, run `pb task end`. If its output has `closed`, report its `reason` and stop: a spike has no publish stage, so do not run `pb run open --kind publish`. Otherwise run `pb run open --kind publish`. If either refuses, stop and report the refusal: do not work around it, and do not open the publish run by other means.
 6. Follow `pb status --action` through pr-draft and `G:publish` as for the code stages: start the stage it names, run `pb gate eval` when it says a gate is due. On `needs-human`, show the question and stop as in step 4. If the human answers keep local, report that and stop. If a kept-local unit is left behind, `pb status --action` names `pb publish` to finish closing it: run it and report its `reason`.
 7. When G:publish is approved, `pb status --action` names `pb publish`. Under the auto policy `pb gate eval` approves it itself, but only when every task recorded its safety-net review and the PR lint passes. An `auto-pass` at G:publish is that approval: run `pb publish` then, and do not hold it back for findings or ask the human first, since the gate has already weighed them and the PR opens as a draft. When `pb gate eval` returns `skip`, the unit has nothing to publish: run `pb publish` too. Run it and report `url`, `warnings` and `pendingComment` from its output. `pb publish` is the only route to a push or a PR: never run `git push` or `gh pr create` yourself.
 8. If `pb publish` returns `skip`, `local` or `kept-local`, nothing was pushed: report the `reason` and stop.

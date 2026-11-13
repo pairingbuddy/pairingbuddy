@@ -167,7 +167,8 @@ Writes to `.pairingbuddy/spike-config.json`:
 {
   "goal": "string (what the spike aims to learn/answer)",
   "code_location": "string (base location for spike code, e.g., 'spike/' or 'branch:spike-db-comparison')",
-  "exploration_mode": "questions | approaches | comparison"
+  "exploration_mode": "questions | approaches | comparison",
+  "doc_path": "string (optional, repo-relative path of the markdown write-up)"
 }
 ```
 

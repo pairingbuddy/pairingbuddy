@@ -8,11 +8,14 @@ const PLAIN_NAMES = {
   "code-refactor-scope": "decide what to tidy up",
   "code-refactor-apply": "tidy up step by step",
   "pr-draft": "write the pull request",
+  "code-spike-unit": "try one experiment",
+  "code-spike-document": "write up the findings",
   // gates
   "G:scenarios": "your OK on the scenarios",
   "G:task-end": "your sign-off at the end",
   "G:publish": "your OK to publish",
   "G:scope": "your OK on what to tidy up",
+  "G:unit": "your OK on this experiment",
   // agents
   "apply-config-change": "changing the config",
   "runner": "running the checks",
