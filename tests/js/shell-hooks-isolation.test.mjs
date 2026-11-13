@@ -27,7 +27,7 @@ const sessionStart = (source) => ({ hook_event_name: "SessionStart", session_id:
 const PAYLOAD_FOR = {
   "SessionStart[startup|resume|clear]": sessionStart("startup"),
   "SessionStart[compact]": sessionStart("compact"),
-  "PreToolUse[Workflow|Agent|Write|Edit|NotebookEdit|Bash|AskUserQuestion]": payload("pretooluse-workflow-agent-bash.json"),
+  "PreToolUse[Workflow|Agent|Write|Edit|NotebookEdit|Bash|AskUserQuestion|Read|Grep|Glob]": payload("pretooluse-workflow-agent-bash.json"),
   "PreToolUse[]": payload("pretooluse-workflow-agent-bash.json"),
   "PostToolUse[]": payload("posttooluse-workflow.json"),
   "PostToolUse[AskUserQuestion]": payload("posttooluse-askuserquestion.json"),

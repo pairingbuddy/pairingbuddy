@@ -2,7 +2,7 @@ import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -762,6 +762,30 @@ describe("what counts as a run", IN_PARALLEL, () => {
     const result = await runGate(bashCall("uv run pytest", { cwd: makeRepo(), session: NEVER_IN_A_RUN }), { gate: join(plugin, "hooks", "gate-boot.mjs") });
 
     assertSilent(result);
+  });
+
+  test("outside a run a main-context Read, Grep or Glob loads nothing beyond the wrapper either", async () => {
+    const plugin = makeDir("verbs-plugin-");
+    mkdirSync(join(plugin, "hooks"));
+    mkdirSync(join(plugin, "shared-node"));
+    copyFileSync(BOOT, join(plugin, "hooks", "gate-boot.mjs"));
+    copyFileSync(GATE, join(plugin, "hooks", "gate.mjs"));
+    const loaded = join(plugin, "gate-rules-was-loaded");
+    // A module that records its own import: any lazy load on this path leaves the marker.
+    writeFileSync(join(plugin, "shared-node", "gate-rules.mjs"), `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(loaded)}, "x");\nexport const checkCall = () => null;\nexport const assertReadConfined = () => {};\n`);
+    const repo = makeRepo();
+    const calls = [
+      ["Read", { file_path: join(repo, "a.txt") }],
+      ["Grep", { pattern: "x", path: repo }],
+      ["Glob", { pattern: "*.md" }],
+    ];
+
+    for (const [tool_name, tool_input] of calls) {
+      const payload = { ...bashCall("", { cwd: repo, session: NEVER_IN_A_RUN }), tool_name, tool_input };
+      assertSilent(await runGate(payload, { gate: join(plugin, "hooks", "gate-boot.mjs") }));
+    }
+
+    assert.equal(existsSync(loaded), false, "a main-context read with no run must not import gate-rules");
   });
 });
 

@@ -3,7 +3,7 @@
 // (`export function ...`) so a bundler can inline this file by stripping `export `.
 
 // A key is a file name in artifacts/, so a part never starts with a dash.
-const KEY_TOKEN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+export const KEY_TOKEN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const KEY_TEXT = /^([a-z0-9][a-z0-9_-]{0,63})\.([a-z0-9][a-z0-9_-]{0,63})\.(-|[a-z0-9][a-z0-9_-]{0,63})\.r([1-9]\d*)\.a([1-9]\d*)$/;
 
 // A finding id is <lens slug>-<n>. labels.mjs and refuter-verdict.schema.json hold the same pattern.

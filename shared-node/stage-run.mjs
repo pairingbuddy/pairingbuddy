@@ -1,8 +1,8 @@
 // What a stage attempt leaves behind: its returns, whether its evidence is complete, its report and its spend.
 // A model wrote the returns, so a return counts only under its own key at its own attempt. Node built-ins only.
 import { randomBytes } from "node:crypto";
-import { readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import { lensSlug } from "./keys.mjs";
 import { acceptVerdict, mergeLensReturns, wiredLensConfig } from "./lens-merge.mjs";
@@ -185,9 +185,27 @@ const LENS_MAP = JSON.parse(readFileSync(new URL("../contracts/lenses.json", imp
 // for the lens its key names (the tap only files a lens key from a lens agent, and each call's schema pins its own key, so
 // a lens agent cannot file under another lens's name through the runtime). Of the rounds recorded for one lens the latest
 // speaks, and a return for a lens the stage does not wire is ignored.
-function mergedLensRound(current, artifactsDir, stageName) {
+// The run dir holds the artifacts dir's parent: run/task/artifacts -> run.
+const runDirOf = (artifactsDir) => dirname(dirname(artifactsDir));
+
+// The corpus the stage used, as pb snapshot writes it into the run dir. Absent leaves the config without one; one that is
+// not a list of path strings is refused, since an empty corpus would hide a lens that needs one.
+function corpusPaths(artifactsDir) {
+  const file = join(runDirOf(artifactsDir), "corpus.json");
+  if (!existsSync(file)) return undefined;
+  let paths;
+  try {
+    paths = JSON.parse(readFileSync(file, "utf8"))?.paths;
+  } catch (e) {
+    throw new Error(`${file} is unreadable: ${e.message}`);
+  }
+  if (!Array.isArray(paths) || !paths.every((p) => typeof p === "string")) throw new Error(`${file} must hold {"paths": [strings]}`);
+  return paths;
+}
+
+function mergedLensRound(current, artifactsDir, stageName, lensMap) {
   const recorded = current.filter(({ role }) => role === LENS_ROLE);
-  const config = wiredLensConfig(LENS_MAP, stageName);
+  const config = { ...wiredLensConfig(lensMap, stageName), corpus: corpusPaths(artifactsDir) };
   const returns = config.lenses.map((lens) => {
     const [latest] = recorded.filter(({ item }) => item === lensSlug(lens.name)).sort((a, b) => b.round - a.round);
     return { lens, result: latest === undefined ? null : readReturn(artifactsDir, latest.pbKey) };
@@ -209,13 +227,14 @@ function coverageGaps(current, returns) {
 
 // Built from what was recorded, never from a model's summary of it. A coverage check is no lens round, so its gaps join
 // the lists apart from the lens returns.
-export function buildReport(ledger, artifactsDir) {
+// lensMap is a test seam: production passes none and gets contracts/lenses.json.
+export function buildReport(ledger, artifactsDir, lensMap = LENS_MAP) {
   const { name, attempt, runId } = ledger.stage;
   const current = returnsAt(artifactsDir, ledger.stage);
   const returns = current.map(({ pbKey }) => readReturn(artifactsDir, pbKey) ?? {});
   const lensReturns = returns.filter((_, i) => ![COVERAGE_ROLE, LENS_ROLE, REFUTER_ROLE].includes(current[i].role));
   const found = Object.fromEntries(REPORT_LISTS.map((key) => [key, lensReturns.flatMap((artifact) => artifact[key] ?? [])]));
-  const { merged, lensRan } = mergedLensRound(current, artifactsDir, name);
+  const { merged, lensRan } = mergedLensRound(current, artifactsDir, name, lensMap);
   const lists = {
     ...found,
     survivors: [...found.survivors, ...merged.survivors],

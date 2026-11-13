@@ -122,15 +122,23 @@ const importLedger = (clone) => import(pathToFileURL(join(pluginOf(clone), "shar
 
 // ---------- what each wedge does ----------
 
-function insertBefore(path, anchor, text) {
+// The line of hooks/gate.mjs that opens the in-run branch; the drill throws as the branch's first statement.
+const GATE_RUN_BRANCH = "  } else if (runRoots.size > 0) {\n";
+
+function insertAfter(path, anchor, text) {
   const source = readFileSync(path, "utf8");
   if (!source.includes(anchor)) throw new Error(`${path} no longer has the line this drill breaks: ${anchor}`);
-  writeFileSync(path, source.replace(anchor, () => `${text}${anchor}`));
+  writeFileSync(path, source.replace(anchor, () => `${anchor}${text}`));
+}
+
+function checkAnchors() {
+  const gate = join(SOURCE, "hooks", "gate.mjs");
+  if (!readFileSync(gate, "utf8").includes(GATE_RUN_BRANCH)) throw new Error(`${gate} no longer has the line the gate-throw drill breaks: ${GATE_RUN_BRANCH}`);
 }
 
 function forceGateThrow(clone) {
   startStage(clone);
-  insertBefore(join(pluginOf(clone), "hooks", "gate.mjs"), "  if (runRoots.size > 0) {\n", '  if (runRoots.size > 0) throw new Error("drill: forced gate throw");\n');
+  insertAfter(join(pluginOf(clone), "hooks", "gate.mjs"), GATE_RUN_BRANCH, '    throw new Error("drill: forced gate throw");\n');
 }
 
 function forceGateParse(clone) {
@@ -248,6 +256,7 @@ function parseArgs(argv) {
   const clone = at === -1 ? null : args.splice(at, 2)[1];
   if (at !== -1 && clone === undefined) throw new Usage("--clone needs a path");
   if (args.length === 1 && args[0] === "--list") return { list: true };
+  if (args.length === 1 && args[0] === "--check-anchors") return { checkOnly: true };
   const wedge = args[0]?.replace(/^--/, "");
   if (args.length !== 1 || !Object.hasOwn(WEDGES, wedge)) throw new Usage(`usage: force_wedge.mjs <one wedge> [--clone <a clone this script made>]\nwedges: ${Object.keys(WEDGES).map((name) => `--${name}`).join(" ")}`);
   return { wedge, clone };
@@ -275,7 +284,8 @@ rm -rf ${shellWord(dirname(clone))}`);
 }
 
 async function main(argv) {
-  const { list, wedge, clone: given } = parseArgs(argv);
+  const { list, checkOnly, wedge, clone: given } = parseArgs(argv);
+  if (checkOnly) return checkAnchors();
   if (list) {
     console.log(Object.keys(WEDGES).map((name) => `--${name}`).join("\n"));
     return;

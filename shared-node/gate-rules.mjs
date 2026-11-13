@@ -92,6 +92,23 @@ function assertNotProtected(root, targets, canonicalPath) {
   }
 }
 
+// ---------- confined agents ----------
+
+const CONFINED_AGENTS = [`${PREFIX}lens`, `${PREFIX}refuter`, `${PREFIX}synthesizer`];
+
+const CONFINED_TOOLS = ["Read", "Grep", "Glob"];
+
+export function assertReadConfined(root, { payload, reads }, canonicalPath) {
+  if (!CONFINED_AGENTS.includes(payload.agent_type)) return;
+  if (payload.tool_name === "StructuredOutput") return; // the agents return their result through it
+  if (!CONFINED_TOOLS.includes(payload.tool_name)) throw new Denied(`${payload.tool_name} is not a read tool: the confined agent ${payload.agent_type} may only use ${CONFINED_TOOLS.join(", ")}.`);
+  const repo = findRepo(root);
+  if (repo === null || repo === undefined) throw new Denied(`The repo toplevel of ${root} is unknown: the confined agent ${payload.agent_type} reads nothing when the boundary cannot be determined.`);
+  const top = canonicalPath(repo.top);
+  const outside = reads.find((path) => !isWithin(path, top));
+  if (outside !== undefined) throw new Denied(`${outside} is outside the repo ${top}: the confined agent ${payload.agent_type} reads only inside the repo toplevel.`);
+}
+
 // ---------- plan checkboxes ----------
 
 // Drops the boxes both sides share, so a moved line is no change. A title still on both sides then has a different
@@ -405,6 +422,8 @@ function checkLedgerRun(root, { payload, targets, canonicalPath }) {
     recordSessionIfPossible(ledgerPath, payload);
     return;
   }
+  // A read tool is held only to the confinement checkRun ran, so a broken ledger never takes Read from the main context.
+  if (CONFINED_TOOLS.includes(payload.tool_name)) return;
   if (!existsSync(ledgerPath)) return;
   const ledger = readLedger(ledgerPath);
   const contract = loadStages(PLUGIN_ROOT);
@@ -418,6 +437,7 @@ function checkLedgerRun(root, { payload, targets, canonicalPath }) {
 
 function checkRun(root, context) {
   assertNotProtected(root, context.targets, context.canonicalPath);
+  assertReadConfined(root, context, context.canonicalPath);
   try {
     checkLedgerRun(root, context);
   } catch (e) {
@@ -428,9 +448,9 @@ function checkRun(root, context) {
 
 // Returns the reason for an explicit allow, or null to add no decision. sessionRoot is the run the session's own
 // position gave, cwd or pointer; a run reached only through a target path does not bind it.
-export function checkCall({ runRoots, sessionRoot, payload, targets, canonicalPath }) {
+export function checkCall({ runRoots, sessionRoot, payload, targets, reads = [], canonicalPath }) {
   assertNoDrift(payload);
   if (sessionRoot !== null && payload.agent_id === undefined) bindSession(payload.session_id, sessionRoot);
-  for (const root of runRoots) checkRun(root, { payload, targets, canonicalPath });
+  for (const root of runRoots) checkRun(root, { payload, targets, reads, canonicalPath });
   return isRunnerCommand(payload) ? AUTO_ALLOW_REASON : null;
 }

@@ -208,6 +208,11 @@ class TestScriptOutput:
 
         assert sorted(result.stdout.split()) == sorted(f"--{w}" for w in WEDGES)
 
+    def test_every_line_a_drill_breaks_still_exists_in_the_hook(self, tmp_path):
+        result = run_script(tmp_path, "--check-anchors")
+
+        assert result.returncode == 0, result.stderr
+
     @pytest.mark.parametrize("args", [[], ["--no-such-wedge"], ["--no-unit", "--gate-parse"]])
     def test_refuses_anything_but_one_wedge(self, tmp_path, args):
         result = run_script(tmp_path, *args)

@@ -7,7 +7,7 @@
 // This wrapper imports only built-ins and loads everything else dynamically, so that a failed import can
 // still deny, and so that a call outside a run costs little more than Node's startup.
 import { existsSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 const TARGET_KEYS = { Write: "file_path", Edit: "file_path", NotebookEdit: "notebook_path" };
@@ -109,6 +109,37 @@ function targetPaths(payload, cwd) {
   if (typeof path !== "string" || path === "") throw new Error(`${payload.tool_name} has no usable ${key}`);
   const followed = isAbsolute(path) ? path : `${cwd}${sep}${path}`;
   return [...new Set([canonicalPath(followed), canonicalPath(resolve(cwd, path))])];
+}
+
+// `{a,b}` alternatives, one pattern each. Too many to check is an error, which the caller treats as a deny.
+function expandBraces(pattern) {
+  const group = /\{([^{}]*)\}/.exec(pattern);
+  if (group === null) return [pattern];
+  const expanded = group[1].split(",").flatMap((alternative) => expandBraces(pattern.slice(0, group.index) + alternative + pattern.slice(group.index + group[0].length)));
+  if (expanded.length > 64) throw new Error("Glob pattern has too many brace alternatives to check");
+  return expanded;
+}
+
+// Where one Glob pattern starts: its literal head, and the whole pattern when a `..` can climb back out of a wildcard.
+function globStarts(pattern, base) {
+  const tilde = pattern.startsWith("~") ? homedir() + pattern.slice(1) : pattern;
+  const head = tilde.split(/[*?[\]()!]/)[0];
+  const starts = head === "" ? [] : [isAbsolute(head) ? head : `${base}${sep}${head}`];
+  if (tilde.split("/").includes("..")) starts.push(resolve(base, tilde));
+  return starts;
+}
+
+// A Read is not a protected write target, so its path travels apart from targets.
+function readPaths(payload, cwd) {
+  const input = payload?.tool_input;
+  const tool = payload?.tool_name;
+  let path = tool === "Read" ? input?.file_path : tool === "Grep" || tool === "Glob" ? input?.path : undefined;
+  if ((tool === "Grep" || tool === "Glob") && (path === undefined || path === "")) path = cwd;
+  if (typeof path !== "string" || path === "") return [];
+  const base = canonicalPath(isAbsolute(path) ? path : `${cwd}${sep}${path}`);
+  if (tool !== "Glob" || typeof input?.pattern !== "string") return [base];
+  const starts = expandBraces(input.pattern).flatMap((pattern) => globStarts(pattern, base));
+  return [base, ...starts.map(canonicalPath)];
 }
 
 function decide(permissionDecision, permissionDecisionReason) {
@@ -217,6 +248,19 @@ async function denyD17WithNoRun(payload, cwd) {
   }
 }
 
+// A confined agent stays confined with no run. The roster mirrors CONFINED_AGENTS in gate-rules.mjs, kept apart so the main
+// context never pays for that import: only a confined payload loads it, and if the load fails the call is denied.
+const CONFINED_AGENT = /^pairingbuddy:(?:lens|refuter|synthesizer)$/;
+async function denyConfinedCallWithNoRun(payload, cwd, reads) {
+  if (!CONFINED_AGENT.test(payload.agent_type)) return;
+  try {
+    const { assertReadConfined } = await import("../shared-node/gate-rules.mjs");
+    assertReadConfined(cwd, { payload, reads }, canonicalPath);
+  } catch (e) {
+    decide("deny", `Confined agent call with no run open is denied: ${e?.message ?? e}`);
+  }
+}
+
 function denyQuestionWithNoHuman({ agent_type: agentType, permission_mode: mode }) {
   if (agentType !== CURATOR || (mode !== "auto" && process.env[POLICY_ENV] !== "auto")) return;
   decide("deny", "No human answers under the auto policy, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.");
@@ -244,12 +288,15 @@ try {
   const sessionRoot = findSessionRoot(cwd, payload?.session_id);
   if (sessionRoot !== null) runRoots.add(sessionRoot);
   const targets = targetPaths(payload, cwd);
+  const reads = readPaths(payload, cwd);
   targets.forEach(addRunRoot);
   if (payload?.tool_name === "Bash") await addCommandRunRoots(payload, cwd);
-  if (runRoots.size > 0) {
+  if (CONFINED_AGENT.test(payload?.agent_type) && runRoots.size === 0) {
+    await denyConfinedCallWithNoRun(payload, cwd, reads);
+  } else if (runRoots.size > 0) {
     if (importFailure !== null) throw importFailure;
     const { checkCall } = await import("../shared-node/gate-rules.mjs");
-    const allowReason = checkCall({ runRoots: [...runRoots], sessionRoot, payload, targets, canonicalPath });
+    const allowReason = checkCall({ runRoots: [...runRoots], sessionRoot, payload, targets, reads, canonicalPath });
     if (allowReason !== null) decide("allow", allowReason);
   } else if (payload?.tool_name === "Workflow") {
     await denyStageWithNoRun(payload.tool_input ?? {}, cwd);

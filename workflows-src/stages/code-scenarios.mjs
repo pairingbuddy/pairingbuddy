@@ -36,12 +36,29 @@ const prompt = [
 
 const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
-// The stage's agent cap, as code-tdd counts it: the enumerator is spawned already, and one spawn is kept for the runner.
+// The corpus is what pb snapshot found, relayed by the runner as the JSON the CLI printed. A snapshot that failed is no corpus.
+function snapshotPaths(run) {
+  const { cli_exit_code: exitCode, cli_output: output } = run.result;
+  let printed = null;
+  try {
+    printed = JSON.parse(output);
+  } catch {
+    // Left null: the check below names the failure.
+  }
+  const usable = exitCode === 0 && printed !== null && printed.ok === true && Array.isArray(printed.paths) && printed.paths.every((p) => typeof p === 'string');
+  if (!usable) throw new Error(`pb snapshot gave no corpus (exit ${exitCode}): ${output}`);
+  return printed.paths;
+}
+
+const snapshot = await runCommands(stage, ['snapshot'], { round: 1 });
+const corpus = snapshotPaths(snapshot);
+
+// The stage's agent cap, as code-tdd counts it: the enumerator and the snapshot runner are spawned already, and one spawn is kept for the finishing runner.
 const maxAgents = STAGES.stageMaxAgents[stage] ?? STAGES.maxAgents;
-const agentBudget = maxAgents - 1 - 1;
+const agentBudget = maxAgents - 1 - 1 - 1;
 
-const lensResult = await lensAttack({ stage, attempt: args.attempt, ...wiredLensConfig(LENSES, stage), agentBudget, subject: result, schema: LENS_SCHEMA, refuterSchema: REFUTER_SCHEMA });
+const lensResult = await lensAttack({ stage, attempt: args.attempt, ...wiredLensConfig(LENSES, stage), agentBudget, corpus, subject: result, schema: LENS_SCHEMA, refuterSchema: REFUTER_SCHEMA });
 
-const runner = await runCommands(stage, ['stage finish']);
+const runner = await runCommands(stage, ['stage finish'], { round: 2 });
 
-return { started: true, pbKey, label, result, lensAttack: lensResult, runner };
+return { started: true, pbKey, label, result, snapshot, lensAttack: lensResult, runner };
