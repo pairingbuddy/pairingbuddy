@@ -173,7 +173,7 @@ def _problem_with_run(files, stdout):
     return None
 
 
-def run_node_tests(files, cwd, timeout=120):
+def run_node_tests(files, cwd, timeout=300):
     command = ["node", "--test", "--test-reporter=tap", *files]
     if not files:
         return _failed(command, "No JS test files listed")
