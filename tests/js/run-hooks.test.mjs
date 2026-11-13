@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readLedger, updateLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { COMMIT_FAILED, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const hook = (name) => join(ROOT, "hooks", name);
@@ -24,7 +25,7 @@ const IDLE = { name: "", status: "", runId: null, attempt: 0, startedAt: null };
 const ACTIVE = { name: CONFIG, status: "active", runId: "wf_1", attempt: 1, startedAt: null };
 const secondsAgo = (seconds) => new Date(Date.now() - seconds * 1000).toISOString();
 const STRANDED = { ...ACTIVE, runId: null, startedAt: secondsAgo(3600) };
-const STOP = { reason: "hook refused the commit", seq: 1 };
+const STOP = { reason: "hook refused the commit", seq: 1, code: COMMIT_FAILED };
 const OWNED = (sessionId) => ({ owner: { sessionId, lastSeen: "2026-11-02T00:00:00Z" } });
 const GUARDIAN_TEXT = "Make sure to follow Pairing Buddy workflows strictly.";
 
@@ -261,14 +262,14 @@ describe("Stop hook", () => {
   });
 
   test("a stop gives its reason and no way past it", () => {
-    const stdout = stop(makeRun(allDone({ stop: { reason: "hook refused the commit", seq: 1 } })).dir);
+    const stdout = stop(makeRun(allDone({ stop: STOP })).dir);
     assertBlocks(stdout, /hook refused the commit/);
     assert.doesNotMatch(JSON.parse(stdout).reason, /task end|pairingbuddy:code/);
   });
 
   test("a human's stop sends the model to the human", () => {
     const gates = { [TASK_END]: { source: "human", answer: "stop" } };
-    const stdout = stop(makeRun(allDone({ gates, stop: { reason: "the human answered stop", seq: 1 } })).dir);
+    const stdout = stop(makeRun(allDone({ gates, stop: { reason: "the human answered stop", seq: 1, code: HUMAN_STOPPED } })).dir);
     assertBlocks(stdout, /human approve G:task-end/);
   });
 
@@ -463,7 +464,7 @@ function sessionStart(cwd, source) {
 describe("SessionStart hook", () => {
   for (const source of ["startup", "resume", "clear"]) {
     test(`reports open run state on ${source}`, () => {
-      const { dir } = makeRun({ stop: { reason: "hook refused the commit", seq: 1 } });
+      const { dir } = makeRun({ stop: STOP });
       const context = sessionStart(dir, source);
       assert.match(context, /You have pairingbuddy/);
       assert.ok(context.includes(dir));

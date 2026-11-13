@@ -32,6 +32,10 @@
             "type": "boolean",
             "description": "If true, this guidance was carried over from a previous session and should persist across tasks",
             "default": false
+          },
+          "task_scoped": {
+            "type": "boolean",
+            "description": "A note for this task only; curate-guidance drops it at the next task"
           }
         },
         "additionalProperties": false

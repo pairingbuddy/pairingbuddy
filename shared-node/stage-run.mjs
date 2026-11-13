@@ -119,7 +119,7 @@ const stageEntry = ({ stages, stage }) => stages.find(({ name }) => name === sta
 export function closeStage(ledger, status, agents, notes = {}) {
   const { name, attempt } = ledger.stage;
   const entry = stageEntry(ledger);
-  const closed = { ...entry, ...notes, name, status, attempt, spend: addAgents(entry?.spend ?? NO_SPEND, agents) };
+  const closed = { ...entry, ...notes, name, status, attempt, startedAt: entry?.startedAt ?? ledger.stage.startedAt, spend: addAgents(entry?.spend ?? NO_SPEND, agents) };
   const stages = entry === undefined ? [...ledger.stages, closed] : ledger.stages.map((stage) => (stage === entry ? closed : stage));
   return { ...ledger, stage: { ...ledger.stage, status }, stages, spend: addAgents(ledger.spend, agents) };
 }

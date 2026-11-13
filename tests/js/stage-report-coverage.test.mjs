@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { buildReport } from "../../shared-node/stage-run.mjs";
+import { buildReport, closeStage } from "../../shared-node/stage-run.mjs";
 
 const STAGE = { name: "code-tdd", status: "active", runId: "wf_1", attempt: 2, startedAt: null };
 const LEDGER = { stage: STAGE, stages: [], tests: {}, checkpoints: [] };
@@ -48,4 +48,13 @@ test("a coverage return from an earlier attempt is not this attempt's", () => {
   const dir = artifactsWith({ [coverageKey(5, 1)]: { gaps: [gap("c1")] }, [coverageKey(1)]: { gaps: [] } });
 
   assert.deepEqual(buildReport(LEDGER, dir).gaps, []);
+});
+
+test("closing a stage keeps the startedAt it began with on its stages[] entry", () => {
+  const startedAt = "2026-11-03T07:10:29.429Z";
+  const ledger = { ...LEDGER, stage: { ...STAGE, startedAt }, spend: { agents: 0, tokens: 0 } };
+
+  const closed = closeStage(ledger, "done", 1);
+
+  assert.equal(closed.stages.find(({ name }) => name === STAGE.name).startedAt, startedAt);
 });

@@ -12,11 +12,7 @@ export const VERB_CLASSES = {
   human: ["human approve", "human abandon", "human accept"],
 };
 
-// Why a stage's own script may stop the run. A script has no shell, so this is how a stop reaches the ledger.
-export const STAGE_STOP_REASONS = {
-  "agent-budget": "agent-budget: the stage spawned its maxAgents, and a re-run continues from tests{}",
-  "step-failed": "step-failed: a step of the stage failed past its retries, and a re-run continues from tests{}",
-};
+export { STAGE_STOP_REASONS, MISSING_ARTIFACT, COMMIT_PLAN_UNUSABLE, COMMIT_FAILED, NO_SELECTOR_TEMPLATE, HUMAN_STOPPED, STOP_CODES } from "./stop-codes.mjs";
 
 const ALL_VERBS = Object.values(VERB_CLASSES).flat();
 

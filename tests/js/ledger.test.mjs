@@ -7,11 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { LOCK_TIMEOUT_MS, STALE_LOCK_MS, readLedger, updateLedger, validateLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { ZERO_SHA, baseLedger } from "./ledger-fixture.mjs";
+import { LOCK_TIMEOUT_MS, LedgerShaMismatch, STALE_LOCK_MS, readLedger, updateLedger, validateLedger, writeLedger } from "../../shared-node/ledger.mjs";
 
 const run = promisify(execFile);
 const LEDGER_MODULE = new URL("../../shared-node/ledger.mjs", import.meta.url).href;
-const ZERO_SHA = "0".repeat(64);
 
 // API under test:
 //   writeLedger(path, ledger, opts): validates, refuses when the disk ledger fails its sha or the input
@@ -23,30 +23,6 @@ const ZERO_SHA = "0".repeat(64);
 //   readLedger(path): parses, checks version, then sha, and returns the ledger.
 //   validateLedger(ledger): { valid, errors: [{ path, message }] }.
 //   opts: { staleMs, timeoutMs }.
-
-function baseLedger() {
-  return {
-    v: 1,
-    seq: 0,
-    sha: ZERO_SHA,
-    kind: "code",
-    taskType: "config_change",
-    owner: { sessionId: null, lastSeen: null },
-    task: "Task 20",
-    plan: { path: "docs/plans/p.md", title: "Plan" },
-    configHash: "a".repeat(64),
-    policy: { mode: "default", source: "constant" },
-    stage: { name: "intake", status: "active", runId: "r1", attempt: 1 },
-    stages: [{ name: "intake", status: "done" }],
-    gates: {},
-    tests: {},
-    commits: [],
-    retries: {},
-    spend: { agents: 0, tokens: 0 },
-    stop: null,
-    needsHuman: null,
-  };
-}
 
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -623,4 +599,52 @@ test("a-stale-lock-that-cannot-be-removed-fails-instead-of-spinning", async () =
       "the unlink error surfaces and the waiter does not loop forever",
     );
   });
+});
+
+// Placeholders for the top-level runId the ledger contract must accept and check.
+// The test validates a ledger with a runId, then shows the run id survives a write and a read
+// and that the sha covers it, so editing it on disk is caught.
+test("ledger-accepts-run-id", () => {
+  inTempDir((_dir, path) => {
+    const runId = "7f0c2a52-1d0e-4c55-9d7e-3b1d1d6a9a10";
+    const sut = { ...baseLedger(), runId };
+
+    assert.deepEqual(validateLedger(sut), { valid: true, errors: [] }, "a top-level string runId validates");
+
+    const written = writeLedger(path, sut);
+    const read = readLedger(path);
+
+    assert.equal(read.runId, runId, "the run id survives a write and a read");
+    const onDisk = JSON.parse(readFileSync(path, "utf8"));
+    writeFileSync(path, JSON.stringify({ ...onDisk, runId: "other" }, null, 2));
+    assert.equal(written.sha, onDisk.sha, "the stored sha is kept while the run id is changed");
+    assert.throws(() => readLedger(path), LedgerShaMismatch, "changing the run id on disk breaks the sha");
+  });
+});
+
+for (const [name, runId] of [["empty string", ""], ["non-string number", 42]]) {
+  test(`ledger-rejects-non-string-run-id: ${name}`, () => {
+    const ledger = { ...baseLedger(), runId };
+
+    const result = validateLedger(ledger);
+
+    assert.equal(result.valid, false, `a ledger with runId ${JSON.stringify(runId)} is invalid`);
+    assert.ok(
+      result.errors.some((e) => e.path === "runId"),
+      `an error names runId for ${JSON.stringify(runId)}, got ${JSON.stringify(result.errors)}`,
+    );
+  });
+}
+
+test("validity-table-has-run-id-rows", () => {
+  const table = JSON.parse(readFileSync(new URL("../fixtures/ledger/validity-table.json", import.meta.url), "utf8"));
+  const topLevelRunIdNames = (rows) =>
+    rows.filter((row) => Object.hasOwn(row.set ?? {}, "runId")).map((row) => row.name);
+
+  assert.deepEqual(topLevelRunIdNames(table.valid), ["run-id-present"], "the valid rows setting the top-level runId");
+  assert.deepEqual(
+    topLevelRunIdNames(table.invalid),
+    ["run-id-empty", "run-id-number"],
+    "the invalid rows setting the top-level runId",
+  );
 });

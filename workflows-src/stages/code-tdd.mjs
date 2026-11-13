@@ -2,6 +2,7 @@ export const meta = { name: 'code-tdd', description: 'Internal stage, started by
 
 // pb-inline-module shared-node/keys.mjs
 // pb-inline-module shared-node/labels.mjs
+// pb-inline-module shared-node/limits.mjs
 // pb-inline-module shared-node/shell-word.mjs
 // pb-inline PLACEHOLDERS_SCHEMA contracts/schemas/create-test-placeholders-result.schema.json
 // pb-inline TESTS_SCHEMA contracts/schemas/implement-tests-result.schema.json
@@ -19,8 +20,6 @@ if (missing !== null) return missing;
 
 const stage = 'code-tdd';
 const maxAgents = STAGES.stageMaxAgents[stage];
-// How often one step is tried before the stage stops: a re-run starts these over, and a human stands between re-runs.
-const MAX_TRIES = 3;
 // How often coverage gaps send the stage back to placeholders. Gaps left after that finish the stage, and the gate asks.
 const MAX_COVERAGE_LOOPS = 2;
 // Only new_feature refactors per cycle: the old bug_fix path never did, and the CLI refuses the step for any other type.

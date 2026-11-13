@@ -234,12 +234,12 @@ const runIsOpen = (repo) => {
   }
 };
 
-async function runS2(budget, record, recording, task, type) {
+async function runS2(budget, record, recording, task, type, pluginDir) {
   const repo = makeRepo(record, type);
   const recorder = new RunRecorder(repo, recording, { streamPath: join(record, "stream.jsonl") }).start();
   const result = { passed: false, cause: "", tests: 0, commits: [] };
   try {
-    await runClaude(repo, `/pairingbuddy:code ${task}`, budget, { onLine: (event) => recorder.line(event) });
+    await runClaude(repo, `/pairingbuddy:code ${task}`, budget, { onLine: (event) => recorder.line(event), pluginDir });
     recorder.poll();
     if (recorder.last === null) throw new SmokeError("no run was opened, so nothing went through the gate");
     if (runIsOpen(repo)) throw new SmokeError("the run was left open");
@@ -259,19 +259,19 @@ async function runS2(budget, record, recording, task, type) {
 }
 
 export function parseOptions(argv) {
-  const { values } = parseArgs({ args: argv, options: { type: { type: "string" }, "budget-usd": { type: "string" }, "record-dir": { type: "string" }, recording: { type: "string" }, task: { type: "string" } } });
+  const { values } = parseArgs({ args: argv, options: { type: { type: "string" }, "budget-usd": { type: "string" }, "record-dir": { type: "string" }, recording: { type: "string" }, task: { type: "string" }, "plugin-dir": { type: "string" } } });
   const type = values.type ?? "bug_fix";
   if (!Object.hasOwn(TYPES, type)) throw new Error(`--type is ${type}, and S2 knows ${Object.keys(TYPES).join(", ")}`);
   const budgetUsd = Math.min(Number(values["budget-usd"] ?? BUDGET_USD), BUDGET_USD);
-  return { type, budgetUsd, recordDir: values["record-dir"], recording: values.recording, task: values.task ?? TYPES[type].task };
+  return { type, budgetUsd, recordDir: values["record-dir"], recording: values.recording, task: values.task ?? TYPES[type].task, pluginDir: values["plugin-dir"] ?? REPO_ROOT };
 }
 
 async function main() {
-  const { type, budgetUsd, recordDir, recording, task } = parseOptions(process.argv.slice(2));
+  const { type, budgetUsd, recordDir, recording, task, pluginDir } = parseOptions(process.argv.slice(2));
   const record = recordDir ?? mkdtempSync(join(tmpdir(), "pb-smoke-s2-"));
   mkdirSync(record, { recursive: true });
   const name = recording ?? new Date().toISOString().replaceAll(":", "-");
-  const result = await runS2(new Budget(budgetUsd), record, join(RECORDINGS, name), task, type);
+  const result = await runS2(new Budget(budgetUsd), record, join(RECORDINGS, name), task, type, pluginDir);
   console.log(JSON.stringify(result));
   console.log(`${result.passed ? "PASS" : "FAIL"} S2, repo in ${record}, recorded in ${join(RECORDINGS, name)}`);
   return result.passed ? 0 : 1;

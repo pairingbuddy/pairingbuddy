@@ -72,6 +72,7 @@
     "gates": { "type": "object" },
     "tests": { "type": "object" },
     "commits": { "type": "array", "items": { "type": "string" } },
+    "runId": { "description": "Identifies this pb run (task) for its whole life; written once by pb run open and never changed. Not the same as stage.runId, which is the workflow run of the current stage attempt. May be absent on older ledgers.", "type": "string", "minLength": 1 },
     "checkpoints": {
       "description": "Each pb checkpoint that went through, a step with no change included. May be absent.",
       "type": "array",
@@ -92,10 +93,11 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["reason", "seq"],
+          "required": ["reason", "seq", "code"],
           "properties": {
             "reason": { "type": "string", "minLength": 1 },
-            "seq": { "type": "integer", "minimum": 0 }
+            "seq": { "type": "integer", "minimum": 0 },
+            "code": { "type": "string", "minLength": 1 }
           }
         }
       ]

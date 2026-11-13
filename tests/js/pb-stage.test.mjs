@@ -15,6 +15,9 @@ import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { loadStages, pipelineAgents, validateStages } from "../../shared-node/stages.mjs";
+import { COMMIT_FAILED, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
+
+const HUMAN_STOP = { reason: "the human answered stop at G:task-end", seq: 1, code: HUMAN_STOPPED };
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CLI = join(ROOT, "cli", "pb.mjs");
@@ -421,7 +424,7 @@ describe("stage finish", IN_PARALLEL, () => {
 
   test("refuses on a stopped run and keeps the stop", () => {
     const repo = finishableConfig();
-    const stop = { reason: "signing failed", seq: 1 };
+    const stop = { reason: "signing failed", seq: 1, code: COMMIT_FAILED };
     writeLedgerField(repo, { stop });
     assertRefused(pb(repo, "stage", "finish"), /signing failed/);
     assert.equal(repo.ledger().stop.reason, stop.reason);
@@ -522,7 +525,7 @@ describe("stage fail", IN_PARALLEL, () => {
   });
 
   test("clears the stop a checkpoint left", () => {
-    const repo = makeRepo({ ledger: { stop: { reason: "the commit could not be signed", seq: 1 } } });
+    const repo = makeRepo({ ledger: { stop: { reason: "the commit could not be signed", seq: 1, code: COMMIT_FAILED } } });
     ok(repo, "stage", "fail");
     assert.equal(repo.ledger().stop, null);
   });
@@ -533,7 +536,7 @@ describe("stage fail", IN_PARALLEL, () => {
       ledger: {
         stages: [{ name: CONFIG, status: "done", attempt: 1 }, { name: NET, status: "done", attempt: 1 }],
         gates: { "G:task-end": { source: "human", answer: "stop" } },
-        stop: { reason: "the human answered stop at G:task-end", seq: 1 },
+        stop: HUMAN_STOP,
       },
     });
     const before = repo.ledger();
@@ -557,7 +560,7 @@ describe("stage fail", IN_PARALLEL, () => {
     });
   }
 
-  const RAISED = { reason: "the commit failed: lint", seq: 1 };
+  const RAISED = { reason: "the commit failed: lint", seq: 1, code: COMMIT_FAILED };
 
   for (const [state, stage] of [
     ["a done stage", { ...activeStage(), status: "done" }],
@@ -592,7 +595,7 @@ describe("stage fail", IN_PARALLEL, () => {
       ledger: {
         stages: [{ name: CONFIG, status: "done", attempt: 1 }, { name: NET, status: "done", attempt: ATTEMPT }],
         gates: { "G:task-end": { source: "human", answer: "stop" } },
-        stop: { reason: "the human answered stop at G:task-end", seq: 1 },
+        stop: HUMAN_STOP,
       },
     });
     const before = repo.ledger();

@@ -319,3 +319,6 @@ export async function runScript(path, { args, agent, workflow } = {}) {
   if (failure) throw failure;
   return { meta, result, calls, logs, phases, workflows };
 }
+
+// Text between <tag>\n and \n</tag> in a spawn prompt.
+export const blockOf = (prompt, tag) => prompt.slice(prompt.indexOf(`<${tag}>\n`) + tag.length + 3, prompt.indexOf(`\n</${tag}>`));

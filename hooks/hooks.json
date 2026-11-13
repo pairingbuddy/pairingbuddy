@@ -78,5 +78,8 @@
         ]
       }
     ]
-  }
+  },
+  "modules": [
+    "../mod/register.tsx"
+  ]
 }

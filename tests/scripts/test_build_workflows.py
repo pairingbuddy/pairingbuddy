@@ -480,3 +480,27 @@ def test_coding_skill_does_not_route_to_code_config():
     skill = (REPO_ROOT / "skills" / "coding" / "SKILL.md").read_text()
 
     assert "code-config" not in skill, "no task type may route to code-config yet"
+
+
+def test_build_writes_mod_contract_from_stages_json_and_check_reports_drift(fixture_tree, tmp_path):
+    # test_case_id: built-output-passes-compile-checks
+    out = tmp_path / "out"
+    contract = {"v": 1, "defaultTaskType": "x"}
+    (fixture_tree / "contracts").mkdir()
+    (fixture_tree / "contracts" / "stages.json").write_text(json.dumps(contract))
+    generated = fixture_tree / "shared-node" / "stages-contract.mjs"
+
+    build_ok(fixture_tree, out)
+
+    text = generated.read_text()
+    assert text.startswith("// Generated from contracts/stages.json"), (
+        "the file says it is generated"
+    )
+    assert json.loads(text.split("export default ", 1)[1]) == contract
+    assert run_build(fixture_tree / "workflows-src", out, fixture_tree, check=True).returncode == 0
+
+    generated.write_text(text + "// edited\n")
+    result = run_build(fixture_tree / "workflows-src", out, fixture_tree, check=True)
+
+    assert result.returncode != 0
+    assert "differs: shared-node/stages-contract.mjs" in result.stderr

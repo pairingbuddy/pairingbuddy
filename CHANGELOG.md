@@ -7,8 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `/pb` now answers and opens the pane.
+- With no run, the pane invents no steps.
+- The last run is kept after `pb task end` and shown as "last run finished", and the report button still works.
+- Band segments are separated.
+- The band shows a "/pb for details" hint, which gives way before content does.
+- The band says "between steps · next: …" or "run open" instead of idle during a run.
+- Tests come from the run's ledger, showing "test N" with no invented total, and LEFT stays unknown until the total is known.
+- `/pb` and details open the pane with focus, so `r` open report works and Tab reaches suggest. The alert's pane doesn't steal focus.
+- Theme-key colour: the current step is lit, ticks are success, needs-you is warning, stop is error, and unknowns and spend are dim.
+- The report takes test results from the ledger, so a passed test no longer reads "not reached".
+- The report shows run time from when the mod saw the run end, labels its STEPS columns, and reads "finished" on a done run.
+- Band and NOW lead with needs-you while a gate waits.
+- NOW drops the band prefix and reads "all steps done" before task end.
+- The needs-you or stop status line clears when the gate is answered, the run ends, or a new run starts.
+- The Workflow pluginRoot check compares real paths, so macOS `/var` and `/private/var` match.
+- Pane focus lost on window switch is documented as platform behaviour, recovered with `/pb`.
+- The report shows run time after the run ends. The poller passed an unawaited `$.clock.now()` promise to `new Date`, so the ended-at time was never saved; it now awaits the clock, and the ended pane and the report measure to the same end time.
+- A signed-off run no longer asks for sign-off in the report's WHAT YOU CAN DO once `G:task-end` is approved.
+- Test cards in the report have column headings and drop Total, Writing, Running and Commit columns that are unknown on every row.
+- A not-reached test card draws no empty table, only the not-reached note.
+- The report title keeps the break between the task description and its context.
+- The needs-you or stop status line no longer repeats the plugin name.
+- The report no longer asks for sign-off after an auto-passed task-end gate. It uses the same gate-passed rule as the CLI, now in `shared-node/gate-passed.mjs`, which `gates.mjs` re-exports.
+- A report opened mid-run shows elapsed time like the pane. A snapshot of a gone run is not measured to now.
+- The band stays one line at narrow widths: it fits beside the platform's `[-]` control, drops whole segments (lowest priority first, needs-you kept) instead of cutting them, and never wraps.
+- The alert logs when the platform keeps its pane undrawn on a narrow terminal and never claims it opened; `/pb` or the details button still opens it.
+- The report's STEPS shows the running step's start time instead of "not reached".
+- The report follows the viewer's light or dark preference.
+
 ### Added
 
+- A dim rule above the band separates it from the transcript (`mod/band.tsx`).
+- T4a first-pane smoke (Task 59): `tests/smoke/s2.mjs` takes `--plugin-dir`, so S2 can run against another plugin copy. New `tests/smoke/broken-plugin.mjs` (`makeBrokenCopy`, with `load` and `render` modes) builds a deliberately broken plugin copy. New `tests/smoke/t4a-lab.mjs` sets up the lab (`setup` with `--broken`, `--ask` and `--sound off`) and has `show`. New `tests/smoke/T4A-RUNBOOK.md` guides the human session. S2 passes healthy and with both broken copies; results are in `docs/design/progress-mod/t4a-smoke/README.md`
+- Report button and suggestion input in the progress mod (Task 58a): the pane has a report button that writes `.pairingbuddy/reports/<timestamp>-<slug>.html` and opens it. The pane also has a suggestion input that appends a task-scoped entry (`task_scoped`) to `human-guidance.json`, which the next agent spawn reads; the pane shows the suggestion as pending, then delivered. A corrupt or unreadable guidance file is never overwritten, and the pane says "suggestion not saved". `curate-guidance` drops `task_scoped` entries, and `reports/` is kept across task cleanup. The mod's only writes are the reports folder and `human-guidance.json`. New `mod/report.ts`, `mod/suggest.ts`, `shared-node/report.mjs`, `shared-node/suggestion.mjs` and `shared-node/duration.mjs`
+- Alerts on stop and needs-human (Task 58): when the run stops or needs a human, the mod plays a sound, sets the status line and opens the pane, once per event (tracked with `$.store`, keyed by run id, kind and event seq). The band reads `needs you · opened details`, and the needs-you segment survives narrow widths while an event stands. The `alertSound` userConfig in `plugin.json` controls the sound, and the bundled `mod/assets/alert.wav` is the default. `mod/alert.ts` holds the alert logic and `mod/pane-open.ts` opens the pane. A stop now carries a `stop.code` field in the ledger, drawn from `STOP_CODES` in the new `shared-node/stop-codes.mjs`, with a plain name for each code in `shared-node/plain-names.mjs`. `pb run open` writes a `runId` to the ledger so alerts can be keyed per run.
+- Live pane on the ledger, labels and gates (Task 57): the band above the prompt shows where the run is, what it has spent, what is left, whether it is looping, whether it is off track and whether it needs you, with a `▸ details` button beside it. The button, or `/pb`, opens the pane. `esc` or `×` closes it. The pane shows five glance rows (NOW, SPENT, LEFT, LOOPING, OFF TRACK), the step list and a dim footer saying Pairing Buddy only watches. The mod (`mod/band.tsx`, `mod/pane.tsx`, `mod/view.ts`, `mod/inputs.ts`, `mod/poll.ts`) polls `ledger.json`, counts live agents from `agent.spawn` events and not from `spend.agents`, and reads the try count from `r<n>` in the labels. A label that fails the contract shows raw and counts as unknown. Tokens, % of plan and OFF TRACK show "unknown" until their data exists, and a missing or partial ledger never throws. At narrow widths the band drops `left:` first, then `≈ %`.
+- `shared-node/plain-names.mjs` maps stage, role and gate ids to plain names, with a test that fails when an id has no plain name. New `shared-node/glance.mjs` builds the rows and band segments, `shared-node/limits.mjs` holds `MAX_TRIES`, and `shared-node/stage-graph.mjs` holds the graph functions moved out of `stages.mjs`, which re-exports them. `labels.mjs` now exports `PHASES` and `ROLES`. New node tests `tests/js/band-width.test.mjs`, `glance-sentences.test.mjs` and `plain-names.test.mjs`
+- `closeStage` keeps `startedAt`. `scripts/build-workflows.mjs` generates `shared-node/stages-contract.mjs` from the stage contract, and `--check` reports drift in it. The replay rig in `mod/testing/` starts a session per replay, feeds the recorded spawns, and lands steps on whole poll intervals
+- Mod skeleton and isolation (Task 56): `mod/register.tsx`, listed under `modules` in `hooks/hooks.json` next to the shell hooks. Every hook passes through with `next(e)`, with no `deny`. The mod is read-only: it may read `.pairingbuddy/` run files and never writes run state or the ledger. Its band, above the prompt, reads `.pairingbuddy/run/task/ledger.json` from the session root and shows "running" or "idle", and no ledger, however broken, makes it throw. A replay rig in `mod/testing/` plays a trimmed real recording (`mod/fixtures/replay/g-open-1`) and yields what the band draws at each step, for Tasks 57 and 61. `claude plugin test .` runs the mod tests (`mod/*.test.tsx`), and node tests check that the shell hooks still run with the mod broken
 - Per-cycle refactor in `code-tdd`, for `new_feature` only (Task 48): after each GREEN, `identify-test-issues` finds and `refactor-tests` fixes, then `identify-code-issues` finds and `refactor-code` fixes. A finder with no issues spawns no fixer. Each fix group goes through `pb checkpoint --step refactor` with a `refactor-code` or `refactor-tests` key naming the cycle's test: the CLI runs every test the task has closed, each by its selector, and commits only if all pass, typed `refactor`, or `test` when every path is in a test directory. A group with no change makes no commit and runs no test. The CLI refuses the step for any other task type and before the cycle's GREEN, and `refactor-tests` may change tests alone. The gate's runner auto-allow takes exactly those two keys at that step. `pb tdd state` now prints the task type
 - Coverage loop in `code-tdd`, for `new_feature` and `bug_fix` (Task 49): after the cycles, `verify-test-coverage` reports gaps, and each gap sends the stage back to `create-test-placeholders` with the coverage report, then cycles only the new tests, at most twice. Gaps left after that finish the stage, and `pb gate eval` asks under auto while the newest standing coverage return holds any. `artifact:verify-test-coverage` is new `code-tdd` evidence, and the stage report's `gaps` are the newest round's
 - `identify-test-issues`, `identify-code-issues`, `refactor-tests`, `refactor-code` and `verify-test-coverage` follow the one input rule, with keyed returns. Legacy callers keep their flat files

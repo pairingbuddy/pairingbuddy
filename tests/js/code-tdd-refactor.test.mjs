@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { runScript } from "./harness.mjs";
+import { blockOf, runScript } from "./harness.mjs";
 import { readLabel } from "../../shared-node/labels.mjs";
 
 // Task 48: the per-cycle refactor of the built code-tdd stage, for new_feature only. identify-* find and refactor-* fix,
@@ -26,7 +26,6 @@ const COVERAGE = "pairingbuddy:verify-test-coverage";
 const artifact = (key) => `.pairingbuddy/run/task/artifacts/${key}.json`;
 
 const row = (test_id) => ({ test_id, test_case_id: "c", scenario_id: "s", runner_id: "pytest", test_file: "tests/test_a.py", test_function: `test_${test_id}` });
-const blockOf = (prompt, tag) => prompt.slice(prompt.indexOf(`<${tag}>\n`) + tag.length + 3, prompt.indexOf(`\n</${tag}>`));
 const commandsOf = ({ prompt }) => blockOf(prompt, "commands").split("\n").map((line) => line.replace(`${PB} `, ""));
 const isRunner = ({ opts }) => opts.agentType === RUNNER;
 const pbKeyOf = ({ opts }) => opts.schema.properties.pb_key.enum[0];

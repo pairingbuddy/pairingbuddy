@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { COMMIT_FAILED, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CLI = join(ROOT, "cli", "pb.mjs");
@@ -303,8 +304,8 @@ describe("gates and stages come first", IN_PARALLEL, () => {
   for (const [name, ledger, pattern] of [
     ["the gate has not been evaluated", { ...FINISHED, gates: {} }, /G:task-end/],
     ["the gate waits for a human", { ...FINISHED, gates: {}, needsHuman: { gate: GATE, reason: "the gate policy is default, not auto", seq: 1 } }, /G:task-end/],
-    ["a human answered stop", { ...FINISHED, gates: { [GATE]: { source: "human", answer: "stop" } }, stop: { reason: "the human answered stop at G:task-end", seq: 1 } }, /stop/],
-    ["the run has stopped", { ...FINISHED, stop: { reason: "the commit could not be signed", seq: 1 } }, /could not be signed/],
+    ["a human answered stop", { ...FINISHED, gates: { [GATE]: { source: "human", answer: "stop" } }, stop: { reason: "the human answered stop at G:task-end", seq: 1, code: HUMAN_STOPPED } }, /stop/],
+    ["the run has stopped", { ...FINISHED, stop: { reason: "the commit could not be signed", seq: 1, code: COMMIT_FAILED } }, /could not be signed/],
   ]) {
     test(`refused when ${name}`, () => {
       const repo = makeRepo({ ledger });

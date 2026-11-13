@@ -210,6 +210,11 @@ test("a label failing the regex is reported as unknown, with its raw text", () =
     { unknown: false, stage: "tdd", phase: "RED", role: "implement-tests", item: "t3", round: 1 },
     "a good label reads as its parts",
   );
+  assert.deepEqual(
+    readLabel("pb1 code-tdd RED implement-tests zero-percent-keeps-full-price r3"),
+    { unknown: false, stage: "code-tdd", phase: "RED", role: "implement-tests", item: "zero-percent-keeps-full-price", round: 3 },
+    "a code-tdd label reads as its parts",
+  );
 });
 
 test("the verdict schema carries the finding id, with the key's own rule", () => {

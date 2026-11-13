@@ -38,7 +38,8 @@ Also reads `.pairingbuddy/human-guidance.json` (if exists):
       "timestamp": "string (ISO 8601 datetime)",
       "context": "string (what was being reviewed)",
       "feedback": "string (human's guidance or correction)",
-      "persistent": "boolean (optional - if true, carried over from previous session)"
+      "persistent": "boolean (optional - if true, carried over from previous session)",
+      "task_scoped": "boolean (optional - a note for this task only; curate-guidance drops it at the next task)"
     }
   ]
 }

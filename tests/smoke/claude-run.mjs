@@ -9,8 +9,8 @@ import { fileURLToPath } from "node:url";
 export const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 export const BUDGET_USD = 3;
 const RUN_TIMEOUT_MS = 1_200_000;
-const CHEAP_MODEL = "claude-haiku-5-5";
-const DROPPED_PREFIXES = ["PAIRINGBUDDY", "PB_", "CLAUDE", "ANTHROPIC_", "GIT_"];
+export const CHEAP_MODEL = "claude-haiku-5-5";
+export const DROPPED_PREFIXES = ["PAIRINGBUDDY", "PB_", "CLAUDE", "ANTHROPIC_", "GIT_"];
 
 export class SmokeError extends Error {}
 export class SpendCapError extends SmokeError {}
@@ -36,9 +36,9 @@ export function cleanEnv(inherited = process.env) {
   return { ...Object.fromEntries(kept), ANTHROPIC_DEFAULT_OPUS_MODEL: CHEAP_MODEL, ANTHROPIC_DEFAULT_SONNET_MODEL: CHEAP_MODEL };
 }
 
-export const claudeCommand = (prompt, budgetUsd) => [
+export const claudeCommand = (prompt, budgetUsd, pluginDir = REPO_ROOT) => [
   "-p", prompt,
-  "--plugin-dir", REPO_ROOT,
+  "--plugin-dir", pluginDir,
   "--model", "haiku",
   "--effort", "low",
   "--setting-sources", "project,local",
@@ -122,12 +122,12 @@ function checkFinished(results, { code, stderr, timedOut }) {
 }
 
 // Charges `budget` first, so spend is known to the caller even when this throws.
-export async function runClaude(repo, prompt, budget, { env = cleanEnv(), onLine = () => {} } = {}) {
+export async function runClaude(repo, prompt, budget, { env = cleanEnv(), onLine = () => {}, pluginDir = REPO_ROOT } = {}) {
   if (budget.remaining <= 0) throw new SpendCapError(`the spend cap is used up at $${budget.spent.toFixed(4)}`);
   refuseRepoInsidePlugin(repo);
   const results = [];
   const costs = [];
-  const exit = await runOnce(repo, claudeCommand(prompt, Number(budget.remaining.toFixed(6))), env, (event) => {
+  const exit = await runOnce(repo, claudeCommand(prompt, Number(budget.remaining.toFixed(6)), pluginDir), env, (event) => {
     if (event.type === "result") results.push(event);
     if ("total_cost_usd" in event) costs.push(event.total_cost_usd);
     onLine(event);

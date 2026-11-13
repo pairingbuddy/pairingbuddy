@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 
 import { CheckpointStopped, commitPaths } from "../../shared-node/checkpoint.mjs";
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { COMMIT_FAILED } from "../../shared-node/verbs.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CLI = join(ROOT, "cli", "pb.mjs");
@@ -660,7 +661,7 @@ describe("refused keys", IN_PARALLEL, () => {
   });
 
   test("a stopped run is refused", () => {
-    const repo = changedRepo({ ledger: { stop: { reason: "earlier", seq: 1 } } });
+    const repo = changedRepo({ ledger: { stop: { reason: "earlier", seq: 1, code: COMMIT_FAILED } } });
 
     assertRefuses(repo, /stopped/);
   });
@@ -777,7 +778,7 @@ execFileSync("git", ${JSON.stringify(args)});
     const repo = changedRepo({ tests: `
 import { readFileSync, writeFileSync } from "node:fs";
 import { updateLedger } from ${JSON.stringify(join(ROOT, "shared-node", "ledger.mjs"))};
-updateLedger(".pairingbuddy/run/task/ledger.json", (ledger) => ({ ...ledger, stop: { reason: "raised meanwhile", seq: 1 } }));
+updateLedger(".pairingbuddy/run/task/ledger.json", (ledger) => ({ ...ledger, stop: { reason: "raised meanwhile", seq: 1, code: ${JSON.stringify(COMMIT_FAILED)} } }));
 ` });
     const seed = repo.head();
 
