@@ -222,9 +222,9 @@ test("glance lists the raw name of every workflow agent whose label does not rea
   assert.deepEqual(glance({ spawns }).unknownLabels, ["not a pb1 label at all"]);
 });
 
-// Seq 10 of tests/smoke/recordings/t59-healthy/ledger.jsonl is the first ledger with tests.perTest; seq 9 is the last without.
+// Seq 10 of tests/fixtures/recordings/t59-healthy/ledger.jsonl is the first ledger with tests.perTest; seq 9 is the last without.
 async function t59Ledger(seq) {
-  const lines = (await readFile(new URL("../smoke/recordings/t59-healthy/ledger.jsonl", import.meta.url), "utf8")).trim().split("\n");
+  const lines = (await readFile(new URL("../fixtures/recordings/t59-healthy/ledger.jsonl", import.meta.url), "utf8")).trim().split("\n");
   return JSON.parse(lines[seq - 1]).ledger;
 }
 const T59_TEST = "apply-discount-100-by-10-returns-90";
