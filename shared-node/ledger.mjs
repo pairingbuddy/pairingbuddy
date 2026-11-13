@@ -160,8 +160,8 @@ export function validateLedger(ledger) {
       case "stage":
         checkObject(ledger.stage, "stage", {
           name: [isString, "a string"], status: [isString, "a string"], runId: [isNullableString, "a string or null"], attempt: [isCount, "a non-negative integer"],
-          startedAt: [isNullableTimestamp, "an ISO 8601 timestamp or null"], transcriptDir: [isNullableString, "a string or null"],
-        }, errors, { optional: ["startedAt", "transcriptDir"] });
+          startedAt: [isNullableTimestamp, "an ISO 8601 timestamp or null"], transcriptDir: [isNullableString, "a string or null"], scriptHash: [isNullableString, "a string or null"],
+        }, errors, { optional: ["startedAt", "transcriptDir", "scriptHash"] });
         break;
       case "stages":
         if (Array.isArray(ledger.stages)) {

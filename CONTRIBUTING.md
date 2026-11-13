@@ -249,6 +249,8 @@ git -C "$ROOT" status --short
 
 The status line lists what the killed stage left behind. Delete what you do not want by hand, because `pb task end` refuses a dirty tree. Commits the stage already made stay on the branch. Then start a new session and restart the stage at `nextAttempt`.
 
+Within the same session, a killed stage workflow can instead be resumed by calling it with `resumeFromRunId` equal to the stage's recorded `runId`; otherwise run `pb stage fail` and restart the stage.
+
 ### Killed session at a gate
 
 **What you see:** `pb status` shows `needsHuman` with a gate, and `pb stage fail` refuses or finds no stage to fail. Only a human can pass a gate. The same command undoes a human's `stop` or `redo` answer at a gate, and `pb stage fail` refuses to lift a human's `stop`.

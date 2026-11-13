@@ -410,7 +410,10 @@ export function gateAnswer(gate, toolResponse) {
 // A redo sends the stage back and leaves no record, so the gate comes due again when the stage finishes.
 function reopenStage(ledger, name, gates) {
   const { [name]: _cleared, ...kept } = ledger.gates;
-  return withStageStatus({ ...ledger, gates: kept }, gates.find((gate) => gate.name === name).stage, REDO_STATUS);
+  const stage = gates.find((gate) => gate.name === name).stage;
+  // The old run is over; a redone current stage must not offer it for resume.
+  const current = ledger.stage.name === stage ? { ...ledger.stage, runId: null } : ledger.stage;
+  return withStageStatus({ ...ledger, gates: kept, stage: current }, stage, REDO_STATUS);
 }
 
 // What the human is shown at G:publish and what an approval binds to: HEAD, where the unit started and where the PR goes.

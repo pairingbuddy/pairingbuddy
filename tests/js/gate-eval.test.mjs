@@ -797,6 +797,31 @@ describe("a human's redo reopens the stage", () => {
 
     assertDenied(runGate(repo, call), new RegExp(`pairingbuddy:${FIRST}`));
   });
+
+  test("redo-answer-clears-run-id", () => {
+    const { repo, asked } = askedRepo({ plugin: makePlugin(), ledger: oneGateDoneLedger() });
+    assert.equal(repo.ledger().stage.runId, "wf_1", "setup: the stage had a run id before the answer");
+
+    runTap(repo, recordedAnswer(repo, asked.question, "redo"));
+
+    const ledger = repo.ledger();
+    assert.equal(ledger.stage.name, FIRST, "the redone stage is the current one");
+    assert.equal(ledger.stage.status, "redo");
+    assert.equal(ledger.stage.runId, null, "the old run id is gone, so it cannot be resumed");
+  });
+
+  test("redo-leaves-another-current-stage-run-alone", () => {
+    const otherStage = { name: SECOND, status: "active", runId: "wf_9", attempt: 1, startedAt: null };
+    const { repo, asked } = askedRepo({ plugin: makePlugin(), ledger: { ...oneGateDoneLedger(), stage: otherStage } });
+    assert.equal(asked.gate, G_FIRST, "setup: the gate asked is the first stage's");
+    assert.equal(repo.ledger().stage.name, SECOND, "setup: the ledger's current stage is a different stage");
+
+    runTap(repo, recordedAnswer(repo, asked.question, "redo"));
+
+    const ledger = repo.ledger();
+    assert.equal(ledger.stage.name, SECOND, "the current stage is still the other one");
+    assert.equal(ledger.stage.runId, "wf_9", "a redo of another stage leaves the current stage's run id alone");
+  });
 });
 
 describe("a human's stop sets ledger.stop", () => {
