@@ -147,11 +147,11 @@ test("code-scenarios-runs-pb-snapshot-before-the-lens-call-and-passes-its-paths-
 // The bundled scenarios row gets a lens that needs a corpus, so the corpus the stage passes shows in what lensAttack reports.
 async function runWithCorpusLens(paths) {
   const bundle = readFileSync(STAGE, "utf8");
-  const lenses = JSON.parse(/^const LENSES = (.*);$/m.exec(bundle)[1]);
+  const lenses = JSON.parse(/^const LENSES = (\{[\s\S]*?\n\});$/m.exec(bundle)[1]);
   const wired = { ...lenses, rows: lenses.rows.map((row) => (row.row === "scenarios" ? { ...row, lenses: [{ ...row.lenses[0], needsCorpus: true }, ...row.lenses.slice(1)] } : row)) };
   const dir = mkdtempSync(join(tmpdir(), "code-scenarios-corpus-"));
   const path = join(dir, "code-scenarios.js");
-  writeFileSync(path, bundle.replace(/^const LENSES = .*;$/m, `const LENSES = ${JSON.stringify(wired)};`));
+  writeFileSync(path, bundle.replace(/^const LENSES = \{[\s\S]*?\n\};$/m, `const LENSES = ${JSON.stringify(wired)};`));
   try {
     return await runScript(path, { args: ARGS, agent: async (_prompt, { agentType }) => (agentType === "pairingbuddy:lens" ? { findings: [] } : agentType === "pairingbuddy:runner" ? relayed(paths) : {}) });
   } finally {
@@ -227,7 +227,7 @@ test("Recorded calls are the enumerator, then one pairingbuddy:lens call at the 
 
 test("The built code-scenarios.js contains lensAttack and the scenarios row from contracts/lenses.json, and the bundle sync test still passes", () => {
   const bundle = readFileSync(STAGE, "utf8");
-  const bundled = JSON.parse(/^const LENSES = (.*);$/m.exec(bundle)[1]);
+  const bundled = JSON.parse(/^const LENSES = (\{[\s\S]*?\n\});$/m.exec(bundle)[1]);
   const scenariosRow = (data) => data.rows.find((row) => row.row === "scenarios");
 
   assert.match(bundle, /async function lensAttack\(/, "the bundle defines lensAttack");

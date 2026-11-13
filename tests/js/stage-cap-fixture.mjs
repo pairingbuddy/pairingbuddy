@@ -5,7 +5,7 @@ import { basename, join } from "node:path";
 // Copies a built stage bundle with its inlined stageMaxAgents cap for one stage replaced; the copy is removed through t.after.
 export function withStageMaxAgents(stagePath, stageName, cap, t) {
   const bundle = readFileSync(stagePath, "utf8");
-  const inlined = /^const STAGES = (.*);$/m;
+  const inlined = /^const STAGES = (\{[\s\S]*?\n\});$/m;
   if (!inlined.test(bundle)) throw new Error("the stage must inline stages.json for its cap");
   const stages = JSON.parse(inlined.exec(bundle)[1]);
   const dir = mkdtempSync(join(tmpdir(), `${stageName}-cap-`));

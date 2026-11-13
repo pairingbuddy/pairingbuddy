@@ -2,8 +2,67 @@ export const meta = { name: 'code-config', description: 'Internal stage, started
 
 if (args === undefined) return { started: false };
 
-const RESULT_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Apply Config Change Result","description":"Return of the apply-config-change agent: the pb key it was given, any open ambiguity, the proposed commit subject and the files it changed","type":"object","required":["pb_key","ambiguity","commit_subject","files_changed"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"ambiguity":{"type":"string","description":"An open question the task left unresolved, or an empty string"},"commit_subject":{"type":"string","description":"Proposed commit subject line for the change"},"files_changed":{"type":"array","description":"Repo-relative paths of files the agent modified","items":{"type":"string","pattern":"^(?!/)"}}},"additionalProperties":false};
-const RUNNER_SCHEMA = {"$schema":"http://json-schema.org/draft-07/schema#","title":"Runner Result","description":"Return of the runner agent: the pb key it was given and the CLI's last exit code and its output, relayed unchanged. Evidence lives in the ledger, written by the CLI","type":"object","required":["pb_key","cli_exit_code","cli_output"],"properties":{"pb_key":{"type":"string","description":"The key from the prompt, copied exactly"},"cli_exit_code":{"type":"integer","description":"Exit code of the last pb command run: 0 when it was recorded, not when the tests passed"},"cli_output":{"type":"string","description":"What each pb command printed, unchanged, in order"}},"additionalProperties":false};
+const RESULT_SCHEMA = {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Apply Config Change Result",
+  "description": "Return of the apply-config-change agent: the pb key it was given, any open ambiguity, the proposed commit subject and the files it changed",
+  "type": "object",
+  "required": [
+    "pb_key",
+    "ambiguity",
+    "commit_subject",
+    "files_changed"
+  ],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "ambiguity": {
+      "type": "string",
+      "description": "An open question the task left unresolved, or an empty string"
+    },
+    "commit_subject": {
+      "type": "string",
+      "description": "Proposed commit subject line for the change"
+    },
+    "files_changed": {
+      "type": "array",
+      "description": "Repo-relative paths of files the agent modified",
+      "items": {
+        "type": "string",
+        "pattern": "^(?!/)"
+      }
+    }
+  },
+  "additionalProperties": false
+};
+const RUNNER_SCHEMA = {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Runner Result",
+  "description": "Return of the runner agent: the pb key it was given and the CLI's last exit code and its output, relayed unchanged. Evidence lives in the ledger, written by the CLI",
+  "type": "object",
+  "required": [
+    "pb_key",
+    "cli_exit_code",
+    "cli_output"
+  ],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "cli_exit_code": {
+      "type": "integer",
+      "description": "Exit code of the last pb command run: 0 when it was recorded, not when the tests passed"
+    },
+    "cli_output": {
+      "type": "string",
+      "description": "What each pb command printed, unchanged, in order"
+    }
+  },
+  "additionalProperties": false
+};
 
 // One course-checker call per fix group. It needs these names from elsewhere: buildKey, buildLabel and fixAttemptRound (from the stage's pb-inline-module lines: keys, labels), asPromptData and pinnedKey (from the other shared sources), and agent (from the workflow runtime).
 // config.schema is required: it is the course verdict schema, and the call pins its key into it.
