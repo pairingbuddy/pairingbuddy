@@ -24,7 +24,7 @@ test("calm run at test 3 of 4 gives NOW 'writing a failing test ... test 3 of 4'
   const tests = ["first-test", "second-test", "ten-percent-off-hundred", "last-test"];
   const spawns = tests.slice(0, 3).map(failingTestSpawn);
 
-  const result = glance({ ledger, spawns, tests, now: SOME_TIME });
+  const result = glance({ ledger, spawns, tests, now: SOME_TIME, testsComplete: true });
 
   assert.match(result.rows.now, /writing a failing test/, "NOW names the step in plain words");
   assert.match(result.rows.now, /test 3 of 4/, "NOW says which test of how many");
@@ -128,7 +128,7 @@ test("the band's left segment reads 'left: 1 test + review' at test 3 of 4 (R4-1
   const tests = ["first-test", "second-test", "ten-percent-off-hundred", "last-test"];
   const spawns = tests.slice(0, 3).map(failingTestSpawn);
 
-  const result = glance({ ledger, spawns, tests, now: SOME_TIME });
+  const result = glance({ ledger, spawns, tests, now: SOME_TIME, testsComplete: true });
 
   assert.equal(result.band.find((segment) => segment.id === "left").text, "left: 1 test + review");
 });
@@ -234,7 +234,7 @@ test("one-test-run-shows-test-1-of-1-and-left: a one-test bug_fix ledger whose c
   const tests = Object.keys(ledger.tests.perTest);
   const spawns = [failingTestSpawn(T59_TEST)];
 
-  const result = glance({ ledger, spawns, tests, now: SOME_TIME });
+  const result = glance({ ledger, spawns, tests, now: SOME_TIME, testsComplete: true });
 
   assert.deepEqual(tests, [T59_TEST]);
   assert.match(result.rows.now, /test 1 of 1/, "NOW says test 1 of 1");
@@ -263,5 +263,18 @@ test("seen-only list shows test N without of M and LEFT unknown", () => {
   assert.match(result.rows.now, /test 2(?! of)/, "NOW says which test, with no total");
   assert.doesNotMatch(result.rows.now, / of \d/, "NOW claims no total");
   assert.equal(result.rows.left, "unknown");
+  assert.doesNotMatch(JSON.stringify(result.band), / of \d/, "the band claims no total");
+});
+
+test("glance-without-tests-complete-claims-no-total-or-left", async () => {
+  const ledger = await ledgerAtSeq("g-open-1", TDD_ACTIVE_SEQ);
+  const tests = ["first-test", "second-test", "third-test", "last-test"];
+  const spawns = tests.slice(0, 3).map(failingTestSpawn);
+
+  const result = glance({ ledger, spawns, tests, now: SOME_TIME });
+
+  assert.match(result.rows.now, /test 3(?! of)/, "NOW says which test, with no total");
+  assert.doesNotMatch(result.rows.now, / of \d/, "NOW claims no total");
+  assert.equal(result.rows.left, "unknown", "LEFT claims no count");
   assert.doesNotMatch(JSON.stringify(result.band), / of \d/, "the band claims no total");
 });

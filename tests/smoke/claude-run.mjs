@@ -36,8 +36,10 @@ export function cleanEnv(inherited = process.env) {
   return { ...Object.fromEntries(kept), ANTHROPIC_DEFAULT_OPUS_MODEL: CHEAP_MODEL, ANTHROPIC_DEFAULT_SONNET_MODEL: CHEAP_MODEL };
 }
 
-export const claudeCommand = (prompt, budgetUsd, pluginDir = REPO_ROOT) => [
+// resume is a session id from an earlier run's stream: the run goes on in that conversation.
+export const claudeCommand = (prompt, budgetUsd, pluginDir = REPO_ROOT, resume = null) => [
   "-p", prompt,
+  ...(resume === null ? [] : ["--resume", resume]),
   "--plugin-dir", pluginDir,
   "--model", "haiku",
   "--effort", "low",
@@ -122,12 +124,12 @@ function checkFinished(results, { code, stderr, timedOut }) {
 }
 
 // Charges `budget` first, so spend is known to the caller even when this throws.
-export async function runClaude(repo, prompt, budget, { env = cleanEnv(), onLine = () => {}, pluginDir = REPO_ROOT } = {}) {
+export async function runClaude(repo, prompt, budget, { env = cleanEnv(), onLine = () => {}, pluginDir = REPO_ROOT, resume = null } = {}) {
   if (budget.remaining <= 0) throw new SpendCapError(`the spend cap is used up at $${budget.spent.toFixed(4)}`);
   refuseRepoInsidePlugin(repo);
   const results = [];
   const costs = [];
-  const exit = await runOnce(repo, claudeCommand(prompt, Number(budget.remaining.toFixed(6)), pluginDir), env, (event) => {
+  const exit = await runOnce(repo, claudeCommand(prompt, Number(budget.remaining.toFixed(6)), pluginDir, resume), env, (event) => {
     if (event.type === "result") results.push(event);
     if ("total_cost_usd" in event) costs.push(event.total_cost_usd);
     onLine(event);

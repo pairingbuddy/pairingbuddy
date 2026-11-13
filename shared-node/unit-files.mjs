@@ -18,3 +18,6 @@ export const abandonRun = (runDir) => removeNamed(runDir, null);
 
 // Keep local: only the unit's own files go, so a later unit cannot pick up this one's body or lint result. The task stays.
 export const closeUnit = (runDir) => removeNamed(runDir, UNIT_FILES);
+
+// Ends the run that closed its unit: only run/task goes. Used for a publish run, which has nothing left to do once the unit is closed.
+export const endRun = (runDir) => removeNamed(runDir, ["task"]);

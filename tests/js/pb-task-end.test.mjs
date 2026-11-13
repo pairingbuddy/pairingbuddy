@@ -578,7 +578,7 @@ describe("the task record carries the full-suite result", IN_PARALLEL, () => {
   // A repo whose task is finished and whose unit is open, with the full-suite result pb test --full records.
   function finishedTaskInUnit() {
     const repo = makeRepoWithRemote({ openTask: false, remote: true });
-    const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x", "--yes");
+    const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
     assert.equal(opened.status, 0, `unit open: ${opened.stderr}`);
     const run = pb(repo, "run", "open", "--kind", "code");
     assert.equal(run.status, 0, `run open: ${run.stderr}`);

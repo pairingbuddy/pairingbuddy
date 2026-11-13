@@ -7,6 +7,8 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import { isCheckpointCall, isKey, keyFitsStep } from "./checkpoint.mjs";
 import { answeredGate, blockingGate, gateQuestion, gatesFor, isGateQuestionCall } from "./gates.mjs";
 import { LedgerShaMismatch, readLedger, updateLedger } from "./ledger.mjs";
+import { d17Denial } from "./d17.mjs";
+import { commonDirectory, findRepo } from "./git-files.mjs";
 import { checkboxes } from "./plan-boxes.mjs";
 import { bindSession, sessionsDirectory } from "./run-root.mjs";
 import { PLUGIN_ROOT, PREFIX, bundlePath, calledStage, matchesBundle, suppliedScripts, workflowName } from "./stage-calls.mjs";
@@ -14,9 +16,10 @@ import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nex
 import { disguisesPb, pbInvocations, pbWithEnvironment } from "./shell-calls.mjs";
 import { shellWord } from "./shell-word.mjs";
 import { STAGE_STOP_REASONS } from "./stop-codes.mjs";
-import { SHELL_QUOTING, unitOpenDenial } from "./unit-open-denial.mjs";
 import { VERB_CLASSES, classOf, humanCommand, matchVerb, shaMismatchRemedy } from "./verbs.mjs";
 
+// Strips the quoting a shell removes before it reads words.
+const SHELL_QUOTING = /\\\n|\$(?=['"])|['"\\]/g;
 const EXPECTED_FIELDS = ["session_id", "cwd", "tool_name", "permission_mode"];
 const AGENT_PAIR = ["agent_id", "agent_type"];
 const PROTECTED_CONFIGS = ["test-config.json", "git-config.json"];
@@ -63,10 +66,24 @@ const isWithin = (path, dir) => path === dir || path.startsWith(`${dir}${sep}`);
 // not exist yet keeps the letter case it was asked for, which a case-insensitive filesystem ignores.
 const isClaudeSettings = (path) => basename(dirname(path)).toLowerCase() === ".claude" && SETTINGS_FILES.includes(basename(path).toLowerCase());
 
+// The repo's git directories (a linked worktree's own and the common one), where HEAD, refs, config and hooks live. Any
+// path with a .git segment counts too, which covers a nested repo and the `.git` file of a linked worktree.
+function gitDirectories(root, canonicalPath) {
+  const repo = findRepo(root);
+  const dirs = repo?.gitDir == null ? [] : [repo.gitDir, commonDirectory(repo.gitDir)];
+  return dirs.map((dir) => canonicalPath(dir));
+}
+
+const hasGitSegment = (path) => path.split(sep).includes(".git");
+
 function assertNotProtected(root, targets, canonicalPath) {
   const stateDir = join(root, ".pairingbuddy");
   const runDir = join(stateDir, "run");
+  const gitDirs = gitDirectories(root, canonicalPath);
   for (const target of targets) {
+    if (hasGitSegment(target) || gitDirs.some((dir) => isWithin(target, dir))) {
+      throw new Denied(`${target} is inside a git directory, which is denied during a run: HEAD, refs, config and hooks decide what a push or a branch switch does.`);
+    }
     if (isWithin(target, runDir)) throw new Denied(`${target} is inside .pairingbuddy/run, which is denied during a run.`);
     const config = PROTECTED_CONFIGS.find((name) => target === join(stateDir, name));
     if (config !== undefined) throw new Denied(`${config} cannot change during a run: ${target}.`);
@@ -314,7 +331,14 @@ const callerClass = (agentType) => {
   return agentType === RUNNER_AGENT ? "runner" : "subagent";
 };
 
-function checkBash({ tool_input: toolInput, agent_type: agentType }) {
+// A unit run has unit.json; any other run state is a run.
+const runStateOf = (root) => (existsSync(join(root, ".pairingbuddy", "run", "unit.json")) ? "unit" : "run");
+
+// Either agent key marks a subagent: platform drift is denied before this, and a lone key must not pass as the main context.
+const isSubagentCall = ({ agent_id: agentId, agent_type: agentType }) => agentId !== undefined || agentType !== undefined;
+
+function checkBash(payload, _ledgerPath, root) {
+  const { tool_input: toolInput, agent_type: agentType } = payload;
   const command = toolInput?.command;
   if (!isFilledString(command)) throw new Denied("Bash call has no usable command.");
   if (pbMentions(command).some(([word]) => word === "human")) {
@@ -331,6 +355,9 @@ function checkBash({ tool_input: toolInput, agent_type: agentType }) {
   if (pbWithEnvironment(command)) {
     throw new Denied("pb takes no environment of its own: an assignment before it, or the env command, could change what its tests run or skip a commit hook. Run it exactly as given.");
   }
+  // The permission mode never lifts D17: nothing here reads it.
+  const d17Reason = d17Denial({ command, cwd: payload.cwd, runState: runStateOf(root), isSubagent: isSubagentCall(payload) });
+  if (d17Reason !== null) throw new Denied(d17Reason);
 }
 
 // ---------- AskUserQuestion ----------
@@ -374,7 +401,7 @@ function checkLedgerRun(root, { payload, targets, canonicalPath }) {
   const ledgerPath = join(root, ".pairingbuddy", "run", "task", "ledger.json");
   // Before the ledger: a unit run has none, and a ledger problem must not take these from the recovery route.
   if (Object.hasOwn(NO_LEDGER_CHECKS, payload.tool_name)) {
-    NO_LEDGER_CHECKS[payload.tool_name](payload, ledgerPath);
+    NO_LEDGER_CHECKS[payload.tool_name](payload, ledgerPath, root);
     recordSessionIfPossible(ledgerPath, payload);
     return;
   }
@@ -403,9 +430,6 @@ function checkRun(root, context) {
 // position gave, cwd or pointer; a run reached only through a target path does not bind it.
 export function checkCall({ runRoots, sessionRoot, payload, targets, canonicalPath }) {
   assertNoDrift(payload);
-  // The same rule as with no run: only the auto policy lets the model confirm a unit.
-  const unitOpenReason = observedPolicy(payload).mode === "auto" ? null : unitOpenDenial(payload);
-  if (unitOpenReason !== null) throw new Denied(unitOpenReason);
   if (sessionRoot !== null && payload.agent_id === undefined) bindSession(payload.session_id, sessionRoot);
   for (const root of runRoots) checkRun(root, { payload, targets, canonicalPath });
   return isRunnerCommand(payload) ? AUTO_ALLOW_REASON : null;

@@ -121,7 +121,7 @@ test("unit-open-prints-doctor-warnings-and-still-succeeds", () => {
   const repo = makeRepo({ openTask: false, remote: true });
   const gh = makeGhShim();
 
-  const result = pbWithEnv(repo, { PATH: gh.path }, "unit", "open", "--type", "feat", "--slug", "x", "--yes");
+  const result = pbWithEnv(repo, { PATH: gh.path }, "unit", "open", "--type", "feat", "--slug", "x");
 
   assert.equal(result.code, 0, `unit open exits 0 despite warnings: ${result.stderr}`);
   for (const warning of RISKY_WARNINGS) assert.ok(output(result).includes(warning), `unit open prints the warning: ${warning}`);
@@ -131,7 +131,7 @@ test("unit-open-prints-doctor-warnings-and-still-succeeds", () => {
 test("unit-open-without-gh-still-succeeds-with-no-warnings", () => {
   const repo = makeRepo({ openTask: false, remote: true });
 
-  const result = pbWithEnv(repo, { PATH: pathWithoutGh() }, "unit", "open", "--type", "feat", "--slug", "x", "--yes");
+  const result = pbWithEnv(repo, { PATH: pathWithoutGh() }, "unit", "open", "--type", "feat", "--slug", "x");
 
   assert.equal(result.code, 0, `unit open still succeeds without gh: ${result.stderr}`);
   assert.match(branchOf(repo.dir), /^feat\/x$/m, "the unit branch was opened without gh too");

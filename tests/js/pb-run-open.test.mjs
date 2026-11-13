@@ -282,7 +282,7 @@ test("importing-pb-does-not-run-main-and-the-kinds-are-shared", (t) => {
   const r = spawnSync("node", ["--input-type=module", "-e", script], { cwd: root, encoding: "utf8" });
 
   assert.equal(r.status, 0, `importing must not run main or exit: ${r.stderr}`);
-  assert.deepEqual(JSON.parse(r.stdout), { same: true, kinds: ["code", "plan"] }, "pb.mjs and ledger.mjs export one KINDS constant");
+  assert.deepEqual(JSON.parse(r.stdout), { same: true, kinds: ["code", "plan", "publish"] }, "pb.mjs and ledger.mjs export one KINDS constant");
 });
 
 test("open-writes-a-gitignore-that-hides-run-state", (t) => {

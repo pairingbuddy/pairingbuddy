@@ -53,7 +53,7 @@ function finishedRepo({ globs, files, baseFiles = [], taskType = "config_change"
   const repo = makeRepo({ openTask: false, remote: true, configGlobs: globs });
   for (const file of baseFiles) commitFile(repo, file, `base ${file}`);
   if (baseFiles.length > 0) gitIn(repo, "push", "-q", "origin", "main");
-  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x", "--yes");
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
   assert.equal(opened.code, 0, `setup: pb unit open, stderr: ${opened.stderr}`);
   const run = pb(repo, "run", "open", "--kind", "code");
   assert.equal(run.code, 0, `setup: pb run open, stderr: ${run.stderr}`);

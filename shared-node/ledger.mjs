@@ -14,7 +14,10 @@ const FUTURE_SLACK_MS = 1_000;
 const HEX64 = /^[0-9a-f]{64}$/;
 // Shape only, so a well-shaped impossible date stays readable and the gate can treat it as expired.
 const ISO_TIMESTAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$/;
-export const KINDS = ["code", "plan"];
+export const KINDS = ["code", "plan", "publish"];
+
+// The one predicate for a publish run: kind and taskType agree (the validator holds them to it), so either says it.
+export const isPublishRun = (ledger) => ledger.kind === "publish";
 const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "voidedGates"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
@@ -184,6 +187,9 @@ export function validateLedger(ledger) {
       default:
         break;
     }
+  }
+  if (Object.hasOwn(ledger, "kind") && Object.hasOwn(ledger, "taskType") && (ledger.kind === "publish") !== (ledger.taskType === "publish")) {
+    errors.push({ path: "taskType", message: `must be "publish" exactly when kind is "publish"` });
   }
   return { valid: errors.length === 0, errors };
 }

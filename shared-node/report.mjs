@@ -33,8 +33,8 @@ function runSeconds(ledger, endedAt, now) {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : NaN;
 }
 
-function atAGlance({ ledger, spawns, ranFor, tests }) {
-  const { rows } = glance({ ledger, spawns, tests, ranFor });
+function atAGlance({ ledger, spawns, ranFor, tests, testsComplete }) {
+  const { rows } = glance({ ledger, spawns, tests, ranFor, testsComplete });
   if (outcome(ledger) === "DONE") rows.now = "finished";
   const labels = glanceLabels(ledger);
   const lines = Object.entries(rows).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
@@ -117,7 +117,7 @@ export function resultWords(step, record, covered) {
 
 function tryCells(attempt, tries, perTest) {
   const result = resultOf(attempt, tries, perTest?.[attempt.step.toLowerCase()], perTest?.covered);
-  return [attempt.step, attempt.number, clock((attempt.writing ?? NaN) + (attempt.running ?? NaN)), clock(attempt.writing), clock(attempt.running), result, UNKNOWN];
+  return [attempt.step, attempt.number, clock(attempt.writing + attempt.running), clock(attempt.writing), clock(attempt.running), result, UNKNOWN];
 }
 
 const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
@@ -156,7 +156,7 @@ function testCard(spawns, item, number, perTest, stop) {
   const note = !perTest?.[item]?.red && tries.length === 0 ? "\n<p>not reached</p>" : "";
   const looped = loopNote(tries, stop);
   const table = cells.length === 0 ? "" : `\n<table>\n${head}\n${rows.join("\n")}\n</table>`;
-  return `<article${looped ? ' class="looped"' : ""}>\n<h3>${number > 0 ? `<small>test ${number}</small> ` : ""}${escape(item)}</h3>${note}${table}${looped}\n</article>`;
+  return `<article${looped ? ' class="looped"' : ""}>\n<h3><small>test ${number}</small> ${escape(item)}</h3>${note}${table}${looped}\n</article>`;
 }
 
 function testsSection({ ledger, spawns, tests }) {
@@ -241,7 +241,7 @@ function title(task) {
   return task.split(/\n\s*\n/).map((paragraph) => escape(paragraph.trim())).join("<br>");
 }
 
-export function renderReport({ ledger, spawns, timing, commits, tests, endedAt, now } = {}) {
+export function renderReport({ ledger, spawns, timing, commits, tests, testsComplete, endedAt, now } = {}) {
   const ranFor = runSeconds(ledger, endedAt, now);
   const state = outcome(ledger);
   const taskType = plainName(ledger?.taskType) ?? "unknown type";
@@ -255,7 +255,7 @@ ${STYLE}
 <h1>${title(ledger?.task)}</h1>
 <p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(Number.isFinite(ranFor) ? ranFor : timing?.seconds)}</p>
 </header>
-${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests })}
+${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete })}
 ${stepsSection({ ledger })}
 ${testsSection({ ledger, spawns, tests })}
 ${commitsSection({ commits })}

@@ -28,7 +28,7 @@ import { RunRecorder } from "./run-recorder.mjs";
 
 const STAGES = ["code-scenarios", "code-tdd", "code-safety-net"];
 const GATES = ["G:scenarios", "G:task-end"];
-const RECORDINGS = join(REPO_ROOT, "tests", "smoke", "recordings");
+export const RECORDINGS = join(REPO_ROOT, "tests", "smoke", "recordings");
 export const TASK = "Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it should return 90. One regression test for exactly that case is the whole scope";
 export const FEATURE_TASK = "Add order_total(lines) to cart.py: it takes a list of (price, quantity) pairs and returns the sum of line_total(price, quantity) over them, so order_total([(10, 2), (4, 1)]) returns 30.0, which is 25.0 plus 5.0. One test for exactly that example is the whole scope";
 
@@ -73,7 +73,7 @@ const TEST_CONFIG = {
 };
 const NO_DOCS = { in_repo_docs: [], external_docs: [], last_verified: "2026-01-01T00:00:00Z" };
 
-const git = (repo, ...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: cleanEnv() });
+export const git = (repo, ...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: cleanEnv() });
 
 function writeTree(repo, files) {
   for (const [path, text] of Object.entries(files)) {
@@ -82,8 +82,8 @@ function writeTree(repo, files) {
   }
 }
 
-// A fresh repo on a branch a human made from main. Signing is off, so a signer cannot flake the run.
-export function makeRepo(parent, type = "bug_fix") {
+// A fresh repo on a branch a human made from main, or left on main with onMain. Signing is off, so a signer cannot flake the run.
+export function makeRepo(parent, type = "bug_fix", { onMain = false } = {}) {
   const repo = join(parent, "repo");
   writeTree(repo, { ...BASE_FILES, ...TYPES[type].files, ".pairingbuddy/test-config.json": JSON.stringify(TEST_CONFIG), ".pairingbuddy/doc-config.json": JSON.stringify(NO_DOCS) });
   git(repo, "init", "-q", "-b", "main");
@@ -92,7 +92,7 @@ export function makeRepo(parent, type = "bug_fix") {
   git(repo, "config", "commit.gpgsign", "false");
   git(repo, "add", "-A");
   git(repo, "commit", "-q", "-m", "init");
-  git(repo, "switch", "-q", "-c", TYPES[type].branch);
+  if (!onMain) git(repo, "switch", "-q", "-c", TYPES[type].branch);
   return repo;
 }
 
@@ -215,12 +215,12 @@ export function assertControlFlow(ledger, log, { type = "bug_fix", snapshots = [
   assertGates(ledger);
 }
 
-function runLog(repo) {
+export function runLog(repo) {
   const lines = git(repo, "log", "--reverse", "--format=%H %s").trim().split("\n").slice(1);
   return lines.map((line) => ({ sha: line.slice(0, 40), subject: line.slice(41) }));
 }
 
-function position(last) {
+export function position(last) {
   if (last === null) return "no ledger was seen";
   const { stage, stages, stop, needsHuman } = last;
   return `last ledger: stage ${stage.name} ${stage.status} attempt ${stage.attempt}, finished ${stages.map(({ name }) => name)}, stop ${JSON.stringify(stop)}, needsHuman ${JSON.stringify(needsHuman)}`;

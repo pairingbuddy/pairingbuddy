@@ -10,6 +10,7 @@ import { updateLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { loadStages } from "../../shared-node/stages.mjs";
 import { baseLedger } from "./ledger-fixture.mjs";
 import { env, makeRepo, pb, ROOT } from "./cli-repo-fixture.mjs";
+import { installGhShim } from "./gh-shim-fixture.mjs";
 import { fixture, recordedAnswer, runTap, SESSION, sha256 } from "./tap-fixture.mjs";
 
 export const CLEAN_TITLE = "feat: add export button";
@@ -27,7 +28,7 @@ export const git = (repo, ...args) => execFileSync("git", args, { cwd: repo.dir,
 // ledger overrides fields of that ledger. recorded lists the SHAs of the commits made.
 export function repoWithDrafts({ titles, body, ledgerAttempt = 1, commits = 1, coordination = null, ledger = {} }) {
   const repo = makeRepo({ openTask: false, remote: true });
-  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "export", "--yes");
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "export");
   assert.equal(opened.code, 0, `unit open: ${opened.stderr}`);
   const recorded = [];
   for (let n = 1; n <= commits; n++) {
@@ -82,6 +83,7 @@ export function publishRepo({ commits = 1, title = CLEAN_TITLE, body = CLEAN_BOD
   const configText = readFileSync(join(repo.dir, ".pairingbuddy", "test-config.json"), "utf8");
   updateLedger(ledgerPath, (ledger) => ({
     ...ledger,
+    kind: "publish",
     taskType: publishTaskType(),
     configHash: sha256(configText),
     owner: { sessionId: SESSION, lastSeen: null },
@@ -109,6 +111,13 @@ export function evalGate(repo) {
 export function approvedThroughTap(repo) {
   const { question } = evalGate(repo);
   runTap(repo, recordedAnswer(repo, question, "publish"));
+}
+
+// "keep local" answered through the real tap, with a recording gh first on PATH. Returns the gh shim.
+export function keepLocalThroughTap(repo, gh = installGhShim()) {
+  const { question } = evalGate(repo);
+  runTap(repo, recordedAnswer(repo, question, "keep local"), gh.env());
+  return gh;
 }
 
 export function commitMore(repo, name = "late") {

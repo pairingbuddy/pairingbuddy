@@ -107,5 +107,5 @@ type Polled = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: 
 
 // The one place the atom's loosely typed ledger is narrowed; null until the first poll, which reads as idle.
 export function fromPolled(polled: Polled, spawns: Spawn[]): Inputs {
-  return { ledger: (polled?.ledger ?? undefined) as Ledger, spawns, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? true, now: polled?.now ?? undefined, names: polled?.names ?? undefined }
+  return { ledger: (polled?.ledger ?? undefined) as Ledger, spawns, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined, names: polled?.names ?? undefined }
 }

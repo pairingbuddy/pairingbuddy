@@ -51,12 +51,12 @@ const pushFromSecondClone = (repo, branch, file) => {
 
 // Scenario: unit-open-creates-branch-and-record
 
-test("yes-creates-template-branch-and-writes-record", () => {
+test("creates-template-branch-and-writes-record", () => {
   const repo = makeRepo({ openTask: false, remote: true });
   const baseTip = gitIn(repo, "rev-parse", "origin/main");
   const schema = JSON.parse(readFileSync(new URL("../../contracts/schemas/unit.schema.json", import.meta.url), "utf8"));
 
-  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--yes");
+  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
 
   assert.equal(result.code, 0, `pb unit open exits 0: ${result.stderr}`);
   assert.equal(gitIn(repo, "rev-parse", "--abbrev-ref", "HEAD"), "feat/x", "HEAD is on the template branch feat/x");
@@ -95,7 +95,7 @@ test("custom-branch-template-is-honoured", () => {
   };
   const custom = makeRepo({ openTask: false, remote: true });
   writeTemplate(custom, "work/{type}-{slug}");
-  const created = pbUnitOpen(custom, {}, "--type", "feat", "--slug", "x", "--yes");
+  const created = pbUnitOpen(custom, {}, "--type", "feat", "--slug", "x");
   assert.equal(created.code, 0, `pb unit open exits 0: ${created.stderr}`);
   assert.equal(gitIn(custom, "rev-parse", "--abbrev-ref", "HEAD"), "work/feat-x", "HEAD is on the branch rendered from the custom template");
   const unit = JSON.parse(readFileSync(join(custom.dir, ".pairingbuddy", "run", "unit.json"), "utf8"));
@@ -104,39 +104,38 @@ test("custom-branch-template-is-honoured", () => {
   const bad = makeRepo({ openTask: false, remote: true });
   writeTemplate(bad, "work/{type}-{ticket}");
   const before = snapshotRepo(bad);
-  const refused = pbUnitOpen(bad, {}, "--type", "feat", "--slug", "x", "--yes");
-  assert.notEqual(refused.code, 0, "an unknown placeholder refuses with a nonzero exit");
-  assert.match(refused.stderr + refused.stdout, /\{ticket\}/, "the refusal names the unknown placeholder {ticket}");
+  const refused = pbUnitOpen(bad, {}, "--type", "feat", "--slug", "x");
+  assert.equal(refused.code, 1, "an unknown placeholder refuses with the deliberate refusal exit code");
+  assert.ok((refused.stderr + refused.stdout).includes("branch_template has unknown placeholder {ticket}"), "the refusal names the unknown placeholder {ticket}");
   assertUntouched(bad, before, "unknown placeholder");
 });
 
-// Scenario: unit-open-interactive-confirmation
+// Scenario: unit-open-without-flag
 
-test("interactive-without-flag-refuses-and-prints-proposal", () => {
+test("policy-env-var-still-ignored", () => {
   const repo = makeRepo({ openTask: false, remote: true });
-  const before = snapshotRepo(repo);
-
-  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
-
-  const output = result.stdout + result.stderr;
-  assert.notEqual(result.code, 0, "without --branch or --yes the verb refuses with a nonzero exit");
-  assert.match(output, /feat\/x[^\n]*!.*--yes/, "the proposal line names feat/x together with the human-typed (!) instruction ending in --yes");
-  assert.match(output, /--branch/, "the output names --branch as the way to override");
-  assertUntouched(repo, before, "without a confirming flag");
-});
-
-test("policy-env-var-does-not-confirm-without-flag", () => {
-  const repo = makeRepo({ openTask: false, remote: true });
-  const before = snapshotRepo(repo);
 
   const result = pbUnitOpen(repo, { PAIRINGBUDDY_GATE_POLICY: "auto" }, "--type", "feat", "--slug", "x");
 
-  assert.notEqual(result.code, 0, "the CLI ignores PAIRINGBUDDY_GATE_POLICY=auto and still refuses");
-  assert.match(result.stdout + result.stderr, /feat\/x[^\n]*!.*--yes/, "the refusal still presents the proposal for the human to accept");
-  assertUntouched(repo, before, "with the policy env var");
+  assert.equal(result.code, 0, `the no-flag open exits 0 with the policy env var set: ${result.stderr}`);
+  assert.equal(gitIn(repo, "rev-parse", "--abbrev-ref", "HEAD"), "feat/x", "HEAD is on feat/x, the same as without the env var");
+  const unit = JSON.parse(readFileSync(unitPath(repo), "utf8"));
+  assert.equal(unit.branch, "feat/x", "unit.branch records feat/x");
 });
 
-test("interactive-branch-flag-overrides-proposal-and-yes-accepts-it", () => {
+test("yes-flag-is-refused-as-unknown-and-touches-nothing", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  const before = snapshotRepo(repo);
+
+  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--yes");
+
+  const output = result.stderr + result.stdout;
+  assert.equal(result.code, 2, "--yes is a usage error with exit code 2");
+  assert.match(output, /--yes is no longer accepted: pb unit open has no confirm step\. usage: pb unit open --type <type> --slug <slug> \[--branch <name>\]/, "the message names --yes and shows the usage");
+  assertUntouched(repo, before, "--yes");
+});
+
+test("branch-flag-overrides-the-template-branch", () => {
   const overridden = makeRepo({ openTask: false, remote: true });
   const withBranch = pbUnitOpen(overridden, {}, "--type", "feat", "--slug", "x", "--branch", "my/x");
   assert.equal(withBranch.code, 0, `--branch my/x opens the unit: ${withBranch.stderr}`);
@@ -145,17 +144,13 @@ test("interactive-branch-flag-overrides-proposal-and-yes-accepts-it", () => {
   const unit = JSON.parse(readFileSync(join(overridden.dir, ".pairingbuddy", "run", "unit.json"), "utf8"));
   assert.equal(unit.branch, "my/x", "unit.branch records the --branch value");
 
-  const accepted = makeRepo({ openTask: false, remote: true });
-  const withYes = pbUnitOpen(accepted, {}, "--type", "feat", "--slug", "x", "--yes");
-  assert.equal(withYes.code, 0, `--yes opens the unit: ${withYes.stderr}`);
-  assert.equal(gitIn(accepted, "rev-parse", "--abbrev-ref", "HEAD"), "feat/x", "--yes creates the template proposal feat/x");
-
-  for (const badArgs of [["--branch"], ["--branch", "--yes"], ["--branch", "-x"]]) {
+  for (const badArgs of [["--branch"], ["--branch", "-x"]]) {
     const repo = makeRepo({ openTask: false, remote: true });
     const before = snapshotRepo(repo);
     const refused = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", ...badArgs);
     const label = badArgs.join(" ");
-    assert.notEqual(refused.code, 0, `'${label}' is a usage error with a nonzero exit`);
+    assert.equal(refused.code, 2, `'${label}' is a usage error with exit code 2`);
+    assert.match(refused.stderr + refused.stdout, /--branch needs a branch name that does not start with '-'/, `'${label}' says --branch needs a name`);
     assertUntouched(repo, before, `'${label}'`);
   }
 });
@@ -163,11 +158,11 @@ test("interactive-branch-flag-overrides-proposal-and-yes-accepts-it", () => {
 test("branch-name-that-is-protected-or-invalid-refuses", () => {
   // `release` does not exist yet, so only a protection check can refuse it.
   const cases = [
-    { label: "configured protected branch release", branch: "release", protectedList: ["release"], named: /release/, reason: /protected/i },
-    { label: "name with '..'", branch: "bad..name", named: /bad\.\.name/, reason: /invalid|ref(erence)? format/i },
-    { label: "name with a space", branch: "has space", named: /has space/, reason: /invalid|ref(erence)? format/i },
+    { label: "configured protected branch release", branch: "release", protectedList: ["release"], message: "branch release is protected; choose another name" },
+    { label: "name with '..'", branch: "bad..name", message: "invalid branch name: bad..name" },
+    { label: "name with a space", branch: "has space", message: "invalid branch name: has space" },
   ];
-  for (const { label, branch, protectedList, named, reason } of cases) {
+  for (const { label, branch, protectedList, message } of cases) {
     const repo = makeRepo({ openTask: false, remote: true });
     if (protectedList) {
       mkdirSync(join(repo.dir, ".pairingbuddy"), { recursive: true });
@@ -179,9 +174,8 @@ test("branch-name-that-is-protected-or-invalid-refuses", () => {
     const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--branch", branch);
 
     const output = result.stderr + result.stdout;
-    assert.notEqual(result.code, 0, `${label}: --branch ${branch} refuses with a nonzero exit`);
-    assert.match(output, named, `${label}: the refusal names the branch`);
-    assert.match(output, reason, `${label}: the refusal states the reason`);
+    assert.equal(result.code, 1, `${label}: --branch ${branch} refuses with the deliberate refusal exit code`);
+    assert.ok(output.includes(message), `${label}: the refusal says "${message}", got: ${output}`);
     assertUntouched(repo, before, label);
   }
 });
@@ -200,10 +194,10 @@ test("dirty-tree-refuses-without-touching-anything", () => {
     writeFileSync(join(repo.dir, file), content);
     const before = snapshotRepo(repo);
 
-    const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--yes");
+    const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
 
-    assert.notEqual(result.code, 0, `${name}: pb unit open exits nonzero`);
-    assert.match(result.stderr + result.stdout, /dirty|uncommitted/i, `${name}: the refusal says the tree is dirty or has uncommitted changes`);
+    assert.equal(result.code, 1, `${name}: pb unit open refuses with the deliberate refusal exit code`);
+    assert.ok((result.stderr + result.stdout).includes(`the tree is dirty, so the unit cannot open. Commit or remove these, nothing was touched: ${file}`), `${name}: the refusal says the tree is dirty and names ${file}`);
     assertUntouched(repo, before, name);
     assert.equal(readFileSync(join(repo.dir, file), "utf8"), content, `${name}: the dirty file is untouched`);
   }
@@ -211,7 +205,7 @@ test("dirty-tree-refuses-without-touching-anything", () => {
   const clean = makeRepo({ openTask: false, remote: true });
   mkdirSync(join(clean.dir, ".pairingbuddy"), { recursive: true });
   writeFileSync(join(clean.dir, ".pairingbuddy", "git-config.json"), "{}\n");
-  const opened = pbUnitOpen(clean, {}, "--type", "feat", "--slug", "x", "--yes");
+  const opened = pbUnitOpen(clean, {}, "--type", "feat", "--slug", "x");
   assert.equal(opened.code, 0, `.pairingbuddy/ contents do not count as dirty: ${opened.stderr}`);
 });
 
@@ -221,7 +215,7 @@ test("fetches-and-branches-from-updated-remote-default", () => {
   const other = pushFromSecondClone(repo, "main", "newer.txt");
   assert.notEqual(other, staleTip, "the second clone pushed a new commit");
 
-  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--yes");
+  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
 
   assert.equal(result.code, 0, `pb unit open exits 0: ${result.stderr}`);
   assert.equal(gitIn(repo, "rev-parse", "feat/x"), other, "the branch starts at the fetched remote tip, not the stale ref");
@@ -240,7 +234,7 @@ test("pr-base-branch-wins-over-default-branch", () => {
   assert.notEqual(developTip, gitIn(repo, "rev-parse", "origin/main"), "develop differs from the default branch");
   writeBase(repo, "develop");
 
-  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--yes");
+  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
 
   assert.equal(result.code, 0, `pb unit open exits 0: ${result.stderr}`);
   assert.equal(gitIn(repo, "rev-parse", "feat/x"), developTip, "the branch starts at the tip of develop");
@@ -251,8 +245,8 @@ test("pr-base-branch-wins-over-default-branch", () => {
   const missing = makeRepo({ openTask: false, remote: true });
   writeBase(missing, "nonexistent-base");
   const before = snapshotRepo(missing);
-  const refused = pbUnitOpen(missing, {}, "--type", "feat", "--slug", "x", "--yes");
-  assert.notEqual(refused.code, 0, "a base branch missing on the remote refuses with a nonzero exit");
+  const refused = pbUnitOpen(missing, {}, "--type", "feat", "--slug", "x");
+  assert.equal(refused.code, 1, "a base branch missing on the remote refuses with the deliberate refusal exit code");
   assert.match(refused.stderr + refused.stdout, /nonexistent-base/, "the refusal names the missing base branch");
   assertUntouched(missing, before, "missing base branch");
 });
@@ -262,10 +256,10 @@ test("fetch-failure-refuses-before-creating-anything", () => {
   gitIn(repo, "remote", "set-url", "origin", `${repo.remoteDir}-missing`);
   const before = snapshotRepo(repo);
 
-  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--yes");
+  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
 
-  assert.notEqual(result.code, 0, "an unreachable remote refuses with a nonzero exit");
-  assert.match(result.stderr + result.stdout, /fetch/i, "the refusal names the fetch failure");
+  assert.equal(result.code, 1, "an unreachable remote refuses with exit code 1");
+  assert.ok((result.stderr + result.stdout).includes("pb: git fetch origin failed:"), "the refusal names the fetch failure");
   assertUntouched(repo, before, "fetch failure");
 });
 
@@ -277,11 +271,11 @@ test("existing-unit-or-branch-name-collision-refuses", () => {
   const unitHeadBefore = gitIn(withUnit, "rev-parse", "HEAD");
   const unitBranchesBefore = gitIn(withUnit, "branch", "--list");
 
-  const unitRefused = pbUnitOpen(withUnit, {}, "--type", "feat", "--slug", "x", "--yes");
+  const unitRefused = pbUnitOpen(withUnit, {}, "--type", "feat", "--slug", "x");
 
   const unitOutput = unitRefused.stderr + unitRefused.stdout;
   assert.equal(unitRefused.code, 1, "an existing unit.json refuses with the deliberate refusal exit code");
-  assert.match(unitOutput, /unit\.json|unit (is )?already/i, "the refusal says a unit is already open");
+  assert.ok(unitOutput.includes("a unit is already open (run/unit.json exists); nothing was touched"), "the refusal says a unit is already open");
   assert.doesNotMatch(unitOutput, /fatal:|unexpected failure/, "the refusal is deliberate, not a git error or the catch-all");
   assert.equal(readFileSync(unitPath(withUnit), "utf8"), existingBytes, "the existing unit.json is byte-identical");
   assert.equal(gitIn(withUnit, "branch", "--list"), unitBranchesBefore, "no branch was created");
@@ -292,12 +286,11 @@ test("existing-unit-or-branch-name-collision-refuses", () => {
   const before = snapshotRepo(withBranch);
   const branchTipBefore = gitIn(withBranch, "rev-parse", "feat/x");
 
-  const branchRefused = pbUnitOpen(withBranch, {}, "--type", "feat", "--slug", "x", "--yes");
+  const branchRefused = pbUnitOpen(withBranch, {}, "--type", "feat", "--slug", "x");
 
   const branchOutput = branchRefused.stderr + branchRefused.stdout;
   assert.equal(branchRefused.code, 1, "an existing local branch refuses with the deliberate refusal exit code");
-  assert.match(branchOutput, /feat\/x/, "the refusal names the colliding branch");
-  assert.match(branchOutput, /already exists|exists already|already in use/i, "the refusal says the branch already exists");
+  assert.ok(branchOutput.includes("branch feat/x already exists; choose another name"), "the refusal says the colliding branch feat/x already exists");
   assert.doesNotMatch(branchOutput, /fatal:|unexpected failure/, "the refusal is deliberate, not a raw git error");
   assert.equal(gitIn(withBranch, "rev-parse", "feat/x"), branchTipBefore, "the existing branch was not moved");
   assertUntouched(withBranch, before, "branch collision");
@@ -321,8 +314,8 @@ test("run-open-on-protected-branch-points-at-unit-open", () => {
   assert.equal(gitIn(onMain, "rev-parse", "--abbrev-ref", "HEAD"), "main", "HEAD did not move");
 
   const fresh = makeRepo({ openTask: false, remote: true });
-  const opened = pbUnitOpen(fresh, {}, "--type", "feat", "--slug", "x", "--yes");
-  assert.equal(opened.code, 0, `pb unit open --yes moves to the unit branch: ${opened.stderr}`);
+  const opened = pbUnitOpen(fresh, {}, "--type", "feat", "--slug", "x");
+  assert.equal(opened.code, 0, `pb unit open moves to the unit branch: ${opened.stderr}`);
   assert.equal(gitIn(fresh, "rev-parse", "--abbrev-ref", "HEAD"), "feat/x", "HEAD is on the unit branch");
 
   const run = pb(fresh, "run", "open", "--kind", "code");
@@ -353,8 +346,8 @@ const finishLedger = (repo, task) => {
 // A repo with an open unit and an open task, optionally finished.
 const unitRepo = ({ finished }) => {
   const repo = makeRepo({ openTask: false, remote: true });
-  const opened = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--yes");
-  assert.equal(opened.code, 0, `pb unit open --yes: ${opened.stderr}`);
+  const opened = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
+  assert.equal(opened.code, 0, `pb unit open: ${opened.stderr}`);
   const run = pb(repo, "run", "open", "--kind", "code");
   assert.equal(run.code, 0, `pb run open: ${run.stderr}`);
   if (finished) finishLedger(repo, "Task A");

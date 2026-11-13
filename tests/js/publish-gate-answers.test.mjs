@@ -5,7 +5,7 @@ import "./isolated-tmpdir.mjs";
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { isPassed } from "../../shared-node/gates.mjs";
@@ -14,8 +14,9 @@ import { updateLedger } from "../../shared-node/ledger.mjs";
 import { env, pb } from "./cli-repo-fixture.mjs";
 import {
   BAD_TITLE, CLEAN_BODY, CLEAN_TITLE, COORDINATION, DRAFT_KEY, GATE, REFUSED,
-  approvedThroughTap, commitMore, evalGate, git, lintOf, publishRepo, reworded, setPolicyThroughGate, unitFile,
+  approvedThroughTap, commitMore, evalGate, git, keepLocalThroughTap, lintOf, publishRepo, reworded, setPolicyThroughGate, unitFile,
 } from "./publish-fixture.mjs";
+import { installGhShim } from "./gh-shim-fixture.mjs";
 import { recordedAnswer, runTap, sha256 } from "./tap-fixture.mjs";
 
 const ledgerPathOf = (runDir) => join(runDir, "task", "ledger.json");
@@ -271,21 +272,16 @@ describe("publish-failed-lint", () => {
   });
 });
 
-// A gh stand-in on PATH that appends its arguments to a file, so a test can see whether gh was called at all.
-function ghShim() {
-  const dir = join(process.env.TMPDIR, `pb-gh-shim-${process.pid}-${Math.random().toString(36).slice(2)}`);
-  mkdirSync(dir, { recursive: true });
-  const calls = join(dir, "calls.txt");
-  writeFileSync(join(dir, "gh"), `#!/bin/sh\necho "$@" >> "${calls}"\n`, { mode: 0o755 });
-  return { env: { PATH: `${dir}:${process.env.PATH}` }, calls: () => (existsSync(calls) ? readFileSync(calls, "utf8") : "") };
-}
-
-// "keep local" read from the tap records gates["G:publish"] = { source: "human", answer: "keep-local" } (no binding, no
-// stop) and removes run/unit.json; commits, branch and refs/pairingbuddy/ refs are left alone.
-function keepLocalThroughTap(repo, shim = ghShim()) {
+// keepLocalThroughTap (publish-fixture) with run/ read-only while the tap runs, so its cleanup cannot remove anything. Returns what the hook printed.
+function keepLocalThroughTapWithRunLocked(repo, gh) {
   const { question } = evalGate(repo);
-  runTap(repo, recordedAnswer(repo, question, "keep local"), shim.env);
-  return shim;
+  const runDir = join(repo.dir, ".pairingbuddy", "run");
+  chmodSync(runDir, 0o500);
+  try {
+    return runTap(repo, recordedAnswer(repo, question, "keep local"), gh.env(), { prints: true });
+  } finally {
+    chmodSync(runDir, 0o700);
+  }
 }
 
 describe("publish-keep-local", () => {
@@ -310,32 +306,34 @@ describe("publish-keep-local", () => {
     const { repo } = publishRepo();
     const branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD");
 
-    const shim = keepLocalThroughTap(repo);
+    const gh = keepLocalThroughTap(repo);
 
-    assert.equal(repo.ledger().gates[GATE]?.answer, "keep-local", "keep local was applied");
+    assert.equal(existsSync(unitFile(repo)), false, "keep local was applied");
     assert.equal(execFileSync("git", ["ls-remote", "--heads", repo.remoteDir, branch], { env: env(), encoding: "utf8" }).trim(), "", "nothing was pushed");
-    assert.equal(shim.calls(), "", "gh was never called");
+    assert.deepEqual(gh.calls(), [], "gh was never called");
   });
 
-  test("the unit's pr-body.md and pr-lint.json go with it, so a later unit cannot pick them up, and the task stays", () => {
+  test("the unit's pr-body.md and pr-lint.json go with it, and the publish run ends, so only run/.gitignore remains", () => {
     const { repo, runDir } = publishRepo();
-
     keepLocalThroughTap(repo);
 
     assert.equal(existsSync(prBody(runDir)), false);
     assert.equal(existsSync(join(runDir, "pr-lint.json")), false);
-    assert.equal(existsSync(ledgerPathOf(runDir)), true, "the task is not removed");
+    assert.equal(existsSync(unitFile(repo)), false);
+    assert.equal(existsSync(join(runDir, "task")), false, "the publish run is removed");
+    assert.deepEqual(readdirSync(runDir).sort(), [".gitignore"]);
   });
 
-  test("the ledger records the keep-local answer and sets no stop code", () => {
+  test("a cleanup the tap cannot finish is said through the hook, not swallowed", (t) => {
+    if (process.getuid?.() === 0) return t.skip("root ignores directory permissions");
     const { repo } = publishRepo();
 
-    keepLocalThroughTap(repo);
+    const said = keepLocalThroughTapWithRunLocked(repo, installGhShim());
 
-    const ledger = repo.ledger();
-    assert.deepEqual(ledger.gates[GATE], { source: "human", answer: "keep-local" });
-    assert.equal(ledger.stop, null, "no stop code");
-    assert.equal(ledger.needsHuman, null);
+    const { additionalContext } = JSON.parse(said).hookSpecificOutput;
+    assert.match(additionalContext, /recorded keep local[^]*could not finish closing/);
+    assert.match(additionalContext, /pb\.mjs publish/, "it names the command that finishes it");
+    assert.equal(existsSync(unitFile(repo)), true, "the unit is left for pb publish to close");
   });
 });
 

@@ -6,7 +6,7 @@ const short = (sha) => String(sha).slice(0, 7);
 const list = (items) => items.join(", ");
 
 // Plan boxes under the unit's heading with no task record. With no boxes to go by, the unit must have a record at all.
-const recordedTasks = ({ unit, planBoxes, planProblem }) => {
+export const recordedTasks = ({ unit, planBoxes, planProblem }) => {
   if (planProblem) return planProblem;
   if (planBoxes === null || planBoxes.length === 0) return unit.tasks.length > 0 ? null : "the unit has no task records";
   const titles = new Set(unit.tasks.map((task) => task.title));
@@ -15,12 +15,12 @@ const recordedTasks = ({ unit, planBoxes, planProblem }) => {
 };
 
 const withoutSafetyNet = ({ unit, safetyNets }) => {
-  const unfinished = unit.tasks.filter((task) => !(task.stages ?? []).some((name) => safetyNets.includes(name)));
+  const unfinished = unit.tasks.filter((task) => !task.stages.some((name) => safetyNets.includes(name)));
   return unfinished.length === 0 ? null : `${list(safetyNets)} did not finish for ${list(unfinished.map((task) => task.title))}`;
 };
 
 const invalidGateSources = ({ unit }) => {
-  const bad = unit.tasks.flatMap((task) => Object.entries(task.gateSources ?? {}).filter(([, source]) => !GATE_SOURCES.includes(source)).map(([gate, source]) => `${gate} from ${task.title} has source ${JSON.stringify(source)}`));
+  const bad = unit.tasks.flatMap((task) => Object.entries(task.gateSources).filter(([, source]) => !GATE_SOURCES.includes(source)).map(([gate, source]) => `${gate} from ${task.title} has source ${JSON.stringify(source)}`));
   return bad.length === 0 ? null : `invalid gate sources: ${list(bad)}`;
 };
 
@@ -36,13 +36,13 @@ const staleFullSuite = ({ unit, head }) => {
 const dirtyTree = ({ dirty }) => (dirty.length === 0 ? null : `the tree has uncommitted files: ${list(dirty)}`);
 
 const openBlocking = ({ unit }) => {
-  const open = unit.tasks.flatMap((task) => task.blocking ?? []);
+  const open = unit.tasks.flatMap((task) => task.blocking);
   return open.length === 0 ? null : `blocking findings are open: ${list(open)}`;
 };
 
 const changedConfig = ({ changedConfigs }) => (changedConfigs.length === 0 ? null : `these files changed since the unit opened: ${list(changedConfigs)}`);
 
-const stopped = ({ runStop }) => (runStop === null || runStop === undefined ? null : `the run stopped: ${runStop.reason}`);
+const stopped = ({ runStop }) => (runStop === null ? null : `the run stopped: ${runStop.reason}`);
 
 // A stale approval is reported by its own reason; the checks after it cover only what is not an approval at all.
 const staleApproval = ({ voidReason }) => voidReason ?? null;
@@ -56,7 +56,7 @@ const UNAPPROVED = {
 const unapproved = ({ voidReason, approval }) => (voidReason !== null || approval === "human" ? null : UNAPPROVED[approval]);
 
 const unrecordedCommits = ({ unit, commits }) => {
-  const missing = commits.filter((sha) => !(unit.commits ?? []).includes(sha));
+  const missing = commits.filter((sha) => !unit.commits.includes(sha));
   return missing.length === 0 ? null : `commits not in the unit record: ${list(missing.map(short))}`;
 };
 
@@ -99,6 +99,7 @@ export function branchShapeProblem(branch) {
 export const unitRefPrefix = (branch) => `refs/pairingbuddy/${branch}/`;
 
 export const NO_COMMITS_REASON = "the unit has no commits past its base, so there is nothing to publish";
+export const KEPT_LOCAL_REASON = "the human answered keep local at G:publish, so the unit is closed and nothing was published";
 export const LOCAL_REASON = "pr.publish is none, so the commits, branch and refs stay local";
 
 // Never --force, never a merge: exactly the approved SHA goes to the unit branch on the remote, as a plain push.

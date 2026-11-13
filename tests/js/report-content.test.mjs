@@ -338,10 +338,23 @@ describe("report-content", () => {
     const tests = ["ten-percent-off-hundred", "zero-percent-keeps-full-price", "negative-percent-is-refused", "over-hundred-percent-is-refused"];
     const input = await recordedReportInput("probe-2", { outcome: "running" });
 
-    const glanceSection = sectionOf(renderReport({ ...input, tests }), "AT A GLANCE");
+    const glanceSection = sectionOf(renderReport({ ...input, tests, testsComplete: true }), "AT A GLANCE");
 
     assert.match(glanceSection, /<strong>Where it is<\/strong>[^<]*test 2 of 4/, "the step line reads 'test 2 of 4' from the tests passed in");
     assert.match(glanceSection, /<strong>Left<\/strong>\s*2 more tests(?:, then [^<]*)?</, "the LEFT row is the count of tests after the current one, not their ids");
+  });
+
+  test("report-claims-no-total-or-left-for-an-incomplete-tests-list", async () => {
+    const tests = ["ten-percent-off-hundred", "zero-percent-keeps-full-price"];
+    const input = await recordedReportInput("probe-2", { outcome: "running" });
+
+    const incomplete = sectionOf(renderReport({ ...input, tests, testsComplete: false }), "AT A GLANCE");
+    const omitted = sectionOf(renderReport({ ...input, tests }), "AT A GLANCE");
+
+    for (const [name, section] of [["testsComplete false", incomplete], ["testsComplete omitted", omitted]]) {
+      assert.doesNotMatch(section, /test \d+ of \d+/, `${name}: no "test N of M" total is shown`);
+      assert.doesNotMatch(section, /\d+ more tests?/, `${name}: no count left is shown`);
+    }
   });
 
   // The plan's tests list is the source of truth for numbering. Here the plan lists the current test third, while the run spawned
@@ -353,8 +366,8 @@ describe("report-content", () => {
     const running = await recordedReportInput("probe-2", { outcome: "running" });
     const input = await recordedReportInput("probe-2", { outcome: "stopped" });
 
-    const html = renderReport({ ...input, tests });
-    const glance = sectionOf(renderReport({ ...running, tests }), "AT A GLANCE");
+    const html = renderReport({ ...input, tests, testsComplete: true });
+    const glance = sectionOf(renderReport({ ...running, tests, testsComplete: true }), "AT A GLANCE");
     const rerun = sectionOf(html, "WHAT YOU CAN DO");
     const card = cardsOf(html).find((candidate) => candidate.includes(CURRENT));
 
