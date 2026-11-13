@@ -873,3 +873,33 @@ Run read-only on `docs/plans/deterministic-workflows.md` at the Task 97 build (n
 
 - **Run 1 ($0.009, 17 s):** no run opened. S2's sample had no remote, and since T3a `/code` opens a unit first, so `pb unit open` refused "cannot tell the base branch". S2 had not been run on its own since units. Fixed test-first in its own commit (`makeS2Repo` with a bare origin, the `gh` shim, control flow checked on the code run's ledger and a successful `pb task end`).
 - **Runs 2 and 3 ($0.067 and $0.077, 154 s and 187 s):** the T7a risk did not show. Intake said `certain` both times, and G:type and G:scenarios passed from `auto`. Both runs then stopped at G:task-end: a safety-net lens or refuter return carried a non-empty `ambiguity` note (for example "I did not read the full tests/test_discount.py ... only the diff"), and an open ambiguity asks the human by rule. So S2's "every gate auto-passes" does not hold on the cheap model since the T5c safety net. S4 and S5 answer asking gates as the human for this reason. Nothing was changed for it (decision 126).
+
+## T7 verification: S6 plan run (Task 103)
+
+2026-11-13, Claude Code 2.1.323, every agent on Haiku 5.5 through the forced cheap model, `env -u ANTHROPIC_API_KEY` with the child env checked to hold no Anthropic key, and the recording `gh` shim only. `node tests/smoke/s6.mjs` runs a two-unit plan in three fresh sessions (decision 146). Unit A is a bug fix plus a `[HUMAN]` check. Unit B `Depends on:` unit A and is one new feature. Session 2 is killed when Task 3's scenarios stage is active, and S6 adopts the run as the human. A killed session reports no cost, so S6 charges it its whole $1.50 cap, and the totals are upper bounds (decision 147).
+
+| Run | Result | $ (at most) | $ reported | What it showed |
+|---|---|---|---|---|
+| `s6-t103-run1` | PASS | 1.853 | 0.353 | Everything below, 75 agents for the whole plan, 578 s |
+| `s6-t103-run2` | FAIL | 0.268 | 0.268 | Session 1 published unit A past its unticked human task: `pb plan next` stopped, the model read the stop as "unit done", and the publish run and `pb publish` let it through. Fixed in 54418ff |
+| `s6-t103-run3` | FAIL | 1.880 | 0.380 | The plan ran through correctly. S6 counted a chained `pb status --action` line as a second task end. Fixed in S6 (a814484) |
+| `s6-t103-run4` | PASS | 1.804 | 0.304 | On the final code: 68 agents, 478 s |
+
+All four runs together are at most $5.81 (reported $1.31, plus up to $1.50 for each of three killed sessions), under the $8 ceiling. Each passing run stayed under its $6 cap.
+
+**What a pass checks.**
+- A box ticked by hand refuses `pb plan next`, on a copy of the fresh sample.
+- Session 1 ends Task 1 and stops at the `[HUMAN]` task. No run opens for the human task or Task 3, and no publish run or PR follows.
+- Session 2 publishes unit A as a draft PR from its branch into `develop`, then opens unit B stacked on unit A's open PR.
+- After the kill, the boxes and their order are unchanged. `pb human adopt` refuses without `--force` (the owner was seen moments ago) and with it fails the stranded stage, with next attempt 2.
+- Session 3, a fresh session, finishes that same run: scenarios at attempt 2, intake kept at attempt 1. It ends Task 3, and publishes unit B as a draft PR into unit A's branch, whose pushed head unit B's pushed branch contains.
+- At the end, every box is ticked in the original order, both units carry their `PR:` lines, Task 1 and Task 3 each ended once in order, and `pb plan next` has nothing left.
+- The plan's agents stay under 250, counted from both ledgers and transcripts.
+
+Asking gates were answered as the human, as in S4 and S5. In run 4, G:publish asked twice and G:task-end once, every time for an open-question note in a cheap-model return.
+
+**Bugs the live runs found.**
+- **A unit could publish past its human task.** Both publish entry points refuse now while a `[HUMAN]` box under the unit is unticked (decision 153).
+- **S6's own task-end count** read other pb output in a chained Bash call.
+
+**Seen, not changed.** In every run that reached session 3 (runs 1, 3 and 4), that session first obeyed "An Open Run Comes First" and stopped. The Stop hook then blocked the stop and named the stranded stage, so resume goes through the Stop hook, not Plan Loop step 1 (decision 149). The JS suite wrapper's 120 s limit was raised to 300 s, because the suite already took 118 s on a busy machine (decision 152).
