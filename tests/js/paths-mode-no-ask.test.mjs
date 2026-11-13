@@ -112,8 +112,6 @@ test("every agent that still has a legacy caller keeps its legacy branch", () =>
     [
       "create-test-placeholders",
       "enumerate-scenarios-and-test-cases",
-      "identify-code-issues",
-      "identify-test-issues",
       "implement-code",
       "implement-tests",
       "refactor-code",

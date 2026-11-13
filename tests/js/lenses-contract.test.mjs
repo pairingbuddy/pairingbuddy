@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { lensMapProblems } from "../../shared-node/lenses-contract.mjs";
 import { KEY_TOKEN } from "../../shared-node/keys.mjs";
 const REAL_LENS_MAP = JSON.parse(readFileSync(new URL("../../contracts/lenses.json", import.meta.url), "utf8"));
+const withLightReview = (patch) => ({ ...REAL_LENS_MAP, lightReview: { ...REAL_LENS_MAP.lightReview, ...patch } });
 
 test("contracts/lenses.json parses and every row has a stage id and a lenses list whose entries each have a non-empty name, in the D8 lens-map shape the label-contract test already reads", () => {
   const { rows } = REAL_LENS_MAP;
@@ -78,4 +79,38 @@ test("A lens name that fails the key rule is reported, and every real lens name 
   assert.match(lensMapProblems(named("PR-unit-fit")).join("\n"), /scenarios: lens PR-unit-fit name does not fit the key rule/, "a name with a capital is reported");
   assert.deepEqual(lensMapProblems(named("pyramid-level")), [], "a kebab-case name passes");
   for (const { lenses } of REAL_LENS_MAP.rows) for (const { name } of lenses) assert.ok(KEY_TOKEN.test(name), `${name} fits the key rule`);
+});
+
+// Scenario: light-review-contract. The lightReview block of contracts/lenses.json and its validation.
+test("real-block-has-six-focuses-and-passes", () => {
+  const { lightReview } = REAL_LENS_MAP;
+
+  assert.ok(lightReview, "the real lens map has a lightReview block");
+  assert.equal(lightReview.model, "sonnet", "lightReview runs on sonnet");
+  assert.equal(lightReview.maxFocuses, 2, "lightReview picks at most two focuses");
+  assert.deepEqual(lightReview.rule, { test: "test-quality", production: "code-smell" }, "the focus rule maps test and production changes");
+  assert.deepEqual(
+    lightReview.catalog.map(({ name }) => name),
+    ["code-smell", "naming-and-domain", "duplication-against-corpus", "test-quality", "test-level", "design-fit"],
+    "the catalog holds the six focuses in order",
+  );
+  for (const { name, brief } of lightReview.catalog) assert.ok(typeof brief === "string" && brief.length > 0, `${name} has a non-empty brief`);
+  assert.deepEqual(lensMapProblems(REAL_LENS_MAP), [], "the real lens map has no problems");
+});
+test("rule-focus-outside-catalog-reported", () => {
+  const lensMap = withLightReview({ rule: { ...REAL_LENS_MAP.lightReview.rule, test: "security" } });
+
+  const problems = lensMapProblems(lensMap);
+
+  assert.ok(
+    problems.some((problem) => /lightReview: .*security.*catalog/.test(problem)),
+    `a rule focus outside the catalog is reported, got: ${JSON.stringify(problems)}`,
+  );
+});
+test("catalog-name-breaking-key-rule-reported", () => {
+  const lensMap = withLightReview({ catalog: [...REAL_LENS_MAP.lightReview.catalog, { name: "Code Smell", brief: "x" }] });
+
+  const problems = lensMapProblems(lensMap);
+
+  assert.match(problems.join("\n"), /lightReview: .*Code Smell.*key rule/, `a catalog name that fails the key rule is reported, got: ${JSON.stringify(problems)}`);
 });

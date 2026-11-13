@@ -791,7 +791,26 @@ describe("pb tdd state", IN_PARALLEL, () => {
 
     const state = assertPasses(pb(repo, "tdd", "state"));
 
-    assert.deepEqual(state, { ok: true, taskType: "bug_fix", scenarios: path(SCENARIOS_KEY(2)), tests: null, red: [], green: [], covered: [] });
+    const { testRunners, ...rest } = state;
+    assert.deepEqual(rest, { ok: true, taskType: "bug_fix", scenarios: path(SCENARIOS_KEY(2)), tests: null, red: [], green: [], covered: [] });
+  });
+
+  test("tdd-state-includes-test-runners", () => {
+    const repo = makeRepo({ rows: null, ledger: stagesWith(1) });
+    scenarios(repo, 1);
+    const { test_directory, file_pattern } = runner();
+
+    const state = assertPasses(pb(repo, "tdd", "state"));
+
+    assert.deepEqual(state.testRunners, { fake: { test_directory, file_pattern } });
+  });
+
+  test("tdd-state-refuses-without-test-config", () => {
+    const repo = makeRepo({ rows: null, ledger: stagesWith(1) });
+    scenarios(repo, 1);
+    rmSync(join(repo.dir, ".pairingbuddy", "test-config.json"));
+
+    assertRefused(repo, repo.head(), pb(repo, "tdd", "state"), /missing .*test-config\.json/);
   });
 
   test("names the task type from the ledger, since the stage refactors per cycle for new_feature only", () => {

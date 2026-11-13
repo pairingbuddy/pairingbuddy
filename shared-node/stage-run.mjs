@@ -184,7 +184,8 @@ const LENS_MAP = JSON.parse(readFileSync(new URL("../contracts/lenses.json", imp
 // The same merge the workflow runs, over what the tap recorded: a lens with no recorded return is uncovered. A return counts
 // for the lens its key names (the tap only files a lens key from a lens agent, and each call's schema pins its own key, so
 // a lens agent cannot file under another lens's name through the runtime). Of the rounds recorded for one lens the latest
-// speaks, and a return for a lens the stage does not wire is ignored.
+// speaks, and a return for a lens the stage does not wire is ignored. lensRan is true when the tap recorded a call for at
+// least one lens the stage wires, whether or not its return could be read; a recorded key for an unwired lens does not count.
 // The run dir holds the artifacts dir's parent: run/task/artifacts -> run.
 const runDirOf = (artifactsDir) => dirname(dirname(artifactsDir));
 
@@ -206,16 +207,17 @@ function corpusPaths(artifactsDir) {
 function mergedLensRound(current, artifactsDir, stageName, lensMap) {
   const recorded = current.filter(({ role }) => role === LENS_ROLE);
   const config = { ...wiredLensConfig(lensMap, stageName), corpus: corpusPaths(artifactsDir) };
-  const returns = config.lenses.map((lens) => {
-    const [latest] = recorded.filter(({ item }) => item === lensSlug(lens.name)).sort((a, b) => b.round - a.round);
-    return { lens, result: latest === undefined ? null : readReturn(artifactsDir, latest.pbKey) };
-  });
+  const latestByLens = config.lenses.map((lens) => ({
+    lens,
+    latest: recorded.filter(({ item }) => item === lensSlug(lens.name)).sort((a, b) => b.round - a.round)[0],
+  }));
+  const returns = latestByLens.map(({ lens, latest }) => ({ lens, result: latest === undefined ? null : readReturn(artifactsDir, latest.pbKey) }));
   // A verdict counts for the finding its refuter was sent, which its key names as the item. Of the rounds recorded for one
   // finding the latest speaks, even when it is dropped; mergeLensReturns ignores verdicts when the stage does not refute.
   const latestVerdicts = new Map(current.filter(({ role }) => role === REFUTER_ROLE).sort((a, b) => a.round - b.round)
     .map(({ item, pbKey }) => [item, acceptVerdict(item, readReturn(artifactsDir, pbKey))]));
   const verdicts = [...latestVerdicts.values()].filter((verdict) => verdict !== null);
-  return { merged: mergeLensReturns(returns, config, verdicts), lensRan: recorded.length > 0 };
+  return { merged: mergeLensReturns(returns, config, verdicts), lensRan: latestByLens.some(({ latest }) => latest !== undefined) };
 }
 
 // Each coverage round returns the gaps it still sees, so the newest round of the attempt speaks for the stage.

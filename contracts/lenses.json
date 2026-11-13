@@ -383,5 +383,39 @@
       "refute": "none",
       "fix": "none"
     }
-  ]
+  ],
+  "lightReview": {
+    "model": "sonnet",
+    "maxFocuses": 2,
+    "rule": {
+      "test": "test-quality",
+      "production": "code-smell"
+    },
+    "catalog": [
+      {
+        "name": "code-smell",
+        "brief": "Look for long functions, deep nesting, dead code, magic values and needless complexity. Do not suggest behaviour the tests do not require."
+      },
+      {
+        "name": "naming-and-domain",
+        "brief": "Look for names that hide intent or drift from the domain terms used elsewhere."
+      },
+      {
+        "name": "duplication-against-corpus",
+        "brief": "Look for logic that repeats something that already exists in the corpus or elsewhere in the change."
+      },
+      {
+        "name": "test-quality",
+        "brief": "Look for unclear test structure, missing or weak assertions, logic in tests, shared state and other test smells. Do not report missing scenarios or coverage gaps."
+      },
+      {
+        "name": "test-level",
+        "brief": "Look for a test at the wrong pyramid level, mocking what it should exercise or exercising what it should mock."
+      },
+      {
+        "name": "design-fit",
+        "brief": "Look for responsibilities, coupling and dependencies that do not fit the surrounding design. Do not suggest behaviour the tests do not require."
+      }
+    ]
+  }
 }

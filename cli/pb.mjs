@@ -758,8 +758,10 @@ const artifactPath = (pbKey) => (pbKey === null ? null : `.pairingbuddy/run/task
 
 const doneAt = ({ perTest = {} }, step) => Object.keys(perTest).filter((id) => perTest[id][step]?.done);
 
-// What the tdd stage cannot see for itself: its inputs, and how far tests{} got. A wrong relay of this costs a refusal
-// or a stop, since RED, GREEN and stage finish each read the ledger again.
+// What the tdd stage cannot see for itself: its inputs, how far tests{} got, and where each runner's tests live
+// (test_directory, file_pattern), so the workflow can scope the light review. A wrong relay of this costs a refusal
+// or a stop, since RED, GREEN and stage finish each read the ledger again. It reads the pinned test config, so a changed
+// config hash refuses here just as RED and GREEN do.
 function tddState(args) {
   if (args.length > 0) throw new UsageError("usage: pb tdd state");
   const { root, path } = runLedgerPath();
@@ -768,8 +770,10 @@ function tddState(args) {
   const artifactsDir = artifactsDirOf(root);
   const scenarios = newestReturn(artifactsDir, SCENARIOS_ROLE, ({ stage, attempt }) => !isVoidedAttempt(ledger, stage, attempt));
   if (scenarios === null) throw new Refusal("no scenarios return stands, so there is nothing to write tests from");
-  return { ok: true, taskType: ledger.taskType, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered") };
+  return { ok: true, taskType: ledger.taskType, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered"), testRunners: testRunnersOf(readTestConfig(root, ledger.configHash)) };
 }
+
+const testRunnersOf = ({ runners }) => Object.fromEntries(Object.entries(runners).map(([id, { test_directory, file_pattern }]) => [id, { test_directory, file_pattern }]));
 
 // A human's stop is the human's to lift. Only a stop the run itself raised clears here.
 function assertNotHumanStop(ledger, root) {

@@ -93,6 +93,9 @@ agents:
       lens_result:
         schema: lens-result.schema.json
         return_only: true
+      light_review_result:
+        schema: light-review-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Input"

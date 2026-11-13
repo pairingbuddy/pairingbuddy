@@ -58,3 +58,19 @@ test("closing a stage keeps the startedAt it began with on its stages[] entry", 
 
   assert.equal(closed.stages.find(({ name }) => name === STAGE.name).startedAt, startedAt);
 });
+
+// Task 82: the light-review lens return is not a lens round in the stage report.
+test("report-light-review-return-is-no-lens-round", () => {
+  const key = "code-tdd.lens.t1.r1.a2";
+  const finding = { focus: "code-smell", rule: "r", severity: "medium", kind: "fix-here", claim: "a code-smell claim", where: "shared-node/a.mjs:1" };
+  const dir = artifactsWith({ [key]: { focus_changes: [], findings: [finding] } });
+
+  const lensMap = { rows: [{ stage: "tdd", lenses: [{ name: "some-lens" }], refute: "none" }] };
+
+  const report = buildReport(LEDGER, dir, lensMap);
+
+  assert.ok(report.notCovered.some((line) => /no lens round/.test(line)), "the light review is no lens round, so the report still says none ran");
+  for (const list of ["survivors", "uncovered", "unrefuted"]) {
+    assert.ok(!JSON.stringify(report[list]).includes(finding.claim), `the light-review finding is not in ${list}`);
+  }
+});
