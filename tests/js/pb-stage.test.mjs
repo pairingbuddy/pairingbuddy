@@ -4,6 +4,7 @@
 // Output contract: each verb prints one JSON object with ok: true and exits 0. A refusal exits 1 and prints nothing to
 // stdout. Bad arguments exit 2.
 import "./isolated-tmpdir.mjs";
+import { withIntake, workStages } from "./ledger-fixture.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
@@ -82,14 +83,14 @@ function makeRepo({ stage = activeStage(), ledger = {}, tests = "", configGlobs 
   writeFileSync(join(dir, ".pairingbuddy", "test-config.json"), configText);
   if (configGlobs) writeFileSync(join(dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ config_globs: configGlobs }));
   const ledgerPath = join(taskDir, "ledger.json");
-  writeLedger(ledgerPath, {
+  writeLedger(ledgerPath, withIntake({
     v: 1, seq: 0, sha: "0".repeat(64), kind: "code", taskType: "config_change",
     owner: { sessionId: null, lastSeen: null }, task: "Task 30", plan: { path: "", title: "" },
     configHash: createHash("sha256").update(configText).digest("hex"), policy: { mode: "auto", source: "permission_mode" },
     stage, stages: [], gates: {}, tests: {}, commits: [], retries: {}, spend: { agents: 0, tokens: 0 }, stop: null, needsHuman: null,
     ...ledger,
     tests: Object.fromEntries(Object.entries(ledger.tests ?? {}).map(([name, record]) => [name, { head: seed, ...record }])),
-  });
+  }));
   return {
     dir, taskDir, ledgerPath,
     ledger: () => readLedger(ledgerPath),
@@ -255,7 +256,7 @@ describe("stage finish refuses without its evidence, and leaves a stop", IN_PARA
     const ledger = repo.ledger();
     assert.match(ledger.stop.reason, pattern);
     assert.deepEqual(ledger.stage, before, "the stage stays as it was");
-    assert.equal(ledger.stages.length, 0, "no stage is recorded done");
+    assert.deepEqual(workStages(ledger), [], "no stage is recorded done");
     assert.equal(existsSync(repo.reportPath), false, "no report is written");
   }
 
@@ -409,7 +410,7 @@ describe("stage finish", IN_PARALLEL, () => {
     const ledger = repo.ledger();
     assert.equal(ledger.stage.status, "done");
     assert.equal(ledger.stop, null);
-    const [entry] = ledger.stages;
+    const [entry] = workStages(ledger);
     assert.deepEqual([entry.name, entry.status, entry.attempt], [CONFIG, "done", ATTEMPT]);
     const report = repo.report();
     assert.deepEqual([report.stage, report.attempt, report.runId], [CONFIG, ATTEMPT, "wf_1"]);
@@ -451,7 +452,7 @@ describe("stage finish", IN_PARALLEL, () => {
       assert.notEqual(repo.ledger().stop, null, "the run stopped");
       assertRefused(pb(repo, "stage", "finish"), /stopped/);
       assert.equal(repo.ledger().stage.status, "active");
-      assert.deepEqual(repo.ledger().stages.filter(({ status }) => status === "done"), []);
+      assert.deepEqual(workStages(repo.ledger()).filter(({ status }) => status === "done"), []);
 
       ok(repo, "stage", "fail");
 
@@ -547,7 +548,7 @@ describe("stage fail", IN_PARALLEL, () => {
     assert.deepEqual([result.stage, result.attempt, result.nextAttempt], [CONFIG, ATTEMPT, ATTEMPT + 1]);
     const ledger = repo.ledger();
     assert.equal(ledger.stage.status, "failed");
-    const [entry] = ledger.stages;
+    const [entry] = workStages(ledger);
     assert.deepEqual([entry.name, entry.status, entry.attempt], [CONFIG, "failed", ATTEMPT]);
   });
 
@@ -567,7 +568,7 @@ describe("stage fail", IN_PARALLEL, () => {
 
     assert.equal(result.clearedStop, reason);
     assert.equal(repo.ledger().stop, null);
-    assert.equal(repo.ledger().stages[0].clearedStop, reason, "the ledger keeps what was cleared");
+    assert.equal(workStages(repo.ledger())[0].clearedStop, reason, "the ledger keeps what was cleared");
     assert.equal(startStage(repo, plugin, CONFIG, ATTEMPT + 1).kind, "none");
   });
 
@@ -632,7 +633,7 @@ describe("stage fail", IN_PARALLEL, () => {
 
     ok(repo, "stage", "fail");
 
-    const [entry] = repo.ledger().stages;
+    const [entry] = workStages(repo.ledger());
     assert.deepEqual([entry.status, entry.clearedStop], ["done", RAISED.reason]);
   });
 
@@ -663,7 +664,7 @@ describe("stage fail", IN_PARALLEL, () => {
     writeReturn(repo, CONFIG_KEY);
     ok(repo, "stage", "fail");
     assert.equal(repo.ledger().spend.agents, 1);
-    assert.equal(repo.ledger().stages[0].spend.agents, 1);
+    assert.equal(workStages(repo.ledger())[0].spend.agents, 1);
   });
 });
 
@@ -1020,7 +1021,7 @@ describe("the report states what ran and what was not covered", IN_PARALLEL, () 
     const result = ok(repo, "stage", "report");
 
     assert.deepEqual(result.report, repo.report());
-    assert.deepEqual(result.gates, { "G:x": { source: "auto" } });
+    assert.deepEqual(result.gates, { "G:type": { source: "auto" }, "G:x": { source: "auto" } });
   });
 
   test("stage report refuses a report from before this attempt", () => {
@@ -1093,7 +1094,7 @@ describe("spend", IN_PARALLEL, () => {
 
     const ledger = repo.ledger();
 
-    assert.deepEqual(ledger.stages[0].spend, { agents: 2, tokens: 0, tokensKnown: false });
+    assert.deepEqual(workStages(ledger)[0].spend, { agents: 2, tokens: 0, tokensKnown: false });
     assert.deepEqual(ledger.spend, { agents: 2, tokens: 0, tokensKnown: false });
     assert.deepEqual(repo.report().spend, { agents: 2, agentsSource: "recorded returns", tokens: 0, tokensKnown: false, tokensUnit: "output tokens" });
   });
@@ -1107,8 +1108,8 @@ describe("spend", IN_PARALLEL, () => {
 
     const ledger = repo.ledger();
 
-    assert.equal(ledger.stages.length, 1, "one entry per stage");
-    assert.equal(ledger.stages[0].spend.agents, 4);
+    assert.equal(workStages(ledger).length, 1, "one entry per stage");
+    assert.equal(workStages(ledger)[0].spend.agents, 4);
     assert.equal(ledger.spend.agents, 6);
   });
 });
@@ -1284,7 +1285,7 @@ describe("spend tokens read from the harness transcript", IN_PARALLEL, () => {
 
     const ledger = repo.ledger();
     const { spend, notCovered } = repo.report();
-    assert.deepEqual(tokensOf(ledger.stages[0].spend), KNOWN, "the stage entry carries the known tokens");
+    assert.deepEqual(tokensOf(workStages(ledger)[0].spend), KNOWN, "the stage entry carries the known tokens");
     assert.deepEqual(tokensOf(ledger.spend), KNOWN, "the task spend carries the known tokens");
     assert.deepEqual(tokensOf(spend), KNOWN, "the report carries the known tokens");
     assert.equal(spend.tokensUnit, "output tokens");
@@ -1298,7 +1299,7 @@ describe("spend tokens read from the harness transcript", IN_PARALLEL, () => {
 
     ok(repo, "stage", "finish");
 
-    assert.deepEqual(tokensOf(repo.ledger().stages[0].spend), KNOWN, "the stage entry carries the known tokens");
+    assert.deepEqual(tokensOf(workStages(repo.ledger())[0].spend), KNOWN, "the stage entry carries the known tokens");
   });
 
   test("finish-reads-tokens-past-an-unreadable-sibling-agent-file", () => {
@@ -1311,7 +1312,7 @@ describe("spend tokens read from the harness transcript", IN_PARALLEL, () => {
 
     ok(repo, "stage", "finish");
 
-    assert.deepEqual(tokensOf(repo.ledger().stages[0].spend), KNOWN, "the stage entry carries the known tokens past the broken siblings");
+    assert.deepEqual(tokensOf(workStages(repo.ledger())[0].spend), KNOWN, "the stage entry carries the known tokens past the broken siblings");
   });
 
   test("finishing-runner-counted-in-agents", () => {
@@ -1322,7 +1323,7 @@ describe("spend tokens read from the harness transcript", IN_PARALLEL, () => {
     const { spend } = repo.report();
     assert.equal(spend.agents, CONFIG_RETURN_AND_RUNNER, "the recorded return and the runner still running count");
     assert.match(spend.agentsSource, /runner that ran stage finish/);
-    assert.equal(repo.ledger().stages[0].spend.agents, CONFIG_RETURN_AND_RUNNER, "the stage entry counts the runner");
+    assert.equal(workStages(repo.ledger())[0].spend.agents, CONFIG_RETURN_AND_RUNNER, "the stage entry counts the runner");
     assert.equal(repo.ledger().spend.agents, CONFIG_RETURN_AND_RUNNER, "the task spend counts the runner");
   });
 
@@ -1349,7 +1350,7 @@ describe("spend tokens read from the harness transcript", IN_PARALLEL, () => {
 
     ok(repo, "stage", "finish");
 
-    assert.deepEqual(tokensOf(repo.ledger().stages[0].spend), { tokens: SPENT, tokensKnown: false }, "the stage adds the known attempt's tokens but stays unknown");
+    assert.deepEqual(tokensOf(workStages(repo.ledger())[0].spend), { tokens: SPENT, tokensKnown: false }, "the stage adds the known attempt's tokens but stays unknown");
     assert.deepEqual(tokensOf(repo.ledger().spend), { tokens: SPENT, tokensKnown: false }, "the task adds the known attempt's tokens but stays unknown");
   });
 
@@ -1358,7 +1359,7 @@ describe("spend tokens read from the harness transcript", IN_PARALLEL, () => {
 
     ok(repo, "stage", "finish");
 
-    assert.deepEqual(tokensOf(repo.ledger().stages[0].spend), KNOWN, "a spend with no tokensKnown key becomes known with a known attempt");
+    assert.deepEqual(tokensOf(workStages(repo.ledger())[0].spend), KNOWN, "a spend with no tokensKnown key becomes known with a known attempt");
     assert.deepEqual(tokensOf(repo.ledger().spend), KNOWN, "the task spend with no tokensKnown key becomes known");
   });
 
@@ -1367,7 +1368,7 @@ describe("spend tokens read from the harness transcript", IN_PARALLEL, () => {
 
     ok(repo, "stage", "fail");
 
-    assert.deepEqual(tokensOf(repo.ledger().stages[0].spend), { tokens: 500, tokensKnown: false }, "stage fail closes the stage with tokensKnown false");
+    assert.deepEqual(tokensOf(workStages(repo.ledger())[0].spend), { tokens: 500, tokensKnown: false }, "stage fail closes the stage with tokensKnown false");
     assert.deepEqual(tokensOf(repo.ledger().spend), { tokens: 500, tokensKnown: false }, "stage fail closes the task spend with tokensKnown false");
   });
 
@@ -1396,7 +1397,7 @@ describe("spend tokens read from the harness transcript", IN_PARALLEL, () => {
 
       const { spend, notCovered } = repo.report();
       assert.deepEqual(tokensOf(spend), { tokens: 0, tokensKnown: false }, "the report's tokens are unknown");
-      assert.deepEqual(tokensOf(repo.ledger().stages[0].spend), { tokens: 0, tokensKnown: false }, "the stage entry's tokens are unknown");
+      assert.deepEqual(tokensOf(workStages(repo.ledger())[0].spend), { tokens: 0, tokensKnown: false }, "the stage entry's tokens are unknown");
       assert.ok(notCovered.some((line) => UNKNOWN_LINE.test(line)), `notCovered keeps the unknown line: ${JSON.stringify(notCovered)}`);
     });
   }

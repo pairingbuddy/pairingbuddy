@@ -18,13 +18,14 @@ test("refactoring-graph-is-scope-apply-safety-net", () => {
   assert.deepEqual(
     graph.nodes,
     [
+      { name: "intake", gate: "G:type", evidence: ["artifact:classify-task"] },
       { name: "code-refactor-scope", gate: "G:scope", evidence: ["tests:full", "artifact:scope-refactoring"] },
       { name: "code-refactor-apply", gate: null, evidence: ["checkpoint:refactor-step"] },
       { name: "code-safety-net", gate: "G:task-end", evidence: safetyNetEvidence },
     ],
     "the refactoring graph is scope, apply, safety net",
   );
-  assert.deepEqual(Object.keys(graph.gates).sort(), ["G:scope", "G:task-end"], "the refactoring graph has exactly the scope and task-end gates");
+  assert.deepEqual(Object.keys(graph.gates).sort(), ["G:scope", "G:task-end", "G:type"], "the refactoring graph has exactly the type, scope and task-end gates");
   assert.equal(graph.gates["G:scope"].class, "continue", "G:scope is continue-class");
   assert.equal(graph.gates["G:task-end"].class, "continue", "G:task-end is continue-class");
 });

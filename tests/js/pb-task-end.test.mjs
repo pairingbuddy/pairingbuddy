@@ -4,6 +4,7 @@
 // Output contract: a task that ends prints one JSON object with ok: true and exits 0. A refusal exits 1, prints nothing
 // to stdout and changes nothing. Bad arguments exit 2.
 import "./isolated-tmpdir.mjs";
+import { withIntake } from "./ledger-fixture.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -69,13 +70,13 @@ function makeRepo({ ledger = FINISHED, tracked = {}, ignored = ".pairingbuddy/\n
   writeFileSync(join(dir, ".pairingbuddy", "human-guidance.json"), "{}\n");
   if (configGlobs) writeFileSync(join(dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ config_globs: configGlobs }));
   const ledgerPath = join(taskDir, "ledger.json");
-  writeLedger(ledgerPath, {
+  writeLedger(ledgerPath, withIntake({
     v: 1, seq: 0, sha: "0".repeat(64), kind: "code", taskType: "config_change",
     owner: { sessionId: null, lastSeen: null }, task: "Task 31", plan: { path: "", title: "" },
     configHash: createHash("sha256").update(configText).digest("hex"), policy: { mode: "auto", source: "permission_mode" },
     stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null }, stages: [], gates: {}, tests: {}, commits: [], retries: {}, spend: { agents: 0, tokens: 0 }, stop: null, needsHuman: null,
     ...ledger,
-  });
+  }));
   return { dir, taskDir, ledgerPath, ledger: () => readLedger(ledgerPath) };
 }
 
@@ -585,14 +586,14 @@ describe("the task record carries the full-suite result", IN_PARALLEL, () => {
     assert.equal(run.status, 0, `run open: ${run.stderr}`);
     const head = git(repo.dir, "rev-parse", "HEAD");
     const configText = readFileSync(join(repo.dir, ".pairingbuddy", "test-config.json"), "utf8");
-    writeLedger(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"), {
+    writeLedger(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"), withIntake({
       ...repo.ledger(),
       task: "Task A",
       configHash: createHash("sha256").update(configText).digest("hex"),
       ...FINISHED,
       tests: { full: { stage: NET, attempt: 1, passed: true, red: false, runs: [], head } },
       ...extraLedger,
-    });
+    }));
     return { repo, head };
   }
 

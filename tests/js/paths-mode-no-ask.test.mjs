@@ -110,6 +110,7 @@ test("every agent that still has a legacy caller keeps its legacy branch", () =>
   assert.deepEqual(
     legacy,
     [
+      "classify-task",
       "create-test-placeholders",
       "document-spike",
       "enumerate-scenarios-and-test-cases",

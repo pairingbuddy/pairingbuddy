@@ -16,11 +16,12 @@ function logError(taskDir, message) {
 
 // The fix role's label is shared by every fixer the workflows assign (decision 26), so a fix key does not
 // name one agent. Each stage lists the fixers its workflow assigns; keep this in step with the fix configs in
-// workflows-src/stages/code-safety-net.mjs, code-scenarios.mjs, code-spike-document.mjs and pr-draft.mjs, and add a new fixer in both.
+// workflows-src/stages/code-safety-net.mjs, code-scenarios.mjs, code-spike-document.mjs, intake.mjs and pr-draft.mjs, and add a new fixer in both.
 const FIX_AGENTS_BY_STAGE = {
   "code-safety-net": ["pairingbuddy:refactor-code", "pairingbuddy:refactor-tests"],
   "code-scenarios": ["pairingbuddy:enumerate-scenarios-and-test-cases"],
   "code-spike-document": ["pairingbuddy:document-spike"],
+  "intake": ["pairingbuddy:classify-task"],
   "pr-draft": ["pairingbuddy:draft-pull-request"],
 };
 
@@ -31,7 +32,9 @@ function agentMayFile(parsed, agentType) {
   return agentType === `pairingbuddy:${parsed.role}`;
 }
 
-function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, { tool_input: toolInput, agent_type: agentType }) {
+const pluginRoot = () => process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url));
+
+function tapStructuredOutput({ loadStages, migratedType, parseKey, readLedger, updateLedger }, taskDir, ledgerPath, { tool_input: toolInput, agent_type: agentType }) {
   const pbKey = toolInput?.pb_key;
   if (typeof pbKey !== "string") return;
   let parsed;
@@ -65,6 +68,8 @@ function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, { to
   writeFileSync(temp, JSON.stringify(toolInput));
   renameSync(temp, join(dir, `${pbKey}.json`));
   writePrBody(taskDir, parsed, toolInput.body);
+  // An intake classify-task or fix return sets the ledger taskType as it lands, before the course check; a rollback of a rejected fix puts the kept return's type back.
+  if (parsed.stage === "intake" && (parsed.role === "classify-task" || parsed.role === "fix")) updateLedger(ledgerPath, (ledger) => ({ ...ledger, taskType: migratedType(loadStages(pluginRoot()), toolInput.task_type) }));
 }
 
 // The draft and its redraft (a fix) both carry the PR body, so both roles write pr-body.md.
@@ -101,8 +106,7 @@ function tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, toolInpu
 }
 
 function runGates({ gatesFor, loadStages }, ledger) {
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url));
-  return gatesFor(loadStages(pluginRoot), ledger.taskType);
+  return gatesFor(loadStages(pluginRoot()), ledger.taskType);
 }
 
 function askedAnswer({ gateAnswer }, ledger, toolResponse) {
@@ -167,12 +171,12 @@ function closeKeptLocal(modules, root, ledger) {
 }
 
 function tapRun(modules, root, input) {
-  const { parseKey, readLedger, updateLedger } = modules;
+  const { loadStages, migratedType, parseKey, readLedger, updateLedger } = modules;
   const taskDir = join(root, ".pairingbuddy", "run", "task");
   const ledgerPath = join(taskDir, "ledger.json");
   if (!existsSync(ledgerPath)) return;
   try {
-    if (input.tool_name === "StructuredOutput") tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, input);
+    if (input.tool_name === "StructuredOutput") tapStructuredOutput({ loadStages, migratedType, parseKey, readLedger, updateLedger }, taskDir, ledgerPath, input);
     else if (input.tool_name === "Workflow") tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, input.tool_input, input.tool_response);
     else if (input.tool_name === "AskUserQuestion" && input.agent_id === undefined) tapQuestion(modules, root, ledgerPath, input.tool_response);
   } catch (e) {
@@ -187,10 +191,10 @@ try {
   const { pbCommand } = await import("../shared-node/verbs.mjs");
   const { closeUnit, endRun } = await import("../shared-node/unit-files.mjs");
   const { findSessionRoot } = await import("../shared-node/run-root.mjs");
-  const { loadStages } = await import("../shared-node/stages.mjs");
+  const { loadStages, migratedType } = await import("../shared-node/stages.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
   const root = findSessionRoot(input.cwd, input.session_id);
-  if (root !== null) tapRun({ KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, updateLedger }, root, input);
+  if (root !== null) tapRun({ KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, updateLedger, migratedType }, root, input);
 } catch {
   // not a run situation
 }

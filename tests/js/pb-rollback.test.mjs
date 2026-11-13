@@ -974,3 +974,53 @@ test("rollback-artifact-checker-verdict-restores-pr-body", () => {
   assert.doesNotMatch(note, /seamless/, "the note holds no lint text");
   assert.equal(readFileSync(join(repo.runDir, "pr-body.md"), "utf8"), GOOD_BODY, "the PR body is the first draft's body again");
 });
+
+// Intake makes no commit, so a bad reclassification is rolled back as an artifact. The ledger taskType, which the tap set
+// from the rejected fix return, goes back to the classification that stands: the round-1 classify-task return.
+test("artifact-rollback-restores-newest-standing-classification", () => {
+  const stage = "intake";
+  const classifyKey = `${stage}.classify-task.-.r1.a${ATTEMPT}`;
+  const fixKey = `${stage}.fix.g1.r2.a${ATTEMPT}`;
+  const checkerKey = `${stage}.course-checker.g1.r2.a${ATTEMPT}`;
+  const repo = makeRepo({ committedFix: false, seedArtifacts: false });
+  repo.updateLedger((ledger) => { ledger.stage.name = stage; ledger.taskType = "new_feature"; });
+  writeArtifact(repo, classifyKey, { pb_key: classifyKey, task_type: "bug_fix", confidence: "certain" });
+  writeArtifact(repo, fixKey, { pb_key: fixKey, task_type: "new_feature", confidence: "certain" });
+  writeArtifact(repo, checkerKey, { pb_key: checkerKey, finding_id: "classification-1", verdict: "wrong-direction", mistake: "missed-finding", what_went_wrong: "the reclassification ignored that the task text describes a crash" });
+  const rejectedPath = join(repo.taskDir, "rejected", `${fixKey}.json`);
+
+  const result = rollback(repo, "--artifact", "--from", fixKey);
+
+  assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+  assert.equal(existsSync(join(repo.taskDir, "artifacts", `${fixKey}.json`)), false, "the reclassification is gone from artifacts/");
+  assert.equal(existsSync(rejectedPath), true, "the reclassification is in rejected/");
+  assert.equal(repo.ledger().taskType, "bug_fix", "the ledger taskType is the standing classification's again");
+});
+// The kept classification's type passes the same migrated-type rule as the tap: an unmigrated type clears the ledger taskType
+// rather than keeping the rejected fix's type or storing a type no stage graph has.
+test("artifact-rollback-clears-task-type-when-standing-classification-is-unmigrated", () => {
+  const stage = "intake";
+  const classifyKey = `${stage}.classify-task.-.r1.a${ATTEMPT}`;
+  const fixKey = `${stage}.fix.g1.r2.a${ATTEMPT}`;
+  const checkerKey = `${stage}.course-checker.g1.r2.a${ATTEMPT}`;
+  const repo = makeRepo({ committedFix: false, seedArtifacts: false });
+  repo.updateLedger((ledger) => { ledger.stage.name = stage; ledger.taskType = "bug_fix"; });
+  writeArtifact(repo, classifyKey, { pb_key: classifyKey, task_type: "documentation", confidence: "certain" });
+  writeArtifact(repo, fixKey, { pb_key: fixKey, task_type: "bug_fix", confidence: "certain" });
+  writeArtifact(repo, checkerKey, { pb_key: checkerKey, finding_id: "classification-1", verdict: "wrong-direction", mistake: "missed-finding", what_went_wrong: "the reclassification ignored the task text" });
+
+  const result = rollback(repo, "--artifact", "--from", fixKey);
+
+  assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+  assert.equal(repo.ledger().taskType, null, "an unmigrated standing type leaves the ledger taskType null");
+});
+// Only an intake rollback touches the ledger taskType: another stage's artifact rollback leaves it as it is.
+test("artifact-rollback-outside-intake-keeps-task-type", () => {
+  const repo = makeArtifactRepo({ whatWentWrong: "the redraft dropped the refusal scenarios" });
+  const before = repo.ledger().taskType;
+
+  const result = rollback(repo, "--artifact", "--from", ARTIFACT_FIX_KEY);
+
+  assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+  assert.equal(repo.ledger().taskType, before, "the ledger taskType is unchanged");
+});

@@ -58,6 +58,7 @@ schemas:
   - refactor-code-result.schema.json
   - verify-test-coverage-result.schema.json
   - scope-refactoring-result.schema.json
+  - classify-task-result.schema.json
   - explore-spike-unit-result.schema.json
   - document-spike-result.schema.json
   - refuter-verdict.schema.json
@@ -239,6 +240,9 @@ agents:
       task_classification:
         schema: task-classification.schema.json
         file: .pairingbuddy/task-classification.json
+      classify_result:
+        schema: classify-task-result.schema.json
+        return_only: true
     sections:
       - heading: "## Purpose"
       - heading: "## Input"

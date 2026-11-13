@@ -24,3 +24,22 @@ export function baseLedger({ task = "Task 20" } = {}) {
     needsHuman: null,
   };
 }
+
+// Intake is the first stage of every task type, gated by G:type. A run past it has intake done and G:type passed.
+export const INTAKE_DONE = { name: "intake", status: "done" };
+const G_TYPE_PASSED = { source: "auto" };
+
+// Puts a done intake in front of the given stages.
+export const afterIntake = (stages = []) => [INTAKE_DONE, ...stages];
+
+// Adds the passed G:type to the given gates.
+export const withTypePassed = (gates = {}) => ({ "G:type": G_TYPE_PASSED, ...gates });
+
+// The whole ledger past intake: a done intake first in its stages and G:type passed. A ledger that already starts with intake keeps its own.
+export function withIntake(ledger) {
+  const stages = ledger.stages ?? [];
+  return { ...ledger, stages: stages[0]?.name === "intake" ? stages : afterIntake(stages), gates: withTypePassed(ledger.gates) };
+}
+
+// The ledger's stages without the intake entry every run starts with, for tests that look at the stage after it.
+export const workStages = (ledger) => ledger.stages.filter(({ name }) => name !== "intake");

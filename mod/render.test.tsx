@@ -180,14 +180,15 @@ const BETWEEN_SCENARIOS_AND_TDD = {
   ...SNAPSHOT_RUNNING,
   seq: 6,
   stage: { name: 'code-scenarios', status: 'done', runId: 'wf_76c46091-82d', attempt: 1, startedAt: '2026-11-04T08:13:26.472Z' },
-  stages: [doneStage('code-scenarios', 0)],
+  stages: [doneStage('intake', 0), doneStage('code-scenarios', 1)],
+  gates: { ...SNAPSHOT_RUNNING.gates, 'G:type': { source: 'auto' } },
 }
 // Seq 2 of the same recording: right after pb run open, no stage yet.
 const JUST_OPENED = { ...SNAPSHOT_NO_STAGE, seq: 2, owner: { sessionId: '3855343a-c693-4213-9f52-91a2ff2021ef', lastSeen: '2026-11-04T08:13:24.369Z' }, policy: { mode: 'auto', source: 'permission_mode' } }
 
 test('between-stages-band-shows-next-step: a live ledger with stage not active and stages done up to a known point draws a band without idle that reads between steps with the next stage plain name', async ($, on) => {
   const cases: [string, unknown, string][] = [
-    ['right after run open', JUST_OPENED, plainName('code-scenarios')],
+    ['right after run open', JUST_OPENED, plainName('intake')],
     ['between code-scenarios and code-tdd', BETWEEN_SCENARIOS_AND_TDD, plainName('code-tdd')],
   ]
   const run = bandEngine(on, JUST_OPENED)
@@ -204,7 +205,7 @@ test('between-stages-band-shows-next-step: a live ledger with stage not active a
 })
 
 test('live-ledger-without-known-next-never-idle: a live ledger where no next stage can be named still draws a non-idle band saying the run is open with no invented step name', async ($, on) => {
-  const everyStageDone = { ...BETWEEN_SCENARIOS_AND_TDD, stages: ['code-scenarios', 'code-tdd', 'code-safety-net'].map(doneStage) }
+  const everyStageDone = { ...BETWEEN_SCENARIOS_AND_TDD, stages: ['intake', 'code-scenarios', 'code-tdd', 'code-safety-net'].map(doneStage) }
   const ledgers: Record<string, unknown> = {
     'every stage done': everyStageDone,
     'stage object absent': without(JUST_OPENED, 'stage'),

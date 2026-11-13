@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { writeLedger } from "../../shared-node/ledger.mjs";
-import { baseLedger } from "./ledger-fixture.mjs";
+import { baseLedger, withIntake } from "./ledger-fixture.mjs";
 import { ROOT, env, makeRepo, pb } from "./cli-repo-fixture.mjs";
 
 const NET = "code-safety-net";
@@ -21,7 +21,7 @@ function finishedRepo() {
   execFileSync("git", ["add", ".gitignore"], { cwd: repo.dir, env: env() });
   execFileSync("git", ["commit", "-q", "-m", "ignore state"], { cwd: repo.dir, env: env() });
   const configText = readFileSync(join(pairing, "test-config.json"), "utf8");
-  writeLedger(join(pairing, "run", "task", "ledger.json"), {
+  writeLedger(join(pairing, "run", "task", "ledger.json"), withIntake({
     ...baseLedger(),
     plan: { path: "", title: "" },
     seq: repo.ledger().seq,
@@ -30,7 +30,7 @@ function finishedRepo() {
     stage: { name: NET, status: "done", runId: "wf_2", attempt: 1, startedAt: null },
     stages: [{ name: "code-config", status: "done", attempt: 1 }, { name: NET, status: "done", attempt: 1 }],
     gates: { "G:task-end": { source: "auto" } },
-  });
+  }));
   return { repo, pairing };
 }
 

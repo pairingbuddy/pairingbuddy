@@ -35,6 +35,13 @@ export default {
     "config_change": {
       "nodes": [
         {
+          "name": "intake",
+          "gate": "G:type",
+          "evidence": [
+            "artifact:classify-task"
+          ]
+        },
+        {
           "name": "code-config",
           "gate": null,
           "evidence": [
@@ -53,6 +60,9 @@ export default {
         }
       ],
       "gates": {
+        "G:type": {
+          "class": "conditional"
+        },
         "G:task-end": {
           "class": "continue"
         }
@@ -60,6 +70,13 @@ export default {
     },
     "bug_fix": {
       "nodes": [
+        {
+          "name": "intake",
+          "gate": "G:type",
+          "evidence": [
+            "artifact:classify-task"
+          ]
+        },
         {
           "name": "code-scenarios",
           "gate": "G:scenarios",
@@ -88,6 +105,9 @@ export default {
         }
       ],
       "gates": {
+        "G:type": {
+          "class": "conditional"
+        },
         "G:scenarios": {
           "class": "continue"
         },
@@ -99,6 +119,13 @@ export default {
     "new_feature": {
       "nodes": [
         {
+          "name": "intake",
+          "gate": "G:type",
+          "evidence": [
+            "artifact:classify-task"
+          ]
+        },
+        {
           "name": "code-scenarios",
           "gate": "G:scenarios",
           "evidence": [
@@ -126,6 +153,9 @@ export default {
         }
       ],
       "gates": {
+        "G:type": {
+          "class": "conditional"
+        },
         "G:scenarios": {
           "class": "continue"
         },
@@ -136,6 +166,13 @@ export default {
     },
     "refactoring": {
       "nodes": [
+        {
+          "name": "intake",
+          "gate": "G:type",
+          "evidence": [
+            "artifact:classify-task"
+          ]
+        },
         {
           "name": "code-refactor-scope",
           "gate": "G:scope",
@@ -162,6 +199,9 @@ export default {
         }
       ],
       "gates": {
+        "G:type": {
+          "class": "conditional"
+        },
         "G:scope": {
           "class": "continue"
         },
@@ -205,6 +245,13 @@ export default {
     "spike": {
       "nodes": [
         {
+          "name": "intake",
+          "gate": "G:type",
+          "evidence": [
+            "artifact:classify-task"
+          ]
+        },
+        {
           "name": "code-spike-unit",
           "gate": "G:unit",
           "repeat": true,
@@ -223,6 +270,9 @@ export default {
         }
       ],
       "gates": {
+        "G:type": {
+          "class": "conditional"
+        },
         "G:unit": {
           "class": "continue"
         },

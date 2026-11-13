@@ -21,8 +21,8 @@ const taskPath = (repo) => join(repo.dir, ".pairingbuddy", "run", "task");
 const ledgerPath = (repo) => join(taskPath(repo), "ledger.json");
 
 const STAGES = {
-  config_change: { stages: ["code-config", NET], gates: ["G:task-end"] },
-  bug_fix: { stages: ["code-scenarios", "code-tdd", NET], gates: ["G:scenarios", "G:task-end"] },
+  config_change: { stages: ["intake", "code-config", NET], gates: ["G:type", "G:task-end"] },
+  bug_fix: { stages: ["intake", "code-scenarios", "code-tdd", NET], gates: ["G:type", "G:scenarios", "G:task-end"] },
 };
 
 // Marks the open run/task ledger as finished for its task type, the way unit-open.test.mjs does.

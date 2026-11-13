@@ -9,7 +9,7 @@ import { isDeepStrictEqual } from "node:util";
 
 import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
-import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
+import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, isPublishRun, isRefreshRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
@@ -17,7 +17,7 @@ import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, boxLabelsUnder, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
 import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, refreshPrReason, targetBranch, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
-import { abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
+import { SPIKE_SETUP_FILE, abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
@@ -25,9 +25,9 @@ import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
-import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
-import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
-import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
+import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
+import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
+import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
@@ -43,7 +43,6 @@ const TESTS_ROLE = "create-test-placeholders";
 const SCOPE_ROLE = "scope-refactoring";
 const SCOPE_STAGE = "code-refactor-scope";
 const SPIKE_UNIT_STAGE = "code-spike-unit";
-const SPIKE_SETUP_FILE = "spike.json";
 const SPIKE_SETUP_PATH = `.pairingbuddy/run/task/${SPIKE_SETUP_FILE}`;
 
 class UsageError extends Error {}
@@ -89,28 +88,21 @@ function parseKind(args) {
   return kind;
 }
 
-function refuseMissing(path) {
-  throw new Refusal(`${path} is missing, so no run was opened`);
+const NO_RUN_OPENED = "so no run was opened";
+// What the spike setup refusals say: they run from pb spike setup, after the run is open.
+const SETUP_NOT_RECORDED = "so pb spike setup recorded nothing";
+
+function refuseMissing(path, outcome = NO_RUN_OPENED) {
+  throw new Refusal(`${path} is missing, ${outcome}`);
 }
 
-function readStateJson(path) {
+function readStateJson(path, outcome = NO_RUN_OPENED) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch (e) {
     if (e.code === "ENOENT") return null;
-    throw new Refusal(`${path} is not valid JSON, so no run was opened`);
+    throw new Refusal(`${path} is not valid JSON, ${outcome}`);
   }
-}
-
-// The old path's classify-task writes this file until T7. No file means a run opened before classification.
-// A type with no stage graph is an old-path run, and an old-path run has no run state.
-function classifiedTaskType(root) {
-  const path = join(root, ".pairingbuddy", "task-classification.json");
-  if (!existsSync(path)) return null;
-  const type = readStateJson(path)?.task_type;
-  if (typeof type !== "string") throw new Refusal(`${path} has no task_type string, so no run was opened`);
-  if (!loadStages(PLUGIN_ROOT).migratedTypes.includes(type)) throw new Refusal(`task type ${type} is not migrated, so it stays on the old path and no run was opened`);
-  return type;
 }
 
 // The task, so that a later turn with no memory of it can still pass it to a stage. A run opened before the skill wrote
@@ -134,17 +126,6 @@ function assertNotStopped(root) {
     return;
   }
   if (stop !== null) throw new Refusal(`the run has stopped, so no next task can open: ${stop.reason}`);
-}
-
-// Any runner, since the placeholders may pick any of them. Refused here it costs nothing: refused later it costs the
-// scenarios and the placeholders, and it stops the run. No template is guessed, because a wrong one can pass a test
-// that never ran: a name-pattern runner exits 0 when nothing matches.
-function assertTestsSelectable(root, configHash, taskType) {
-  if (!needsTestSelection(loadStages(PLUGIN_ROOT), taskType)) return;
-  const missing = runnersWithoutSelector(readTestConfig(root, configHash));
-  if (missing.length === 0) return;
-  const named = missing.length === 1 ? `runner ${missing[0]} has` : `runners ${missing.join(", ")} have`;
-  throw new Refusal(`${named} no selector_template, so RED and GREEN cannot speak for one test, and no run was opened. Ask the human to add selector_template to each runner in .pairingbuddy/test-config.json: the argument words that select one test, for example ["{test_file}::{test_function}"] for pytest. Then start the task again`);
 }
 
 // Creates .pairingbuddy/run with a '*' .gitignore so nothing under it shows up as untracked. Returns the run root.
@@ -177,8 +158,8 @@ function assertPublishable(root) {
   if (unrecorded !== null) throw new Refusal(`${unrecorded}, so no publish run was opened. End each task with ${pbCommand("task end")} first`);
 }
 
-// Claims run/task and writes the spike setup (when given) and the first ledger; a failed write removes the claim.
-function claimRun({ root, kind, taskType, task, configHash, spike = null }) {
+// Claims run/task and writes the first ledger; a failed write removes the claim.
+function claimRun({ root, kind, taskType, task, configHash }) {
   const runRoot = ensureRunRoot(root);
   const dir = join(runRoot, "task");
   // A non-recursive mkdir is the claim: exactly one concurrent opener wins, and an existing
@@ -191,8 +172,6 @@ function claimRun({ root, kind, taskType, task, configHash, spike = null }) {
   }
   try {
     mkdirSync(join(dir, "artifacts"));
-    // The spike setup lands before the ledger, so a reader never sees a spike run without its setup.
-    if (spike) writeJsonAtomic(join(dir, SPIKE_SETUP_FILE), spike);
     // runId is the pb run identity, set once here; stage.runId is the separate workflow run id per stage attempt.
     writeLedger(join(dir, "ledger.json"), {
       v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType, runId: randomUUID(),
@@ -221,35 +200,33 @@ function runOpen(args) {
   assertBranchNotProtected(gitConfig, root, branch, "open a run", "; start the work on a unit branch with pb unit open");
 
   const configHash = validatedConfigHash(root);
-  const taskType = kind === "code" ? classifiedTaskType(root) : kind === "publish" ? "publish" : null;
-  assertTestsSelectable(root, configHash, taskType);
+  const taskType = kind === "publish" ? "publish" : null;
   const task = storedTask(root);
-  const spike = taskType === "spike" ? spikeSetupOf(root) : null;
 
-  const dir = claimRun({ root, kind, taskType, task, configHash, spike });
+  const dir = claimRun({ root, kind, taskType, task, configHash });
   return { ok: true, kind, branch, runDir: dir };
 }
 
-// The spike setup recorded next to the ledger: the config's goal, code location, mode and doc path, and each unit's id,
-// name, description and execution.
+// Validates spike-config.json and spike-questions.json and trims them to what the run keeps: the config's goal, code
+// location, mode and doc path, and each unit's id, name, description and execution.
 function spikeSetupOf(root) {
   const read = (name) => {
     const path = join(root, ".pairingbuddy", name);
-    return readStateJson(path) ?? refuseMissing(path);
+    return readStateJson(path, SETUP_NOT_RECORDED) ?? refuseMissing(path, SETUP_NOT_RECORDED);
   };
   const { goal, code_location, exploration_mode, doc_path } = read("spike-config.json");
   const rawUnits = read("spike-questions.json").units;
   assertSpikeUnits(rawUnits);
   assertRepoRelative("code_location", code_location);
   assertRepoRelative("doc_path", doc_path);
-  if (!doc_path.endsWith(".md")) throw new Refusal(`doc_path ${doc_path} does not end in .md, so no run was opened`);
+  if (!doc_path.endsWith(".md")) throw new Refusal(`doc_path ${doc_path} does not end in .md, ${SETUP_NOT_RECORDED}`);
   assertUnitsInside(code_location, rawUnits);
   const units = rawUnits.map(({ id, name, description, execution }) => ({ id, name, description, execution }));
   return { goal, code_location, exploration_mode, doc_path, units };
 }
 
 function assertRepoRelative(label, path) {
-  const bad = (why) => new Refusal(`${label} ${JSON.stringify(path)} ${why}, so no run was opened`);
+  const bad = (why) => new Refusal(`${label} ${JSON.stringify(path)} ${why}, ${SETUP_NOT_RECORDED}`);
   if (typeof path !== "string" || path === "") throw bad("is not a path");
   if (isAbsolute(path)) throw bad("is absolute");
   const parts = path.split("/");
@@ -264,16 +241,16 @@ function assertUnitsInside(code_location, units) {
     const wd = execution?.working_directory;
     assertRepoRelative("a unit working_directory", wd);
     const inside = wd === code_location || wd.startsWith(prefix);
-    if (!inside) throw new Refusal(`a unit working_directory ${JSON.stringify(wd)} is not inside code_location ${code_location}, so no run was opened`);
+    if (!inside) throw new Refusal(`a unit working_directory ${JSON.stringify(wd)} is not inside code_location ${code_location}, ${SETUP_NOT_RECORDED}`);
   }
 }
 
 function assertSpikeUnits(units) {
-  if (!Array.isArray(units) || units.length === 0) throw new Refusal("spike-questions.json has no unit, so no run was opened");
+  if (!Array.isArray(units) || units.length === 0) throw new Refusal(`spike-questions.json has no unit, ${SETUP_NOT_RECORDED}`);
   const seen = new Set();
   for (const { id } of units) {
-    if (typeof id !== "string" || !KEY_TOKEN.test(id)) throw new Refusal(`spike unit id ${JSON.stringify(id)} does not fit the key rule, so no run was opened`);
-    if (seen.has(id)) throw new Refusal(`spike unit id ${id} repeats, so no run was opened`);
+    if (typeof id !== "string" || !KEY_TOKEN.test(id)) throw new Refusal(`spike unit id ${JSON.stringify(id)} does not fit the key rule, ${SETUP_NOT_RECORDED}`);
+    if (seen.has(id)) throw new Refusal(`spike unit id ${id} repeats, ${SETUP_NOT_RECORDED}`);
     seen.add(id);
   }
 }
@@ -872,7 +849,7 @@ async function refactorCheckpoint(context) {
   return commitPlan(context, plan, head);
 }
 
-// The spike setup of the open run; a run opened before the setup was recorded has none.
+// The spike setup of the open run; it is missing until pb spike setup has run (after G:type passes).
 function readSpikeSetup(root) {
   let setup;
   try {
@@ -880,7 +857,7 @@ function readSpikeSetup(root) {
   } catch {
     throw new Refusal(`${SPIKE_SETUP_PATH} is not valid JSON, so this spike run cannot go on`);
   }
-  if (setup === null || !Array.isArray(setup.units)) throw new Refusal(`this spike run has no usable ${SPIKE_SETUP_PATH}; it was opened before the spike setup was recorded`);
+  if (setup === null || !Array.isArray(setup.units)) throw new Refusal(`this spike run has no usable ${SPIKE_SETUP_PATH}; run pb spike setup first (after G:type passes)`);
   return setup;
 }
 
@@ -902,6 +879,25 @@ function standingSpikeDocument(ledger, artifactsDir) {
   const found = newestDraftKey(artifactsDir, { name: SPIKE_DOCUMENT_STAGE, attempt }, null, stepRoles(SPIKE_DOC_STEP));
   if (found === null) throw new Refusal("no document-spike return stands for this attempt, so there is no document to write");
   return found.pbKey;
+}
+
+// The ledger of a spike run, for the spike verbs that need one.
+function spikeLedger(verb) {
+  const { root, path } = runLedgerPath();
+  const ledger = readLedger(path);
+  if (ledger.taskType !== "spike") throw new Refusal(`pb spike ${verb} runs for spike tasks only, and this task is ${ledger.taskType}`);
+  return { root, ledger };
+}
+
+// Validates spike-config.json and spike-questions.json and records the trimmed setup at run/task/spike.json, once, after G:type.
+function spikeSetup(args) {
+  assertNoArgs(args, "spike setup");
+  const { root, ledger } = spikeLedger("setup");
+  if (!isPassed(ledger, "G:type")) throw new Refusal("G:type has not passed, so pb spike setup cannot run yet");
+  const target = join(taskDirOf(root), SPIKE_SETUP_FILE);
+  if (existsSync(target)) throw new Refusal(`the run already has its spike setup (${SPIKE_SETUP_PATH}); nothing was touched`);
+  writeJsonAtomic(target, spikeSetupOf(root));
+  return { ok: true, spike: SPIKE_SETUP_PATH };
 }
 
 // Writes the standing document to the spike's doc_path and commits exactly that path.
@@ -1057,10 +1053,8 @@ function spikeFindings(ledger, units) {
 // What the spike unit stage cannot see for itself: the unit ids, which are explored, and the first unexplored unit.
 function spikeState(args) {
   if (args.length > 0) throw new UsageError("usage: pb spike state");
-  const { root, path } = runLedgerPath();
-  const ledger = readLedger(path);
+  const { root, ledger } = spikeLedger("state");
   assertStageActive(ledger, "report on");
-  if (ledger.taskType !== "spike") throw new Refusal(`pb spike state runs for spike tasks only, and this task is ${ledger.taskType}`);
   const { units } = readSpikeSetup(root);
   const explored = ledger.stages.find(({ name }) => name === SPIKE_UNIT_STAGE)?.explored ?? [];
   const next = units.find(({ id }) => !explored.includes(id));
@@ -1832,9 +1826,11 @@ function appendRollbackNote(root, stage, number, key, body) {
 
 // Record a rollback in the ledger, optionally dropping a commit that is no longer one of the run's commits.
 // When `capReason` is given it becomes the run's stop in the same update, so the rollback and the stop land together.
-function recordRollback(path, entry, droppedSha, capReason) {
+// `restoredType` is only given for an intake rollback, where null clears the type; leave the key out to keep it as is.
+function recordRollback(path, entry, { droppedSha, capReason, ...restored }) {
   updateLedger(path, (current) => ({
     ...current,
+    ...("restoredType" in restored ? { taskType: restored.restoredType } : {}),
     commits: droppedSha ? current.commits.filter((c) => c !== droppedSha) : current.commits,
     fixes: { ...current.fixes, rollbacks: [...(current.fixes?.rollbacks ?? []), entry] },
     ...(capReason ? { stop: { reason: capReason, seq: current.seq + 1, code: ATTEMPT_CAP } } : {}),
@@ -1951,9 +1947,14 @@ function rollback(args) {
   const maxAttempts = LENS_MAP.maxAttempts;
   const stopped = failedAttempts >= maxAttempts;
   const capReason = stopped ? `${ATTEMPT_CAP}: stage ${parts.stage} rolled back ${failedAttempts} fix attempts, its cap of ${maxAttempts}` : null;
-  recordRollback(path, entry, record?.sha, capReason);
+  const restored = parts.stage === "intake" ? { restoredType: keptTypeOf(root, parts.attempt) } : {};
+  recordRollback(path, entry, { droppedSha: record?.sha, capReason, ...restored });
   if (stopped) writeReport(reportPathOf(root), buildReport(readLedger(path), artifactsDirOf(root)));
   return { ok: true, key, note: wrong, failedAttempts, maxAttempts, stopped };
+}
+
+function keptTypeOf(root, attempt) {
+  return migratedType(loadStages(PLUGIN_ROOT), keptIntakeReturn(artifactsDirOf(root), attempt)?.content?.task_type);
 }
 
 export const VERBS = {
@@ -1961,7 +1962,7 @@ export const VERBS = {
   snapshot,
   "unit open": unitOpen, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
-  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 async function runVerb(name, args) {

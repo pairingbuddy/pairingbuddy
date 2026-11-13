@@ -1,4 +1,5 @@
 // Scenario: fix-reporting.
+import { INTAKE_DONE, withTypePassed } from "./ledger-fixture.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -21,8 +22,8 @@ function makeReadyToEndTask(repo, doneStage) {
     task: "Task A",
     configHash: createHash("sha256").update(configText).digest("hex"),
     stage: { name: doneStage, status: "done", runId: "wf_2", attempt: 1, startedAt: null },
-    stages: [{ name: "code-config", status: "done", attempt: 1 }, { name: doneStage, status: "done", attempt: 1 }],
-    gates: { "G:task-end": { source: "auto" } },
+    stages: [INTAKE_DONE, { name: "code-config", status: "done", attempt: 1 }, { name: doneStage, status: "done", attempt: 1 }],
+    gates: withTypePassed({ "G:task-end": { source: "auto" } }),
   });
 }
 

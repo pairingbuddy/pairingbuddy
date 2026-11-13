@@ -11,6 +11,7 @@
 //   answered redo:       the gate record and the stage's done state go, so no gate is due and the stage re-runs at attempt+1
 //   answered stop:       {ok, result:"answered", gate, answer:"stop", reason, humanCommand}, with ledger.stop set
 // All three exit 0. No gate due, or a broken ledger, exits 1. Any argument exits 2.
+import { INTAKE_DONE, withTypePassed } from "./ledger-fixture.mjs";
 import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -1131,7 +1132,8 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
       ledger: {
         taskType: "bug_fix", policy: { mode, source: "permission_mode" },
         stage: { name: SCENARIOS, status: "done", runId: "wf_1", attempt, startedAt: null },
-        stages: [{ name: SCENARIOS, status: "done", attempt }],
+        stages: [INTAKE_DONE, { name: SCENARIOS, status: "done", attempt }],
+        gates: withTypePassed(),
       },
     });
     writeScenarios(repo, attempt, ambiguity);
@@ -1158,11 +1160,12 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
     const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
 
     assert.deepEqual(contract.taskTypes.bug_fix.nodes, [
+      { name: "intake", gate: "G:type", evidence: ["artifact:classify-task"] },
       { name: SCENARIOS, gate: G_SCENARIOS, evidence: [`artifact:${AGENT}`] },
       { name: "code-tdd", gate: null, evidence: ["artifact:create-test-placeholders", "checkpoint:placeholders", "tests:cycle", "artifact:verify-test-coverage"] },
       { name: SAFETY_NET, gate: TASK_END, evidence: ["artifact:update-documentation", "checkpoint:docs", "tests:full"] },
     ]);
-    assert.deepEqual(contract.taskTypes.bug_fix.gates, { [G_SCENARIOS]: { class: "continue" }, [TASK_END]: { class: "continue" } });
+    assert.deepEqual(contract.taskTypes.bug_fix.gates, { "G:type": { class: "conditional" }, [G_SCENARIOS]: { class: "continue" }, [TASK_END]: { class: "continue" } });
     assert.equal(contract.stageMaxAgents["code-tdd"], 600);
     assert.equal(contract.migratedTypes.includes("bug_fix"), true);
   });

@@ -12,7 +12,7 @@ function goodLedger(over = {}) {
   return {
     taskType: "refactoring",
     policy: POLICY,
-    stages: ["code-refactor-scope", "code-refactor-apply", "code-safety-net"].map((name) => ({ name, status: "done" })),
+    stages: ["intake", "code-refactor-scope", "code-refactor-apply", "code-safety-net"].map((name) => ({ name, status: "done" })),
     checkpoints: [
       { step: "refactor-step", committed: true, sha: "r1" },
       { step: "refactor-step", committed: true, sha: "r2" },
@@ -58,13 +58,13 @@ const BROKEN = [
   ["task-type-bug-fix", goodLedger({ taskType: "bug_fix" }), GOOD_LOG, /taskType/],
   [
     "apply-before-scope",
-    goodLedger({ stages: [stagesDone[1], stagesDone[0], stagesDone[2]] }),
+    goodLedger({ stages: [stagesDone[0], stagesDone[2], stagesDone[1], stagesDone[3]] }),
     GOOD_LOG,
     /order/,
   ],
   [
     "stage-not-done",
-    goodLedger({ stages: [stagesDone[0], { ...stagesDone[1], status: "running" }, stagesDone[2]] }),
+    goodLedger({ stages: [stagesDone[0], stagesDone[1], { ...stagesDone[2], status: "running" }, stagesDone[3]] }),
     GOOD_LOG,
     /not done/,
   ],

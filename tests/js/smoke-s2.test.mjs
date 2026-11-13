@@ -20,8 +20,8 @@ function goodLedger(over = {}) {
   return {
     taskType: "bug_fix",
     policy: POLICY,
-    stages: ["code-scenarios", "code-tdd", "code-safety-net"].map((name) => ({ name, status: "done" })),
-    gates: { "G:scenarios": { source: "auto" }, "G:task-end": { source: "auto" } },
+    stages: ["intake", "code-scenarios", "code-tdd", "code-safety-net"].map((name) => ({ name, status: "done" })),
+    gates: { "G:type": { source: "auto" }, "G:scenarios": { source: "auto" }, "G:task-end": { source: "auto" } },
     checkpoints: [placeholder, { step: "red", committed: true, sha: "r1" }, { step: "green", committed: true, sha: "g1" }],
     commits: ["p", "r1", "g1"],
     tests: { perTest: { t1: row("r1", "g1") }, full: { passed: true, runs: [{ exitCode: 0 }] } },
@@ -84,7 +84,7 @@ test("a covered test before any GREEN fails S2", () => {
 for (const [what, ledger, log, pattern] of [
   ["a stage missing", goodLedger({ stages: [{ name: "code-tdd", status: "done" }] }), GOOD_LOG, /stage order/],
   ["stages out of order", goodLedger({ stages: ["code-tdd", "code-scenarios", "code-safety-net"].map((name) => ({ name, status: "done" })) }), GOOD_LOG, /stage order/],
-  ["a stage not done", goodLedger({ stages: ["code-scenarios", "code-tdd", "code-safety-net"].map((name) => ({ name, status: name === "code-tdd" ? "failed" : "done" })) }), GOOD_LOG, /stage order/],
+  ["a stage not done", goodLedger({ stages: ["intake", "code-scenarios", "code-tdd", "code-safety-net"].map((name) => ({ name, status: name === "code-tdd" ? "failed" : "done" })) }), GOOD_LOG, /stage order/],
   ["no placeholder commit", goodLedger({ checkpoints: [] }), GOOD_LOG, /placeholder/],
   ["two placeholder commits", goodLedger({ checkpoints: [placeholder, { ...placeholder, sha: "p2" }] }), GOOD_LOG, /placeholder/],
   ["a commit with the wrong type at GREEN", goodLedger(), [GOOD_LOG[0], GOOD_LOG[1], commit("g1", "chore: whatever")], /commit types/],
@@ -97,8 +97,8 @@ for (const [what, ledger, log, pattern] of [
   ["commits that do not line up with the test", goodLedger({ tests: { perTest: { t1: row("g1", "r1") }, full: { passed: true, runs: [{ exitCode: 0 }] } } }), GOOD_LOG, /t1/],
   ["a full suite that failed", goodLedger({ tests: { perTest: { t1: row("r1", "g1") }, full: { passed: false, runs: [{ exitCode: 1 }] } } }), GOOD_LOG, /full suite/],
   ["no full suite run", goodLedger({ tests: { perTest: { t1: row("r1", "g1") } } }), GOOD_LOG, /full suite/],
-  ["a gate a human answered", goodLedger({ gates: { "G:scenarios": { source: "human-cli" }, "G:task-end": { source: "auto" } } }), GOOD_LOG, /G:scenarios/],
-  ["a gate not recorded", goodLedger({ gates: { "G:scenarios": { source: "auto" } } }), GOOD_LOG, /G:task-end/],
+  ["a gate a human answered", goodLedger({ gates: { "G:type": { source: "auto" }, "G:scenarios": { source: "human-cli" }, "G:task-end": { source: "auto" } } }), GOOD_LOG, /G:scenarios/],
+  ["a gate not recorded", goodLedger({ gates: { "G:type": { source: "auto" }, "G:scenarios": { source: "auto" } } }), GOOD_LOG, /G:task-end/],
   ["an inherited policy", goodLedger({ policy: { mode: "auto", source: "env" } }), GOOD_LOG, /policy/],
 ]) {
   test(`S2 fails on ${what}`, () => {

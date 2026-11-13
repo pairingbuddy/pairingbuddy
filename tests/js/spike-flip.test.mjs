@@ -13,6 +13,7 @@ import { pseudocode, routerSection, sentencesSaying } from "./skill-router.mjs";
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 
 const SPIKE_NODES = [
+  { name: "intake", gate: "G:type", evidence: ["artifact:classify-task"] },
   { name: "code-spike-unit", gate: "G:unit", repeat: true, evidence: ["artifact:explore-spike-unit", "checkpoint:spike-unit"] },
   { name: "code-spike-document", gate: "G:task-end", evidence: ["artifact:document-spike", "checkpoint:spike-doc"] },
 ];
@@ -20,8 +21,8 @@ const SPIKE_NODES = [
 const committedContract = () => JSON.parse(readFileSync(join(ROOT, "contracts/stages.json"), "utf8"));
 
 function assertSpikeGraph(graph, where) {
-  assert.deepEqual(graph.nodes, SPIKE_NODES, `${where}: the spike graph is unit then document`);
-  assert.deepEqual(Object.keys(graph.gates).sort(), ["G:task-end", "G:unit"], `${where}: exactly the unit and task-end gates`);
+  assert.deepEqual(graph.nodes, SPIKE_NODES, `${where}: the spike graph is intake, unit, then document`);
+  assert.deepEqual(Object.keys(graph.gates).sort(), ["G:task-end", "G:type", "G:unit"], `${where}: exactly the type, unit and task-end gates`);
   assert.equal(graph.gates["G:unit"].class, "continue", `${where}: G:unit is continue-class`);
   assert.equal(graph.gates["G:task-end"].class, "continue", `${where}: G:task-end is continue-class`);
 }
@@ -44,23 +45,21 @@ describe("the spike stage graph", () => {
 });
 
 describe("spike-in-migrated-types-everywhere", () => {
-  test("migrated-types-list-spike-in-the-contract-the-mirror-and-the-skill", () => {
-    const listed = JSON.parse(/^MIGRATED_TYPES = (\[.*\])$/m.exec(pseudocode())[1]);
-
+  test("migrated-types-list-spike-in-the-contract-and-the-mirror", () => {
     assert.ok(committedContract().migratedTypes.includes("spike"), "contracts/stages.json lists spike as migrated");
     assert.ok(stagesContract.migratedTypes.includes("spike"), "shared-node/stages-contract.mjs lists spike as migrated");
-    assert.ok(listed.includes("spike"), "MIGRATED_TYPES in SKILL.md lists spike");
   });
 
-  test("the-router-maps-the-spike-task-type-to-the-spike-unit-type", () => {
-    assert.match(routerSection(), /`spike` to `spike`/, "the router maps the spike task type to the spike unit type");
+  test("the-router-offers-spike-as-a-branch-type", () => {
+    sentencesSaying("that spike is a branch type to guess", routerSection(), /branch type you guess from the task/, /`spike`/);
   });
 
-  test("setting-up-spike-runs-before-the-new-path", () => {
-    const code = pseudocode();
+  test("setting-up-spike-runs-after-g-type-inside-the-new-path", () => {
+    const [step] = sentencesSaying("the spike setup after G:type", routerSection(), /After G:type/, /setting-up-spike skill/, /`pb spike setup`/);
 
-    assert.match(code, /setting[-_]up[-_]spike/, "the pseudocode runs the setting-up-spike skill");
-    assert.ok(code.search(/setting[-_]up[-_]spike/) < code.indexOf("_run_new_path(task)"), "setting-up-spike runs before the new path");
+    assert.match(step, /spike whose setup is not recorded/);
+    assert.match(step, /main context/);
+    assert.doesNotMatch(pseudocode(), /_setting_up_spike\(task\)/, "the router no longer sets up a spike before the run");
   });
 
   test("a-closed-task-end-result-stops-without-a-publish-run", () => {

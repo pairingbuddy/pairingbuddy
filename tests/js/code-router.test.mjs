@@ -2,7 +2,7 @@ import "./isolated-tmpdir.mjs";
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -73,78 +73,6 @@ const NEW_PATH_AGENT_CALL = { subagent_type: "pairingbuddy:apply-config-change",
 
 // ---------- pb run open ----------
 
-test("config_change: the run records the type and the status names its first stage", (t) => {
-  const root = makeRepo(t);
-  classifyAs(root, "config_change");
-
-  const r = pb(root, OPEN);
-
-  assert.equal(r.status, 0, r.stderr);
-  assert.equal(ledgerOf(root).taskType, "config_change");
-  assert.deepEqual(JSON.parse(pb(root, ["status"]).stdout).next, { stage: "code-config", attempt: 1 });
-});
-
-test("refactoring: the run records the type and the status names its first stage", (t) => {
-  const root = makeRepo(t);
-  classifyAs(root, "refactoring");
-
-  const r = pb(root, OPEN);
-
-  assert.equal(r.status, 0, r.stderr);
-  assert.equal(ledgerOf(root).taskType, "refactoring");
-  assert.deepEqual(JSON.parse(pb(root, ["status"]).stdout).next, { stage: "code-refactor-scope", attempt: 1 });
-});
-
-test("no classification file: the taskType stays null, for a run opened before classification", (t) => {
-  const root = makeRepo(t);
-
-  assert.equal(pb(root, OPEN).status, 0);
-
-  assert.equal(ledgerOf(root).taskType, null);
-});
-
-for (const type of ["constructor"]) {
-  test(`${type} is not migrated, so no run opens and the gate stays out of the old path`, (t) => {
-    const root = makeRepo(t);
-    classifyAs(root, type);
-
-    assertRefusedWithNoRunState(root, pb(root, OPEN), new RegExp(`${type}.*old path`));
-
-    assert.equal(gate(root, "Agent", { subagent_type: "pairingbuddy:implement-code", prompt: "go" }), null, "old-path agents still spawn");
-  });
-}
-
-for (const [name, text, pattern] of [
-  ["unparseable", "{not json", /task-classification\.json.*not valid JSON/],
-  ["without a task_type", "{}", /task-classification\.json.*task_type/],
-  ["with a task_type that is no string", '{"task_type": 3}', /task-classification\.json.*task_type/],
-  ["that is not an object", "null", /task-classification\.json.*task_type/],
-]) {
-  test(`a classification file ${name} refuses instead of taking the default graph`, (t) => {
-    const root = makeRepo(t);
-    classify(root, text);
-
-    assertRefusedWithNoRunState(root, pb(root, OPEN), pattern);
-  });
-}
-
-test("a stage graph is chosen from the classification, not from a fixed type", (t) => {
-  const plugin = join(tempDir(t, "pb-router-plugin-"), "plugin");
-  for (const dir of ["cli", "shared-node", "contracts"]) cpSync(join(ROOT, dir), join(plugin, dir), { recursive: true });
-  const stagesPath = join(plugin, "contracts", "stages.json");
-  const contract = JSON.parse(readFileSync(stagesPath, "utf8"));
-  contract.taskTypes.bug_fix = { nodes: [{ name: "code-bug", gate: null, evidence: [] }], gates: {} };
-  contract.migratedTypes.push("bug_fix");
-  writeFileSync(stagesPath, JSON.stringify(contract));
-  const root = makeRepo(t);
-  classifyAs(root, "bug_fix");
-
-  assert.equal(pb(root, OPEN, { plugin }).status, 0);
-
-  assert.equal(ledgerOf(root).taskType, "bug_fix");
-  assert.deepEqual(JSON.parse(pb(root, ["status"], { plugin }).stdout).next, { stage: "code-bug", attempt: 1 });
-});
-
 test("a plan run does not read the coding classification", (t) => {
   const root = makeRepo(t);
   classifyAs(root, "bug_fix");
@@ -182,7 +110,7 @@ test("before a run a direct agent call passes, and once the run exists the gate 
 
   const decision = gate(root, "Agent", AGENT_CALL);
   assert.equal(decision.permissionDecision, "deny");
-  assert.match(decision.permissionDecisionReason, /Start the workflow pairingbuddy:code-config instead/);
+  assert.match(decision.permissionDecisionReason, /Start the workflow pairingbuddy:intake instead/);
 });
 
 test("an agent only a stage spawns is denied before a run as well", (t) => {
@@ -199,79 +127,18 @@ test("a run with no finished stage cannot end, whatever the model reports", (t) 
   const r = pb(root, ["task", "end"]);
 
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /code-config is not finished/);
+  assert.match(r.stderr, /intake is not finished/);
 });
 
 // ---------- the skill's router ----------
 
 
-test("the skill's migrated types are the contract's, and each has a stage graph", () => {
-  const listed = JSON.parse(/^MIGRATED_TYPES = (\[.*\])$/m.exec(pseudocode())[1]);
+test("the contract's migrated types each have a stage graph, and the skill keeps no list of its own", () => {
   const contract = JSON.parse(readFileSync(join(ROOT, "contracts", "stages.json"), "utf8"));
 
-  assert.deepEqual(listed, ["config_change", "bug_fix", "new_feature", "refactoring", "spike"]);
-  assert.deepEqual(listed, contract.migratedTypes);
-  assert.ok(listed.every((type) => Object.hasOwn(contract.taskTypes, type)));
-});
-
-const runner = (over = {}) => ({ command: "node --version", test_directory: ".", run_args: [], ...over });
-const SELECTABLE = { selector_template: ["{test_file}::{test_function}"] };
-
-function configure(root, runners) {
-  writeFileSync(join(root, ".pairingbuddy", "test-config.json"), JSON.stringify({ runners, default_runner: Object.keys(runners)[0] }));
-}
-
-for (const type of ["bug_fix", "new_feature"]) {
-  test(`${type} opens a run on its own graph once its runner can select one test`, (t) => {
-    const root = makeRepo(t);
-    configure(root, { node: runner(SELECTABLE) });
-    classifyAs(root, type);
-
-    assert.equal(pb(root, OPEN).status, 0);
-
-    assert.equal(ledgerOf(root).taskType, type);
-    assert.deepEqual(JSON.parse(pb(root, ["status"]).stdout).next, { stage: "code-scenarios", attempt: 1 });
-  });
-}
-
-test("new_feature with a runner that has no selector_template is refused at open, as bug_fix is", (t) => {
-  const root = makeRepo(t);
-  classifyAs(root, "new_feature");
-
-  assertRefusedWithNoRunState(root, pb(root, OPEN), /runner node has no selector_template/);
-});
-
-test("bug_fix with a runner that has no selector_template is refused at open, and the refusal names the fix", (t) => {
-  const root = makeRepo(t);
-  classifyAs(root, "bug_fix");
-
-  const r = pb(root, OPEN);
-
-  assertRefusedWithNoRunState(root, r, /runner node has no selector_template/);
-  assert.match(r.stderr, /\.pairingbuddy\/test-config\.json/, "it names the file");
-  assert.match(r.stderr, /\{test_file\}::\{test_function\}/, "it shows what to add");
-  assert.match(r.stderr, /human/, "the human owns that file");
-});
-
-test("every runner is held to it, since the placeholders may pick any of them", (t) => {
-  const root = makeRepo(t);
-  configure(root, { node: runner(SELECTABLE), e2e: runner(), api: runner() });
-  classifyAs(root, "bug_fix");
-
-  assertRefusedWithNoRunState(root, pb(root, OPEN), /runners e2e, api have no selector_template/);
-});
-
-test("a type with no RED or GREEN needs no selector_template", (t) => {
-  const root = makeRepo(t);
-  classifyAs(root, "config_change");
-
-  assert.equal(pb(root, OPEN).status, 0);
-});
-
-test("a run opened before classification needs no selector_template", (t) => {
-  const root = makeRepo(t);
-
-  assert.equal(pb(root, OPEN).status, 0);
+  assert.deepEqual(contract.migratedTypes, ["config_change", "bug_fix", "new_feature", "refactoring", "spike"]);
+  assert.ok(contract.migratedTypes.every((type) => Object.hasOwn(contract.taskTypes, type)));
+  assert.doesNotMatch(pseudocode(), /MIGRATED_TYPES/, "intake decides the type, so the skill has no list of types");
 });
 
 test("the bootstrap of test-config has the skill ask for a selector_template", () => {
@@ -293,16 +160,16 @@ test("the agents a graph uses but the old path still calls stay callable with no
   assert.equal(gate(root, "Agent", { subagent_type: "pairingbuddy:enumerate-scenarios-and-test-cases", prompt: "go" }), null);
 });
 
-test("the router runs after the plan loop has left, after classification, and before the old branches", () => {
+test("the router runs after the plan loop has left and before any classification and the old branches", () => {
   const code = pseudocode();
   const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
   const classified = code.lastIndexOf("task_classification = classify_task(task)");
-  const router = code.indexOf("if task_type in MIGRATED_TYPES and not _is_solo():");
+  const router = code.indexOf("if not _is_solo():\n    _run_new_path(task)");
   const oldBranches = code.indexOf('if task_type == "new_feature":');
 
-  assert.ok(planEnd !== -1 && planEnd < classified, "plan tasks never reach the router");
-  assert.ok(classified < router, "the router reads the classification");
-  assert.ok(router < oldBranches, "a migrated type never falls into the old branches");
+  assert.ok(planEnd !== -1 && planEnd < router, "plan tasks never reach the router");
+  assert.ok(router < classified, "outside Solo the run classifies, so the router comes first");
+  assert.ok(classified < oldBranches, "Solo classifies before the old branches");
 });
 
 // Live S2 runs classified new_feature and then followed the old new_feature branch, the first one past the router, with
@@ -314,18 +181,21 @@ test("the old branch of every migrated type says only plan tasks and Solo reach 
   for (const type of contract.migratedTypes) {
     const branch = new RegExp(`^(?:el)?if task_type == "${type}":\\n(.*)$`, "m").exec(code);
     assert.ok(branch, `${type} has an old branch`);
-    assert.match(branch[1], new RegExp(`^ {4}# Plan tasks and Solo only: the router takes every other ${type}$`), type);
+    assert.match(branch[1], new RegExp(`^ {4}# Plan tasks and Solo only$`), type);
   }
 });
 
-test("the router names the migrated types it takes away from the old branches", () => {
-  const router = /if task_type in MIGRATED_TYPES and not _is_solo\(\):\n([\s\S]*?)\n\n/.exec(pseudocode())[1];
+test("the router stops the task, so a non-Solo task never falls into the old branches", () => {
+  const router = /if not _is_solo\(\):\n([\s\S]*?)\n\n/.exec(pseudocode())[1];
 
-  assert.match(router, /never the old branches below/);
+  assert.match(router, /_run_new_path\(task\)\n\s+_stop\("Task complete\."\)/);
 });
 
 // The just-completed task is in task.json until cleanup, and classification applies all of human-guidance.json.
 const CURATE = "human_guidance = curate_guidance(human_guidance, task)";
+const SKILL_CURATE = "_curating_guidance(task)";
+// The first curation call in a code slice: the agent call or the skill call
+const curateAt = (part) => [part.indexOf(CURATE), part.indexOf(SKILL_CURATE)].filter((i) => i !== -1).sort((a, b) => a - b)[0] ?? -1;
 const CLEANUP = "_cleanup_state_files()";
 const CLASSIFY = "task_classification = classify_task(task)";
 
@@ -334,7 +204,8 @@ test("guidance curation comes before cleanup and classification, in the plan loo
   const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
 
   for (const [name, from, to] of [["plan loop", 0, planEnd], ["non-plan path", planEnd, code.length]]) {
-    const order = [CURATE, CLEANUP, CLASSIFY].map((step) => code.slice(from, to).indexOf(step));
+    const part = code.slice(from, to);
+    const order = [curateAt(part), part.indexOf(CLEANUP), part.indexOf(CLASSIFY)];
     assert.ok(!order.includes(-1), `${name} has all three steps`);
     assert.deepEqual([...order].sort((a, b) => a - b), order, `${name}: curate, cleanup, classify`);
   }
@@ -345,7 +216,8 @@ test("curation runs once on the non-plan path, ahead of the router", () => {
   const nonPlan = code.slice(code.indexOf('_stop("Plan execution paused/complete.")'));
 
   assert.equal(nonPlan.split(CURATE).length, 2);
-  assert.ok(nonPlan.indexOf(CURATE) < nonPlan.indexOf("if task_type in MIGRATED_TYPES and not _is_solo():"));
+  assert.equal(nonPlan.split(SKILL_CURATE).length, 2);
+  assert.ok(curateAt(nonPlan) < nonPlan.indexOf("_run_new_path(task)"));
 });
 
 test("the new task reaches task.json only after cleanup, in both orders", () => {
@@ -386,7 +258,7 @@ test("old-path-stops-on-open-unit: the old path is guarded after the router and 
 
   const guard = nonPlan.indexOf("_stop_if_unit_open()");
   assert.ok(guard !== -1, "the non-plan path calls it");
-  assert.ok(nonPlan.indexOf("if task_type in MIGRATED_TYPES and not _is_solo():") < guard, "after the router");
+  assert.ok(nonPlan.indexOf("_run_new_path(task)") < guard, "after the router");
   assert.ok(guard < nonPlan.indexOf("# Old path"), "before the old path");
   const planGuard = planPart.indexOf("_stop_if_unit_open()");
   assert.ok(planGuard !== -1, "the plan loop calls it");
@@ -551,14 +423,17 @@ describe("skill-opens-unit-before-code-run", () => {
     assert.match(resume[0], /go on to step 2 and do not run `pb unit open` again/);
   });
 
-  const typeMapping = { new_feature: "feat", bug_fix: "fix", refactoring: "refactor", config_change: "chore" };
-  for (const [type, abbreviation] of Object.entries(typeMapping)) {
-    test(`unit-type-mapping: ${type} is ${abbreviation}`, () => {
+  for (const branchType of ["feat", "fix", "refactor", "chore", "spike"]) {
+    test(`unit-type-guess: ${branchType} is a branch type the main session may guess`, () => {
       const section = routerSection();
 
-      sentencesSaying(`${type} maps to ${abbreviation}`, section, /mapped from `task_type`/, new RegExp(`\`${type}\` to \`${abbreviation}\``));
+      sentencesSaying(`${branchType} is a guessed branch type`, section, /branch type you guess from the task/, new RegExp(`\`${branchType}\``));
     });
   }
+
+  test("the guessed type only names the branch, and intake decides the run's type", () => {
+    sentencesSaying("that the type only names the branch", routerSection(), /only names the branch/, /intake decides the run's type/);
+  });
 
   test("unit-slug-is-kebab-case-and-the-cli-validates", () => {
     const section = routerSection();
@@ -673,4 +548,70 @@ describe("skill-keep-local-skip-local-stop", () => {
     sentencesSaying("never to read a workflow's reported status as a result", section, /^Never read a workflow's reported status as a result/);
     sentencesSaying("never to do a stage's work", section, /^Never do a stage's work yourself/);
   });
+});
+
+test("run open ignores the task classification file: taskType stays null and intake comes first", (t) => {
+  const root = makeRepo(t);
+  classifyAs(root, "new_feature");
+
+  const r = pb(root, OPEN);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(ledgerOf(root).taskType, null);
+  assert.deepEqual(JSON.parse(pb(root, ["status"]).stdout).next, { stage: "intake", attempt: 1 });
+});
+test("router-no-classify-task-outside-plan-and-solo", () => {
+  const code = pseudocode();
+  const nonPlan = code.slice(code.indexOf('_stop("Plan execution paused/complete.")'));
+  const run = nonPlan.indexOf("_run_new_path(task)");
+  const classify = nonPlan.indexOf("classify_task(task)");
+  const guard = nonPlan.slice(0, run).split("\n").reverse().find((line) => /^if .*:$/.test(line));
+  const open = sentencesSaying("what pb run open does", routerSection(), /pb run open --kind code/);
+  const first = sentencesSaying("intake and G:type come first", routerSection(), /intake/, /G:type/);
+
+  assert.ok(run !== -1, "the non-plan path calls _run_new_path");
+  assert.ok(classify === -1 || run < classify, "the new path is called before any classify_task call");
+  assert.match(guard, /not _is_solo\(\)/, "the new path is guarded by not _is_solo()");
+  assert.doesNotMatch(guard, /task_type/, "the guard has no task_type condition");
+  assert.ok(open.every((sentence) => !/task-classification/.test(sentence)), "pb run open does not read task-classification.json");
+  assert.ok(first.length > 0);
+});
+test("router-keeps-classify-task-for-plan-and-solo", () => {
+  const code = pseudocode();
+  const planStart = code.indexOf("for plan_task in plan_tasks:");
+  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
+  const planLoop = code.slice(planStart, planEnd);
+  const solo = code.slice(planEnd);
+  const soloClassify = solo.indexOf("task_classification = classify_task(task)");
+  const soloBranch = solo.indexOf('if task_type == "new_feature":');
+
+  assert.ok(planStart !== -1 && planEnd > planStart, "the plan loop is in the pseudocode");
+  assert.match(planLoop, /classify_task\(task\)/, "the plan loop still calls classify_task(task)");
+  assert.ok(soloClassify !== -1 && soloBranch !== -1, "Solo's old path classifies and branches");
+  assert.ok(soloClassify < soloBranch, "Solo calls classify_task(task) before the old branches");
+});
+
+test("router-uses-skill-in-main-context: outside Solo, guidance is curated by the curating-guidance skill before cleanup", () => {
+  const code = pseudocode();
+  const nonPlan = code.slice(code.indexOf('_stop("Plan execution paused/complete.")'));
+  const row = skill().split("\n").filter((line) => /^\|\s*`_curating_guidance\(task\)`/.test(line));
+
+  assert.ok(nonPlan.includes("_curating_guidance(task)"), "the non-plan path calls _curating_guidance(task)");
+  assert.ok(nonPlan.indexOf("_curating_guidance(task)") < nonPlan.indexOf(CLEANUP), "curation comes before cleanup");
+  const elseBranch = nonPlan.slice(nonPlan.indexOf("else:", nonPlan.indexOf("if _is_solo():")), nonPlan.indexOf(CLEANUP));
+  assert.ok(!elseBranch.includes("curate_guidance("), "the non-Solo branch does not call the curate_guidance agent");
+  assert.equal(row.length, 1, "the Orchestrator Functions table has a _curating_guidance(task) row");
+  assert.match(row[0], /curating-guidance/, "the row names the curating-guidance skill");
+});
+test("router-keeps-agent-for-plan-and-solo: the plan loop and the Solo branch still call the curate_guidance agent, which stays registered", () => {
+  const code = pseudocode();
+  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
+  const nonPlan = code.slice(planEnd);
+  const soloBranch = nonPlan.slice(nonPlan.indexOf("if _is_solo():"), nonPlan.indexOf("else:", nonPlan.indexOf("if _is_solo():")));
+  const config = readFileSync(join(ROOT, "contracts", "agent-config.yaml"), "utf8");
+
+  assert.ok(code.slice(0, planEnd).includes(CURATE), "the plan loop calls curate_guidance(human_guidance, task)");
+  assert.ok(soloBranch.includes(CURATE), "the Solo branch calls curate_guidance(human_guidance, task)");
+  assert.ok(existsSync(join(ROOT, "agents", "curate-guidance.md")), "agents/curate-guidance.md still exists");
+  assert.match(config, /^  curate-guidance:/m, "agent-config.yaml still lists curate-guidance");
 });

@@ -1,6 +1,7 @@
 import "./isolated-tmpdir.mjs";
 // T1d: the Stop, SessionStart and compact hooks tell a turn what comes next. Every test drives the real hook as a
 // subprocess against a temp repo, with the Stop payload recorded by probe P5.
+import { INTAKE_DONE, withIntake } from "./ledger-fixture.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -44,7 +45,7 @@ after(() => {
 });
 
 function makeLedger(over) {
-  return {
+  return withIntake({
     v: 1, seq: 0, sha: "0".repeat(64), kind: "code", taskType: "config_change",
     owner: { sessionId: null, lastSeen: null }, task: "T38",
     plan: { path: "", title: "" }, configHash: createHash("sha256").update(CONFIG_TEXT).digest("hex"),
@@ -52,7 +53,7 @@ function makeLedger(over) {
     gates: {}, tests: {}, commits: [], retries: {}, spend: { agents: 0, tokens: 0 },
     stop: null, needsHuman: null,
     ...over,
-  };
+  });
 }
 
 function makeRun(ledger = {}) {
@@ -122,7 +123,10 @@ function openRealRun() {
   writeFileSync(join(dir, ".pairingbuddy", "task.json"), JSON.stringify({ description: TASK }));
   const opened = pb(dir, "run", "open", "--kind", "code");
   assert.equal(opened.status, 0, opened.stderr);
-  return { dir, ledgerPath: join(dir, ".pairingbuddy", "run", "task", "ledger.json") };
+  const ledgerPath = join(dir, ".pairingbuddy", "run", "task", "ledger.json");
+  // Intake is done and G:type passed, so the run starts at the stage these tests drive.
+  updateLedger(ledgerPath, withIntake);
+  return { dir, ledgerPath };
 }
 
 function gate(cwd, tool, toolInput, session = "stop-session") {
@@ -333,7 +337,7 @@ describe("Stop hook cannot loop a turn", () => {
   test("a chain goes on while the next action changes, so a multi-stage run stays driven", () => {
     const { dir, ledgerPath } = makeRun();
     assertBlocks(stop(dir), /code-config/);
-    updateLedger(ledgerPath, (ledger) => ({ ...ledger, stages: [{ name: CONFIG, status: "done" }] }));
+    updateLedger(ledgerPath, (ledger) => ({ ...ledger, stages: [INTAKE_DONE, { name: CONFIG, status: "done" }] }));
     assertBlocks(stop(dir, { stop_hook_active: true }), /code-safety-net/);
   });
 

@@ -104,7 +104,8 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_stop_if_run_open()` | The check in An Open Run Comes First. |
 | `_stop_if_unit_open()` | If `.pairingbuddy/run/unit.json` exists, stop and tell the human the open unit's branch (read from unit.json) and that the old path cannot run inside a unit. They can finish the unit's work on the new path, or leave it by running `pb human abandon` (human-only: they type `!cd <project root> && node <root>/cli/pb.mjs human abandon`, which removes the unit and task state and keeps every commit). |
 | `_write_task(task)` | Write the new task to `.pairingbuddy/task.json`. It waits for cleanup: curation reads the just-completed task from that file, and cleanup deletes it. |
-| `_setting_up_spike(task)` | Runs the setting-up-spike skill in the main context, before `_run_new_path(task)`, for a spike task outside Solo. |
+| `_curating_guidance(task)` | Runs the curating-guidance skill in the main context, before cleanup, outside Solo and plan tasks. With no human it carries guidance over silently. |
+| `_setting_up_spike(task)` | Runs the setting-up-spike skill in the main context. It runs inside `_run_new_path(task)`, after G:type, for a spike. |
 | `_run_new_path(task)` | Runs a migrated type through its workflow stages. See Migrated-Types Router. |
 | `_update_solo_report(event, details)` | **Solo mode only.** Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file if absent; on resume, **reconciles** existing entries against the current plan — drops entries for removed tasks, reorders to match plan, then appends session separator), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
 
@@ -117,9 +118,6 @@ These functions handle coordination, human interaction, and control flow that do
 ```python
 # A run already open ends the task here, before anything touches state
 _stop_if_run_open()
-
-# Task types that run through workflow stages. Must match the task types in contracts/stages.json.
-MIGRATED_TYPES = ["config_change", "bug_fix", "new_feature", "refactoring", "spike"]
 
 # Plan execution mode: iterate through tasks from a plan MD file
 if _detect_plan_file(task):
@@ -160,31 +158,31 @@ if _detect_plan_file(task):
 
 # Curate guidance from previous session (always runs - handles review and bootstrap, and with no human
 # it carries over silently and asks nothing)
-human_guidance = curate_guidance(human_guidance, task)
+if _is_solo():
+    human_guidance = curate_guidance(human_guidance, task)  # Solo keeps the agent until T10
+else:
+    _curating_guidance(task)  # the curating-guidance skill, in the main context
 
 # Clean up stale state files from previous task (MANDATORY - do not skip)
 _cleanup_state_files()
 
 _write_task(task)
 
-# Task classification
-task_classification = classify_task(task)
-task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refactoring" | "config_change" | "spike"
-
-# Migrated-types router. Solo stays on the old path until T10.
-if task_type in MIGRATED_TYPES and not _is_solo():
-    # Every type in MIGRATED_TYPES goes here outside Solo, and never the old branches below
-    if task_type == "spike":
-        _setting_up_spike(task)  # the setting-up-spike skill, in the main context
+# Outside Solo, intake classifies inside the run. The main session does not classify.
+if not _is_solo():
     _run_new_path(task)
     _stop("Task complete.")
+
+# Solo only: classify here and take the old branches
+task_classification = classify_task(task)
+task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refactoring" | "config_change" | "spike"
 
 # The old path cannot run inside an open unit
 _stop_if_unit_open()
 
-# Old path: spike, plan tasks, and every type under Solo
+# Old path: plan tasks, and every type under Solo
 if task_type == "new_feature":
-    # Plan tasks and Solo only: the router takes every other new_feature
+    # Plan tasks and Solo only
     # Full TDD workflow with coverage verification loop
     scenarios = enumerate_scenarios_and_test_cases(task, test_config)
     gaps = None  # No gaps on first pass
@@ -219,7 +217,7 @@ if task_type == "new_feature":
         gaps = coverage.gaps  # Pass gaps to next iteration
 
 elif task_type == "bug_fix":
-    # Plan tasks and Solo only: the router takes every other bug_fix
+    # Plan tasks and Solo only
     # Bug fix: add regression test first, then fix
     scenarios = enumerate_scenarios_and_test_cases(task, test_config)  # describes the bug
     tests = create_test_placeholders(scenarios, test_config)
@@ -230,7 +228,7 @@ elif task_type == "bug_fix":
         code_state = implement_code(test_state, test_config)      # fix makes it pass
 
 elif task_type == "refactoring":
-    # Plan tasks and Solo only: the router takes every other refactoring
+    # Plan tasks and Solo only
     # Refactoring: work on existing code/tests per task intent
     # First verify all tests pass before refactoring
     all_tests_results = run_all_tests(test_config)
@@ -254,13 +252,13 @@ elif task_type == "refactoring":
         _stop("Refactoring broke tests")
 
 elif task_type == "config_change":
-    # Plan tasks and Solo only: the router takes every other config_change
+    # Plan tasks and Solo only
     # Config change: just make the change and verify tests still pass
     # No agents needed - orchestrator makes the change directly
     pass
 
 elif task_type == "spike":
-    # Plan tasks and Solo only: the router takes every other spike
+    # Plan tasks and Solo only
     # Spike: exploratory coding without TDD
     spike_config, spike_questions = setup_spike(task)
 
@@ -309,16 +307,17 @@ if _ask_human("All tests pass. Commit changes?"):
 
 ### Migrated-Types Router
 
-A migrated type runs through workflow stages instead of the branches above. Everything else, including every plan task and every Solo run, stays on those branches and never opens a run, so it has no run state.
+Outside Solo, every non-plan task runs through workflow stages instead of the branches above. Plan tasks and Solo runs stay on those branches and never open a run, so they have no run state.
 
 `_run_new_path(task)`:
 
-1. A non-plan `/code` task is a unit of one task, so the unit opens first. If an open unit has no task records and its branch is checked out, it is the one just opened: go on to step 2 and do not run `pb unit open` again. Otherwise run `pb unit open --type <type> --slug <slug>`, with the type mapped from `task_type` (`new_feature` to `feat`, `bug_fix` to `fix`, `refactoring` to `refactor`, `config_change` to `chore`, `spike` to `spike`) and a short kebab-case slug from the task. The CLI validates both.
+1. A non-plan `/code` task is a unit of one task, so the unit opens first. If an open unit has no task records and its branch is checked out, it is the one just opened: go on to step 2 and do not run `pb unit open` again. Otherwise run `pb unit open --type <type> --slug <slug>`, with the branch type you guess from the task (`feat`, `fix`, `refactor`, `chore` or `spike`) and a short kebab-case slug from the task. The type only names the branch: intake decides the run's type. The CLI validates both.
    - There is no confirmation: a plain call opens the template branch, and `pb unit open` takes no `--yes`.
    - When it refuses with a command for the human to type, with a leading `!`, stop and show the human that command. Only the human types it. Resume at step 2 once they have.
-2. Run `pb run open --kind code`. It reads `task_type` from `.pairingbuddy/task-classification.json` and picks the stage graph, and it stores the task from `.pairingbuddy/task.json`. If it refuses, stop and report the refusal. Do not make the change another way.
+2. Run `pb run open --kind code`. It stores the task from `.pairingbuddy/task.json` and opens with no type. The first stage is intake (the classify-task agent), and the first gate is G:type. Under auto, G:type passes only when the classifier reports certain. If it refuses, stop and report the refusal. Do not make the change another way.
 3. Run `pb status --action`. Its `action` is the one next step. A gate can fall between two stages, so follow `action`, not `next`, which names a stage even while a gate stands before it. When it says to start a stage, start that workflow by name with the args it gives, wait for it, and run `pb status --action` again.
 4. When it says a gate is due, run `pb gate eval`. On `auto-pass`, go back to step 3. On `needs-human`, show the human the question and `humanCommand`, and stop: only the human runs a `pb human` command.
+   - After G:type, when `pb status --action` says the task is a spike whose setup is not recorded, run the setting-up-spike skill in the main context, then `pb spike setup`, then run `pb status --action` again.
 5. When it says every stage and gate is done, run `pb task end`. If its output has `closed`, report its `reason` and stop: a spike has no publish stage, so do not run `pb run open --kind publish`. Otherwise run `pb run open --kind publish`. If either refuses, stop and report the refusal: do not work around it, and do not open the publish run by other means.
 6. Follow `pb status --action` through pr-draft and `G:publish` as for the code stages: start the stage it names, run `pb gate eval` when it says a gate is due. On `needs-human`, show the question and stop as in step 4. If the human answers keep local, report that and stop. If a kept-local unit is left behind, `pb status --action` names `pb publish` to finish closing it: run it and report its `reason`.
 7. When G:publish is approved, `pb status --action` names `pb publish`. Under the auto policy `pb gate eval` approves it itself, but only when every task recorded its safety-net review and the PR lint passes. An `auto-pass` at G:publish is that approval: run `pb publish` then, and do not hold it back for findings or ask the human first, since the gate has already weighed them and the PR opens as a draft. When `pb gate eval` returns `skip`, the unit has nothing to publish: run `pb publish` too. Run it and report `url`, `warnings` and `pendingComment` from its output. `pb publish` is the only route to a push or a PR: never run `git push` or `gh pr create` yourself.
@@ -343,7 +342,7 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 ### State File Management
 
 1. At cycle start, verify `.pairingbuddy/` is in `.gitignore`
-2. Invoke `curate_guidance` agent (before cleanup):
+2. Curate guidance (before cleanup). The curating-guidance skill does this outside Solo and plan tasks; the `curate_guidance` agent does it for Solo and plan tasks:
    - If `human-guidance.json` has entries: review/curate existing guidance
    - If empty or missing: offer to add new persistent guidance
    - Approved entries get `"persistent": true` flag

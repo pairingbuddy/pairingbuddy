@@ -16,7 +16,7 @@ import { shellWord } from "../../shared-node/shell-word.mjs";
 const SOURCE = realpathSync(fileURLToPath(new URL("../..", import.meta.url)));
 const MARKER = join(".git", "pb-drill-clone");
 const DROPPED_ENV = ["GIT_", "PAIRINGBUDDY", "CLAUDE"];
-const STAGE = "code-config";
+const STAGE = "intake";
 const SYNTAX_ERROR = "\n)drill: forced parse failure(\n";
 const LEFTOVER = "drill-half-done.txt";
 const TEST_CONFIG = { runners: { drill: { name: "drill", command: "node --version", test_directory: ".", file_pattern: "*", run_args: [] } }, default_runner: "drill" };
@@ -179,7 +179,8 @@ async function forceKilledAtGate(clone) {
   updateLedger(ledgerPathOf(clone), (ledger) => ({
     ...ledger,
     stage: { name: "code-safety-net", status: "done", runId: "wf_drill", attempt: 1, startedAt: null },
-    stages: [stage(STAGE), stage("code-safety-net")],
+    stages: [stage(STAGE), stage("code-config"), stage("code-safety-net")],
+    gates: { ...ledger.gates, "G:type": { source: "auto" } },
   }));
   pb(clone, "gate", "eval");
 }

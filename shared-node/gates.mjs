@@ -6,10 +6,14 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus } from "./stages.mjs";
+import { buildKey } from "./keys.mjs";
+import { keptIntakeReturn } from "./stage-run.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
 import { isRefreshRun } from "./ledger.mjs";
+import { needsTestSelection } from "./stage-graph.mjs";
+import { readTestConfig, runnersWithoutSelector } from "./test-run.mjs";
 import { taskHasLensRecord } from "./publish.mjs";
 import { headOf } from "./checkpoint.mjs";
 import { PrLintConfigRefused } from "./pr-lint.mjs";
@@ -207,9 +211,8 @@ const CONFIG_STOPS = { "test-config.json": "the config hash changed during the r
 const configStop = (hashes, root) => CONFIG_STOPS[changedConfigs(hashes, root)[0]] ?? null;
 
 function stopReason(contract, ledger, root) {
-  const taskDir = join(root, ".pairingbuddy", "run", "task");
   if (ledger.stop !== null) return `the run stopped: ${ledger.stop.reason}`;
-  const artifacts = join(taskDir, "artifacts");
+  const artifacts = artifactsDir(root);
   const settled = settledStages(contract, ledger);
   return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(artifacts, ledger, settled) ?? coverageStop(artifacts, ledger, settled) ?? reportStop(taskReportPath(root), ledger);
 }
@@ -228,23 +231,60 @@ function policyReason({ policy: { mode } }) {
 
 const SCOPE_GATE = "G:scope";
 
-// The scope lens may flag that the scope does not serve the stated intent; a survivor asks even under auto unless it is explicitly non-blocking (blocking: false).
+// A lens survivor counts as open unless it is explicitly non-blocking (blocking: false).
+const blockingSurvivors = (report) => (report.survivors ?? []).filter((finding) => finding?.blocking !== false);
+
+// The scope lens may flag that the scope does not serve the stated intent; a blocking survivor asks even under auto.
 function scopeReason(root, ledger) {
   const report = standingReport(taskReportPath(root), ledger);
   if (report === null) return null;
-  const blocked = (report.survivors ?? []).some((finding) => finding?.blocking !== false);
+  const blocked = blockingSurvivors(report).length > 0;
   return blocked ? "the scope lens found the scope may not serve the stated intent" : null;
 }
+
+const TYPE_GATE = "G:type";
+
+const artifactsDir = (root) => join(root, ".pairingbuddy", "run", "task", "artifacts");
+
+// G:type asks when a runner has no selector_template (for task types that need test selection) or when the classifier is not certain.
+function selectorReason(root, ledger, contract) {
+  if (!needsTestSelection(contract, ledger.taskType)) return null;
+  const missing = runnersWithoutSelector(readTestConfig(root, ledger.configHash));
+  if (missing.length === 0) return null;
+  const [noun, verb] = missing.length === 1 ? ["runner", "has"] : ["runners", "have"];
+  return `${noun} ${missing.join(", ")} ${verb} no selector_template, so RED and GREEN cannot speak for one test. Ask the human to add selector_template to each runner in .pairingbuddy/test-config.json, then abandon this run with pb human abandon and start the task again`;
+}
+
+function classifierReason(root, ledger) {
+  const confidence = keptIntakeReturn(artifactsDir(root), ledger.stage.attempt)?.content?.confidence;
+  return confidence === "certain" ? null : "the classifier does not report certain";
+}
+
+function lensReason(root, ledger) {
+  const report = standingReport(taskReportPath(root), ledger);
+  if (report === null) return null;
+  // Intake has one lens, so one kept fix group covers all its findings. G:type is due only after intake is done, and that needs
+  // `stage finish`, which the script reaches only after fixStop let it through: a fix still standing then was kept by the course
+  // check (a stop before the check asks at every gate first). A rolled-back fix was moved to rejected/, so the kept return is a fix.
+  const fixed = keptIntakeReturn(artifactsDir(root), ledger.stage.attempt)?.role === "fix";
+  return blockingSurvivors(report).length > 0 && !fixed ? "the classification lens has an open finding" : null;
+}
+
+const typeReason = (root, ledger, contract) => selectorReason(root, ledger, contract) ?? classifierReason(root, ledger) ?? lensReason(root, ledger);
 
 // The reasons only one gate has, by gate name.
 const GATE_REASONS = {
   [SCOPE_GATE]: ({ root, ledger }) => scopeReason(root, ledger),
+  [TYPE_GATE]: ({ root, ledger, contract }) => typeReason(root, ledger, contract),
   [PUBLISH_GATE]: ({ root, ledger, voided }) => publishReason(ledger, root, voided),
 };
 
+// A gate with its own reason decides for itself; the class reason is for gates that have none.
+const gateOwnReason = (gate, args) => (GATE_REASONS[gate.name] ? GATE_REASONS[gate.name](args) : (CLASS_REASONS[gate.class] ?? null));
+
 // Why this gate must ask a human, or null when it passes under the recorded policy.
 export const askReason = (contract, ledger, gate, root, voided = null) =>
-  stopReason(contract, ledger, root) ?? GATE_REASONS[gate.name]?.({ root, ledger, voided }) ?? CLASS_REASONS[gate.class] ?? policyReason(ledger);
+  stopReason(contract, ledger, root) ?? gateOwnReason(gate, { root, ledger, voided, contract }) ?? policyReason(ledger);
 
 // ---------- G:publish ----------
 
