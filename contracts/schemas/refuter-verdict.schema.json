@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Refuter Verdict",
+  "description": "Return of a refuter: the finding it attacked and whether that finding stood. The finding id is the same value as the item in its pb_key and label, so a verdict joins to its finding without reading text",
+  "type": "object",
+  "required": ["pb_key", "finding_id", "verdict"],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "finding_id": {
+      "type": "string",
+      "pattern": "^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*-[1-9][0-9]*$",
+      "description": "The finding this refuter attacked: the item in its pb_key"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["survives", "refuted"],
+      "description": "survives: the attack failed and the finding stands. refuted: the assumption it stood on does not hold"
+    }
+  },
+  "additionalProperties": false
+}

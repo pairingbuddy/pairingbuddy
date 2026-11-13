@@ -48,11 +48,19 @@ async function runCommands(stage, commands) {
 // No imports, no Node APIs. Each export sits alone at the start of a line
 // (`export function ...`) so a bundler can inline this file by stripping `export `.
 
-const KEY_TOKEN = /^[a-z0-9_-]{1,64}$/;
+// A key is a file name in artifacts/, so a part never starts with a dash.
+const KEY_TOKEN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const KEY_TEXT = /^([a-z0-9][a-z0-9_-]{0,63})\.([a-z0-9][a-z0-9_-]{0,63})\.(-|[a-z0-9][a-z0-9_-]{0,63})\.r([1-9]\d*)\.a([1-9]\d*)$/;
+
+// A finding id is <lens slug>-<n>. labels.mjs and refuter-verdict.schema.json hold the same pattern.
+const FINDING_ID = /^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*-[1-9]\d*$/;
+
+// D8: round 1 is the lens round, and fix attempt n is round n+1.
+const LENS_ROUND = 1;
 
 function requireKeyToken(name, value) {
   if (typeof value !== "string" || !KEY_TOKEN.test(value)) {
-    throw new Error(`key ${name} must be a non-empty string of at most 64 lowercase letters, digits, "-" or "_": ${JSON.stringify(value)}`);
+    throw new Error(`key ${name} must be a non-empty string of at most 64 lowercase letters, digits, "-" or "_", starting with a letter or digit: ${JSON.stringify(value)}`);
   }
   return value;
 }
@@ -64,51 +72,117 @@ function requireKeyPositiveInt(name, value) {
   return value;
 }
 
+function requireKeyRoleRules({ role, item, round }) {
+  if (role === "refuter" && !isFindingId(item)) {
+    throw new Error(`key refuter item must be the finding id it attacks: ${JSON.stringify(item)}`);
+  }
+  if (role === "course-checker" && round === LENS_ROUND) {
+    throw new Error(`key course-checker round must be a fix attempt's round, never the lens round: ${round}`);
+  }
+}
+
+function isFindingId(text) {
+  return typeof text === "string" && FINDING_ID.test(text);
+}
+
+function lensSlug(name) {
+  if (typeof name !== "string") throw new Error(`lens name must be a string: ${JSON.stringify(name)}`);
+  return requireKeyToken("lens", name.trim().toLowerCase().replace(/\s+/g, "-"));
+}
+
+function buildFindingId({ lens, index }) {
+  const id = `${lensSlug(lens)}-${requireKeyPositiveInt("finding index", index)}`;
+  if (!isFindingId(id)) throw new Error(`key finding id must be a lens slug and a position, at most 64 characters: ${JSON.stringify(id)}`);
+  return id;
+}
+
+function fixAttemptRound(attempt) {
+  return LENS_ROUND + requireKeyPositiveInt("fix attempt", attempt);
+}
+
 function buildKey({ stage, role, item, round, attempt }) {
-  const itemText = item === null || item === undefined ? "-" : requireKeyToken("item", item);
-  return [
+  const itemText = item === null || item === undefined || item === "-" ? "-" : requireKeyToken("item", item);
+  const parts = [
     requireKeyToken("stage", stage),
     requireKeyToken("role", role),
     itemText,
     `r${requireKeyPositiveInt("round", round)}`,
     `a${requireKeyPositiveInt("attempt", attempt)}`,
-  ].join(".");
+  ];
+  requireKeyRoleRules({ role, item, round });
+  return parts.join(".");
 }
 
 function parseKey(text) {
-  const match = /^([a-z0-9_-]{1,64})\.([a-z0-9_-]{1,64})\.([a-z0-9_-]{1,64})\.r([1-9]\d*)\.a([1-9]\d*)$/.exec(String(text));
+  const match = KEY_TEXT.exec(String(text));
   if (!match) throw new Error(`malformed key: ${JSON.stringify(text)}`);
   const [, stage, role, item, round, attempt] = match;
-  return { stage, role, item: item === "-" ? null : item, round: Number(round), attempt: Number(attempt) };
+  const parts = { stage, role, item: item === "-" ? null : item, round: Number(round), attempt: Number(attempt) };
+  requireKeyRoleRules(parts);
+  return parts;
 }
 
 // Stage labels: pb1 <stage> <phase> <role> <item> r<round>
 // No imports, no Node APIs. Each export sits alone at the start of a line
 // (`export function ...`) so a bundler can inline this file by stripping `export `.
+// Tokens match keys.mjs, so a label holds no free text and its item equals the key's.
+
+const LABEL_TOKEN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const LABEL_PHASE = /^(?:RED|GREEN|REFACTOR)$/;
+const LABEL_FINDING_ID = /^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*-[1-9]\d*$/;
+const LABEL_TEXT = /^pb1 ([a-z0-9][a-z0-9_-]{0,63}) (RED|GREEN|REFACTOR|-) ([a-z0-9][a-z0-9_-]{0,63}) (-|[a-z0-9][a-z0-9_-]{0,63}) r([1-9]\d*)$/;
 
 function requireLabelToken(name, value) {
-  if (typeof value !== "string" || value === "" || /\s/.test(value)) {
-    throw new Error(`label ${name} must be a non-empty string without whitespace: ${JSON.stringify(value)}`);
+  if (typeof value !== "string" || !LABEL_TOKEN.test(value)) {
+    throw new Error(`label ${name} must be a key token: ${JSON.stringify(value)}`);
   }
   return value;
 }
 
-function optionalLabelToken(name, value) {
-  return value === null || value === undefined ? "-" : requireLabelToken(name, value);
+function optionalLabelItem(item) {
+  return item === null || item === undefined || item === "-" ? "-" : requireLabelToken("item", item);
+}
+
+function labelPhaseText(phase) {
+  if (phase === null || phase === undefined || phase === "-") return "-";
+  if (typeof phase !== "string" || !LABEL_PHASE.test(phase)) {
+    throw new Error(`label phase must be RED, GREEN, REFACTOR or none: ${JSON.stringify(phase)}`);
+  }
+  return phase;
+}
+
+function labelRoleProblem({ role, item, round }) {
+  if (role === "refuter" && !LABEL_FINDING_ID.test(String(item))) return `label refuter item must be the finding id it attacks: ${JSON.stringify(item)}`;
+  if (role === "course-checker" && round === 1) return "label course-checker round must be a fix attempt's round, never the lens round: 1";
+  return null;
 }
 
 function buildLabel({ stage, phase, role, item, round }) {
   if (!Number.isInteger(round) || round < 1) {
     throw new Error(`label round must be a positive integer: ${JSON.stringify(round)}`);
   }
-  return ["pb1", requireLabelToken("stage", stage), optionalLabelToken("phase", phase), requireLabelToken("role", role), optionalLabelToken("item", item), `r${round}`].join(" ");
+  const parts = ["pb1", requireLabelToken("stage", stage), labelPhaseText(phase), requireLabelToken("role", role), optionalLabelItem(item), `r${round}`];
+  const problem = labelRoleProblem({ role, item, round });
+  if (problem !== null) throw new Error(problem);
+  return parts.join(" ");
 }
 
 function parseLabel(text) {
-  const match = /^pb1 (\S+) (\S+) (\S+) (\S+) r([1-9]\d*)$/.exec(String(text));
+  const match = LABEL_TEXT.exec(String(text));
   if (!match) throw new Error(`malformed label: ${JSON.stringify(text)}`);
   const [, stage, phase, role, item, round] = match;
-  return { stage, phase: phase === "-" ? null : phase, role, item: item === "-" ? null : item, round: Number(round) };
+  const parts = { stage, phase: phase === "-" ? null : phase, role, item: item === "-" ? null : item, round: Number(round) };
+  if (labelRoleProblem(parts) !== null) throw new Error(`malformed label: ${JSON.stringify(text)}`);
+  return parts;
+}
+
+// D10: a label that drifted is reported, never dropped, so a reader can show and count it.
+function readLabel(text) {
+  try {
+    return { unknown: false, ...parseLabel(text) };
+  } catch {
+    return { unknown: true, raw: String(text) };
+  }
 }
 
 // One shell word for a path or an argument, unchanged when a shell would read it as it stands. Workflow bundles inline
