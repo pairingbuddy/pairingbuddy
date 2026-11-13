@@ -12,10 +12,10 @@ Orchestrates the TDD workflow by invoking specialized agents via the Task tool. 
 Before anything else, run `pb status --action`. `<root>` is the plugin root the command passed. With none, it is two levels above this skill's base directory. `pb` here and below means `node <root>/cli/pb.mjs`.
 
 - If it refuses with `no run here`, no run is open: go on to the workflow.
-- If it prints a status, a run is open. Do not clean state or classify, do not curate guidance, and do not start the new task. Cleanup would delete what the run still needs. Report the status's `action`, which is the next action, and the new task you did not start, then stop.
+- If it prints a status, a run is open. Do not clean state or classify, do not curate guidance, and do not start the new task. Cleanup would delete what the run still needs. Finish that run first: follow `pb status --action` as Plan Loop step 1 says (a stranded stage: `pb stage fail`, then restart it at `nextAttempt`). For a plan, then go on with the Plan Loop. Otherwise report the finished run and the new task you did not start.
 - If it refuses any other way, a run is there and cannot be read. Report the refusal and stop.
 
-Solo takes the same check: no stage starts under Solo, so a run left open stops it here.
+Solo takes the same check but does not continue the run: no stage starts under Solo, so a run left open stops it here. Report the status's `action` and stop.
 
 ## CRITICAL: Follow the Workflow Exactly
 
