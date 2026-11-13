@@ -73,7 +73,11 @@
     {"name": "acceptances-two", "set": {"acceptances": [{"oldSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "newSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 4}, {"oldSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "newSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 4}]}},
     {"name": "config-acceptances-empty", "set": {"configAcceptances": []}},
     {"name": "config-acceptances-one", "set": {"configAcceptances": [{"oldHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "newHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 4}]}},
-    {"name": "acceptance-seq-zero", "set": {"acceptances": [{"oldSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "newSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 0}]}}
+    {"name": "acceptance-seq-zero", "set": {"acceptances": [{"oldSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "newSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "seq": 0}]}},
+    {"name": "fixes-rollbacks-empty", "set": {"fixes": {"rollbacks": []}}},
+    {"name": "fixes-rollback-commit", "set": {"fixes": {"rollbacks": [{"key": "safety-net.fix.g1.r2.a1", "kind": "commit", "ref": "refs/pairingbuddy/feature/rollback/safety-net/1", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}}},
+    {"name": "fixes-rollback-red", "set": {"fixes": {"rollbacks": [{"key": "safety-net.fix.g1.r2.a1", "kind": "red", "ref": "refs/pairingbuddy/feature/rollback/safety-net/1", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}}},
+    {"name": "fixes-rollback-artifact", "set": {"fixes": {"rollbacks": [{"key": "safety-net.fix.g1.r2.a1", "kind": "artifact", "ref": null, "sha": null, "base": null}]}}}
   ],
   "invalid": [
     {"name": "missing-v", "remove": ["v"]},
@@ -231,6 +235,14 @@
     {"name": "root-array", "replace": []},
     {"name": "root-null", "replace": null},
     {"name": "root-string", "replace": "x"},
-    {"name": "root-number", "replace": 42}
+    {"name": "root-number", "replace": 42},
+    {"name": "fixes-null", "set": {"fixes": null}},
+    {"name": "fixes-rollbacks-object", "set": {"fixes": {"rollbacks": {}}}},
+    {"name": "fixes-rollback-bad-kind", "set": {"fixes": {"rollbacks": [{"key": "safety-net.fix.g1.r2.a1", "kind": "revert", "ref": "refs/pairingbuddy/feature/rollback/safety-net/1", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}}},
+    {"name": "fixes-rollback-unknown-field", "set": {"fixes": {"rollbacks": [{"key": "safety-net.fix.g1.r2.a1", "kind": "commit", "ref": "refs/pairingbuddy/feature/rollback/safety-net/1", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "note": "extra"}]}}},
+    {"name": "fixes-rollback-missing-base", "set": {"fixes": {"rollbacks": [{"key": "safety-net.fix.g1.r2.a1", "kind": "commit", "ref": "refs/pairingbuddy/feature/rollback/safety-net/1", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}}},
+    {"name": "fixes-rollback-key-empty", "set": {"fixes": {"rollbacks": [{"key": "", "kind": "commit", "ref": "refs/pairingbuddy/feature/rollback/safety-net/1", "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "base": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}}},
+    {"name": "fixes-empty", "set": {"fixes": {}}},
+    {"name": "fixes-unknown-key", "set": {"fixes": {"rollbacks": [], "extra": 1}}}
   ]
 }

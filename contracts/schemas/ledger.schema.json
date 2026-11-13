@@ -144,9 +144,52 @@
       }
     },
     "lenses": {
-      "description": "Lens records by name (the one the publish gate reads is \"safety-net\"). Nothing writes it until T5c; this is the minimal shape, and T5c adds the per-stage fields. May be absent.",
+      "description": "Lens records by name (the one the publish gate reads is \"safety-net\"). `pb stage finish` on a safety-net stage writes \"safety-net\": the stage, the attempt, the lenses that ran with their models, the counts of surviving, refuted and unrefuted findings, and the names of uncovered lenses. It holds no finding content. May be absent.",
       "type": "object",
+      "properties": {
+        "safety-net": {
+          "type": "object",
+          "properties": {
+            "stage": { "type": "string" },
+            "attempt": { "type": "integer" },
+            "lenses": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": { "name": { "type": "string" }, "model": { "type": "string" } }
+              }
+            },
+            "survivors": { "type": "integer", "minimum": 0 },
+            "refuted": { "type": "integer", "minimum": 0 },
+            "unrefuted": { "type": "integer", "minimum": 0 },
+            "uncovered": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
       "additionalProperties": { "type": "object" }
+    },
+    "fixes": {
+      "description": "Fix bookkeeping. rollbacks lists each rolled-back fix group, oldest first: its key, kind (commit, red, artifact or repeated, the last for a fix that repeated an approach already rolled back), the rollback ref that keeps the rejected work, sha (the commit that ref points at: the fix commit, or the commit holding the saved dirty paths), and base (HEAD after the rollback). ref is a string for kind commit or red, and for kind repeated when the fix changed something; it is null for kind artifact, which records no git ref, and for kind repeated when the fix changed nothing. May be absent; when present it has rollbacks and no other keys.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rollbacks"],
+      "properties": {
+        "rollbacks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "kind", "ref", "sha", "base"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "kind": { "enum": ["commit", "red", "artifact", "repeated"] },
+              "ref": { "type": ["string", "null"] },
+              "sha": { "type": ["string", "null"] },
+              "base": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
     },
     "acceptances": {
       "description": "Each hand edit a human accepted with pb human accept, oldest first. May be absent. oldSha is the sha the edited file carried; newSha is the sha of the content as edited, before the acceptance was added; seq is the seq the acceptance wrote.",

@@ -445,3 +445,29 @@ describe("pb-publish-uses-and-closes-publish-run", () => {
     assert.equal(readText(unitFile(unit.repo)), unitBefore, "unit.json stays");
   });
 });
+
+describe("next-action-auto-pass", () => {
+  test("next-action-names-pb-publish-for-bound-auto-pass", () => {
+    const lens = { lenses: ["bugs"], findings: 0 };
+    const { repo } = publishRun({ approve: false, mode: "auto", cleanLenses: true, tasks: [{ lenses: { "safety-net": lens } }] });
+    assert.equal(evalGate(repo).result, "auto-pass", "the auto policy passes G:publish by itself");
+
+    const action = statusAction(repo);
+
+    assert.ok(action.includes(pbCommand("publish")), `the action names pb publish: ${action}`);
+    assert.equal(action.includes(pbCommand("gate eval")), false, "it does not send the run back to pb gate eval");
+  });
+  // The next-action side of a bare auto record is covered by "an auto record at G:publish is not an approval either"; this is
+  // the complementary check on the gate itself: eval voids the bare record and asks.
+  test("next-action-bare-auto-says-gate-due", () => {
+    const { repo } = publishRun({ approve: false });
+    changeLedger(repo, (ledger) => ({ gates: { ...ledger.gates, "G:publish": { source: "auto" } } }));
+
+    const asked = evalGate(repo);
+
+    assert.equal(asked.result, "needs-human");
+    assert.equal(Object.hasOwn(repo.ledger().gates, "G:publish"), false, "the bare record is voided out of the gates");
+    assert.deepEqual(repo.ledger().voidedGates.map(({ record }) => record), [{ source: "auto" }]);
+    assert.match(repo.ledger().voidedGates[0].reason, /carries no binding/, "the void reason says the record has no binding");
+  });
+});

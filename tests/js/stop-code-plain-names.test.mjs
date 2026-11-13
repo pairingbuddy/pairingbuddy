@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { plainName } from "../../shared-node/plain-names.mjs";
 import * as verbs from "../../shared-node/verbs.mjs";
-import { STOP_CODES, MISSING_ARTIFACT, COMMIT_PLAN_UNUSABLE, COMMIT_FAILED, NO_SELECTOR_TEMPLATE, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
+import { STOP_CODES, ATTEMPT_CAP, MISSING_ARTIFACT, COMMIT_PLAN_UNUSABLE, COMMIT_FAILED, NO_SELECTOR_TEMPLATE, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -98,7 +98,7 @@ test("unmapped-code-detected: the source writes exactly the known codes", () => 
 
   const codes = [...new Set(written.map(({ code }) => code))].sort();
 
-  assert.deepEqual(codes, [COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, HUMAN_STOPPED, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE].sort());
+  assert.deepEqual(codes, [ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, HUMAN_STOPPED, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE].sort());
 });
 
 test("unmapped-code-detected: the stage codes come through the shorthand stop in cli/pb.mjs", () => {

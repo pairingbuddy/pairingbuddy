@@ -29,6 +29,7 @@ This agent outputs scenarios and test cases. Tests are created by later agents.
 The one input rule decides what you read and write:
 
 - With a `<paths>` block in the prompt: read only what the paths name, plus the `<task>` in the prompt, and return your Output as StructuredOutput. `test_config` is the test config. `human_guidance` is the human guidance, which may be missing, and any redo feedback is there. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
+- With a `<paths>` block that names an existing scenarios file, plus `<findings>` and possibly `<what_went_wrong>` in the prompt: revise those scenarios instead of starting over. Read the file, change only what the findings name, avoid the mistakes the notes describe, and return the full revised Output.
 - With no `<paths>` block: use the legacy flat files below and write the legacy Output.
 
 Reads from `.pairingbuddy/task.json`:

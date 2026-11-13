@@ -7,17 +7,21 @@ function tagFinding(lensName, finding, n) {
   return { ...finding, id: `${lensName}-${n + 1}`, ...(hasRule ? { blocking: true } : { blocking: false, severity: 'low' }) };
 }
 
-const rowOf = (lensMap, stage) => lensMap.rows.find((candidate) => `code-${candidate.stage}` === stage);
+// The lens a finding came from: tagFinding's id rule (`<lens>-<n>`) read backwards. Keep the two together.
+export function lensOfFinding(finding) {
+  return finding.id.replace(/-\d+$/, '');
+}
 
 // A stage's lens config from its row in lenses.json: the one shape lensAttack is given and the report reads, so both
-// apply the same lenses, refute setting and caps. stage is the stage name, code-<row stage>. Task 76 wires the scenarios
-// stage only, and one lens of its row, the first, so only that one can be missing from the report. The other stages have
-// rows but no lens call yet, and get no lenses.
-export function wiredLensConfig(lensMap, stage) {
-  const row = rowOf(lensMap, stage);
+// apply the same lenses, refute setting and caps. stage is the stage name, which a row names bare or with the code- prefix. A row with taskTypes (the
+// safety-net rows, one per task type) is picked by taskType and wires all its lenses; so does a row with wiresAll true
+// (pr-draft, which has no task types). Any other row wires one lens, the first. The stages whose rows have no lens call yet get no lenses.
+export function wiredLensConfig(lensMap, stage, taskType) {
+  const rows = lensMap.rows.filter((candidate) => candidate.stage === stage || `code-${candidate.stage}` === stage);
+  const row = rows.find((candidate) => candidate.taskTypes?.includes(taskType)) ?? rows.find((candidate) => candidate.taskTypes === undefined);
   if (row === undefined) return { lenses: [] };
   const { refute, maxRefuters, maxFindingsPerLens } = row;
-  return { lenses: row.lenses.slice(0, 1), refute, maxRefuters, maxFindingsPerLens };
+  return { lenses: row.taskTypes === undefined && row.wiresAll !== true ? row.lenses.slice(0, 1) : row.lenses, refute, maxRefuters, maxFindingsPerLens };
 }
 
 // A verdict counts only for the finding it was sent for: the refuter returns the finding_id it believes it attacked, and a

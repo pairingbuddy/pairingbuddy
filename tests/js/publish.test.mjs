@@ -9,7 +9,8 @@ import { join } from "node:path";
 
 import { FAKE_PR_URL, flagValues, GH_FAILURE, viewEnv } from "./gh-shim-fixture.mjs";
 import { pb } from "./cli-repo-fixture.mjs";
-import { CLEAN_BODY, CLEAN_TITLE, DRAFT_KEY, commitMore, git, gitConfigPath, readUnitRecord, REFUSED, unitFile } from "./publish-fixture.mjs";
+import { sha256 } from "./tap-fixture.mjs";
+import { CLEAN_BODY, CLEAN_TITLE, DRAFT_KEY, commitMore, evalGate, git, gitConfigPath, readUnitRecord, REFUSED, unitFile } from "./publish-fixture.mjs";
 import {
   OTHER_UNIT_REF, PLAN, RUN_FILES, SAFETY_NET,
   changeLedger, changeUnit, divergeRemote, localRefs, makePrivateRefs, planFile, privateRefsOf, publishableUnit, publishUnit,
@@ -196,7 +197,6 @@ describe("publish-evidence-refusals", () => {
   test("refuses-without-valid-publish-approval", () => {
     const approvals = [
       ["none", null],
-      ["auto", { source: "auto", answer: "approve" }],
       ["another answer", { source: "human", answer: "redo" }],
     ];
     for (const [name, record] of approvals) {
@@ -626,20 +626,6 @@ describe("publish-closes-in-place-only-with-approval", () => {
     assert.equal(existsSync(join(unit.repo.dir, ".pairingbuddy", "run", "task")), false, "the run is ended");
     assert.deepEqual(gh.calls(), [], "no gh call was made");
   });
-
-  test("refusal-names-auto-apart-from-no-approval", () => {
-    const records = [
-      [{ source: "auto", answer: "approve" }, /auto policy/],
-    ];
-    for (const [record, reason] of records) {
-      const unit = publishableUnit({ approval: "none" });
-      changeLedger(unit.repo, (ledger) => ({ gates: { ...ledger.gates, "G:publish": record } }));
-
-      const stderr = refused(unit);
-
-      assert.match(stderr, reason, "each record has its own reason");
-    }
-  });
 });
 
 describe("publish-body-snapshot", () => {
@@ -734,5 +720,70 @@ describe("publish-adopts-its-own-pr", () => {
     assert.equal(result.code, REFUSED, `pb publish refuses, stdout ${result.stdout}`);
     assert.match(result.stderr, new RegExp(`${unit.branch} is pushed to origin, but the PR was not opened; run pb publish again, the push will not repeat`), "the refusal names the state reached and the next step");
     assert.equal(remoteRef(unit.repo, `refs/heads/${unit.branch}`), unit.head, "the push did happen");
+  });
+});
+
+function autoPassedUnit(label = "") {
+  const lens = { lenses: ["bugs"], findings: 0 };
+  const unit = publishableUnit({ mode: "auto", approval: "none", tasks: [{ lenses: { "safety-net": lens } }] });
+  assert.equal(evalGate(unit.repo).result, "auto-pass", `the auto policy passes G:publish by itself${label}`);
+  return unit;
+}
+
+describe("pb-publish-accepts-auto-pass", () => {
+  test("publish-opens-draft-pr-from-auto-pass", () => {
+    const unit = autoPassedUnit();
+
+    const { gh, result } = publishUnit(unit);
+
+    assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
+    assert.equal(JSON.parse(result.stdout).result, "published", "pb publish reports published");
+    assert.equal(gh.prCreates().length, 1, "exactly one pr create");
+    assert.ok(gh.prCreates()[0].argv.includes("--draft"), "the PR is opened as a draft");
+    assert.equal(remoteRef(unit.repo, `refs/heads/${unit.branch}`), unit.head, "the unit branch is on the remote at HEAD");
+  });
+
+  test("stale-auto-pass-voided-and-refused", () => {
+    const stale = {
+      "a new commit after the auto pass": { change: (repo) => commitMore(repo, "after"), reason: /HEAD moved/ },
+      "an edited pr-body.md": { change: (repo) => appendFileSync(join(repo.dir, ".pairingbuddy", "run", "pr-body.md"), "More words.\n"), reason: /pr-body\.md/ },
+      "a bare auto record with no binding": {
+        change: (repo) => changeLedger(repo, (ledger) => ({ gates: { ...ledger.gates, "G:publish": { source: "auto", answer: "approve" } } })),
+        reason: /no binding/,
+      },
+    };
+    for (const [name, { change, reason }] of Object.entries(stale)) {
+      const unit = autoPassedUnit(` (${name})`);
+      change(unit.repo);
+
+      const stderr = refused(unit);
+
+      assert.match(stderr, reason, `the refusal says why the auto record does not stand (${name})`);
+      assert.equal(unit.repo.ledger().voidedGates?.[0]?.gate, "G:publish", `the auto record is kept in voidedGates (${name})`);
+      assert.equal("G:publish" in unit.repo.ledger().gates, false, `the auto record left the gates (${name})`);
+    }
+  });
+
+  test("publish-refuses-auto-pass-when-task-lacks-lens-record", () => {
+    const unit = autoPassedUnit();
+    const tasks = readUnitRecord(unit.repo).tasks;
+    const [{ title }] = tasks;
+    changeUnit(unit.repo, { tasks: tasks.map((task) => ({ ...task, lenses: {} })) });
+
+    const stderr = refused(unit);
+
+    assert.match(stderr, /passed by the auto policy, but these tasks have no safety-net lens record/, "the refusal is the auto-policy lens-record refusal");
+    assert.ok(stderr.includes(title), "the refusal names the task that lacks the record");
+  });
+
+  test("publish-refuses-auto-pass-when-lint-on-disk-fails", () => {
+    const unit = autoPassedUnit();
+    const runDir = join(unit.repo.dir, ".pairingbuddy", "run");
+    const bodyHash = sha256(readFileSync(join(runDir, "pr-body.md"), "utf8"));
+    writeFileSync(join(runDir, "pr-lint.json"), JSON.stringify({ ok: false, failures: [{ rule: "title-form", text: "the title is not in the required form" }], bodyHash }));
+
+    const stderr = refused(unit);
+
+    assert.match(stderr, /passed by the auto policy, but the PR lint does not pass at the current body: title-form/, "the refusal is the auto-policy lint refusal and names the failing rule");
   });
 });

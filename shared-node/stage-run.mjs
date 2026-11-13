@@ -2,15 +2,16 @@
 // A model wrote the returns, so a return counts only under its own key at its own attempt. Node built-ins only.
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
-import { lensSlug } from "./keys.mjs";
+import { parseFixNotes } from "./fix-notes.mjs";
+import { lensSlug, parseKey } from "./keys.mjs";
 import { acceptVerdict, mergeLensReturns, wiredLensConfig } from "./lens-merge.mjs";
+import { TOKENS_UNIT, isFinishCommand, returnKeyOf, spentTokensOf } from "./spent-line.mjs";
 import { evidenceFor, maxAgentsOf, returnFileKey } from "./stages.mjs";
 import { TestRunRefused, testRows } from "./test-run.mjs";
 
 const REPORT_LISTS = ["survivors", "refuted", "gaps", "uncovered", "unrefuted"];
-const TOKENS_UNIT = "output tokens";
 
 export const SPEND_LABEL = `tokens are ${TOKENS_UNIT} from budget.spent(), and unknown while tokensKnown is false, so a 0 there is no measurement. agents counts recorded returns.`;
 
@@ -36,15 +37,18 @@ export function readReturn(artifactsDir, pbKey) {
   }
 }
 
-// The newest return of a role under any key with no item, or null. keep decides which attempts count.
-export function newestReturn(artifactsDir, role, keep = () => true) {
+// The newest return under any key that match accepts, newest by attempt then round, or null.
+export function newestReturnMatching(artifactsDir, match) {
   const found = readdirSync(artifactsDir)
     .filter((file) => file.endsWith(".json") && !file.startsWith("."))
     .map((file) => ({ pbKey: file.slice(0, -".json".length), ...returnFileKey(file) }))
-    .filter((key) => key.role === role && key.item === null && keep(key))
+    .filter(match)
     .sort((a, b) => b.attempt - a.attempt || b.round - a.round);
   return found[0]?.pbKey ?? null;
 }
+
+// The newest return of a role under any key with no item, or null. keep decides which attempts count.
+export const newestReturn = (artifactsDir, role, keep = () => true) => newestReturnMatching(artifactsDir, (key) => key.role === role && key.item === null && keep(key));
 
 // ---------- evidence ----------
 
@@ -110,23 +114,87 @@ export function finishProblems(contract, ledger, artifactsDir, head, config) {
 
 // ---------- spend ----------
 
-// Tokens stay 0 and unknown until a stage can hand over budget.spent(): stage finish takes no input from a model.
-const addAgents = ({ agents, tokens }, count) => ({ agents: agents + count, tokens, tokensKnown: false });
+// A sum of tokens is known only while every attempt in it was known. A missing tokensKnown on the sum means no attempt has been counted yet, so it is still known.
+const addSpend = ({ agents, tokens, tokensKnown }, attempt) => ({
+  agents: agents + attempt.agents,
+  tokens: tokens + attempt.tokens,
+  tokensKnown: tokensKnown !== false && attempt.tokensKnown === true,
+});
 
 const NO_SPEND = { agents: 0, tokens: 0 };
+
+const UNKNOWN_TOKENS = { tokens: 0, tokensKnown: false };
+export const unknownSpend = (agents) => ({ agents, ...UNKNOWN_TOKENS });
+const UNKNOWN_READ = { ...UNKNOWN_TOKENS, finisher: null };
+const TASK_FRAME_END = "The computed task text follows:";
+const RUNNER_AGENT = "pairingbuddy:runner";
+
+// The harness indents the computed task text by two spaces; only those lines are the script's own.
+function computedLines(content) {
+  const text = typeof content === "string" ? content : content.filter(({ type }) => type === "text").map(({ text: part }) => part).join("\n");
+  const at = text.indexOf(TASK_FRAME_END);
+  if (at < 0) return [];
+  return text.slice(at + TASK_FRAME_END.length).split("\n").filter((line) => line.startsWith("  ")).map((line) => line.slice(2));
+}
+
+function runnerLines(dir, metaFile) {
+  if (JSON.parse(readFileSync(join(dir, metaFile), "utf8")).agentType !== RUNNER_AGENT) return null;
+  const transcript = readFileSync(join(dir, metaFile.replace(/\.meta\.json$/, ".jsonl")), "utf8");
+  return computedLines(JSON.parse(transcript.split("\n")[0]).message.content);
+}
+
+// A file or line that cannot be read or parsed is skipped alone, so it never hides the figure of the others.
+const orNull = (read) => {
+  try {
+    return read();
+  } catch {
+    return null;
+  }
+};
+
+// The finishing runner in one transcript's lines: its pb key for this attempt and the tokens it reported (null when it reported none), else null.
+function finishingRunnerOf(lines, { name, attempt }) {
+  if (!lines.some(isFinishCommand)) return null;
+  const finisher = lines.map(returnKeyOf).find((text) => {
+    const key = text === null ? null : orNull(() => parseKey(text));
+    return key !== null && key.role === "runner" && key.stage === name && key.attempt === attempt;
+  });
+  if (finisher === undefined) return null;
+  const tokens = lines.map(spentTokensOf).find((count) => count !== null) ?? null;
+  return { tokens, finisher };
+}
+
+// The output tokens and pb key of this attempt's finishing runner, read from the harness transcript and never from a
+// model's return. Unknown tokens and a null key unless the transcript folder matches the run and exactly one finishing runner is found.
+function stageSpentRead(ledger) {
+  try {
+    const { name, attempt, runId, transcriptDir } = ledger.stage;
+    if (typeof transcriptDir !== "string" || basename(transcriptDir) !== runId) return UNKNOWN_READ;
+    const found = readdirSync(transcriptDir).filter((file) => /^agent-.+\.meta\.json$/.test(file)).flatMap((file) => {
+      const lines = orNull(() => runnerLines(transcriptDir, file));
+      const runner = lines === null ? null : finishingRunnerOf(lines, { name, attempt });
+      return runner === null ? [] : [runner];
+    });
+    if (found.length !== 1) return UNKNOWN_READ;
+    const [{ tokens, finisher }] = found;
+    return { ...(tokens === null ? UNKNOWN_TOKENS : { tokens, tokensKnown: true }), finisher };
+  } catch {
+    return UNKNOWN_READ;
+  }
+}
 
 const stageEntry = ({ stages, stage }) => stages.find(({ name }) => name === stage.name);
 
 // Closes the active attempt as done or failed. Spend is what happened, so a failed attempt's counts too.
-export function closeStage(ledger, status, agents, notes = {}) {
+export function closeStage(ledger, status, spent, notes = {}) {
   const { name, attempt } = ledger.stage;
   const entry = stageEntry(ledger);
-  const closed = { ...entry, ...notes, name, status, attempt, startedAt: entry?.startedAt ?? ledger.stage.startedAt, spend: addAgents(entry?.spend ?? NO_SPEND, agents) };
+  const closed = { ...entry, ...notes, name, status, attempt, startedAt: entry?.startedAt ?? ledger.stage.startedAt, spend: addSpend(entry?.spend ?? NO_SPEND, spent) };
   const stages = entry === undefined ? [...ledger.stages, closed] : ledger.stages.map((stage) => (stage === entry ? closed : stage));
-  return { ...ledger, stage: { ...ledger.stage, status }, stages, spend: addAgents(ledger.spend, agents) };
+  return { ...ledger, stage: { ...ledger.stage, status }, stages, spend: addSpend(ledger.spend, spent) };
 }
 
-const spendFigures = ({ agents, tokens, tokensKnown }, more) => ({ agents: agents + more, tokens, tokensKnown: tokensKnown === true });
+const spendFigures = ({ agents, tokens, tokensKnown }, more) => ({ agents: agents + more, tokens, tokensKnown: more === 0 && tokensKnown === true });
 
 // The stage and task totals, with an active stage's returns so far, which no closed attempt has counted yet.
 export function spendTotals(ledger, artifactsDir, contract) {
@@ -162,7 +230,7 @@ function coveredEvidence({ tests: { perTest = {} }, stage: { name } }) {
 export const coveredTests = ({ tests: { perTest = {} } }) =>
   Object.entries(perTest).filter(([, { covered }]) => covered?.done).map(([test_id, { covered: { after, sha } }]) => ({ test_id, after, sha }));
 
-function notCovered({ uncovered, gaps }, testRuns, returns, red, lensRan) {
+function notCovered({ uncovered, gaps }, testRuns, returns, red, lensRan, tokensKnown) {
   const anyLensRan = lensRan || returns.some((artifact) => REPORT_LISTS.some((key) => artifact[key] !== undefined));
   return [
     ...uncovered,
@@ -170,7 +238,7 @@ function notCovered({ uncovered, gaps }, testRuns, returns, red, lensRan) {
     ...(testRuns.some(({ key }) => key === "full") ? [] : ["the full suite did not run in this stage"]),
     ...(anyLensRan ? [] : ["no lens round ran in this stage"]),
     ...(testRuns.length > 0 || red.length > 0 ? ["exit codes show that tests passed or failed, not why: read the excerpts"] : []),
-    `${TOKENS_UNIT} are unknown: this stage supplied no budget.spent() figure`,
+    ...(tokensKnown ? [] : [`${TOKENS_UNIT} are unknown: this stage supplied no budget.spent() figure`]),
   ];
 }
 
@@ -179,7 +247,7 @@ const LENS_ROLE = "lens";
 const REFUTER_ROLE = "refuter";
 
 // Read once per process: which lenses a stage runs comes from the same map and wiredLensConfig rule the workflow uses.
-const LENS_MAP = JSON.parse(readFileSync(new URL("../contracts/lenses.json", import.meta.url), "utf8"));
+export const LENS_MAP = JSON.parse(readFileSync(new URL("../contracts/lenses.json", import.meta.url), "utf8"));
 
 // The same merge the workflow runs, over what the tap recorded: a lens with no recorded return is uncovered. A return counts
 // for the lens its key names (the tap only files a lens key from a lens agent, and each call's schema pins its own key, so
@@ -204,9 +272,9 @@ function corpusPaths(artifactsDir) {
   return paths;
 }
 
-function mergedLensRound(current, artifactsDir, stageName, lensMap) {
+function mergedLensRound(current, artifactsDir, stageName, lensMap, taskType) {
   const recorded = current.filter(({ role }) => role === LENS_ROLE);
-  const config = { ...wiredLensConfig(lensMap, stageName), corpus: corpusPaths(artifactsDir) };
+  const config = { ...wiredLensConfig(lensMap, stageName, taskType), corpus: corpusPaths(artifactsDir) };
   const latestByLens = config.lenses.map((lens) => ({
     lens,
     latest: recorded.filter(({ item }) => item === lensSlug(lens.name)).sort((a, b) => b.round - a.round)[0],
@@ -227,6 +295,21 @@ function coverageGaps(current, returns) {
   return Array.isArray(newest?.artifact.gaps) ? newest.artifact.gaps : [];
 }
 
+// The fix attempts of the stage: distinct fix keys across its checkpoints, rollbacks and filed fix returns (an
+// artifact-mode fix has no checkpoint, so a kept one shows only as its return), and the lessons its notes hold.
+export const rolledBackCount = (ledger, stage) => (ledger.fixes?.rollbacks ?? []).filter((r) => parseKey(r.key).stage === stage).length;
+
+export function fixesOf(ledger, artifactsDir, lensMap = LENS_MAP) {
+  const { name } = ledger.stage;
+  // pb rollback refuses any non-fix key, so every rollback key is a fix key. attempts counts every fix attempt, kept or
+  // rolled back; the rollback cap counts only the rolled-back ones.
+  const keys = [...(ledger.checkpoints ?? []).filter(({ step, stage }) => step === "fix" && stage === name).map(({ key }) => key),
+    ...(ledger.fixes?.rollbacks ?? []).map(({ key }) => key).filter((key) => parseKey(key).stage === name),
+    ...stageReturns(artifactsDir, name).filter(({ role }) => role === "fix").map(({ pbKey }) => pbKey)];
+  const notes = join(dirname(artifactsDir), "notes", `${name}.md`);
+  return { attempts: new Set(keys).size, rolledBack: rolledBackCount(ledger, name), maxAttempts: lensMap.maxAttempts, lessons: existsSync(notes) ? parseFixNotes(readFileSync(notes, "utf8")) : [] };
+}
+
 // Built from what was recorded, never from a model's summary of it. A coverage check is no lens round, so its gaps join
 // the lists apart from the lens returns.
 // lensMap is a test seam: production passes none and gets contracts/lenses.json.
@@ -236,7 +319,7 @@ export function buildReport(ledger, artifactsDir, lensMap = LENS_MAP) {
   const returns = current.map(({ pbKey }) => readReturn(artifactsDir, pbKey) ?? {});
   const lensReturns = returns.filter((_, i) => ![COVERAGE_ROLE, LENS_ROLE, REFUTER_ROLE].includes(current[i].role));
   const found = Object.fromEntries(REPORT_LISTS.map((key) => [key, lensReturns.flatMap((artifact) => artifact[key] ?? [])]));
-  const { merged, lensRan } = mergedLensRound(current, artifactsDir, name, lensMap);
+  const { merged, lensRan } = mergedLensRound(current, artifactsDir, name, lensMap, ledger.taskType);
   const lists = {
     ...found,
     survivors: [...found.survivors, ...merged.survivors],
@@ -245,6 +328,8 @@ export function buildReport(ledger, artifactsDir, lensMap = LENS_MAP) {
     uncovered: [...found.uncovered, ...merged.uncovered],
     gaps: [...found.gaps, ...coverageGaps(current, returns)],
   };
+  const { finisher, ...spent } = stageSpentRead(ledger);
+  const finisherUncounted = finisher !== null && !current.some(({ pbKey }) => pbKey === finisher);
   const tests = attemptTests(ledger);
   const red = redEvidence(ledger);
   const ambiguities = current.map(({ pbKey }, i) => ({ key: pbKey, ambiguity: returns[i].ambiguity ?? "" })).filter(({ ambiguity }) => ambiguity !== "");
@@ -260,10 +345,25 @@ export function buildReport(ledger, artifactsDir, lensMap = LENS_MAP) {
     },
     ...lists,
     ambiguities,
+    fixes: fixesOf(ledger, artifactsDir, lensMap),
     redEvidence: red,
     covered: coveredEvidence(ledger),
-    notCovered: notCovered(lists, tests, lensReturns, red, lensRan),
-    spend: { agents: current.length, agentsSource: "recorded returns", tokens: 0, tokensKnown: false, tokensUnit: TOKENS_UNIT },
+    notCovered: notCovered(lists, tests, lensReturns, red, lensRan, spent.tokensKnown),
+    spend: { agents: current.length + (finisherUncounted ? 1 : 0), agentsSource: finisherUncounted ? "recorded returns, and the runner that ran stage finish" : "recorded returns", ...spent, tokensUnit: TOKENS_UNIT },
+  };
+}
+
+// Built from the report by code, never from a model, and it carries no finding content: names, models and counts only.
+export function lensRecordOf(ledger, report, lensMap = LENS_MAP) {
+  const { name: stage, attempt } = ledger.stage;
+  return {
+    stage,
+    attempt,
+    lenses: wiredLensConfig(lensMap, stage, ledger.taskType).lenses.map(({ name, model }) => ({ name, model })),
+    survivors: report.survivors.length,
+    refuted: report.refuted.length,
+    unrefuted: report.unrefuted.length,
+    uncovered: report.uncovered,
   };
 }
 

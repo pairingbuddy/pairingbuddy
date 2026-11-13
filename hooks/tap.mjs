@@ -14,6 +14,22 @@ function logError(taskDir, message) {
   appendFileSync(join(taskDir, "tap-errors.log"), `${new Date().toISOString()} ${message}\n`);
 }
 
+// The fix role's label is shared by every fixer the workflows assign (decision 26), so a fix key does not
+// name one agent. Each stage lists the fixers its workflow assigns; keep this in step with the fix configs in
+// workflows-src/stages/code-safety-net.mjs, code-scenarios.mjs and pr-draft.mjs, and add a new fixer in both.
+const FIX_AGENTS_BY_STAGE = {
+  "code-safety-net": ["pairingbuddy:refactor-code", "pairingbuddy:refactor-tests"],
+  "code-scenarios": ["pairingbuddy:enumerate-scenarios-and-test-cases"],
+  "pr-draft": ["pairingbuddy:draft-pull-request"],
+};
+
+// A model can pin any key in a schema of its own, so the agent must be the one the key's role names,
+// except a fix key, which the stage's assigned fixers may file under.
+function agentMayFile(parsed, agentType) {
+  if (parsed.role === "fix") return FIX_AGENTS_BY_STAGE[parsed.stage]?.includes(agentType) ?? false;
+  return agentType === `pairingbuddy:${parsed.role}`;
+}
+
 function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, { tool_input: toolInput, agent_type: agentType }) {
   const pbKey = toolInput?.pb_key;
   if (typeof pbKey !== "string") return;
@@ -24,8 +40,7 @@ function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, { to
     logError(taskDir, `bad key: ${JSON.stringify(pbKey)}`);
     return;
   }
-  // A model can pin any key in a schema of its own, so only the agent the key names may file under it.
-  if (agentType !== `pairingbuddy:${parsed.role}`) {
+  if (!agentMayFile(parsed, agentType)) {
     logError(taskDir, `agent mismatch: key ${pbKey} from ${JSON.stringify(agentType)}`);
     return;
   }
@@ -51,9 +66,12 @@ function tapStructuredOutput({ parseKey, readLedger }, taskDir, ledgerPath, { to
   writePrBody(taskDir, parsed, toolInput.body);
 }
 
-// The pr-draft return's body is the PR body file the later stages read, written whole or not at all.
+// The draft and its redraft (a fix) both carry the PR body, so both roles write pr-body.md.
+const PR_BODY_ROLES = ["draft-pull-request", "fix"];
+
+// The newest pr-draft return's body, the draft or a redraft, is the PR body file the later stages read, written whole or not at all.
 function writePrBody(taskDir, parsed, body) {
-  if (parsed.stage !== "pr-draft" || parsed.role !== "draft-pull-request" || typeof body !== "string") return;
+  if (parsed.stage !== "pr-draft" || !PR_BODY_ROLES.includes(parsed.role) || typeof body !== "string") return;
   const runDir = join(taskDir, "..");
   const temp = join(runDir, `.pr-body.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
   writeFileSync(temp, body);
@@ -75,7 +93,8 @@ function tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, toolInpu
       mismatch = ledger.stage.name;
       return ledger;
     }
-    return { ...ledger, stage: { ...ledger.stage, runId } };
+    const transcriptDir = toolResponse?.transcriptDir;
+    return { ...ledger, stage: { ...ledger.stage, runId, ...(typeof transcriptDir === "string" ? { transcriptDir } : {}) } };
   });
   if (mismatch !== null) logError(taskDir, `workflow mismatch: ${JSON.stringify(toolInput?.name)} for stage ${mismatch}`);
 }

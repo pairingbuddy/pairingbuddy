@@ -2,36 +2,40 @@
 // pb: deterministic workflow CLI. Verbs live in the VERBS table; later tasks add more.
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { appendFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep } from "../shared-node/checkpoint.mjs";
-import { PUBLISH_GATE, answeredGate, askReason, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
+import { CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
+import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, isPublishRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, boxLabelsUnder, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
-import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, targetBranch, upstreamArgv } from "../shared-node/publish.mjs";
+import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, targetBranch, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
+import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
+import { normalizeApproach } from "../shared-node/mistake-check.mjs";
+import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
-import { parseKey } from "../shared-node/keys.mjs";
+import { buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
-import { buildReport, closeStage, finishProblems, newestReturn, perTestOf, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
+import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
-import { COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
-import { PrLintRunRefused, prBodyPath, readDraftArtifact, readUnit, runPrLint } from "../shared-node/pr-lint-run.mjs";
+import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
+import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readUnit, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
 
 const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 
+const FIX_ROLE = "fix";
 const SCENARIOS_ROLE = "enumerate-scenarios-and-test-cases";
 const TESTS_ROLE = "create-test-placeholders";
 
@@ -216,12 +220,14 @@ function runLedgerPath() {
   return { root, path };
 }
 
+const fixDiffPathOf = (root) => join(ensureRunRoot(root), "fix.diff");
 const taskDirOf = (root) => join(root, ".pairingbuddy", "run", "task");
 const artifactsDirOf = (root) => join(taskDirOf(root), "artifacts");
+const notesDirOf = (root) => join(taskDirOf(root), "notes");
 const reportPathOf = (root) => join(taskDirOf(root), "report.json");
 
-function recordAuto(ledger, gate) {
-  return { ...ledger, gates: { ...ledger.gates, [gate]: { source: "auto" } } };
+function recordAuto(ledger, gate, binding = {}) {
+  return { ...ledger, gates: { ...ledger.gates, [gate]: gate === PUBLISH_GATE ? approvalRecord("auto", binding) : { source: "auto" } } };
 }
 
 // Takes no arguments: the gate comes from the ledger, and the policy from what the gate hook recorded.
@@ -244,8 +250,10 @@ function gateEval(args) {
     if (voided !== null) updateLedger(path, (ledger) => voidPublish(ledger, voided));
     return skipped;
   }
-  // The shown block is built before anything is written, so a missing body or runner leaves the ledger untouched.
+  // The shown block is built before the ledger is written, so a missing body or runner leaves the ledger untouched.
   const shown = dueGate(gatesFor(contract, standing.taskType), standing)?.name === PUBLISH_GATE ? publishShown(root, standing) : null;
+  // The binding re-runs the lint (it rewrites run/pr-lint.json), so it is read only when the gate will pass by itself.
+  const autoBinding = shown !== null && voided === null && autoPublishPasses(standing, root) ? refusing(() => publishBinding(root, standing, shown)) : undefined;
   let gate;
   let reason;
   // One transaction: the void of a stale approval, the due gate and the question, so no state sits between them.
@@ -256,7 +264,8 @@ function gateEval(args) {
     gate = due.name;
     if (gate === PUBLISH_GATE && shown === null) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
     reason = askReason(contract, open, due, root, voided);
-    if (reason === null) return recordAuto(open, gate);
+    if (reason === null && gate === PUBLISH_GATE && autoBinding === undefined) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
+    if (reason === null) return recordAuto(open, gate, autoBinding);
     const facts = gate === PUBLISH_GATE ? { shown: { headSha: shown.headSha, base: shown.base, target: shown.target } } : {};
     return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, ...facts } };
   });
@@ -510,14 +519,23 @@ function commitPlan({ step, key, root, path, branch, record }, plan, head, evide
   return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
 }
 
+// Only a step that types its commit by paths needs the test directories, so the others never read the test config.
+function scopeFor({ step, root, ledger }) {
+  if (!typesByPaths(step)) return null;
+  const config = readTestConfig(root, ledger.configHash);
+  return { testDirectories: Object.values(config.runners).map(({ test_directory: directory }) => directory) };
+}
+
 // A step with no change runs no test. The tests run code in the repo, so what they could change is looked at again
 // before the commit.
 async function suiteCheckpoint(context) {
-  const plan = planFor(context);
+  const plan = planFor(context, scopeFor(context));
   if (plan === null) return noChange(context);
   const head = headOf(context.root);
   await requirePassingTests(context.root, context.path, context.ledger);
-  return commitPlan(context, plan, head);
+  const done = commitPlan(context, plan, head);
+  if (writesDiff(context.step)) writeFileSync(fixDiffPathOf(context.root), diffOfCommit(context.root, done.sha));
+  return done;
 }
 
 const SELECTOR_FIELDS = ["runner_id", "test_file", "test_function"];
@@ -618,7 +636,11 @@ const withCycleDone = (step, id, sha) => (ledger) => {
 // Only a pass after a GREEN of this task can be one that GREEN covered. Before any GREEN, a pass proves nothing.
 const provesNothing = (step, exitCode) => (step === "red" && exitCode === 0 ? ", and no GREEN in this task came before it, so it proves nothing" : "");
 
-const stepNotMet = (step, id, { exitCode, excerpt }) => `test ${id} is not ${step.toUpperCase()}: exit ${exitCode}${provesNothing(step, exitCode)}, so nothing was committed. ${excerpt.slice(-300)}`;
+// How much of a run's output a refusal or a rollback note keeps: the tail, where the failure is.
+const EXCERPT_TAIL = 300;
+const excerptTail = (excerpt) => excerpt.slice(-EXCERPT_TAIL);
+
+const stepNotMet = (step, id, { exitCode, excerpt }) => `test ${id} is not ${step.toUpperCase()}: exit ${exitCode}${provesNothing(step, exitCode)}, so nothing was committed. ${excerptTail(excerpt)}`;
 
 // The first GREEN this task finished, by where its commit sits in the run's commits, or null before any.
 function earliestGreen({ tests: { perTest = {} }, commits }) {
@@ -734,7 +756,9 @@ function stageFinish(args) {
     const report = buildReport(ledger, artifactsDir);
     writeReport(reportPathOf(root), report);
     finished = { stage: name, attempt, agents: report.spend.agents };
-    return closeStage(ledger, "done", report.spend.agents);
+    const closed = closeStage(ledger, "done", report.spend);
+    if (!safetyNetStages(contract).includes(name)) return closed;
+    return { ...closed, lenses: { ...closed.lenses, "safety-net": lensRecordOf(ledger, report) } };
   });
   if (missing !== null) throw new Refusal(`${missing}. The run stopped: pb stage fail clears it`);
   return { ok: true, ...finished, report: reportPathOf(root) };
@@ -768,7 +792,8 @@ function tddState(args) {
   const ledger = readLedger(path);
   assertStageActive(ledger, "report on");
   const artifactsDir = artifactsDirOf(root);
-  const scenarios = newestReturn(artifactsDir, SCENARIOS_ROLE, ({ stage, attempt }) => !isVoidedAttempt(ledger, stage, attempt));
+  const standingScenarios = ({ role, item, stage, attempt }) => ((role === SCENARIOS_ROLE && item === null) || (role === FIX_ROLE && stage === "code-scenarios")) && !isVoidedAttempt(ledger, stage, attempt);
+  const scenarios = newestReturnMatching(artifactsDir, standingScenarios);
   if (scenarios === null) throw new Refusal("no scenarios return stands, so there is nothing to write tests from");
   return { ok: true, taskType: ledger.taskType, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered"), testRunners: testRunnersOf(readTestConfig(root, ledger.configHash)) };
 }
@@ -802,7 +827,7 @@ function stageFail(args) {
     }
     assertStageActive(ledger, "fail");
     const clearedStop = ledger.stop?.reason ?? null;
-    const closed = closeStage(ledger, FAILED_STATUS, returnsAt(artifactsDirOf(root), ledger.stage).length, clearedStop === null ? {} : { clearedStop });
+    const closed = closeStage(ledger, FAILED_STATUS, unknownSpend(returnsAt(artifactsDirOf(root), ledger.stage).length), clearedStop === null ? {} : { clearedStop });
     failed = { stage: name, attempt, nextAttempt: nextAttempt(closed, name), clearedStop };
     return { ...closed, stop: null };
   });
@@ -899,6 +924,16 @@ function writeJsonAtomic(path, value, { exclusive = false } = {}) {
   }
 }
 
+// The task's lessons: each stage's rollback notes, files by name, entries in file order.
+function taskLessons(root) {
+  const notesDir = notesDirOf(root);
+  if (!existsSync(notesDir)) return [];
+  return readdirSync(notesDir)
+    .filter((file) => file.endsWith(".md"))
+    .sort((a, b) => a.localeCompare(b))
+    .flatMap((file) => parseFixNotes(readFileSync(join(notesDir, file), "utf8")).map((entry) => ({ stage: basename(file, ".md"), ...entry })));
+}
+
 // What taskEnd needs to record the task, read with the other refusals: the open unit and HEAD, or null with no unit.
 // A corrupt unit.json, one without a tasks list, or no commit refuses here, before anything changes.
 function readUnitForRecord(root, ledger) {
@@ -913,7 +948,8 @@ function readUnitForRecord(root, ledger) {
   if (!Array.isArray(unit?.tasks)) throw new Refusal("run/unit.json has no tasks list, so the task cannot end. Nothing was touched");
   const headSha = headOf(root);
   if (headSha === null) throw new Refusal("there is no commit yet, so the task cannot end. Nothing was touched");
-  return { path, unit, record: newTaskRecord({ ledger, headSha }), commits: ledger.commits };
+  const lessons = taskLessons(root);
+  return { path, unit, record: newTaskRecord({ ledger, headSha, lessons }), commits: ledger.commits };
 }
 
 // A retry after a crash finds its own record last, and appends nothing more.
@@ -1036,7 +1072,7 @@ function publish(args) {
   const bound = commits.length === 0 ? null : readBound(root, ledger);
   const voidReason = bound === null ? null : refusing(() => publishVoidReason(ledger, root, bound.current));
   const facts = {
-    unit, runStop: ledger.stop, publishMode: mode, coordination: bound?.draft.coordination ?? null, commits, changedConfigs: changedConfigs(unit, root), approval: publishApproval(ledger), voidReason,
+    unit, runStop: ledger.stop, publishMode: mode, coordination: bound?.draft.coordination ?? null, commits, changedConfigs: changedConfigs(unit, root), approval: publishApproval(ledger), voidReason, lint: bound === null ? null : publishLint(root, bound.current.bodyHash),
     taskRunOpen: !isPublishRun(ledger),
     ...(bound === null || mode === "none" ? {} : publishingFacts(root, unit, gitConfig, bound.current.headSha)),
   };
@@ -1409,7 +1445,10 @@ function snapshot(args) {
   const paths = buildCorpus(insideRepo(root, [...inRepoDocs(root), ...conventionPaths(root), "CLAUDE.md", ...nearest]), (p) => existsSync(join(root, p)));
   const runDir = join(root, ".pairingbuddy", "run");
   replaceFiles([[join(runDir, SUBJECT_DIFF_FILE), diff], [join(runDir, CHANGED_FILE), jsonText(changed)], [join(runDir, CORPUS_FILE), jsonText({ paths })]]);
-  return { ok: true, paths };
+  const ledgerPath = join(taskDirOf(root), "ledger.json");
+  const ledger = existsSync(ledgerPath) ? readLedger(ledgerPath) : null;
+  const taskType = ledger === null ? null : ledger.taskType;
+  return { ok: true, paths, taskType, rolledBack: ledger === null ? 0 : rolledBackCount(ledger, ledger.stage.name) };
 }
 
 function insideRepo(root, candidates) {
@@ -1433,7 +1472,216 @@ function conventionPaths(root) {
   }
 }
 
+const readArtifact = (root, key) => JSON.parse(readFileSync(join(artifactsDirOf(root), `${key}.json`), "utf8"));
+
+// The paths a fix's artifact lists, checked and de-duplicated.
+function pathsOfArtifact(root, key) {
+  const artifact = readArtifact(root, key);
+  return [...new Set(artifact.files_changed.map((listed) => checkedPath(root, listed)))];
+}
+
+// Where this stage's rollback refs live, under the unit's own ref prefix.
+const rollbackPrefix = (branch, stage) => `${unitRefPrefix(branch)}rollback/${stage}/`;
+
+// A pr-draft fix is undone for its failed lint: the failures, one `rule: text` each.
+// It counts only when the lint failed and was run on this fix's own body; a lint of another body says nothing about this fix.
+function failedLintAccount(root, key) {
+  const lint = readLintResult(root);
+  if (lint?.ok !== false || !Array.isArray(lint.failures)) return null;
+  const body = String(readArtifact(root, key).body ?? "");
+  if (lint.bodyHash !== sha256(body)) return null;
+  return `The PR lint failed: ${lint.failures.map(({ rule, text }) => `${rule}: ${text}`).join("; ")}`;
+}
+
+// Whatever lint result is on disk, passed or failed, or null when there is none or it cannot be read.
+function readLintResult(root) {
+  try {
+    return JSON.parse(readFileSync(prLintPath(root), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+// The newest standing draft of this attempt other than the one being rolled back: the body the PR keeps after the rollback.
+function remainingDraftBody(root, stage, key) {
+  const newest = newestDraftKey(artifactsDirOf(root), stage, key);
+  if (!newest) throw new Refusal(`no draft is left once ${key} is rolled back, so there is no PR body to restore and nothing was touched`);
+  return String(readArtifact(root, newest.pbKey).body ?? "");
+}
+
+// Put a body back as the PR body, whole or not at all, like the tap writes it.
+function writePrBody(root, body) {
+  const path = prBodyPath(root);
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, body);
+  renameSync(temp, path);
+}
+
+// A rolled-back pr-draft fix also takes its body off the PR, so the newest draft left stands again.
+// The body is read first, so a refusal leaves the artifact where it was.
+function rollbackArtifactStep(root, key, parts, ledger, none) {
+  const restored = parts.stage === "pr-draft" ? remainingDraftBody(root, ledger.stage, key) : null;
+  rollbackArtifact(root, key);
+  if (restored !== null) writePrBody(root, restored);
+  return none;
+}
+
+// The account for a rolled-back artifact: the failed lint for a pr-draft fix, else the course checker's.
+function artifactAccount(root, parts, key) {
+  return (parts.stage === "pr-draft" && failedLintAccount(root, key)) || checkerAccount(root, parts);
+}
+
+// The course-checker's account of what went wrong, one entry per rollback, so the next attempt sees it.
+function checkerAccount(root, parts) {
+  const checkerKey = buildKey({ ...parts, role: "course-checker" });
+  const verdict = readReturn(artifactsDirOf(root), checkerKey);
+  if (verdict === null) throw new Refusal(`no course checker verdict for ${buildKey(parts)} (${checkerKey}), so nothing was touched`);
+  if (verdict.verdict === "better") throw new Refusal(`the course checker said better for ${buildKey(parts)}: a better verdict keeps the commit, so nothing was touched`);
+  return verdict.what_went_wrong;
+}
+
+// The tail of each failed run's output, like the refusal for a step that is not met.
+const failedRunsExcerpts = ({ runs }) => runs.filter(({ exitCode }) => exitCode !== 0).map(({ excerpt }) => excerptTail(excerpt)).join("\n");
+
+// The note's entry number: one sequence per stage within this task, for all three kinds of rollback.
+// It is not the git ref number, which is the next free ref and can be higher because refs outlive the task.
+// Counts this rollback too, so it is both the failed-attempt count and the note entry number.
+const failedAttemptsOf = (ledger, stage) => rolledBackCount(ledger, stage) + 1;
+
+// Add one entry to the stage's rollback notes, so the next attempt sees what went wrong.
+function appendRollbackNote(root, stage, number, key, body) {
+  const notes = notesDirOf(root);
+  mkdirSync(notes, { recursive: true });
+  appendFileSync(join(notes, `${stage}.md`), `${rollbackHeading(number, key)}\n\n${body}\n\n`);
+}
+
+// Record a rollback in the ledger, optionally dropping a commit that is no longer one of the run's commits.
+// When `capReason` is given it becomes the run's stop in the same update, so the rollback and the stop land together.
+function recordRollback(path, entry, droppedSha, capReason) {
+  updateLedger(path, (current) => ({
+    ...current,
+    commits: droppedSha ? current.commits.filter((c) => c !== droppedSha) : current.commits,
+    fixes: { ...current.fixes, rollbacks: [...(current.fixes?.rollbacks ?? []), entry] },
+    ...(capReason ? { stop: { reason: capReason, seq: current.seq + 1, code: ATTEMPT_CAP } } : {}),
+  }));
+}
+
+// Undo a rejected artifact fix: no git, the artifact just moves aside to rejected/ and the note keeps the checker's account.
+function rollbackArtifact(root, key) {
+  const rejected = join(taskDirOf(root), "rejected");
+  mkdirSync(rejected, { recursive: true });
+  renameSync(join(artifactsDirOf(root), `${key}.json`), join(rejected, `${key}.json`));
+}
+
+// A fix's approach as its artifact states it.
+function approachOf(root, key) {
+  return String(readArtifact(root, key).approach ?? "");
+}
+
+// A fix repeats when its approach, normalized, equals one an earlier rolled-back fix of the same stage and item tried.
+function repeatedApproach(root, ledger, key) {
+  const { stage, item } = parseKey(key);
+  const approach = approachOf(root, key);
+  const target = normalizeApproach(approach);
+  if (target === "") return null;
+  const earlier = (ledger.fixes?.rollbacks ?? []).some((r) => {
+    const p = parseKey(r.key);
+    return p.stage === stage && p.item === item && normalizeApproach(approachOf(root, r.key)) === target;
+  });
+  return earlier ? approach : null;
+}
+
+// The ledger-and-disk reasons to refuse a rollback, checked before anything is touched so a refusal changes nothing.
+function assertRollbackAllowed(key, parts, ledger, root) {
+  if (parts.role !== "fix") throw new Refusal(`only a fix group rolls back: ${key} is from role ${parts.role}. RED, GREEN and refactor-step commits never do, so nothing was touched`);
+  // A stop reverts nothing: while the run is stopped, no fix group is rolled back either.
+  if (ledger.stop !== null) throw new Refusal(`the run has stopped, so nothing is rolled back: ${ledger.stop.reason}`);
+  assertKeyIsCurrent(key, ledger.stage);
+  // A group is undone once: a second rollback of the same key would undo nothing new.
+  if (ledger.fixes?.rollbacks?.some((r) => r.key === key)) throw new Refusal(`${key} was already rolled back, so nothing was touched`);
+  // Only the newest fix group of an attempt can be undone: an older one sits under a later group (a fix or its course checker).
+  const artifactsDir = artifactsDirOf(root);
+  const onDisk = existsSync(artifactsDir) ? returnsAt(artifactsDir, { name: parts.stage, attempt: parts.attempt }) : [];
+  const recorded = (ledger.checkpoints ?? []).filter(({ key: k }) => isKey(k)).map(({ key: k }) => ({ pbKey: k, ...parseKey(k) }));
+  const newer = [...recorded, ...onDisk].find((other) => other.stage === parts.stage && other.attempt === parts.attempt && other.round > parts.round);
+  if (newer) throw new Refusal(`${key} is not the newest fix group: ${newer.pbKey} came after it, so nothing was touched`);
+}
+
+// The tree-side reasons to refuse a git rollback: the fix must be the newest commit (when committed), and nothing
+// outside the group's own paths may be dirty (dirty is the tree's dirty paths, read once by the caller). record is the fix's checkpoint, or undefined for an uncommitted (red) fix,
+// which also needs a failed test run and at least one of its listed paths changed. A repeated fix (repeated true) skips
+// both checks, because the repeated approach is itself the reason to roll it back.
+function assertTreeRollsBack(root, record, own, ledger, key, repeated, dirty) {
+  if (record === undefined && !repeated) {
+    // Uncommitted work is only undone after a failed (red) test run: without one there is nothing to roll back.
+    if (ledger.tests.checkpoint?.passed !== false) throw new Refusal(`${key} has no commit and no red test run, so there is nothing to roll back and nothing was touched`);
+    // A red fix that changed none of its listed paths has nothing to undo.
+    if (!dirty.some((p) => own.includes(p))) throw new Refusal(`none of the paths ${key} lists has changed, so there is nothing to roll back and nothing was touched`);
+  }
+  // Only the newest commit can be undone cleanly: anything on top of the fix would be lost with it.
+  if (record) {
+    const head = headOf(root);
+    if (record.sha !== head) throw new Refusal(`the fix commit ${record.sha} is not HEAD (${head}): only the newest commit rolls back, so nothing was touched`);
+  }
+  // Anything dirty outside the group's own paths is the human's work: refuse rather than touch it.
+  const stray = dirty.filter((p) => !own.includes(p));
+  if (stray.length) throw new Refusal(`the tree is dirty outside the fix group, so nothing was touched: ${stray.join(", ")}`);
+}
+
+// Undo a rejected fix group. Four kinds: an artifact fix, a committed fix (the ledger has a record), an uncommitted (red) one, or a repeated
+// approach, which is record-only (no git work) when none of its own paths is dirty.
+// The inputs are all read and every refusal is checked before anything moves, so a refusal or a missing checker artifact changes nothing.
+function rollback(args) {
+  const usage = "usage: pb rollback --from <key> | pb rollback --artifact --from <key>";
+  const parsed = parseRollbackArgs(args);
+  if (parsed === null) throw new UsageError(usage);
+  const { artifactForm, key } = parsed;
+  const root = toplevel();
+  // Same guard as a commit: never undo work on a detached HEAD or a protected branch.
+  const branch = currentBranch(root);
+  assertBranchNotProtected(loadGitConfigOrRefuse(root), root, branch, "roll back");
+  const { path } = runLedgerPath();
+  const ledger = readLedger(path);
+  const parts = parseKey(key);
+  assertRollbackAllowed(key, parts, ledger, root);
+  // A recorded checkpoint means the fix was committed; otherwise it was only in the working tree (red).
+  const record = artifactForm ? undefined : (ledger.checkpoints ?? []).find((c) => c.key === key);
+  const repeated = artifactForm || record ? null : repeatedApproach(root, ledger, key);
+  const kind = artifactForm ? "artifact" : record ? "commit" : repeated !== null ? "repeated" : "red";
+  const own = kind === "artifact" ? [] : kind === "commit" ? pathsOfCommit(root, record.sha) : pathsOfArtifact(root, key);
+  const dirty = artifactForm ? [] : remainingFiles(root);
+  const ownChanged = dirty.some((p) => own.includes(p));
+  if (!artifactForm) assertTreeRollsBack(root, record, own, ledger, key, repeated !== null, dirty);
+  const failedAttempts = failedAttemptsOf(ledger, parts.stage);
+  const prefix = rollbackPrefix(branch, parts.stage);
+  // Per kind: the note's account of what went wrong, and how the work is undone (the ledger entry it leaves).
+  // A committed fix's or an artifact's note holds the checker's account; a red fix's holds the failed test runs' output.
+  const none = { ref: null, sha: null, base: null };
+  const steps = {
+    artifact: { wrong: () => artifactAccount(root, parts, key), undo: () => rollbackArtifactStep(root, key, parts, ledger, none) },
+    commit: { wrong: () => checkerAccount(root, parts), undo: () => rollbackCommitted(root, { key, prefix, sha: record.sha }) },
+    red: { wrong: () => failedRunsExcerpts(ledger.tests.checkpoint), undo: () => rollbackUncommitted(root, { key, prefix, paths: own }) },
+    repeated: {
+      wrong: () => `The fix repeated an approach already rolled back for this group: ${repeated}`,
+      // Nothing of its own is dirty: record only, with the base at HEAD.
+      undo: () => (ownChanged ? rollbackUncommitted(root, { key, prefix, paths: own }) : { ...none, base: headOf(root) }),
+    },
+  };
+  const wrong = steps[kind].wrong();
+  const done = steps[kind].undo();
+  const entry = { key, kind, ref: done.ref, sha: done.sha, base: done.base };
+  appendRollbackNote(root, parts.stage, failedAttempts, key, wrong);
+  // The lenses contract test pins maxAttempts at 5, so it is always present here.
+  const maxAttempts = LENS_MAP.maxAttempts;
+  const stopped = failedAttempts >= maxAttempts;
+  const capReason = stopped ? `${ATTEMPT_CAP}: stage ${parts.stage} rolled back ${failedAttempts} fix attempts, its cap of ${maxAttempts}` : null;
+  recordRollback(path, entry, record?.sha, capReason);
+  if (stopped) writeReport(reportPathOf(root), buildReport(readLedger(path), artifactsDirOf(root)));
+  return { ok: true, key, note: wrong, failedAttempts, maxAttempts, stopped };
+}
+
 export const VERBS = {
+  rollback,
   snapshot,
   "unit open": unitOpen, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
@@ -1470,7 +1718,7 @@ if (isEntryPoint()) {
   try {
     await main(process.argv.slice(2));
   } catch (e) {
-    const expected = e instanceof Refusal || e instanceof UsageError || e instanceof LedgerRefused || e instanceof TestRunRefused || e instanceof CheckpointRefused || e instanceof PlanRefused;
+    const expected = e instanceof Refusal || e instanceof UsageError || e instanceof LedgerRefused || e instanceof TestRunRefused || e instanceof CheckpointRefused || e instanceof PlanRefused || e instanceof RollbackRefused;
     console.error(`pb: ${expected ? e.message : `unexpected failure: ${e.message}`}`);
     process.exit(e instanceof UsageError ? 2 : 1);
   }

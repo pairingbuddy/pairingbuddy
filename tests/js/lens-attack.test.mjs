@@ -21,6 +21,7 @@ const WRAPPER_STAGE = [
   "// pb-inline-module shared-node/labels.mjs",
   "// pb-inline-module shared-node/lens-merge.mjs",
   "// pb-inline-module shared-node/shell-word.mjs",
+  "// pb-inline-module shared-node/spent-line.mjs",
   "",
   "return await lensAttack(args);",
   "",
@@ -38,7 +39,7 @@ before(() => {
 });
 after(() => rmSync(root, { recursive: true, force: true }));
 
-const configWith = (lenses) => ({ stage: "scenarios", subject: "task", attempt: 1, lenses });
+const configWith = (lenses) => ({ stage: "scenarios", subject: "task", attempt: 1, task: "some-task", lenses });
 const TWO_LENSES = configWith([{ name: "necessity", model: "sonnet" }, { name: "patterns", model: "opus" }]);
 const ONE_LENS = configWith([{ name: "necessity", model: "sonnet" }]);
 const lensReturn = (findings) => ({ pb_key: "k", ambiguity: null, findings });
@@ -91,6 +92,18 @@ test("Each lens call's prompt carries its lens name and the serialized subject i
   calls.forEach(({ prompt }, i) => {
     assert.ok(prompt.includes(`<lens>`) && prompt.includes(names[i]), `prompt ${i} names lens ${names[i]}`);
     assert.ok(prompt.includes("<subject>") && prompt.includes(JSON.stringify(config.subject)), `prompt ${i} carries the serialized subject`);
+  });
+});
+
+test("Each lens prompt carries the run's task in a <task> block", async () => {
+  const config = { ...TWO_LENSES, task: "zebra-task-5521" };
+
+  const { calls } = await runLensAttack(config, async () => ({ findings: [] }));
+
+  assert.equal(calls.length, 2, "both lenses were called");
+  calls.forEach(({ prompt }, i) => {
+    const block = /<task>\n([\s\S]*?)\n<\/task>/.exec(prompt)?.[1];
+    assert.equal(block, JSON.stringify(config.task), `prompt ${i} carries the serialized task in a <task> block`);
   });
 });
 
@@ -549,7 +562,7 @@ test("verdict-for-a-finding-never-sent-is-ignored", async () => {
 const REAL_LENS_MAP = JSON.parse(readFileSync(join(REPO, "contracts", "lenses.json"), "utf8"));
 async function workflowAndReport(lensFor, refuterFor, agentBudget) {
   const wired = wiredLensConfig(REAL_LENS_MAP, "code-scenarios");
-  const config = { stage: "code-scenarios", subject: "task", attempt: 1, ...wired, agentBudget };
+  const config = { stage: "code-scenarios", subject: "task", attempt: 1, task: "some-task", ...wired, agentBudget };
   const filed = [];
   const agent = async (prompt, opts) => {
     const returned = isRefuter(opts) ? refuterFor(sentIdOf(prompt)) : lensFor();
@@ -617,7 +630,7 @@ test("misalignment_lens_clean_when_corpus_nonempty", async () => {
 test("misalignment_report_agrees_with_workflow", async () => {
   const lens = { name: "corpus-misalignment", model: "sonnet", needsCorpus: true };
   const lensMap = { rows: [{ stage: "scenarios", lenses: [lens], refute: "none" }] };
-  const config = { ...wiredLensConfig(lensMap, "code-scenarios"), stage: "code-scenarios", subject: "task", attempt: 1, corpus: [] };
+  const config = { ...wiredLensConfig(lensMap, "code-scenarios"), stage: "code-scenarios", subject: "task", attempt: 1, task: "some-task", corpus: [] };
   const key = buildKey({ stage: "code-scenarios", role: "lens", item: lensSlug(lens.name), round: 1, attempt: 1 });
   const root = mkdtempSync(join(tmpdir(), "pb-corpus-"));
   const artifactsDir = join(root, "run", "task", "artifacts");
@@ -652,4 +665,18 @@ test("report_refuses_a_corpus_manifest_that_is_not_a_list_of_paths", () => {
       rmSync(root, { recursive: true, force: true });
     }
   }
+});
+
+// Scenario: lens-map-wires-pr-draft
+test("A lens with a brief gets a <brief> block after its </lens> line holding the brief as one escaped JSON line, and a lens without one gets no <brief> tag", async () => {
+  const brief = "Check <b>claims</b> against the diff.";
+  const config = configWith([{ name: "claims", model: "sonnet", brief }, { name: "patterns", model: "opus" }]);
+
+  const { calls } = await runLensAttack(config, async () => lensReturn([]));
+
+  const escapedBrief = JSON.stringify(brief).replace(/</g, "\\u003c");
+  const [briefed, plain] = calls.map(({ prompt }) => prompt);
+  assert.ok(briefed.includes(`<brief>\n${escapedBrief}\n</brief>`), "the briefed lens's prompt holds the escaped brief in a <brief> block");
+  assert.ok(briefed.indexOf("<brief>") > briefed.indexOf("</lens>"), "the <brief> block comes after the </lens> line");
+  assert.ok(!plain.includes("<brief"), "the lens without a brief has no <brief> tag");
 });

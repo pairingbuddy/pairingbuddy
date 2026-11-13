@@ -4,12 +4,13 @@ import "./isolated-tmpdir.mjs";
 import { after } from "node:test";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { lensRow, writeCleanLensReturn } from "./lens-return-fixture.mjs";
 import { baseLedger } from "./ledger-fixture.mjs";
 
 export const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
@@ -84,3 +85,9 @@ export function pbWithEnv(repo, extraEnv, ...args) {
 }
 
 export const pb = (repo, ...args) => pbWithEnv(repo, {}, ...args);
+
+// Records a clean lens return for every lens of the stage's row for the task type, at the stage's current attempt, so a
+// stage whose lenses are not under test reaches an auto-pass gate rather than reporting its lenses uncovered.
+export function recordCleanLensReturns(repo, stage, taskType, attempt) {
+  for (const { name } of lensRow(stage, taskType).lenses) writeCleanLensReturn(join(repo.taskDir, "artifacts"), stage, name, attempt);
+}

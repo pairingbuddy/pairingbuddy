@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 
 import { VERBS } from "../../cli/pb.mjs";
 import { NEAREST_TOTAL_CAP, nearestFiles } from "../../shared-node/snapshot.mjs";
+import { buildKey } from "../../shared-node/keys.mjs";
 import { classOf } from "../../shared-node/verbs.mjs";
 import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -294,4 +295,49 @@ test("corpus_sorts_by_code_point", () => {
   const nearest = nearestFiles(tracked, ["docs/changed.md"]);
 
   assert.deepEqual(nearest, [bmp, astral], "U+FF5E sorts before U+1F600, as its code point does, though its UTF-16 unit sorts after");
+});
+
+test("snapshot_prints_ledger_task_type", () => {
+  const repo = makeRepo({ openTask: true, remote: true, ledger: { taskType: "refactoring" } });
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
+  assert.equal(opened.code, 0, `setup: pb unit open, stderr: ${opened.stderr}`);
+
+  const result = pb(repo, "snapshot");
+
+  assert.equal(result.code, 0, `pb snapshot succeeds, stderr: ${result.stderr}`);
+  const printed = JSON.parse(result.stdout);
+  assert.equal(printed.ok, true, "the output says ok");
+  assert.ok(Array.isArray(printed.paths), "the output still carries the corpus paths");
+  assert.equal(printed.taskType, "refactoring", "the printed taskType is the run ledger's taskType");
+});
+
+// Scenario: pb-snapshot-rolled-back. pb snapshot reports the rolledBack count derived from the run ledger
+// Test case: snapshot-rolled-back-counts-active-stage-only
+test("snapshot_rolled_back_counts_active_stage_only", () => {
+  const rollback = (stage, item) => ({ key: buildKey({ stage, role: "fix", item, round: 2, attempt: 1 }), kind: "commit", ref: null, sha: "a".repeat(40), base: "b".repeat(40) });
+  const rollbacks = [rollback("code-safety-net", "g1"), rollback("code-safety-net", "g2"), rollback("code-config", "g1")];
+  const repo = makeRepo({
+    openTask: true,
+    remote: true,
+    ledger: { stage: { name: "code-safety-net", status: "active", runId: "wf_1", attempt: 1, startedAt: null }, fixes: { rollbacks } },
+  });
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
+  assert.equal(opened.code, 0, `setup: pb unit open, stderr: ${opened.stderr}`);
+
+  const result = pb(repo, "snapshot");
+
+  assert.equal(result.code, 0, `pb snapshot succeeds, stderr: ${result.stderr}`);
+  const printed = JSON.parse(result.stdout);
+  assert.equal(printed.rolledBack, 2, "rolledBack counts only the active stage's rollbacks");
+});
+
+// Test case: snapshot-rolled-back-zero-without-ledger
+test("snapshot_rolled_back_zero_without_ledger", () => {
+  const repo = repoWithOpenUnitAndCommits();
+
+  const result = pb(repo, "snapshot");
+
+  assert.equal(result.code, 0, `pb snapshot succeeds, stderr: ${result.stderr}`);
+  const printed = JSON.parse(result.stdout);
+  assert.equal(printed.rolledBack, 0, "with no run ledger rolledBack is 0");
 });

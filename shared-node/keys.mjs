@@ -9,6 +9,10 @@ const KEY_TEXT = /^([a-z0-9][a-z0-9_-]{0,63})\.([a-z0-9][a-z0-9_-]{0,63})\.(-|[a
 // A finding id is <lens slug>-<n>. labels.mjs and refuter-verdict.schema.json hold the same pattern.
 const FINDING_ID = /^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*-[1-9]\d*$/;
 
+// A fix group id is g<n>. labels.mjs holds the same pattern.
+const FIX_GROUP = /^g[1-9]\d*$/;
+const FIX_GROUP_ROLES = ["fix", "course-checker"];
+
 // D8: round 1 is the lens round, and fix attempt n is round n+1.
 const LENS_ROUND = 1;
 
@@ -30,9 +34,18 @@ function requireKeyRoleRules({ role, item, round }) {
   if (role === "refuter" && !isFindingId(item)) {
     throw new Error(`key refuter item must be the finding id it attacks: ${JSON.stringify(item)}`);
   }
-  if (role === "course-checker" && round === LENS_ROUND) {
-    throw new Error(`key course-checker round must be a fix attempt's round, never the lens round: ${round}`);
+  if (FIX_GROUP_ROLES.includes(role)) {
+    if (!isFixGroupId(item)) {
+      throw new Error(`key ${role} item must be its fix group id (g1, g2, ...): ${JSON.stringify(item)}`);
+    }
+    if (round === LENS_ROUND) {
+      throw new Error(`key ${role} round must be a fix attempt's round, never the lens round: ${round}`);
+    }
   }
+}
+
+function isFixGroupId(text) {
+  return FIX_GROUP.test(text);
 }
 
 export function isFindingId(text) {

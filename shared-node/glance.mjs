@@ -4,6 +4,7 @@ import { plainName } from "./plain-names.mjs";
 import { readLabel } from "./labels.mjs";
 import { MAX_TRIES } from "./limits.mjs";
 import { clock } from "./duration.mjs";
+import { TOKENS_UNIT } from "./spent-line.mjs";
 
 const UNKNOWN = "unknown";
 const AGENT_KINDS = ["Agent", "workflow_agent"];
@@ -68,7 +69,7 @@ export const runStart = (ledger) => (ledger?.stages?.length > 0 ? ledger.stages[
 
 function spentRow({ ledger, spawns, now, ranFor }) {
   const agents = agentCount(spawns);
-  const tokens = ledger?.spend?.tokensKnown === true ? `${ledger.spend.tokens} tokens` : "tokens unknown";
+  const tokens = ledger?.spend?.tokensKnown === true ? `${ledger.spend.tokens} ${TOKENS_UNIT}` : "tokens unknown";
   return `${agents} ${agents === 1 ? "agent" : "agents"} · ${elapsed(runStart(ledger), now, ranFor)} · ${tokens} · % of plan unknown`;
 }
 

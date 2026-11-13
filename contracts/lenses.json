@@ -1,4 +1,5 @@
 {
+  "maxAttempts": 5,
   "rows": [
     {
       "row": "intake",
@@ -222,6 +223,7 @@
     {
       "row": "safety-net, new_feature and bug_fix",
       "stage": "code-safety-net",
+      "taskTypes": ["new_feature", "bug_fix"],
       "lenses": [
         {
           "name": "code",
@@ -245,6 +247,7 @@
     {
       "row": "safety-net, refactoring",
       "stage": "code-safety-net",
+      "taskTypes": ["refactoring"],
       "lenses": [
         {
           "name": "behaviour-preservation",
@@ -268,6 +271,7 @@
     {
       "row": "safety-net, config_change",
       "stage": "code-safety-net",
+      "taskTypes": ["config_change"],
       "lenses": [
         {
           "name": "config-fit",
@@ -315,13 +319,16 @@
       "lenses": [
         {
           "name": "claims",
-          "model": "sonnet"
+          "model": "sonnet",
+          "brief": "Check every statement in the title and body against the unit diff (subject_diff) and the recorded runs in the unit record (reportSummary, gateSources, blocking, lessons). Flag any claim the diff or the record does not show."
         },
         {
           "name": "permanence",
-          "model": "sonnet"
+          "model": "sonnet",
+          "brief": "Read the title and body as they will read in git log on main a year from now. Flag text that is true only while the pull request is open, such as review requests, stacking notes, links to temporary state, 'this PR', 'for now' and dates relative to today."
         }
       ],
+      "wiresAll": true,
       "refute": "none",
       "fix": "course-checker"
     },

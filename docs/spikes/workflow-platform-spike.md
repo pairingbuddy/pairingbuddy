@@ -622,3 +622,207 @@ The smoke spend was $0.602659 in all, and no run came near its cap of $0.45, or 
 ### The scenarios stop in Task 51
 
 Task 51's open 2, `t51-open-2`, stopped at `G:scenarios`. Its scenarios return kept the named 0 and 100 percent cases, as round G says, and asked: "The task does not say how apply_discount should handle a percent below 0 or above 100 ... Those cases are left out until a human decides the expected behavior." That is not the covered-case rule from round G, which is about a named case an earlier fix already passes. It is round C's rule: a case the task does not mention is out of scope and no ambiguity. The agent had already left the cases out, so the ambiguity reports a choice and asks nothing new. The task's "edge cases too, such as 0 and 100 percent" makes it arguable: "such as" leaves room for out-of-range input to count as an edge case it names. So this round does not fix it. If the human decides out-of-range input is out of scope under "such as", the fix is round C's rule restated for an open list of named cases. If not, the stop was a real question.
+
+## T5 spend re-measure
+
+Question: what does the safety net cost now that rollback and retry changed the worst case, and does S4 stay under its
+cap? Claude Code 2.1.322, 2026-11-11, `costBasis` list, `ANTHROPIC_API_KEY` unset in every child. The harness was
+throwaway and is not in the repo. Total live spend was **$3.20 of the $8 limit**: $0.09 on three S4 runs, $0.97 on run A
+and $2.14 on run B.
+
+**Headline: at the lens map's models a safety net cost $0.97 with no rollback and $2.14 with 4 rollbacks and 3
+Opus checks. A lens costs $0.07 to $0.11 on Sonnet, about a tenth of T1c's Opus lens. The new worst case is the fix loop, not
+the lenses: projected to the cap, a `new_feature` safety net is $4.75 and a whole `new_feature` task $12.81, against T1c's
+$11.23 and $37.37. No cap was breached.**
+
+### What was measured
+
+Both safety-net runs replayed commit `8b578b2` ("feat: keep a pr-draft redraft and roll it back on a failed lint", 8 files,
+219 insertions, 10 deletions) as a `new_feature` unit's task in a scratch clone with a bare origin. The run was
+fast-forwarded past scenarios and tdd, so only `code-safety-net` ran, started by a `claude -p` session on Haiku that read
+`pb status --action` and started the workflow. No ANTHROPIC_* variable reached the child, so every agent ran at the model
+its definition or `contracts/lenses.json` names: lenses, refuters, fixers and docs on Sonnet 5.5, the course checker on
+Sonnet before a rollback and Opus 5.5 after, runners on Haiku 5.5.
+
+- **Run A, no rollback.** The full suite was the commit's own JS tests (313, 66 s). Every refuter verdict was Sonnet,
+  since no finding was high. Fixes g1 and g2 were kept, both checked "better" on Sonnet. Fix g3, the corpus lens's copy of
+  the comment finding g2 had just fixed, changed nothing and gave no reason, so the stage stopped there: no docs agent, no
+  finishing runner, and tokens unknown. That was a bug, fixed below.
+- **Run B, forced to the cap.** The scratch repo's test config ran a script that failed whenever the tree was dirty, for
+  the first 4 fix attempts only. It lives in the scratch repo, not the plugin. So g1 was rolled back 4 times as red tests,
+  with 4 refs under `refs/pairingbuddy/feat/spend-net/rollback/code-safety-net/` and 4 notes. Its 5th attempt passed and
+  reached the course checker, on Opus because the stage had rolled back. g1, g2 and g3 were all checked "better" on Opus, so
+  the stage kept them, ran docs and the full suite, and finished. It did not reach the 5th rollback, because a red test
+  costs no checker, and no checker can be forced to reject without a test-only hook. The 5th rollback is projected below.
+  G:task-end then asked a human, because the fix and refuter returns carried open ambiguities.
+
+| Run | Agents | Opus $ | Sonnet $ | Haiku $ | Total $ | Output tokens | Stage wall s |
+|---|---|---|---|---|---|---|---|
+| A, no rollback, stopped at fix g3 | 19 + main | 0 | 0.9601 | 0.0138 | 0.9739 | 27,693 | 326 |
+| B, 4 rollbacks, 3 Opus checks, finished | 33 + main | 0.3978 | 1.7157 | 0.0254 | 2.1389 | 56,205 | 568 |
+
+Per role, both runs pooled. "Main" is the Haiku session that started the stage.
+
+| Role | Model | Runs | Low $ | High $ | Mean $ | Mean output tokens |
+|---|---|---|---|---|---|---|
+| Lens (code, tests, corpus misalignment) | Sonnet | 6 | 0.0684 | 0.1068 | 0.0809 | 1,800 |
+| Refuter | Sonnet | 12 | 0.0297 | 0.0606 | 0.0435 | 1,172 |
+| Fix: refactor-code | Sonnet | 4 | 0.0668 | 0.0939 | 0.0786 | 1,453 |
+| Fix: refactor-tests | Sonnet | 6 | 0.1823 | 0.2500 | 0.2011 | 5,306 |
+| Course checker | Sonnet | 2 | 0.0259 | 0.0465 | 0.0362 | 683 |
+| Course checker | Opus | 3 | 0.0991 | 0.1996 | 0.1326 | 1,921 |
+| update-documentation | Sonnet | 1 | 0.0756 | 0.0756 | 0.0756 | 1,117 |
+| Runner | Haiku | 18 | 0.0011 | 0.0018 | 0.0012 | 449 |
+| Main session | Haiku | 2 | 0.0078 | 0.0096 | 0.0087 | 2,530 |
+
+- Prices: Opus 5.5 $4 in, $20 out; Sonnet 5.5 $2, $10; Haiku 5.5 $0.10, $0.50; 5-minute cache writes at 1.25 times input,
+  1-hour at 2 times. Cache reads fitted to `modelUsage` at $0.20, $0.10 and $0.01 per MTok. Per-agent sums from the
+  transcripts equal each run's `modelUsage` per model to the cent.
+- Workflow agents wrote the 5-minute cache only. T1c's standalone runs wrote the 1-hour kind, at 1.6 times the price. Cost
+  split in run B: cache writes 64%, output 25%, cache reads 11%.
+- A Sonnet lens took 11 to 15 s, against T1c's 69 to 175 s on Opus, and read far less. A refactor-tests fix was the dearest
+  agent, $0.18 to $0.25 for 4,000 to 7,500 output tokens, and the first one took 114 s.
+- Repeated red retries of one group did not trip the repeated-approach refusal: each retry stated a new approach.
+
+### `budget.spent()` against total cost
+
+Run B is the first live figure through D9's route. `pb stage finish` read **52,309 output tokens** from the finishing
+runner's transcript, and the ledger and `report.json` recorded it with `tokensKnown` true. The stage's agents wrote 53,323
+output tokens, so the figure saw 98% of them. The gap is mostly the finishing runner's own reply, written after the line
+was. At $2.13 for the stage that is $0.041 per 1,000 output tokens, and output was 25% of the money, as in T1c. So the
+figure tracks activity well but is no dollar measure: the price per token moved 2 times between models in one run. The S4
+scenarios stages read 1,473 and 1,506 output tokens the same way. Run A stopped before stage finish, so it has no figure.
+
+### Projection across the lens map
+
+Unit prices are the measured ranges above. Not measured, and priced instead: an Opus lens, bias check or synthesizer at 2
+times a Sonnet lens ($0.14 to $0.21), since Opus 5.5 is exactly 2 times Sonnet 5.5 per token; an Opus refuter at 2 times
+the dearest Sonnet refuter ($0.12); the scenario writer and PR drafter as the dearest fix agent ($0.25).
+
+- Low: every lens once, one refuter per lens up to the cap, no fix, the stage's fixed agents.
+- **Worst: every lens at its dearest, `maxRefuters` refuters all on Opus, 5 rolled-back fix attempts plus one kept attempt
+  per fix group, every attempt at the dearest fixer with an Opus check, and the fixed agents.** Fix groups are one per
+  lens, decision 36. A red-test rollback skips the checker, so the worst case assumes every rejection came from the checker.
+
+| Stage | Agents low, worst | Low $ | Worst $ |
+|---|---|---|---|
+| intake | 2, 25 | 0.07 | 2.83 |
+| plan-requirements | 15, 46 | 0.86 | 7.24 |
+| plan-architecture | 13, 43 | 0.90 | 6.89 |
+| plan-tracers | 12, 42 | 0.63 | 6.47 |
+| plan-sequence | 9, 34 | 0.39 | 5.21 |
+| scenarios | 10, 35 | 0.39 | 5.21 |
+| tdd, each green-to-refactor: light reviewer and refactor agent | 1, 2 | 0.07 | 0.36 |
+| refactor-scope | 1 | 0.07 | 0.11 |
+| refactor-apply | 0 | 0 | 0 |
+| config | 0 | 0 | 0 |
+| **safety-net, new_feature and bug_fix** | 8, 40 | 0.37 | **4.75** |
+| safety-net, refactoring | 8, 40 | 0.44 | 4.85 |
+| safety-net, config_change | 6, 32 | 0.27 | 3.70 |
+| spike-unit | 0 | 0 | 0 |
+| spike-document | 1, 18 | 0.07 | 2.81 |
+| pr-draft: lint, claims, permanence | 5, 31 | 0.14 | 3.39 |
+| design-domain, design-gallery | 0 | 0 | 0 |
+| design-build critique, per iteration | 6 | 0.41 | 0.64 |
+
+| Roll-up | Low $ | Worst $ | T1c low, high $ |
+|---|---|---|---|
+| Planning, once per plan | 2.79 | 25.81 | 13.95, 63.14 |
+| **Task: new_feature or bug_fix, 2 cycles low and 8 worst** | 0.90 | **12.81** | 6.06, 37.37 |
+| Task: refactoring | 0.51 | 4.96 | 2.97, 12.30 |
+| Task: config_change | 0.27 | 3.70 | 1.60, 5.17 |
+| PR: 2 new_feature tasks and pr-draft | 1.95 | 29.02 | 12.12, 74.74 |
+| PR: 5 new_feature tasks and pr-draft | 4.66 | 67.46 | 30.30, 186.85 |
+| PR: 11 new_feature tasks and pr-draft | 10.08 | 144.35 | 66.66, 411.07 |
+
+- The measured runs sit inside the safety-net row: run A at $0.97 and run B at $2.14. Run B with its 5th rollback added, a
+  mean refactor-tests fix rejected by a mean Opus check, projects to **$2.47**, the measured figure for "forced to the cap
+  with an Opus checker after the first rollback".
+- In the worst safety net, the fix loop is 76% of the money: $3.62 of $4.75. The lenses and refuters together are $1.05.
+- Design-build critique runs up to 3 iterations, $1.92 worst. The main session comes on top of every row, $0.01 on Haiku
+  here, more on the session's own model.
+
+### S4 against its cap
+
+| Run | Type | Result | $ | Share of the $3 cap | Note |
+|---|---|---|---|---|---|
+| `s4-t84c-run1` | bug_fix | PASS | 0.0291 | 1.0% | First live token figure: 1,473 output tokens, finishing runner counted |
+| `s4-t84c-run2` | new_feature | FAIL | 0.0326 | 1.1% | First live scenarios rollback crashed `pb rollback`; fixed below |
+| `s4-t84c-run3` | new_feature | stopped | 0.0291 | 1.0% | The Haiku lens asked about the task's arithmetic, so G:scenarios asked a human |
+
+S4 is far under the cap: about 1% per run. Runs 1 and 3 stopped at G:scenarios on a lens ambiguity, so this session's S4
+covered only the scenarios stage, its lens, refuter, a fix, a Haiku course check and a rollback. Run 3's question was
+about the sample task's own arithmetic ("10 x 2 is 20"), the same kind of question as T2b's nf 2, and the gate asking was
+right. Repriced to Haiku, the worst `new_feature` safety net would be about $0.24 and the worst whole task about $0.64,
+both inside $3. The smoke caps are unchanged.
+
+### Bugs the live runs found
+
+All three were first live exercises of the fix loop and `pb rollback`. Each was fixed test-first in its own commit, and
+the runs after them passed the same points.
+
+- **`pb rollback` crashed on a run with no checkpoint yet.** `checkpoints` is an optional ledger field, and the rollback
+  read it unguarded, so the first rollback of a fresh run's scenarios stage failed with `Cannot read properties of
+  undefined (reading 'filter')`, and the stage stopped as a failed step. The red form had the same read. Found by S4 run 2.
+- **A fix with nothing left to change stopped the safety net.** Two lenses reported the same comment defect. The fixer for
+  the second group found it already fixed and, as its agent file said, returned empty lists and no ambiguity, which `pb
+  checkpoint --step fix` stops on. The fixers now give the reason in `ambiguity`, and the fix loop keeps such a fix without
+  a course check, since there is no new `fix.diff` to read. Found by run A. Merging duplicate findings across lenses before
+  the fix loop would save the extra fixer; that is left open.
+- **S4 expected the finishing runner to go uncounted.** It now expects it, and requires a known token figure, which makes S4
+  the live check of D9's route.
+
+### Where the projection is weak
+
+- One real diff, 2 safety-net runs, 6 lenses, 12 refuters, 10 fixes, 5 checks. The ranges are extremes of a small sample.
+- Opus lenses, Opus refuters, bias check, synthesizer, the scenario writer and drafter as fixers, and every plan stage were
+  not measured, only repriced. Plan stages read documents, not diffs.
+- No course checker rejected anything, so a rejected attempt's checker cost is the accepted ones' cost.
+- Worst stacks every worst case on one stage. Treat it as a bound, not a forecast.
+- A lens cost $0.07 to $0.11 here and $0.57 to $1.07 in T1c. Sonnet's price is a factor of 2 of that; shorter reads
+  and the cheaper 5-minute cache are the rest. A larger diff will cost more.
+
+## T5 verification: S4 to a draft PR
+
+Question: does auto mode now reach a draft PR, with the safety net's lens record, a rolled-back fix with its private ref,
+and no finding text in the record or the PR? Claude Code 2.1.322, 2026-11-11, `bug_fix` sample, every agent on Haiku
+5.5 through S4's forced cheap model, `ANTHROPIC_API_KEY` unset in every child (S4 refuses any `ANTHROPIC_` name but the
+two model aliases). Total live spend was **$0.78 of the $6 limit**, four runs, each under its $3 cap.
+
+**Headline: run 4 passed end to end for $0.21, 7% of the cap, in 313 s. G:publish passed under the auto policy with its
+binding, and `pb publish` opened one `--draft` PR on the shim into `develop`.** The safety net's three lenses kept 3
+findings, the first fix was forced red and rolled back under
+`refs/pairingbuddy/fix/apply-discount-percent/rollback/code-safety-net/1`, the retry was kept, and none of the 6 lens
+claims showed verbatim in any ledger snapshot, the unit record, or the PR's title and body. G:task-end asked once, for
+open questions in a fix and two refuter returns, and S4 answered it as the human.
+
+| Run | Result | $ | Share of the $3 cap | What it showed |
+|---|---|---|---|---|
+| `s4-t85-run1` | FAIL | 0.1985 | 6.6% | Scenarios passed with the task now in the lens prompt. Lens record, red rollback with its ref. G:publish asked: the claims lens left an open question, and S4 did not answer G:publish yet |
+| `s4-t85-run2` | FAIL | 0.1498 | 5.0% | First live auto pass at G:publish, with its binding. The main session then held `pb publish` back on its own. The safety net found nothing, so no fix ran and no rollback could be forced |
+| `s4-t85-run3` | FAIL | 0.2241 | 7.5% | The stale README gave the corpus lens a true finding. Red, then repeated-approach rollback. G:publish asked for an open question, S4 approved as the human, the draft PR opened. S4's own gate check then put a copied `unit.json` back |
+| `s4-t85-run4` | PASS | 0.2108 | 7.0% | Everything above, with G:publish passed by the auto policy |
+
+How the rollback is forced, test-only: S4's sample carries a README the bug fix makes wrong, so the corpus lens has a true
+finding, and the sample's test command runs behind `tests/smoke/force-red.mjs`, which fails the first test run of the
+first safety-net fix once. Only S4's throwaway test config names it.
+
+### Bugs the live runs found
+
+The three product bugs were each fixed test-first in their own commit. The last one was in S4 itself, which has no tests of its own, and was fixed with the rest of S4. Run 4 passed on all four.
+
+- **A lens never saw the task.** The scenarios lens got the scenarios, the corpus and its lens name, and said it could not
+  tell which bug the task named, so G:scenarios asked a human in both T84c runs. The lens prompt now carries the task.
+- **The main session ignored an auto pass at G:publish.** It read the pr-draft findings that a kept fix had dealt with as
+  blocking and declined to run `pb publish`. The coding skill now says the auto pass is the approval.
+- **A kept artifact-mode fix was not counted.** The pr-draft report said `fixes.attempts` 0 after a kept redraft, since only
+  checkpoints and rollbacks were counted. Filed fix returns now count too.
+- **S4's own confinement check left a copy of the run behind.** It put the captured run back to test a read and removed it
+  only when `run/` had been missing, so a copied `unit.json` outlived the publish. It now removes only what it added.
+
+### What stays open
+
+- G:task-end asked in 3 of 4 runs and G:publish in 2, each for an open question in a Haiku return. The gates are right to
+  ask, so S4 answers them as the human and says so in its result. A run that reaches the auto pass at G:publish needs
+  none of the pr-draft returns to leave a question; run 4 had none.
+- S3 was updated for the lens record and not run live (decision 68).

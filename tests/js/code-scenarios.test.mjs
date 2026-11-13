@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { blockOf, runScript } from "./harness.mjs";
+import { withStageMaxAgents } from "./stage-cap-fixture.mjs";
 import { lensSlug } from "../../shared-node/keys.mjs";
 import { readLabel } from "../../shared-node/labels.mjs";
 import { writeLedger } from "../../shared-node/ledger.mjs";
@@ -45,6 +46,20 @@ test("code-scenarios-enumerates-then-runs-the-runner", async () => {
 
   assert.deepEqual(calls.map(({ opts }) => opts.agentType), [`pairingbuddy:${AGENT}`, "pairingbuddy:runner", "pairingbuddy:lens", "pairingbuddy:runner"]);
   assert.deepEqual(phases, [AGENT, "runner", "runner"], "the lens call opens no phase of its own");
+});
+
+test("code-scenarios-snapshot-runner-prompt-has-no-spent-line", async () => {
+  const answers = { "pairingbuddy:lens": { findings: [] }, "pairingbuddy:runner": relayed(["CLAUDE.md"]) };
+  const agent = async (_prompt, { agentType }) => answers[agentType] ?? {};
+
+  const { calls } = await runScript(STAGE, { args: ARGS, agent, spent: [100, 700, 1300] });
+
+  const runnerPrompts = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:runner").map(({ prompt }) => prompt);
+  assert.equal(runnerPrompts.length, 2, "the stage runs a snapshot runner and a finish runner");
+  const [snapshotPrompt, finishPrompt] = runnerPrompts;
+  assert.ok(snapshotPrompt.includes("pb.mjs snapshot") && !snapshotPrompt.includes("stage finish"), "the first runner is not the finish runner");
+  assert.ok(!snapshotPrompt.includes("pb_spent_output_tokens"), "a runner whose commands are not stage finish carries no spent line");
+  assert.ok(finishPrompt.includes("pb_spent_output_tokens:"), "the finish runner still carries its spent line");
 });
 
 test("code-scenarios-does-not-start-the-runner-until-the-agent-returned", async () => {
@@ -200,15 +215,14 @@ test("Recorded calls are the enumerator, then one pairingbuddy:lens call at the 
   // Task 76 wires ONE lens: the first lens of the scenarios row.
   const row = contractOf(LENSES_CONTRACT).rows.find(({ row }) => row === "scenarios");
   const [firstLens] = row.lenses;
-  const finding = { rule: "a rule", severity: "high", claim: "a claim", where: "scenario 1" };
-  const agent = async (_prompt, { agentType }) => (agentType === "pairingbuddy:lens" ? { pb_key: "k", ambiguity: null, findings: [finding] } : agentType === "pairingbuddy:refuter" ? { pb_key: "k", finding_id: `${lensSlug(firstLens.name)}-1`, verdict: "survives", ambiguity: null } : agentType === "pairingbuddy:runner" ? relayed() : {});
+  const agent = async (_prompt, { agentType }) => (agentType === "pairingbuddy:lens" ? { pb_key: "k", ambiguity: null, findings: [] } : agentType === "pairingbuddy:runner" ? relayed() : {});
 
   const { calls, result } = await runStage(ARGS, agent);
 
-  assert.deepEqual(calls.map(({ opts }) => opts.agentType), [`pairingbuddy:${AGENT}`, "pairingbuddy:runner", "pairingbuddy:lens", "pairingbuddy:refuter", "pairingbuddy:runner"], "enumerator, the snapshot runner, one lens, its finding's refuter, then the finishing runner");
+  assert.deepEqual(calls.map(({ opts }) => opts.agentType), [`pairingbuddy:${AGENT}`, "pairingbuddy:runner", "pairingbuddy:lens", "pairingbuddy:runner"], "enumerator, the snapshot runner, one lens, then the finishing runner");
   assert.equal(calls[2].opts.model, firstLens.model, "the lens runs at the model its row entry names");
-  assert.equal(result.lensAttack.agentsUsed, 2, "the stage return carries the lensAttack result");
-  assert.deepEqual(result.lensAttack.survivors.map(({ claim }) => claim), [finding.claim], "the lens finding is a survivor");
+  assert.equal(result.lensAttack.agentsUsed, 1, "the stage return carries the lensAttack result");
+  assert.deepEqual(result.lensAttack.survivors, [], "a lens with no findings leaves no survivors");
 });
 
 test("The built code-scenarios.js contains lensAttack and the scenarios row from contracts/lenses.json, and the bundle sync test still passes", () => {
@@ -343,20 +357,88 @@ test("The built scenarios stage applies the row's maxFindingsPerLens and maxRefu
   assert.ok(logs.some((message) => message.includes("trimmed 5 finding(s)")), "the findings past maxFindingsPerLens are trimmed and logged");
 });
 
-test("The built scenarios stage gives lensAttack the stage's maxAgents less the enumerator, the lens and the runner's reserve", async () => {
+test("The built scenarios stage gives lensAttack the stage's maxAgents less the enumerator, the lens and the runner's reserve", async (t) => {
   // maxAgents 5: the enumerator, the snapshot runner and the finishing runner's reserve leave 2 for lensAttack, so one lens and one refuter.
-  const bundle = readFileSync(STAGE, "utf8");
-  const stages = JSON.parse(/^const STAGES = (.*);$/m.exec(bundle)[1]);
-  const capped = bundle.replace(/^const STAGES = .*;$/m, `const STAGES = ${JSON.stringify({ ...stages, stageMaxAgents: { ...stages.stageMaxAgents, "code-scenarios": 5 } })};`);
-  const dir = mkdtempSync(join(tmpdir(), "code-scenarios-budget-"));
-  const cappedPath = join(dir, "code-scenarios.js");
-  writeFileSync(cappedPath, capped);
+  const cappedPath = withStageMaxAgents(STAGE, "code-scenarios", 5, t);
 
   const { calls, result } = await runScript(cappedPath, { args: ARGS, agent: answering(manyFindings(4)) });
-  rmSync(dir, { recursive: true, force: true });
 
   assert.equal(countOf(calls, "pairingbuddy:refuter"), 1, "one refuter fits the budget");
   assert.equal(result.lensAttack.stopReason, "agent-budget");
   assert.equal(result.lensAttack.unrefuted.length, 3, "the three findings left without a refuter are unrefuted");
   assert.equal(countOf(calls, "pairingbuddy:runner"), 2, "the snapshot and the finishing runner both run");
+});
+
+const keyOf = (prompt) => /Return pb_key exactly as: (\S+)/.exec(prompt)[1];
+// The agent fake for the fix-loop tests: one finding survives, the checker says better, and `fix` answers the enumerator's fix call.
+const fixLoopAgent = ({ fix }) => async (prompt, { agentType }) => {
+  if (agentType === "pairingbuddy:lens") return { pb_key: "k", ambiguity: null, findings: [finding("one claim")] };
+  if (agentType === "pairingbuddy:refuter") return { pb_key: "k", finding_id: sentIdOf(prompt), verdict: "survives", ambiguity: null };
+  if (agentType === `pairingbuddy:${AGENT}`) return prompt.includes("code-scenarios.fix.") ? fix(prompt) : { pb_key: keyOf(prompt), ambiguity: "", scenarios: [] };
+  if (agentType === "pairingbuddy:course-checker") return { pb_key: keyOf(prompt), finding_id: JSON.parse(blockOf(prompt, "findings"))[0].id, verdict: "better", mistake: "none", what_went_wrong: "" };
+  return relayed();
+};
+
+// Scenario: stage-wiring. code-safety-net and code-scenarios wire the fix loop and handle its stop reasons
+// Test case: scenarios-wires-artifact-mode
+test("code-scenarios passes artifact mode with the enumerator agent type and its own artifact as before", async () => {
+  const ENUMERATOR = `pairingbuddy:${AGENT}`;
+  const enumerated = ".pairingbuddy/run/task/artifacts/code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a2.json";
+  const fixed = ".pairingbuddy/run/task/artifacts/code-scenarios.fix.g1.r2.a2.json";
+
+  const { calls } = await runStage(ARGS, fixLoopAgent({ fix: (prompt) => ({ pb_key: keyOf(prompt), ambiguity: "", scenarios: [] }) }));
+
+  const enumeratorCalls = calls.filter(({ opts }) => opts.agentType === ENUMERATOR);
+  assert.equal(enumeratorCalls.length, 2, "the enumerator runs once, then once more as the fix agent");
+  const [, fix] = enumeratorCalls;
+  assert.ok(fix.prompt.includes("Return pb_key exactly as: code-scenarios.fix.g1.r2.a2"), "the fix call carries the fix key");
+  assert.equal(fix.opts.model, "sonnet", "the fix agent runs on sonnet");
+  assert.equal(JSON.parse(blockOf(fix.prompt, "paths")).scenarios, enumerated, "the fix agent reads the enumerator's own artifact");
+  const runnerCommands = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:runner").map(({ prompt }) => prompt);
+  assert.ok(runnerCommands.every((prompt) => !prompt.includes(" checkpoint ")), "no runner runs a checkpoint command");
+  const checker = calls.find(({ opts }) => opts.agentType === "pairingbuddy:course-checker");
+  assert.deepEqual(JSON.parse(blockOf(checker.prompt, "diff")), { before: enumerated, after: fixed }, "the checker compares the two artifacts");
+  assert.equal(calls.at(-1).opts.agentType, "pairingbuddy:runner", "the finishing runner still runs last");
+  assert.ok(blockOf(calls.at(-1).prompt, "commands").includes("pb.mjs stage finish"), "the last runner is the stage finish");
+});
+
+test("code-scenarios on step-failed runs stage stop step-failed and no finishing runner", async () => {
+
+  const { calls, result } = await runStage(ARGS, fixLoopAgent({ fix: () => null }));
+
+  assert.equal(result.stopReason, "step-failed", "the stage stops with the step-failed reason");
+  const runners = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:runner");
+  assert.deepEqual(blockOf(runners.at(-1).prompt, "commands").split("\n"), [`node ${PLUGIN_ROOT}/cli/pb.mjs stage stop step-failed`], "the last runner runs only stage stop step-failed");
+  assert.ok(runners.every(({ prompt }) => !prompt.includes(" stage finish")), "no runner runs stage finish");
+});
+// Test case: scenarios-attempt-cap-at-max-attempts
+test("code-scenarios ends with attempt-cap after exactly maxAttempts rollbacks when every verdict is bad and the relay never says stopped", async () => {
+  const MAX_ATTEMPTS = contractOf(LENSES_CONTRACT).maxAttempts;
+  const agent = async (prompt, opts) => {
+    if (opts.agentType === "pairingbuddy:course-checker") return { pb_key: keyOf(prompt), finding_id: JSON.parse(blockOf(prompt, "findings"))[0].id, verdict: "wrong-direction", mistake: "wrong", what_went_wrong: "off course" };
+    return fixLoopAgent({ fix: (fixPrompt) => ({ pb_key: keyOf(fixPrompt), ambiguity: "", scenarios: [] }) })(prompt, opts);
+  };
+
+  const { calls, result } = await runStage(ARGS, agent);
+
+  const fixCalls = calls.filter(({ opts, prompt }) => opts.agentType === `pairingbuddy:${AGENT}` && prompt.includes("code-scenarios.fix."));
+  const rollbacks = calls.filter(({ opts, prompt }) => opts.agentType === "pairingbuddy:runner" && prompt.includes(" rollback "));
+  assert.equal(MAX_ATTEMPTS, 5, "the contract's maxAttempts is 5");
+  assert.equal(result.stopReason, "attempt-cap", "the stage stops on the attempt cap");
+  assert.equal(fixCalls.length, MAX_ATTEMPTS, "exactly maxAttempts fix agents");
+  assert.equal(rollbacks.length, MAX_ATTEMPTS, "exactly maxAttempts rollbacks");
+});
+
+// Scenario: scenarios-first-course-check-model. The code-scenarios stage escalates the first course check to opus when the snapshot reports a prior rollback
+// Test case: scenarios-first-course-check-opus-after-rollback
+test("code-scenarios-first-course-check-opus-after-rollback", async () => {
+  const rolledBackSnapshot = { cli_exit_code: 0, cli_output: JSON.stringify({ ok: true, paths: CORPUS, rolledBack: 1 }) };
+  const base = fixLoopAgent({ fix: (prompt) => ({ pb_key: keyOf(prompt), ambiguity: "", scenarios: [] }) });
+  const agent = async (prompt, opts) => (opts.agentType === "pairingbuddy:runner" && prompt.includes(SNAPSHOT_KEY) ? rolledBackSnapshot : base(prompt, opts));
+
+  const { calls } = await runStage(ARGS, agent);
+
+  const checks = calls.filter(({ opts }) => opts.agentType === "pairingbuddy:course-checker");
+  assert.ok(checks.length > 0, "a fix group ran and its course check was spawned");
+  assert.equal(checks[0].opts.model, "opus", "the first course check after a rollback runs on opus");
 });

@@ -85,7 +85,7 @@ function eachLine(stream, onLine) {
   });
 }
 
-function runOnce(repo, args, env, onEvent) {
+function runOnce(repo, args, env, onEvent, timeoutMs) {
   return new Promise((resolve, reject) => {
     const child = spawn("claude", args, { cwd: repo, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
     let stderr = "";
@@ -93,7 +93,7 @@ function runOnce(repo, args, env, onEvent) {
     const timer = setTimeout(() => {
       timedOut = true;
       process.kill(-child.pid, "SIGKILL");
-    }, RUN_TIMEOUT_MS);
+    }, timeoutMs);
     eachLine(child.stdout, (line) => {
       const event = parsedLine(line);
       if (event !== null) onEvent(event);
@@ -115,16 +115,16 @@ function runOnce(repo, args, env, onEvent) {
 
 const isCapResult = (event) => event.subtype === "error_max_budget_usd" || event.terminal_reason === "budget_exhausted";
 
-function checkFinished(results, { code, stderr, timedOut }) {
-  if (timedOut) throw new SmokeError(`claude timed out after ${RUN_TIMEOUT_MS / 1000}s`);
+function checkFinished(results, { code, stderr, timedOut }, timeoutMs) {
+  if (timedOut) throw new SmokeError(`claude timed out after ${timeoutMs / 1000}s`);
   if (results.some(isCapResult)) throw new SpendCapError(`the spend cap ended the run: ${JSON.stringify(results.at(-1).errors)}`);
   if (code !== 0) throw new SmokeError(`claude exit ${code}: ${stderr}`);
   if (results.length === 0) throw new SmokeError("no result event in the stream");
   if (results.at(-1).is_error) throw new SmokeError(`result error ${results.at(-1).subtype}`);
 }
 
-// Charges `budget` first, so spend is known to the caller even when this throws.
-export async function runClaude(repo, prompt, budget, { env = cleanEnv(), onLine = () => {}, pluginDir = REPO_ROOT, resume = null } = {}) {
+// Charges `budget` first, so spend is known to the caller even when this throws. timeoutMs is the wall-clock limit of this one run.
+export async function runClaude(repo, prompt, budget, { env = cleanEnv(), onLine = () => {}, pluginDir = REPO_ROOT, resume = null, timeoutMs = RUN_TIMEOUT_MS } = {}) {
   if (budget.remaining <= 0) throw new SpendCapError(`the spend cap is used up at $${budget.spent.toFixed(4)}`);
   refuseRepoInsidePlugin(repo);
   const results = [];
@@ -133,9 +133,9 @@ export async function runClaude(repo, prompt, budget, { env = cleanEnv(), onLine
     if (event.type === "result") results.push(event);
     if ("total_cost_usd" in event) costs.push(event.total_cost_usd);
     onLine(event);
-  });
+  }, timeoutMs);
   if (costs.length > 0) budget.charge(Math.max(...costs));
   else budget.costKnown = false;
-  checkFinished(results, exit);
+  checkFinished(results, exit, timeoutMs);
   if (budget.remaining <= 0) throw new SpendCapError(`the run ended at the spend cap, $${budget.spent.toFixed(4)} of $${budget.total}`);
 }

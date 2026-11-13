@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Course Verdict",
+  "description": "Return of a course checker: its judgement of one fix group's diff against the group's finding(s)",
+  "type": "object",
+  "required": ["pb_key", "finding_id", "verdict", "mistake", "what_went_wrong"],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "finding_id": {
+      "type": "string",
+      "pattern": "^(?=.{1,64}$)[a-z0-9]+(?:-[a-z0-9]+)*-[1-9][0-9]*$",
+      "description": "The finding that decided the verdict"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["better", "wrong-direction", "broke-something"],
+      "description": "How the fix went: better means it moved toward the finding, wrong-direction means it moved away from the finding, broke-something means it broke working behaviour"
+    },
+    "mistake": {
+      "type": "string",
+      "enum": ["none", "missed-finding", "changed-behaviour", "out-of-scope", "weakened-tests", "new-defect", "other"],
+      "description": "The kind of mistake the fix made; none only with better"
+    },
+    "what_went_wrong": {
+      "type": "string",
+      "description": "What went wrong, empty for better"
+    }
+  },
+  "additionalProperties": false
+}

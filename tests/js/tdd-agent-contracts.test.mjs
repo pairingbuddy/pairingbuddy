@@ -11,6 +11,7 @@ const schemaOf = (name) => JSON.parse(read(`contracts/schemas/${name}`));
 
 const CONFIG = read("contracts/agent-config.yaml");
 const FILE_FIELDS = ["pb_key", "ambiguity", "commit_subject", "files_changed"];
+const REFACTOR_FIELDS = [...FILE_FIELDS, "approach"];
 const ISSUE_FIELDS = ["pb_key", "ambiguity", "issues"];
 const COVERAGE_FIELDS = ["status", "scenarios_covered", "scenarios_total", "test_cases_covered", "test_cases_total", "gaps"];
 const AGENTS = [
@@ -20,8 +21,8 @@ const AGENTS = [
   { name: "implement-code", paths: ["tests", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/code-state.json", legacySchema: "code-state.schema.json" },
   { name: "identify-test-issues", paths: ["tests", "test_config", "human_guidance"], fields: ISSUE_FIELDS, legacy: ".pairingbuddy/test-issues.json", legacySchema: "issues.schema.json" },
   { name: "identify-code-issues", paths: ["code", "test_config", "human_guidance"], fields: ISSUE_FIELDS, legacy: ".pairingbuddy/code-issues.json", legacySchema: "issues.schema.json" },
-  { name: "refactor-tests", paths: ["issues", "tests", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/files-changed.json", legacySchema: "files-changed.schema.json" },
-  { name: "refactor-code", paths: ["issues", "tests", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/files-changed.json", legacySchema: "files-changed.schema.json" },
+  { name: "refactor-tests", paths: ["issues", "tests", "test_config", "human_guidance"], fields: REFACTOR_FIELDS, legacy: ".pairingbuddy/files-changed.json", legacySchema: "files-changed.schema.json" },
+  { name: "refactor-code", paths: ["issues", "tests", "test_config", "human_guidance"], fields: REFACTOR_FIELDS, legacy: ".pairingbuddy/files-changed.json", legacySchema: "files-changed.schema.json" },
   { name: "verify-test-coverage", paths: ["scenarios", "tests", "test_config", "human_guidance"], fields: ["pb_key", "ambiguity", ...COVERAGE_FIELDS], legacy: ".pairingbuddy/coverage-report.json", legacySchema: "coverage-report.schema.json" },
 ];
 
@@ -234,3 +235,19 @@ test("verify-test-coverage: with paths it reconciles nothing, because the CLI re
   assert.match(text, /With a `<paths>` block: skip 2a and write no tests file/);
   assert.match(text, /With a `<paths>` block: skip Step 3/);
 });
+
+// `pb checkpoint --step fix` stops the run when a fix changed nothing and gives no `ambiguity` to say why, so a fix told
+// to say nothing about why it changed nothing (a finding an earlier group already fixed) stops the whole safety net.
+for (const name of ["refactor-tests", "refactor-code"]) {
+  test(`${name}: with paths a fix that changes nothing gives the reason in ambiguity`, () => {
+    const paragraph = textOf({ name }).split("\n").find((line) => line.startsWith("With a `<paths>` block: fix the issues"));
+    assert.ok(paragraph, "the paths-block paragraph is there");
+    const sentences = paragraph.split(/(?<=\.)\s+/);
+
+    const reasonSentence = sentences.find((sentence) => /no change/i.test(sentence) && sentence.includes("`ambiguity`"));
+    const neverReport = sentences.find((sentence) => /never use it to report what you did or found/i.test(sentence));
+
+    assert.ok(reasonSentence, "a sentence tells a fix with no change to make to give the reason in `ambiguity`");
+    if (neverReport) assert.match(neverReport, /\b(except|unless|apart from|other than|but)\b/i, "the never-report rule has an exception for that reason");
+  });
+}

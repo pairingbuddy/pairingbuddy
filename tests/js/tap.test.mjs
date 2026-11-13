@@ -150,6 +150,33 @@ for (const [name, agentType] of [
     }));
 }
 
+// A fix-loop return is keyed with the role "fix", not the fixer's own name, so the agents the workflows use as fixers
+// may file under it. Any other agent still may not, and a fixer may only file under its own stage's fix key.
+// The log column is what tap-errors.log must read: "none" when nothing is logged, else the reason word.
+const NO_LOG = /^null$/;
+const AGENT_MISMATCH = /agent mismatch/;
+for (const [stage, agentType, filed, log] of [
+  ["code-safety-net", "pairingbuddy:refactor-code", true, NO_LOG],
+  ["code-safety-net", "pairingbuddy:refactor-tests", true, NO_LOG],
+  ["code-scenarios", "pairingbuddy:enumerate-scenarios-and-test-cases", true, NO_LOG],
+  ["code-safety-net", "pairingbuddy:lens", false, AGENT_MISMATCH],
+  ["code-safety-net", "pairingbuddy:runner", false, AGENT_MISMATCH],
+  ["pr-draft", "pairingbuddy:refactor-code", false, AGENT_MISMATCH],
+  ["code-safety-net", "pairingbuddy:draft-pull-request", false, AGENT_MISMATCH],
+]) {
+  test(`${agentType} ${filed ? "files" : "cannot file"} a ${stage} fix return`, () =>
+    withRepo({ ledger: makeLedger({ name: stage, status: "active", runId: null, attempt: 1 }) }, async (repo) => {
+      const k = buildKey({ stage, role: "fix", item: "g1", round: 2, attempt: 1 });
+
+      const res = await runTap(structured(repo.dir, k, { answer: 42 }, agentType));
+
+      assert.equal(res.code, 0);
+      assert.equal(existsSync(repo.artifact(k)), filed, filed ? `${k} is filed under artifacts` : `${k} is not filed`);
+      assert.match(String(repo.errorLog()), log);
+      assert.equal(existsSync(join(repo.dir, ".pairingbuddy", "run", "pr-body.md")), false, "no pr-body.md is written");
+    }));
+}
+
 test("a return with no agent fields is not filed", () =>
   withRepo({}, async (repo) => {
     const k = key();
@@ -409,10 +436,21 @@ test("workflow payload stores runId and leaves other fields intact", () =>
     assert.equal(res.stdout, "");
     const after = readLedger(repo.ledgerPath);
     assert.equal(after.stage.runId, "wf_e86eab30-6a7");
-    assert.deepEqual({ ...after.stage, runId: null }, { ...before.stage, runId: null });
+    const tapOwned = (stage) => ({ ...stage, runId: null, transcriptDir: null });
+    assert.deepEqual(tapOwned(after.stage), tapOwned(before.stage), "the tap changes only runId and transcriptDir");
     const { seq: _s, sha: _h, stage: _st, ...restAfter } = after;
     const { seq: _s2, sha: _h2, stage: _st2, ...restBefore } = before;
     assert.deepEqual(restAfter, restBefore);
+  }));
+
+test("workflow payload records transcriptDir next to runId", () =>
+  withRepo({}, async (repo) => {
+    const res = await runTap(workflow(repo.dir));
+
+    assert.equal(res.code, 0);
+    const { stage } = readLedger(repo.ledgerPath);
+    assert.equal(stage.runId, "wf_e86eab30-6a7", "runId is recorded");
+    assert.equal(stage.transcriptDir, "/home/user/.claude/projects/encoded-project/c5990cf0-b08a-4f0b-b44e-0a07c1ce733f/subagents/workflows/wf_e86eab30-6a7", "transcriptDir is recorded with it");
   }));
 
 test("workflow for another name or attempt leaves runId alone and is logged", () =>

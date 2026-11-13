@@ -19,6 +19,23 @@ const withoutSafetyNet = ({ unit, safetyNets }) => {
   return unfinished.length === 0 ? null : `${list(safetyNets)} did not finish for ${list(unfinished.map((task) => task.title))}`;
 };
 
+// The lens-record rule the auto policy and the publish evidence share: a task has a safety-net lens record when it is not empty.
+export const taskHasLensRecord = ({ lenses }) => Object.keys(lenses?.["safety-net"] ?? {}).length > 0;
+
+// Defence in depth: an auto approval stands only if every task has its safety-net lens record.
+const autoWithoutLensRecord = ({ unit, approval }) => {
+  if (approval !== "auto") return null;
+  const lacking = unit.tasks.filter((task) => !taskHasLensRecord(task));
+  return lacking.length === 0 ? null : `G:publish was passed by the auto policy, but these tasks have no safety-net lens record: ${list(lacking.map((task) => task.title))}`;
+};
+
+// Defence in depth: an auto approval stands only if the PR lint passes at the body as it is now.
+const autoWithFailingLint = ({ approval, lint }) => {
+  if (approval !== "auto" || lint?.ok === true) return null;
+  const detail = lint?.status === "failed" && lint.failures.length > 0 ? lint.failures.map(({ rule }) => rule).join(", ") : (lint?.status ?? "missing");
+  return `G:publish was passed by the auto policy, but the PR lint does not pass at the current body: ${detail}`;
+};
+
 const invalidGateSources = ({ unit }) => {
   const bad = unit.tasks.flatMap((task) => Object.entries(task.gateSources).filter(([, source]) => !GATE_SOURCES.includes(source)).map(([gate, source]) => `${gate} from ${task.title} has source ${JSON.stringify(source)}`));
   return bad.length === 0 ? null : `invalid gate sources: ${list(bad)}`;
@@ -49,11 +66,10 @@ const staleApproval = ({ voidReason }) => voidReason ?? null;
 
 const UNAPPROVED = {
   none: "G:publish has no approval; run pb gate eval, and the human approves it with pb human approve G:publish",
-  auto: "G:publish was passed by the auto policy, which never approves a publish; the human approves it with pb human approve G:publish",
   "keep-local": "the human answered keep local at G:publish, so the unit is kept local and is not published",
 };
 
-const unapproved = ({ voidReason, approval }) => (voidReason !== null || approval === "human" ? null : UNAPPROVED[approval]);
+const unapproved = ({ voidReason, approval }) => (voidReason !== null || approval === "human" || approval === "auto" ? null : UNAPPROVED[approval]);
 
 const unrecordedCommits = ({ unit, commits }) => {
   const missing = commits.filter((sha) => !unit.commits.includes(sha));
@@ -72,10 +88,10 @@ export const BRANCH_CHECKS = [branchUnusable, branchProtected, notOnUnitBranch, 
 // The evidence checks, in the order they are reported.
 export const EVIDENCE_CHECKS = [
   recordedTasks, withoutSafetyNet, invalidGateSources, staleFullSuite, dirtyTree, openBlocking, changedConfig,
-  staleApproval, unapproved, unrecordedCommits,
+  staleApproval, unapproved, autoWithoutLensRecord, autoWithFailingLint, unrecordedCommits,
 ];
 
-// What closing in place of a push needs: the same fresh human approval and unchanged config files as a publish.
+// What closing in place of a push needs: the same fresh approval and unchanged config files as a publish.
 const LOCAL_CHECKS = [changedConfig, staleApproval, unapproved];
 
 const reasonsOf = (checks, facts) => checks.map((check) => check(facts)).filter((reason) => reason !== null);

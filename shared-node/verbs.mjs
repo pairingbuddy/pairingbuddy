@@ -7,12 +7,12 @@ import { shellWord } from "./shell-word.mjs";
 const CLI_PATH = fileURLToPath(new URL("../cli/pb.mjs", import.meta.url));
 
 export const VERB_CLASSES = {
-  runner: ["test", "checkpoint", "stage finish", "stage stop", "tdd state", "snapshot", "artifact check", "pr lint"],
+  runner: ["test", "checkpoint", "stage finish", "stage stop", "tdd state", "snapshot", "artifact check", "pr lint", "rollback"],
   main: ["unit open", "run open", "stage report", "stage fail", "gate eval", "task end", "plan next", "publish", "status", "git doctor"],
   human: ["human approve", "human abandon", "human approve-config", "human accept"],
 };
 
-export { STAGE_STOP_REASONS, MISSING_ARTIFACT, COMMIT_PLAN_UNUSABLE, COMMIT_FAILED, NO_SELECTOR_TEMPLATE, HUMAN_STOPPED, STOP_CODES } from "./stop-codes.mjs";
+export { STAGE_STOP_REASONS, MISSING_ARTIFACT, COMMIT_PLAN_UNUSABLE, COMMIT_FAILED, NO_SELECTOR_TEMPLATE, HUMAN_STOPPED, ATTEMPT_CAP, STOP_CODES } from "./stop-codes.mjs";
 
 const ALL_VERBS = Object.values(VERB_CLASSES).flat();
 

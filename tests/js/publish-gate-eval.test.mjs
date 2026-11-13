@@ -13,16 +13,21 @@ import { loadStages } from "../../shared-node/stages.mjs";
 import { updateLedger } from "../../shared-node/ledger.mjs";
 import { pb, ROOT } from "./cli-repo-fixture.mjs";
 import {
-  BAD_TITLE, CLEAN_BODY, COORDINATION, DRAFT_KEY, GATE, HYPE_BODY, REFUSED,
+  BAD_TITLE, CLEAN_BODY, CLEAN_TITLE, COORDINATION, DRAFT_KEY, GATE, HYPE_BODY, REFUSED,
   commitMore, evalGate, git, lintOf, publishRepo, unitFile,
 } from "./publish-fixture.mjs";
+import { changeUnit, taskRecord } from "./publishable-unit-fixture.mjs";
 import { sha256 } from "./tap-fixture.mjs";
 
 const LENS_REASON = /no lens record yet/;
-const HUMAN_ONLY_REASON = "G:publish is approved by a human, never by the auto policy";
-// A safety-net lens record is ledger.lenses["safety-net"], and any non-empty object stands for it. Nothing writes real
-// lens records yet; when the task that does lands, seed this from its writer instead.
+// A safety-net lens record is a unit task's lenses["safety-net"] in run/unit.json, and any non-empty object stands for
+// it. Nothing writes real lens records yet; when the task that does lands, seed this from its writer instead.
 const LENS_RECORD = { "safety-net": { lenses: ["correctness"], status: "done" } };
+
+// Seeds one finished task, as pb task end records it at the unit's last commit, carrying the safety-net lens record.
+function seedTaskLensRecord(repo, recorded) {
+  changeUnit(repo, { tasks: [taskRecord(recorded.at(-1), { lenses: LENS_RECORD })] });
+}
 
 const ledgerPathOf = (runDir) => join(runDir, "task", "ledger.json");
 
@@ -234,19 +239,6 @@ describe("publish-auto-mode", () => {
     assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false);
     assert.equal(repo.ledger().needsHuman.gate, GATE);
   });
-
-  test("with a lens record for the safety net seeded and the lint passing at the body hash, the lens reason disappears and the human-only reason stays", () => {
-    const { repo, runDir, lint } = publishRepo({ mode: "auto" });
-    assert.equal(lint.bodyHash, sha256(CLEAN_BODY));
-    updateLedger(ledgerPathOf(runDir), (ledger) => ({ ...ledger, lenses: LENS_RECORD }));
-
-    const asked = evalGate(repo);
-
-    assert.equal(asked.result, "needs-human");
-    assert.doesNotMatch(asked.reason, LENS_REASON);
-    assert.equal(asked.reason, HUMAN_ONLY_REASON);
-    assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, "auto never writes the publish approval itself");
-  });
 });
 
 describe("publish-gate-refusals", () => {
@@ -333,5 +325,106 @@ describe("publish-gate-refusals", () => {
     assert.equal(refused.code, REFUSED);
     assert.match(refused.stderr, /git diff --numstat/);
     assert.doesNotMatch(refused.stderr, /unexpected failure/);
+  });
+});
+
+// Scenario: auto-publish-lint-safeguard
+test("auto-policy-failed-lint-asks-human", () => {
+  const { repo, recorded } = publishRepo({ title: BAD_TITLE, mode: "auto" });
+  seedTaskLensRecord(repo, recorded);
+
+  const asked = evalGate(repo);
+
+  assert.equal(asked.result, "needs-human");
+  assert.equal(asked.gate, GATE);
+  assert.match(asked.reason, /lint/i, "the reason names the lint");
+  assert.match(asked.reason, /title-form/, "the reason names the failing rule");
+  assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, "no auto-pass is recorded");
+});
+
+describe("auto-publish-lens-source", () => {
+  test("auto-no-lens-record-still-asks", () => {
+    const noTasks = publishRepo({ mode: "auto" });
+    changeUnit(noTasks.repo, { tasks: [] });
+    const partial = publishRepo({ mode: "auto", commits: 2 });
+    changeUnit(partial.repo, { tasks: [taskRecord(partial.recorded[0], { lenses: LENS_RECORD }), taskRecord(partial.recorded[1])] });
+
+    const askedNoTasks = evalGate(noTasks.repo);
+    const askedPartial = evalGate(partial.repo);
+
+    for (const [name, asked, repo] of [["no task records", askedNoTasks, noTasks.repo], ["one of two tasks lacks a lens record", askedPartial, partial.repo]]) {
+      assert.equal(asked.result, "needs-human", `${name}: the human is asked`);
+      assert.equal(asked.gate, GATE);
+      assert.match(asked.reason, LENS_REASON, `${name}: the reason names the missing lens record`);
+      assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, `${name}: no auto-pass is recorded`);
+    }
+  });
+  test("auto-ledger-lens-record-alone-does-not-count", () => {
+    const { repo, runDir } = publishRepo({ mode: "auto" });
+    updateLedger(ledgerPathOf(runDir), (ledger) => ({ ...ledger, lenses: LENS_RECORD }));
+
+    const asked = evalGate(repo);
+
+    assert.equal(asked.result, "needs-human");
+    assert.equal(asked.gate, GATE);
+    assert.match(asked.reason, LENS_REASON, "the publish run ledger's own lens record does not count");
+    assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, "no auto-pass is recorded");
+  });
+});
+
+describe("auto-publish-gate-pass", () => {
+  test("auto-passes-with-binding-when-all-tasks-have-lens-and-lint-passes", () => {
+    const { repo, runDir, recorded, lint } = publishRepo({ mode: "auto" });
+    assert.equal(lint.ok, true);
+    seedTaskLensRecord(repo, recorded);
+
+    const passed = evalGate(repo);
+
+    assert.equal(passed.result, "auto-pass");
+    assert.equal(passed.gate, GATE);
+    const record = repo.ledger().gates[GATE];
+    assert.equal(record.source, "auto");
+    assert.equal(record.answer, "approve");
+    assert.equal(record.headSha, git(repo, "rev-parse", "HEAD"));
+    assert.equal(record.base, "main");
+    assert.equal(record.target, "main");
+    assert.equal(record.bodyHash, sha256(readFileSync(join(runDir, "pr-body.md"), "utf8")));
+    assert.equal(record.titleHash, sha256(CLEAN_TITLE));
+    assert.deepEqual(record.labels, []);
+    assert.equal(record.coordinationHash, sha256(COORDINATION));
+    assert.equal(Object.hasOwn(record, "lintOk"), false, "no failed-lint marker rides on an auto pass");
+    assert.equal(repo.ledger().needsHuman, null);
+  });
+  test("auto-lint-rerun-failure-keeps-asking", () => {
+    const { repo, runDir, recorded, lint } = publishRepo({ mode: "auto" });
+    assert.equal(lint.ok, true, "the lint on disk passed for the clean title");
+    seedTaskLensRecord(repo, recorded);
+    const draftPath = join(runDir, "task", "artifacts", `${DRAFT_KEY}.json`);
+    writeFileSync(draftPath, JSON.stringify({ ...JSON.parse(readFileSync(draftPath, "utf8")), title: BAD_TITLE }));
+
+    const asked = evalGate(repo);
+
+    assert.equal(asked.result, "needs-human");
+    assert.equal(asked.gate, GATE);
+    assert.match(asked.reason, /the PR lint failed/, "the reason says the lint re-run failed");
+    assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, "no auto-pass is recorded");
+  });
+
+  test("a voided approval under auto asks with the void reason, even with every lens record and a passing lint", () => {
+    const { repo, recorded } = publishRepo({ mode: "auto" });
+    seedTaskLensRecord(repo, recorded);
+    assert.equal(evalGate(repo).result, "auto-pass");
+    const approval = repo.ledger().gates[GATE];
+    commitMore(repo);
+    const relint = pb(repo, "pr", "lint");
+    assert.equal(relint.code, 0, `pb pr lint exits 0, stderr ${relint.stderr}`);
+
+    const asked = evalGate(repo);
+
+    assert.equal(asked.result, "needs-human");
+    assert.equal(asked.gate, GATE);
+    assert.match(asked.reason, /HEAD moved/, "the reason is the void reason, not an auto pass");
+    assert.deepEqual(repo.ledger().voidedGates.map((voided) => voided.record), [approval], "the old record is kept as voided");
+    assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, "no new G:publish record is written");
   });
 });

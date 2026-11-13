@@ -1,12 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Refactor Code Result",
-  "description": "Return of the refactor-code agent when its prompt gives paths: the pb key it was given, any open ambiguity, the proposed commit subject and the files it changed, which pb checkpoint --step refactor commits as one fix group once the task's tests pass",
+  "description": "Return of the refactor-code agent when its prompt gives paths: the pb key it was given, any open ambiguity, the proposed commit subject, how the fix goes about it and the files it changed, which pb checkpoint --step refactor commits as one fix group once the task's tests pass",
   "type": "object",
   "required": [
     "pb_key",
     "ambiguity",
     "commit_subject",
+    "approach",
     "files_changed"
   ],
   "properties": {
@@ -16,11 +17,15 @@
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question, or an issue the agent could not fix without changing behaviour, or an empty string"
+      "description": "An open question, or an issue the agent could not fix without changing behaviour, or why a fix changed nothing, or an empty string"
     },
     "commit_subject": {
       "type": "string",
       "description": "Proposed commit subject line, or an empty string when nothing changed"
+    },
+    "approach": {
+      "type": "string",
+      "description": "One short sentence naming how the fix goes about it, so a retry can be told which approaches were rejected, or empty string when nothing changed"
     },
     "files_changed": {
       "type": "array",

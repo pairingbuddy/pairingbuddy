@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 import { readGitConfig } from "./gitconf.mjs";
 import { lintDraft } from "./pr-lint.mjs";
+import { returnsAt } from "./stage-run.mjs";
 
 export class PrLintRunRefused extends Error {}
 
@@ -25,12 +26,24 @@ export function readUnit(root) {
   }
 }
 
-// The draft artifact the tap filed for this attempt of pr-draft.
+// The newest standing draft key of a pr-draft attempt: the highest-round draft-pull-request or fix artifact, or null when
+// there is none. exceptKey leaves one key out, for the draft being rolled back. A redraft that `pb rollback --artifact` set
+// aside (after a bad course-checker verdict or a failed lint) is no longer in the artifacts dir, so it is never seen here.
+export function newestDraftKey(artifactsDir, stage, exceptKey = null) {
+  // returnsAt sorts by key string, so r10 comes before r2: pick the newest by numeric round.
+  const drafts = existsSync(artifactsDir) ? returnsAt(artifactsDir, stage) : [];
+  return drafts
+    .filter((key) => key.pbKey !== exceptKey && (key.role === "draft-pull-request" || key.role === "fix"))
+    .reduce((best, key) => (!best || key.round > best.round ? key : best), null);
+}
+
+// The newest standing draft for this attempt of pr-draft.
 export function readDraftArtifact(root, stage) {
-  const pbKey = `pr-draft.draft-pull-request.-.r1.a${stage.attempt}`;
-  const path = join(root, ".pairingbuddy", "run", "task", "artifacts", `${pbKey}.json`);
-  if (!existsSync(path)) throw new PrLintRunRefused(`no draft artifact ${pbKey} under run/task/artifacts, so there is nothing to lint`);
-  return JSON.parse(readFileSync(path, "utf8"));
+  const dir = join(root, ".pairingbuddy", "run", "task", "artifacts");
+  const firstKey = `pr-draft.draft-pull-request.-.r1.a${stage.attempt}`;
+  const newest = newestDraftKey(dir, { name: "pr-draft", attempt: stage.attempt });
+  if (!newest) throw new PrLintRunRefused(`no draft artifact ${firstKey} under run/task/artifacts, so there is nothing to lint`);
+  return JSON.parse(readFileSync(join(dir, `${newest.pbKey}.json`), "utf8"));
 }
 
 function diffLinesSince(root, baseSha) {

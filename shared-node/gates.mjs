@@ -9,6 +9,7 @@ import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus 
 import { isPassed } from "./gate-passed.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
+import { taskHasLensRecord } from "./publish.mjs";
 import { headOf } from "./checkpoint.mjs";
 import { PrLintConfigRefused } from "./pr-lint.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, readDraftArtifact, readUnit, runPrLint, sha256 } from "./pr-lint-run.mjs";
@@ -230,15 +231,17 @@ function currentHead(root) {
 }
 const short = (sha) => String(sha).slice(0, 7);
 
-// The lint result as it stands for the body on disk: missing, stale (made for another body), failed or ok.
-export function publishLint(root) {
+// The lint result as it stands for a body: missing, stale (made for another body), failed or ok.
+// The body is the one on disk unless the caller passes the hash of bytes it already read (null: no body).
+export function publishLint(root, bodyHash = diskBodyHash(root)) {
   const lint = existsSync(prLintPath(root)) ? parsedOrNull(prLintPath(root)) : null;
   if (lint === null) return { status: "missing", ok: false, failures: [] };
   const failures = Array.isArray(lint.failures) ? lint.failures : [];
-  const current = existsSync(prBodyPath(root)) ? sha256(readFileSync(prBodyPath(root))) : null;
-  if (lint.bodyHash !== current) return { status: "stale", ok: false, failures };
+  if (lint.bodyHash !== bodyHash) return { status: "stale", ok: false, failures };
   return { status: lint.ok === true ? "ok" : "failed", ok: lint.ok === true, failures };
 }
+
+const diskBodyHash = (root) => existsSync(prBodyPath(root)) ? sha256(readFileSync(prBodyPath(root))) : null;
 
 function lintReason(root) {
   const { status, failures } = publishLint(root);
@@ -248,13 +251,16 @@ function lintReason(root) {
   return null;
 }
 
-const hasLensRecord = ({ lenses }) => lenses?.["safety-net"] !== undefined && lenses["safety-net"] !== null && Object.keys(lenses["safety-net"]).length > 0;
+// The auto policy needs the safety-net lens record of every task in the unit; a unit with no tasks has none.
+const everyTaskHasLensRecord = ({ tasks }) => tasks.length > 0 && tasks.every(taskHasLensRecord);
 
-// Why the publish gate asks whatever the policy says. Under auto it never records the approval itself: a lens record only removes that reason.
+// Whether the auto policy passes G:publish by itself: auto mode, an ok lint for the body on disk and the safety-net lens record of every task.
+export const autoPublishPasses = (ledger, root) => ledger.policy.mode === "auto" && publishLint(root).status === "ok" && everyTaskHasLensRecord(readUnit(root));
+
+// Why the publish gate asks whatever the policy says, or null. Under auto it passes once autoPublishPasses holds; any other policy is left to policyReason.
 function publishReason(ledger, root, voided) {
-  const reason = voided ?? lintReason(root);
-  if (reason !== null || ledger.policy.mode !== "auto") return reason;
-  return hasLensRecord(ledger) ? "G:publish is approved by a human, never by the auto policy" : "no lens record yet for the safety net";
+  if (voided === null && autoPublishPasses(ledger, root)) return null;
+  return voided ?? lintReason(root) ?? (ledger.policy.mode === "auto" ? "no lens record yet for the safety net" : null);
 }
 
 const publishRecord = (ledger) => (Object.hasOwn(ledger.gates, PUBLISH_GATE) ? ledger.gates[PUBLISH_GATE] : undefined);
@@ -280,9 +286,18 @@ export const draftBinding = (draft) => ({
 // What an approval is compared with: HEAD, base and target, the body bytes (null when there is no body) and the draft.
 export const currentBinding = (root, draft, body) => ({ ...publishFacts(root), bodyHash: body === null ? null : sha256(body), ...draftBinding(draft) });
 
+// Whether a G:publish record carries a binding to HEAD or run/pr-body.md.
+const isBound = (record) => record.headSha !== undefined || record.bodyHash !== undefined;
+
+// A human approval, or an auto pass that carries a binding to HEAD or the PR body (a bare auto record is no approval).
+export const isPublishApproved = (ledger) => {
+  const approval = publishApproval(ledger);
+  return approval === "human" || (approval === "auto" && isBound(publishRecord(ledger)));
+};
+
 // Why a G:publish approval no longer matches the current binding, or null when it still does.
 export function staleBindingReason(record, current) {
-  if (record.headSha === undefined && record.bodyHash === undefined) return "the G:publish approval no longer holds: it carries no binding to HEAD or run/pr-body.md";
+  if (!isBound(record)) return "the G:publish approval no longer holds: it carries no binding to HEAD or run/pr-body.md";
   const moved = (name, was, now) => (was === now ? [] : [`${name} changed from ${was ?? "none"} to ${now}`]);
   const changes = [
     ...(record.headSha === current.headSha ? [] : [`HEAD moved from ${short(record.headSha)} to ${short(current.headSha)}`]),
@@ -296,10 +311,10 @@ export function staleBindingReason(record, current) {
   return changes.length === 0 ? null : `the G:publish approval no longer holds: ${changes.join(" and ")}`;
 }
 
-// A human approval that no longer matches HEAD, run/pr-body.md or the draft's title and labels does not stand. Null when
+// A human or auto approval that no longer matches HEAD, run/pr-body.md or the draft's title and labels does not stand. Null when
 // it does, or when there is none. `current` is the binding the caller already read, so one read serves the check and the use.
 export function publishVoidReason(ledger, root, current = null) {
-  if (publishApproval(ledger) !== "human") return null;
+  if (!["human", "auto"].includes(publishApproval(ledger))) return null;
   const draft = current === null ? readDraftArtifact(root, ledger.stage) : null;
   const bound = current ?? currentBinding(root, draft, existsSync(prBodyPath(root)) ? readFileSync(prBodyPath(root)) : null);
   return staleBindingReason(publishRecord(ledger), bound);
@@ -335,14 +350,14 @@ export function publishFacts(root) {
   return { headSha: currentHead(root), base: unit.base, target: readGitConfig(root).pr.base_branch ?? unit.base };
 }
 
-// What G:publish approved: the commit, the body, the title and the labels the human saw, and where they go. It re-runs the lint, so the
-// record also says when the human approved over a failed one. `shown` is what gate eval showed (needsHuman.shown): HEAD
-// must still be that commit, or the human approves what they did not see. The body hash is not compared: the human may
+// What an approval at G:publish binds to, from a human or from the auto policy: the commit, the body, the title and the labels, and where
+// they go. It re-runs the lint, so a human approval also records when it was given over a failed one. `shown` is what gate eval showed
+// (needsHuman.shown): whenever it is passed, by a human answer or by the auto pass, HEAD must still be that commit, or what is approved is not what was shown. The body hash is not compared: the human may
 // edit the body at the gate (D20), so it binds at answer time, after the lint re-run.
 export function publishBinding(root, ledger, shown = null) {
   const facts = publishFacts(root);
   if (shown?.headSha !== undefined && shown.headSha !== facts.headSha) {
-    throw new PublishRefused(`HEAD moved since the question: the human was shown ${short(shown.headSha)} and HEAD is ${short(facts.headSha)}, so nothing was approved`);
+    throw new PublishRefused(`HEAD moved since the question: G:publish was shown ${short(shown.headSha)} and HEAD is ${short(facts.headSha)}, so nothing was approved`);
   }
   const draft = readDraftArtifact(root, ledger.stage);
   const lint = runPrLint(root, draft.title);
@@ -350,8 +365,8 @@ export function publishBinding(root, ledger, shown = null) {
   return { ...facts, bodyHash: lint.bodyHash, ...draftBinding(draft), ...failed };
 }
 
-// The gate record of a human's approval. A publish approval carries its binding.
-const approvalRecord = (source, binding = {}) => ({ source, answer: "approve", ...binding });
+// The gate record of an approval, from a human or the auto policy. A publish approval carries its binding.
+export const approvalRecord = (source, binding = {}) => ({ source, answer: "approve", ...binding });
 
 // What a human's answer to the asking gate does to the ledger. A publish answer is an approval that carries its binding.
 export function recordAnswer(ledger, name, answer, gates, binding = {}) {

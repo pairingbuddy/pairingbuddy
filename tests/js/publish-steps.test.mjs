@@ -11,7 +11,7 @@ const task = (over = {}) => ({ title: "Task A", stages: ["code-safety-net"], gat
 // Facts under which a publish goes through; over replaces fields.
 const facts = (over = {}) => ({
   unit: { branch: "feat/x", tasks: [task()], commits: [HEAD] },
-  runStop: null, publishMode: undefined, commits: [HEAD], taskRunOpen: false, changedConfigs: [], approval: "human", voidReason: null,
+  runStop: null, publishMode: undefined, commits: [HEAD], taskRunOpen: false, changedConfigs: [], approval: "human", voidReason: null, lint: { status: "ok", ok: true, failures: [] },
   safetyNets: ["code-safety-net"], planBoxes: null, planProblem: null, head: HEAD, dirty: [],
   branchProblem: null, branchIsProtected: false, currentBranch: "feat/x", branchTip: HEAD, remoteSha: null,
   ...over,
@@ -94,12 +94,11 @@ describe("publishSteps: closing in place", () => {
 });
 
 describe("evidence reasons", () => {
-  test("an approval is told apart: none, auto and keep local each have their own reason", () => {
-    const reasons = ["none", "auto", "keep-local"].map((approval) => evidenceRefusals(facts({ approval })).join());
+  test("an approval is told apart: none and keep local each have their own reason", () => {
+    const reasons = ["none", "keep-local"].map((approval) => evidenceRefusals(facts({ approval })).join());
 
     assert.match(reasons[0], /no approval; run pb gate eval/);
-    assert.match(reasons[1], /auto policy, which never approves/);
-    assert.match(reasons[2], /answered keep local/);
+    assert.match(reasons[1], /answered keep local/);
   });
 
   test("a stale approval is reported by its own reason and not also as missing", () => {

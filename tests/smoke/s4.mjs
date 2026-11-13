@@ -19,11 +19,23 @@
 // Light review (new_feature only, since only that type refactors per cycle): the code-tdd stage is copied the moment the
 // ledger shows it done, and each test whose GREEN that stage recorded has exactly one light-review return filed under
 // code-tdd.lens.<test id>, which matches light-review-result.schema.json, while no identify-* return is filed at all.
+// Safety net to draft PR (Task 85): the run goes on to a published draft. The sample carries a README the task makes
+// stale, so the safety net's corpus lens has a true finding to fix. The sample's test command runs behind
+// force-red.mjs, a test-only fixture outside the sample repo, so the first safety-net fix's test run fails once and the
+// fix loop rolls that fix back. S4 checks the safety-net lens record on the code run's ledger and in the unit's task
+// record (lens names, models and counts only), a red rollback of a safety-net fix whose private ref held the saved work
+// while the run was live, the auto pass at G:publish with its binding, one `gh pr create --draft` on the recording shim
+// from the unit branch into develop at the bound HEAD, no refs/pairingbuddy/ on the remote or left locally, and that no
+// lens finding's claim shows verbatim in any ledger snapshot, the unit record, or the PR's title and body. A gate that
+// asks is answered by S4 from its own shell with pb human approve, as the human would, at most four times, and the
+// session resumes; the result lists each such answer. G:publish asking for a missing lens record is never answered and
+// fails S4. When G:publish asked for another reason (an open ambiguity in a pr-draft lens return), the result says the
+// publish went through the human's approval rather than the auto pass.
 //
 // Run it by hand, in a separate shell, from the repo root. It spends money, so no suite collects it:
 //
 //     node tests/smoke/s4.mjs [--type bug_fix|new_feature] [--budget-usd N] [--record-dir DIR] [--recording NAME] [--plugin-dir DIR]
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
@@ -36,9 +48,9 @@ import { acceptVerdict, mergeLensReturns, rankLensReturns, wiredLensConfig } fro
 import { readReturn, returnsAt } from "../../shared-node/stage-run.mjs";
 import { CHANGED_FILE, CORPUS_FILE, SUBJECT_DIFF_FILE } from "../../shared-node/snapshot.mjs";
 import { violations } from "../js/schema-check.mjs";
-import { Budget, REPO_ROOT, SmokeError, cleanEnv, runClaude } from "./claude-run.mjs";
+import { Budget, REPO_ROOT, SmokeError, SpendCapError, cleanEnv, runClaude } from "./claude-run.mjs";
 import { RunRecorder, transcriptDirs } from "./run-recorder.mjs";
-import { installGhShim } from "../js/gh-shim.mjs";
+import { flagValues, installGhShim } from "../js/gh-shim.mjs";
 import { RECORDINGS, parseOptions, position } from "./s2.mjs";
 import { makeS3Repo } from "./s3.mjs";
 
@@ -58,6 +70,27 @@ const READ_TOOLS = ["Read", "Grep", "Glob"];
 const LENS_CONFIG = wiredLensConfig(LENS_MAP, STAGE);
 const ROW = LENS_MAP.rows.find(({ stage }) => `code-${stage}` === STAGE);
 const MAX_AGENTS = STAGES.stageMaxAgents[STAGE] ?? STAGES.maxAgents;
+const SAFETY_NET = "code-safety-net";
+const PUBLISH_GATE = "G:publish";
+const BASE = "develop";
+const FORCE_RED = join(REPO_ROOT, "tests", "smoke", "force-red.mjs");
+// A doc in the sample that the bug fix makes wrong, so the safety net's corpus lens has a true finding to send to the
+// fix loop, whose first fix force-red.mjs then turns red. Test-only: it is S4's sample, never the plugin's.
+const STALE_DOCS = {
+  bug_fix: { "README.md": "# Shop\n\n`apply_discount(price, percent)` in discount.py returns the discount amount, so `apply_discount(100, 10)` is 10.\n" },
+  new_feature: { "README.md": "# Shop\n\ncart.py has `line_total(p, q)` only. There is no order total: callers add the line totals themselves.\n" },
+};
+// A gate that asks is answered by S4 as the human, from its own shell, at most this many times: G:scenarios,
+// G:task-end and G:publish can each ask once for an open ambiguity.
+const MAX_HUMAN_APPROVALS = 4;
+// G:publish asking for this reason means the lens-record rule failed, which S4 never answers for the human.
+const LENS_REASON = "no lens record yet for the safety net";
+// The whole run, scenarios to a draft PR, is longer than one S2 task.
+const RUN_TIMEOUT_MS = 45 * 60_000;
+// What pb stage finish records for the safety net: names, models and counts, never a finding's words.
+const LENS_RECORD_KEYS = ["attempt", "lenses", "refuted", "stage", "survivors", "uncovered", "unrefuted"];
+// A claim shorter than this is too generic to call a leak when it shows up somewhere.
+const MIN_CLAIM = 16;
 // The only ANTHROPIC_ names a smoke run may carry: the alias-to-model mapping cleanEnv sets.
 const MODEL_ENV = (alias) => `ANTHROPIC_DEFAULT_${alias.toUpperCase()}_MODEL`;
 
@@ -80,10 +113,17 @@ class ScenariosRecorder extends RunRecorder {
     this.taskDir = join(this.runDir, "task");
     this.captured = null;
     this.tdd = null;
+    this.repo = repo;
+    // Every return any stage filed, kept as it lands, since pb task end and pb publish remove run/task.
+    this.allArtifacts = join(out, "all-artifacts");
+    this.unit = null;
+    this.refsSeen = new Map();
+    this.lastRefPoll = 0;
   }
 
   poll() {
     super.poll();
+    this.pollRun();
     this.pollTdd();
     if (this.captured !== null || this.last === null) return;
     const entry = this.last.stages?.find(({ name, status }) => name === STAGE && status === "done");
@@ -99,6 +139,27 @@ class ScenariosRecorder extends RunRecorder {
     }
     writeFileSync(join(dir, "ledger.json"), JSON.stringify(this.last, null, 2));
     this.captured = { dir, artifacts: join(dir, "artifacts"), run: join(dir, "run"), ledger: this.last, entry };
+  }
+
+  // The returns, the unit record and the private refs as they stand, before the task end and the publish remove them.
+  pollRun() {
+    try {
+      cpSync(join(this.taskDir, "artifacts"), this.allArtifacts, { recursive: true, force: true });
+    } catch {
+      // no run/task yet, or it is between runs
+    }
+    try {
+      this.unit = JSON.parse(readFileSync(join(this.runDir, "unit.json"), "utf8"));
+    } catch {
+      // no unit yet, or it has closed
+    }
+    if (Date.now() - this.lastRefPoll < 250) return;
+    this.lastRefPoll = Date.now();
+    const refs = spawnSync("git", ["for-each-ref", "--format=%(refname) %(objectname)", "refs/pairingbuddy/"], { cwd: this.repo, encoding: "utf8", env: cleanEnv() });
+    for (const line of (refs.stdout ?? "").split("\n").filter(Boolean)) {
+      const [ref, sha] = line.split(" ");
+      this.refsSeen.set(ref, sha);
+    }
   }
 
   // The tdd stage's returns, before pb task end removes them.
@@ -207,19 +268,24 @@ function workflowReturn(stream) {
 }
 
 function assertSpend({ artifacts, entry }, stage, keys, report, wfReturn, refuterSpawns) {
-  // The finishing runner's return is filed after the stage finish it ran, so the stage's spend cannot count it; the
-  // snapshot runner's, round 1, is filed before and counts.
+  // The finishing runner's return is filed after the stage finish it ran, so stage finish counts that runner from the
+  // harness transcript instead; the snapshot runner's, round 1, is filed before and counts as a return.
   const filed = returnsAt(artifacts, stage).filter(({ role, round }) => !(role === RUNNER_ROLE && round > 1));
   check(filed.some(({ role, round }) => role === RUNNER_ROLE && round === 1), `no snapshot runner return (runner r1) is filed at attempt ${stage.attempt}`);
   const lensFiled = filed.filter(({ role }) => role === LENS_ROLE).map(({ pbKey }) => pbKey);
   check(isDeepStrictEqual(lensFiled, keys.map(({ key }) => key).sort()), `lens returns at attempt ${stage.attempt} are ${lensFiled}`);
-  check(report.spend.agents === filed.length && entry.spend.agents === filed.length, `spend agents is ${report.spend.agents} in the report and ${entry.spend.agents} in the ledger, with ${filed.length} returns filed before stage finish (snapshot runner and lens included)`);
+  const counted = filed.length + 1;
+  check(report.spend.agents === counted && entry.spend.agents === counted, `spend agents is ${report.spend.agents} in the report and ${entry.spend.agents} in the ledger, with ${filed.length} returns filed before stage finish (snapshot runner and lens included) and the finishing runner`);
+  check(/runner that ran stage finish/.test(report.spend.agentsSource), `the report's agentsSource is ${JSON.stringify(report.spend.agentsSource)}, so stage finish did not find its runner in the transcript`);
+  // D9's live check: budget.spent() reached stage finish through the transcript, as output tokens.
+  check(report.spend.tokensKnown === true && report.spend.tokens > 0 && report.spend.tokensUnit === "output tokens", `the report's token figure is ${JSON.stringify(report.spend)}`);
+  check(entry.spend.tokensKnown === true && entry.spend.tokens === report.spend.tokens, `the ledger's stage spend is ${JSON.stringify(entry.spend)}`);
   check(wfReturn !== null, "no code-scenarios workflow return was found in the stream's task output files");
   check(wfReturn.lensAttack.agentsUsed === keys.length + refuterSpawns, `lensAttack.agentsUsed is ${wfReturn.lensAttack.agentsUsed}, expected ${keys.length} lenses + ${refuterSpawns} refuters`);
   for (const list of ["survivors", "refuted", "unrefuted", "uncovered"]) {
     check(isDeepStrictEqual(wfReturn.lensAttack[list], report[list]), `the workflow's merged ${list} differs from the report's`);
   }
-  return { filed: filed.length, agentsUsed: wfReturn.lensAttack.agentsUsed };
+  return { filed: filed.length, counted, agentsUsed: wfReturn.lensAttack.agentsUsed, tokens: report.spend.tokens };
 }
 
 const transcriptModels = (path) => [...new Set(readFileSync(path, "utf8").trim().split("\n").map((line) => JSON.parse(line)).filter(({ type }) => type === "assistant").map(({ message }) => message.model))];
@@ -315,7 +381,10 @@ function assertOutOfCorpusReadDenied(captured, repo, record, agents) {
   const first = transcriptLines(lens).find((line) => typeof line.sessionId === "string");
   const runDir = join(repo, ".pairingbuddy", "run");
   const state = existsSync(join(runDir, "task", "ledger.json")) ? "live" : "captured";
-  const restored = state === "captured" && !existsSync(runDir);
+  // Only what the copy adds is taken away again: run/ itself can outlive the unit, and a copied unit.json left behind
+  // would read as a unit that never closed.
+  const added = state === "captured" ? readdirSync(captured.run).filter((name) => !existsSync(join(runDir, name))) : [];
+  const dirAdded = state === "captured" && !existsSync(runDir);
   if (state === "captured") cpSync(captured.run, runDir, { recursive: true, force: false, errorOnExist: false });
   const outsideFile = join(record, "outside-the-repo.txt");
   writeFileSync(outsideFile, "not in the corpus\n");
@@ -343,7 +412,8 @@ function assertOutOfCorpusReadDenied(captured, repo, record, agents) {
     check(allowed.decision !== "deny", `the gate denied a lens Read of ${inside}, inside the repo: ${allowed.reason}`);
     return { state, denied: denied.length, insideAllowed: true };
   } finally {
-    if (restored) rmSync(runDir, { recursive: true, force: true });
+    if (dirAdded) rmSync(runDir, { recursive: true, force: true });
+    else for (const name of added) rmSync(join(runDir, name), { recursive: true, force: true });
   }
 }
 
@@ -385,20 +455,157 @@ function assertReadsReachGate(stream) {
   return { mainReads: reads, readHookEvents: hooked };
 }
 
+// The sample repo's test command, behind force-red.mjs: the first safety-net fix's test run fails, once, so the fix
+// loop has a red fix to roll back. The fixture lives outside the sample repo and only this test-config names it.
+function forceFirstFixRed(repo, marker) {
+  const path = join(repo, ".pairingbuddy", "test-config.json");
+  const config = readJson(path);
+  const runner = config.runners[config.default_runner];
+  runner.command = `node ${FORCE_RED} ${marker} ${runner.command}`;
+  writeFileSync(path, JSON.stringify(config));
+}
+
+const codeSnapshots = (snapshots) => snapshots.filter(({ kind }) => kind === "code");
+const publishSnapshots = (snapshots) => snapshots.filter(({ kind }) => kind === "publish");
+
+// The human's own pb call, from this shell: no claude, no policy env, the shim first on PATH.
+function humanPb(repo, gh, pluginDir, ...args) {
+  const { status, stdout, stderr } = spawnSync(process.execPath, [join(pluginDir, "cli", "pb.mjs"), ...args], { cwd: repo, env: { ...cleanEnv(), ...gh.env() }, encoding: "utf8" });
+  return { code: status, stdout, stderr };
+}
+
+const sessionOf = (stream) => stream.map(({ event }) => event.session_id).find((id) => typeof id === "string") ?? null;
+
+function readLedgerOrNull(repo) {
+  try {
+    return readJson(join(repo, ".pairingbuddy", "run", "task", "ledger.json"));
+  } catch {
+    return null;
+  }
+}
+
+// The safety net's lens record: on the code run's ledger once the stage is done, copied into the unit's task record,
+// with the lens names and models the lens map wires for this type and counts only.
+function assertSafetyNetRecord(snapshots, unit, type) {
+  const withRecord = codeSnapshots(snapshots).filter(({ lenses }) => lenses?.["safety-net"] !== undefined);
+  check(withRecord.length > 0, `no code-run ledger holds a safety-net lens record; the last code ledger is at ${codeSnapshots(snapshots).at(-1)?.stage?.name}`);
+  const record = withRecord.at(-1).lenses["safety-net"];
+  check(isDeepStrictEqual(Object.keys(record).sort(), LENS_RECORD_KEYS), `the safety-net lens record has the fields ${Object.keys(record).sort()}`);
+  const wired = wiredLensConfig(LENS_MAP, SAFETY_NET, type).lenses.map(({ name, model }) => ({ name, model }));
+  check(record.stage === SAFETY_NET && Number.isInteger(record.attempt), `the lens record is for ${record.stage} attempt ${record.attempt}`);
+  check(isDeepStrictEqual(record.lenses, wired), `the lens record names ${JSON.stringify(record.lenses)}, the lens map wires ${JSON.stringify(wired)} for ${type}`);
+  for (const count of ["survivors", "refuted", "unrefuted"]) check(Number.isInteger(record[count]) && record[count] >= 0, `the lens record's ${count} is ${JSON.stringify(record[count])}, not a count`);
+  check(Array.isArray(record.uncovered) && record.uncovered.every((name) => wired.some((lens) => lens.name === name)), `the lens record's uncovered is ${JSON.stringify(record.uncovered)}`);
+  check(unit !== null && unit.tasks?.length === 1, `the unit record seen last has ${unit?.tasks?.length ?? "no"} task records`);
+  check(isDeepStrictEqual(unit.tasks[0].lenses?.["safety-net"], record), "the unit's task record does not carry the ledger's safety-net lens record");
+  return record;
+}
+
+// The forced red fix was rolled back: the code run's ledger records a red rollback of a safety-net fix with its private
+// ref, that ref held the saved work while the run was live, and nothing of refs/pairingbuddy/ ever reached the remote.
+function assertRollback(snapshots, recorder, marker, branch) {
+  const fixes = codeSnapshots(snapshots).at(-1)?.fixes ?? {};
+  const rollbacks = (fixes.rollbacks ?? []).filter(({ key }) => parseKey(key).stage === SAFETY_NET);
+  const fixReturns = existsSync(recorder.allArtifacts) ? readdirSync(recorder.allArtifacts).filter((file) => file.startsWith(`${SAFETY_NET}.fix.`)) : [];
+  check(rollbacks.length > 0, `no safety-net fix was rolled back: ${fixReturns.length} fix returns were filed and the forced red ${existsSync(marker) ? "fired" : "never fired"}`);
+  check(existsSync(marker), "a safety-net fix was rolled back, but the forced red never fired");
+  const red = rollbacks.find(({ kind }) => kind === "red");
+  check(red !== undefined, `the safety-net rollbacks are ${JSON.stringify(rollbacks.map(({ kind }) => kind))}, none red`);
+  const prefix = `refs/pairingbuddy/${branch}/rollback/${SAFETY_NET}/`;
+  check(typeof red.ref === "string" && red.ref.startsWith(prefix) && typeof red.sha === "string", `the red rollback's ref is ${JSON.stringify(red.ref)} at ${red.sha}, expected one under ${prefix}`);
+  check(recorder.refsSeen.get(red.ref) === red.sha, `${red.ref} was seen at ${recorder.refsSeen.get(red.ref) ?? "nothing"} while the run was live, the ledger says ${red.sha}`);
+  return { rollbacks: rollbacks.length, kinds: rollbacks.map(({ kind }) => kind), ref: red.ref, failedAttempts: fixes.rollbacks.length };
+}
+
+const bare = (remote, ...args) => execFileSync("git", ["--git-dir", remote, ...args], { encoding: "utf8", env: cleanEnv() }).trim();
+
+// G:publish passed with its binding, and pb publish opened one draft PR on the shim from the unit branch into develop at
+// the bound HEAD, closed the unit and left no private ref anywhere. The pass is the auto policy's, unless the gate asked
+// for another reason than a missing lens record (an open ambiguity, say) and S4 approved it as the human; the draft flag
+// comes from the auto policy either way.
+function assertDraftPr(snapshots, gh, repo, remote, branch, humanApprovals) {
+  const lastPublish = publishSnapshots(snapshots).at(-1);
+  check(lastPublish !== undefined, "no publish run was seen");
+  check(lastPublish.needsHuman === null, `the publish run asks the human at ${lastPublish.needsHuman?.gate}: ${lastPublish.needsHuman?.reason}`);
+  const passed = publishSnapshots(snapshots).map(({ gates }) => gates?.[PUBLISH_GATE]).filter((record) => record !== undefined).at(-1);
+  const asked = humanApprovals.find(({ gate }) => gate === PUBLISH_GATE);
+  const source = asked === undefined ? "auto" : "human-cli";
+  check(passed?.source === source && passed.answer === "approve", `${PUBLISH_GATE} is ${JSON.stringify(passed)}, expected a ${source} approval`);
+  check(asked === undefined || asked.reason !== LENS_REASON, `${PUBLISH_GATE} asked for a lens record: ${asked?.reason}`);
+  check(typeof passed.headSha === "string" && typeof passed.bodyHash === "string" && passed.target === BASE, `the ${source} approval carries no binding into ${BASE}: ${JSON.stringify(passed)}`);
+  const creates = gh.prCreates();
+  check(creates.length === 1, `gh saw ${creates.length} pr create calls`);
+  const [{ argv, bodyFile }] = creates;
+  check(argv.includes("--draft"), `pr create has no --draft: ${argv}`);
+  check(isDeepStrictEqual(flagValues(argv, "--base"), [BASE]) && isDeepStrictEqual(flagValues(argv, "--head"), [branch]), `pr create goes from ${flagValues(argv, "--head")} into ${flagValues(argv, "--base")}`);
+  const heads = Object.fromEntries(bare(remote, "for-each-ref", "--format=%(refname:short) %(objectname)", "refs/heads/").split("\n").filter(Boolean).map((line) => line.split(" ")));
+  check(heads[branch] === passed.headSha, `the remote has ${branch} at ${heads[branch]}, the auto pass bound ${passed.headSha}`);
+  check(bare(remote, "for-each-ref", "refs/pairingbuddy/") === "", "refs/pairingbuddy/ reached the remote");
+  const local = execFileSync("git", ["for-each-ref", `refs/pairingbuddy/${branch}/`], { cwd: repo, encoding: "utf8", env: cleanEnv() }).trim();
+  check(local === "", `pb publish left the unit's refs: ${local}`);
+  check(!existsSync(join(repo, ".pairingbuddy", "run", "unit.json")), "run/unit.json is still there, so the unit did not close");
+  return { title: flagValues(argv, "--title")[0], body: bodyFile ?? "", headSha: passed.headSha, gate: source, askedFor: asked?.reason ?? null };
+}
+
+// Every lens finding's claim, from every lens return any stage filed.
+function findingClaims(allArtifacts) {
+  if (!existsSync(allArtifacts)) return [];
+  return readdirSync(allArtifacts).filter((file) => file.endsWith(".json")).flatMap((file) => {
+    let parts;
+    try {
+      parts = parseKey(file.slice(0, -".json".length));
+    } catch {
+      return [];
+    }
+    if (parts.role !== LENS_ROLE) return [];
+    const result = readReturn(allArtifacts, file.slice(0, -".json".length));
+    return (result?.findings ?? []).map(({ claim }) => claim).filter((claim) => typeof claim === "string" && claim.trim().length >= MIN_CLAIM);
+  });
+}
+
+// No finding's words reach the run record, the unit record or the PR: each claim is looked for verbatim.
+function assertNoFindingContent(claims, snapshots, unit, pr) {
+  const places = { ledger: snapshots.map((ledger) => JSON.stringify(ledger)).join("\n"), unit: JSON.stringify(unit ?? {}), "PR title": pr.title ?? "", "PR body": pr.body };
+  for (const claim of claims) {
+    for (const [place, text] of Object.entries(places)) check(!text.includes(claim.trim()), `a finding's claim shows in the ${place}: ${JSON.stringify(claim.slice(0, 120))}`);
+  }
+  return { claims: claims.length, places: Object.keys(places) };
+}
+
 async function runS4(budget, record, out, type, task, pluginDir) {
   // /code opens a unit first, and a unit needs a base on a remote: S3's repo, with its recording gh first on PATH.
-  const { repo } = makeS3Repo(record, type);
+  const { repo, remote } = makeS3Repo(record, type, STALE_DOCS[type]);
+  const marker = join(record, "force-red.marker");
+  forceFirstFixRed(repo, marker);
   const outside = mkdtempSync(join(tmpdir(), "pb-smoke-s4-outside-"));
-  const env = assertCleanEnv({ ...cleanEnv(), ...installGhShim({ parent: record }).env() });
+  const gh = installGhShim({ parent: record, remember: true });
+  const env = assertCleanEnv({ ...cleanEnv(), ...gh.env() });
   const recorder = new ScenariosRecorder(repo, out, { streamPath: join(record, "stream.jsonl") }).start();
-  const result = { passed: false, cause: "", runNote: "" };
+  const result = { passed: false, cause: "", runNote: "", humanApprovals: [] };
   try {
-    try {
-      await runClaude(repo, `/pairingbuddy:code ${task}`, budget, { env, onLine: (event) => recorder.line(event), pluginDir });
-    } catch (e) {
-      // The run may end badly after scenarios: S4 judges only what the scenarios stage left.
-      if (!(e instanceof SmokeError)) throw e;
-      result.runNote = `${e.constructor.name}: ${e.message}`;
+    let prompt = `/pairingbuddy:code ${task}`;
+    let resume = null;
+    for (;;) {
+      try {
+        await runClaude(repo, prompt, budget, { env, onLine: (event) => recorder.line(event), pluginDir, resume, timeoutMs: RUN_TIMEOUT_MS });
+      } catch (e) {
+        // The run may end badly: S4 judges what it left.
+        if (!(e instanceof SmokeError)) throw e;
+        result.runNote = `${e.constructor.name}: ${e.message}`;
+        if (e instanceof SpendCapError) break;
+      }
+      recorder.poll();
+      // A gate that asks is the human's to answer, and S4 answers it as the human would, then resumes. A G:publish that
+      // asks because a lens record is missing is the failure S4 exists to catch, so it is never answered.
+      const ledger = readLedgerOrNull(repo);
+      const asking = ledger?.stop === null ? ledger.needsHuman : null;
+      if (!asking || (asking.gate === PUBLISH_GATE && asking.reason === LENS_REASON) || result.humanApprovals.length >= MAX_HUMAN_APPROVALS) break;
+      const approved = humanPb(repo, gh, pluginDir, "human", "approve", asking.gate);
+      check(approved.code === 0, `the human's pb human approve ${asking.gate}: exit ${approved.code}, ${approved.stderr}`);
+      result.humanApprovals.push({ gate: asking.gate, reason: asking.reason });
+      prompt = `I ran the approve command for ${asking.gate}. Continue.`;
+      resume = sessionOf(recorder.stream);
+      check(resume !== null, "the run's stream has no session id to resume");
     }
     recorder.poll();
     const captured = recorder.captured;
@@ -423,8 +630,18 @@ async function runS4(budget, record, out, type, task, pluginDir) {
     }
     result.refuters = { findings, sent: refuting.plan.sent.length, spawned: result.caps.refuters, filed: refuting.filed, note: findings === 0 ? "no findings to refute: the refuter checks hold vacuously" : "" };
     if (findings === 0) console.log("S4: the lens returned no findings, so no findings to refute; the refuter checks hold vacuously");
+    // What each stage recorded through pb stage finish, for the spend record.
+    result.stageSpend = Object.fromEntries((recorder.last?.stages ?? []).map(({ name, spend }) => [name, spend ?? null]));
     result.keys = keys.map(({ key }) => key);
     result.counts = { survivors: report.survivors.length, refuted: report.refuted.length, unrefuted: report.unrefuted.length, uncovered: report.uncovered.length };
+    // The safety net, its forced rollback, and the draft PR the auto policy publishes.
+    const branch = recorder.unit?.branch;
+    check(typeof branch === "string", "no unit record was seen, so the unit branch is unknown");
+    result.safetyNet = assertSafetyNetRecord(recorder.snapshots, recorder.unit, type);
+    result.rollback = assertRollback(recorder.snapshots, recorder, marker, branch);
+    const pr = assertDraftPr(recorder.snapshots, gh, repo, remote, branch, result.humanApprovals);
+    result.pr = { title: pr.title, headSha: pr.headSha, gate: pr.gate, askedFor: pr.askedFor };
+    result.findingContent = assertNoFindingContent(findingClaims(recorder.allArtifacts), recorder.snapshots, recorder.unit, pr);
     result.passed = true;
   } catch (e) {
     if (!(e instanceof SmokeError)) throw e;

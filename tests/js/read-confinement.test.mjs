@@ -315,3 +315,36 @@ test("main_read_with_a_broken_ledger_allowed", async () => {
 
   assertAllowed(await runGate(main));
 });
+
+const assertDeniedRead = (result, message) => assert.equal(denyDecision(result), "deny", message);
+
+// Scenario: course-checker-read-confinement. course-checker reads are confined to the repo by the gate.
+test("out-of-repo-read-denied-with-run", async () => {
+  const dir = repoWithRun();
+  const outside = repoWithRun();
+  const outsideRead = subagentCall(dir, "pairingbuddy:course-checker", "Read", { file_path: join(outside, "inside.txt") });
+
+  const denied = await runGate(outsideRead);
+
+  assertDeniedRead(denied, "a course-checker Read outside the repo toplevel must be denied");
+});
+
+test("course_checker_read_inside_repo_allowed", async () => {
+  const dir = repoWithRun();
+  const insideRead = subagentCall(dir, "pairingbuddy:course-checker", "Read", { file_path: join(dir, "inside.txt") });
+
+  const allowed = await runGate(insideRead);
+
+  assertAllowed(allowed);
+});
+
+test("out-of-repo-read-denied-no-run", async () => {
+  const dir = fakeRepo();
+  const outside = fakeRepo();
+  writeFileSync(join(outside, "outside.txt"), "x");
+  const outsideRead = subagentCall(dir, "pairingbuddy:course-checker", "Read", { file_path: join(outside, "outside.txt") });
+
+  const denied = await runGate(outsideRead);
+
+  assertDeniedRead(denied, "a course-checker Read outside the repo toplevel must be denied even with no run state");
+});

@@ -5,6 +5,7 @@ export const meta = { name: 'code-tdd', description: 'Internal stage, started by
 // pb-inline-module shared-node/lens-merge.mjs
 // pb-inline-module shared-node/limits.mjs
 // pb-inline-module shared-node/shell-word.mjs
+// pb-inline-module shared-node/spent-line.mjs
 // pb-inline-module shared-node/glob-match.mjs
 // pb-inline-module shared-node/light-review.mjs
 // pb-inline-module shared-node/snapshot.mjs
@@ -79,24 +80,16 @@ async function runStep(commands, { tddPhase = null, item = null } = {}) {
   throw new StageHalted('step-failed');
 }
 
-function relayedJson(text) {
-  try {
-    return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));
-  } catch {
-    return null;
-  }
-}
-
 const LISTS = ['red', 'green', 'covered'];
 
 function parsedState(run) {
-  const state = relayedJson(run.result.cli_output ?? '');
+  const state = relayedJson(run.result.cli_output);
   return state?.ok === true && LISTS.every((list) => Array.isArray(state[list])) ? state : null;
 }
 
 // A RED that passed after an earlier GREEN of this task: the CLI kept it as covered, so it has no GREEN to run. A wrong
 // relay costs a refusal or a stop, because GREEN refuses a covered test and stage finish reads the ledger again.
-const isCovered = (relay) => relayedJson(relay.cli_output ?? '')?.outcome === 'covered';
+const isCovered = (relay) => relayedJson(relay.cli_output)?.outcome === 'covered';
 
 // The script has no shell, so the CLI's word comes through the runner. A wrong relay costs a refusal or a stop, because
 // RED, GREEN and stage finish each read the ledger again.

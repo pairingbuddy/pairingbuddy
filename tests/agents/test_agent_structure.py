@@ -330,9 +330,14 @@ RESTRICTED_AGENT_TOOLS = {
     "lens": ["Read", "Grep", "Glob"],
     "refuter": ["Read", "Grep", "Glob"],
     "synthesizer": ["Read", "Grep", "Glob"],
+    "course-checker": ["Read", "Grep", "Glob"],
 }
 
-PINNED_AGENT_MODELS = {"refuter": "sonnet", "synthesizer": "opus"}
+PINNED_AGENT_MODELS = {
+    "refuter": "sonnet",
+    "synthesizer": "opus",
+    "course-checker": "sonnet",
+}
 
 
 @pytest.mark.parametrize(
@@ -356,7 +361,7 @@ def test_restricted_agent_config_tools_are_exact(agent_name, expected_tools):
     ids=list(PINNED_AGENT_MODELS),
 )
 def test_pinned_agent_config_model(agent_name, expected_model):
-    """The plan pins refuter to sonnet and synthesizer to opus in agent-config.yaml."""
+    """agent-config.yaml pins refuter and course checker to sonnet, synthesizer to opus."""
     agents = load_agent_config()["agents"]
 
     assert agent_name in agents, f"Agent '{agent_name}' missing from agent-config.yaml"
@@ -367,7 +372,12 @@ def test_pinned_agent_config_model(agent_name, expected_model):
 
 @pytest.mark.parametrize(
     ("filename", "title"),
-    [("lens.md", "# Lens"), ("refuter.md", "# Refuter"), ("synthesizer.md", "# Synthesizer")],
+    [
+        ("lens.md", "# Lens"),
+        ("refuter.md", "# Refuter"),
+        ("synthesizer.md", "# Synthesizer"),
+        ("course-checker.md", "# Course Checker"),
+    ],
 )
 def test_prompt_opens_with_authority_block(filename, title):
     """The prompt opens with a block treating repository content as evidence."""

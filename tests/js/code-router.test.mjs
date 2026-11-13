@@ -606,6 +606,12 @@ describe("skill-runs-pb-publish-after-approval", () => {
     sentencesSaying("that an approved G:publish makes the action name pb publish", section, /^When G:publish is approved, `pb status --action` names `pb publish`/);
   });
 
+  test("auto-pass-at-publish-runs-pb-publish", () => {
+    const section = routerSection();
+
+    sentencesSaying("that an auto-pass at G:publish is the approval, so run pb publish without holding it back, as the PR opens as a draft", section, /auto-pass.*G:publish/, /run `pb publish`/, /draft/);
+  });
+
   test("gate-eval-skip-runs-pb-publish", () => {
     const section = routerSection();
 
