@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ledger",
+  "description": "Per-task run ledger written by deterministic code (shared-node/ledger.mjs). Must agree with validateLedger.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman"],
+  "properties": {
+    "v": { "const": 1 },
+    "seq": { "type": "integer", "minimum": 0 },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "kind": { "enum": ["code", "plan"] },
+    "taskType": { "type": ["string", "null"] },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "lastSeen"],
+      "properties": {
+        "sessionId": { "type": ["string", "null"] },
+        "lastSeen": { "type": ["string", "null"] }
+      }
+    },
+    "task": { "type": "string" },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "title"],
+      "properties": {
+        "path": { "type": "string" },
+        "title": { "type": "string" }
+      }
+    },
+    "configHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "source"],
+      "properties": {
+        "mode": { "type": "string" },
+        "source": { "type": "string" }
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "status", "runId", "attempt"],
+      "properties": {
+        "name": { "type": "string" },
+        "status": { "type": "string" },
+        "runId": { "type": ["string", "null"] },
+        "attempt": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status"],
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "type": "string" }
+        }
+      }
+    },
+    "gates": { "type": "object" },
+    "tests": { "type": "object" },
+    "commits": { "type": "array", "items": { "type": "string" } },
+    "retries": { "type": "object" },
+    "spend": {
+      "type": "object",
+      "required": ["agents", "tokens"],
+      "properties": {
+        "agents": { "type": "integer", "minimum": 0 },
+        "tokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "stop": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "seq"],
+          "properties": {
+            "reason": { "type": "string", "minLength": 1 },
+            "seq": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "needsHuman": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["gate", "reason", "seq"],
+          "properties": {
+            "gate": { "type": "string", "minLength": 1 },
+            "reason": { "type": "string" },
+            "seq": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    }
+  }
+}

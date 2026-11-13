@@ -383,11 +383,35 @@ def test_agent_file_creation_restrictions_mentions_output_files(agent_name):
 
     # Check each output file is mentioned
     for output_name, output_def in outputs.items():
+        if output_def.get("return_only"):
+            continue
         output_file = output_def["file"]
         assert output_file in restrictions_content, (
             f"Agent {agent_name} File Creation Restrictions does not mention "
             f"configured output file '{output_file}' for output '{output_name}'"
         )
+
+
+@pytest.mark.parametrize("agent_name,output_name,_schema_file", get_agent_output_refs())
+def test_return_only_output_declares_no_file(agent_name, output_name, _schema_file):
+    """A return-only output is captured by the tap, so the contract must name no file for it."""
+    output_def = config["agents"][agent_name]["outputs"][output_name]
+
+    assert output_def.get("return_only") or "file" in output_def, (
+        f"Output {output_name} of {agent_name} needs a file or return_only: true"
+    )
+    assert not (output_def.get("return_only") and "file" in output_def), (
+        f"Return-only output {output_name} of {agent_name} must not declare a file"
+    )
+
+
+def test_apply_config_change_output_is_return_only():
+    """The agent writes nothing, so neither the contract nor the agent names a result file."""
+    output = config["agents"]["apply-config-change"]["outputs"]["config_change_result"]
+    agent_content = (AGENTS_DIR / "apply-config-change.md").read_text()
+
+    assert output.get("return_only") is True
+    assert "config-change-result.json" not in agent_content
 
 
 @pytest.mark.parametrize("agent_name,input_name,schema_file", get_agent_input_refs())

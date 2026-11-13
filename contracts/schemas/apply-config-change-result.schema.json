@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Apply Config Change Result",
+  "description": "Return of the apply-config-change agent: the pb key it was given, any open ambiguity, the proposed commit subject and the files it changed",
+  "type": "object",
+  "required": ["pb_key", "ambiguity", "commit_subject", "files_changed"],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "ambiguity": {
+      "type": "string",
+      "description": "An open question the task left unresolved, or an empty string"
+    },
+    "commit_subject": {
+      "type": "string",
+      "description": "Proposed commit subject line for the change"
+    },
+    "files_changed": {
+      "type": "array",
+      "description": "Repo-relative paths of files the agent modified",
+      "items": { "type": "string", "pattern": "^(?!/)" }
+    }
+  },
+  "additionalProperties": false
+}

@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - T0 platform probes in `tests/probes/`: a re-runnable harness, fixture plugin and captured hook payload fixtures, with results recorded in `docs/spikes/workflow-platform-spike.md`
 - Runbooks and fixtures for the T0 human probes in `tests/probes/human/`
+- Workflow bundler `scripts/build-workflows.mjs`: bundles stage modules from `workflows-src/` into `workflows/`, with a `--check` mode that fails on drift between committed output and source
+- Workflow control-flow harness `tests/js/harness.mjs`, run through `tests/test_js_suite.py` under `uv run pytest`
+- Run ledger with stage keys and workflow labels, and the `pb run open` command to open a run
+- Tap hook `hooks/tap.mjs`: captures agent returns into run state, and does nothing outside a run
+- Added the `apply-config-change` agent and the direct `code-config` workflow stage (`workflows-src/stages/code-config.mjs`, built to `workflows/code-config.js`). The bundler inlines shared-node modules via `// pb-inline-module PATH`.
 
 ## [0.7.0] - 2026-07-31
 
