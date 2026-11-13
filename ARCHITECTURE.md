@@ -83,7 +83,7 @@ The system includes human review points to prevent:
 ```
 pairingbuddy/
 ├── .claude-plugin/plugin.json    # Register agents and skills
-├── agents/                        # Plugin agents (18 TDD/spike + 7 design-ux + 4 planning = 29)
+├── agents/                        # Plugin agents (32 total: TDD/spike, design-ux, planning and PR drafting)
 │   ├── curate-guidance.md
 │   ├── classify-task.md
 │   ├── enumerate-scenarios-and-test-cases.md
@@ -99,6 +99,7 @@ pairingbuddy/
 │   ├── run-all-tests.md
 │   ├── update-documentation.md
 │   ├── commit-changes.md
+│   ├── draft-pull-request.md      # Sonnet; writes the PR body
 │   ├── setup-spike.md
 │   ├── explore-spike-unit.md
 │   ├── document-spike.md
@@ -128,6 +129,7 @@ pairingbuddy/
 │   ├── refactoring-code/         # Reference: refactoring
 │   ├── enumerating-tests/        # Reference: test enumeration
 │   ├── committing-changes/       # Reference: git commits
+│   ├── creating-pull-requests/   # Reference: stand-alone PR bodies
 │   ├── decomposing-tracer-bullets/ # Reference: tracer bullet methodology
 │   ├── sequencing-tasks/         # Reference: task sequencing for TDD
 │   ├── differentiating-designs/  # Reference: design differentiation
@@ -846,7 +848,7 @@ Tests validate that implementations match these contracts.
 
 ### 5. Agent Focus and Human Review
 
-**Focus Warning:** All 29 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
+**Focus Warning:** All 32 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
 
 **Human Review Checkpoints:** Fourteen TDD/spike/planning agents pause for human review before proceeding (design-ux agents use orchestrator-level human interaction instead):
 1. curate-guidance
@@ -903,6 +905,12 @@ At the start of each task, the orchestrator runs `_cleanup_state_files()` to del
 **Unit record and unit open.** `shared-node/unit.mjs` owns `.pairingbuddy/run/unit.json` (schema: `contracts/schemas/unit.schema.json`), the record of the unit of work: type, slug, branch and the task records appended by `pb task end` (skipped when no unit is open). `pb unit open --type --slug` refuses a dirty tree, an open unit, and an existing, protected or invalid branch name; it fetches, branches from `pr.base_branch` or the remote default, and writes the record. `pb run open` on a protected branch points at `pb unit open`. **Confirm rule.** Without `--yes` or `--branch <name>`, the command prints the proposed branch and asks the human to type the `!` command. The policy is read only by hooks, never by the CLI: the gate hook (`shared-node/unit-open-denial.mjs`) lets a model pass `--yes` or `--branch` only under the auto policy, and denies env-prefixed or shell-built `pb unit open` calls, with or without a run open. **Git doctor.** `pb git doctor` (`shared-node/git-doctor.mjs`) makes read-only `gh` calls with a 10s timeout and only warns, never blocks: squash merges must use the PR title and body (`squash_merge_commit_title`/`_message` set to `PR_TITLE`/`PR_BODY`), and the default branch should be protected; it notes when `gh` is unavailable or protection can't be read, and `pb unit open` shows the same warnings.
 
 **Git configuration (D21).** `shared-node/gitconf.mjs` reads and bootstraps `.pairingbuddy/git-config.json` (schema: `contracts/schemas/git-config.schema.json`). `pb run open` writes it with defaults when it is missing, never overwrites an existing one, and refuses to open a run when it is malformed. Protected branches are the configured ones plus the remote's default branch; the hard-coded `main`/`master` are gone, and `pr.base_branch` falls back to the default branch. The file's hash is recorded in the ledger as `gitConfigHash`; each gate check compares it, so editing the file mid-run stops the next gate check.
+
+**PR draft.** The `pr-draft` stage (`workflows-src/stages/pr-draft.mjs`, built to `workflows/pr-draft.js`) runs the `draft-pull-request` agent (Sonnet, with the `creating-pull-requests` skill) to write a stand-alone PR body meant for main's log; notes that only matter while the PR is open go to a coordination comment instead. The tap writes the body to `.pairingbuddy/run/pr-body.md`. After the writer, the stage runs `pb pr lint`, a model-free check of the title and body (title form and length, a size budget that grows with the diff, attribution trailers and tool footers, hype, file inventories, expiring text) against `contracts/pr-lint.json`, extended or overridden by git-config `pr.lint` (lists extend, numbers replace). It writes `run/pr-lint.json` with the body hash; a failure is recorded for the human at `G:publish` (the retry loop comes later). The stage is wired into the `publish` task-type graph (see below).
+
+**G:publish gate.** The `publish` task-type graph (`contracts/stages.json`) has one node, `pr-draft`, whose gate `G:publish` is a `continue` gate. Gate eval shows the PR title, body, lint result, coordination comment, commits (flagging any not in the unit record, which `pb task end` now fills), base, HEAD SHA and test command, and stores the HEAD it showed. Answers are `publish`, `keep local` or `redo`. A `publish` answer binds `headSha`, `bodyHash`, `title`, `labels`, `base` and `target`, re-runs the lint, and is refused if HEAD moved since the question. A new commit or a body edit voids the approval: the gate moves to the ledger's `voidedGates` with the reason. A failed, missing or stale lint asks under every policy, and a human approval records the failure. The `auto` policy asks until a safety-net lens record exists in the ledger's `lenses` (T5c), so it never auto-approves `G:publish` for now. `keep local` closes the unit and keeps commits, branch and refs. A unit with no commits past `baseSha` skips the gate. Hooks no longer bootstrap `git-config.json` on this path.
+
+**pb publish.** `pb publish` (main-class verb) acts on the approved `G:publish`. `publishSteps` in `shared-node/publish.mjs` is a pure planner that returns the steps; the CLI executes them. A stop refuses. No commits past `baseSha` closes the unit (skip) when no code task is open and config hashes are unchanged. `pr.publish` none closes the unit locally after the same fresh human approval and config check. Otherwise every D17 evidence item is checked and all failures reported: a task record per unit task (plan boxes under the unit heading when a plan exists), safety-net finished, valid gate sources, the last task's full suite green at HEAD (`pb task end` records `fullSuite`), a clean tree, no blocking findings, unchanged config hashes, no stop, a human `G:publish` approval bound to HEAD, body, title, labels, base and target, and every commit in the unit record. The branch must be checked out at HEAD, valid and not protected. It pushes exactly the approved SHA (never force, never merge), opens the PR with `gh pr create` from a snapshot of the bound body (`--draft` when the ledger policy is auto, labels passed through), records the PR url in the unit, then writes `PR: <url> branch: <branch>` under the unit heading in the plan. After the PR opens it posts the draft's coordination text as a PR comment from `.pairingbuddy/pr-comments/<n>.md` (deleted on success) and records it in the unit so a retry doesn't repost; null coordination posts nothing, and the text never goes in the body. A failed comment is a warning: the PR stands, the `PR:` line is written, the unit closes, the file is kept, and the output gives `pendingComment` plus the `gh` command to post it by hand. The `G:publish` binding also covers the coordination text, so an edit voids the approval. Task-start cleanup removes only `*.json` in `.pairingbuddy/`, so `pr-comments/` survives it and a kept comment file stays available for the manual post. A retry adopts an existing PR only after `gh pr view` confirms head and base. It deletes only this unit's `refs/pairingbuddy/<branch>/` refs in one transaction, never pushes them, and closes the unit.
 
 **Abandon and config-change approval.** `pb human abandon` (human-only) removes the unit and task state under `.pairingbuddy/run` and keeps commits, the branch and the working tree; it works after a stop. `pb task end` refuses a `config_change` whose diff (no rename detection, from the unit's last task head or base) touches files outside the git-config `config_globs` (`shared-node/glob-match.mjs`). With empty `config_globs` it asks the human to type `pb human approve-config` (human-only, per task). **Trust boundary.** Human-only ledger fields (gate answers, `configApproval`) are protected by the gate denying human verbs and ledger edits from tool calls, but the ledger sha is an unkeyed hash, so a model running arbitrary node code could forge them. This is a known limitation to address separately.
 | `plan/plan-config.json` | Plan name, output path, existing docs (persists across plans) |

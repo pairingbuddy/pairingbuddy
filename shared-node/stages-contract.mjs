@@ -128,6 +128,22 @@ export default {
           "class": "continue"
         }
       }
+    },
+    "publish": {
+      "nodes": [
+        {
+          "name": "pr-draft",
+          "gate": "G:publish",
+          "evidence": [
+            "artifact:draft-pull-request"
+          ]
+        }
+      ],
+      "gates": {
+        "G:publish": {
+          "class": "continue"
+        }
+      }
     }
   }
 }

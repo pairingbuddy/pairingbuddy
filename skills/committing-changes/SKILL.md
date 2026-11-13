@@ -10,6 +10,8 @@ Reference material for creating effective git commits with clear messages.
 ## Contents
 
 - [Quick Reference](#quick-reference) - Commit format and guidelines at a glance
+- [Commit Step Table](#commit-step-table) - Which step makes which commit type
+- [When to Commit](#when-to-commit) - Green, refactor, and the RED exception
 
 ## Quick Reference
 
@@ -28,6 +30,24 @@ refactor: extract validation logic into separate function
 Moved email validation from UserService to EmailValidator class.
 This improves testability and reusability.
 ```
+
+### Commit Step Table
+
+Each workflow step makes its own commit, and the step decides the type.
+
+| Step | Commit | Type |
+|------|--------|------|
+| RED | Failing tests, committed on their own (unless `red_commits` is false, see below) | test |
+| Covered RED (test passes at RED because an earlier GREEN of the task made it pass) | The test, committed on its own; GREEN is skipped | test |
+| GREEN | The implementation | feat or fix, from the task type |
+| REFACTOR, light review fix or safety-net fix | One commit per applied fix group | refactor, or test for test-only changes |
+| Docs update or config change | One commit | docs for a docs update, chore for a config change |
+
+- The step fixes the type, so structure change and behaviour change never share a commit by accident.
+- A step with no change makes no commit, and redoing a step that is already committed is no change.
+- A test that already passes at RED, before any GREEN of the task, is refused: it proves nothing.
+- If `red_commits` is false, the RED step makes no commit and its tests ride with the GREEN commit instead (a covered RED still gets its own `test` commit).
+- When the step table and the Commit Types table below differ, the step table decides the type. For example, a test-only refactor is typed `test`, not `refactor`.
 
 ### Commit Types
 
@@ -77,13 +97,19 @@ Some things should never appear in a commit message. They add noise without addi
 - Tests pass (GREEN phase complete)
 - After successful refactoring
 - Logical unit of work is complete
+- RED step complete (failing tests only, see the exception below)
 - Before switching tasks
 
 **Don't commit when:**
-- Tests are failing
+- Tests are failing (except a RED commit, see below)
 - Code doesn't compile/run
-- Work is incomplete or broken
+- Work is incomplete or broken (except a RED commit, see below)
 - You haven't verified the changes
+
+Exception: a RED commit is still allowed with failing tests, because the failing tests are the point of that step.
+A squash merge keeps the RED commit off the default branch, so failing tests never reach it.
+By default RED commits are on, controlled by the `red_commits` setting in the project's git config (a workflow setting, not a git option).
+A project that does not squash sets `red_commits: false`, so no failing-test commit lands in its history.
 
 ### Git Best Practices
 

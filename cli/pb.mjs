@@ -1,27 +1,30 @@
 #!/usr/bin/env node
 // pb: deterministic workflow CLI. Verbs live in the VERBS table; later tasks add more.
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { CheckpointRefused, CheckpointStopped, assertCurrentKey, branchOf, checkpointSteps, commitPaths, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep } from "../shared-node/checkpoint.mjs";
-import { answeredGate, askReason, blockingGate, dueGate, fileHash, gateQuestion, gatesFor, recordApproval, reopenedGate } from "../shared-node/gates.mjs";
+import { PUBLISH_GATE, answeredGate, askReason, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
-import { PlanRefused, replaceFile, tickPlanBox } from "../shared-node/plan-boxes.mjs";
+import { PlanRefused, boxLabelsUnder, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
+import { NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prViewArgv, publishSteps, pushArgv, targetBranch, upstreamArgv } from "../shared-node/publish.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
+import { abandonRun, closeUnit } from "../shared-node/unit-files.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
 import { buildReport, closeStage, finishProblems, newestReturn, perTestOf, readReportOf, readReturn, returnsAt, writeReport } from "../shared-node/stage-run.mjs";
-import { FAILED_STATUS, REDO_STATUS, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
+import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
+import { prBodyPath, readDraftArtifact, readUnit, runPrLint } from "../shared-node/pr-lint-run.mjs";
 import { shellWord } from "../shared-node/shell-word.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
@@ -215,17 +218,74 @@ function gateEval(args) {
   const contract = loadStages(PLUGIN_ROOT);
   const answered = answeredGate(gatesFor(contract, current.taskType), current);
   if (answered !== undefined) return answeredResult(answered, current, root);
+  const voided = refusing(() => publishVoidReason(current, root));
+  const standing = voided === null ? current : voidPublish(current, voided);
+  const skipped = publishSkip(contract, standing, root);
+  if (skipped !== null) {
+    if (voided !== null) updateLedger(path, (ledger) => voidPublish(ledger, voided));
+    return skipped;
+  }
+  // The shown block is built before anything is written, so a missing body or runner leaves the ledger untouched.
+  const shown = dueGate(gatesFor(contract, standing.taskType), standing)?.name === PUBLISH_GATE ? publishShown(root, standing) : null;
   let gate;
   let reason;
+  // One transaction: the void of a stale approval, the due gate and the question, so no state sits between them.
   updateLedger(path, (ledger) => {
-    const due = dueGate(gatesFor(contract, ledger.taskType), ledger);
-    if (due === undefined) throw new Refusal(noGateDue(ledger));
+    const open = voided === null ? ledger : voidPublish(ledger, voided);
+    const due = dueGate(gatesFor(contract, open.taskType), open);
+    if (due === undefined) throw new Refusal(noGateDue(open));
     gate = due.name;
-    reason = askReason(contract, ledger, due, root);
-    return reason === null ? recordAuto(ledger, gate) : { ...ledger, needsHuman: { gate, reason, seq: ledger.seq + 1 } };
+    if (gate === PUBLISH_GATE && shown === null) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
+    reason = askReason(contract, open, due, root, voided);
+    if (reason === null) return recordAuto(open, gate);
+    const facts = gate === PUBLISH_GATE ? { shown: { headSha: shown.headSha, base: shown.base, target: shown.target } } : {};
+    return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, ...facts } };
   });
   if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto" };
-  return { ok: true, result: "needs-human", gate, reason, question: gateQuestion(gate), humanCommand: approveCommand(root, gate) };
+  const asked = { ok: true, result: "needs-human", gate, reason, question: gateQuestion(gate), humanCommand: approveCommand(root, gate) };
+  return gate === PUBLISH_GATE ? { ...asked, shown } : asked;
+}
+
+// A unit with no commits past its base has nothing to publish (D19): the gate is skipped and no approval is recorded.
+// Recording a skip so blockingGate and next-action agree is left to Task 71 (pb publish).
+function publishSkip(contract, ledger, root) {
+  if (dueGate(gatesFor(contract, ledger.taskType), ledger)?.name !== PUBLISH_GATE) return null;
+  if (unitCommits(root, readUnitOrRefuse(root)).length !== 0) return null;
+  return { ok: true, result: "skip", gate: PUBLISH_GATE, reason: NO_COMMITS_REASON };
+}
+
+const readUnitOrRefuse = (root) => refusing(() => readUnit(root));
+
+function publishCommits(root, unit) {
+  const rows = runGit(root, ["log", "--reverse", "--format=%H%x09%s", `${unit.baseSha}..HEAD`]).split("\n").filter(Boolean);
+  return rows.map((row) => {
+    const [sha, ...subject] = row.split("\t");
+    return { sha, subject: subject.join("\t"), inUnit: unit.commits.includes(sha) };
+  });
+}
+
+// What the human sees at G:publish: the draft, its lint, the coordination text apart from the body, and what would go out.
+// headSha, base and target are the facts a publish answer is held to (needsHuman.shown).
+function publishShown(root, ledger) {
+  const unit = readUnitOrRefuse(root);
+  const draft = readDraft(root, ledger.stage);
+  if (!existsSync(prBodyPath(root))) throw new Refusal("run/pr-body.md is missing, so there is no draft to show");
+  const lint = publishLint(root);
+  const config = readTestConfig(root, ledger.configHash);
+  const runner = config.runners?.[config.default_runner];
+  if (runner === undefined) throw new Refusal("test-config.json has no default runner, so the test command cannot be shown");
+  const { headSha, base, target } = refusing(() => publishFacts(root));
+  return {
+    title: draft.title,
+    body: readFileSync(prBodyPath(root), "utf8"),
+    lint: { ok: lint.ok, failures: lint.failures },
+    coordination: draft.coordination ?? "no comment",
+    base,
+    target,
+    headSha,
+    testCommand: runner.command,
+    commits: publishCommits(root, unit),
+  };
 }
 
 function answeredResult({ name, answer }, { stop }, root) {
@@ -244,19 +304,23 @@ function awaitedGate(ledger, gates) {
   return (blockingGate(gates, ledger) ?? reopenedGate(gates, ledger))?.name;
 }
 
-function approved(ledger, gate) {
+function approved(ledger, gate, root) {
   const gates = gatesFor(loadStages(PLUGIN_ROOT), ledger.taskType);
   const awaited = awaitedGate(ledger, gates);
   if (gate !== awaited) {
     throw new Refusal(`gate ${gate} is neither due nor pending. ${awaited === undefined ? "No gate is waiting." : `Gate ${awaited} is waiting.`}`);
   }
-  return recordApproval(ledger, gate, gates);
+  // The question's shown HEAD binds the answer here as it does in the tap: a commit since then is not approved.
+  const shown = ledger.needsHuman?.gate === gate ? ledger.needsHuman.shown : null;
+  const binding = gate === PUBLISH_GATE ? refusing(() => publishBinding(root, ledger, shown)) : undefined;
+  return recordApproval(ledger, gate, gates, binding);
 }
 
 function humanApprove(args) {
   if (args.length !== 1) throw new UsageError("usage: pb human approve <gate>");
   const [gate] = args;
-  updateLedger(runLedgerPath().path, (ledger) => approved(ledger, gate));
+  const { root, path } = runLedgerPath();
+  updateLedger(path, (ledger) => approved(ledger, gate, root));
   return { ok: true, gate, source: "human-cli" };
 }
 
@@ -264,9 +328,8 @@ function humanApprove(args) {
 function humanAbandon(args) {
   if (args.length > 0) throw new UsageError("usage: pb human abandon");
   const runDir = join(findRunRoot(process.cwd()) ?? toplevel(), ".pairingbuddy", "run");
-  const names = existsSync(runDir) ? readdirSync(runDir).filter((name) => name !== ".gitignore") : [];
+  const names = abandonRun(runDir);
   if (names.length === 0) return { ok: true, result: "nothing-to-abandon", removed: [], message: "nothing to abandon: no unit or task is open" };
-  for (const name of names) rmSync(join(runDir, name), { recursive: true, force: true });
   return { ok: true, result: "abandoned", removed: names.map((name) => `.pairingbuddy/run/${name}`) };
 }
 
@@ -821,16 +884,17 @@ function readUnitForRecord(root, ledger) {
   if (!Array.isArray(unit?.tasks)) throw new Refusal("run/unit.json has no tasks list, so the task cannot end. Nothing was touched");
   const headSha = headOf(root);
   if (headSha === null) throw new Refusal("there is no commit yet, so the task cannot end. Nothing was touched");
-  return { path, unit, record: newTaskRecord({ ledger, headSha }) };
+  return { path, unit, record: newTaskRecord({ ledger, headSha }), commits: ledger.commits };
 }
 
 // A retry after a crash finds its own record last, and appends nothing more.
 function appendTaskRecord(opened) {
   if (opened === null) return;
-  const { path, unit, record } = opened;
+  const { path, unit, record, commits } = opened;
   const last = unit.tasks.at(-1);
   if (last?.title === record.title && last?.headSha === record.headSha) return;
   unit.tasks.push(record);
+  unit.commits = [...new Set([...(unit.commits ?? []), ...commits])];
   writeJsonAtomic(path, unit);
 }
 
@@ -886,19 +950,233 @@ function taskEnd(args) {
   return { ok: true, removed: dir, plan };
 }
 
+// The commits past the unit's base, oldest first. One rule for "nothing to publish", in gate eval and in pb publish.
+const unitCommits = (root, unit) => runGit(root, ["rev-list", "--reverse", `${unit.baseSha}..HEAD`]).split("\n").filter(Boolean);
+
+// The labels of the plan boxes under the unit's heading. planBoxes is null with no plan, no heading to go by, or no such
+// heading; planProblem says when the plan cannot be read.
+function unitPlan(root, unit) {
+  if (typeof unit.plan !== "string" || unit.plan === "" || typeof unit.unit !== "string" || unit.unit === "") return { planBoxes: null, planProblem: null };
+  try {
+    return { planBoxes: boxLabelsUnder(readFileSync(join(root, unit.plan), "utf8"), unit.unit), planProblem: null };
+  } catch (e) {
+    return { planBoxes: null, planProblem: `the plan ${unit.plan} cannot be read: ${e.code ?? e.message}` };
+  }
+}
+
+// Null where git says no (or the remote is unreachable): the caller treats that as "nothing there".
+function tryGit(cwd, args) {
+  try {
+    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+// Why the unit branch cannot be pushed as a name: its shape in the argv, then git's own rules for a branch ref.
+function branchProblemOf(root, branch) {
+  return branchShapeProblem(branch) ?? (tryGit(root, ["check-ref-format", `refs/heads/${branch}`]) === null ? `git does not accept ${JSON.stringify(branch)} as a branch name` : null);
+}
+
+// What only a real publish needs: the evidence, and where the branch and the remote stand.
+function publishingFacts(root, unit, gitConfig, head) {
+  const branchProblem = branchProblemOf(root, unit.branch);
+  const usable = branchProblem === null;
+  return {
+    safetyNets: safetyNetStages(loadStages(PLUGIN_ROOT)), ...unitPlan(root, unit), head, dirty: remainingFiles(root), branchProblem,
+    branchIsProtected: usable && isProtected(gitConfig, root, unit.branch), currentBranch: branchOf(root),
+    branchTip: usable ? tryGit(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${unit.branch}`]) : null,
+    remoteSha: usable ? (tryGit(root, ["ls-remote", "--", gitConfig.remote, `refs/heads/${unit.branch}`])?.split(/\s/)[0] || null) : null,
+  };
+}
+
+// Pushes the approved SHA, opens (or adopts) the PR, writes the plan line, deletes the unit's refs and closes the unit.
+// The policy is only what the gate hook recorded in the ledger. Facts are read once, steps come from publishSteps.
+function publish(args) {
+  assertNoArgs(args, "publish");
+  const { root, path } = runLedgerPath();
+  const ledger = readLedger(path);
+  const unit = readUnitOrRefuse(root);
+  const gitConfig = loadGitConfigOrRefuse(root);
+  const commits = unitCommits(root, unit);
+  const mode = gitConfig.pr?.publish;
+  // The body bytes and the draft are read once: what the approval is checked against is what gh gets.
+  const bound = commits.length === 0 ? null : readBound(root, ledger);
+  const voidReason = bound === null ? null : refusing(() => publishVoidReason(ledger, root, bound.current));
+  const facts = {
+    unit, runStop: ledger.stop, publishMode: mode, coordination: bound?.draft.coordination ?? null, commits, changedConfigs: changedConfigs(unit, root), approval: publishApproval(ledger), voidReason,
+    taskRunOpen: !gatesFor(loadStages(PLUGIN_ROOT), ledger.taskType).some(({ name }) => name === PUBLISH_GATE),
+    ...(bound === null || mode === "none" ? {} : publishingFacts(root, unit, gitConfig, bound.current.headSha)),
+  };
+  if (voidReason !== null) updateLedger(path, (current) => voidPublish(current, voidReason));
+  const plan = publishSteps(facts);
+  if (plan.refusals.length > 0) throw new Refusal(`not published: ${plan.refusals.join("; ")}`);
+  return executePublish(plan.steps, { root, unit, gitConfig, ledger, bound });
+}
+
+// The draft artifact and the body bytes as they stand, with the binding they make.
+function readBound(root, ledger) {
+  const draft = readDraft(root, ledger.stage);
+  const body = existsSync(prBodyPath(root)) ? readFileSync(prBodyPath(root)) : null;
+  return { draft, body, current: refusing(() => currentBinding(root, draft, body)) };
+}
+
+function executePublish(steps, ctx) {
+  const { root, unit, gitConfig } = ctx;
+  const runDir = join(root, ".pairingbuddy", "run");
+  const remote = gitConfig.remote;
+  let url = null;
+  let warnings = [];
+  let pendingComment;
+  for (const step of steps) {
+    if (step.do === "push") {
+      runGit(root, pushArgv(remote, step.sha, step.branch), { context: "nothing was pushed or opened; the unit is intact" });
+    } else if (step.do === "set-upstream") {
+      runGit(root, upstreamArgv(remote, step.branch), { context: `${step.branch} is on ${remote} but its upstream is not set; run pb publish again, the push will not repeat` });
+    } else if (step.do === "open-pr") {
+      url = openPr(ctx, step.recordedUrl);
+    } else if (step.do === "comment") {
+      const posted = postComment(ctx, url, step.text);
+      warnings = [...warnings, ...posted.warnings];
+      pendingComment = posted.pendingComment ?? pendingComment;
+    } else if (step.do === "plan-line") {
+      warnings = [...warnings, ...recordPrLine(root, unit, url)];
+    } else if (step.do === "delete-refs") {
+      deleteUnitRefs(root, step.prefix, url);
+    } else {
+      closeUnit(runDir);
+      return step.result === "published" ? { ok: true, result: "published", url, warnings, ...(pendingComment === undefined ? {} : { pendingComment }) } : { ok: true, result: step.result, reason: step.reason };
+    }
+  }
+  throw new Error("the publish plan has no close step");
+}
+
+// Posts the coordination text on the PR from a kept per-PR file outside run/, deleted once it posts. A failure after the
+// PR is open never stops the publish: the file stays, and the warning has gh's reason and the one command to post it by
+// hand. The unit closes either way, so a failed post is not retried by pb publish.
+function postComment({ root, unit }, url, text) {
+  if (typeof url !== "string" || !PR_URL.test(url)) throw new Refusal(`not published: the comment needs the pull request URL, and got ${JSON.stringify(url)}`);
+  const kept = join(root, ".pairingbuddy", "pr-comments", `${url.match(/(\d+)$/)[1]}.md`);
+  try {
+    mkdirSync(dirname(kept), { recursive: true });
+    writeFileSync(kept, text);
+  } catch (e) {
+    return { warnings: [`the coordination comment was not posted on ${url} (it could not be saved: ${e.message}); post it by hand`] };
+  }
+  try {
+    execFileSync("gh", ["pr", "comment", url, "--body-file", kept], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  } catch (e) {
+    const why = String(e.stderr ?? "").trim() || e.message;
+    return {
+      warnings: [`the coordination comment was not posted on ${url} (${why}); post it by hand with: gh pr comment ${url} --body-file ${kept}`],
+      pendingComment: kept,
+    };
+  }
+  const warnings = [];
+  try {
+    rmSync(kept, { force: true });
+  } catch (e) {
+    warnings.push(`the coordination comment was posted, but ${kept} could not be removed: ${e.message}`);
+  }
+  try {
+    writeJsonAtomic(unitPathOf(root), { ...unit, pr: { ...unit.pr, url, commented: true } });
+  } catch (e) {
+    warnings.push(`the coordination comment was posted on ${url}, but recording it failed (${e.message}); do not post it again`);
+  }
+  return { warnings };
+}
+
+// The PR gh knows for the unit branch, which must be from that branch into the target. Refuses a mismatch.
+function verifiedPr(view, branch, target) {
+  const wrong = foreignPrReason(view, { branch, target });
+  if (wrong !== null) throw new Refusal(`not published: ${wrong}`);
+  return view.url;
+}
+
+function viewPr(root, branch, context = "") {
+  const text = run(root, "gh", prViewArgv(branch), { context });
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Refusal(`gh pr view gave output that is not JSON: ${text.slice(0, 200)}`);
+  }
+}
+
+// Opens the PR for the approved body, title and labels, or adopts the unit's own PR when one exists already (a retry
+// after a crash). Records the url in unit.json before anything else is done with it.
+function openPr({ root, unit, gitConfig, ledger, bound }, recordedUrl) {
+  const target = targetBranch(gitConfig, unit);
+  const opened = `${unit.branch} is pushed to ${gitConfig.remote}`;
+  let url;
+  if (recordedUrl !== null) {
+    url = verifiedPr(viewPr(root, unit.branch, `${opened}; the recorded PR ${recordedUrl} could not be checked, run pb publish again`), unit.branch, target);
+    if (url !== recordedUrl) throw new Refusal(`not published: unit.json records the PR ${recordedUrl}, but the PR for ${unit.branch} is ${url}`);
+    return url;
+  }
+  const snapshot = join(root, ".pairingbuddy", "run", `pr-body.${process.pid}.snapshot.md`);
+  writeFileSync(snapshot, bound.body ?? "");
+  try {
+    url = createdPr(root, unit, target, snapshot, bound.draft, ledger.policy?.mode, opened);
+  } finally {
+    rmSync(snapshot, { force: true });
+  }
+  writeJsonAtomic(unitPathOf(root), { ...unit, pr: { url } });
+  return url;
+}
+
+function createdPr(root, unit, target, bodyFile, draft, policyMode, opened) {
+  const argv = prCreateArgv({ title: draft.title, bodyFile, base: target, branch: unit.branch, labels: draft.labels ?? [], policyMode });
+  let printed;
+  try {
+    printed = run(root, "gh", argv, { context: `${opened}, but the PR was not opened; run pb publish again, the push will not repeat` });
+  } catch (failure) {
+    let view;
+    try {
+      view = viewPr(root, unit.branch);
+    } catch {
+      throw failure;
+    }
+    return verifiedPr(view, unit.branch, target);
+  }
+  const url = printed.split("\n").at(-1).trim();
+  if (!PR_URL.test(url)) throw new Refusal(`gh printed ${JSON.stringify(url)}, which is not a pull request URL; the PR may be open, run pb publish again and it will be looked up`);
+  return url;
+}
+
+// The refs under the unit's own prefix, deleted in one transaction. Other units' refs are not touched.
+function deleteUnitRefs(root, prefix, url) {
+  const refs = runGit(root, ["for-each-ref", "--format=%(refname)", prefix]).split("\n").filter(Boolean);
+  if (refs.length === 0) return;
+  runGit(root, ["update-ref", "--stdin"], { input: refs.map((ref) => `delete ${ref}\n`).join(""), context: `the PR is open at ${url}; run pb publish again` });
+}
+
+// Writes "PR: <url> branch: <branch>" under the unit's heading in its plan. Warnings for what is only worth reporting.
+function recordPrLine(root, unit, url) {
+  if (typeof unit.plan !== "string" || unit.plan === "") return [];
+  try {
+    const found = writePrLine(root, unit.plan, unit.unit, `PR: ${url} branch: ${unit.branch}`);
+    return found ? [] : [`the plan ${unit.plan} has no heading for the unit ${JSON.stringify(unit.unit)}, so no PR: line was written`];
+  } catch (e) {
+    throw new Refusal(`the PR was opened (${url}) but the plan ${unit.plan} could not be written: ${e.message}; run pb publish again`);
+  }
+}
+
 function flagValue(args, flag) {
   const i = args.indexOf(flag);
   return i === -1 ? undefined : args[i + 1];
 }
 
-function runGit(cwd, args) {
+// One runner for git and gh. `context` says what was reached and what to do next, and is appended to the failure.
+function run(cwd, command, args, { context = "", input } = {}) {
   try {
-    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    return execFileSync(command, args, { cwd, encoding: "utf8", input, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] }).trim();
   } catch (e) {
     const why = String(e.stderr ?? "").trim() || e.message;
-    throw new Refusal(`git ${args.join(" ")} failed: ${why}`);
+    throw new Refusal(`${command} ${args.join(" ")} failed: ${why}${context === "" ? "" : `; ${context}`}`);
   }
 }
+
+const runGit = (cwd, args, options) => run(cwd, "git", args, options);
 
 // --branch <name> is the human's own name for the branch. A missing value, or one that looks like a flag, is a usage error.
 function chosenBranch(args) {
@@ -1022,10 +1300,42 @@ function gitDoctor() {
   return { ok: true, ...doctorReport(toplevel()) };
 }
 
+// The title is the one the tap filed in the draft artifact of the current pr-draft attempt, found through the ledger
+// (the tap writes no separate title file).
+function currentDraftTitle(root) {
+  const { stage } = readLedger(join(taskDirOf(root), "ledger.json"));
+  if (stage.name !== "pr-draft") throw new Refusal(`the current stage is ${stage.name || "none"}, not pr-draft, so there is no draft to lint`);
+  return readDraft(root, stage).title;
+}
+
+// The draft artifact the tap filed for this attempt of pr-draft.
+function readDraft(root, stage) {
+  return refusing(() => readDraftArtifact(root, stage));
+}
+
+function prLint(args) {
+  assertNoArgs(args, "pr lint");
+  const root = toplevel();
+  if (!existsSync(unitPathOf(root))) throw new Refusal("no unit is open (run/unit.json is missing), so there is no draft to lint");
+  const title = currentDraftTitle(root);
+  // Issue 1, by plan: a lint failure is recorded here (exit 0) and goes to the human at G:publish, not stopped here.
+  return refusing(() => runPrLint(root, title));
+}
+
+// The shared lint and binding code throws its own refusals; the CLI reports them as its own.
+function refusing(fn) {
+  try {
+    return fn();
+  } catch (e) {
+    if (isBindingRefusal(e)) throw new Refusal(e.message);
+    throw e;
+  }
+}
+
 export const VERBS = {
-  "unit open": unitOpen, "git doctor": gitDoctor,
+  "unit open": unitOpen, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
-  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd,
+  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 async function runVerb(name, args) {

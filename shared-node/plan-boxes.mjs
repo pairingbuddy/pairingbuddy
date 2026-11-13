@@ -15,7 +15,52 @@ export class PlanRefused extends Error {}
 export const checkboxes = (text) =>
   [...text.matchAll(CHECKBOX)].map(({ 0: line, 1: mark, 2: label, index }) => ({ ticked: mark !== " ", label: label.trim(), markAt: index + line.indexOf("[") + 1 }));
 
-const hasTitle = ({ label }, title) => label === title || label.replace(BOLD, "$1") === title;
+// A box's label as a task title: the bold a plan puts around it is not part of the title.
+export const boxLabel = (label) => label.replace(BOLD, "$1");
+
+const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
+const headingName = (text) => text.replace(/^PR:\s*/, "").trim();
+
+// The index of the line holding the unit's heading, or -1. A "PR:" prefix on the heading is not part of its name.
+const unitHeadingIndex = (lines, unit) =>
+  lines.findIndex((line) => {
+    const heading = HEADING.exec(line);
+    return heading !== null && headingName(heading[2]) === headingName(unit);
+  });
+
+// The labels of the boxes under the heading of a unit, up to the next heading of the same or a higher level. Null when
+// the plan has no such heading.
+export function boxLabelsUnder(text, unit) {
+  const lines = text.split("\n");
+  const start = unitHeadingIndex(lines, unit);
+  if (start === -1) return null;
+  const level = HEADING.exec(lines[start])[1].length;
+  const end = lines.findIndex((line, i) => i > start && (HEADING.exec(line)?.[1].length ?? Infinity) <= level);
+  return checkboxes(lines.slice(start + 1, end === -1 ? undefined : end).join("\n")).map(({ label }) => boxLabel(label));
+}
+
+const PR_LINE = /^PR:\s/;
+
+// The text with "line" directly under the unit's heading, replacing a PR: line already there. Null with no such heading.
+export function withPrLine(text, unit, line) {
+  const lines = text.split("\n");
+  const start = unitHeadingIndex(lines, unit);
+  if (start === -1) return null;
+  const replaces = PR_LINE.test(lines[start + 1] ?? "");
+  lines.splice(start + 1, replaces ? 1 : 0, line);
+  return lines.join("\n");
+}
+
+// Writes the PR: line under the unit's heading in the plan, atomically. False when the plan has no such heading.
+export function writePrLine(root, plan, unit, line) {
+  const file = planFile(root, plan);
+  const text = withPrLine(readFileSync(file, "utf8"), unit, line);
+  if (text === null) return false;
+  replaceFile(file, text);
+  return true;
+}
+
+const hasTitle = ({ label }, title) => boxLabel(label) === title;
 
 function planFile(root, path) {
   const realRoot = realpathSync(root);

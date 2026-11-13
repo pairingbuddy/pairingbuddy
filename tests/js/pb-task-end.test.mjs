@@ -15,6 +15,8 @@ import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { COMMIT_FAILED, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
+import { makeRepo as makeRepoWithRemote } from "./cli-repo-fixture.mjs";
+import { readUnitRecord } from "./publish-fixture.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CLI = join(ROOT, "cli", "pb.mjs");
@@ -569,5 +571,35 @@ describe("the real verbs carry a no-change docs step to the end", () => {
 
     assert.equal(gate.result, "needs-human");
     assert.match(gate.reason, /ambiguity/);
+  });
+});
+
+describe("the task record carries the full-suite result", IN_PARALLEL, () => {
+  // A repo whose task is finished and whose unit is open, with the full-suite result pb test --full records.
+  function finishedTaskInUnit() {
+    const repo = makeRepoWithRemote({ openTask: false, remote: true });
+    const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x", "--yes");
+    assert.equal(opened.status, 0, `unit open: ${opened.stderr}`);
+    const run = pb(repo, "run", "open", "--kind", "code");
+    assert.equal(run.status, 0, `run open: ${run.stderr}`);
+    const head = git(repo.dir, "rev-parse", "HEAD");
+    const configText = readFileSync(join(repo.dir, ".pairingbuddy", "test-config.json"), "utf8");
+    writeLedger(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"), {
+      ...repo.ledger(),
+      task: "Task A",
+      configHash: createHash("sha256").update(configText).digest("hex"),
+      ...FINISHED,
+      tests: { full: { stage: NET, attempt: 1, passed: true, red: false, runs: [], head } },
+    });
+    return { repo, head };
+  }
+
+  test("task-end-records-full-suite-result", () => {
+    const { repo, head } = finishedTaskInUnit();
+
+    ok(repo);
+
+    const [record] = readUnitRecord(repo).tasks;
+    assert.deepEqual(record.fullSuite, { passed: true, head }, "the task record carries the full-suite result of the task ledger");
   });
 });

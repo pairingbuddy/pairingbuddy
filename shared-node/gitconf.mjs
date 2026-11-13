@@ -32,6 +32,18 @@ export function loadGitConfig(root) {
   const file = gitConfigPath(root);
   const config = structuredClone(DEFAULTS);
   if (!existsSync(file) && bootstrapExclusively(file, config)) return config;
+  return readConfigFile(file, config);
+}
+
+// The same config, never created: for hooks and for the binding and lint paths, where a run hashed the file at open and
+// a missing file means someone removed it, so defaults must not take the human's place.
+export function readGitConfig(root) {
+  const file = gitConfigPath(root);
+  if (!existsSync(file)) throw new GitConfigRefused("git-config.json is missing, so it was removed after the run opened; restore it");
+  return readConfigFile(file, structuredClone(DEFAULTS));
+}
+
+function readConfigFile(file, config) {
   const parsed = parseConfigFile(file);
   validateTypes(parsed, DEFAULTS);
   return mergeOverDefaults(config, parsed);

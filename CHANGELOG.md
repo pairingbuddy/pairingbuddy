@@ -9,9 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `pb publish` posts the draft's coordination text as a PR comment once the PR is open, from `.pairingbuddy/pr-comments/<n>.md` (deleted on success), and records it in the unit so a retry doesn't repost. Null coordination posts nothing, and the text never goes in the body. A failed comment is a warning: the PR stands, the `PR:` line is written, the unit closes, the file is kept, and the output gives `pendingComment` plus the `gh` command to post it by hand.
+- `pb publish` (main-class verb) publishes the unit's PR. `shared-node/publish.mjs` (`publishSteps`) plans the steps purely and the CLI executes them. A stop refuses. A unit with no commits past `baseSha` closes (skip) when no code task is open and config hashes are unchanged. With `pr.publish` none it closes the unit locally after the same fresh human approval and config check. Otherwise it checks every evidence item and reports all failures: a task record per unit task (plan boxes under the unit heading when a plan exists), safety-net finished, valid gate sources, the last task's full suite green at HEAD, a clean tree, no blocking findings, unchanged config hashes, no stop, a human `G:publish` approval bound to HEAD, body, title, labels, base and target, and every commit in the unit record. The branch must be checked out at HEAD, valid and not protected. It pushes exactly the approved SHA (never force, never merge) and opens the PR with `gh pr create` from a snapshot of the bound body (`--draft` when the ledger policy is auto, labels passed through). It records the PR url in the unit, writes `PR: <url> branch: <branch>` under the unit heading in the plan, deletes only this unit's `refs/pairingbuddy/<branch>/` refs in one transaction (never pushing them), and closes the unit. A retry adopts an existing PR only after `gh pr view` confirms head and base.
+- The `draft-pull-request` agent (Sonnet) and the `creating-pull-requests` skill: stand-alone PR bodies written for main's log, with open-only notes going to a coordination comment.
+- The `pr-draft` stage, wired into a new `publish` task-type graph.
+- `G:publish`, a `continue` gate on the publish graph's `pr-draft` node. It shows title, body, lint, coordination comment, commits (flagging ones missing from the unit record), base, HEAD SHA and test command, and answers are publish, keep local or redo. A publish answer binds `headSha`, `bodyHash`, base and target, re-runs the lint, and is refused if HEAD moved since the question. A new commit or body edit voids the approval (moved to the ledger's `voidedGates` with the reason). Keep local closes the unit keeping commits, branch and refs; a unit with no commits past `baseSha` skips.
+- The tap writes `.pairingbuddy/run/pr-body.md`.
+- `pb pr lint` checks the PR draft's title and body with no model (title form and length, a size budget that grows with the diff, attribution trailers and tool footers, hype, file inventories, expiring text) against `contracts/pr-lint.json`, extended or overridden by git-config `pr.lint` (lists extend, numbers replace). It writes `run/pr-lint.json` with the body hash. The `pr-draft` stage now runs it after the writer, and a failure is recorded for the human at `G:publish` (the retry loop comes later).
 - `pb git doctor` warns (never blocks; read-only `gh` calls with a 10s timeout) when squash merges don't use the PR title and body (`squash_merge_commit_title` and `squash_merge_commit_message` must be `PR_TITLE` and `PR_BODY`) or the default branch has no protection. It notes when `gh` is unavailable or protection can't be read. `pb unit open` shows the same warnings.
 - `pb human abandon` (human-only) removes the unit and task state under `.pairingbuddy/run`. It keeps commits, the branch and the working tree, and works after a stop.
 - `pb task end` refuses a `config_change` whose diff (no rename detection, from the unit's last task head or base) touches files outside the git-config `config_globs`. With empty `config_globs` it asks the human to type `pb human approve-config` (human-only, per task).
+
+### Changed
+
+- The `G:publish` binding now also covers the PR title, labels and coordination text (an edit voids the approval).
+- `pb task end` records the full-suite result (`fullSuite`) so `pb publish` can check the last task's suite at HEAD.
+- `pb task end` now records the unit's commits, so `G:publish` can flag commits not in the unit record.
+- Failed, missing or stale PR lint asks under every policy, and a human approval records the failure. The `auto` policy asks until a safety-net lens record exists (T5c) and never auto-approves `G:publish` for now.
+- Hooks no longer bootstrap `git-config.json` on the publish path.
+- The `committing-changes` skill now carries the commit step table (RED test, covered RED test, GREEN `feat`/`fix`, REFACTOR `refactor` or `test`, docs/`chore`) and commits on green. It allows RED commits under squash; with `red_commits` false, for projects that don't squash, RED tests ride with the GREEN commit.
 
 ### Fixed
 

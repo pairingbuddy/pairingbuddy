@@ -84,6 +84,12 @@ skills:
       - heading: "## Contents"
       - heading: "## Quick Reference"
 
+  creating-pull-requests:
+    category: reference
+    sections:
+      - heading: "## Contents"
+      - heading: "## Quick Reference"
+
   differentiating-designs:
     category: reference
     sections:
