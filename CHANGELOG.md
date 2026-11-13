@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The pane's "now building" block (Task 61, new `shared-node/now-building.mjs`): a per-test progress row (`✓` made to pass, `◌` already passed, `▸` now, `·` to do) that folds to `✓ n done · ◌ m covered`, shows `+ n more` only when the total is known, and fits the width. Below it, the current test with its scenario description (fallback: its id), and a compact cycle marker with the step's age. A bug fix drops REFACTOR from the marker, by the rule the CLI shares through `REFACTOR_TASK_TYPES` in `shared-node/labels.mjs`. Under LOOPING it lists each try. It shows active agents (cleared on `turn.complete`) and unknown agents, and ends with a legend line. The smoke check S2 for this block is a paid check and has not been run.
 - A dim rule above the band separates it from the transcript (`mod/band.tsx`).
 - T4a first-pane smoke (Task 59): `tests/smoke/s2.mjs` takes `--plugin-dir`, so S2 can run against another plugin copy. New `tests/smoke/broken-plugin.mjs` (`makeBrokenCopy`, with `load` and `render` modes) builds a deliberately broken plugin copy. New `tests/smoke/t4a-lab.mjs` sets up the lab (`setup` with `--broken`, `--ask` and `--sound off`) and has `show`. New `tests/smoke/T4A-RUNBOOK.md` guides the human session. S2 passes healthy and with both broken copies; results are in `docs/design/progress-mod/t4a-smoke/README.md`
 - Report button and suggestion input in the progress mod (Task 58a): the pane has a report button that writes `.pairingbuddy/reports/<timestamp>-<slug>.html` and opens it. The pane also has a suggestion input that appends a task-scoped entry (`task_scoped`) to `human-guidance.json`, which the next agent spawn reads; the pane shows the suggestion as pending, then delivered. A corrupt or unreadable guidance file is never overwritten, and the pane says "suggestion not saved". `curate-guidance` drops `task_scoped` entries, and `reports/` is kept across task cleanup. The mod's only writes are the reports folder and `human-guidance.json`. New `mod/report.ts`, `mod/suggest.ts`, `shared-node/report.mjs`, `shared-node/suggestion.mjs` and `shared-node/duration.mjs`
@@ -121,6 +122,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Runner commands quote the plugin path, and the gate's auto-allow matches the quoted form
 - `update-documentation` returns `ambiguity`, which the task-end gate reads as it does for `apply-config-change`
 - A gate question must equal the question `pb gate eval` emitted, alone in its call, at PreToolUse and in the tap. Plan checkboxes compare by task title. `pb gate eval` through the gate denies when the policy cannot be recorded. A SHA mismatch names the `!... human accept` command from the CLI and from hook denies. During a run, `Write`, `Edit` and `NotebookEdit` are denied on `.claude/settings.json` and `.claude/settings.local.json`, and any `pb` or `pb.mjs` text with a shell expansion or glob after the name, an `xargs` feeding `pb` or `pb.mjs`, or another letter case of `pb.mjs`, is denied. A lock file with a future mtime counts as stale
+
+### Changed
+
+- The mod's test list uses `tests.json` when it lists every test the ledger has seen; otherwise it keeps the ledger's tests.
 
 ## [0.7.0] - 2026-07-31
 

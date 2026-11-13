@@ -117,6 +117,7 @@ export function engine(on: Function, ledger: unknown = SNAPSHOT_RUNNING, open: (
   on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
   on('session.end', () => ({ sessionId: 's1' }))
   on('command.run', () => ({ text: 'unanswered by the test' }))
+  on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
   on('command.register', (_: unknown, e: any) => {
     calls.registered.push(e)
     return { value: { command: e.name } }

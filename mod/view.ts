@@ -1,8 +1,9 @@
 import type { ElementTable } from 'claude-code'
-import { glance, needsYouLine } from '../shared-node/glance.mjs'
+import { currentStep, glance, needsYouLine } from '../shared-node/glance.mjs'
 import { isStageActive, stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
+import { activeAgents, unknownAgents, cycleMarker, loopingTries, nameOf, progressRow, stepAge } from '../shared-node/now-building.mjs'
 import type { Inputs, Ledger } from './inputs'
 
 export type Tone = 'error' | 'warning' | 'dim'
@@ -14,7 +15,17 @@ export type Tags = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
 // The Pane alone also draws the suggest Input.
 export type PaneTags = Tags & Pick<ElementTable, 'Input'>
 
-export type View = { ledger: Ledger; ended?: boolean; between?: string; running: boolean; rows: Rows; band: Segment[]; unknownLabels: string[]; rowTones?: RowTones; waiting?: boolean }
+export type NowBuilding = {
+  progress: { known?: boolean; folded?: number; more?: number; entries: { id: string; name: string; mark: 'done' | 'current' | 'waiting' }[] }
+  current?: string
+  marker: { steps: { name: string; lit: boolean; mark: string }[] }
+  age?: string
+  tries?: { step: string; number: number; result: string }[]
+  active: number
+  unknown: number
+}
+
+export type View = { nowBuilding?: NowBuilding; ledger: Ledger; ended?: boolean; between?: string; running: boolean; rows: Rows; band: Segment[]; unknownLabels: string[]; rowTones?: RowTones; waiting?: boolean }
 
 const NO_RUN_ROWS: Rows = { now: 'no run', spent: '-', left: '-', looping: '-', offTrack: '-' }
 
@@ -47,7 +58,28 @@ function toned(view: View): View {
 
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
-  return toned(buildPlainView(inputs))
+  const view = toned(buildPlainView(inputs))
+  return inputs.ledger ? { ...view, nowBuilding: buildNowBuilding(inputs) } : view
+}
+
+// The now-building block, folded from the same inputs as the rows; only a run that has a test or a step shows one.
+function buildNowBuilding({ ledger, spawns, tests, testsComplete, now, names }: Inputs): NowBuilding | undefined {
+  const perTest = ledger?.tests?.perTest
+  const progress = progressRow({ tests: tests.map(id => ({ test_id: id })), perTest, spawns, testsComplete })
+  const step = currentStep(spawns)
+  const hasProgress = progress.entries.length > 0 || progress.folded || progress.coveredFolded
+  if (!hasProgress && !step) return undefined
+  const named = progress.entries.map((entry: { id: string; mark: NowBuilding['progress']['entries'][number]['mark'] }) => ({ ...entry, name: nameOf(names, entry.id) }))
+  const age = step ? stepAge({ spawns, now }) : undefined
+  return {
+    progress: { ...progress, known: testsComplete, entries: named },
+    current: step ? nameOf(names, step.item) : undefined,
+    marker: cycleMarker({ spawns, ledger }),
+    age,
+    tries: loopingTries({ spawns, perTest }),
+    unknown: unknownAgents({ spawns }),
+    active: activeAgents({ spawns }),
+  }
 }
 
 function buildPlainView({ ledger, spawns, tests, testsComplete, now }: Inputs): View {

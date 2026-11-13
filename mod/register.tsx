@@ -1,5 +1,5 @@
 import { atom, read, type EngineInterface, type PluginOptions, type Register, type RenderElement, type RenderInput } from 'claude-code'
-import { fromPolled, spawnOf, type Spawn } from './inputs'
+import { fromPolled, spawnOf, startedAtOf, type Spawn } from './inputs'
 import { newPollerState, startPoller, type PollerState } from './poll'
 import { nextAgent } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
@@ -101,9 +101,22 @@ export const register: Register = (on, options) => {
   })
 
   on('agent.spawn', ($, e, next) => {
-    spawns.push(spawnOf(e))
+    const spawn = spawnOf(e)
+    spawns.push(spawn)
     // Fire and forget: a mod-state write that stalls or fails must never hold or change the spawn result.
     read($, pendingAtom).then((pending) => recordDelivery($, pending as PendingSuggestion | null, e.name)).catch(() => {})
+    // The stamp follows without holding the spawn; a failed clock leaves the spawn unstamped.
+    startedAtOf($).then((startedAt) => { if (startedAt) spawn.startedAt = startedAt }).catch(() => {})
+    // next(e) runs first and synchronously; the agent's id is read off its result when that lands.
+    const result = next(e)
+    Promise.resolve(result).then((spawned) => { spawn.agentId = spawned?.agentId }).catch(() => {})
+    return result
+  })
+
+  // An agent's turn ended: mark its latest spawn finished (a resume adds a new, unfinished spawn); never held or changed.
+  on('turn.complete', ($, e, next) => {
+    const latest = spawns.findLast(spawn => spawn.agentId !== undefined && spawn.agentId === e.agentId)
+    if (latest) latest.finished = true
     return next(e)
   })
 
@@ -111,7 +124,7 @@ export const register: Register = (on, options) => {
     <Band Box={Box} Text={Text} Button={Button} band={band} running={running} waiting={waiting} ended={ended} between={between} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($, true).catch(() => {}) }} />
   )))
 
-  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button, Input }, { rows, rowTones, ledger, ended, unknownLabels }, _opened, note, pending) => (
+  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, ({ Box, Text, Button, Input }, { rows, rowTones, ledger, ended, unknownLabels, nowBuilding }, _opened, note, pending) => (
     <Pane
       Box={Box}
       Text={Text}
@@ -119,9 +132,11 @@ export const register: Register = (on, options) => {
       Input={Input}
       rows={rows}
       rowTones={rowTones}
+      columns={e.props.bodyColumns}
       ledger={ledger}
       ended={ended}
       unknownLabels={unknownLabels}
+      nowBuilding={nowBuilding}
       note={note}
       suggestion={suggestionView(pending, () => nextAgent(contract, ledger, spawns))}
       onReport={() => openReport($, spawns)}

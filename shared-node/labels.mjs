@@ -5,6 +5,10 @@
 
 const LABEL_TOKEN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 export const PHASES = ["RED", "GREEN", "REFACTOR"];
+export const REFACTOR_TASK_TYPES = ["new_feature"];
+export function refactorsPerCycle(taskType) {
+  return REFACTOR_TASK_TYPES.includes(taskType);
+}
 const [REFUTER, COURSE_CHECKER] = ["refuter", "course-checker"];
 export const ROLES = [REFUTER, COURSE_CHECKER];
 
