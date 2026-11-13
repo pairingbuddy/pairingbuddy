@@ -1,9 +1,9 @@
 // One capped `claude -p` run against this worktree's plugin, for smoke. The Node side of runner.py, with the same rules:
 // `--plugin-dir` applies to the spawned run alone, `--setting-sources project,local` keeps user settings and installed
 // plugins out, and the cheap model comes through P16's env, because `--model` does not override an agent's pin.
-import { spawn } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { sep } from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { readFileSync, realpathSync } from "node:fs";
+import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
@@ -138,4 +138,20 @@ export async function runClaude(repo, prompt, budget, { env = cleanEnv(), onLine
   else budget.costKnown = false;
   checkFinished(results, exit, timeoutMs);
   if (budget.remaining <= 0) throw new SpendCapError(`the run ended at the spend cap, $${budget.spent.toFixed(4)} of $${budget.total}`);
+}
+
+// The human's own pb call, from this shell: no claude, no policy env, the shim first on PATH.
+export function humanPb(repo, gh, pluginDir, ...args) {
+  const { status, stdout, stderr } = spawnSync(process.execPath, [join(pluginDir, "cli", "pb.mjs"), ...args], { cwd: repo, env: { ...cleanEnv(), ...gh.env() }, encoding: "utf8" });
+  return { code: status, stdout, stderr };
+}
+
+export const sessionOf = (stream) => stream.map(({ event }) => event.session_id).find((id) => typeof id === "string") ?? null;
+
+export function readLedgerOrNull(repo) {
+  try {
+    return JSON.parse(readFileSync(join(repo, ".pairingbuddy", "run", "task", "ledger.json"), "utf8"));
+  } catch {
+    return null;
+  }
 }

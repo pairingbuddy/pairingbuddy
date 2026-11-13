@@ -6,6 +6,7 @@ import { boxesTitled, boxLabel, checkboxes, HEADING, headingName, isPrHeading, P
 
 const FENCE = /^\s*(```|~~~)/;
 const LEGACY_LINE = /^Legacy: accepted\s*$/;
+const DEPENDS_LINE = /^Depends on:\s*(.+?)\s*$/;
 const TRACER_LEVEL = 3;
 const SECTION_LEVEL = 2;
 const TASKS_SECTION = "Tasks";
@@ -52,8 +53,10 @@ function bodyText(bodyLines) {
 
 const isIndented = (line) => /^\s/.test(line);
 
-// A unit waiting for its first box: its name and the PR: / Legacy lines seen under its heading.
-const opening = (name, direct, headingLine) => ({ name, direct, headingLine, pr: null, legacy: false });
+// A unit waiting for its first box: its name and the PR: / Legacy / Depends on lines seen under its heading.
+// When a unit has more than one Depends on line the first wins: dependsOn keeps it, and the other checks judge it;
+// repeatedDepends only records that a later line was seen, so the repeat is reported as a problem.
+const opening = (name, direct, headingLine) => ({ name, direct, headingLine, pr: null, legacy: false, dependsOn: null, repeatedDepends: false });
 
 // What a heading opens: { direct, name } for a PR: group (direct false) or a level-3 tracer (direct true), or null when it
 // opens neither. The name may be empty.
@@ -62,11 +65,15 @@ function unitHeading({ level, text }) {
   return level === TRACER_LEVEL ? { direct: true, name: headingName(text) } : null;
 }
 
-// Records the PR: / Legacy lines seen under a pending unit's heading.
+// Records the PR: / Legacy / Depends on lines seen under a pending unit's heading.
 function notePendingLine(pending, line) {
   const pr = PR_LINE.exec(line)?.[1];
   if (pr) pending.pr = pr;
   if (LEGACY_LINE.test(line)) pending.legacy = true;
+  const dependsOn = DEPENDS_LINE.exec(line)?.[1];
+  if (!dependsOn) return;
+  if (pending.dependsOn) pending.repeatedDepends = true;
+  else pending.dependsOn = dependsOn;
 }
 
 // A task body runs through blank and indented lines; a non-indented line, including a top-level fence, ends it.
@@ -109,22 +116,61 @@ function duplicateUnitProblems(units) {
   return repeats(units.map(({ unit }) => unit)).map(([name, count]) => `${count} units are named "${name}"; unit names identify units, so each must be unique`);
 }
 
-// Format problems: a box outside any tracer, boxes directly under a tracer that also has PR: groups, repeated task titles
-// and unit names, and a plan with no task at all.
-function formatProblems(strays, misplacedUnits, units, text) {
+// One problem per unit whose Depends on names no unit of the plan, naming the unit and the missing dependency.
+function unknownDependencyProblems(units, position) {
+  return units
+    .filter(({ dependsOn }) => dependsOn && !position.has(dependsOn))
+    .map(({ unit, dependsOn }) => `the unit "${unit}" depends on "${dependsOn}", which is not a unit of the plan`);
+}
+
+// One problem per unit with more than one Depends on line, naming the unit.
+function repeatedDependencyProblems(units, repeatedDepends) {
+  return units
+    .filter((unit) => repeatedDepends.has(unit))
+    .map(({ unit }) => `the unit "${unit}" has more than one Depends on line; a unit depends on at most one unit`);
+}
+
+// One problem per unit whose Depends on names the unit itself.
+function selfDependencyProblems(units) {
+  return units
+    .filter(({ unit, dependsOn }) => dependsOn === unit)
+    .map(({ unit }) => `the unit "${unit}" depends on itself`);
+}
+
+// One problem per unit whose Depends on names a unit that comes later in the plan.
+// Unknown names fall out because their position is undefined, and undefined > n is false.
+function laterDependencyProblems(units, position) {
+  return units
+    .filter(({ unit, dependsOn }) => position.get(dependsOn) > position.get(unit))
+    .map(({ unit, dependsOn }) => `the unit "${unit}" depends on "${dependsOn}", which comes later in the plan; a dependency must come first`);
+}
+
+// Format problems, by group: placement (a box outside any tracer, or directly under a tracer that also has PR: groups),
+// duplicates (task titles, unit names), dependencies (unknown, self, later, repeated Depends on line) and an empty plan.
+function formatProblems(strays, misplacedUnits, units, repeatedDepends, text) {
   const problems = strays.map((title) => `the task "${title}" is not under a tracer`);
   for (const { tracer, tasks } of misplacedUnits) {
     for (const { title } of tasks) problems.push(`the task "${title}" is under the tracer "${tracer}" but outside its PR: groups`);
   }
   const found = strays.length + [...misplacedUnits, ...units].reduce((sum, { tasks }) => sum + tasks.length, 0);
   if (found === 0) problems.push("the plan has no tasks");
-  return [...problems, ...duplicateUnitProblems(units), ...duplicateTitleProblems(units, text)];
+  const position = new Map(units.map(({ unit }, index) => [unit, index]));
+  return [
+    ...problems,
+    ...duplicateUnitProblems(units),
+    ...unknownDependencyProblems(units, position),
+    ...repeatedDependencyProblems(units, repeatedDepends),
+    ...selfDependencyProblems(units),
+    ...laterDependencyProblems(units, position),
+    ...duplicateTitleProblems(units, text),
+  ];
 }
 
 export function parsePlan(text) {
   const units = [];
   const strays = [];
   const directUnits = []; // { opened, owner } for each unit a tracer heading opened
+  const repeatedDepends = new Set(); // opened units that had a second Depends on line
   const groupedTracers = new Set(); // tracer occurrences (not names) that own PR: groups
   let tracer = null;
   let unit = null;
@@ -134,8 +180,9 @@ export function parsePlan(text) {
   const lines = linesWithFences(text);
   const hasTasks = lines.some(({ line, fenced }) => !fenced && isTasksHeading(headingOf(line)));
   const openUnit = (waiting, owner) => {
-    const opened = { unit: waiting.name, tracer: owner?.name ?? null, pr: waiting.pr, legacy: waiting.legacy, headingLine: waiting.headingLine, tasks: [] };
+    const opened = { unit: waiting.name, tracer: owner?.name ?? null, pr: waiting.pr, legacy: waiting.legacy, dependsOn: waiting.dependsOn, headingLine: waiting.headingLine, tasks: [] };
     units.push(opened);
+    if (waiting.repeatedDepends) repeatedDepends.add(opened);
     if (waiting.direct) directUnits.push({ opened, owner });
     else if (owner) groupedTracers.add(owner);
     return opened;
@@ -181,7 +228,7 @@ export function parsePlan(text) {
   closeBody();
   const misplaced = directUnits.filter(({ owner }) => groupedTracers.has(owner)).map(({ opened }) => opened);
   const unitsOut = units.filter((u) => !misplaced.includes(u));
-  return { units: unitsOut, next: firstUnchecked(unitsOut), problems: formatProblems(strays, misplaced, unitsOut, text) };
+  return { units: unitsOut, next: firstUnchecked(unitsOut), problems: formatProblems(strays, misplaced, unitsOut, repeatedDepends, text) };
 }
 
 // Titles of the tasks recorded for a unit: the open unit's records count only for that unit, in the same plan (paths compare normalised).

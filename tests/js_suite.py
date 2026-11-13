@@ -90,6 +90,7 @@ JS_TEST_FILES = [
     "tests/js/plan-boxes-safeguards.test.mjs",
     "tests/js/plan-parse.test.mjs",
     "tests/js/plan-step.test.mjs",
+    "tests/js/stack-rule.test.mjs",
     "tests/js/pr-body-tap.test.mjs",
     "tests/js/pr-draft-contracts.test.mjs",
     "tests/js/pr-draft.test.mjs",
@@ -144,6 +145,9 @@ JS_TEST_FILES = [
     "tests/js/lens-attack-fix-loop.test.mjs",
     "tests/js/pb-fix-checkpoint.test.mjs",
     "tests/js/pb-rollback-cap.test.mjs",
+    "tests/js/unit-status-rule.test.mjs",
+    "tests/js/unit-status.test.mjs",
+    "tests/js/stacking-branches-skill.test.mjs",
 ]
 
 

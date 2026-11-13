@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { updateLedger, validateLedger } from "../../shared-node/ledger.mjs";
 import { readRun } from "../../shared-node/next-action.mjs";
 import { pbCommand } from "../../shared-node/verbs.mjs";
-import { makeRepo, pb, pbWithEnv, ROOT } from "./cli-repo-fixture.mjs";
+import { makeRepo, pb, pbWithEnv, pushFromSecondClone, ROOT } from "./cli-repo-fixture.mjs";
 import { FAKE_PR_URL, installGhShim } from "./gh-shim-fixture.mjs";
 import { REFUSED, evalGate, git, gitConfigPath, keepLocalThroughTap, readUnitRecord, unitFile } from "./publish-fixture.mjs";
 import {
@@ -496,5 +496,26 @@ describe("next-action-auto-pass", () => {
     assert.equal(Object.hasOwn(repo.ledger().gates, "G:publish"), false, "the bare record is voided out of the gates");
     assert.deepEqual(repo.ledger().voidedGates.map(({ record }) => record), [{ source: "auto" }]);
     assert.match(repo.ledger().voidedGates[0].reason, /carries no binding/, "the void reason says the record has no binding");
+  });
+});
+
+describe("new-sha-voids-publish-approval", () => {
+  test("rebased-sha-voids-publish-approval", () => {
+    const unit = publishRun();
+    const { repo, branch } = unit;
+    const approvedHead = git(repo, "rev-parse", "HEAD");
+    pushFromSecondClone(repo, "moved-upstream");
+    git(repo, "fetch", "-q", "origin");
+    git(repo, "rebase", "-q", "origin/main");
+    const rebasedHead = git(repo, "rev-parse", "HEAD");
+    assert.notEqual(rebasedHead, approvedHead, "the rebase moved HEAD");
+
+    const { gh, result } = publishUnit(unit);
+
+    assert.notEqual(result.code, 0, `the old approval must not publish: ${result.stdout}`);
+    assert.doesNotMatch(result.stdout, /"result":\s*"published"/, "not published");
+    assert.match(result.stderr, new RegExp(`approval no longer holds: HEAD moved from ${approvedHead.slice(0, 7)} to ${rebasedHead.slice(0, 7)}`), `the refusal names the HEAD change: ${result.stderr}`);
+    assert.equal(remoteRef(repo, `refs/heads/${branch}`), null, "the unit branch was not pushed to origin");
+    assert.equal(gh.calls().some((call) => JSON.stringify(call).includes("create")), false, `no pr create: ${JSON.stringify(gh.calls())}`);
   });
 });

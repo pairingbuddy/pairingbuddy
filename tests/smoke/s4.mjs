@@ -48,7 +48,7 @@ import { acceptVerdict, mergeLensReturns, rankLensReturns, wiredLensConfig } fro
 import { readReturn, returnsAt } from "../../shared-node/stage-run.mjs";
 import { CHANGED_FILE, CORPUS_FILE, SUBJECT_DIFF_FILE } from "../../shared-node/snapshot.mjs";
 import { violations } from "../js/schema-check.mjs";
-import { Budget, REPO_ROOT, SmokeError, SpendCapError, cleanEnv, runClaude } from "./claude-run.mjs";
+import { Budget, REPO_ROOT, SmokeError, SpendCapError, cleanEnv, humanPb, readLedgerOrNull, runClaude, sessionOf } from "./claude-run.mjs";
 import { RunRecorder, transcriptDirs } from "./run-recorder.mjs";
 import { flagValues, installGhShim } from "../js/gh-shim.mjs";
 import { RECORDINGS, parseOptions, position } from "./s2.mjs";
@@ -467,22 +467,6 @@ function forceFirstFixRed(repo, marker) {
 
 export const codeSnapshots = (snapshots) => snapshots.filter(({ kind }) => kind === "code");
 export const publishSnapshots = (snapshots) => snapshots.filter(({ kind }) => kind === "publish");
-
-// The human's own pb call, from this shell: no claude, no policy env, the shim first on PATH.
-export function humanPb(repo, gh, pluginDir, ...args) {
-  const { status, stdout, stderr } = spawnSync(process.execPath, [join(pluginDir, "cli", "pb.mjs"), ...args], { cwd: repo, env: { ...cleanEnv(), ...gh.env() }, encoding: "utf8" });
-  return { code: status, stdout, stderr };
-}
-
-export const sessionOf = (stream) => stream.map(({ event }) => event.session_id).find((id) => typeof id === "string") ?? null;
-
-export function readLedgerOrNull(repo) {
-  try {
-    return readJson(join(repo, ".pairingbuddy", "run", "task", "ledger.json"));
-  } catch {
-    return null;
-  }
-}
 
 // The safety net's lens record: on the code run's ledger once the stage is done, copied into the unit's task record,
 // with the lens names and models the lens map wires for this type and counts only.

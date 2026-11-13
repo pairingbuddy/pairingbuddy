@@ -594,3 +594,176 @@ describe("human-task-parsing", () => {
     );
   });
 });
+
+describe("plan-depends-on", () => {
+  // A "Depends on: <unit name>" line between the unit heading and its first task gives that unit dependsOn equal to the trimmed name; a unit without the line has dependsOn null
+  test("depends-on-line-sets-dependsOn", () => {
+    const text = [
+      "# Plan",
+      "",
+      "## Tasks",
+      "",
+      "### Tracer 1: Walking skeleton",
+      "",
+      "#### PR: Parser",
+      "",
+      "- [ ] **Parse units**",
+      "",
+      "#### PR: Verb",
+      "",
+      "Depends on:   Parser  ",
+      "",
+      "- [ ] **Add verb**",
+      "",
+    ].join("\n");
+
+    const result = parsePlan(text);
+
+    assert.deepEqual(
+      result.units.map((u) => ({ unit: u.unit, dependsOn: u.dependsOn })),
+      [
+        { unit: "Parser", dependsOn: null },
+        { unit: "Verb", dependsOn: "Parser" },
+      ],
+      "the unit with a Depends on line carries the trimmed name; the unit without one has dependsOn null",
+    );
+    assert.deepEqual(result.problems, [], "a valid Depends on line is not a format problem");
+  });
+  // A Depends on line after the first task or inside a code fence does not count and sets no dependsOn
+  test("depends-on-outside-header-zone-is-ignored", () => {
+    const text = [
+      "# Plan",
+      "",
+      "## Tasks",
+      "",
+      "### Tracer 1: Walking skeleton",
+      "",
+      "#### PR: Parser",
+      "",
+      "- [ ] **Parse units**",
+      "",
+      "Depends on: Verb",
+      "",
+      "#### PR: Verb",
+      "",
+      "```",
+      "Depends on: Parser",
+      "```",
+      "",
+      "- [ ] **Add verb**",
+      "",
+    ].join("\n");
+
+    const result = parsePlan(text);
+
+    const dependsOnOf = (name) => result.units.find((u) => u.unit === name)?.dependsOn;
+    assert.equal(dependsOnOf("Parser"), null, "a Depends on line after the first task sets no dependsOn");
+    assert.equal(dependsOnOf("Verb"), null, "a Depends on line inside a code fence sets no dependsOn");
+    assert.deepEqual(
+      result.units.map((u) => u.unit),
+      ["Parser", "Verb"],
+      "both units are still parsed",
+    );
+    assert.deepEqual(result.problems, [], "an ignored Depends on line is not a format problem");
+  });
+  // Builds the Parser/Verb plan where Verb's header carries the given lines
+  const twoUnitPlanWithVerbHeader = (...headerLines) =>
+    [
+      "# Plan",
+      "",
+      "## Tasks",
+      "",
+      "### Tracer 1: Walking skeleton",
+      "",
+      "#### PR: Parser",
+      "",
+      "- [ ] **Parse units**",
+      "",
+      "#### PR: Verb",
+      "",
+      ...headerLines,
+      "",
+      "- [ ] **Add verb**",
+      "",
+    ].join("\n");
+  // Builds the Parser/Verb plan where Verb declares the given Depends on value
+  const twoUnitPlanWithVerbDependsOn = (dep) => twoUnitPlanWithVerbHeader(`Depends on: ${dep}`);
+  // A Depends on naming no unit of the plan is reported as a format problem naming the unit and the missing dependency
+  test("depends-on-unknown-unit-is-a-named-format-problem", () => {
+    const text = twoUnitPlanWithVerbDependsOn("Ghost");
+
+    const { problems } = parsePlan(text);
+
+    assert.equal(problems.length, 1, "exactly one problem is reported for the unknown dependency");
+    assert.match(problems[0], /Verb/, "the problem names the unit that depends");
+    assert.match(problems[0], /Ghost/, "the problem names the missing dependency");
+  });
+  // A Depends on naming the unit itself is reported as a format problem naming the unit
+  test("depends-on-itself-is-a-named-format-problem", () => {
+    const text = twoUnitPlanWithVerbDependsOn("Verb");
+
+    const { problems } = parsePlan(text);
+
+    assert.equal(problems.length, 1, "exactly one problem is reported for the self dependency");
+    assert.match(problems[0], /Verb/, "the problem names the unit that depends on itself");
+    assert.match(problems[0], /itself/, "the problem says the unit depends on itself");
+  });
+  // A Depends on naming a unit that comes later in the plan is reported as a format problem saying a dependency must come first
+  test("depends-on-later-unit-is-a-named-format-problem", () => {
+    const text = [
+      "# Plan",
+      "",
+      "## Tasks",
+      "",
+      "### Tracer 1: Walking skeleton",
+      "",
+      "#### PR: Parser",
+      "",
+      "Depends on: Verb",
+      "",
+      "- [ ] **Parse units**",
+      "",
+      "#### PR: Verb",
+      "",
+      "- [ ] **Add verb**",
+      "",
+    ].join("\n");
+
+    const { problems } = parsePlan(text);
+
+    assert.equal(problems.length, 1, "exactly one problem is reported for the later dependency");
+    assert.match(problems[0], /Parser/, "the problem names the unit that depends");
+    assert.match(problems[0], /Verb/, "the problem names the later unit it depends on");
+    assert.match(problems[0], /must come first/, "the problem says a dependency must come first");
+  });
+  // A unit with two Depends on lines is reported as a format problem naming the unit
+  test("more-than-one-depends-on-line-is-a-named-format-problem", () => {
+    const text = twoUnitPlanWithVerbHeader("Depends on: Parser", "Depends on: Parser");
+
+    const { problems } = parsePlan(text);
+
+    assert.equal(problems.length, 1, "exactly one problem is reported for the repeated Depends on line");
+    assert.match(problems[0], /Verb/, "the problem names the unit with more than one Depends on line");
+    assert.match(problems[0], /more than one/, "the problem says the unit has more than one Depends on line");
+  });
+  // Depends on is a line of its own: the words mid-text in a heading-zone line are prose, so the unit has no dependency
+  test("depends-on-mid-text-is-not-a-dependency", () => {
+    const text = twoUnitPlanWithVerbHeader("This slice Depends on: Parser");
+
+    const { units, problems } = parsePlan(text);
+
+    assert.equal(units.find(({ unit }) => unit === "Verb").dependsOn, null, "a mid-text Depends on leaves dependsOn null");
+    assert.deepEqual(problems, [], "a mid-text Depends on is no problem");
+  });
+  // With two Depends on lines the first wins, and it is still checked: an unknown first one is reported next to the repeat
+  test("first-of-two-depends-on-lines-wins-and-is-still-checked", () => {
+    const text = twoUnitPlanWithVerbHeader("Depends on: Ghost", "Depends on: Parser");
+
+    const { units, problems } = parsePlan(text);
+
+    assert.equal(units.find(({ unit }) => unit === "Verb").dependsOn, "Ghost", "the first Depends on line is the one kept");
+    assert.equal(problems.length, 2, "the repeat and the unknown dependency are both reported");
+    assert.ok(problems.some((problem) => /more than one/.test(problem)), "one problem says there is more than one Depends on line");
+    assert.ok(problems.some((problem) => /Ghost/.test(problem)), "one problem names the unknown Ghost");
+  });
+});

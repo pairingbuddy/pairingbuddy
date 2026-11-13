@@ -13,6 +13,10 @@
 // The sample uses pytest because pb's full-suite run passes the test directory to the runner and a `::` selector that
 // matches nothing exits non-zero. `node --test <dir>` does not take a directory, and its name pattern exits 0 on no match.
 //
+// S2 answers asking S2 gates as the human, from its own shell with `pb human approve`, at most MAX_HUMAN_APPROVALS times,
+// and only for judgment reasons (the allowlist). It lists each answer in its result. It never answers a policy,
+// coverage-gap, selector, retries, config-hash or unknown reason, nor G:publish, since those are what S2 exists to check.
+//
 // Run it by hand, in a separate shell, from the repo root. It spends money, so no suite collects it:
 //
 //     node tests/smoke/s2.mjs [--type bug_fix|new_feature] [--budget-usd N] [--record-dir DIR] [--recording NAME] [--task TEXT]
@@ -25,7 +29,7 @@ import { isDeepStrictEqual, parseArgs } from "node:util";
 
 import { parseKey } from "../../shared-node/keys.mjs";
 import { installGhShim } from "../js/gh-shim.mjs";
-import { BUDGET_USD, Budget, REPO_ROOT, SmokeError, cleanEnv, runClaude } from "./claude-run.mjs";
+import { BUDGET_USD, Budget, REPO_ROOT, SmokeError, SpendCapError, cleanEnv, humanPb, readLedgerOrNull, runClaude, sessionOf } from "./claude-run.mjs";
 import { RunRecorder } from "./run-recorder.mjs";
 
 const STAGES = ["intake", "code-scenarios", "code-tdd", "code-safety-net"];
@@ -152,7 +156,16 @@ function refactorsOf(ledger, id) {
 // Each expected commit with the types it may have, oldest first: the placeholder, then each test's own.
 function expectedCommits(ledger, rows, green) {
   const ofRow = ([id, row]) => (isCoveredRow(row) ? [{ id, sha: row.covered.sha, types: ["test"] }] : [{ id, sha: row.red.sha, types: ["test"] }, { id, sha: row.green.sha, types: [green] }, ...refactorsOf(ledger, id).map((fix) => ({ id, ...fix }))]);
-  return [{ id: null, sha: placeholderSha(ledger), types: ["test"] }, ...rows.flatMap(ofRow)];
+  return [{ id: null, sha: placeholderSha(ledger), types: ["test"] }, ...rows.flatMap(ofRow), ...safetyNetFixes(ledger)];
+}
+
+// Fix groups follow the cycles and commit only in the code-safety-net stage. The CLI types a fix group by its paths
+// (shared-node/checkpoint.mjs): a test commit when it touched tests only, else a refactor. kept() leaves out both
+// uncommitted fix groups (null sha) and rolled-back ones: pb rollback takes a fix's sha out of ledger.commits but
+// leaves the checkpoint committed.
+function safetyNetFixes(ledger) {
+  const kept = (sha) => (ledger.commits ?? []).includes(sha);
+  return (ledger.checkpoints ?? []).filter(({ step, sha }) => step === "fix" && kept(sha)).map(({ key, sha }) => ({ id: key, sha, types: ["test", "refactor"] }));
 }
 
 const typesText = (expected) => expected.map(({ types }) => types.join("|"));
@@ -170,7 +183,7 @@ function assertCommits(ledger, log, green) {
   if (unlisted.length > 0) throw new SmokeError(`commits not in the ledger: ${unlisted.map(({ subject }) => subject)}`);
   if (log[0].sha !== expected[0].sha) throw new SmokeError("the first commit is not the placeholder commit");
   expected.slice(1).forEach(({ id, sha }, i) => {
-    if (log[1 + i].sha !== sha) throw new SmokeError(`test ${id}: commit ${2 + i} is not its own`);
+    if (log[1 + i].sha !== sha) throw new SmokeError(`${id}: commit ${2 + i} is not its own`);
   });
 }
 
@@ -211,15 +224,17 @@ function assertFullSuite({ tests: { full } }) {
   if (!full?.passed || !full.runs.every(({ exitCode }) => exitCode === 0)) throw new SmokeError(`the full suite did not pass: ${JSON.stringify(full?.runs?.map(({ exitCode }) => exitCode))}`);
 }
 
-function assertGates({ gates, policy }) {
+function assertGates({ gates, policy }, humanApprovals) {
   for (const gate of GATES) {
-    if (gates[gate]?.source !== "auto") throw new SmokeError(`gate source of ${gate} is ${gates[gate]?.source}, expected auto`);
+    const expected = humanApprovals.some((approval) => approval.gate === gate) ? "human-cli" : "auto";
+    if (gates[gate]?.source !== expected) throw new SmokeError(`gate source of ${gate} is ${gates[gate]?.source}, expected ${expected}`);
+    if (expected === "human-cli" && gates[gate].answer !== "approve") throw new SmokeError(`gate ${gate} was answered ${gates[gate].answer}, expected approve`);
   }
   if (!isDeepStrictEqual(policy, { mode: "auto", source: "permission_mode" })) throw new SmokeError(`the gate policy is ${JSON.stringify(policy)}, so the env was not clean`);
 }
 
 // snapshots are every ledger the recorder saw, and agents its spawn events.
-export function assertControlFlow(ledger, log, { type = "bug_fix", snapshots = [ledger], agents = [] } = {}) {
+export function assertControlFlow(ledger, log, { type = "bug_fix", snapshots = [ledger], agents = [], humanApprovals = [] } = {}) {
   assertTaskType(ledger, type);
   assertStageOrder(ledger);
   placeholderSha(ledger);
@@ -227,7 +242,30 @@ export function assertControlFlow(ledger, log, { type = "bug_fix", snapshots = [
   assertRefactors(ledger, log, snapshots, type);
   assertCoverageChecked(agents);
   assertFullSuite(ledger);
-  assertGates(ledger);
+  assertGates(ledger, humanApprovals);
+}
+
+// The asking reasons S2 answers, as substrings of the reasons shared-node/gates.mjs gives.
+// A reworded reason there makes gateToAnswer return null for that gate.
+const ANSWERED_REASONS = [
+  "open ambiguity",
+  "the classifier does not report certain",
+  "the classification lens has an open finding",
+  "a decide finding survived",
+  "an unrefuted high-severity finding is past the cap",
+];
+
+// A total cap on human approvals, one per S2 gate. It counts approvals, not which gate they were for.
+export const MAX_HUMAN_APPROVALS = GATES.length;
+
+// The asking gate and its reason when S2 answers it, else null.
+export function gateToAnswer(ledger, humanApprovals) {
+  if (humanApprovals.length >= MAX_HUMAN_APPROVALS) return null;
+  if (!ledger || ledger.stop !== null || !ledger.needsHuman) return null;
+  const { gate, reason } = ledger.needsHuman;
+  if (!GATES.includes(gate)) return null;
+  if (!ANSWERED_REASONS.some((answered) => reason.includes(answered))) return null;
+  return { gate, reason };
 }
 
 // The task's own ledger: the last snapshot of the code run, which pb task end removed before the publish run opened.
@@ -268,10 +306,30 @@ async function runS2(budget, record, recording, task, type, pluginDir) {
   const { repo } = makeS2Repo(record, type);
   const gh = installGhShim({ parent: record });
   const recorder = new RunRecorder(repo, recording, { streamPath: join(record, "stream.jsonl") }).start();
-  const result = { passed: false, cause: "", tests: 0, commits: [] };
+  const result = { passed: false, cause: "", tests: 0, commits: [], humanApprovals: [], runNote: "" };
   let ledger = null;
   try {
-    await runClaude(repo, `/pairingbuddy:code ${task}`, budget, { env: claudeEnv(gh), onLine: (event) => recorder.line(event), pluginDir });
+    const env = claudeEnv(gh);
+    let prompt = `/pairingbuddy:code ${task}`;
+    let resume = null;
+    for (;;) {
+      try {
+        await runClaude(repo, prompt, budget, { env, onLine: (event) => recorder.line(event), pluginDir, resume });
+      } catch (e) {
+        if (!(e instanceof SmokeError)) throw e;
+        result.runNote = `${e.constructor.name}: ${e.message}`;
+        if (e instanceof SpendCapError) break;
+      }
+      recorder.poll();
+      const asking = gateToAnswer(readLedgerOrNull(repo), result.humanApprovals);
+      if (asking === null) break;
+      const approved = humanPb(repo, gh, pluginDir, "human", "approve", asking.gate);
+      if (approved.code !== 0) throw new SmokeError(`the human's pb human approve ${asking.gate}: exit ${approved.code}, ${approved.stderr}`);
+      result.humanApprovals.push({ gate: asking.gate, reason: asking.reason });
+      prompt = `I ran the approve command for ${asking.gate}. Continue.`;
+      resume = sessionOf(recorder.stream);
+      if (resume === null) throw new SmokeError("the run's stream has no session id to resume");
+    }
     recorder.poll();
     if (recorder.last === null) throw new SmokeError("no run was opened, so nothing went through the gate");
     assertTaskEnded(recorder.taskEnds);
@@ -279,7 +337,7 @@ async function runS2(budget, record, recording, task, type, pluginDir) {
     if (ledger === null) throw new SmokeError("no code run was seen");
     const log = runLog(repo);
     result.commits = log.map(({ subject }) => subject);
-    assertControlFlow(ledger, log, { type, snapshots: codeSnapshots(recorder.snapshots), agents: recorder.spawns() });
+    assertControlFlow(ledger, log, { type, snapshots: codeSnapshots(recorder.snapshots), agents: recorder.spawns(), humanApprovals: result.humanApprovals });
     result.tests = Object.keys(ledger.tests.perTest).length;
     result.passed = true;
   } catch (e) {

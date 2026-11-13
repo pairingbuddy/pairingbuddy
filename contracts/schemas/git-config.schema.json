@@ -25,7 +25,7 @@
         "title_template": { "type": "string" },
         "base_branch": { "type": ["string", "null"] },
         "publish": { "type": "string" },
-        "stack_depth": { "type": "integer" },
+        "stack_depth": { "type": "integer", "minimum": 0, "description": "Maximum stacked PR depth; 0 turns stacking off." },
         "lint": { "type": "object" },
         "conventions": { "type": "array", "items": { "type": "string" } }
       },

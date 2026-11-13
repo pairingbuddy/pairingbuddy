@@ -28,7 +28,7 @@ const refOf = (ref) => (ref.startsWith('"') ? ref.slice(1, -1) : verbs[ref]);
 //   written:     code: X in a stop object, or the code argument of orStop(); X is a string literal or a verbs.mjs export
 //   passedCode:  a stop object with the shorthand `code`, fed by a variable (orStop's parameter, stageStop's argument)
 //   unclassified: any other `stop:` or `stop =` that is not a clear (null), a validity-table entry or a stop object, or an orStop call of another shape
-const PLAN_STOP_FILES = ["shared-node/plan.mjs"];
+const PLAN_STOP_FILES = ["shared-node/plan.mjs", "shared-node/stack.mjs"];
 // planNext's dry run returns `stop: reportedStop`, a plan stop ({reason, unit, ..., says}) like PLAN_STOP_FILES: pb plan next's
 // own report, never written to a ledger, so it has no stop code.
 
@@ -37,7 +37,7 @@ function scanStopWrites() {
   for (const dir of ["cli", "shared-node"]) {
     for (const file of readdirSync(join(ROOT, dir)).filter((f) => f.endsWith(".mjs"))) {
       const path = `${dir}/${file}`;
-      // A plan stop ({reason, unit}) is pb plan next's own refusal, never written to a ledger, so it has no stop code.
+      // A plan stop ({reason, unit}), or the stacking rule's G:next-unit stop, is a refusal of pb plan next or pb unit open, never written to a ledger, so it has no stop code.
       if (PLAN_STOP_FILES.includes(path)) continue;
       const text = readFileSync(join(ROOT, dir, file), "utf8").replace(/^\s*\/\/.*$/gm, "");
       for (const m of text.matchAll(/\bstop\s*[:=](?!=)\s*/g)) {

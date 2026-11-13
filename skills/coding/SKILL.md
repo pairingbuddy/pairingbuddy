@@ -374,12 +374,13 @@ After each refactor cycle:
 Outside Solo, `_run_plan_loop(plan_path)` runs a plan one task at a time:
 
 1. Run `pb plan next <plan>` first. It says what to do next, or refuses. When it succeeds with no next task, the plan is done: report that and stop the loop.
-2. A unit is open when `.pairingbuddy/run/unit.json` exists. If no unit is open, run `pb unit open` as router step 1: a type you guess from the task and a short kebab-case slug made from the unit name. When it refuses with a `!` command, stop and show the human that command.
+2. A unit is open when `.pairingbuddy/run/unit.json` exists. If no unit is open, run `pb unit open` with `--type <type> --slug <slug> --plan <plan.md>` (router step 1: a type you guess from the task and a short kebab-case slug made from the unit name); `--plan` names the unit and stacks it on its `Depends on` unit's PR when that is open. When it refuses with a `!` command, stop and show the human that command. A refusal that names G:next-unit (reason stack-depth) or a refused dependency (PR closed without merging, state unknown, gh failed) also ends the loop: show it to the human.
+   When a unit is already open before a task, run `pb unit status` first. A refusal (a moved or merged base with its rebase recipe, or any other refusal) ends the loop: show it to the human with the recipe.
 3. Run the curating-guidance skill in the main context before each task. Then clean the state files with `_cleanup_state_files()`.
 4. Run `pb run open --kind code --plan <plan>`, which takes the next task itself, so the session does not write `task.json` for it.
 5. Follow `pb status --action` and `pb gate eval` through the stages and G:task-end as router steps 3-4.
 6. Run `pb task end`, which ticks the box and records the task, then, unless its output has `closed`, run `pb plan next` again. If it has `closed`, report its `reason` and stop the loop: do not run `pb plan next` or `pb run open --kind publish`.
-7. If the unit is done but not published, run `pb run open --kind publish` and publish as router steps 6-8. Run `pb plan next` again only when `pb publish` returned a `url`. On `skip`, `local` or `kept-local`, or a needs-human stop, report as router step 8 says and stop the loop.
+7. If the unit is done but not published, run `pb unit status` first (a refusal ends the loop as in step 2), then `pb run open --kind publish` and publish as router steps 6-8. Run `pb plan next` again only when `pb publish` returned a `url`. On `skip`, `local` or `kept-local`, or a needs-human stop, report as router step 8 says and stop the loop.
 8. For any other refusal (a human task, hand-ticked boxes, a legacy unit), show it to the human with its options, and stop the loop.
 
 The model never ticks a box and never types a `pb human` command.

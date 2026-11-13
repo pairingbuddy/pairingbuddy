@@ -14,7 +14,7 @@ import { updateLedger } from "../../shared-node/ledger.mjs";
 import { pb, ROOT } from "./cli-repo-fixture.mjs";
 import {
   BAD_TITLE, CLEAN_BODY, CLEAN_TITLE, COORDINATION, DRAFT_KEY, GATE, HYPE_BODY, REFUSED,
-  commitMore, evalGate, git, lintOf, publishRepo, unitFile,
+  commitMore, evalGate, git, gitConfigPath, lintOf, publishRepo, unitFile,
 } from "./publish-fixture.mjs";
 import { changeUnit, taskRecord } from "./publishable-unit-fixture.mjs";
 import { sha256 } from "./tap-fixture.mjs";
@@ -426,5 +426,24 @@ describe("auto-publish-gate-pass", () => {
     assert.match(asked.reason, /HEAD moved/, "the reason is the void reason, not an auto pass");
     assert.deepEqual(repo.ledger().voidedGates.map((voided) => voided.record), [approval], "the old record is kept as voided");
     assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, "no new G:publish record is written");
+  });
+});
+
+describe("publish-gate-binding-target", () => {
+  // test case id: publish-gate-binding-target-uses-stacked-base
+  test("the G:publish binding target is unit.base for a stacked unit even when pr.base_branch is configured", () => {
+    const { repo } = publishRepo();
+    changeUnit(repo, {
+      stackedOn: { unit: "Dependency", pr: "https://github.com/o/r/pull/1", branch: "feature/dependency" },
+      base: "feature/dependency",
+    });
+    writeFileSync(gitConfigPath(repo), JSON.stringify({ pr: { base_branch: "develop" } }));
+
+    const asked = evalGate(repo);
+
+    assert.equal(asked.result, "needs-human", `the gate asks the human, got ${JSON.stringify(asked)}`);
+    const { shown } = repo.ledger().needsHuman;
+    assert.equal(shown.base, "feature/dependency", "the shown base is the unit base");
+    assert.equal(shown.target, "feature/dependency", "a stacked unit's PR goes to its base, not to pr.base_branch");
   });
 });

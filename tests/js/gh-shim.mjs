@@ -7,6 +7,9 @@
 // JSON in GH_SHIM_VIEW (see viewEnv); when that is unset it answers with the PR a successful `gh pr create` opened, if
 // the shim was installed with { remember: true }, and otherwise fails with "no pull requests found".
 //
+// GH_SHIM_VIEWS (see viewsEnv) is an optional JSON map from the last argument of `gh pr view` (the branch or PR url) to
+// its answer; an argument it does not name falls back to the rules above.
+//
 // This module touches no TMPDIR of its own: a test file imports isolated-tmpdir.mjs first (gh-shim-fixture.mjs does),
 // and smoke passes the parent directory it wants the shim in.
 import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
@@ -32,7 +35,9 @@ if (fail && argv.join(" ").startsWith(fail)) {
 }
 const opened = process.env.GH_SHIM_OPENED;
 if (argv[0] === "pr" && argv[1] === "view") {
-  const view = process.env.GH_SHIM_VIEW ?? (opened && existsSync(opened) ? readFileSync(opened, "utf8").trim() : "");
+  const views = process.env.GH_SHIM_VIEWS ? JSON.parse(process.env.GH_SHIM_VIEWS) : {};
+  const mapped = views[argv[argv.length - 1]];
+  const view = (mapped && JSON.stringify(mapped)) ?? process.env.GH_SHIM_VIEW ?? (opened && existsSync(opened) ? readFileSync(opened, "utf8").trim() : "");
   if (!view) {
     process.stderr.write("no pull requests found for branch\\n");
     process.exit(1);
@@ -50,6 +55,14 @@ if (argv[0] === "pr" && argv[1] === "create") {
 // The environment that makes `gh pr view` report a PR: the fake URL, from head into base, unless over changes a field.
 export const viewEnv = ({ head, base = "main", ...over }) => ({
   GH_SHIM_VIEW: JSON.stringify({ url: FAKE_PR_URL, headRefName: head, baseRefName: base, ...over }),
+});
+
+// The environment that makes `gh pr view <key>` answer per key: views maps the last argv (a PR url or branch) to the
+// fields viewEnv takes ({ head, base, ...over }). Merge it with viewEnv to give the other keys a default answer.
+export const viewsEnv = (views) => ({
+  GH_SHIM_VIEWS: JSON.stringify(
+    Object.fromEntries(Object.entries(views).map(([key, { head, base = "main", ...over }]) => [key, { url: FAKE_PR_URL, headRefName: head, baseRefName: base, ...over }])),
+  ),
 });
 
 // parent is where the shim's own dir is made; remember makes `gh pr view` answer with the PR `gh pr create` opened.

@@ -193,6 +193,31 @@ test("what each pb task end printed is kept with its command, so a leftover coun
   ]);
 });
 
+for (const [name, invocation] of [
+  ["$PB", "node $PB task end"],
+  ["$P", "node $P task end"],
+  ['"$P"', 'node "$P" task end'],
+  ["${PB}", "node ${PB} task end"],
+]) {
+  test(`a pb task end run through ${name} is kept with its command and output`, (t) => {
+    const { repo } = repoWithLedger(t);
+    const out = join(tempDir(t), "rec");
+    const recorder = new RunRecorder(repo, out, { intervalMs: 1000, now: () => 0 }).start();
+    // Mirrors the live run: both variables are set, and the call is followed by 2>&1 and an exit echo. Only the command text is matched.
+    const command = `P=/x/cli/pb.mjs; PB=/x/cli/pb.mjs; ${invocation} 2>&1; echo "exit=$?"`;
+
+    recorder.line(bash("a", command));
+    recorder.line(result("a", '{"ok":true}\nexit=0'));
+    recorder.stop();
+
+    assert.deepEqual(
+      readJsonl(join(out, "task-end.jsonl")),
+      [{ t: 0, command, output: '{"ok":true}\nexit=0', isError: false }],
+      `a pb task end called as "${invocation}" is recognised`,
+    );
+  });
+}
+
 test("a run that never reached pb task end still writes an empty task-end file", (t) => {
   const { repo } = repoWithLedger(t);
   const out = join(tempDir(t), "rec");

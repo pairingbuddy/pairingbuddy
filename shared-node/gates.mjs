@@ -14,7 +14,7 @@ import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
 import { isRefreshRun } from "./ledger.mjs";
 import { needsTestSelection } from "./stage-graph.mjs";
 import { readTestConfig, runnersWithoutSelector } from "./test-run.mjs";
-import { taskHasLensRecord } from "./publish.mjs";
+import { targetBranch, taskHasLensRecord } from "./publish.mjs";
 import { headOf } from "./checkpoint.mjs";
 import { PrLintConfigRefused } from "./pr-lint.mjs";
 import { PrLintRunRefused, isRefreshSubject, prBodyPath, prLintPath, readDraftArtifact, readPrSubject, readUnit, runPrLint, sha256 } from "./pr-lint-run.mjs";
@@ -416,7 +416,7 @@ function reopenStage(ledger, name, gates) {
 // What the human is shown at G:publish and what an approval binds to: HEAD, where the unit started and where the PR goes.
 export function publishFacts(root) {
   const subject = readPrSubject(root);
-  return { headSha: currentHead(root), base: subject.base, target: isRefreshSubject(root) ? subject.base : readGitConfig(root).pr.base_branch ?? subject.base };
+  return { headSha: currentHead(root), base: subject.base, target: isRefreshSubject(root) ? subject.base : targetBranch(readGitConfig(root), subject) };
 }
 
 // What an approval at G:publish binds to, from a human or from the auto policy: the commit, the body, the title and the labels, and where
