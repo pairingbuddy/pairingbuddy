@@ -249,6 +249,8 @@ git -C "$ROOT" status --short
 
 The status line lists what the killed stage left behind. Delete what you do not want by hand, because `pb task end` refuses a dirty tree. Commits the stage already made stay on the branch. Then start a new session and restart the stage at `nextAttempt`.
 
+Within the same session, a killed stage workflow can instead be resumed by calling it with `resumeFromRunId` equal to the stage's recorded `runId`; otherwise run `pb stage fail` and restart the stage.
+
 ### Killed session at a gate
 
 **What you see:** `pb status` shows `needsHuman` with a gate, and `pb stage fail` refuses or finds no stage to fail. Only a human can pass a gate. The same command undoes a human's `stop` or `redo` answer at a gate, and `pb stage fail` refuses to lift a human's `stop`.
@@ -276,20 +278,16 @@ If the file is not well-formed, `pb human accept` refuses: fix it by hand and ru
 
 ### Second session in the same worktree
 
-**What you see:** nothing warns you. The second session can call tools, but it does not own the run: its permission mode is not recorded, the Stop hook tells it nothing, `pb run open` refuses with `a run is already active`, and a stage the first session holds denies the next one. Adopting a run explicitly does not exist yet.
+**What you see:** SessionStart tells the second session that the run belongs to another session, names that session and when it was last seen, and gives the adopt line. The second session does not own the run: its permission mode is not recorded, the Stop hook tells it nothing, `pb run open` refuses with `a run is already active`, and a stage the first session holds denies the next one.
 
 If the first session is still working, close the second one, and that is the whole recovery.
 
-To move the run to the second session, close the first one, then void its attempt and clear the owner by hand. The next call from the second session claims the run:
+To move the run to the second session, close the first one, then the human types `pb human adopt` at the prompt (with `--force` when the owner was seen in the last 10 minutes). It clears the owner and fails an active stage, and the next call from the second session claims the run. Then run `pb status`:
 
 ```bash
-pb stage fail
-node -e 'const fs = require("fs"); const path = process.argv[1]; const ledger = JSON.parse(fs.readFileSync(path, "utf8")); fs.writeFileSync(path, JSON.stringify({ ...ledger, owner: { sessionId: null, lastSeen: null } }, null, 2) + "\n");' "$ROOT/.pairingbuddy/run/task/ledger.json"
-pb human accept
+pb human adopt --force
 pb status
 ```
-
-Leave out `pb stage fail` when no stage is active.
 
 ### A run with no unit
 

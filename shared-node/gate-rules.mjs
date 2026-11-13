@@ -7,12 +7,12 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import { isCheckpointCall, isKey, keyFitsStep, parseRollbackArgs } from "./checkpoint.mjs";
 import { parseKey } from "./keys.mjs";
 import { answeredGate, blockingGate, gateQuestion, gatesFor, isGateQuestionCall } from "./gates.mjs";
-import { LedgerShaMismatch, readLedger, updateLedger } from "./ledger.mjs";
+import { LedgerShaMismatch, ownerAgeMs, readLedger, updateLedger } from "./ledger.mjs";
 import { d17Denial } from "./d17.mjs";
 import { commonDirectory, findRepo } from "./git-files.mjs";
 import { checkboxes } from "./plan-boxes.mjs";
 import { bindSession, sessionsDirectory } from "./run-root.mjs";
-import { PLUGIN_ROOT, PREFIX, bundlePath, calledStage, matchesBundle, suppliedScripts, workflowName } from "./stage-calls.mjs";
+import { PLUGIN_ROOT, PREFIX, bundleHash, bundlePath, calledStage, matchesBundle, suppliedScripts, workflowName } from "./stage-calls.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, pipelineAgents, startLeaseSecondsLeft } from "./stages.mjs";
 import { disguisesPb, pbInvocations, pbWithEnvironment } from "./shell-calls.mjs";
 import { shellWord } from "./shell-word.mjs";
@@ -171,9 +171,17 @@ function withPolicy(ledger, payload) {
   return unchanged || !speaksForRun(ledger, payload) ? ledger : { ...ledger, policy };
 }
 
+const LAST_SEEN_REFRESH_MS = 60_000;
+
+// A missing lastSeen counts as stale (see ownerAgeMs), so it refreshes.
+const isStale = (lastSeen) => ownerAgeMs(lastSeen) > LAST_SEEN_REFRESH_MS;
+
 function withOwner(ledger, { agent_id: agentId, session_id: sessionId }) {
-  if (agentId !== undefined || ledger.owner.sessionId !== null) return ledger;
-  return { ...ledger, owner: { sessionId, lastSeen: new Date().toISOString() } };
+  if (agentId !== undefined) return ledger;
+  const { owner } = ledger;
+  const claims = owner.sessionId === null;
+  const refreshes = owner.sessionId === sessionId && isStale(owner.lastSeen);
+  return claims || refreshes ? { ...ledger, owner: { sessionId, lastSeen: new Date().toISOString() } } : ledger;
 }
 
 const withSession = (ledger, payload) => withPolicy(withOwner(ledger, payload), payload);
@@ -194,14 +202,16 @@ function readableLedger(ledgerPath) {
 const invokesGateEval = ({ tool_name: tool, tool_input: toolInput }) => tool === "Bash" && pbInvocations(toolInput.command).some((words) => matchVerb(words) === "gate eval");
 
 // A ledger problem must not take these tools away from the recovery route, and the CLI refuses a broken ledger with
-// its own error. A failed write only matters to gate eval, which would decide on the mode this call failed to record.
+// its own error. A failed write only matters when gate eval would decide on a policy this call failed to record; a
+// failed owner or lastSeen write is harmless.
 function recordSessionIfPossible(ledgerPath, payload) {
   const ledger = readableLedger(ledgerPath);
   if (ledger === null) return;
   try {
     recordSession(ledgerPath, ledger, payload);
   } catch (e) {
-    if (invokesGateEval(payload)) throw new Denied(`The gate policy could not be recorded, so pb gate eval would decide on a stale mode. Try again: ${e.message}`);
+    const policyChanged = withPolicy(ledger, payload) !== ledger;
+    if (invokesGateEval(payload) && policyChanged) throw new Denied(`The gate policy could not be recorded, so pb gate eval would decide on a stale mode. Try again: ${e.message}`);
   }
 }
 
@@ -231,9 +241,15 @@ const realOrSelf = (path) => {
 };
 const isPluginRoot = (given) => given === PLUGIN_ROOT || (typeof given === "string" && realOrSelf(given) === realOrSelf(PLUGIN_ROOT));
 
+const pluginRootDenial = (called, given) => `Wrong pluginRoot for ${called}: got ${JSON.stringify(given)}. Use pluginRoot ${PLUGIN_ROOT}.`;
+
+const attemptDenial = (called, given, advice) => `Wrong attempt for ${called}: got ${JSON.stringify(given)}. ${advice}`;
+
+const redoRemedy = (called) => `Redo instead: pb stage fail, then start ${called} by name at the next attempt.`;
+
 function argsDenial(called, attempt, { args }, task) {
-  if (args?.attempt !== attempt) return `Wrong attempt for ${called}: got ${JSON.stringify(args?.attempt)}. Use attempt ${attempt}.`;
-  if (!isPluginRoot(args?.pluginRoot)) return `Wrong pluginRoot for ${called}: got ${JSON.stringify(args?.pluginRoot)}. Use pluginRoot ${PLUGIN_ROOT}.`;
+  if (args?.attempt !== attempt) return attemptDenial(called, args?.attempt, `Use attempt ${attempt}.`);
+  if (!isPluginRoot(args?.pluginRoot)) return pluginRootDenial(called, args?.pluginRoot);
   if (isMissing(args?.task)) return `Missing task for ${called}: got ${JSON.stringify(args?.task)}. Pass the task as args.task, as ${taskForm(task)}.`;
   if (isPlaceholder(args.task)) return `Placeholder task for ${called}: got ${JSON.stringify(args.task)}. Pass the task as args.task, as ${taskForm(task)}.`;
   return null;
@@ -274,6 +290,10 @@ function stageDenial(stage, ledger, graph, toolInput, scripts) {
   if (!existsSync(bundlePath(stage))) return `Cannot start ${called}: its built bundle ${bundlePath(stage)} is missing.`;
   const argsProblem = argsDenial(called, nextAttempt(ledger, stage), toolInput, ledger.task);
   if (argsProblem) return argsProblem;
+  return scriptDenial(stage, called, scripts);
+}
+
+function scriptDenial(stage, called, scripts) {
   if (scripts.length > 0 && !matchesBundle(stage, scripts)) {
     return `Script for ${called} does not match the built bundle ${bundlePath(stage)}. Call ${called} by name with no script.`;
   }
@@ -285,8 +305,43 @@ function startStage(ledgerPath, stage, graph, payload, scripts) {
   updateLedger(ledgerPath, (ledger) => {
     const reason = stageDenial(stage, ledger, graph, toolInput, scripts);
     if (reason) throw new Denied(reason);
-    return { ...withSession(ledger, payload), stage: { name: stage, status: "active", runId: null, attempt: toolInput.args.attempt, startedAt: new Date().toISOString() } };
+    return { ...withSession(ledger, payload), stage: { name: stage, status: "active", runId: null, attempt: toolInput.args.attempt, scriptHash: bundleHash(stage), startedAt: new Date().toISOString() } };
   });
+}
+
+// The reason a resume is refused, or null. The checks run in order, so a stop wins over every run, attempt and bundle check.
+function resumeDenial(stage, ledger, toolInput, scripts) {
+  const called = workflowName(stage);
+  const { args } = toolInput;
+  if (!isStageActive(ledger)) {
+    return `${called} is not active, so there is no run to resume. Run pb status for the next step.`;
+  }
+  if (stage !== ledger.stage.name) {
+    return `${called} is not the active stage, so it cannot be resumed. The active stage is ${workflowName(ledger.stage.name)}: resume that one, or run pb status for the next step.`;
+  }
+  if (ledger.stop !== null) {
+    return `The run has stopped: ${ledger.stop.reason}. Nothing skips a stop, so ${called} cannot be resumed. Run pb status and report it to the human.`;
+  }
+  if (ledger.stage.runId === null) {
+    return `${called} has no recorded run, so there is no run to resume. Start it by name at attempt ${ledger.stage.attempt} instead.`;
+  }
+  if (toolInput.resumeFromRunId !== ledger.stage.runId) {
+    return `Resume of ${called} does not match the recorded run. ${redoRemedy(called)}`;
+  }
+  if (args?.attempt !== ledger.stage.attempt) return attemptDenial(called, args?.attempt, `Resume at attempt ${ledger.stage.attempt}.`);
+  if (!isPluginRoot(args?.pluginRoot)) return pluginRootDenial(called, args?.pluginRoot);
+  const scriptReason = scriptDenial(stage, called, scripts);
+  if (scriptReason) return scriptReason;
+  if (ledger.stage.scriptHash == null) return `${called}'s start recorded no script hash, so its run cannot be resumed. ${redoRemedy(called)}`;
+  if (bundleHash(stage) !== ledger.stage.scriptHash) return `${called}'s bundle changed since the stage started, so its run cannot be resumed. ${redoRemedy(called)}`;
+  return null;
+}
+
+// A resume never reaches startStage, so it can never reset the stage.
+function resumeStage(ledgerPath, stage, payload, scripts) {
+  const { tool_input: toolInput } = payload;
+  const reason = resumeDenial(stage, readLedger(ledgerPath), toolInput, scripts);
+  if (reason) throw new Denied(reason);
 }
 
 function runPosition(ledger, graph) {
@@ -304,6 +359,10 @@ function checkWorkflow({ ledgerPath, ledger, graph, payload }) {
   const stage = calledStage(toolInput);
   if (stage !== undefined) {
     if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Denied(`Solo stays on the old path until T10, so ${workflowName(stage)} cannot start. The run stays as it is: report pb status.`);
+    if (toolInput.resumeFromRunId !== undefined) {
+      resumeStage(ledgerPath, stage, payload, scripts);
+      return;
+    }
     startStage(ledgerPath, stage, graph, payload, scripts);
     return;
   }

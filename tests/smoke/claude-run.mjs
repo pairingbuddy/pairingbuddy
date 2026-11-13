@@ -14,12 +14,16 @@ export const DROPPED_PREFIXES = ["PAIRINGBUDDY", "PB_", "CLAUDE", "ANTHROPIC_", 
 
 export class SmokeError extends Error {}
 export class SpendCapError extends SmokeError {}
+// The harness killed the run on purpose, through its abort signal.
+export class KilledError extends SmokeError {}
 
 export class Budget {
   constructor(total = BUDGET_USD) {
     this.total = total;
     this.spent = 0;
     this.costKnown = true;
+    // True once a run was charged its cap for want of a reported cost: spent is then an upper bound.
+    this.upperBound = false;
   }
 
   get remaining() {
@@ -85,15 +89,38 @@ function eachLine(stream, onLine) {
   });
 }
 
-function runOnce(repo, args, env, onEvent, timeoutMs) {
+const killGroup = (child) => {
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    // the group has gone already
+  }
+};
+
+// A process forked while its group is being killed can miss the signal, so the kill repeats until the run closes.
+const KILL_REPEAT_MS = 100;
+
+function runOnce(repo, args, env, onEvent, timeoutMs, signal) {
   return new Promise((resolve, reject) => {
     const child = spawn("claude", args, { cwd: repo, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
     let stderr = "";
     let timedOut = false;
+    let killed = false;
+    let repeat = null;
+    const killUntilClosed = () => {
+      killGroup(child);
+      repeat ??= setInterval(() => killGroup(child), KILL_REPEAT_MS);
+    };
     const timer = setTimeout(() => {
       timedOut = true;
-      process.kill(-child.pid, "SIGKILL");
+      killUntilClosed();
     }, timeoutMs);
+    const kill = () => {
+      killed = true;
+      killUntilClosed();
+    };
+    if (signal?.aborted) kill();
+    else signal?.addEventListener("abort", kill, { once: true });
     eachLine(child.stdout, (line) => {
       const event = parsedLine(line);
       if (event !== null) onEvent(event);
@@ -104,11 +131,14 @@ function runOnce(repo, args, env, onEvent, timeoutMs) {
     });
     child.once("error", (e) => {
       clearTimeout(timer);
+      clearInterval(repeat);
       reject(new SmokeError(`cannot run claude: ${e.code ?? e.message}`));
     });
     child.once("close", (code) => {
       clearTimeout(timer);
-      resolve({ code, stderr, timedOut });
+      clearInterval(repeat);
+      signal?.removeEventListener("abort", kill);
+      resolve({ code, stderr, timedOut, killed });
     });
   });
 }
@@ -124,18 +154,26 @@ function checkFinished(results, { code, stderr, timedOut }, timeoutMs) {
 }
 
 // Charges `budget` first, so spend is known to the caller even when this throws. timeoutMs is the wall-clock limit of this one run.
-export async function runClaude(repo, prompt, budget, { env = cleanEnv(), onLine = () => {}, pluginDir = REPO_ROOT, resume = null, timeoutMs = RUN_TIMEOUT_MS } = {}) {
+// capUsd lowers this run's own spend cap below what is left of the budget. Aborting `signal` kills the run's whole
+// process group: a killed run reports no cost, so it is charged its whole cap, the spend becomes an upper bound, and
+// runClaude throws KilledError.
+export async function runClaude(repo, prompt, budget, { env = cleanEnv(), onLine = () => {}, pluginDir = REPO_ROOT, resume = null, timeoutMs = RUN_TIMEOUT_MS, capUsd = Infinity, signal = null } = {}) {
   if (budget.remaining <= 0) throw new SpendCapError(`the spend cap is used up at $${budget.spent.toFixed(4)}`);
   refuseRepoInsidePlugin(repo);
   const results = [];
   const costs = [];
-  const exit = await runOnce(repo, claudeCommand(prompt, Number(budget.remaining.toFixed(6)), pluginDir, resume), env, (event) => {
+  const cap = Number(Math.min(budget.remaining, capUsd).toFixed(6));
+  const exit = await runOnce(repo, claudeCommand(prompt, cap, pluginDir, resume), env, (event) => {
     if (event.type === "result") results.push(event);
     if ("total_cost_usd" in event) costs.push(event.total_cost_usd);
     onLine(event);
-  }, timeoutMs);
+  }, timeoutMs, signal);
   if (costs.length > 0) budget.charge(Math.max(...costs));
-  else budget.costKnown = false;
+  else if (exit.killed) {
+    budget.charge(cap);
+    budget.upperBound = true;
+  } else budget.costKnown = false;
+  if (exit.killed) throw new KilledError(`the run was killed on purpose, and charged its cap of $${cap}`);
   checkFinished(results, exit, timeoutMs);
   if (budget.remaining <= 0) throw new SpendCapError(`the run ended at the spend cap, $${budget.spent.toFixed(4)} of $${budget.total}`);
 }

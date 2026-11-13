@@ -288,6 +288,17 @@ test("the skill checks for an open run ahead of everything that touches state", 
   assert.match(section, /do not clean state or classify/i);
 });
 
+test("outside Solo an open run is continued through pb status --action, as the Plan Loop and the Stop hook do", () => {
+  const text = skill();
+  const check = text.indexOf("## An Open Run Comes First");
+  const section = text.slice(check, text.indexOf("## State File Mappings"));
+  const printed = section.split("\n").find((line) => line.includes("If it prints a status"));
+  assert.ok(printed, "has a bullet for a printed status");
+  assert.doesNotMatch(printed, /then stop/i, "an open run is not a reason to stop outside Solo");
+  assert.match(printed, /follow `pb status --action`/i);
+  assert.match(printed, /Plan Loop step 1/);
+});
+
 test("Solo: a stage cannot start on a leftover run, and the Stop hook does not drive one", (t) => {
   const root = makeRepo(t);
   classifyAs(root, "config_change");

@@ -42,7 +42,7 @@ git rebase --onto <remote>/<new base> <old base sha> <branch>
 
 Run it yourself with `!`. If the branch was already pushed, the force push is yours too. Then run `pb unit status` again: it records the new base, and when the dependency merged it drops the stacking so the PR targets the base branch. Pairing Buddy does not retarget a PR that is already open; change its base yourself (`gh pr edit --base`).
 
-After a rebase, `pb publish` refuses: the rebased commits are not in the unit record, and the full suite ran at the old HEAD. A new approval at `G:publish` does not clear that. For now, push and open the PR by hand.
+`pb unit status` re-proves the rebased unit: it remaps the unit's commits by patch-id, refuses a merge commit, a changed commit or an extra commit, and re-runs the full suite at the new HEAD. Rebase (do not merge) and keep each commit's change as it was. If the suite fails, `pb publish` refuses until a full suite passes at HEAD. The earlier approval at `G:publish` no longer holds after a rebase, so it is asked again.
 
 ### Merge order
 

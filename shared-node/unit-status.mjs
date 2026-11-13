@@ -9,7 +9,7 @@ function rebaseRecipe({ remote, base, from, branch }) {
 
 export class UnitStatusRefused extends Error {}
 
-function refuse(reason) {
+export function refuse(reason) {
   throw new UnitStatusRefused(`${reason}, so a human decides what happens to this unit.`);
 }
 

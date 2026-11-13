@@ -9,6 +9,7 @@ from pathlib import Path
 JS_TEST_FILES = [
     "tests/js/alert-config.test.mjs",
     "tests/js/band-width.test.mjs",
+    "tests/js/claude-run-kill.test.mjs",
     "tests/js/code-command.test.mjs",
     "tests/js/code-config.test.mjs",
     "tests/js/code-router.test.mjs",
@@ -75,6 +76,8 @@ JS_TEST_FILES = [
     "tests/js/pb-cli-safeguards.test.mjs",
     "tests/js/pb-human-legacy.test.mjs",
     "tests/js/pb-human.test.mjs",
+    "tests/js/owner-last-seen.test.mjs",
+    "tests/js/pb-human-adopt.test.mjs",
     "tests/js/pb-plan-next.test.mjs",
     "tests/js/pb-red-green.test.mjs",
     "tests/js/pb-refactor.test.mjs",
@@ -117,6 +120,7 @@ JS_TEST_FILES = [
     "tests/js/smoke-s2.test.mjs",
     "tests/js/smoke-s5.test.mjs",
     "tests/js/smoke-s5-spike.test.mjs",
+    "tests/js/smoke-s6.test.mjs",
     "tests/js/spike-flip.test.mjs",
     "tests/js/spike-repeat.test.mjs",
     "tests/js/spike-setup.test.mjs",
@@ -147,7 +151,9 @@ JS_TEST_FILES = [
     "tests/js/pb-rollback-cap.test.mjs",
     "tests/js/unit-status-rule.test.mjs",
     "tests/js/unit-status.test.mjs",
+    "tests/js/rebase-map.test.mjs",
     "tests/js/stacking-branches-skill.test.mjs",
+    "tests/js/workflow-resume.test.mjs",
 ]
 
 
@@ -169,7 +175,7 @@ def _problem_with_run(files, stdout):
     return None
 
 
-def run_node_tests(files, cwd, timeout=120):
+def run_node_tests(files, cwd, timeout=300):
     command = ["node", "--test", "--test-reporter=tap", *files]
     if not files:
         return _failed(command, "No JS test files listed")

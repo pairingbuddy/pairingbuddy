@@ -23,6 +23,11 @@ function readTextOrNull(path) {
   }
 }
 
+export function bundleHash(stage) {
+  const bundle = readTextOrNull(bundlePath(stage));
+  return bundle === null ? null : sha256(bundle);
+}
+
 // Every script the call supplies, with null for a scriptPath that cannot be read.
 export function suppliedScripts(toolInput, cwd) {
   const scripts = [];
@@ -32,8 +37,8 @@ export function suppliedScripts(toolInput, cwd) {
 }
 
 export function matchesBundle(stage, scripts) {
-  const bundle = readTextOrNull(bundlePath(stage));
-  return bundle !== null && scripts.every((script) => script !== null && sha256(script) === sha256(bundle));
+  const hash = bundleHash(stage);
+  return hash !== null && scripts.every((script) => script !== null && sha256(script) === hash);
 }
 
 const pluginName = (name) => (typeof name === "string" && name.startsWith(PREFIX) ? name.slice(PREFIX.length) : undefined);

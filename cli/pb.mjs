@@ -10,13 +10,14 @@ import { isDeepStrictEqual } from "node:util";
 import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
-import { KINDS, LEDGER_VERSION, isPublishRun, isRefreshRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
+import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
-import { PlanRefused, boxLabelsUnder, planFile, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
-import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, refreshPrReason, targetBranch, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
+import { PlanRefused, boxesUnder, planFile, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
+import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, refreshPrReason, targetBranch, untickedTasks, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
+import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { SPIKE_SETUP_FILE, abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
@@ -158,8 +159,11 @@ function assertPublishable(root) {
   if (!Array.isArray(unit?.tasks)) throw new Refusal(`${join(runDir, "unit.json")} has no tasks list, so no publish run was opened`);
   if (existsSync(join(runDir, "task"))) refuseRunOpen(join(runDir, "task"), "publish");
   if (unit.tasks.length === 0) throw new Refusal(`the unit has no ended task, so there is nothing to publish yet and no publish run was opened. End the task with ${pbCommand("task end")} first`);
-  const unrecorded = recordedTasks({ unit, ...unitPlan(root, unit) });
+  const facts = unitPlan(root, unit);
+  const unrecorded = recordedTasks({ unit, ...facts });
   if (unrecorded !== null) throw new Refusal(`${unrecorded}, so no publish run was opened. End each task with ${pbCommand("task end")} first`);
+  const unticked = untickedTasks(facts);
+  if (unticked !== null) throw new Refusal(`${unticked}, so no publish run was opened`);
 }
 
 // Claims run/task and writes the first ledger; a failed write removes the claim.
@@ -179,7 +183,7 @@ function claimRun({ root, kind, taskType, task, configHash, plan = { path: "", t
     // runId is the pb run identity, set once here; stage.runId is the separate workflow run id per stage attempt.
     writeLedger(join(dir, "ledger.json"), {
       v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType, runId: randomUUID(),
-      owner: { sessionId: null, lastSeen: null },
+      owner: UNOWNED,
       task, plan, configHash, gitConfigHash: fileHash(gitConfigPath(root)),
       policy: { mode: "", source: "" },
       stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null },
@@ -210,11 +214,17 @@ function planTask(plan) {
   };
 }
 
-// Reads the plan and steps it, refusing on format problems and on a stop: the shared start of run open and pb plan next.
-function steppedPlan(plan) {
+// Reads the plan and steps it, refusing on format problems; the stop is returned for the caller to act on.
+function planStepOf(plan) {
   const { root, units, problems, context } = readPlanContext(plan);
   refusePlanProblems(problems);
   const { next, stop } = planStep(units, context);
+  return { root, units, context, next, stop };
+}
+
+// planStepOf that also refuses on a stop: the shared start of run open and unit open.
+function steppedPlan(plan) {
+  const { root, units, context, next, stop } = planStepOf(plan);
   if (stop) throw new Refusal(planStopMessage(root, plan, stop));
   return { next, context, units };
 }
@@ -388,15 +398,16 @@ function applyRefresh(root) {
 
 const approveCommand = (root, gate) => humanCommand(root, `approve ${gate}`);
 
-function runLedgerPath() {
+function runLedgerPath(message = "no run here") {
   const root = findRunRoot(process.cwd());
-  const path = root === null ? null : join(root, ".pairingbuddy", "run", "task", "ledger.json");
-  if (path === null || !existsSync(path)) throw new Refusal("no run here");
+  const path = root === null ? null : ledgerPathOf(root);
+  if (path === null || !existsSync(path)) throw new Refusal(message);
   return { root, path };
 }
 
 const fixDiffPathOf = (root) => join(ensureRunRoot(root), "fix.diff");
 const taskDirOf = (root) => join(root, ".pairingbuddy", "run", "task");
+const ledgerPathOf = (root) => join(taskDirOf(root), "ledger.json");
 const artifactsDirOf = (root) => join(taskDirOf(root), "artifacts");
 const notesDirOf = (root) => join(taskDirOf(root), "notes");
 const reportPathOf = (root) => join(taskDirOf(root), "report.json");
@@ -554,6 +565,32 @@ function humanAbandon(args) {
   const names = abandonRun(runDir);
   if (names.length === 0) return { ok: true, result: "nothing-to-abandon", removed: [], message: "nothing to abandon: no unit or task is open" };
   return { ok: true, result: "abandoned", removed: names.map((name) => `.pairingbuddy/run/${name}`) };
+}
+
+// An owner seen within this many minutes is presumed still working, so adopting its run needs the human to confirm.
+const ADOPT_RECENT_MINUTES = 10;
+
+const minutesSince = (lastSeen) => Math.floor(ownerAgeMs(lastSeen) / 60_000);
+
+// Refuses when no run is open; a run with no owner has nothing to adopt, so that is an ok no-op.
+function humanAdopt(args) {
+  if (args.some((arg) => arg !== "--force")) throw new UsageError("usage: pb human adopt [--force]");
+  const force = args.includes("--force");
+  const { root, path } = runLedgerPath("no run is open: nothing to adopt");
+  const { owner } = readLedger(path);
+  if (owner?.sessionId == null) return { ok: true, adopted: false, message: "the run has no owner: nothing to adopt" };
+  const minutesAgo = minutesSince(owner.lastSeen);
+  if (!force && minutesAgo < ADOPT_RECENT_MINUTES) {
+    const unit = minutesAgo === 1 ? "minute" : "minutes";
+    throw new Refusal(`the run's owner session ${owner.sessionId} was active ${minutesAgo} ${unit} ago (at ${owner.lastSeen}); if that session is still working, close it first; then type the same line with --force: ${humanCommand(root, "adopt --force")}`);
+  }
+  let failedStage = null;
+  updateLedger(path, (ledger) => {
+    const result = isStageActive(ledger) ? failActiveStage(root, ledger, { keepStop: true }) : null;
+    if (result) failedStage = { stage: result.failed.stage, attempt: result.failed.attempt, nextAttempt: result.failed.nextAttempt };
+    return { ...(result?.ledger ?? ledger), owner: UNOWNED };
+  });
+  return { ok: true, adopted: true, previousOwner: owner.sessionId, failedStage };
 }
 
 // Records that the human has seen this task's config diff. It lives in the task's ledger, so it goes with the task.
@@ -1173,6 +1210,15 @@ function withStopCleared(ledger) {
   return { ...ledger, stop: null, stages: ledger.stages.map((entry) => (entry.name === name ? { ...entry, clearedStop } : entry)) };
 }
 
+// Closes the active stage as failed, clears any stop unless keepStop, and says which attempt failed and what the next one is.
+function failActiveStage(root, ledger, { keepStop = false } = {}) {
+  const { name, attempt } = ledger.stage;
+  assertStageActive(ledger, "fail");
+  const clearedStop = keepStop ? null : (ledger.stop?.reason ?? null);
+  const closed = closeStage(ledger, FAILED_STATUS, unknownSpend(returnsAt(artifactsDirOf(root), ledger.stage).length), clearedStop === null ? {} : { clearedStop });
+  return { ledger: keepStop ? closed : { ...closed, stop: null }, failed: { stage: name, attempt, nextAttempt: nextAttempt(closed, name), clearedStop } };
+}
+
 function stageFail(args) {
   assertNoArgs(args, "stage fail");
   const { root, path } = runLedgerPath();
@@ -1184,11 +1230,9 @@ function stageFail(args) {
       failed = { stage: name, attempt, nextAttempt: null, clearedStop: ledger.stop.reason };
       return withStopCleared(ledger);
     }
-    assertStageActive(ledger, "fail");
-    const clearedStop = ledger.stop?.reason ?? null;
-    const closed = closeStage(ledger, FAILED_STATUS, unknownSpend(returnsAt(artifactsDirOf(root), ledger.stage).length), clearedStop === null ? {} : { clearedStop });
-    failed = { stage: name, attempt, nextAttempt: nextAttempt(closed, name), clearedStop };
-    return { ...closed, stop: null };
+    const result = failActiveStage(root, ledger);
+    failed = result.failed;
+    return result.ledger;
   });
   return { ok: true, ...failed };
 }
@@ -1264,13 +1308,37 @@ function planStopMessage(root, plan, { reason, unit, tasks, title, body, humanLe
   return `unit "${unit}" is done but not published. Nothing was written: publish it with ${pbCommand("run open --kind publish")}`;
 }
 
+// The run open in this repo, if any: its kind and the path and task title of the plan it works on; null when no run is open.
+function openRunOf(root) {
+  const path = ledgerPathOf(root);
+  if (!existsSync(path)) return null;
+  const ledger = readLedger(path);
+  return { kind: ledger.kind, title: ledger.plan?.title ?? "", planPath: ledger.plan?.path ?? "" };
+}
+
+// Refuses when a code run of this plan is open on a task other than the plan's next one.
+function assertOpenRunTakes(open, next, planPath) {
+  if (open?.kind === "code" && open.planPath === planPath && open.title !== next?.title) {
+    throw new Refusal(`a code run of this plan is open for "${open.title}", but ${next ? `the plan's next task is "${next.title}"` : "the plan has no task left"}. Nothing was written: the open run must be finished, or the human abandons it`);
+  }
+}
+
 // Reads the plan under the repo toplevel and reports its units, next task and format problems. Writes nothing.
 function planNext(args) {
   const paths = args.filter((a) => !a.startsWith("-"));
   const dryRun = args.includes("--dry-run");
   if (paths.length !== 1 || args.some((a) => a.startsWith("-") && a !== "--dry-run")) throw new UsageError("usage: pb plan next <plan.md> [--dry-run]");
   const [plan] = paths;
-  if (!dryRun) return { ok: true, plan, next: steppedPlan(plan).next };
+  if (!dryRun) {
+    const { root, context, next, stop } = planStepOf(plan);
+    const open = openRunOf(root);
+    const openRun = open && { kind: open.kind, title: open.title };
+    // An open publish run on a unit that is done but unpublished is what to resume: the stop is data, not a refusal.
+    if (stop?.reason === "unpublished" && open?.kind === "publish") return { ok: true, plan, next: null, stop, openRun };
+    if (stop) throw new Refusal(planStopMessage(root, plan, stop));
+    assertOpenRunTakes(open, next, context.plan);
+    return { ok: true, plan, next, ...(openRun && { openRun }) };
+  }
   const { root, units, problems, context } = readPlanContext(plan);
   const { next, stop } = planStep(units, context);
   const states = unitStates(units, context);
@@ -1426,14 +1494,16 @@ function taskEnd(args) {
 // The commits past the unit's base, oldest first. One rule for "nothing to publish", in gate eval and in pb publish.
 const unitCommits = (root, unit) => runGit(root, ["rev-list", "--reverse", `${unit.baseSha}..HEAD`]).split("\n").filter(Boolean);
 
-// The labels of the plan boxes under the unit's heading. planBoxes is null with no plan, no heading to go by, or no such
-// heading; planProblem says when the plan cannot be read.
+// The labels of the plan boxes under the unit's heading, and planUnticked, the unticked [HUMAN] ones (pb task end ticks
+// an agent box, a person ticks a human one). Both are null with no plan, no heading to go by, or no such heading;
+// planProblem says when the plan cannot be read.
 function unitPlan(root, unit) {
-  if (typeof unit.plan !== "string" || unit.plan === "" || typeof unit.unit !== "string" || unit.unit === "") return { planBoxes: null, planProblem: null };
+  if (typeof unit.plan !== "string" || unit.plan === "" || typeof unit.unit !== "string" || unit.unit === "") return { planBoxes: null, planUnticked: null, planProblem: null };
   try {
-    return { planBoxes: boxLabelsUnder(readFileSync(join(root, unit.plan), "utf8"), unit.unit), planProblem: null };
+    const boxes = boxesUnder(readFileSync(join(root, unit.plan), "utf8"), unit.unit);
+    return { planBoxes: boxes?.map(({ label }) => label) ?? null, planUnticked: boxes?.filter(({ label, ticked }) => !ticked && isHumanTitle(label)).map(({ label }) => label) ?? null, planProblem: null };
   } catch (e) {
-    return { planBoxes: null, planProblem: `the plan ${unit.plan} cannot be read: ${e.code ?? e.message}` };
+    return { planBoxes: null, planUnticked: null, planProblem: `the plan ${unit.plan} cannot be read: ${e.code ?? e.message}` };
   }
 }
 
@@ -1651,9 +1721,9 @@ function flagValue(args, flag) {
 }
 
 // One runner for git and gh. `context` says what was reached and what to do next, and is appended to the failure.
-function run(cwd, command, args, { context = "", input, trim = true, env } = {}) {
+function run(cwd, command, args, { context = "", input, trim = true, env, maxBuffer } = {}) {
   try {
-    const out = execFileSync(command, args, { cwd, encoding: "utf8", input, env: env === undefined ? process.env : { ...process.env, ...env }, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
+    const out = execFileSync(command, args, { cwd, encoding: "utf8", input, env: env === undefined ? process.env : { ...process.env, ...env }, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"], ...(maxBuffer === undefined ? {} : { maxBuffer }) });
     return trim ? out.trim() : out;
   } catch (e) {
     const why = String(e.stderr ?? "").trim() || e.message;
@@ -1701,29 +1771,73 @@ function renderBranchOrRefuse(template, values) {
 }
 
 // Fetches the remote, then applies the pure D18 rule to the unit's base. A failed fetch or a base gone from the remote is a refusal.
-// A moved or merged base is a refusal carrying the recipe the human types; a reconciled status rewrites run/unit.json,
-// the one write this verb makes.
-function unitStatus() {
+// A moved or merged base is a refusal carrying the recipe the human types. A reconciled status first remaps the unit's
+// commit and task head shas onto the rebased range (refusing when that cannot be done, before anything runs), then runs
+// the full suite at HEAD when the unit has tasks, and writes run/unit.json once, with the rebaseSuite record.
+// A failed suite is recorded in that write and then refused.
+async function unitStatus() {
   const root = toplevel();
   const unit = readUnitOrRefuse(root);
   const gitConfig = loadGitConfigOrRefuse(root);
   const result = baseStatusFor(root, unit, gitConfig);
   refuseRebaseNeeded(unit, result);
-  if (result.status === "reconciled") writeJsonAtomic(unitPathOf(root), reconciledUnit(unit, result));
   if (result.status === "current") return { ok: true, status: "current", base: unit.base, baseSha: unit.baseSha };
-  return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack };
+  const hasTasks = unit.tasks.length > 0;
+  const unitAfterRemap = hasTasks ? remappedUnit(root, unit, result) : unit;
+  const suite = hasTasks ? await rebaseSuiteOf(root, unit) : null;
+  const rebaseSuite = suite === null ? {} : { rebaseSuite: suite.rebaseSuite };
+  writeJsonAtomic(unitPathOf(root), { ...reconciledUnit(unitAfterRemap, result), ...rebaseSuite });
+  // The failed run is evidence, so it lands in the unit before the refusal.
+  if (suite !== null && !suite.rebaseSuite.passed) {
+    throw new Refusal(`the full suite failed at HEAD ${suite.rebaseSuite.head.slice(0, 7)} after the rebase: exit codes ${suite.exitCodes.join(", ")}. pb publish refuses until a full suite passes at HEAD; a new task in the unit can fix it`);
+  }
+  return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack, ...rebaseSuite };
+}
+
+// The patch-id of a commit's change.
+// A large diff must not hit the default 1 MB buffer, so the diff is read with a generous maxBuffer.
+const DIFF_MAX_BUFFER = 1024 * 1024 * 1024;
+function patchIdOf(root, sha) {
+  const context = "nothing was written";
+  const diff = runGit(root, ["diff-tree", "-p", "--root", sha], { trim: false, maxBuffer: DIFF_MAX_BUFFER, context });
+  const out = runGit(root, ["patch-id", "--stable"], { input: diff, context });
+  return out.split(/\s+/)[0];
+}
+
+// Runs a pure shared-node rule; its own refusals become Refusals.
+function refusingAs(rule) {
+  try {
+    return rule();
+  } catch (e) {
+    if (e instanceof UnitStatusRefused) throw new Refusal(e.message);
+    throw e;
+  }
+}
+
+// The unit's commits and task head shas moved onto the rebased range; a mapping that cannot be made is a refusal.
+function remappedUnit(root, unit, result) {
+  const gitLines = (args) => runGit(root, args, { context: "nothing was written" }).split("\n").filter(Boolean);
+  const range = `${result.baseSha}..HEAD`;
+  const rangeCommits = gitLines(["rev-list", "--reverse", range]).map((sha) => ({ sha, patchId: patchIdOf(root, sha) }));
+  const merges = gitLines(["rev-list", "--merges", range]);
+  const recorded = unit.commits.map((sha) => ({ sha, patchId: patchIdOf(root, sha) }));
+  const mapping = refusingAs(() => remapCommits({ recorded, range: rangeCommits, merges }));
+  const remap = (sha) => mapping[sha] ?? (sha === unit.baseSha ? result.baseSha : sha);
+  return { ...unit, commits: unit.commits.map(remap), tasks: unit.tasks.map((task) => ({ ...task, headSha: remap(task.headSha) })) };
+}
+
+// The full suite at the rebased HEAD, recorded as passed and the head it ran at.
+async function rebaseSuiteOf(root, unit) {
+  const plans = fullSuitePlans(readTestConfig(root, unit.configHash));
+  const record = await suiteRecord(plans, root, { name: "rebase", attempt: 1 });
+  return { rebaseSuite: { passed: record.passed, head: headOf(root) }, exitCodes: record.runs.map(({ exitCode }) => exitCode) };
 }
 
 // Fetches, reads the inputs and applies the pure rule; the rule's own refusals become Refusals.
 function baseStatusFor(root, unit, gitConfig) {
   fetchOrRefuse(root, gitConfig.remote);
   const inputs = statusInputsOf(root, unit, gitConfig);
-  try {
-    return baseStatusOf({ unit, remote: gitConfig.remote, ...inputs });
-  } catch (e) {
-    if (e instanceof UnitStatusRefused) throw new Refusal(e.message);
-    throw e;
-  }
+  return refusingAs(() => baseStatusOf({ unit, remote: gitConfig.remote, ...inputs }));
 }
 
 // Publish goes on only when the base is current; it never writes the unit, so a reconciled result is sent to pb unit status.
@@ -1907,7 +2021,7 @@ function gitDoctor() {
 // The title is the one the tap filed in the draft artifact of the current pr-draft attempt, found through the ledger
 // (the tap writes no separate title file).
 function currentDraftTitle(root) {
-  const { stage } = readLedger(join(taskDirOf(root), "ledger.json"));
+  const { stage } = readLedger(ledgerPathOf(root));
   if (stage.name !== "pr-draft") throw new Refusal(`the current stage is ${stage.name || "none"}, not pr-draft, so there is no draft to lint`);
   return readDraft(root, stage).title;
 }
@@ -1974,7 +2088,7 @@ function snapshot(args) {
   const paths = buildCorpus(insideRepo(root, [...inRepoDocs(root), ...conventionPaths(root), "CLAUDE.md", ...nearest]), (p) => existsSync(join(root, p)));
   const runDir = join(root, ".pairingbuddy", "run");
   replaceFiles([[join(runDir, SUBJECT_DIFF_FILE), diff], [join(runDir, CHANGED_FILE), jsonText(changed)], [join(runDir, CORPUS_FILE), jsonText({ paths })]]);
-  const ledgerPath = join(taskDirOf(root), "ledger.json");
+  const ledgerPath = ledgerPathOf(root);
   const ledger = existsSync(ledgerPath) ? readLedger(ledgerPath) : null;
   const taskType = ledger === null ? null : ledger.taskType;
   return { ok: true, paths, taskType, rolledBack: ledger === null ? 0 : rolledBackCount(ledger, ledger.stage.name) };
@@ -2221,7 +2335,7 @@ export const VERBS = {
   rollback,
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
-  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
+  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
   "plan next": planNext, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 

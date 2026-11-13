@@ -180,3 +180,34 @@ describe("publishSteps: the coordination comment", () => {
     assert.deepEqual(stepNames(plan), ["push", "set-upstream", "open-pr", "plan-line", "delete-refs", "close"]);
   });
 });
+
+// Scenario: publish-rebase-suite-evidence. staleFullSuite treats unit.rebaseSuite at exactly HEAD as the full-suite evidence.
+describe("publish-rebase-suite-evidence", () => {
+  test("rebase-suite-at-head-stands-in-for-last-task", () => {
+    const OTHER = "c".repeat(40);
+    const factsWith = (rebaseSuite) => facts({ unit: { ...facts().unit, rebaseSuite, tasks: [task({ fullSuite: { passed: true, head: OLD } })] } });
+
+    const passedAtHead = evidenceRefusals(factsWith({ passed: true, head: HEAD })).join("\n");
+    const failedAtHead = evidenceRefusals(factsWith({ passed: false, head: HEAD })).join("\n");
+    const atOtherHead = evidenceRefusals(factsWith({ passed: true, head: OTHER })).join("\n");
+
+    assert.doesNotMatch(passedAtHead, /full.suite/i, "a passed rebaseSuite at HEAD gives no full-suite refusal");
+    assert.match(failedAtHead, /full suite failed at/, "a failed rebaseSuite at HEAD says the full suite failed at HEAD");
+    assert.ok(failedAtHead.includes(HEAD.slice(0, 7)), "the refusal names HEAD");
+    assert.ok(failedAtHead.includes("after the rebase"), "the refusal says it was after the rebase");
+    assert.ok(atOtherHead.includes(OLD.slice(0, 7)), "a rebaseSuite at another head falls back to the last-task message");
+  });
+});
+
+// Scenario: unticked-plan-box-blocks-publish. A unit with an unticked [HUMAN] box is not done.
+describe("unticked-plan-box-blocks-publish", () => {
+  test("publish-steps-refuses-unticked-human-box", () => {
+    const unticked = "Task 2: [HUMAN] Check the fix by hand";
+
+    const plan = publishSteps(facts({ planUnticked: [unticked] }));
+
+    assert.deepEqual(plan.steps, [], "an unticked [HUMAN] box plans no steps");
+    assert.match(plan.refusals.join("\n"), /Task 2: \[HUMAN\] Check the fix by hand/, "the refusal names the unticked task");
+    assert.match(plan.refusals.join("\n"), /ticked by the human/, "the refusal says a [HUMAN] task is ticked by the human once done");
+  });
+});

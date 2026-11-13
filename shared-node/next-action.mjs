@@ -74,20 +74,21 @@ function unreadable(root, e) {
 export function readRun(pluginRoot, root) {
   const taskDir = join(root, ".pairingbuddy", "run", "task");
   const ledgerPath = join(taskDir, "ledger.json");
-  if (!existsSync(ledgerPath)) return { root, taskDir, running: false, owner: null, status: null, action: null };
+  if (!existsSync(ledgerPath)) return { root, taskDir, running: false, owner: null, lastSeen: null, status: null, action: null };
   try {
     const contract = loadStages(pluginRoot);
     const ledger = readLedger(ledgerPath);
     const status = runStatus(contract, ledger, join(taskDir, "artifacts"));
-    return { root, taskDir, running: isRunning(ledger), owner: ledger.owner.sessionId, status, action: nextAction(contract, ledger, root, pluginRoot) };
+    return { root, taskDir, running: isRunning(ledger), owner: ledger.owner.sessionId, lastSeen: ledger.owner.lastSeen, status, action: nextAction(contract, ledger, root, pluginRoot) };
   } catch (e) {
-    return { root, taskDir, running: false, owner: null, status: null, action: unreadable(root, e) };
+    return { root, taskDir, running: false, owner: null, lastSeen: null, status: null, action: unreadable(root, e) };
   }
 }
 
 // What SessionStart and the compact hook inject.
-export function runReport({ root, status, action }) {
+export function runReport({ root, owner, lastSeen, status, action }, sessionId) {
   const lines = [`A Pairing Buddy run is open at ${root}.`];
+  if (owner && sessionId && owner !== sessionId) lines.push(`The run belongs to session ${owner}, last seen ${lastSeen}; this session must not drive it. To move it here the human types ${humanCommand(root, "adopt")}.`);
   if (status !== null) lines.push(`pb status: ${JSON.stringify(status)}`);
   lines.push(`Next action: ${action ?? "No task is open."}`);
   return lines.join("\n");

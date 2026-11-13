@@ -117,3 +117,38 @@ export function pushFromSecondClone(repo, file) {
     rmSync(clone, { recursive: true, force: true });
   }
 }
+
+// A unit open on a repo with a bare origin, with two commits on its branch (the first adds fake.mjs, the test-config runner,
+// so the tree stays clean), unit.json recording them and two tasks (headSha: the old baseSha, then the second commit) whose
+// full suite passed at the old HEAD, then origin/main moved and the branch rebased onto it with `git rebase --onto`, as the
+// human would (reconcile: "merge" merges origin/main into the branch instead). secondFileContent is the content of the second
+// commit's file. suiteExitCode is the exit code of fake.mjs, so the full suite at the new HEAD passes (0) or fails.
+// Returns the repo, the unit.json path, the unit as written before the rebase (unitBefore) and the old and new shas.
+// `pb unit status` has not run yet.
+export function rebasedUnitRepo({ suiteExitCode = 0, reconcile = "rebase", secondFileContent = "b\n" } = {}) {
+  const repo = makeRepo({ openTask: false, remote: true });
+  const git = (...args) => execFileSync("git", args, { cwd: repo.dir, env: env(), encoding: "utf8" }).trim();
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
+  if (opened.code !== 0) throw new Error(`unit open failed: ${opened.stderr}${opened.stdout}`);
+  const unitFile = join(repo.dir, ".pairingbuddy", "run", "unit.json");
+  const unit = JSON.parse(readFileSync(unitFile, "utf8"));
+  const oldBase = unit.baseSha;
+  const commit = (file, content) => {
+    writeFileSync(join(repo.dir, file), content);
+    git("add", file);
+    git("commit", "-q", "-m", `add ${file}`);
+    return git("rev-parse", "HEAD");
+  };
+  const oldFirst = commit("fake.mjs", `process.exit(${suiteExitCode});\n`);
+  const oldSecond = commit("b.txt", secondFileContent);
+  const suite = { passed: true, head: oldSecond };
+  const task = (title, headSha) => ({ title, stages: [], gateSources: {}, lenses: {}, headSha, reportSummary: null, blocking: [], attempts: {}, lessons: [], spend: null, fullSuite: suite });
+  const tasks = [task("first", oldBase), task("second", oldSecond)];
+  const unitBefore = { ...unit, tasks, commits: [oldFirst, oldSecond] };
+  writeFileSync(unitFile, `${JSON.stringify(unitBefore, null, 2)}\n`);
+  const newMain = pushFromSecondClone(repo, "other.txt");
+  git("fetch", "-q", "origin");
+  if (reconcile === "merge") git("merge", "--no-ff", "-q", "-m", "merge origin/main", "origin/main");
+  else git("rebase", "--onto", "origin/main", oldBase, unit.branch);
+  return { repo, unitFile, unitBefore, branch: unit.branch, oldBase, oldFirst, oldSecond, newMain, newFirst: git("rev-parse", "HEAD~1"), newSecond: git("rev-parse", "HEAD") };
+}

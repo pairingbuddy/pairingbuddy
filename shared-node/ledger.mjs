@@ -23,6 +23,15 @@ export const ROLLBACK_KINDS = ["commit", "red", "artifact", "repeated"];
 // The one predicate for a publish run: kind and taskType agree (the validator holds them to it), so either says it.
 export const isPublishRun = (ledger) => ledger.kind === "publish";
 export const isRefreshRun = (ledger) => ledger.kind === "refresh";
+
+// The ledger's "no owner" shape: a run nobody has claimed yet.
+export const UNOWNED = { sessionId: null, lastSeen: null };
+
+// How long ago the owner was last seen, in ms. A missing or unparseable lastSeen (null, for a claim not yet seen) counts as infinitely long ago.
+export function ownerAgeMs(lastSeen) {
+  const age = Date.now() - Date.parse(lastSeen);
+  return Number.isNaN(age) ? Infinity : age;
+}
 const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
@@ -151,8 +160,8 @@ export function validateLedger(ledger) {
       case "stage":
         checkObject(ledger.stage, "stage", {
           name: [isString, "a string"], status: [isString, "a string"], runId: [isNullableString, "a string or null"], attempt: [isCount, "a non-negative integer"],
-          startedAt: [isNullableTimestamp, "an ISO 8601 timestamp or null"], transcriptDir: [isNullableString, "a string or null"],
-        }, errors, { optional: ["startedAt", "transcriptDir"] });
+          startedAt: [isNullableTimestamp, "an ISO 8601 timestamp or null"], transcriptDir: [isNullableString, "a string or null"], scriptHash: [isNullableString, "a string or null"],
+        }, errors, { optional: ["startedAt", "transcriptDir", "scriptHash"] });
         break;
       case "stages":
         if (Array.isArray(ledger.stages)) {

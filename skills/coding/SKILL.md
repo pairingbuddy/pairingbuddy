@@ -12,10 +12,10 @@ Orchestrates the TDD workflow by invoking specialized agents via the Task tool. 
 Before anything else, run `pb status --action`. `<root>` is the plugin root the command passed. With none, it is two levels above this skill's base directory. `pb` here and below means `node <root>/cli/pb.mjs`.
 
 - If it refuses with `no run here`, no run is open: go on to the workflow.
-- If it prints a status, a run is open. Do not clean state or classify, do not curate guidance, and do not start the new task. Cleanup would delete what the run still needs. Report the status's `action`, which is the next action, and the new task you did not start, then stop.
+- If it prints a status, a run is open. Do not clean state or classify, do not curate guidance, and do not start the new task. Cleanup would delete what the run still needs. Finish that run first: follow `pb status --action` as Plan Loop step 1 says (a stranded stage: `pb stage fail`, then restart it at `nextAttempt`). For a plan, then go on with the Plan Loop. Otherwise report the finished run and the new task you did not start.
 - If it refuses any other way, a run is there and cannot be read. Report the refusal and stop.
 
-Solo takes the same check: no stage starts under Solo, so a run left open stops it here.
+Solo takes the same check but does not continue the run: no stage starts under Solo, so a run left open stops it here. Report the status's `action` and stop.
 
 ## CRITICAL: Follow the Workflow Exactly
 
@@ -374,8 +374,9 @@ After each refactor cycle:
 Outside Solo, `_run_plan_loop(plan_path)` runs a plan one task at a time:
 
 1. Run `pb plan next <plan>` first. It says what to do next, or refuses. When it succeeds with no next task, the plan is done: report that and stop the loop.
+   When it shows `openRun`, a run is already open: do not open a unit or a run, and leave the state files as they are. Follow `pb status --action` to finish that run (a stranded or killed stage: `pb stage fail`, then restart the stage at `nextAttempt`, which keeps the stage's fix attempts and notes), then continue at step 6 (code run) or 7 (publish run). A session that SessionStart says does not own the run never drives it: show the human the adopt line instead.
 2. A unit is open when `.pairingbuddy/run/unit.json` exists. If no unit is open, run `pb unit open` with `--type <type> --slug <slug> --plan <plan.md>` (router step 1: a type you guess from the task and a short kebab-case slug made from the unit name); `--plan` names the unit and stacks it on its `Depends on` unit's PR when that is open. When it refuses with a `!` command, stop and show the human that command. A refusal that names G:next-unit (reason stack-depth) or a refused dependency (PR closed without merging, state unknown, gh failed) also ends the loop: show it to the human.
-   When a unit is already open before a task, run `pb unit status` first. A refusal (a moved or merged base with its rebase recipe, or any other refusal) ends the loop: show it to the human with the recipe.
+   When a unit is already open before a task, run `pb unit status` first. A refusal (a moved or merged base with its rebase recipe, or any other refusal) ends the loop: show it to the human with the recipe. After the human's rebase, `pb unit status` re-proves the unit (remaps commits by patch-id, refuses a merge, a changed or extra commit, and re-runs the full suite at the new HEAD), so the publish run can go ahead.
 3. Run the curating-guidance skill in the main context before each task. Then clean the state files with `_cleanup_state_files()`.
 4. Run `pb run open --kind code --plan <plan>`, which takes the next task itself, so the session does not write `task.json` for it.
 5. Follow `pb status --action` and `pb gate eval` through the stages and G:task-end as router steps 3-4.

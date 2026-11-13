@@ -436,3 +436,90 @@ describe("pb-plan-next-dry-run-depends-on", () => {
     );
   });
 });
+
+// Scenario plan-next-open-run.
+describe("plan-next-open-run", () => {
+  const ONE_TASK_PLAN = ["## Tasks", "", "### Tracer 1: Skeleton", "", "- [ ] **Only task**", "", "  Do it.", ""].join("\n");
+
+  // With run/task/ledger.json for a code run whose plan.title equals the plan's next task title, pb plan next exits ok and its output carries openRun { kind: "code", title } alongside next
+  test("plan-next-open-code-run-matching-title-reports-open-run", () => {
+    const repo = makeRepo({ ledger: { kind: "code", plan: { path: "docs/plan.md", title: "Only task" } } });
+    writePlan(repo, ONE_TASK_PLAN);
+
+    const result = pb(repo, "plan", "next", "docs/plan.md");
+
+    assert.equal(result.code, 0, `exit code (stderr: ${result.stderr})`);
+    const out = JSON.parse(result.stdout);
+    assert.deepEqual(out.openRun, { kind: "code", title: "Only task" }, "openRun names the open run's kind and plan title");
+    assert.equal(out.next.title, "Only task", "next is still reported alongside openRun");
+  });
+
+  test("plan-next-open-code-run-mismatched-title-refuses", () => {
+    const repo = makeRepo({ ledger: { kind: "code", plan: { path: "docs/plan.md", title: "Renamed task" } } });
+    writePlan(repo, ONE_TASK_PLAN);
+    const before = snapshot(repo.dir);
+
+    const result = pb(repo, "plan", "next", "docs/plan.md");
+
+    assert.equal(result.code, 1, `exit code (stderr: ${result.stderr})`);
+    assert.doesNotMatch(result.stderr, /unexpected failure/, "a deliberate refusal, not the catch-all");
+    assert.match(result.stderr, /Renamed task/, "stderr names the open run's plan title");
+    assert.match(result.stderr, /Only task/, "stderr names the plan's next task title");
+    assert.deepEqual(snapshot(repo.dir), before, "nothing written: the plan file and run state are unchanged");
+  });
+
+  // A code run of another plan file is not a run of this plan, so its title cannot mismatch: pb plan next does not refuse
+  test("plan-next-open-code-run-of-another-plan-does-not-refuse", () => {
+    const repo = makeRepo({ ledger: { kind: "code", plan: { path: "docs/other.md", title: "Other plan task" } } });
+    writePlan(repo, ONE_TASK_PLAN);
+
+    const result = pb(repo, "plan", "next", "docs/plan.md");
+
+    assert.equal(result.code, 0, `exit code (stderr: ${result.stderr})`);
+    const out = JSON.parse(result.stdout);
+    assert.equal(out.openRun.title, "Other plan task", "openRun names the open run");
+    assert.equal(out.next.title, "Only task", "next is the plan's next task");
+  });
+
+  // A code run with no plan at all is not a run of this plan, so its title cannot mismatch: pb plan next does not refuse
+  test("plan-next-open-code-run-without-plan-does-not-refuse", () => {
+    const repo = makeRepo({ ledger: { kind: "code", plan: { path: "", title: "" } } });
+    writePlan(repo, ONE_TASK_PLAN);
+
+    const result = pb(repo, "plan", "next", "docs/plan.md");
+
+    assert.equal(result.code, 0, `exit code (stderr: ${result.stderr})`);
+    assert.equal(JSON.parse(result.stdout).next.title, "Only task", "next is the plan's next task");
+  });
+
+  test("plan-next-open-publish-run-with-unit-done-unpublished-returns-ok", () => {
+    const repo = makeRepo({ ledger: { kind: "publish", taskType: "publish", plan: { path: "", title: "" } } });
+    writePlan(repo, ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Done", "", "- [x] **One**", "- [x] **Two**", ""].join("\n"));
+    writeUnitJson(repo, "Done", ["One", "Two"]);
+
+    const result = pb(repo, "plan", "next", "docs/plan.md");
+
+    assert.equal(result.code, 0, `exit code (stderr: ${result.stderr})`);
+    const out = JSON.parse(result.stdout);
+    assert.deepEqual(out.openRun, { kind: "publish", title: "" }, "openRun names the open publish run and its empty plan title");
+    assert.equal(out.next, null, "there is no next task");
+    assert.equal(out.stop.reason, "unpublished", "the unit's stop is returned as data");
+    assert.equal(out.stop.unit, "Done", "the stop names the unit");
+  });
+
+  // A publish run is only excused for the unpublished stop: any other stop (a hand-ticked box) still refuses with its message, writing nothing
+  test("plan-next-open-publish-run-does-not-hide-other-stops", () => {
+    const repo = makeRepo({ ledger: { kind: "publish", taskType: "publish", plan: { path: "", title: "" } } });
+    writePlan(repo, ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Half", "", "- [x] **One**", "- [x] **Two**", "- [ ] **Three**", ""].join("\n"));
+    writeUnitJson(repo, "Half", ["One"]);
+    const before = snapshot(repo.dir);
+
+    const result = pb(repo, "plan", "next", "docs/plan.md");
+
+    assert.equal(result.code, 1, `exit code (stdout: ${result.stdout}, stderr: ${result.stderr})`);
+    assert.doesNotMatch(result.stderr, /unexpected failure/, "a deliberate refusal, not the catch-all");
+    assert.match(result.stderr, /Half/, "stderr names the unit");
+    assert.match(result.stderr, /no task record: Two\./, "stderr lists the task ticked without a record");
+    assert.deepEqual(snapshot(repo.dir), before, "nothing written");
+  });
+});

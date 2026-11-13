@@ -16,6 +16,12 @@ export const recordedTasks = ({ unit, planBoxes, planProblem }) => {
   return missing.length === 0 ? null : `the plan has tasks with no task record: ${list(missing)}`;
 };
 
+// Plan boxes under the unit's heading still unticked. A [HUMAN] task is ticked by the human once done, so the unit is not done.
+export const untickedTasks = ({ planUnticked }) => {
+  if (!planUnticked || planUnticked.length === 0) return null;
+  return `the plan has unticked tasks: ${list(planUnticked)}; a [HUMAN] task is ticked by the human once done, so the unit is not done`;
+};
+
 const withoutSafetyNet = ({ unit, safetyNets }) => {
   const unfinished = unit.tasks.filter((task) => !task.stages.some((name) => safetyNets.includes(name)));
   return unfinished.length === 0 ? null : `${list(safetyNets)} did not finish for ${list(unfinished.map((task) => task.title))}`;
@@ -43,9 +49,13 @@ const invalidGateSources = ({ unit }) => {
   return bad.length === 0 ? null : `invalid gate sources: ${list(bad)}`;
 };
 
-// Only the last task's suite can be at HEAD, so only that one is read.
+// A rebase suite recorded at exactly HEAD is the full-suite evidence; otherwise only the last task's suite can be at HEAD, so only that one is read.
 const staleFullSuite = ({ unit, head }) => {
   if (unit.tasks.length === 0) return null;
+  const rebased = unit.rebaseSuite;
+  if (rebased && rebased.head === head) {
+    return rebased.passed === true ? null : `the full suite failed at HEAD ${short(head)} after the rebase; a new task in the unit can fix it`;
+  }
   const suite = unit.tasks.at(-1).fullSuite;
   if (!suite || suite.passed !== true) return "the last task has no passing full-suite result; run pb test --full";
   if (!suite.head) return "the last task has no full-suite result at HEAD; run pb test --full";
@@ -89,7 +99,7 @@ export const BRANCH_CHECKS = [branchUnusable, branchProtected, notOnUnitBranch, 
 
 // The evidence checks, in the order they are reported.
 export const EVIDENCE_CHECKS = [
-  recordedTasks, withoutSafetyNet, invalidGateSources, staleFullSuite, dirtyTree, openBlocking, changedConfig,
+  recordedTasks, untickedTasks, withoutSafetyNet, invalidGateSources, staleFullSuite, dirtyTree, openBlocking, changedConfig,
   staleApproval, unapproved, autoWithoutLensRecord, autoWithFailingLint, unrecordedCommits,
 ];
 
