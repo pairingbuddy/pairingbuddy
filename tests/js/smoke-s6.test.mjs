@@ -180,7 +180,8 @@ test("s6-hand-tick-refusal-accepts-pb-plan-next-refusing-the-ticked-box", () => 
 test("s6-ended-titles-are-the-plan-titles-of-the-task-ends-that-succeeded-in-order", () => {
   const end = (output) => ({ command: "pb task end", output, isError: false });
   const ok = (title) => end(JSON.stringify({ ok: true, removed: "x", plan: { path: s6.PLAN_PATH, title, ticked: true } }));
-  const taskEnds = [ok(s6.TASK_1), end("pb: stage code-tdd is not finished, so the task cannot end"), end(`noise\n${JSON.stringify({ ok: true, removed: "x", plan: null })}`), ok(s6.TASK_3)];
+  const status = JSON.stringify({ ok: true, stage: { name: "code-safety-net", status: "done" } });
+  const taskEnds = [ok(s6.TASK_1), end("pb: stage code-tdd is not finished, so the task cannot end"), end(`noise\n${JSON.stringify({ ok: true, removed: "x", plan: null })}`), end(`${status}\n---\n${ok(s6.TASK_3).output}`)];
 
-  assert.deepEqual(s6.endedTitles(taskEnds), [s6.TASK_1, null, s6.TASK_3], "a refusal is skipped, and a success with no plan reads as null");
+  assert.deepEqual(s6.endedTitles(taskEnds), [s6.TASK_1, null, s6.TASK_3], "a refusal is skipped, a success with no plan reads as null, and another pb call's ok line in the same output is not a task end");
 });

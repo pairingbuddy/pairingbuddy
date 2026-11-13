@@ -199,9 +199,10 @@ export function assertHandTickRefused(refusal) {
   return { refused: TASK_1 };
 }
 
-// The plan title of each `pb task end` that succeeded, in order; null for a success with no plan.
+// The plan title of each `pb task end` that succeeded, in order; null for a success with no plan. A Bash call may chain
+// other pb calls before it, so only an ok line with the `removed` that pb task end prints counts.
 export const endedTitles = (taskEnds) =>
-  taskEnds.flatMap(({ output }) => output.split("\n").map(parsedOrNull).filter((parsed) => parsed?.ok === true).map(({ plan }) => plan?.title ?? null));
+  taskEnds.flatMap(({ output }) => output.split("\n").map(parsedOrNull).filter((parsed) => parsed?.ok === true && "removed" in parsed).map(({ plan }) => plan?.title ?? null));
 
 // ---------- the live run ----------
 
