@@ -44,6 +44,7 @@ Return the result as your StructuredOutput with exactly these fields:
     {
       "rule": "string (rule the finding breaks, may be empty)",
       "severity": "high | medium | low",
+      "kind": "fix-here | risk | drift",
       "claim": "string (what is wrong, one or two sentences, grounded in evidence read)",
       "where": "string (file path with optional line, or the subject item)"
     }

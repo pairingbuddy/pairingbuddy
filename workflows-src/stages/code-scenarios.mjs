@@ -7,6 +7,8 @@ export const meta = { name: 'code-scenarios', description: 'Internal stage, star
 // pb-inline RESULT_SCHEMA contracts/schemas/enumerate-scenarios-and-test-cases-result.schema.json
 // pb-inline LENSES contracts/lenses.json
 // pb-inline LENS_SCHEMA contracts/schemas/lens-result.schema.json
+// pb-inline REFUTER_SCHEMA contracts/schemas/refuter-verdict.schema.json
+// pb-inline STAGES contracts/stages.json
 // pb-inline RUNNER_SCHEMA contracts/schemas/runner-result.schema.json
 
 const missing = missingArgument();
@@ -34,7 +36,11 @@ const prompt = [
 
 const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
-const lensResult = await lensAttack({ stage, attempt: args.attempt, lenses: wiredLenses(LENSES, stage), subject: result, schema: LENS_SCHEMA });
+// The stage's agent cap, as code-tdd counts it: the enumerator is spawned already, and one spawn is kept for the runner.
+const maxAgents = STAGES.stageMaxAgents[stage] ?? STAGES.maxAgents;
+const agentBudget = maxAgents - 1 - 1;
+
+const lensResult = await lensAttack({ stage, attempt: args.attempt, ...wiredLensConfig(LENSES, stage), agentBudget, subject: result, schema: LENS_SCHEMA, refuterSchema: REFUTER_SCHEMA });
 
 const runner = await runCommands(stage, ['stage finish']);
 

@@ -31,15 +31,23 @@ function assertKnownAgent(agentType) {
 
 const KEY_SHAPE = /^[a-z0-9][a-z0-9_-]*\.[a-z0-9][a-z0-9_-]*\.[^.]+\.r\d+\.a\d+$/;
 
-function isLensKey(text) {
-  return typeof text === "string" && KEY_SHAPE.test(text) && parseKey(text).role === "lens";
+const ROLE_AGENT_TYPES = {
+  lens: "pairingbuddy:lens",
+  refuter: "pairingbuddy:refuter",
+  synthesizer: "pairingbuddy:synthesizer",
+};
+
+function isRoleKey(text, role) {
+  return typeof text === "string" && KEY_SHAPE.test(text) && parseKey(text).role === role;
 }
 
-function assertLensAgentType(opts) {
+function assertRoleAgentType(opts) {
   const pbKey = opts.schema?.properties?.pb_key;
   const keys = [...(pbKey?.enum ?? []), ...(pbKey?.const === undefined ? [] : [pbKey.const])];
-  if (keys.some(isLensKey) && opts.agentType !== "pairingbuddy:lens") {
-    throw new Error('A lens call must name agentType "pairingbuddy:lens"');
+  for (const [role, agentType] of Object.entries(ROLE_AGENT_TYPES)) {
+    if (keys.some((key) => isRoleKey(key, role)) && opts.agentType !== agentType) {
+      throw new Error(`A ${role} call must name agentType "${agentType}"`);
+    }
   }
 }
 
@@ -293,7 +301,7 @@ export async function runScript(path, { args, agent, workflow } = {}) {
     agent: async ({ prompt, opts }) => {
       try {
         assertKnownAgent(opts.agentType);
-        assertLensAgentType(opts);
+        assertRoleAgentType(opts);
         if (opts.schema !== undefined) assertValidSchema(opts.schema);
       } catch (e) {
         fail(e.message);

@@ -14,6 +14,7 @@ export default {
   "newPathAgents": [
     "apply-config-change",
     "lens",
+    "refuter",
     "runner"
   ],
   "gateClasses": {

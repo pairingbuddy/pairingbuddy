@@ -226,6 +226,23 @@ test("lens-call-with-lens-agent-type-accepted", async () => {
   assert.deepEqual(seen, ["p"], "the lens call reaches the responder");
 });
 
+for (const role of ["refuter", "synthesizer"]) {
+  const keySchema = JSON.stringify({ type: "object", properties: { pb_key: { type: "string", enum: [`code-review.${role}.${role === "refuter" ? "f-1" : "-"}.r1.a1`] } } });
+  const callWith = (agentType) => `await agent("p", { ${agentType ? `agentType: "${agentType}", ` : ""}schema: ${keySchema} });`;
+
+  test(`${role}-call-needs-its-own-agent-type`, async () => {
+    const seen = [];
+    const agent = async (prompt) => (seen.push(prompt), {});
+
+    await assert.rejects(run(callWith(undefined), { agent }), new RegExp(`${role}.*agentType`, "i"));
+    await assert.rejects(run(callWith("pairingbuddy:curate-guidance"), { agent }), new RegExp(`${role}.*agentType`, "i"));
+    assert.deepEqual(seen, [], "the responder is never called for a rejected call");
+
+    await run(callWith(`pairingbuddy:${role}`), { agent });
+    assert.deepEqual(seen, ["p"], `the ${role} call with pairingbuddy:${role} reaches the responder`);
+  });
+}
+
 test("non-key-pb-key-enum-on-non-lens-call-does-not-throw", async () => {
   const agent = async () => ({});
   const schema = { type: "object", properties: { pb_key: { type: "string", enum: ["not a key"] } } };

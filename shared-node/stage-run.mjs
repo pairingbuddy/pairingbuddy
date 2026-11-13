@@ -5,7 +5,7 @@ import { readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { lensSlug } from "./keys.mjs";
-import { mergeLensReturns, wiredLenses } from "./lens-merge.mjs";
+import { acceptVerdict, mergeLensReturns, wiredLensConfig } from "./lens-merge.mjs";
 import { evidenceFor, maxAgentsOf, returnFileKey } from "./stages.mjs";
 import { TestRunRefused, testRows } from "./test-run.mjs";
 
@@ -176,8 +176,9 @@ function notCovered({ uncovered, gaps }, testRuns, returns, red, lensRan) {
 
 const COVERAGE_ROLE = "verify-test-coverage";
 const LENS_ROLE = "lens";
+const REFUTER_ROLE = "refuter";
 
-// Read once per process: which lenses a stage runs comes from the same map and wiredLenses rule the workflow uses.
+// Read once per process: which lenses a stage runs comes from the same map and wiredLensConfig rule the workflow uses.
 const LENS_MAP = JSON.parse(readFileSync(new URL("../contracts/lenses.json", import.meta.url), "utf8"));
 
 // The same merge the workflow runs, over what the tap recorded: a lens with no recorded return is uncovered. A return counts
@@ -186,11 +187,17 @@ const LENS_MAP = JSON.parse(readFileSync(new URL("../contracts/lenses.json", imp
 // speaks, and a return for a lens the stage does not wire is ignored.
 function mergedLensRound(current, artifactsDir, stageName) {
   const recorded = current.filter(({ role }) => role === LENS_ROLE);
-  const returns = wiredLenses(LENS_MAP, stageName).map((lens) => {
+  const config = wiredLensConfig(LENS_MAP, stageName);
+  const returns = config.lenses.map((lens) => {
     const [latest] = recorded.filter(({ item }) => item === lensSlug(lens.name)).sort((a, b) => b.round - a.round);
     return { lens, result: latest === undefined ? null : readReturn(artifactsDir, latest.pbKey) };
   });
-  return { merged: mergeLensReturns(returns), lensRan: recorded.length > 0 };
+  // A verdict counts for the finding its refuter was sent, which its key names as the item. Of the rounds recorded for one
+  // finding the latest speaks, even when it is dropped; mergeLensReturns ignores verdicts when the stage does not refute.
+  const latestVerdicts = new Map(current.filter(({ role }) => role === REFUTER_ROLE).sort((a, b) => a.round - b.round)
+    .map(({ item, pbKey }) => [item, acceptVerdict(item, readReturn(artifactsDir, pbKey))]));
+  const verdicts = [...latestVerdicts.values()].filter((verdict) => verdict !== null);
+  return { merged: mergeLensReturns(returns, config, verdicts), lensRan: recorded.length > 0 };
 }
 
 // Each coverage round returns the gaps it still sees, so the newest round of the attempt speaks for the stage.
@@ -206,12 +213,14 @@ export function buildReport(ledger, artifactsDir) {
   const { name, attempt, runId } = ledger.stage;
   const current = returnsAt(artifactsDir, ledger.stage);
   const returns = current.map(({ pbKey }) => readReturn(artifactsDir, pbKey) ?? {});
-  const lensReturns = returns.filter((_, i) => ![COVERAGE_ROLE, LENS_ROLE].includes(current[i].role));
+  const lensReturns = returns.filter((_, i) => ![COVERAGE_ROLE, LENS_ROLE, REFUTER_ROLE].includes(current[i].role));
   const found = Object.fromEntries(REPORT_LISTS.map((key) => [key, lensReturns.flatMap((artifact) => artifact[key] ?? [])]));
   const { merged, lensRan } = mergedLensRound(current, artifactsDir, name);
   const lists = {
     ...found,
     survivors: [...found.survivors, ...merged.survivors],
+    refuted: [...found.refuted, ...merged.refuted],
+    unrefuted: [...found.unrefuted, ...merged.unrefuted],
     uncovered: [...found.uncovered, ...merged.uncovered],
     gaps: [...found.gaps, ...coverageGaps(current, returns)],
   };

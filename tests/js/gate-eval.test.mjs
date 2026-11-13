@@ -1474,3 +1474,25 @@ test("Same stage with uncovered [] and no other stop lets the gate pass under au
 
   assertAutoPassed(repo, output);
 });
+
+test("high-finding-past-cap-stops-gate-under-auto", () => {
+  const repo = makeRepo();
+  const finding = { id: "necessity-3", rule: "r1", severity: "high", claim: "a high finding past the cap", where: "a.mjs:1", blocking: false };
+  writeReport(repo, { stage: "scenarios", attempt: 1, unrefuted: [finding] });
+
+  const output = gateEval(repo, "auto");
+
+  assertAsks(output);
+  assert.match(output.reason, /unrefuted high-severity/, "the reason names the unrefuted high-severity finding");
+});
+
+test("unrefuted-low-or-medium-does-not-stop-gate", () => {
+  const repo = makeRepo();
+  const medium = { id: "necessity-1", rule: "r1", severity: "medium", claim: "a medium finding", where: "a.mjs:1", blocking: false };
+  const low = { id: "necessity-2", rule: "r1", severity: "low", claim: "a low finding", where: "a.mjs:2", blocking: false };
+  writeReport(repo, { stage: "scenarios", attempt: 1, unrefuted: [medium, low] });
+
+  const output = gateEval(repo, "auto");
+
+  assertAutoPassed(repo, output);
+});

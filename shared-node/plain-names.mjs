@@ -64,6 +64,7 @@ const PLAIN_NAMES = {
   "REFACTOR": "REFACTOR",
   // roles
   "refuter": "attacking a finding",
+  "synthesizer": "consolidating the findings",
   "course-checker": "checking the course",
 };
 

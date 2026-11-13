@@ -32,3 +32,31 @@ test("Every model is a bare alias (sonnet or opus), never a full model id, so th
   assert.match(lensMapProblems(fullId).join("\n"), /scenarios: lens necessity model claude-sonnet-4-5 is not a bare alias/, "a full model id is reported");
   assert.deepEqual(lensMapProblems(REAL_LENS_MAP), [], "the real lens map has no problems");
 });
+
+test("lenses-json-rows-with-refute-name-caps", () => {
+  const isPositiveInt = (n) => Number.isInteger(n) && n > 0;
+  const refuteRows = REAL_LENS_MAP.rows.filter((row) => row.refute !== "none");
+  const noCaps = { rows: [{ row: "scenarios", stage: "scenarios", lenses: [{ name: "necessity", model: "sonnet" }], refute: "one" }] };
+
+  const problems = lensMapProblems(REAL_LENS_MAP);
+
+  assert.ok(refuteRows.length > 0, "the real lens map has rows that refute");
+  assert.deepEqual(problems, [], "the real lens map reports no cap problems");
+  assert.match(lensMapProblems(noCaps).join("\n"), /scenarios: .*maxRefuters/, "a refuting row without maxRefuters is reported");
+  assert.match(lensMapProblems(noCaps).join("\n"), /scenarios: .*maxFindingsPerLens/, "a refuting row without maxFindingsPerLens is reported");
+  for (const row of refuteRows) {
+    assert.ok(isPositiveInt(row.maxRefuters), `${row.row} names maxRefuters as a positive integer`);
+    assert.ok(isPositiveInt(row.maxFindingsPerLens), `${row.row} names maxFindingsPerLens as a positive integer`);
+  }
+});
+
+test("A cap of 0 is reported, on a refuting row or a row that only names a cap", () => {
+  const zeroCap = (row) => ({ rows: [{ row: "scenarios", stage: "scenarios", lenses: [{ name: "necessity", model: "sonnet" }], ...row }] });
+
+  const refuting = lensMapProblems(zeroCap({ refute: "one", maxRefuters: 3, maxFindingsPerLens: 0 })).join("\n");
+  const named = lensMapProblems(zeroCap({ refute: "none", maxFindingsPerLens: 0 })).join("\n");
+
+  assert.match(refuting, /scenarios: maxFindingsPerLens must be a positive integer/);
+  assert.match(named, /scenarios: maxFindingsPerLens must be a positive integer/);
+  assert.deepEqual(lensMapProblems(zeroCap({ refute: "none" })), [], "a non-refuting row needs no caps");
+});

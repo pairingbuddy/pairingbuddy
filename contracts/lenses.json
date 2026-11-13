@@ -45,6 +45,7 @@
       "synth": true,
       "refute": "one",
       "maxRefuters": 10,
+      "maxFindingsPerLens": 10,
       "fix": "course-checker"
     },
     {
@@ -76,6 +77,7 @@
       "synth": true,
       "refute": "one",
       "maxRefuters": 10,
+      "maxFindingsPerLens": 10,
       "fix": "course-checker"
     },
     {
@@ -106,6 +108,7 @@
       "synth": true,
       "refute": "one",
       "maxRefuters": 10,
+      "maxFindingsPerLens": 10,
       "fix": "course-checker"
     },
     {
@@ -131,6 +134,7 @@
       ],
       "refute": "one",
       "maxRefuters": 6,
+      "maxFindingsPerLens": 10,
       "fix": "course-checker"
     },
     {
@@ -156,6 +160,7 @@
       ],
       "refute": "one",
       "maxRefuters": 6,
+      "maxFindingsPerLens": 10,
       "fix": "course-checker"
     },
     {
@@ -229,6 +234,7 @@
       ],
       "refute": "one",
       "maxRefuters": 6,
+      "maxFindingsPerLens": 10,
       "fix": "course-checker"
     },
     {
@@ -250,6 +256,7 @@
       ],
       "refute": "one",
       "maxRefuters": 6,
+      "maxFindingsPerLens": 10,
       "fix": "course-checker"
     },
     {
@@ -267,6 +274,7 @@
       ],
       "refute": "one",
       "maxRefuters": 2,
+      "maxFindingsPerLens": 10,
       "fix": "course-checker"
     },
     {
