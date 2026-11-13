@@ -26,6 +26,11 @@ This agent outputs scenarios and test cases. Tests are created by later agents.
 
 ## Input
 
+The one input rule decides what you read and write:
+
+- With a `<paths>` block in the prompt: read only what the paths name, plus the `<task>` in the prompt, and return your Output as StructuredOutput. `test_config` is the test config. `human_guidance` is the human guidance, which may be missing, and any redo feedback is there. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
+- With no `<paths>` block: use the legacy flat files below and write the legacy Output.
+
 Reads from `.pairingbuddy/task.json`:
 
 ```json
@@ -48,6 +53,7 @@ Also reads `.pairingbuddy/test-config.json`:
       "file_pattern": "string (glob pattern for test files)",
       "run_args": ["array of strings appended after test path"],
       "failure_exit_codes": ["optional array of integers (exit codes that count as RED, default [1])"],
+      "selector_template": ["optional array of strings (argument words that select one test, naming {test_function} and optionally {test_file})"],
       "timeout_seconds": "optional number (pb test kills the process group after this long, default 540)"
     }
   },
@@ -79,6 +85,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 1: Read Inputs
 
+With a `<paths>` block: read what the Input section says instead of the files below.
+
 Read all input files listed above, including `.pairingbuddy/human-guidance.json`.
 Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
@@ -90,6 +98,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 4. Use kebab-case IDs (e.g., `user-login`, `add-positive-numbers`)
 
 ### Step 3: Human Review
+
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the `G:scenarios` gate. If the task leaves what to test unresolved, do not guess: return the scenarios you are sure of and describe the open question in `ambiguity`, which sends the gate to the human. A case the task does not mention is out of scope: leave it out, and it is no ambiguity. Tests run one at a time and RED refuses a test that already passes, so leave out any case the task does not name that the fix for an earlier case would already make pass. A case the task names stays a test even if the fix for an earlier case will also make it pass: the CLI records it as covered, so keeping it is no ambiguity. With nothing open, return an empty string.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -136,6 +146,8 @@ Should I proceed with this approach?"
 
 ### Step 4: Output
 
+With a `<paths>` block: skip Step 4 and return your Output as StructuredOutput.
+
 **MANDATORY: You MUST write to ALL output files listed in the Output section before completing.**
 
 After approval, write output using this procedure for EACH output file listed in the Output section:
@@ -159,6 +171,8 @@ After approval, write output using this procedure for EACH output file listed in
 
 ### File Creation Restrictions
 
+With a `<paths>` block: write no files. Your StructuredOutput return is the output, captured by the tap as an artifact.
+
 **You may ONLY write to:** `.pairingbuddy/scenarios.json`
 
 Do NOT create any other files. No /tmp files, no markdown files, no text files, no logs. Your sole output is the JSON file specified in the Output section.
@@ -171,6 +185,29 @@ If `PAIRINGBUDDY_SOLO` environment variable is `true`:
 - Proceed directly to writing output
 
 ## Output
+
+With a `<paths>` block, return the result as your StructuredOutput with exactly these fields, and write no output file:
+
+```json
+{
+  "pb_key": "string (copied exactly from the prompt)",
+  "ambiguity": "string (open question a human should settle, or empty string)",
+  "scenarios": [
+    {
+      "scenario_id": "string (unique identifier)",
+      "description": "string (what this scenario covers)",
+      "test_cases": [
+        {
+          "test_case_id": "string (unique identifier)",
+          "description": "string (specific condition to verify)"
+        }
+      ]
+    }
+  ]
+}
+```
+
+With no `<paths>` block:
 
 Writes to `.pairingbuddy/scenarios.json`:
 

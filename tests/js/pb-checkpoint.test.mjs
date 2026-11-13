@@ -809,7 +809,7 @@ describe("arguments", IN_PARALLEL, () => {
     ["no arguments", []],
     ["no key", ["--step", "config"]],
     ["no step", ["--from", CONFIG_KEY]],
-    ["an unknown step", ["--step", "red", "--from", CONFIG_KEY]],
+    ["an unknown step", ["--step", "refactor", "--from", CONFIG_KEY]],
     ["a name every object has", ["--step", "constructor", "--from", CONFIG_KEY]],
     ["a malformed key", ["--step", "config", "--from", "../../etc/passwd"]],
     ["a key with no attempt", ["--step", "config", "--from", "code-config.apply-config-change.-.r1"]],

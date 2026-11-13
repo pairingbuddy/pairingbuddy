@@ -7,10 +7,15 @@ import { dirname, basename, isAbsolute, join, normalize, relative, resolve, sep 
 import { parseKey } from "./keys.mjs";
 
 const PROTECTED_BRANCHES = ["main", "master"];
-// A config step exists to change something, so its return must account for any change that is not there.
+// A config step exists to change something, so its return must account for any change that is not there. tests says
+// what must run before the commit: the whole suite, the one test the key names, or nothing, since a placeholder proves
+// nothing. A step that runs one test takes a key that names it, and every other step's key names none.
 const STEPS = {
-  config: { type: "chore", role: "apply-config-change", provesChange: true },
-  docs: { type: "docs", role: "update-documentation", provesChange: false },
+  config: { type: "chore", role: "apply-config-change", provesChange: true, tests: "full" },
+  docs: { type: "docs", role: "update-documentation", provesChange: false, tests: "full" },
+  placeholders: { type: "test", role: "create-test-placeholders", provesChange: false, tests: "none" },
+  red: { type: "test", role: "implement-tests", provesChange: false, tests: "selected" },
+  green: { types: { bug_fix: "fix", new_feature: "feat" }, role: "implement-code", provesChange: false, tests: "selected" },
 };
 const STATE_DIRECTORY = ".pairingbuddy";
 const REFUSED_DIRECTORIES = [STATE_DIRECTORY, ".git"];
@@ -40,6 +45,16 @@ export function isKey(text) {
 }
 
 export const isCheckpointCall = (step, key) => Object.hasOwn(STEPS, step) && isKey(key);
+
+export const testsOfStep = (step) => STEPS[step].tests;
+
+const namesTest = (step) => testsOfStep(step) === "selected";
+
+// The one key this step can use: its own role, with a test exactly when the step takes one. The gate allows no other.
+export function keyFitsStep(step, key) {
+  const { role, item } = parseKey(key);
+  return role === STEPS[step].role && (item !== null) === namesTest(step);
+}
 
 // ---------- git ----------
 
@@ -81,6 +96,12 @@ export function headOf(root) {
   return status === 0 ? stdout.trim() : null;
 }
 
+// A file's text at a commit, or null where the commit has no such file.
+export function fileAtCommit(root, sha, path) {
+  const { status, stdout } = runGit(root, ["show", `${sha}:${normalize(path)}`]);
+  return status === 0 ? stdout : null;
+}
+
 export const isOnHead = (root, sha) => runGit(root, ["merge-base", "--is-ancestor", sha, "HEAD"]).status === 0;
 
 // ---------- the key ----------
@@ -91,6 +112,7 @@ export function assertCurrentKey(step, key, { stage: { name, status, attempt } }
   if (keyStage !== name) throw new CheckpointRefused(`${key} is from stage ${keyStage}, and the active stage is ${name}`);
   if (keyAttempt !== attempt) throw new CheckpointRefused(`${key} is from attempt ${keyAttempt}, and stage ${name} is at attempt ${attempt}`);
   if (role !== STEPS[step].role) throw new CheckpointRefused(`${key} is from role ${role}, and step ${step} takes role ${STEPS[step].role}`);
+  if (namesTest(step) && parseKey(key).item === null) throw new CheckpointRefused(`${key} names no test, and step ${step} takes one`);
 }
 
 function parsedOrNull(path) {
@@ -166,11 +188,18 @@ function checkedPath(root, listed) {
 
 // ---------- the message ----------
 
-function commitMessage(step, subject) {
+function commitType(step, taskType) {
+  const { type, types } = STEPS[step];
+  if (type !== undefined) return type;
+  if (types !== undefined && Object.hasOwn(types, taskType ?? "")) return types[taskType];
+  throw new CheckpointRefused(`step ${step} has no commit type for task type ${taskType}`);
+}
+
+function commitMessage(step, subject, taskType) {
   if (typeof subject !== "string" || BREAKS_LINE.test(subject)) throw new CheckpointRefused(`commit_subject must be a single line: ${JSON.stringify(subject)}`);
   const bare = subject.trim().replace(TYPE_PREFIX, "").trim();
   if (bare === "") throw new CheckpointRefused(`commit_subject says nothing: ${JSON.stringify(subject)}`);
-  return `${STEPS[step].type}: ${bare}`;
+  return `${commitType(step, taskType)}: ${bare}`;
 }
 
 // ---------- the plan ----------
@@ -189,17 +218,38 @@ function assertChangeProven(step, { ambiguity }, listed, paths) {
   throw new CheckpointStopped(`step ${step} changed nothing and its return gives no ambiguity to say why. pb stage fail clears this`);
 }
 
+const isInside = (path, directory) => !isOutside(relative(directory, path));
+
+function assertInTestDirectory(listed, directories) {
+  const stray = listed.find((path) => !directories.some((directory) => isInside(path, directory)));
+  if (stray !== undefined) throw new CheckpointRefused(`${stray} is outside the test_directory ${directories.join(", ")}, and this step changes tests alone`);
+}
+
+// What each step may touch, so a test cannot be written by the step that makes it pass, or left out of the commit
+// that says it failed. scope is null for a step with no test, and holds the row's file for a step with one.
+const SCOPE_CHECKS = {
+  placeholders: (_root, listed, { testDirectories }) => assertInTestDirectory(listed, testDirectories),
+  red(root, listed, { testDirectories, testFile }) {
+    assertInTestDirectory(listed, testDirectories);
+    if (!listed.includes(normalize(testFile)) && statusEntries(root, [testFile]).length > 0) throw new CheckpointRefused(`${testFile} changed and is not listed, so the commit would miss the test`);
+  },
+  green(root, listed, { testFile }) {
+    if (listed.includes(normalize(testFile)) || statusEntries(root, [testFile]).length > 0) throw new CheckpointRefused(`${testFile} changed: GREEN changes the code and leaves the test as RED committed it`);
+  },
+};
+
 // What to commit, or null for no change. Every check that needs no test run is here, so a refusal costs none.
 // alreadyCommitted: this key has a commit, so a repeat of the step has nothing left to change.
-export function planCommit(root, artifactsDir, step, key, alreadyCommitted = false) {
+export function planCommit(root, artifactsDir, step, key, { alreadyCommitted = false, taskType = null, scope = null } = {}) {
   const artifact = readArtifact(artifactsDir, step, key);
   const listed = [...new Set(artifact.files_changed.map((path) => checkedPath(root, path)))];
   const paths = listed.length === 0 ? [] : [...new Set(statusEntries(root, listed).map(({ path }) => path))];
   const swept = paths.find((path) => !listed.includes(path));
   if (swept !== undefined) throw new CheckpointRefused(`${swept} is not listed: a listed path matched it, so that path is a directory that is gone. List its files.`);
+  SCOPE_CHECKS[step]?.(root, paths, scope);
   if (STEPS[step].provesChange && !alreadyCommitted) assertChangeProven(step, artifact, listed, paths);
   if (paths.length === 0) return null;
-  const message = commitMessage(step, artifact.commit_subject);
+  const message = commitMessage(step, artifact.commit_subject, taskType);
   assertNothingElseStaged(root, listed);
   return { paths, message };
 }

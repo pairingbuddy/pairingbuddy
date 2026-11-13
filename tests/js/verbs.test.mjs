@@ -24,13 +24,15 @@ const IN_PARALLEL = { concurrency: 8 };
 const PB = `node ${CLI}`;
 
 // D5, written out here so the test does not read its answer from the table it checks.
-const RUNNER_VERBS = ["test", "checkpoint", "stage finish", "snapshot", "artifact check"];
+const RUNNER_VERBS = ["test", "checkpoint", "stage finish", "stage stop", "tdd state", "snapshot", "artifact check"];
 const MAIN_VERBS = ["unit open", "run open", "stage report", "stage fail", "gate eval", "task end", "plan next", "publish", "status", "git doctor"];
 const HUMAN_VERBS = ["human approve", "human abandon", "human accept"];
 
-// Rows of the class matrix. A human row carries an argument because the real calls have one.
+// Rows of the class matrix. A human row carries an argument because the real calls have one, and so does stage stop,
+// which is allowed only with its reason.
+const RUNNER_LINES = { "stage stop": "stage stop agent-budget" };
 const VERB_ROWS = [
-  ...RUNNER_VERBS.map((verb) => ({ verb, line: verb, verbClass: "runner" })),
+  ...RUNNER_VERBS.map((verb) => ({ verb, line: RUNNER_LINES[verb] ?? verb, verbClass: "runner" })),
   ...MAIN_VERBS.map((verb) => ({ verb, line: verb, verbClass: "main" })),
   { verb: "human approve", line: "human approve g1", verbClass: "human" },
   { verb: "human abandon", line: "human abandon", verbClass: "human" },
@@ -516,7 +518,11 @@ describe("runner auto-allow is for the exact command only", IN_PARALLEL, () => {
   const CONFIG_KEY = "code-config.apply-config-change.-.r1.a1";
   const DOCS_KEY = "code-safety-net.update-documentation.-.r2.a3";
 
-  for (const args of [`--step config --from ${CONFIG_KEY}`, `--step docs --from ${DOCS_KEY}`]) {
+  const PLACEHOLDERS_KEY = "code-tdd.create-test-placeholders.-.r1.a1";
+  const RED_KEY = "code-tdd.implement-tests.t1.r2.a1";
+  const GREEN_KEY = "code-tdd.implement-code.login-valid.r1.a3";
+
+  for (const args of [`--step config --from ${CONFIG_KEY}`, `--step docs --from ${DOCS_KEY}`, `--step placeholders --from ${PLACEHOLDERS_KEY}`, `--step red --from ${RED_KEY}`, `--step green --from ${GREEN_KEY}`]) {
     test(`the runner's pb checkpoint ${args} is auto-allowed`, async () => {
       const result = await runGate(bashCall(`${PB} checkpoint ${args}`, { agentType: RUNNER_AGENT }));
 
@@ -525,7 +531,19 @@ describe("runner auto-allow is for the exact command only", IN_PARALLEL, () => {
   }
 
   const CHECKPOINT_NEAR_MISSES = [
-    ["an unknown step", `--step red --from ${CONFIG_KEY}`],
+    ["an unknown step", `--step refactor --from ${RED_KEY}`],
+    ["a config key at RED", `--step red --from ${CONFIG_KEY}`],
+    ["a GREEN key at RED", `--step red --from ${GREEN_KEY}`],
+    ["a RED key at GREEN", `--step green --from ${RED_KEY}`],
+    ["a RED key at config", `--step config --from ${RED_KEY}`],
+    ["a RED key at placeholders", `--step placeholders --from ${RED_KEY}`],
+    ["a RED key with no test", "--step red --from code-tdd.implement-tests.-.r1.a1"],
+    ["a GREEN key with no test", "--step green --from code-tdd.implement-code.-.r1.a1"],
+    ["a placeholders key with a test", "--step placeholders --from code-tdd.create-test-placeholders.t1.r1.a1"],
+    ["a capital step", `--step RED --from ${RED_KEY}`],
+    ["a selector after the key", `--step red --from ${RED_KEY} tests/a.py::test_x`],
+    ["a select flag after the key", `--step red --from ${RED_KEY} --select tests/a.py::test_x`],
+    ["a selector before the step", `tests/a.py::test_x --step red --from ${RED_KEY}`],
     ["a step every object has", `--step constructor --from ${CONFIG_KEY}`],
     ["no key", "--step config"],
     ["no step", `--from ${CONFIG_KEY}`],
@@ -552,6 +570,24 @@ describe("runner auto-allow is for the exact command only", IN_PARALLEL, () => {
       const result = await runGate(bashCall(`${PB} checkpoint ${args}`, { agentType: RUNNER_AGENT }));
 
       assertNotAutoAllowed(result);
+    });
+  }
+
+  for (const args of ["tdd state", "stage stop agent-budget", "stage stop step-failed"]) {
+    test(`the runner's pb ${args} is auto-allowed`, async () => {
+      assertAutoAllowed(await runGate(bashCall(`${PB} ${args}`, { agentType: RUNNER_AGENT })));
+    });
+  }
+
+  for (const args of ["tdd state t1", "tdd state --tests t1", "tdd  state", "stage stop", "stage stop why-not", "stage stop agent-budget extra", "stage stop  agent-budget", "stage stop constructor"]) {
+    test(`pb ${args} loses the auto-allow`, async () => {
+      assertNotAutoAllowed(await runGate(bashCall(`${PB} ${args}`, { agentType: RUNNER_AGENT })));
+    });
+  }
+
+  for (const verb of ["tdd state", "stage stop agent-budget"]) {
+    test(`pb ${verb} from the main context is denied, not allowed`, async () => {
+      assertWrongCallerDenied(await runGate(bashCall(`${PB} ${verb}`)), verb.split(" ").slice(0, 2).join(" "), OWNER.runner);
     });
   }
 

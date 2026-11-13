@@ -73,6 +73,7 @@ Also reads `.pairingbuddy/test-config.json`:
       "file_pattern": "string (glob pattern for test files)",
       "run_args": ["array of strings appended after test path"],
       "failure_exit_codes": ["optional array of integers (exit codes that count as RED, default [1])"],
+      "selector_template": ["optional array of strings (argument words that select one test, naming {test_function} and optionally {test_file})"],
       "timeout_seconds": "optional number (pb test kills the process group after this long, default 540)"
     }
   },

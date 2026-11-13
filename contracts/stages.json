@@ -2,6 +2,8 @@
   "v": 1,
   "defaultTaskType": "config_change",
   "maxAgents": 1000,
+  "stageMaxAgents": { "code-tdd": 600 },
+  "migratedTypes": ["config_change", "bug_fix"],
   "newPathAgents": ["apply-config-change", "runner"],
   "gateClasses": {
     "continue": { "auto": "passes when evidence is complete and no stop condition applies" },
@@ -23,6 +25,29 @@
         }
       ],
       "gates": {
+        "G:task-end": { "class": "continue" }
+      }
+    },
+    "bug_fix": {
+      "nodes": [
+        {
+          "name": "code-scenarios",
+          "gate": "G:scenarios",
+          "evidence": ["artifact:enumerate-scenarios-and-test-cases"]
+        },
+        {
+          "name": "code-tdd",
+          "gate": null,
+          "evidence": ["artifact:create-test-placeholders", "checkpoint:placeholders", "tests:cycle"]
+        },
+        {
+          "name": "code-safety-net",
+          "gate": "G:task-end",
+          "evidence": ["artifact:update-documentation", "checkpoint:docs", "tests:full"]
+        }
+      ],
+      "gates": {
+        "G:scenarios": { "class": "continue" },
         "G:task-end": { "class": "continue" }
       }
     }

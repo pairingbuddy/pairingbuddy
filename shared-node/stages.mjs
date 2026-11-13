@@ -11,10 +11,11 @@ export const START_LEASE_SECONDS = 120;
 
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
-const EVIDENCE_TESTS = ["full", "selected"];
+const EVIDENCE_TESTS = ["full", "selected", "cycle"];
 const EVIDENCE_ROLE = /^[a-z0-9_-]{1,64}$/;
 
-// artifact:<role>, checkpoint:<step> or tests:<run>. Each is checked by stage finish, at the attempt it finishes.
+// artifact:<role>, checkpoint:<step> or tests:<run>. Each is checked by stage finish, at the attempt it finishes, except
+// tests:cycle: per-test evidence outlives the attempt that made it, because a re-run continues from it.
 function isEvidence(entry) {
   if (typeof entry !== "string") return false;
   const [kind, name, ...rest] = entry.split(":");
@@ -51,14 +52,20 @@ function nodeProblems(taskType, graph, classes) {
 
 const isNameList = (list) => Array.isArray(list) && list.every((name) => typeof name === "string" && name !== "");
 
+// A stage's own cap sits under the whole-workflow cap.
+const stageCapProblems = ({ stageMaxAgents = {}, maxAgents }) =>
+  Object.entries(stageMaxAgents).filter(([, cap]) => !(Number.isInteger(cap) && cap > 0 && cap <= maxAgents)).map(([stage]) => `stageMaxAgents for ${stage} must be a positive integer up to maxAgents`);
+
 export function validateStages(contract) {
   if (!isObject(contract) || !isObject(contract.taskTypes) || !isObject(contract.gateClasses)) {
     return ["the contract needs taskTypes and gateClasses objects"];
   }
   const problems = Object.entries(contract.taskTypes).flatMap(([type, graph]) => nodeProblems(type, graph, contract.gateClasses));
   if (!Object.hasOwn(contract.taskTypes, contract.defaultTaskType)) problems.push(`unknown default task type ${contract.defaultTaskType}`);
+  if (!isNameList(contract.migratedTypes)) problems.push("migratedTypes must be a list of task types");
+  else for (const type of contract.migratedTypes.filter((name) => !Object.hasOwn(contract.taskTypes, name))) problems.push(`migrated type ${type} has no stage graph`);
   if (!isNameList(contract.newPathAgents)) problems.push("newPathAgents must be a list of agent names");
-  return problems;
+  return [...problems, ...stageCapProblems(contract)];
 }
 
 export function loadStages(pluginRoot) {
@@ -76,6 +83,12 @@ export function graphFor(contract, taskType) {
   return { taskType: name, stages: contract.taskTypes[name].nodes.map((node) => node.name) };
 }
 
+// Whether a run of this type has to name one test at RED and GREEN.
+export function needsTestSelection(contract, taskType) {
+  const { taskType: name } = graphFor(contract, taskType);
+  return contract.taskTypes[name].nodes.some((node) => node.evidence.includes("tests:cycle"));
+}
+
 // Every stage of every task type.
 export const allStages = (contract) => Object.values(contract.taskTypes).flatMap((graph) => graph.nodes.map((node) => node.name));
 
@@ -85,6 +98,8 @@ export function evidenceFor(contract, taskType, stage) {
   if (node === undefined) throw new Error(`stage ${stage} is not in the ${name} graph`);
   return node.evidence;
 }
+
+export const maxAgentsOf = ({ maxAgents, stageMaxAgents = {} }, stage) => (Object.hasOwn(stageMaxAgents, stage) ? stageMaxAgents[stage] : maxAgents);
 
 export const isStageActive = (ledger) => ledger.stage.status === "active";
 

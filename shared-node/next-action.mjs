@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { answeredGate, blockingGate, gatesFor } from "./gates.mjs";
 import { LedgerShaMismatch, readLedger } from "./ledger.mjs";
-import { spendTotals } from "./stage-run.mjs";
+import { coveredTests, spendTotals } from "./stage-run.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, startLeaseSecondsLeft } from "./stages.mjs";
 import { humanCommand, pbCommand, shaMismatchRemedy } from "./verbs.mjs";
 
@@ -17,7 +17,7 @@ function nextStep(contract, ledger) {
 
 export function runStatus(contract, ledger, artifactsDir) {
   const { stage, stop, needsHuman } = ledger;
-  return { stage, next: nextStep(contract, ledger), stop, needsHuman, spend: spendTotals(ledger, artifactsDir, contract.maxAgents) };
+  return { stage, next: nextStep(contract, ledger), stop, needsHuman, covered: coveredTests(ledger), spend: spendTotals(ledger, artifactsDir, contract) };
 }
 
 // Active with no recorded run and no lease left: the gate marked it, and a declined prompt or a failed start left it.

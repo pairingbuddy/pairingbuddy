@@ -4,7 +4,8 @@ import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { evidenceFor, returnFileKey } from "./stages.mjs";
+import { evidenceFor, maxAgentsOf, returnFileKey } from "./stages.mjs";
+import { TestRunRefused, testRows } from "./test-run.mjs";
 
 const REPORT_LISTS = ["survivors", "refuted", "gaps", "uncovered", "unrefuted"];
 const TOKENS_UNIT = "output tokens";
@@ -31,6 +32,16 @@ export function readReturn(artifactsDir, pbKey) {
   } catch {
     return null;
   }
+}
+
+// The newest return of a role under any key with no item, or null. keep decides which attempts count.
+export function newestReturn(artifactsDir, role, keep = () => true) {
+  const found = readdirSync(artifactsDir)
+    .filter((file) => file.endsWith(".json") && !file.startsWith("."))
+    .map((file) => ({ pbKey: file.slice(0, -".json".length), ...returnFileKey(file) }))
+    .filter((key) => key.role === role && key.item === null && keep(key))
+    .sort((a, b) => b.attempt - a.attempt || b.round - a.round);
+  return found[0]?.pbKey ?? null;
 }
 
 // ---------- evidence ----------
@@ -63,7 +74,25 @@ function testsProblem(name, { ledger: { tests, stage }, head }) {
   return record.head === head ? null : `tests:${name} ran at ${record.head ?? "an unknown HEAD"}, and HEAD is now ${head}`;
 }
 
-const PROBLEMS = { artifact: artifactProblem, checkpoint: checkpointProblem, tests: testsProblem };
+export const perTestOf = ({ tests: { perTest = {} } }, id) => (Object.hasOwn(perTest, id) ? perTest[id] : {});
+
+// Every row of this attempt must stand through both steps, at whichever attempt each got there.
+function cycleProblem({ ledger, artifactsDir, config }) {
+  let rows;
+  try {
+    rows = testRows(config(), artifactsDir, ledger.stage);
+  } catch (e) {
+    if (e instanceof TestRunRefused) return `tests:cycle cannot read the tests: ${e.message}`;
+    throw e;
+  }
+  const isClosed = ({ red, green, covered }) => covered?.done || (red?.done && green?.done);
+  const open = rows.map(({ test_id: id }) => id).filter((id) => !isClosed(perTestOf(ledger, id)));
+  return open.length === 0 ? null : `tests:cycle has no RED and GREEN, and no covered pass, for ${open.join(", ")}`;
+}
+
+const testsEvidence = (name, context) => (name === "cycle" ? cycleProblem(context) : testsProblem(name, context));
+
+const PROBLEMS = { artifact: artifactProblem, checkpoint: checkpointProblem, tests: testsEvidence };
 
 function evidenceProblem(entry, context) {
   const [kind, name] = entry.split(":");
@@ -71,8 +100,8 @@ function evidenceProblem(entry, context) {
 }
 
 // Everything standing between this attempt and done, so one refusal names it all.
-export function finishProblems(contract, ledger, artifactsDir, head) {
-  const context = { ledger, artifactsDir, head };
+export function finishProblems(contract, ledger, artifactsDir, head, config) {
+  const context = { ledger, artifactsDir, head, config };
   const evidence = evidenceFor(contract, ledger.taskType, ledger.stage.name).map((entry) => evidenceProblem(entry, context));
   return [ledger.stage.runId === null ? "the stage has no recorded run" : null, ...evidence].filter((problem) => problem !== null);
 }
@@ -98,10 +127,10 @@ export function closeStage(ledger, status, agents, notes = {}) {
 const spendFigures = ({ agents, tokens, tokensKnown }, more) => ({ agents: agents + more, tokens, tokensKnown: tokensKnown === true });
 
 // The stage and task totals, with an active stage's returns so far, which no closed attempt has counted yet.
-export function spendTotals(ledger, artifactsDir, maxAgents) {
+export function spendTotals(ledger, artifactsDir, contract) {
   const live = ledger.stage.status === "active" ? returnsAt(artifactsDir, ledger.stage).length : 0;
   return {
-    maxAgents,
+    maxAgents: maxAgentsOf(contract, ledger.stage.name),
     label: SPEND_LABEL,
     stage: { name: ledger.stage.name, ...spendFigures(stageEntry(ledger)?.spend ?? NO_SPEND, live) },
     task: spendFigures(ledger.spend, live),
@@ -112,14 +141,33 @@ export function spendTotals(ledger, artifactsDir, maxAgents) {
 
 const attemptTests = ({ tests, stage }) => Object.entries(tests).filter(([, record]) => isAttemptRecord(record, stage)).map(([key, record]) => ({ key, ...record }));
 
-function notCovered({ uncovered, gaps }, testRuns, returns) {
+// Exit codes cannot prove a test failed for the right reason, so the report shows why each one failed (D5). It covers
+// every test, at the attempt that proved it, because a re-run proves only what is left.
+function redEvidence({ tests: { perTest = {} }, stage: { name } }) {
+  return Object.entries(perTest)
+    .filter(([, { red }]) => red?.done && red.stage === name)
+    .map(([test_id, { red: { attempt, exitCodes, excerpt } }]) => ({ test_id, attempt, exitCodes, excerpt }));
+}
+
+// A test that passed at RED after an earlier GREEN, kept with its GREEN skipped: the human should know it never failed.
+function coveredEvidence({ tests: { perTest = {} }, stage: { name } }) {
+  return Object.entries(perTest)
+    .filter(([, { covered }]) => covered?.done && covered.stage === name)
+    .map(([test_id, { covered: { attempt, exitCodes, excerpt, after } }]) => ({ test_id, attempt, exitCodes, excerpt, after }));
+}
+
+// Every test of the task that an earlier GREEN covered, for pb status.
+export const coveredTests = ({ tests: { perTest = {} } }) =>
+  Object.entries(perTest).filter(([, { covered }]) => covered?.done).map(([test_id, { covered: { after, sha } }]) => ({ test_id, after, sha }));
+
+function notCovered({ uncovered, gaps }, testRuns, returns, red) {
   const lensRan = returns.some((artifact) => REPORT_LISTS.some((key) => artifact[key] !== undefined));
   return [
     ...uncovered,
     ...gaps,
     ...(testRuns.some(({ key }) => key === "full") ? [] : ["the full suite did not run in this stage"]),
     ...(lensRan ? [] : ["no lens round ran in this stage"]),
-    ...(testRuns.length > 0 ? ["exit codes show that tests passed or failed, not why: read the excerpts"] : []),
+    ...(testRuns.length > 0 || red.length > 0 ? ["exit codes show that tests passed or failed, not why: read the excerpts"] : []),
     `${TOKENS_UNIT} are unknown: this stage supplied no budget.spent() figure`,
   ];
 }
@@ -131,6 +179,7 @@ export function buildReport(ledger, artifactsDir) {
   const returns = current.map(({ pbKey }) => readReturn(artifactsDir, pbKey) ?? {});
   const lists = Object.fromEntries(REPORT_LISTS.map((key) => [key, returns.flatMap((artifact) => artifact[key] ?? [])]));
   const tests = attemptTests(ledger);
+  const red = redEvidence(ledger);
   const ambiguities = current.map(({ pbKey }, i) => ({ key: pbKey, ambiguity: returns[i].ambiguity ?? "" })).filter(({ ambiguity }) => ambiguity !== "");
   return {
     stage: name,
@@ -144,7 +193,9 @@ export function buildReport(ledger, artifactsDir) {
     },
     ...lists,
     ambiguities,
-    notCovered: notCovered(lists, tests, returns),
+    redEvidence: red,
+    covered: coveredEvidence(ledger),
+    notCovered: notCovered(lists, tests, returns, red),
     spend: { agents: current.length, agentsSource: "recorded returns", tokens: 0, tokensKnown: false, tokensUnit: TOKENS_UNIT },
   };
 }
