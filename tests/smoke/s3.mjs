@@ -63,8 +63,8 @@ const remotePrivateRefs = (remote) => bare(remote, "for-each-ref", "--format=%(r
 
 // S2's repo left on main, with a bare origin that has main and develop at the same commit, and pr.base_branch develop
 // in git-config.json before anything reads it, so the unit's git-config hash is this file's.
-function makeS3Repo(record) {
-  const repo = makeRepo(record, "bug_fix", { onMain: true });
+export function makeS3Repo(record, type = "bug_fix") {
+  const repo = makeRepo(record, type, { onMain: true });
   const remote = join(record, "origin.git");
   execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote], { env: cleanEnv() });
   git(repo, "remote", "add", "origin", remote);

@@ -30,7 +30,7 @@ uv run ruff format .
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
 - Design philosophy (WHAT vs HOW separation)
 - Testing strategy (BDD outer-to-inner, test layers pyramid)
-- Agent and skill structure (32 agents, 18 skills)
+- Agent and skill structure (33 agents, 18 skills)
 - State management via JSON files (39 schemas)
 - Spike workflow (exploratory coding without TDD)
 - Planning workflow (tracer bullet methodology)
@@ -41,7 +41,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
 
 ```
 pairingbuddy/
-├── agents/           # Plugin agents (32 total, invoke via Task tool)
+├── agents/           # Plugin agents (33 total, invoke via Task tool)
 ├── skills/           # Skills (18 total, run in main context)
 │   ├── coding/       # TDD orchestrator skill
 │   ├── planning/     # Planning orchestrator skill

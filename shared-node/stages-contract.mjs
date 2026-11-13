@@ -13,6 +13,7 @@ export default {
   ],
   "newPathAgents": [
     "apply-config-change",
+    "lens",
     "runner"
   ],
   "gateClasses": {

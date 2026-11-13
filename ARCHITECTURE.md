@@ -83,7 +83,7 @@ The system includes human review points to prevent:
 ```
 pairingbuddy/
 ├── .claude-plugin/plugin.json    # Register agents and skills
-├── agents/                        # Plugin agents (32 total: TDD/spike, design-ux, planning and PR drafting)
+├── agents/                        # Plugin agents (33 total: TDD/spike, design-ux, planning and PR drafting)
 │   ├── curate-guidance.md
 │   ├── classify-task.md
 │   ├── enumerate-scenarios-and-test-cases.md
@@ -867,7 +867,7 @@ Tests validate that implementations match these contracts.
 
 ### 5. Agent Focus and Human Review
 
-**Focus Warning:** All 32 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
+**Focus Warning:** All 33 agents include a "laser-focused" warning in their Instructions section to prevent agents from anticipating next steps or doing work that belongs to other agents. This warning is defined canonically in `agent-config.yaml` and tested for verbatim presence.
 
 **Human Review Checkpoints:** Fourteen TDD/spike/planning agents pause for human review before proceeding (design-ux agents use orchestrator-level human interaction instead):
 1. curate-guidance
@@ -926,6 +926,8 @@ At the start of each task, the orchestrator runs `_cleanup_state_files()` to del
 **Git configuration (D21).** `shared-node/gitconf.mjs` reads and bootstraps `.pairingbuddy/git-config.json` (schema: `contracts/schemas/git-config.schema.json`). `pb run open` writes it with defaults when it is missing, never overwrites an existing one, and refuses to open a run when it is malformed. Protected branches are the configured ones plus the remote's default branch; the hard-coded `main`/`master` are gone, and `pr.base_branch` falls back to the default branch. The file's hash is recorded in the ledger as `gitConfigHash`; each gate check compares it, so editing the file mid-run stops the next gate check.
 
 **PR draft.** The `pr-draft` stage (`workflows-src/stages/pr-draft.mjs`, built to `workflows/pr-draft.js`) runs the `draft-pull-request` agent (Sonnet, with the `creating-pull-requests` skill) to write a stand-alone PR body meant for main's log; notes that only matter while the PR is open go to a coordination comment instead. The tap writes the body to `.pairingbuddy/run/pr-body.md`. After the writer, the stage runs `pb pr lint`, a model-free check of the title and body (title form and length, a size budget that grows with the diff, attribution trailers and tool footers, hype, file inventories, expiring text) against `contracts/pr-lint.json`, extended or overridden by git-config `pr.lint` (lists extend, numbers replace). It writes `run/pr-lint.json` with the body hash; a failure is recorded for the human at `G:publish` (the retry loop comes later). The stage is wired into the `publish` task-type graph (see below).
+
+**Lens attack (T5a).** `contracts/lenses.json` maps each stage row to its lenses, each naming a bare model alias (`sonnet` or `opus`); a contract test checks it. `lensAttack` (`workflows-src/shared/lens-attack.mjs`) starts one read-only `lens` agent per wired lens at that lens's model. Each call carries the lens-result schema and its own key, so the tap files the return. One pure merge (`shared-node/lens-merge.mjs`), used by both the workflow and the stage report, orders findings by lens order then finding order and gives ids `<lens>-<n>`. A finding with no rule is kept but non-blocking (`low`). A lens with no return goes to `uncovered`, which makes the gate ask even under `auto`. The result has the D8 shape; refuters, attempts and lessons come in later tasks. The scenarios stage runs its first lens (necessity) after the enumerator. The `lens` agent is stage-only (`newPathAgents`).
 
 **G:publish gate.** The `publish` task-type graph (`contracts/stages.json`) has one node, `pr-draft`, whose gate `G:publish` is a `continue` gate. Gate eval shows the PR title, body, lint result, coordination comment, commits (flagging any not in the unit record, which `pb task end` now fills), base, HEAD SHA and test command, and stores the HEAD it showed. Answers are `publish`, `keep local` or `redo`. A `publish` answer binds `headSha`, `bodyHash`, `title`, `labels`, `base` and `target`, re-runs the lint, and is refused if HEAD moved since the question. A new commit or a body edit voids the approval: the gate moves to the ledger's `voidedGates` with the reason. A failed, missing or stale lint asks under every policy, and a human approval records the failure. The `auto` policy asks until a safety-net lens record exists in the ledger's `lenses` (T5c), so it never auto-approves `G:publish` for now. `keep local` closes the unit and keeps commits, branch and refs. A unit with no commits past `baseSha` skips the gate. Hooks no longer bootstrap `git-config.json` on this path.
 

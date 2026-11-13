@@ -2,8 +2,11 @@ export const meta = { name: 'code-scenarios', description: 'Internal stage, star
 
 // pb-inline-module shared-node/keys.mjs
 // pb-inline-module shared-node/labels.mjs
+// pb-inline-module shared-node/lens-merge.mjs
 // pb-inline-module shared-node/shell-word.mjs
 // pb-inline RESULT_SCHEMA contracts/schemas/enumerate-scenarios-and-test-cases-result.schema.json
+// pb-inline LENSES contracts/lenses.json
+// pb-inline LENS_SCHEMA contracts/schemas/lens-result.schema.json
 // pb-inline RUNNER_SCHEMA contracts/schemas/runner-result.schema.json
 
 const missing = missingArgument();
@@ -31,6 +34,8 @@ const prompt = [
 
 const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
+const lensResult = await lensAttack({ stage, attempt: args.attempt, lenses: wiredLenses(LENSES, stage), subject: result, schema: LENS_SCHEMA });
+
 const runner = await runCommands(stage, ['stage finish']);
 
-return { started: true, pbKey, label, result, runner };
+return { started: true, pbKey, label, result, lensAttack: lensResult, runner };

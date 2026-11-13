@@ -4,6 +4,8 @@ import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { lensSlug } from "./keys.mjs";
+import { mergeLensReturns, wiredLenses } from "./lens-merge.mjs";
 import { evidenceFor, maxAgentsOf, returnFileKey } from "./stages.mjs";
 import { TestRunRefused, testRows } from "./test-run.mjs";
 
@@ -160,19 +162,36 @@ function coveredEvidence({ tests: { perTest = {} }, stage: { name } }) {
 export const coveredTests = ({ tests: { perTest = {} } }) =>
   Object.entries(perTest).filter(([, { covered }]) => covered?.done).map(([test_id, { covered: { after, sha } }]) => ({ test_id, after, sha }));
 
-function notCovered({ uncovered, gaps }, testRuns, returns, red) {
-  const lensRan = returns.some((artifact) => REPORT_LISTS.some((key) => artifact[key] !== undefined));
+function notCovered({ uncovered, gaps }, testRuns, returns, red, lensRan) {
+  const anyLensRan = lensRan || returns.some((artifact) => REPORT_LISTS.some((key) => artifact[key] !== undefined));
   return [
     ...uncovered,
     ...gaps,
     ...(testRuns.some(({ key }) => key === "full") ? [] : ["the full suite did not run in this stage"]),
-    ...(lensRan ? [] : ["no lens round ran in this stage"]),
+    ...(anyLensRan ? [] : ["no lens round ran in this stage"]),
     ...(testRuns.length > 0 || red.length > 0 ? ["exit codes show that tests passed or failed, not why: read the excerpts"] : []),
     `${TOKENS_UNIT} are unknown: this stage supplied no budget.spent() figure`,
   ];
 }
 
 const COVERAGE_ROLE = "verify-test-coverage";
+const LENS_ROLE = "lens";
+
+// Read once per process: which lenses a stage runs comes from the same map and wiredLenses rule the workflow uses.
+const LENS_MAP = JSON.parse(readFileSync(new URL("../contracts/lenses.json", import.meta.url), "utf8"));
+
+// The same merge the workflow runs, over what the tap recorded: a lens with no recorded return is uncovered. A return counts
+// for the lens its key names (the tap only files a lens key from a lens agent, and each call's schema pins its own key, so
+// a lens agent cannot file under another lens's name through the runtime). Of the rounds recorded for one lens the latest
+// speaks, and a return for a lens the stage does not wire is ignored.
+function mergedLensRound(current, artifactsDir, stageName) {
+  const recorded = current.filter(({ role }) => role === LENS_ROLE);
+  const returns = wiredLenses(LENS_MAP, stageName).map((lens) => {
+    const [latest] = recorded.filter(({ item }) => item === lensSlug(lens.name)).sort((a, b) => b.round - a.round);
+    return { lens, result: latest === undefined ? null : readReturn(artifactsDir, latest.pbKey) };
+  });
+  return { merged: mergeLensReturns(returns), lensRan: recorded.length > 0 };
+}
 
 // Each coverage round returns the gaps it still sees, so the newest round of the attempt speaks for the stage.
 function coverageGaps(current, returns) {
@@ -187,9 +206,15 @@ export function buildReport(ledger, artifactsDir) {
   const { name, attempt, runId } = ledger.stage;
   const current = returnsAt(artifactsDir, ledger.stage);
   const returns = current.map(({ pbKey }) => readReturn(artifactsDir, pbKey) ?? {});
-  const lensReturns = returns.filter((_, i) => current[i].role !== COVERAGE_ROLE);
+  const lensReturns = returns.filter((_, i) => ![COVERAGE_ROLE, LENS_ROLE].includes(current[i].role));
   const found = Object.fromEntries(REPORT_LISTS.map((key) => [key, lensReturns.flatMap((artifact) => artifact[key] ?? [])]));
-  const lists = { ...found, gaps: [...found.gaps, ...coverageGaps(current, returns)] };
+  const { merged, lensRan } = mergedLensRound(current, artifactsDir, name);
+  const lists = {
+    ...found,
+    survivors: [...found.survivors, ...merged.survivors],
+    uncovered: [...found.uncovered, ...merged.uncovered],
+    gaps: [...found.gaps, ...coverageGaps(current, returns)],
+  };
   const tests = attemptTests(ledger);
   const red = redEvidence(ledger);
   const ambiguities = current.map(({ pbKey }, i) => ({ key: pbKey, ambiguity: returns[i].ambiguity ?? "" })).filter(({ ambiguity }) => ambiguity !== "");
@@ -207,7 +232,7 @@ export function buildReport(ledger, artifactsDir) {
     ambiguities,
     redEvidence: red,
     covered: coveredEvidence(ledger),
-    notCovered: notCovered(lists, tests, lensReturns, red),
+    notCovered: notCovered(lists, tests, lensReturns, red, lensRan),
     spend: { agents: current.length, agentsSource: "recorded returns", tokens: 0, tokensKnown: false, tokensUnit: TOKENS_UNIT },
   };
 }

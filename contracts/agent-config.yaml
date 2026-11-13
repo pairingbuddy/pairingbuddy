@@ -69,6 +69,7 @@ agents:
   apply-config-change:
     color: magenta
     model: haiku
+    tools: [Read, Edit]
     skills: []
     inputs: {}
     outputs:
@@ -82,9 +83,27 @@ agents:
         content: focus_warning
       - heading: "## Output"
 
+  lens:
+    color: cyan
+    model: sonnet
+    tools: [Read, Grep, Glob]
+    skills: []
+    inputs: {}
+    outputs:
+      lens_result:
+        schema: lens-result.schema.json
+        return_only: true
+    sections:
+      - heading: "## Purpose"
+      - heading: "## Input"
+      - heading: "## Instructions"
+        content: focus_warning
+      - heading: "## Output"
+
   runner:
     color: green
     model: haiku
+    tools: [Bash]
     skills: []
     inputs: {}
     outputs:

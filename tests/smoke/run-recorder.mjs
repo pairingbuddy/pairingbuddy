@@ -48,7 +48,7 @@ export function workflowAgents(dirs, startedAt) {
   return dirs.filter((dir) => existsSync(dir)).flatMap((dir) => readdirSync(dir).filter((file) => /^agent-.*\.meta\.json$/.test(file)).flatMap((file) => readAgent(dir, file, startedAt)));
 }
 
-const transcriptDirs = (stream) => [...new Set(stream.flatMap(({ event }) => [...JSON.stringify(event).matchAll(TRANSCRIPT_DIR)].map(([, dir]) => dir)))];
+export const transcriptDirs = (stream) => [...new Set(stream.flatMap(({ event }) => [...JSON.stringify(event).matchAll(TRANSCRIPT_DIR)].map(([, dir]) => dir)))];
 
 // The call that ends the task. Its output is the only place a leftover file shows, since a refusal leaves the ledger as it was.
 const TASK_END = /\bpb(?:\.mjs)?["']?\s+task end\b/;

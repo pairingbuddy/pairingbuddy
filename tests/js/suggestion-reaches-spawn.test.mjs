@@ -14,7 +14,7 @@ const ARGS = { attempt: 1, pluginRoot: "/plugins/pairingbuddy", task: { descript
 
 describe("suggestion-reaches-next-stage-spawn", () => {
   test("first-spawn-is-pointed-at-the-file-the-mod-writes-suggestions-to", async () => {
-    const { calls } = await runScript(STAGE, { args: ARGS, agent: async () => ({}) });
+    const { calls } = await runScript(STAGE, { args: ARGS, agent: async (_prompt, { agentType }) => (agentType === "pairingbuddy:lens" ? { findings: [] } : {}) });
 
     const { human_guidance: guidancePath } = JSON.parse(blockOf(calls[0].prompt, "paths"));
     assert.strictEqual(guidancePath, SUGGESTION_FILE, "the first spawn is pointed at the file the mod writes suggestions to");

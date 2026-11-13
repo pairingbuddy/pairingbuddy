@@ -7,8 +7,7 @@ import { buildLabel, parseLabel, readLabel } from "../../shared-node/labels.mjs"
 
 const readJson = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
 
-// A stand-in for contracts/lenses.json until Task 76 lands it.
-const { rows } = readJson("../fixtures/lens-map.json");
+const { rows } = readJson("../../contracts/lenses.json");
 const verdictSchema = readJson("../../contracts/schemas/refuter-verdict.schema.json");
 
 const FINDINGS_PER_LENS = 2;
