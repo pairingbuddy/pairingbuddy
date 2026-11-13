@@ -874,10 +874,7 @@ describe("publish-moved-base-guard", () => {
     const unit = publishableUnit({ approval: "none" });
     const { repo, branch } = unit;
     const oldBase = readUnitRecord(repo).baseSha;
-    pushFromSecondClone(repo, "moved.txt");
-    git(repo, "fetch", "-q", "origin");
-    git(repo, "rebase", "-q", "--onto", "origin/main", oldBase, branch);
-    const head = git(repo, "rev-parse", "HEAD");
+    const head = rebaseOntoMovedMain(repo, oldBase, branch);
     changeUnit(repo, { commits: git(repo, "rev-list", "--reverse", `${oldBase}..HEAD`).split("\n"), tasks: [taskRecord(head)] });
     approvedThroughTap(repo);
     const unitBefore = readFileSync(unitFile(repo), "utf8");
@@ -889,5 +886,62 @@ describe("publish-moved-base-guard", () => {
     assert.equal(remoteRef(repo, `refs/heads/${branch}`), null, "nothing was pushed to the remote");
     assert.deepEqual(gh.prCreates(), [], "gh saw no pr create");
     assert.equal(readFileSync(unitFile(repo), "utf8"), unitBefore, "unit.json is unchanged");
+  });
+});
+
+// Scenario: rebase-publish-end-to-end. A rebased unit publishes through pb publish after pb unit status, in a temp repo
+// with a bare origin and the gh shim.
+
+// origin/main moves (a commit pushed from a second clone) and the human rebases the unit branch onto it. Returns the new HEAD.
+function rebaseOntoMovedMain(repo, oldBase, branch) {
+  pushFromSecondClone(repo, "moved.txt");
+  git(repo, "fetch", "-q", "origin");
+  git(repo, "rebase", "-q", "--onto", "origin/main", oldBase, branch);
+  return git(repo, "rev-parse", "HEAD");
+}
+
+// A publishable unit (no approval yet) whose last commit adds fake.mjs, the test-config runner, exiting suiteExitCode. Its
+// task record and full suite are at that HEAD. Then origin/main moves and the human rebases the unit branch onto it.
+function rebasedPublishableUnit(suiteExitCode) {
+  const unit = publishableUnit({ approval: "none" });
+  const { repo, branch } = unit;
+  const oldBase = readUnitRecord(repo).baseSha;
+  writeFileSync(join(repo.dir, "fake.mjs"), `process.exit(${suiteExitCode});\n`);
+  git(repo, "add", "fake.mjs");
+  git(repo, "commit", "-q", "-m", "feat: add the test runner");
+  const oldHead = git(repo, "rev-parse", "HEAD");
+  changeUnit(repo, { commits: git(repo, "rev-list", "--reverse", `${oldBase}..HEAD`).split("\n"), tasks: [taskRecord(oldHead)] });
+  const newHead = rebaseOntoMovedMain(repo, oldBase, branch);
+  return { repo, branch, oldHead, newHead };
+}
+
+describe("rebase-publish-end-to-end", () => {
+  test("rebased-unit-publishes-after-unit-status", () => {
+    const unit = rebasedPublishableUnit(0);
+    const { repo, branch, oldHead, newHead } = unit;
+    assert.notEqual(newHead, oldHead, "the rebase moved HEAD");
+    approvedThroughTap(repo);
+    assert.match(refused(unit), /commits not in the unit record/, "without pb unit status, pb publish refuses: the rebased commits are not in the unit record");
+
+    const status = pb(repo, "unit", "status");
+    const { gh, result } = publishUnit(unit);
+
+    assert.equal(status.code, 0, `pb unit status reconciles: ${status.stderr}${status.stdout}`);
+    assert.equal(result.code, 0, `pb publish succeeds, stdout ${result.stdout}, stderr ${result.stderr}`);
+    assert.equal(gh.prCreates().length, 1, "a PR was opened on the gh shim");
+    assert.equal(remoteRef(repo, `refs/heads/${branch}`), newHead, "the pushed SHA is the new HEAD");
+  });
+
+  test("publish-refuses-after-failed-rebase-suite", () => {
+    const unit = rebasedPublishableUnit(1);
+    const { repo, newHead } = unit;
+    approvedThroughTap(repo);
+    const status = pb(repo, "unit", "status");
+    assert.equal(status.code, REFUSED, `pb unit status refuses on the failing suite: ${status.stderr}${status.stdout}`);
+    assert.equal(readUnitRecord(repo).rebaseSuite.passed, false, "the failed rebase suite is recorded");
+
+    const stderr = refused(unit);
+
+    assert.match(stderr, new RegExp(`full suite failed at HEAD ${newHead.slice(0, 7)} after the rebase`), "pb publish names the failed suite at the new HEAD after the rebase");
   });
 });

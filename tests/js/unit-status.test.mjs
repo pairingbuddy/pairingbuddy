@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { env, makeRepo, pb, pbWithEnv, pushFromSecondClone } from "./cli-repo-fixture.mjs";
+import { env, makeRepo, pb, pbWithEnv, pushFromSecondClone, rebasedUnitRepo } from "./cli-repo-fixture.mjs";
 import { FAKE_PR_URL, installGhShim, viewsEnv } from "./gh-shim-fixture.mjs";
 
 const REMOTE_REPO = { openTask: false, remote: true };
@@ -227,5 +227,110 @@ describe("pb-unit-status-cli", () => {
     const after = JSON.parse(readFileSync(unitPath(repo), "utf8"));
     assert.deepEqual(after.stackedOn, unitBefore.stackedOn, "the unit stays stacked");
     assert.equal(after.baseSha, newTip, "baseSha is the new dependency tip");
+  });
+});
+
+// The unit.json `pb unit status` is expected to write after reconciling a rebased unit: the new base tip, the rebased commits,
+// each task's head sha remapped (the first task now starts at the new main tip, the second ends at the new second commit)
+// and the rebase suite; nothing else changes.
+function expectedReconciledUnit({ unitBefore, newMain, newFirst, newSecond }, rebaseSuite) {
+  const newHeads = [newMain, newSecond];
+  return {
+    ...unitBefore,
+    baseSha: newMain,
+    commits: [newFirst, newSecond],
+    tasks: unitBefore.tasks.map((task, i) => ({ ...task, headSha: newHeads[i] })),
+    rebaseSuite,
+  };
+}
+
+// Scenario: unit-status-rebase-cli. CLI wiring only, in temp repos from cli-repo-fixture (fake.mjs chooses pass/fail).
+describe("unit-status-rebase-cli", () => {
+  test("reconciled-remaps-and-records-suite", () => {
+    const fixture = rebasedUnitRepo();
+    const { repo, unitFile, newSecond } = fixture;
+
+    const result = pb(repo, "unit", "status");
+
+    assert.equal(result.code, 0, `pb unit status exits 0 after a clean rebase: ${outputOf(result)}`);
+    const rebaseSuite = { passed: true, head: newSecond };
+    assert.deepEqual(JSON.parse(result.stdout).rebaseSuite, rebaseSuite, "the OK JSON includes the rebase suite at the new HEAD");
+    const unit = JSON.parse(readFileSync(unitFile, "utf8"));
+    assert.deepEqual(unit, expectedReconciledUnit(fixture, rebaseSuite), "unit.json records the new base tip, the rebased commits, remapped task head shas and the rebase suite at the new HEAD, and nothing else changed");
+  });
+
+  test("reconciled-failing-suite-recorded-and-refuses", () => {
+    const fixture = rebasedUnitRepo({ suiteExitCode: 1 });
+    const { repo, unitFile, newSecond } = fixture;
+
+    const result = pb(repo, "unit", "status");
+
+    const output = outputOf(result);
+    assert.equal(result.code, 1, `pb unit status refuses with the deliberate refusal exit code: ${output}`);
+    assert.doesNotMatch(output, /unexpected failure/i, "the refusal is deliberate, not the catch-all");
+    assert.match(output, /full suite/i, "the refusal names the full suite");
+    assert.match(output, /exit(ed)?( code)?\D{0,5}1\b/i, "the refusal names the suite's exit code 1");
+    assert.match(output, /publish/i, "the refusal says publish refuses until a full suite passes");
+    assert.ok(output.includes(newSecond.slice(0, 7)), `the refusal names the new HEAD ${newSecond}: ${output}`);
+    assert.deepEqual(JSON.parse(readFileSync(unitFile, "utf8")), expectedReconciledUnit(fixture, { passed: false, head: newSecond }), "unit.json records the new base, the rebased commits and the failed rebase suite at the new HEAD");
+  });
+
+  test("reconciled-stale-config-refuses-nothing-written", () => {
+    const { repo, unitFile } = rebasedUnitRepo();
+    const configPath = join(repo.dir, ".pairingbuddy", "test-config.json");
+    writeFileSync(configPath, `${readFileSync(configPath, "utf8")}\n`);
+    const unitBefore = readFileSync(unitFile, "utf8");
+
+    const result = pb(repo, "unit", "status");
+
+    assertDeliberateRefusal(result, /config hash changed/i, "the refusal names the config hash change", repo, unitBefore);
+  });
+
+  test("reconciled-refusal-leaves-unit-unchanged", () => {
+    const { repo, unitFile } = rebasedUnitRepo({ suiteExitCode: 1 });
+    writeFileSync(join(repo.dir, "extra.txt"), "extra\n");
+    git(repo, "add", "extra.txt");
+    git(repo, "commit", "-q", "-m", "extra commit outside the unit record");
+    const extra = git(repo, "rev-parse", "HEAD");
+    const unitBefore = readFileSync(unitFile, "utf8");
+
+    const result = pb(repo, "unit", "status");
+
+    assertDeliberateRefusal(result, /not in the unit record/i, "the refusal says a commit is not in the unit record", repo, unitBefore);
+    assert.ok(outputOf(result).includes(extra.slice(0, 7)), `the refusal names the extra commit ${extra}: ${outputOf(result)}`);
+    assert.doesNotMatch(outputOf(result), /full suite/i, "no suite ran: the refusal is the remap one, not the failing-suite one");
+  });
+
+  test("reconciled-no-tasks-skips-suite", () => {
+    const { repo, unitFile, unitBefore, newMain } = rebasedUnitRepo({ suiteExitCode: 1 });
+    const noTasks = { ...unitBefore, tasks: [], commits: [] };
+    writeFileSync(unitFile, `${JSON.stringify(noTasks, null, 2)}\n`);
+
+    const result = pb(repo, "unit", "status");
+
+    assert.equal(result.code, 0, `pb unit status exits 0 for a rebased unit with no tasks, so no failing suite ran: ${outputOf(result)}`);
+    assert.equal("rebaseSuite" in JSON.parse(result.stdout), false, "the OK JSON has no rebaseSuite");
+    assert.deepEqual(JSON.parse(readFileSync(unitFile, "utf8")), { ...noTasks, baseSha: newMain }, "unit.json has only the new baseSha changed, with no rebaseSuite");
+  });
+
+  test("reconciled-refuses-merge-instead-of-rebase", () => {
+    const { repo, unitFile } = rebasedUnitRepo({ reconcile: "merge" });
+    const mergeSha = git(repo, "rev-parse", "HEAD");
+    const unitBefore = readFileSync(unitFile, "utf8");
+
+    const result = pb(repo, "unit", "status");
+
+    assertDeliberateRefusal(result, /rebase instead of merging/i, "the refusal says to rebase instead of merging", repo, unitBefore);
+    assert.ok(outputOf(result).includes(mergeSha.slice(0, 7)), `the refusal names the merge commit ${mergeSha}: ${outputOf(result)}`);
+  });
+
+  test("reconciled-remaps-a-commit-with-a-large-diff", () => {
+    const fixture = rebasedUnitRepo({ secondFileContent: "x".repeat(2 * 1024 * 1024) });
+    const { repo, unitFile, newFirst, newSecond } = fixture;
+
+    const result = pb(repo, "unit", "status");
+
+    assert.equal(result.code, 0, `pb unit status exits 0 for a recorded commit with a 2 MB diff: ${outputOf(result).slice(0, 500)}`);
+    assert.deepEqual(JSON.parse(readFileSync(unitFile, "utf8")).commits, [newFirst, newSecond], "unit.json records the rebased commits");
   });
 });

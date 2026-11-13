@@ -147,6 +147,7 @@ JS_TEST_FILES = [
     "tests/js/pb-rollback-cap.test.mjs",
     "tests/js/unit-status-rule.test.mjs",
     "tests/js/unit-status.test.mjs",
+    "tests/js/rebase-map.test.mjs",
     "tests/js/stacking-branches-skill.test.mjs",
 ]
 

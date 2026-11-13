@@ -43,9 +43,13 @@ const invalidGateSources = ({ unit }) => {
   return bad.length === 0 ? null : `invalid gate sources: ${list(bad)}`;
 };
 
-// Only the last task's suite can be at HEAD, so only that one is read.
+// A rebase suite recorded at exactly HEAD is the full-suite evidence; otherwise only the last task's suite can be at HEAD, so only that one is read.
 const staleFullSuite = ({ unit, head }) => {
   if (unit.tasks.length === 0) return null;
+  const rebased = unit.rebaseSuite;
+  if (rebased && rebased.head === head) {
+    return rebased.passed === true ? null : `the full suite failed at HEAD ${short(head)} after the rebase; a new task in the unit can fix it`;
+  }
   const suite = unit.tasks.at(-1).fullSuite;
   if (!suite || suite.passed !== true) return "the last task has no passing full-suite result; run pb test --full";
   if (!suite.head) return "the last task has no full-suite result at HEAD; run pb test --full";

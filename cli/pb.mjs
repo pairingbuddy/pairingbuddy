@@ -17,6 +17,7 @@ import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, boxLabelsUnder, planFile, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
 import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, refreshPrReason, targetBranch, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
+import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { SPIKE_SETUP_FILE, abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
@@ -1651,9 +1652,9 @@ function flagValue(args, flag) {
 }
 
 // One runner for git and gh. `context` says what was reached and what to do next, and is appended to the failure.
-function run(cwd, command, args, { context = "", input, trim = true, env } = {}) {
+function run(cwd, command, args, { context = "", input, trim = true, env, maxBuffer } = {}) {
   try {
-    const out = execFileSync(command, args, { cwd, encoding: "utf8", input, env: env === undefined ? process.env : { ...process.env, ...env }, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"] });
+    const out = execFileSync(command, args, { cwd, encoding: "utf8", input, env: env === undefined ? process.env : { ...process.env, ...env }, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"], ...(maxBuffer === undefined ? {} : { maxBuffer }) });
     return trim ? out.trim() : out;
   } catch (e) {
     const why = String(e.stderr ?? "").trim() || e.message;
@@ -1701,29 +1702,73 @@ function renderBranchOrRefuse(template, values) {
 }
 
 // Fetches the remote, then applies the pure D18 rule to the unit's base. A failed fetch or a base gone from the remote is a refusal.
-// A moved or merged base is a refusal carrying the recipe the human types; a reconciled status rewrites run/unit.json,
-// the one write this verb makes.
-function unitStatus() {
+// A moved or merged base is a refusal carrying the recipe the human types. A reconciled status first remaps the unit's
+// commit and task head shas onto the rebased range (refusing when that cannot be done, before anything runs), then runs
+// the full suite at HEAD when the unit has tasks, and writes run/unit.json once, with the rebaseSuite record.
+// A failed suite is recorded in that write and then refused.
+async function unitStatus() {
   const root = toplevel();
   const unit = readUnitOrRefuse(root);
   const gitConfig = loadGitConfigOrRefuse(root);
   const result = baseStatusFor(root, unit, gitConfig);
   refuseRebaseNeeded(unit, result);
-  if (result.status === "reconciled") writeJsonAtomic(unitPathOf(root), reconciledUnit(unit, result));
   if (result.status === "current") return { ok: true, status: "current", base: unit.base, baseSha: unit.baseSha };
-  return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack };
+  const hasTasks = unit.tasks.length > 0;
+  const unitAfterRemap = hasTasks ? remappedUnit(root, unit, result) : unit;
+  const suite = hasTasks ? await rebaseSuiteOf(root, unit) : null;
+  const rebaseSuite = suite === null ? {} : { rebaseSuite: suite.rebaseSuite };
+  writeJsonAtomic(unitPathOf(root), { ...reconciledUnit(unitAfterRemap, result), ...rebaseSuite });
+  // The failed run is evidence, so it lands in the unit before the refusal.
+  if (suite !== null && !suite.rebaseSuite.passed) {
+    throw new Refusal(`the full suite failed at HEAD ${suite.rebaseSuite.head.slice(0, 7)} after the rebase: exit codes ${suite.exitCodes.join(", ")}. pb publish refuses until a full suite passes at HEAD; a new task in the unit can fix it`);
+  }
+  return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack, ...rebaseSuite };
+}
+
+// The patch-id of a commit's change.
+// A large diff must not hit the default 1 MB buffer, so the diff is read with a generous maxBuffer.
+const DIFF_MAX_BUFFER = 1024 * 1024 * 1024;
+function patchIdOf(root, sha) {
+  const context = "nothing was written";
+  const diff = runGit(root, ["diff-tree", "-p", "--root", sha], { trim: false, maxBuffer: DIFF_MAX_BUFFER, context });
+  const out = runGit(root, ["patch-id", "--stable"], { input: diff, context });
+  return out.split(/\s+/)[0];
+}
+
+// Runs a pure shared-node rule; its own refusals become Refusals.
+function refusingAs(rule) {
+  try {
+    return rule();
+  } catch (e) {
+    if (e instanceof UnitStatusRefused) throw new Refusal(e.message);
+    throw e;
+  }
+}
+
+// The unit's commits and task head shas moved onto the rebased range; a mapping that cannot be made is a refusal.
+function remappedUnit(root, unit, result) {
+  const gitLines = (args) => runGit(root, args, { context: "nothing was written" }).split("\n").filter(Boolean);
+  const range = `${result.baseSha}..HEAD`;
+  const rangeCommits = gitLines(["rev-list", "--reverse", range]).map((sha) => ({ sha, patchId: patchIdOf(root, sha) }));
+  const merges = gitLines(["rev-list", "--merges", range]);
+  const recorded = unit.commits.map((sha) => ({ sha, patchId: patchIdOf(root, sha) }));
+  const mapping = refusingAs(() => remapCommits({ recorded, range: rangeCommits, merges }));
+  const remap = (sha) => mapping[sha] ?? (sha === unit.baseSha ? result.baseSha : sha);
+  return { ...unit, commits: unit.commits.map(remap), tasks: unit.tasks.map((task) => ({ ...task, headSha: remap(task.headSha) })) };
+}
+
+// The full suite at the rebased HEAD, recorded as passed and the head it ran at.
+async function rebaseSuiteOf(root, unit) {
+  const plans = fullSuitePlans(readTestConfig(root, unit.configHash));
+  const record = await suiteRecord(plans, root, { name: "rebase", attempt: 1 });
+  return { rebaseSuite: { passed: record.passed, head: headOf(root) }, exitCodes: record.runs.map(({ exitCode }) => exitCode) };
 }
 
 // Fetches, reads the inputs and applies the pure rule; the rule's own refusals become Refusals.
 function baseStatusFor(root, unit, gitConfig) {
   fetchOrRefuse(root, gitConfig.remote);
   const inputs = statusInputsOf(root, unit, gitConfig);
-  try {
-    return baseStatusOf({ unit, remote: gitConfig.remote, ...inputs });
-  } catch (e) {
-    if (e instanceof UnitStatusRefused) throw new Refusal(e.message);
-    throw e;
-  }
+  return refusingAs(() => baseStatusOf({ unit, remote: gitConfig.remote, ...inputs }));
 }
 
 // Publish goes on only when the base is current; it never writes the unit, so a reconciled result is sent to pb unit status.
