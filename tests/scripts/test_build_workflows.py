@@ -14,6 +14,7 @@ import pytest
 from tests.scripts.bundler_helpers import (
     BUILD_SCRIPT,
     FIXTURE_ROOT,
+    MAX_BUNDLE_LINE,
     REPO_ROOT,
     assert_clean_failure,
     assert_nothing_written,
@@ -64,13 +65,35 @@ def test_built_file_inlines_declared_json(fixture_tree, tmp_path):
 
     built = build_trivial_stage(fixture_tree, out).read_text()
 
-    match = re.search(r"^const ANSWER = (.*);$", built, re.MULTILINE)
+    match = re.search(r"^const ANSWER = (\{.*?^\});$", built, re.MULTILINE | re.DOTALL)
     assert match, "declared JSON must appear as a const named ANSWER"
     assert json.loads(match.group(1)) == declared, "inlined value must equal the declared file"
     assert "pb-inline" not in built, "the pb-inline directive line must be removed from the output"
     assert (
         built.index("if (args === undefined)") < match.start() < built.index(shared_source.strip())
     ), "the constant must sit after the meta and guard and before the shared code"
+
+
+def test_built_file_inlines_declared_json_across_lines(fixture_tree, tmp_path):
+    out = tmp_path / "out"
+    declared = {"answer": 42, "nested": {"items": [1, 2]}}
+    (fixture_tree / "data" / "answer.json").write_text(json.dumps(declared))
+
+    built = build_trivial_stage(fixture_tree, out).read_text()
+
+    assert "const ANSWER = {\n" in built, "inlined JSON must be pretty-printed, one value per line"
+    assert '"items": [\n' in built, "nested values must be pretty-printed too"
+
+
+def test_build_refuses_inlined_json_with_a_line_over_the_limit(fixture_tree, tmp_path):
+    out = tmp_path / "out"
+    (fixture_tree / "data" / "answer.json").write_text(json.dumps({"brief": "x" * MAX_BUNDLE_LINE}))
+
+    result = run_build(fixture_tree / "workflows-src", out, fixture_tree)
+
+    assert_clean_failure(result, "data/answer.json")
+    assert str(MAX_BUNDLE_LINE) in result.stderr, "the message must name the limit"
+    assert_nothing_written(out)
 
 
 def test_build_fails_when_declared_json_missing(fixture_tree, tmp_path):

@@ -14,7 +14,7 @@ Watch the progress mod (band, pane, alert, report button) in one healthy run and
 
 ### Part A1: healthy, auto mode
 
-1. Run `node tests/smoke/t4a-lab.mjs setup`. Paste the `sh` line it prints. The session starts `/pairingbuddy:code <S2 task>` by itself and its gates pass on their own.
+1. Run `node tests/smoke/t4a-lab.mjs setup` (the lab repo gets a bare `origin` with main, and `gh` in the session is a recording shim; `--plugin-dir <dir>` runs another checkout). Paste the `sh` line it prints. The session starts `/pairingbuddy:code <S2 task>` by itself and its gates pass on their own.
 2. At about 150 columns, dark theme, take a shot while the run is **running**. Name it `A-150-dark-running.png`.
 3. Run `/theme`, switch to light, and take the same shot: `A-150-light-running.png`.
 4. Drag the window to about 110 columns. The pane should wait; open it by typing `/pb`. Shot in each theme: `A-110-dark-running.png`, `A-110-light-running.png`.

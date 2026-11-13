@@ -100,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Workflow bundles pretty-print inlined JSON, so no line exceeds 2000 chars and Claude Code's "Run a dynamic workflow?" dialog can approve them (a 7302-char `LENSES` line made it refuse approval); the bundler fails on an inlined value that cannot fit.
 - The coding skill's open-run check no longer says to stop on an open run outside Solo; it continues the run through `pb status --action`, matching Plan Loop step 1 and the Stop hook.
 - `pb run open --kind publish` and `pb publish` refuse a unit whose plan still has an unticked `[HUMAN]` task, naming it, and write nothing; found live in smoke S6, where a session published past the human stop.
 - Smoke S2 runs again since units: its sample repo gets a bare origin so `pb unit open` can find the base, the run uses the recording `gh` shim, and S2 checks the task's own code-run ledger and a successful `pb task end` (a publish run may follow).

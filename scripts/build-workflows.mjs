@@ -121,13 +121,22 @@ const findMetaEnd = (stageSource) => {
   return -1;
 };
 
-// Reads and minifies a declared JSON file, failing cleanly when it is missing or invalid.
+// Claude Code's workflow approval dialog cuts any line over ~4064 graphemes and then refuses the script.
+const MAX_LINE = 2000;
+
+// Reads and pretty-prints a declared JSON file, failing cleanly when it is missing, invalid,
+// or holds a value too long for one line.
 const readJson = (path, file) => {
+  let json;
   try {
-    return JSON.stringify(JSON.parse(readFileSync(join(root, path), 'utf8')));
+    json = JSON.stringify(JSON.parse(readFileSync(join(root, path), 'utf8')), null, 2);
   } catch (error) {
     fail(`${join(stagesDir, file)}: cannot inline "${path}": ${error.message}`);
   }
+  if (json.split('\n').some((line) => line.length > MAX_LINE)) {
+    fail(`${join(stagesDir, file)}: cannot inline "${path}": a value is longer than ${MAX_LINE} chars on one line`);
+  }
+  return json;
 };
 
 const MODULE_DIRECTIVE = /^\/\/ pb-inline-module (\S+)[ \t]*$\n?/gm;

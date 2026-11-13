@@ -6,6 +6,8 @@ and compares bytes against the built workflows/*.js, using node via subprocess.
 
 from tests.scripts.bundler_helpers import (
     BUILD_SCRIPT,
+    MAX_BUNDLE_LINE,
+    REPO_ROOT,
     assert_clean_failure,
     build_ok,
     run_build,
@@ -160,3 +162,14 @@ def test_check_reports_non_built_file_left_by_rebuild_as_extra(fixture_tree, tmp
 
     assert result.returncode == 1, result.stdout + result.stderr
     assert "extra: keep.js" in result.stderr, result.stderr
+
+
+def test_committed_workflows_have_no_line_over_the_limit():
+    too_long = [
+        f"{path.name}:{number} ({len(line)} chars)"
+        for path in sorted((REPO_ROOT / "workflows").glob("*.js"))
+        for number, line in enumerate(path.read_text().splitlines(), start=1)
+        if len(line) > MAX_BUNDLE_LINE
+    ]
+
+    assert too_long == [], f"lines over {MAX_BUNDLE_LINE} chars: {too_long}"

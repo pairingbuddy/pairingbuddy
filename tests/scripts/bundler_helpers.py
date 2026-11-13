@@ -45,3 +45,7 @@ def assert_clean_failure(result, named):
 def assert_nothing_written(out):
     """Assert the output directory is absent or empty."""
     assert not out.exists() or list(out.iterdir()) == [], "no output may be written on failure"
+
+
+# Claude Code's workflow approval dialog refuses a script with a line it must cut (~4064)
+MAX_BUNDLE_LINE = 2000

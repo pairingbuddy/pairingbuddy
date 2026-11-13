@@ -422,7 +422,7 @@ test('perTest-wins-over-disagreeing-legacy-list', async () => {
 // The t59-healthy recording (a finished bug-fix run) holds, per stage in ledger.stages: name, status, attempt, startedAt and spend.
 // It holds no end for a stage (no finishedAt or end field). Its timing snapshot holds { seconds, stageSeconds }. So the tests below
 // add `end` to the stages themselves, visibly, and pass no timing, to prove the run time comes from the ledger's stage times.
-const HEALTHY_RUN = new URL("../smoke/recordings/t59-healthy/", import.meta.url);
+const HEALTHY_RUN = new URL("../fixtures/recordings/t59-healthy/", import.meta.url);
 const finishedLedger = async () => {
   const lines = (await readFile(new URL("ledger.jsonl", HEALTHY_RUN), "utf8")).trim().split("\n");
   return JSON.parse(lines.at(-1)).ledger;
