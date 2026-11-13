@@ -22,6 +22,10 @@
 // `pr comment` with the draft's coordination text when it had any, the unit is closed, no refs/pairingbuddy/ ref is on
 // the remote, and no PR: plan line (a non-plan /code task has no plan).
 //
+// In run 1, S3 answers asking G:type, G:scenarios and G:task-end as the human the way S2 does (S2's gateToAnswer: its
+// allowlist and cap), from its own shell, and resumes; those gates must then be human-cli approve and the rest auto. It
+// never answers G:publish, since stopping there is what run 1 checks. The answers are listed in the result.
+//
 // Each run is recorded as S2's are, under recordings/<name>/run1 and run2, and each has its own spend cap.
 //
 // Run it by hand, in a separate shell, from the repo root. It spends money, so no suite collects it:
@@ -39,9 +43,9 @@ import { DEFAULTS } from "../../shared-node/gitconf.mjs";
 import { updateLedger } from "../../shared-node/ledger.mjs";
 import { readDraftArtifact } from "../../shared-node/pr-lint-run.mjs";
 import { FAKE_PR_URL, flagValues, installGhShim } from "../js/gh-shim.mjs";
-import { BUDGET_USD, Budget, REPO_ROOT, SmokeError, cleanEnv, runClaude } from "./claude-run.mjs";
+import { BUDGET_USD, Budget, REPO_ROOT, SmokeError, cleanEnv, readLedgerOrNull, runClaude, sessionOf } from "./claude-run.mjs";
 import { RunRecorder } from "./run-recorder.mjs";
-import { RECORDINGS, TASK, assertControlFlow, claudeEnv, codeLedger, codeSnapshots, git, makeS2Repo, position, runLog } from "./s2.mjs";
+import { RECORDINGS, TASK, assertControlFlow, claudeEnv, codeLedger, codeSnapshots, gateToAnswer, git, makeS2Repo, position, runLog } from "./s2.mjs";
 
 const BASE = "develop";
 const UNIT = { type: "fix", slug: "apply-discount" };
@@ -214,15 +218,24 @@ function assertPublished(repo, remote, gh, { binding, draft, body, unit }, print
 
 const runSummary = (budget, recorder) => ({ costUsd: Number(budget.spent.toFixed(6)), costKnown: budget.costKnown, seconds: Number(recorder.seconds().toFixed(1)) });
 
-const sessionOf = (stream) => stream.map(({ event }) => event.session_id).find((id) => typeof id === "string") ?? null;
-
-async function runOne(label, { repo, out, record, prompt, budgetUsd, env, pluginDir, resume = null }) {
+// With humanApprovals, the run answers S2's asking pre-publish gates as the human, as S2 does, and resumes; never G:publish.
+async function runOne(label, { repo, out, record, prompt, budgetUsd, env, pluginDir, gh, resume = null, humanApprovals = null }) {
   const budget = new Budget(budgetUsd);
   const recorder = new RunRecorder(repo, out, { streamPath: join(record, `${label}.stream.jsonl`) }).start();
   const run = { label, budget, recorder };
   try {
-    await runClaude(repo, prompt, budget, { env, onLine: (event) => recorder.line(event), pluginDir, resume });
-    recorder.poll();
+    for (;;) {
+      await runClaude(repo, prompt, budget, { env, onLine: (event) => recorder.line(event), pluginDir, resume });
+      recorder.poll();
+      const asking = humanApprovals === null ? null : gateToAnswer(readLedgerOrNull(repo), humanApprovals);
+      if (asking === null) break;
+      const approved = humanPb(repo, gh, pluginDir, "human", "approve", asking.gate);
+      check(approved.code === 0, `the human's pb human approve ${asking.gate}: exit ${approved.code}, ${approved.stderr}`);
+      humanApprovals.push({ gate: asking.gate, reason: asking.reason });
+      prompt = `I ran the approve command for ${asking.gate}. Continue.`;
+      resume = sessionOf(recorder.stream);
+      check(resume !== null, `${label}'s stream has no session id to resume`);
+    }
   } catch (e) {
     // The spend and the position of a run that failed are still the caller's to report.
     e.run = run;
@@ -237,18 +250,18 @@ async function runS3({ budgetUsd, record, out, pluginDir }) {
   const { repo, remote } = makeS3Repo(record);
   const gh = installGhShim({ parent: record, remember: true });
   const env = claudeEnv(gh);
-  const result = { passed: false, step: "unit-open", cause: "", runs: {} };
+  const result = { passed: false, step: "unit-open", cause: "", runs: {}, humanApprovals: [] };
   let current = null;
   try {
     const opened = humanPb(repo, gh, pluginDir, "unit", "open", "--type", UNIT.type, "--slug", UNIT.slug);
     check(opened.code === 0, `the human's pb unit open: exit ${opened.code}, ${opened.stderr}`);
     check(git(repo, "rev-parse", "--abbrev-ref", "HEAD").trim() === UNIT_BRANCH, `pb unit open left HEAD off ${UNIT_BRANCH}`);
     result.step = "run1";
-    current = await runOne("run1", { repo, out: join(out, "run1"), record, prompt: `/pairingbuddy:code ${TASK}`, budgetUsd, env, pluginDir });
+    current = await runOne("run1", { repo, out: join(out, "run1"), record, prompt: `/pairingbuddy:code ${TASK}`, budgetUsd, env, pluginDir, gh, humanApprovals: result.humanApprovals });
     result.runs.run1 = runSummary(current.budget, current.recorder);
     const task = codeLedger(current.recorder.snapshots);
     check(task !== null, "no code run was seen");
-    assertControlFlow(task, runLog(repo), { snapshots: codeSnapshots(current.recorder.snapshots), agents: current.recorder.spawns() });
+    assertControlFlow(task, runLog(repo), { snapshots: codeSnapshots(current.recorder.snapshots), agents: current.recorder.spawns(), humanApprovals: result.humanApprovals });
     check(existsSync(ledgerOf(repo)), "no publish run is open after run 1");
     const unit = readJson(join(runDirOf(repo), "unit.json"));
     assertUnitRecord(repo, remote, unit);
