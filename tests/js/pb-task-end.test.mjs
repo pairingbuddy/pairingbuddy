@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { COMMIT_FAILED, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
 import { makeRepo as makeRepoWithRemote, recordCleanLensReturns } from "./cli-repo-fixture.mjs";
-import { readUnitRecord } from "./publish-fixture.mjs";
+import { readUnitRecord, unitFile } from "./publish-fixture.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CLI = join(ROOT, "cli", "pb.mjs");
@@ -465,6 +465,24 @@ describe("the plan checkbox", IN_PARALLEL, () => {
     assertRefused(taskEnd(repo), /G:task-end/);
     assert.equal(planOf(repo), PLAN_TEXT);
   });
+
+  test("a ledger.plan title naming a human task is refused by name, and nothing is touched", () => {
+    const humanTitle = "Task 4: [HUMAN] Sign it";
+    const humanPlan = `${PLAN_TEXT}- [ ] **${humanTitle}**\n`;
+    const repo = untouchedPlanRepo(planLedger(humanTitle), humanPlan);
+    const unitPath = unitFile(repo);
+    const unitText = JSON.stringify({ base: "feature", baseSha: git(repo.dir, "rev-parse", "HEAD"), tasks: [], commits: [] });
+    writeFileSync(unitPath, unitText);
+
+    const result = taskEnd(repo);
+
+    assertRefused(result, /Task 4: \[HUMAN\] Sign it/);
+    assert.match(result.stderr, /human task/);
+    assert.match(result.stderr, /only a person ticks/);
+    assert.equal(planOf(repo), humanPlan);
+    assertRunKept(repo);
+    assert.equal(readFileSync(unitPath, "utf8"), unitText);
+  });
 });
 
 describe("pb task end is the only checkbox writer", IN_PARALLEL, () => {
@@ -576,14 +594,20 @@ describe("the real verbs carry a no-change docs step to the end", () => {
   });
 });
 
-describe("the task record carries the full-suite result", IN_PARALLEL, () => {
+describe("the task record carries the task ledger", IN_PARALLEL, () => {
   // A repo whose task is finished and whose unit is open, with the full-suite result pb test --full records.
-  function finishedTaskInUnit(extraLedger = {}) {
+  // With { plan: { title } } it also commits a plan holding that box and points ledger.plan at it.
+  function finishedTaskInUnit(extraLedger = {}, { plan = null } = {}) {
     const repo = makeRepoWithRemote({ openTask: false, remote: true });
     const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
     assert.equal(opened.status, 0, `unit open: ${opened.stderr}`);
     const run = pb(repo, "run", "open", "--kind", "code");
     assert.equal(run.status, 0, `run open: ${run.stderr}`);
+    if (plan) {
+      writeFileSync(join(repo.dir, PLAN_PATH), `- [ ] **${plan.title}**\n`);
+      git(repo.dir, "add", PLAN_PATH);
+      git(repo.dir, "commit", "-q", "-m", "docs: add the plan");
+    }
     const head = git(repo.dir, "rev-parse", "HEAD");
     const configText = readFileSync(join(repo.dir, ".pairingbuddy", "test-config.json"), "utf8");
     writeLedger(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"), withIntake({
@@ -592,6 +616,7 @@ describe("the task record carries the full-suite result", IN_PARALLEL, () => {
       configHash: createHash("sha256").update(configText).digest("hex"),
       ...FINISHED,
       tests: { full: { stage: NET, attempt: 1, passed: true, red: false, runs: [], head } },
+      ...(plan ? { plan: { path: PLAN_PATH, title: plan.title } } : {}),
       ...extraLedger,
     }));
     return { repo, head };
@@ -614,5 +639,24 @@ describe("the task record carries the full-suite result", IN_PARALLEL, () => {
 
     const [record] = readUnitRecord(repo).tasks;
     assert.deepEqual(record.lenses, lenses, "the task record carries the lens record of the task ledger");
+  });
+
+  test("task-end-record-title-is-ledger-plan-title", () => {
+    const planTitle = "Task 1: Parse units";
+    const { repo } = finishedTaskInUnit({ task: `${planTitle}\n\nRead the headings.` }, { plan: { title: planTitle } });
+
+    ok(repo);
+
+    const [record] = readUnitRecord(repo).tasks;
+    assert.equal(record.title, planTitle, "the task record's title is the plan title, not the task text");
+  });
+
+  test("task-end-record-title-is-task-text-without-plan", () => {
+    const { repo } = finishedTaskInUnit({ task: "Task A" });
+
+    ok(repo);
+
+    const [record] = readUnitRecord(repo).tasks;
+    assert.equal(record.title, "Task A", "with no plan the task record's title stays the task text");
   });
 });

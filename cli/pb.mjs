@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, posix, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
@@ -14,7 +14,7 @@ import { KINDS, LEDGER_VERSION, isPublishRun, isRefreshRun, LedgerRefused, Ledge
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
-import { PlanRefused, boxLabelsUnder, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
+import { PlanRefused, boxLabelsUnder, planFile, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
 import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, refreshPrReason, targetBranch, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { SPIKE_SETUP_FILE, abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
@@ -22,6 +22,8 @@ import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, cha
 import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
 import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
+import { isHumanTitle, parsePlan, planStep, unitStates } from "../shared-node/plan.mjs";
+import { shellWord } from "../shared-node/shell-word.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
@@ -159,7 +161,7 @@ function assertPublishable(root) {
 }
 
 // Claims run/task and writes the first ledger; a failed write removes the claim.
-function claimRun({ root, kind, taskType, task, configHash }) {
+function claimRun({ root, kind, taskType, task, configHash, plan = { path: "", title: "" } }) {
   const runRoot = ensureRunRoot(root);
   const dir = join(runRoot, "task");
   // A non-recursive mkdir is the claim: exactly one concurrent opener wins, and an existing
@@ -176,7 +178,7 @@ function claimRun({ root, kind, taskType, task, configHash }) {
     writeLedger(join(dir, "ledger.json"), {
       v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType, runId: randomUUID(),
       owner: { sessionId: null, lastSeen: null },
-      task, plan: { path: "", title: "" }, configHash, gitConfigHash: fileHash(gitConfigPath(root)),
+      task, plan, configHash, gitConfigHash: fileHash(gitConfigPath(root)),
       policy: { mode: "", source: "" },
       stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null },
       stages: [], gates: {}, tests: {}, commits: [], retries: {},
@@ -189,8 +191,52 @@ function claimRun({ root, kind, taskType, task, configHash }) {
   return dir;
 }
 
+// The plan's next task as the run's task (title, blank line, body) and the plan reference the ledger keeps, with the
+// open unit read once here, before the claim.
+function planTask(plan) {
+  const { next, context } = steppedPlan(plan);
+  if (!next) throw new Refusal(`the plan ${plan} has no task left, ${NO_RUN_OPENED}`);
+  if (context.openUnit === null) {
+    throw new Refusal(`a plan task runs inside a unit, and no unit is open, ${NO_RUN_OPENED}. Open one with ${pbCommand("unit open --type <type> --slug <slug>")}`);
+  }
+  assertUnitTakes(context.openUnit, next, context.plan);
+  return {
+    task: [next.title, next.body].filter(Boolean).join("\n\n"),
+    plan: { path: context.plan, title: next.title },
+    // The unit.json to write when the open unit is still unnamed; null when it already carries the planned unit.
+    namedUnit: context.openUnit.unit == null ? { ...context.openUnit, unit: next.unit, plan: context.plan, tracer: next.tracer } : null,
+  };
+}
+
+// Reads the plan and steps it, refusing on format problems and on a stop: the shared start of run open and pb plan next.
+function steppedPlan(plan) {
+  const { root, units, problems, context } = readPlanContext(plan);
+  refusePlanProblems(problems);
+  const { next, stop } = planStep(units, context);
+  if (stop) throw new Refusal(planStopMessage(root, plan, stop));
+  return { next, context };
+}
+
+// Refuses when the open unit cannot take the plan's next task: it is a different unit, or it is fresh but already holds
+// a task that is not from a plan.
+function assertUnitTakes(openUnit, next, planPath) {
+  if (openUnit.unit != null) {
+    if (openUnit.unit !== next.unit) {
+      throw new Refusal(`the open unit is "${openUnit.unit}", but the plan's next task is in "${next.unit}", ${NO_RUN_OPENED}. Publish or close the open unit first`);
+    }
+    if (openUnit.plan !== planPath) {
+      throw new Refusal(`the open unit "${openUnit.unit}" is from ${openUnit.plan}, but the plan's next task is from ${planPath}, ${NO_RUN_OPENED}. Publish or close the open unit first`);
+    }
+  } else if (openUnit.tasks.length > 0) {
+    throw new Refusal(`the open unit already holds a task that is not from a plan, ${NO_RUN_OPENED}. Publish or close it first`);
+  }
+}
+
 function runOpen(args) {
   const kind = parseKind(args);
+  const planPath = flagValue(args, "--plan");
+  const hasPlan = args.includes("--plan");
+  if (hasPlan && (kind !== "code" || planPath === undefined || planPath.startsWith("-"))) throw new UsageError("usage: pb run open --kind code [--plan <plan.md>]");
   if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Refusal("Solo stays on the old path until T10, so no run was opened");
   const root = toplevel();
   assertNotStopped(root);
@@ -201,9 +247,13 @@ function runOpen(args) {
 
   const configHash = validatedConfigHash(root);
   const taskType = kind === "publish" ? "publish" : null;
-  const task = storedTask(root);
+  const planned = hasPlan ? planTask(planPath) : null;
+  const task = planned ? planned.task : storedTask(root);
 
-  const dir = claimRun({ root, kind, taskType, task, configHash });
+  const dir = claimRun({ root, kind, taskType, task, configHash, plan: planned?.plan });
+  // A failed write is a disk error that leaves the run unnamed; `pb plan next` then reads its ticked box as hand-ticked
+  // and stops, which is the safe side.
+  if (planned?.namedUnit) writeJsonAtomic(unitPathOf(root), planned.namedUnit);
   return { ok: true, kind, branch, runDir: dir };
 }
 
@@ -537,8 +587,50 @@ function acceptedConfig(root, path) {
   return accepted;
 }
 
+// The repo toplevel, the plan's resolved path and its text, for the verbs that read a plan.
+function readPlan(plan) {
+  const root = toplevel();
+  const realPlan = planFile(root, plan);
+  return { root, realPlan, text: readFileSync(realPlan, "utf8") };
+}
+
+// The plan read under the repo toplevel with its parsed units and problems, and the context planStep and unitStates take.
+function readPlanContext(plan) {
+  const { root, realPlan, text } = readPlan(plan);
+  const { units, problems } = parsePlan(text);
+  return { root, units, problems, context: { plan: relative(realpathSync(root), realPlan), openUnit: readOpenUnit(root) } };
+}
+
+// Refuses, writing nothing, when the plan has format problems.
+function refusePlanProblems(problems) {
+  if (problems.length > 0) throw new Refusal(`the plan has format problems, so nothing was written: ${problems.join("; ")}`);
+}
+
+// Records Legacy: accepted directly under the unit's own heading line, found by the parser rather than by name.
+function acceptLegacy(unit, plan) {
+  const { realPlan, text } = readPlan(plan);
+  const { units, problems } = parsePlan(text);
+  refusePlanProblems(problems);
+  const found = units.find((u) => u.unit === unit);
+  if (!found) throw new Refusal(`no unit named "${unit}", so nothing was written`);
+  if (found.pr) throw new Refusal(`unit "${unit}" is already published (it has a PR: line), so nothing was written`);
+  if (found.tasks.some((t) => !t.checked)) throw new Refusal(`unit "${unit}" is not fully checked: legacy is only for a fully checked unit, so nothing was written`);
+  if (found.legacy) return { ok: true, unit, plan, legacy: "already accepted" };
+  const lines = text.split("\n");
+  lines.splice(found.headingLine + 1, 0, "Legacy: accepted");
+  replaceFile(realPlan, lines.join("\n"));
+  return { ok: true, unit, plan, legacy: "accepted" };
+}
+
+function legacyArgs(args) {
+  const [flag, unit, planFlag, plan] = args;
+  const ok = args.length === 4 && flag === "--legacy" && planFlag === "--plan" && !unit.startsWith("-") && !plan.startsWith("-");
+  if (!ok) throw new UsageError("usage: pb human accept [--legacy <unit> --plan <plan.md>]");
+  return [unit, plan];
+}
+
 function humanAccept(args) {
-  if (args.length > 0) throw new UsageError("usage: pb human accept");
+  if (args.length > 0) return acceptLegacy(...legacyArgs(args));
   const { root, path } = runLedgerPath();
   const edit = acceptedEdit(path);
   const config = acceptedConfig(root, path);
@@ -1138,6 +1230,53 @@ function status(args) {
   return withAction ? { ok: true, ...state, action: nextAction(contract, ledger, root, PLUGIN_ROOT) } : { ok: true, ...state };
 }
 
+// The units list leaves out task bodies: only `next` carries one.
+const unitSummary = ({ unit, tracer, pr, legacy, tasks }, state) => ({ unit, tracer, pr, legacy, state, tasks: tasks.map(({ body, ...task }) => task) });
+
+// The open unit from run/unit.json, or null when none is open. A corrupt file or one without a tasks list refuses,
+// saying what could not be done (the consequence) and that nothing was changed (the outcome).
+function readUnitJson(root, consequence, outcome) {
+  const path = unitPathOf(root);
+  if (!existsSync(path)) return null;
+  let unit;
+  try {
+    unit = JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    throw new Refusal(`run/unit.json is unreadable, so ${consequence}. ${outcome}: ${e.message}`);
+  }
+  if (!Array.isArray(unit?.tasks)) throw new Refusal(`run/unit.json has no tasks list, so ${consequence}. ${outcome}`);
+  return unit;
+}
+
+const readOpenUnit = (root) => readUnitJson(root, "the plan cannot be read", "Nothing was written");
+
+function planStopMessage(root, plan, { reason, unit, tasks, title, body, humanLeft }) {
+  const acceptCommand = humanCommand(root, `accept --legacy ${shellWord(unit)} --plan ${shellWord(plan)}`);
+  if (reason === "human") return `unit "${unit}"'s next task "${title}" is a human task: only a person does it and ticks its box. Nothing was written. Its steps:\n${body}`;
+  if (reason === "legacy") return `unit "${unit}" is fully checked with no PR: line. Nothing was written: ask the human to type ${acceptCommand}`;
+  if (reason === "hand-ticked") {
+    const message = `unit "${unit}" has ticked tasks with no task record: ${tasks.join(", ")}. A box ticked by hand earns nothing. Nothing was written`;
+    if (humanLeft === undefined) return message;
+    return `${message}. The only unticked tasks are human tasks (${humanLeft.join(", ")}): either do them and tick their boxes, then type ${acceptCommand}; or untick ${tasks.join(", ")} so they run again`;
+  }
+  return `unit "${unit}" is done but not published. Nothing was written: publish it with ${pbCommand("run open --kind publish")}`;
+}
+
+// Reads the plan under the repo toplevel and reports its units, next task and format problems. Writes nothing.
+function planNext(args) {
+  const paths = args.filter((a) => !a.startsWith("-"));
+  const dryRun = args.includes("--dry-run");
+  if (paths.length !== 1 || args.some((a) => a.startsWith("-") && a !== "--dry-run")) throw new UsageError("usage: pb plan next <plan.md> [--dry-run]");
+  const [plan] = paths;
+  if (!dryRun) return { ok: true, plan, next: steppedPlan(plan).next };
+  const { root, units, problems, context } = readPlanContext(plan);
+  const { next, stop } = planStep(units, context);
+  const states = unitStates(units, context);
+  const summaries = units.map((u, i) => unitSummary(u, states[i]));
+  const reportedStop = stop && { ...stop, says: planStopMessage(root, plan, stop) };
+  return { ok: true, dryRun: true, plan, units: summaries, stop: reportedStop, next, problems };
+}
+
 function assertTaskFinished(ledger) {
   const contract = loadStages(PLUGIN_ROOT);
   const unfinished = isStageActive(ledger) ? ledger.stage.name : nextStage(graphFor(contract, ledger.taskType), ledger);
@@ -1202,15 +1341,9 @@ function taskLessons(root) {
 // What taskEnd needs to record the task, read with the other refusals: the open unit and HEAD, or null with no unit.
 // A corrupt unit.json, one without a tasks list, or no commit refuses here, before anything changes.
 function readUnitForRecord(root, ledger) {
+  const unit = readUnitJson(root, "the task cannot end", "Nothing was touched");
+  if (unit === null) return null;
   const path = unitPathOf(root);
-  if (!existsSync(path)) return null;
-  let unit;
-  try {
-    unit = JSON.parse(readFileSync(path, "utf8"));
-  } catch (e) {
-    throw new Refusal(`run/unit.json is unreadable, so the task cannot end. Nothing was touched: ${e.message}`);
-  }
-  if (!Array.isArray(unit?.tasks)) throw new Refusal("run/unit.json has no tasks list, so the task cannot end. Nothing was touched");
   const headSha = headOf(root);
   if (headSha === null) throw new Refusal("there is no commit yet, so the task cannot end. Nothing was touched");
   const lessons = taskLessons(root);
@@ -1269,6 +1402,7 @@ function taskEnd(args) {
   const ledger = readLedger(path);
   if (isPublishRun(ledger)) throw new Refusal(`this is a publish run, which has no task to end. Nothing was touched: run ${pbCommand("publish")} once G:publish is approved`);
   if (isRefreshRun(ledger)) throw new Refusal(`a refresh run has no task to end. Nothing was touched: run ${pbCommand("pr refresh")} once G:publish is approved`);
+  if (ledger.plan?.title && isHumanTitle(ledger.plan.title)) throw new Refusal(`the task "${ledger.plan.title}" is a human task: only a person ticks its box, so the task cannot end. Nothing was touched`);
   assertTaskFinished(ledger);
   assertCommitsOnHead(root, ledger);
   assertGreenRunStands(root, ledger);
@@ -1962,7 +2096,7 @@ export const VERBS = {
   snapshot,
   "unit open": unitOpen, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
-  "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "plan next": planNext, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 async function runVerb(name, args) {

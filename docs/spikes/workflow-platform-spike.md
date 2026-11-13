@@ -856,3 +856,20 @@ the human, as S4 does. No bugs were found live. The spike half of S5 comes with 
 All three runs together spent $1.23 of the $3 ceiling. In run 3, G:task-end and G:publish asked once each in the
 refactoring half, and G:unit and G:task-end once each in the spike half, every time for an open question in a cheap-model
 return. S5 answered them as the human, as S4 does.
+
+## T7b: `pb plan next --dry-run` on this plan (Task 97)
+
+Run read-only on `docs/plans/deterministic-workflows.md` at the Task 97 build (no `run/unit.json`); the plan file's hash was the same before and after.
+
+- **Shape:** 46 units, no format problems, no next task.
+- **States:** 19 legacy, 19 open, 8 hand-ticked.
+- **Stop:** the first unit, "Setup: Integration branch and first builder", is legacy (both its tasks are human tasks, now ticked). `says` gives the exact `!pb human accept --legacy … --plan docs/plans/deterministic-workflows.md` line to type.
+- **Hand-ticked units:** T0b, T1c, T1r, T2a, T4b, T3c and T4c have only `[HUMAN]` tasks left unticked, so each refusal prints the two ways through: do and tick those human tasks, then accept the unit as legacy, or untick its agent tasks so they are built again. T7b reads hand-ticked too, because Tasks 94 and 95 were built by the old path; it becomes a plain legacy unit once 96 and 97 are ticked.
+- **Rewrites needed:** none. The way to cutover is human work, one stop at a time, in plan order: about 27 legacy accepts, plus the 23 open human tasks done or set aside. Nothing in the plan was changed.
+
+## T7b: live S2 after T7a (Task 97)
+
+2026-11-12, Haiku through P16's env, `env -u ANTHROPIC_API_KEY` with the child env checked to hold no Anthropic key, the recording `gh` shim only, `bug_fix` default task. Three runs, $0.152 in all (cap $3).
+
+- **Run 1 ($0.009, 17 s):** no run opened. S2's sample had no remote, and since T3a `/code` opens a unit first, so `pb unit open` refused "cannot tell the base branch". S2 had not been run on its own since units. Fixed test-first in its own commit (`makeS2Repo` with a bare origin, the `gh` shim, control flow checked on the code run's ledger and a successful `pb task end`).
+- **Runs 2 and 3 ($0.067 and $0.077, 154 s and 187 s):** the T7a risk did not show. Intake said `certain` both times, and G:type and G:scenarios passed from `auto`. Both runs then stopped at G:task-end: a safety-net lens or refuter return carried a non-empty `ambiguity` note (for example "I did not read the full tests/test_discount.py ... only the diff"), and an open ambiguity asks the human by rule. So S2's "every gate auto-passes" does not hold on the cheap model since the T5c safety net. S4 and S5 answer asking gates as the human for this reason. Nothing was changed for it (decision 126).

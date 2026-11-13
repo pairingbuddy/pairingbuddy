@@ -15,10 +15,12 @@ export function newUnit({ branch, base, baseSha, configHash, gitConfigHash }) {
 }
 
 // The D19 record of one finished task; spend is not measured yet, so it starts empty.
+// The title is the plan box label when the task came from a plan, so publish evidence and
+// `pb plan next` can match it; otherwise it is the run's task text.
 export function newTaskRecord({ ledger, headSha, lessons }) {
   const gateSources = Object.fromEntries(Object.entries(ledger.gates).map(([gate, entry]) => [gate, entry.source]));
   return {
-    title: ledger.task,
+    title: ledger.plan?.title || ledger.task,
     stages: ledger.stages.map((stage) => stage.name),
     gateSources,
     lenses: ledger.lenses,

@@ -12,6 +12,13 @@ export const skill = () => readFileSync(join(ROOT, "skills", "coding", "SKILL.md
 export const pseudocode = () => /## Workflow[\s\S]*?```python\n([\s\S]*?)```/.exec(skill())[1];
 export const routerSection = () => /### Migrated-Types Router\n([\s\S]*?)\n## /.exec(skill())[1];
 
+// The Plan Loop section: from its heading up to the next heading. A missing section fails here, saying so.
+export const planLoopSection = () => {
+  const found = /### Plan Loop\n([\s\S]*?)(?=\n#{2,3} |$)/.exec(skill());
+  assert.ok(found, "skills/coding/SKILL.md has no '### Plan Loop' section");
+  return found[1];
+};
+
 // The router's steps are numbered list items, each a run of sentences. A sentence ends at . ! or ? followed by a space
 // and a capital letter or a backtick, so "step 2 and do not run `pb unit open` again." stays whole, and the list markers
 // are not sentences of their own.

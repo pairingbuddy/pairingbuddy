@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Smoke S2: `/pairingbuddy:code <bug or feature>` end to end on a sample repo with a real test runner, on a cheap model.
 //
-// One capped `claude -p` session on a human-made branch, with the plugin loaded from outside its cwd and no inherited
-// policy env. It asserts control flow only, never output quality: the task type, stage order, the one placeholder
+// One capped `claude -p` session in a unit, on a repo with a bare origin, with the gh shim first on PATH, the plugin
+// loaded from outside its cwd and no inherited policy env. A publish run after the task is not part of S2's checks. It
+// asserts control flow only, never output quality: the task type, stage order, the one placeholder
 // `test:` commit, one RED and one GREEN commit per test, or one `test:` commit for a test an earlier GREEN covered,
 // tests{} exit codes, the coverage check after the last cycle, and gate sources. A new_feature GREEN is `feat:`, and its
 // cycle's refactor must commit at least one fix group, `refactor:` or `test:`, each after the CLI ran the task's closed
@@ -23,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual, parseArgs } from "node:util";
 
 import { parseKey } from "../../shared-node/keys.mjs";
+import { installGhShim } from "../js/gh-shim.mjs";
 import { BUDGET_USD, Budget, REPO_ROOT, SmokeError, cleanEnv, runClaude } from "./claude-run.mjs";
 import { RunRecorder } from "./run-recorder.mjs";
 
@@ -95,6 +97,18 @@ export function makeRepo(parent, type = "bug_fix", { onMain = false, files = {} 
   git(repo, "commit", "-q", "-m", "init");
   if (!onMain) git(repo, "switch", "-q", "-c", TYPES[type].branch);
   return repo;
+}
+
+// S2's sample left on main, with a bare origin that has main, and origin/HEAD set to main.
+// files goes to makeRepo. Returns the repo and the bare origin's path.
+export function makeS2Repo(parent, type = "bug_fix", { files = {} } = {}) {
+  const repo = makeRepo(parent, type, { onMain: true, files });
+  const remote = join(parent, "origin.git");
+  execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote], { env: cleanEnv() });
+  git(repo, "remote", "add", "origin", remote);
+  git(repo, "push", "-q", "origin", "main");
+  git(repo, "remote", "set-head", "origin", "main");
+  return { repo, remote };
 }
 
 function assertTaskType({ taskType }, type) {
@@ -216,6 +230,10 @@ export function assertControlFlow(ledger, log, { type = "bug_fix", snapshots = [
   assertGates(ledger);
 }
 
+// The task's own ledger: the last snapshot of the code run, which pb task end removed before the publish run opened.
+export const codeSnapshots = (snapshots) => snapshots.filter(({ kind }) => kind === "code");
+export const codeLedger = (snapshots) => codeSnapshots(snapshots).at(-1) ?? null;
+
 export function runLog(repo) {
   const lines = git(repo, "log", "--reverse", "--format=%H %s").trim().split("\n").slice(1);
   return lines.map((line) => ({ sha: line.slice(0, 40), subject: line.slice(41) }));
@@ -227,27 +245,42 @@ export function position(last) {
   return `last ledger: stage ${stage.name} ${stage.status} attempt ${stage.attempt}, finished ${stages.map(({ name }) => name)}, stop ${JSON.stringify(stop)}, needsHuman ${JSON.stringify(needsHuman)}`;
 }
 
-const runIsOpen = (repo) => {
-  try {
-    return git(repo, "status", "--porcelain", "--ignored", ".pairingbuddy/run/task").trim() !== "";
-  } catch {
-    return false;
-  }
-};
+// pb task end must have succeeded once. The publish run after it opens run/task again, so an open run proves nothing.
+export function assertTaskEnded(taskEnds) {
+  const ended = taskEnds.some(({ output }) => output.split("\n").some((line) => {
+    try {
+      return JSON.parse(line)?.ok === true;
+    } catch {
+      return false;
+    }
+  }));
+  if (!ended) throw new SmokeError("no `pb task end` succeeded");
+}
+
+// The env a claude run gets: the clean env with the gh shim first on PATH. No Anthropic key may reach it.
+export function claudeEnv(gh) {
+  const env = { ...cleanEnv(), ...gh.env() };
+  if (Object.hasOwn(env, "ANTHROPIC_API_KEY") || Object.hasOwn(env, "ANTHROPIC_AUTH_TOKEN")) throw new SmokeError("an Anthropic key would reach the run");
+  return env;
+}
 
 async function runS2(budget, record, recording, task, type, pluginDir) {
-  const repo = makeRepo(record, type);
+  const { repo } = makeS2Repo(record, type);
+  const gh = installGhShim({ parent: record });
   const recorder = new RunRecorder(repo, recording, { streamPath: join(record, "stream.jsonl") }).start();
   const result = { passed: false, cause: "", tests: 0, commits: [] };
+  let ledger = null;
   try {
-    await runClaude(repo, `/pairingbuddy:code ${task}`, budget, { onLine: (event) => recorder.line(event), pluginDir });
+    await runClaude(repo, `/pairingbuddy:code ${task}`, budget, { env: claudeEnv(gh), onLine: (event) => recorder.line(event), pluginDir });
     recorder.poll();
     if (recorder.last === null) throw new SmokeError("no run was opened, so nothing went through the gate");
-    if (runIsOpen(repo)) throw new SmokeError("the run was left open");
+    assertTaskEnded(recorder.taskEnds);
+    ledger = codeLedger(recorder.snapshots);
+    if (ledger === null) throw new SmokeError("no code run was seen");
     const log = runLog(repo);
     result.commits = log.map(({ subject }) => subject);
-    assertControlFlow(recorder.last, log, { type, snapshots: recorder.snapshots, agents: recorder.spawns() });
-    result.tests = Object.keys(recorder.last.tests.perTest).length;
+    assertControlFlow(ledger, log, { type, snapshots: codeSnapshots(recorder.snapshots), agents: recorder.spawns() });
+    result.tests = Object.keys(ledger.tests.perTest).length;
     result.passed = true;
   } catch (e) {
     if (!(e instanceof SmokeError)) throw e;
@@ -256,7 +289,7 @@ async function runS2(budget, record, recording, task, type, pluginDir) {
   } finally {
     recorder.stop();
   }
-  return { ...result, type, taskEnd: recorder.taskEnds.map(({ output }) => output), costUsd: Number(budget.spent.toFixed(6)), costKnown: budget.costKnown, seconds: Number(recorder.seconds().toFixed(1)), agents: recorder.last?.spend?.agents ?? null };
+  return { ...result, type, taskEnd: recorder.taskEnds.map(({ output }) => output), costUsd: Number(budget.spent.toFixed(6)), costKnown: budget.costKnown, seconds: Number(recorder.seconds().toFixed(1)), agents: (ledger ?? recorder.last)?.spend?.agents ?? null };
 }
 
 export function parseOptions(argv) {
