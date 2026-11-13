@@ -15,7 +15,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
-import { recordCleanLensReturns } from "./cli-repo-fixture.mjs";
+import { recordCleanLensReturns, makeRepo as makeUnitRepo, pb as unitPb } from "./cli-repo-fixture.mjs";
+import { buildKey } from "../../shared-node/keys.mjs";
 import { lensRow } from "./lens-return-fixture.mjs";
 import { lensSlug } from "../../shared-node/keys.mjs";
 import { loadStages, pipelineAgents, validateStages } from "../../shared-node/stages.mjs";
@@ -1412,5 +1413,37 @@ describe("spend tokens read from the harness transcript", IN_PARALLEL, () => {
     assert.deepEqual(tokensOf(spend), { tokens: 0, tokensKnown: false }, "the return's claimed figure is not recorded");
     assert.deepEqual(tokensOf(repo.ledger().spend), { tokens: 0, tokensKnown: false }, "the task spend ignores the return's figure");
     assert.ok(notCovered.some((line) => UNKNOWN_LINE.test(line)), JSON.stringify(notCovered));
+  });
+});
+
+// Scenario late-safeguards: a stage that fails and is started again keeps its rollback notes and its rolledBack count.
+describe("late-safeguards", () => {
+  test("rerun-after-stage-fail-keeps-notes-and-rolled-back-count", () => {
+    const rollback = (item) => ({ key: buildKey({ stage: NET, role: "fix", item, round: 2, attempt: 1 }), kind: "commit", ref: null, sha: "a".repeat(40), base: "b".repeat(40) });
+    const repo = makeUnitRepo({
+      openTask: true,
+      remote: true,
+      ledger: { stages: [{ name: CONFIG, status: "done", attempt: 1 }], stage: { name: NET, status: "active", runId: "wf_1", attempt: 1, startedAt: null }, fixes: { rollbacks: [rollback("g1"), rollback("g2")] } },
+    });
+    const opened = unitPb(repo, "unit", "open", "--type", "feat", "--slug", "x");
+    assert.equal(opened.code, 0, `setup: pb unit open, stderr: ${opened.stderr}`);
+    const notesPath = join(repo.dir, ".pairingbuddy", "run", "task", "notes", `${NET}.md`);
+    mkdirSync(join(notesPath, ".."), { recursive: true });
+    writeFileSync(notesPath, "## Rollback 1: g1\nthe fix broke the build\n\n## Rollback 2: g2\nlesson two\n");
+    const notesBefore = readFileSync(notesPath);
+    const rolledBackBefore = JSON.parse(unitPb(repo, "snapshot").stdout).rolledBack;
+    assert.equal(rolledBackBefore, 2, "setup: the stage had two recorded rollbacks");
+    const plugin = makePlugin();
+
+    const failed = unitPb(repo, "stage", "fail");
+    assert.equal(failed.code, 0, `pb stage fail, stderr: ${failed.stderr}`);
+    const { nextAttempt } = JSON.parse(failed.stdout);
+    startStage(repo, plugin, NET, nextAttempt);
+
+    assert.deepEqual([repo.ledger().stage.name, repo.ledger().stage.status, repo.ledger().stage.attempt], [NET, "active", nextAttempt], "the stage is active at the next attempt");
+    assert.ok(readFileSync(notesPath).equals(notesBefore), "the notes file is byte-identical at the next attempt");
+    const after = unitPb(repo, "snapshot");
+    assert.equal(after.code, 0, `pb snapshot at the next attempt, stderr: ${after.stderr}`);
+    assert.equal(JSON.parse(after.stdout).rolledBack, rolledBackBefore, "snapshot reports the same rolledBack count");
   });
 });

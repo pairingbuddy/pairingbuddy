@@ -10,7 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
-import { KINDS, LEDGER_VERSION, isPublishRun, isRefreshRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
+import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
@@ -180,7 +180,7 @@ function claimRun({ root, kind, taskType, task, configHash, plan = { path: "", t
     // runId is the pb run identity, set once here; stage.runId is the separate workflow run id per stage attempt.
     writeLedger(join(dir, "ledger.json"), {
       v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType, runId: randomUUID(),
-      owner: { sessionId: null, lastSeen: null },
+      owner: UNOWNED,
       task, plan, configHash, gitConfigHash: fileHash(gitConfigPath(root)),
       policy: { mode: "", source: "" },
       stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null },
@@ -211,11 +211,17 @@ function planTask(plan) {
   };
 }
 
-// Reads the plan and steps it, refusing on format problems and on a stop: the shared start of run open and pb plan next.
-function steppedPlan(plan) {
+// Reads the plan and steps it, refusing on format problems; the stop is returned for the caller to act on.
+function planStepOf(plan) {
   const { root, units, problems, context } = readPlanContext(plan);
   refusePlanProblems(problems);
   const { next, stop } = planStep(units, context);
+  return { root, units, context, next, stop };
+}
+
+// planStepOf that also refuses on a stop: the shared start of run open and unit open.
+function steppedPlan(plan) {
+  const { root, units, context, next, stop } = planStepOf(plan);
   if (stop) throw new Refusal(planStopMessage(root, plan, stop));
   return { next, context, units };
 }
@@ -389,15 +395,16 @@ function applyRefresh(root) {
 
 const approveCommand = (root, gate) => humanCommand(root, `approve ${gate}`);
 
-function runLedgerPath() {
+function runLedgerPath(message = "no run here") {
   const root = findRunRoot(process.cwd());
-  const path = root === null ? null : join(root, ".pairingbuddy", "run", "task", "ledger.json");
-  if (path === null || !existsSync(path)) throw new Refusal("no run here");
+  const path = root === null ? null : ledgerPathOf(root);
+  if (path === null || !existsSync(path)) throw new Refusal(message);
   return { root, path };
 }
 
 const fixDiffPathOf = (root) => join(ensureRunRoot(root), "fix.diff");
 const taskDirOf = (root) => join(root, ".pairingbuddy", "run", "task");
+const ledgerPathOf = (root) => join(taskDirOf(root), "ledger.json");
 const artifactsDirOf = (root) => join(taskDirOf(root), "artifacts");
 const notesDirOf = (root) => join(taskDirOf(root), "notes");
 const reportPathOf = (root) => join(taskDirOf(root), "report.json");
@@ -555,6 +562,32 @@ function humanAbandon(args) {
   const names = abandonRun(runDir);
   if (names.length === 0) return { ok: true, result: "nothing-to-abandon", removed: [], message: "nothing to abandon: no unit or task is open" };
   return { ok: true, result: "abandoned", removed: names.map((name) => `.pairingbuddy/run/${name}`) };
+}
+
+// An owner seen within this many minutes is presumed still working, so adopting its run needs the human to confirm.
+const ADOPT_RECENT_MINUTES = 10;
+
+const minutesSince = (lastSeen) => Math.floor(ownerAgeMs(lastSeen) / 60_000);
+
+// Refuses when no run is open; a run with no owner has nothing to adopt, so that is an ok no-op.
+function humanAdopt(args) {
+  if (args.some((arg) => arg !== "--force")) throw new UsageError("usage: pb human adopt [--force]");
+  const force = args.includes("--force");
+  const { root, path } = runLedgerPath("no run is open: nothing to adopt");
+  const { owner } = readLedger(path);
+  if (owner?.sessionId == null) return { ok: true, adopted: false, message: "the run has no owner: nothing to adopt" };
+  const minutesAgo = minutesSince(owner.lastSeen);
+  if (!force && minutesAgo < ADOPT_RECENT_MINUTES) {
+    const unit = minutesAgo === 1 ? "minute" : "minutes";
+    throw new Refusal(`the run's owner session ${owner.sessionId} was active ${minutesAgo} ${unit} ago (at ${owner.lastSeen}); if that session is still working, close it first; then type the same line with --force: ${humanCommand(root, "adopt --force")}`);
+  }
+  let failedStage = null;
+  updateLedger(path, (ledger) => {
+    const result = isStageActive(ledger) ? failActiveStage(root, ledger, { keepStop: true }) : null;
+    if (result) failedStage = { stage: result.failed.stage, attempt: result.failed.attempt, nextAttempt: result.failed.nextAttempt };
+    return { ...(result?.ledger ?? ledger), owner: UNOWNED };
+  });
+  return { ok: true, adopted: true, previousOwner: owner.sessionId, failedStage };
 }
 
 // Records that the human has seen this task's config diff. It lives in the task's ledger, so it goes with the task.
@@ -1174,6 +1207,15 @@ function withStopCleared(ledger) {
   return { ...ledger, stop: null, stages: ledger.stages.map((entry) => (entry.name === name ? { ...entry, clearedStop } : entry)) };
 }
 
+// Closes the active stage as failed, clears any stop unless keepStop, and says which attempt failed and what the next one is.
+function failActiveStage(root, ledger, { keepStop = false } = {}) {
+  const { name, attempt } = ledger.stage;
+  assertStageActive(ledger, "fail");
+  const clearedStop = keepStop ? null : (ledger.stop?.reason ?? null);
+  const closed = closeStage(ledger, FAILED_STATUS, unknownSpend(returnsAt(artifactsDirOf(root), ledger.stage).length), clearedStop === null ? {} : { clearedStop });
+  return { ledger: keepStop ? closed : { ...closed, stop: null }, failed: { stage: name, attempt, nextAttempt: nextAttempt(closed, name), clearedStop } };
+}
+
 function stageFail(args) {
   assertNoArgs(args, "stage fail");
   const { root, path } = runLedgerPath();
@@ -1185,11 +1227,9 @@ function stageFail(args) {
       failed = { stage: name, attempt, nextAttempt: null, clearedStop: ledger.stop.reason };
       return withStopCleared(ledger);
     }
-    assertStageActive(ledger, "fail");
-    const clearedStop = ledger.stop?.reason ?? null;
-    const closed = closeStage(ledger, FAILED_STATUS, unknownSpend(returnsAt(artifactsDirOf(root), ledger.stage).length), clearedStop === null ? {} : { clearedStop });
-    failed = { stage: name, attempt, nextAttempt: nextAttempt(closed, name), clearedStop };
-    return { ...closed, stop: null };
+    const result = failActiveStage(root, ledger);
+    failed = result.failed;
+    return result.ledger;
   });
   return { ok: true, ...failed };
 }
@@ -1265,13 +1305,37 @@ function planStopMessage(root, plan, { reason, unit, tasks, title, body, humanLe
   return `unit "${unit}" is done but not published. Nothing was written: publish it with ${pbCommand("run open --kind publish")}`;
 }
 
+// The run open in this repo, if any: its kind and the path and task title of the plan it works on; null when no run is open.
+function openRunOf(root) {
+  const path = ledgerPathOf(root);
+  if (!existsSync(path)) return null;
+  const ledger = readLedger(path);
+  return { kind: ledger.kind, title: ledger.plan?.title ?? "", planPath: ledger.plan?.path ?? "" };
+}
+
+// Refuses when a code run of this plan is open on a task other than the plan's next one.
+function assertOpenRunTakes(open, next, planPath) {
+  if (open?.kind === "code" && open.planPath === planPath && open.title !== next?.title) {
+    throw new Refusal(`a code run of this plan is open for "${open.title}", but ${next ? `the plan's next task is "${next.title}"` : "the plan has no task left"}. Nothing was written: the open run must be finished, or the human abandons it`);
+  }
+}
+
 // Reads the plan under the repo toplevel and reports its units, next task and format problems. Writes nothing.
 function planNext(args) {
   const paths = args.filter((a) => !a.startsWith("-"));
   const dryRun = args.includes("--dry-run");
   if (paths.length !== 1 || args.some((a) => a.startsWith("-") && a !== "--dry-run")) throw new UsageError("usage: pb plan next <plan.md> [--dry-run]");
   const [plan] = paths;
-  if (!dryRun) return { ok: true, plan, next: steppedPlan(plan).next };
+  if (!dryRun) {
+    const { root, context, next, stop } = planStepOf(plan);
+    const open = openRunOf(root);
+    const openRun = open && { kind: open.kind, title: open.title };
+    // An open publish run on a unit that is done but unpublished is what to resume: the stop is data, not a refusal.
+    if (stop?.reason === "unpublished" && open?.kind === "publish") return { ok: true, plan, next: null, stop, openRun };
+    if (stop) throw new Refusal(planStopMessage(root, plan, stop));
+    assertOpenRunTakes(open, next, context.plan);
+    return { ok: true, plan, next, ...(openRun && { openRun }) };
+  }
   const { root, units, problems, context } = readPlanContext(plan);
   const { next, stop } = planStep(units, context);
   const states = unitStates(units, context);
@@ -1952,7 +2016,7 @@ function gitDoctor() {
 // The title is the one the tap filed in the draft artifact of the current pr-draft attempt, found through the ledger
 // (the tap writes no separate title file).
 function currentDraftTitle(root) {
-  const { stage } = readLedger(join(taskDirOf(root), "ledger.json"));
+  const { stage } = readLedger(ledgerPathOf(root));
   if (stage.name !== "pr-draft") throw new Refusal(`the current stage is ${stage.name || "none"}, not pr-draft, so there is no draft to lint`);
   return readDraft(root, stage).title;
 }
@@ -2019,7 +2083,7 @@ function snapshot(args) {
   const paths = buildCorpus(insideRepo(root, [...inRepoDocs(root), ...conventionPaths(root), "CLAUDE.md", ...nearest]), (p) => existsSync(join(root, p)));
   const runDir = join(root, ".pairingbuddy", "run");
   replaceFiles([[join(runDir, SUBJECT_DIFF_FILE), diff], [join(runDir, CHANGED_FILE), jsonText(changed)], [join(runDir, CORPUS_FILE), jsonText({ paths })]]);
-  const ledgerPath = join(taskDirOf(root), "ledger.json");
+  const ledgerPath = ledgerPathOf(root);
   const ledger = existsSync(ledgerPath) ? readLedger(ledgerPath) : null;
   const taskType = ledger === null ? null : ledger.taskType;
   return { ok: true, paths, taskType, rolledBack: ledger === null ? 0 : rolledBackCount(ledger, ledger.stage.name) };
@@ -2266,7 +2330,7 @@ export const VERBS = {
   rollback,
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
-  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
+  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
   "plan next": planNext, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 

@@ -7,7 +7,7 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import { isCheckpointCall, isKey, keyFitsStep, parseRollbackArgs } from "./checkpoint.mjs";
 import { parseKey } from "./keys.mjs";
 import { answeredGate, blockingGate, gateQuestion, gatesFor, isGateQuestionCall } from "./gates.mjs";
-import { LedgerShaMismatch, readLedger, updateLedger } from "./ledger.mjs";
+import { LedgerShaMismatch, ownerAgeMs, readLedger, updateLedger } from "./ledger.mjs";
 import { d17Denial } from "./d17.mjs";
 import { commonDirectory, findRepo } from "./git-files.mjs";
 import { checkboxes } from "./plan-boxes.mjs";
@@ -171,9 +171,17 @@ function withPolicy(ledger, payload) {
   return unchanged || !speaksForRun(ledger, payload) ? ledger : { ...ledger, policy };
 }
 
+const LAST_SEEN_REFRESH_MS = 60_000;
+
+// A missing lastSeen counts as stale (see ownerAgeMs), so it refreshes.
+const isStale = (lastSeen) => ownerAgeMs(lastSeen) > LAST_SEEN_REFRESH_MS;
+
 function withOwner(ledger, { agent_id: agentId, session_id: sessionId }) {
-  if (agentId !== undefined || ledger.owner.sessionId !== null) return ledger;
-  return { ...ledger, owner: { sessionId, lastSeen: new Date().toISOString() } };
+  if (agentId !== undefined) return ledger;
+  const { owner } = ledger;
+  const claims = owner.sessionId === null;
+  const refreshes = owner.sessionId === sessionId && isStale(owner.lastSeen);
+  return claims || refreshes ? { ...ledger, owner: { sessionId, lastSeen: new Date().toISOString() } } : ledger;
 }
 
 const withSession = (ledger, payload) => withPolicy(withOwner(ledger, payload), payload);
@@ -194,14 +202,16 @@ function readableLedger(ledgerPath) {
 const invokesGateEval = ({ tool_name: tool, tool_input: toolInput }) => tool === "Bash" && pbInvocations(toolInput.command).some((words) => matchVerb(words) === "gate eval");
 
 // A ledger problem must not take these tools away from the recovery route, and the CLI refuses a broken ledger with
-// its own error. A failed write only matters to gate eval, which would decide on the mode this call failed to record.
+// its own error. A failed write only matters when gate eval would decide on a policy this call failed to record; a
+// failed owner or lastSeen write is harmless.
 function recordSessionIfPossible(ledgerPath, payload) {
   const ledger = readableLedger(ledgerPath);
   if (ledger === null) return;
   try {
     recordSession(ledgerPath, ledger, payload);
   } catch (e) {
-    if (invokesGateEval(payload)) throw new Denied(`The gate policy could not be recorded, so pb gate eval would decide on a stale mode. Try again: ${e.message}`);
+    const policyChanged = withPolicy(ledger, payload) !== ledger;
+    if (invokesGateEval(payload) && policyChanged) throw new Denied(`The gate policy could not be recorded, so pb gate eval would decide on a stale mode. Try again: ${e.message}`);
   }
 }
 

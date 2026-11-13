@@ -913,7 +913,7 @@ describe("pb gate eval needs the policy recorded first", () => {
     assertDenied(runGate(repo, mainBash(repo, `true && (${evalCommand(repo)})`, "default")), /policy/);
   });
 
-  test("a held lock with no change to record costs nothing", () => {
+  test("a held lock with no policy change does not deny, even when lastSeen is due a refresh", () => {
     const repo = makeRepo({ ledger: { owner: { sessionId: SESSION, lastSeen: null }, policy: { mode: "default", source: "permission_mode" } } });
     heldLock(repo);
 

@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 
 import { readLedger, updateLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { COMMIT_FAILED, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
+import { runReport } from "../../shared-node/next-action.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const hook = (name) => join(ROOT, "hooks", name);
@@ -460,8 +461,8 @@ describe("hooks run from anywhere", () => {
   });
 });
 
-function sessionStart(cwd, source) {
-  const input = JSON.stringify({ session_id: newSession(), cwd, hook_event_name: "SessionStart", source });
+function sessionStart(cwd, source, sessionId = newSession()) {
+  const input = JSON.stringify({ session_id: sessionId, cwd, hook_event_name: "SessionStart", source });
   return JSON.parse(runHook("session-start.mjs", { input, cwd })).hookSpecificOutput.additionalContext;
 }
 
@@ -616,5 +617,44 @@ describe("guardian", () => {
     guardian(dir, { args: ["always"] });
     sessionStart(dir, "startup");
     assert.equal(readLedger(ledgerPath).seq, 1);
+  });
+});
+
+// Scenario session-start-adoption-line: a session that does not own the run is told who does and how to adopt it; the owner and an unowned run get no such line.
+describe("session-start-adoption-line", () => {
+  test("other-session-gets-adoption-line", () => {
+    const run = OWNED("session-A");
+    const { dir } = makeRun(run);
+
+    const context = sessionStart(dir, "resume");
+
+    const lines = context.split("\n").filter((line) => line.includes("session-A"));
+    assert.equal(lines.length, 1, context);
+    assert.ok(lines[0].includes(run.owner.lastSeen), lines[0]);
+    assert.match(lines[0], /must not drive/, lines[0]);
+    assert.match(lines[0], /human adopt/, lines[0]);
+  });
+
+  test("owner-and-unowned-run-get-no-adoption-line", () => {
+    const owner = newSession();
+    const owned = makeRun(OWNED(owner)).dir;
+    const unowned = makeRun().dir;
+
+    const ownerContext = sessionStart(owned, "resume", owner);
+    const unownedContext = sessionStart(unowned, "resume");
+
+    assert.doesNotMatch(ownerContext, /human adopt/, ownerContext);
+    assert.ok(!ownerContext.includes(owner), ownerContext);
+    assert.doesNotMatch(ownerContext, /must not drive/, ownerContext);
+    assert.doesNotMatch(unownedContext, /human adopt/, unownedContext);
+    assert.doesNotMatch(unownedContext, /must not drive/, unownedContext);
+  });
+
+  test("run-report-without-session-id-has-no-adoption-line", () => {
+    const report = runReport({ root: "/some/root", owner: "session-A", lastSeen: "2026-11-02T00:00:00Z", status: null, action: "Do the thing." });
+
+    assert.doesNotMatch(report, /human adopt/, report);
+    assert.doesNotMatch(report, /must not drive/, report);
+    assert.ok(!report.includes("session-A"), report);
   });
 });

@@ -57,7 +57,7 @@ async function openRunReport({ cwd, session_id: sessionId, source }) {
     const root = findSessionRoot(typeof cwd === "string" && isAbsolute(cwd) ? cwd : process.cwd(), sessionId);
     if (root === null) return null;
     const { readRun, runReport } = await import("../shared-node/next-action.mjs");
-    return runReport(readRun(pluginRoot, root));
+    return runReport(readRun(pluginRoot, root), sessionId);
   } catch {
     return null;
   }

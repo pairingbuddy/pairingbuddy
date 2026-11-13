@@ -75,6 +75,8 @@ JS_TEST_FILES = [
     "tests/js/pb-cli-safeguards.test.mjs",
     "tests/js/pb-human-legacy.test.mjs",
     "tests/js/pb-human.test.mjs",
+    "tests/js/owner-last-seen.test.mjs",
+    "tests/js/pb-human-adopt.test.mjs",
     "tests/js/pb-plan-next.test.mjs",
     "tests/js/pb-red-green.test.mjs",
     "tests/js/pb-refactor.test.mjs",
