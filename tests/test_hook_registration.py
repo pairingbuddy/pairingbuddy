@@ -45,16 +45,16 @@ def test_tap_registered_in_hooks_json():
 
 
 def test_gate_registered_in_hooks_json():
-    """hooks.json contains one PreToolUse entry that invokes gate.mjs for its gated tools"""
+    """hooks.json contains one PreToolUse entry that invokes gate-boot.mjs for its gated tools"""
     hooks_data = json.loads(HOOKS_JSON.read_text())
 
     entries = [
         entry
         for entry in hooks_data["hooks"]["PreToolUse"]
-        if any("gate.mjs" in hook["command"] for hook in entry["hooks"])
+        if any("gate-boot.mjs" in hook["command"] for hook in entry["hooks"])
     ]
 
-    assert len(entries) == 1, "PreToolUse must contain one entry for gate.mjs"
+    assert len(entries) == 1, "PreToolUse must contain one entry for gate-boot.mjs"
     assert entries[0]["matcher"] == "Workflow|Agent|Write|Edit|NotebookEdit|Bash|AskUserQuestion"
     for hook in entries[0]["hooks"]:
         assert hook["type"] == "command"

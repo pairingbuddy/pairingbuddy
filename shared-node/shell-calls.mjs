@@ -24,6 +24,8 @@ const PB_FILE_END = `${QUOTING}${PB_FILE_LETTERS}`;
 // Either the whole file name or none of it, so the backslash in `pb\.mjs` cannot read as text after a bare pb.
 const PB_THEN_EXPANSION = new RegExp(`${NAME_START}p${QUOTING}b(?:${PB_FILE_END}|(?!${PB_FILE_END}))${NAME_END}[^;|&\\n)]*[$\`{\\\\?*\\[]`);
 const QUOTING_CHARACTERS = /\\\n|['"\\]/g;
+// A word that names pb: its whole file name, or the name with shell syntax glued on where a file name would end.
+const PB_WORD = /(?:^|\/)pb(\.mjs)?(?=$|[$`{?*[])/;
 
 const baseName = (word) => word.slice(word.lastIndexOf("/") + 1);
 
@@ -50,22 +52,30 @@ function closingBacktick(text, start) {
   return text.length;
 }
 
-// Splits text into simple commands of unquoted words, and collects the bodies of $(...) and backticks.
+// Splits text into simple commands of unquoted words, and collects the bodies of $(...) and backticks. spans says where
+// each command's words sit in the text, and where the command ends, since the words alone have lost their quoting.
 function parse(text) {
   const commands = [[]];
+  const spans = [{ words: [], end: text.length }];
   const substitutions = [];
   let word = null;
+  let wordStart = 0;
   let quote = null;
   let dropNextWord = false;
+  let i = 0;
 
   const endWord = () => {
-    if (word !== null && !dropNextWord) commands.at(-1).push(word);
+    if (word !== null && !dropNextWord) {
+      commands.at(-1).push(word);
+      spans.at(-1).words.push({ start: wordStart, end: i });
+    }
     if (word !== null) dropNextWord = false;
     word = null;
   };
 
-  for (let i = 0; i < text.length; i += 1) {
+  for (; i < text.length; i += 1) {
     const char = text[i];
+    if (word === null) wordStart = i;
     if (quote === "'") {
       if (char === "'") quote = null;
       else word += char;
@@ -103,13 +113,15 @@ function parse(text) {
     } else if (SEPARATORS.has(char)) {
       endWord();
       dropNextWord = false;
+      spans.at(-1).end = i;
       commands.push([]);
+      spans.push({ words: [], end: text.length });
     } else {
       word = (word ?? "") + char;
     }
   }
   endWord();
-  return { commands, substitutions };
+  return { commands, spans, substitutions };
 }
 
 // The words from the command word on, past assignments, keywords and wrappers that run what follows them.
@@ -140,26 +152,49 @@ function innerScript(run) {
   return flag === -1 ? undefined : run[shell + flag + 2];
 }
 
-// True when xargs supplies a pb's words from its input, which no reading of the text can see.
-function xargsFeedsPb(command) {
-  const { commands, substitutions } = parse(command);
+// True when any simple command a shell would run matches, in a compound, a substitution, `sh -c` or eval.
+function anySimpleCommand(command, matches) {
+  const { commands, spans, substitutions } = parse(command);
   const scripts = [...substitutions];
-  for (const words of commands) {
+  for (const [index, words] of commands.entries()) {
     const run = fromCommandWord(words);
-    if (run.length === 0) continue;
-    const wrappers = words.slice(0, words.length - run.length);
-    if (wrappers.some((word) => baseName(word) === "xargs") && run.some((word) => PB_NAMES.has(baseName(word)))) return true;
-    const script = innerScript(run);
+    if (matches({ text: command, words, run, span: spans[index] })) return true;
+    const script = run.length === 0 ? undefined : innerScript(run);
     if (script !== undefined) scripts.push(script);
   }
-  return scripts.some(xargsFeedsPb);
+  return scripts.some((script) => anySimpleCommand(script, matches));
 }
 
-// True for a pb name the literal readings cannot be trusted with, which may be a mere mention: text in the same simple
-// command that the shell rewrites after the name, an xargs that feeds it, or a spelling of pb.mjs that only a case-insensitive filesystem finds.
-// Every verb takes fixed words, so a real call needs neither.
+// True when xargs supplies a pb's words from its input, which no reading of the text can see.
+function xargsFeedsPb({ words, run }) {
+  const wrappers = words.slice(0, words.length - run.length);
+  return wrappers.some((word) => baseName(word) === "xargs") && run.some((word) => PB_NAMES.has(baseName(word)));
+}
+
+// A bare pb counts only where a shell would run it, past the wrappers fromCommandWord knows, so a word in a list or a
+// search pattern is left alone. pb.mjs counts anywhere, since no list of wrappers is complete: `sudo -u me node cli/pb.mjs`
+// runs it. The arguments of a text command run nothing, so there a quoted pattern is left alone too.
+function canRunPb({ text, words, run, span }, index, isFileName) {
+  if (index === words.length - run.length) return true;
+  if (!isFileName) return false;
+  const { start, end } = span.words[index];
+  return !TEXT_COMMANDS.has(baseName(run[0] ?? "")) || text.slice(start, end) === words[index];
+}
+
+// True when the shell rewrites text at or after a pb name in the same simple command.
+function rewritesPbWords(simple) {
+  return simple.words.some((word, index) => {
+    const name = PB_WORD.exec(word);
+    if (name === null || !canRunPb(simple, index, name[1] !== undefined)) return false;
+    return PB_THEN_EXPANSION.test(simple.text.slice(simple.span.words[index].start, simple.span.end));
+  });
+}
+
+// True for a pb name the literal readings cannot be trusted with: text the shell rewrites after it, an xargs that feeds
+// it, or a spelling of pb.mjs that only a case-insensitive filesystem finds. Every verb takes fixed words, so a real
+// call needs none of them.
 export function disguisesPb(command) {
-  if (PB_THEN_EXPANSION.test(command) || xargsFeedsPb(command)) return true;
+  if (anySimpleCommand(command, (simple) => rewritesPbWords(simple) || xargsFeedsPb(simple))) return true;
   return [...command.matchAll(PB_FILE_ANY_CASE)].some(([name]) => name.replace(QUOTING_CHARACTERS, "") !== "pb.mjs");
 }
 

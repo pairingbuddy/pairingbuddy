@@ -462,7 +462,7 @@ describe("the plan checkbox", IN_PARALLEL, () => {
 });
 
 describe("pb task end is the only checkbox writer", IN_PARALLEL, () => {
-  const GATE_HOOK = join(ROOT, "hooks", "gate.mjs");
+  const GATE_HOOK = join(ROOT, "hooks", "gate-boot.mjs");
   const SOURCE_DIRS = ["cli", "hooks", "shared-node"];
   const WRITER = "shared-node/plan-boxes.mjs";
 
@@ -546,5 +546,25 @@ describe("the real verbs carry a no-change docs step to the end", () => {
     assert.equal(existsSync(repo.taskDir), false);
     assert.equal(Number(git(repo.dir, "rev-list", "--count", "HEAD")) - Number(before), 1);
     assert.equal(git(repo.dir, "log", "-1", "--format=%s"), "chore: set a");
+  });
+
+  test("a no-change config step with an ambiguity reaches the gate, which asks a human", () => {
+    const repo = makeRepo({ ledger: { stage: { name: CONFIG, status: "active", runId: "wf_1", attempt: 1, startedAt: null } } });
+    writeReturn(repo, CONFIG_KEY, { ambiguity: "The edit was refused.", commit_subject: "", files_changed: [] });
+
+    assert.equal(run(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY).committed, false);
+    run(repo, "stage", "finish");
+
+    const ledger = repo.ledger();
+    writeLedger(repo.ledgerPath, { ...ledger, stage: { name: NET, status: "active", runId: "wf_2", attempt: 1, startedAt: null } });
+    writeReturn(repo, DOCS_KEY, { commit_subject: "", files_changed: [] });
+    run(repo, "checkpoint", "--step", "docs", "--from", DOCS_KEY);
+    run(repo, "test", "--full");
+    run(repo, "stage", "finish");
+
+    const gate = run(repo, "gate", "eval");
+
+    assert.equal(gate.result, "needs-human");
+    assert.match(gate.reason, /ambiguity/);
   });
 });

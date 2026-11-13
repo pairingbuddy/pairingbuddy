@@ -103,7 +103,7 @@ const approve = (repo, ...args) => pb(repo, "human", "approve", ...args);
 const accept = (repo, ...args) => pb(repo, "human", "accept", ...args);
 
 function runGate(repo, payload) {
-  const { status, stdout, stderr } = spawnSync(process.execPath, [join(PLUGIN, "hooks", "gate.mjs")], { cwd: repo.dir, input: JSON.stringify(payload), env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN }, encoding: "utf8" });
+  const { status, stdout, stderr } = spawnSync(process.execPath, [join(PLUGIN, "hooks", "gate-boot.mjs")], { cwd: repo.dir, input: JSON.stringify(payload), env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN }, encoding: "utf8" });
   return { code: status, stdout, stderr };
 }
 
