@@ -9,6 +9,7 @@ from pathlib import Path
 JS_TEST_FILES = [
     "tests/js/alert-config.test.mjs",
     "tests/js/band-width.test.mjs",
+    "tests/js/claude-run-kill.test.mjs",
     "tests/js/code-command.test.mjs",
     "tests/js/code-config.test.mjs",
     "tests/js/code-router.test.mjs",
@@ -119,6 +120,7 @@ JS_TEST_FILES = [
     "tests/js/smoke-s2.test.mjs",
     "tests/js/smoke-s5.test.mjs",
     "tests/js/smoke-s5-spike.test.mjs",
+    "tests/js/smoke-s6.test.mjs",
     "tests/js/spike-flip.test.mjs",
     "tests/js/spike-repeat.test.mjs",
     "tests/js/spike-setup.test.mjs",
