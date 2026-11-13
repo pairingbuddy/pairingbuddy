@@ -543,3 +543,66 @@ The human decided round F's open point: a case the task names stays a test even 
 | Open 3 | PASS | 152.6 | 0.057204 | 13 | 3: 1 RED and GREEN, 2 covered | Five commits, the same shape |
 
 The spend was $0.179098 in all. No run stopped at `G:scenarios`, and each kept the named 0 and 100 percent cases as covered tests. 3 of 3 is a small sample: it shows the rule can hold, not that the round F stop is gone. The recordings are `tests/smoke/recordings/g-open-1` to `g-open-3`.
+
+## T2b: `files_changed` at `pb task end`
+
+The risk (section 10 of the plan): an agent changes a file it leaves out of `files_changed`, the checkpoint commits only the listed files, and the leftover stops `pb task end` with "the tree is dirty". Safe, but a stop. The question is how often.
+
+**Result: 0 leftovers in 61 runs that reached `pb task end`, 33 `config_change` and 28 `bug_fix`. With no event seen, the rate is below about 5% at 95% confidence (3/61). That is not high, so nothing needs tuning before auto publish on this evidence.**
+
+**Re-measured after Task 52: 0 leftovers in 68 runs, 33 `config_change`, 30 `bug_fix` and 5 `new_feature`, so below about 4.4% at 95% confidence (3/68). Still not high. See "The count again" below.**
+
+How it was counted. The recordings in `tests/smoke/recordings/` hold ledger snapshots and spawns, not what `pb task end` printed, and a refusal does not change the ledger, so they cannot show a leftover. Of their 25 runs, 18 reached `pb task end` with every stage done and both gates passed. The count instead reads each run's own session transcript under `~/.claude/projects/`, one per sample repo, and takes the output of every Bash call that ran `task end`. Every run's first `task end` removed `run/task`, apart from one whose call failed to find the CLI from a quoting slip and passed on the next try. No run printed "the tree is dirty". The main context ran no `rm`, `git checkout`, `restore`, `clean`, `add` or `commit` before its `task end`, apart from clearing old `.pairingbuddy/` state at the start, which `pb task end` does not count. So no leftover was cleaned up out of sight either. Runs that stopped before `task end`, at a gate or a `step-failed` stop, are not counted. The transcripts cover S1, S2, the S2 probes and the integration runs from 2026-11-02 21:10 to 2026-11-03 08:32 UTC, and they stay on this machine. The S1 recordings are not in `tests/smoke/recordings/`, so they count only through their transcripts.
+
+This round's runs, 2026-11-03, after Task 50, $0.30 cap per run, four at the same time:
+
+| Run | Result | Total s | Cost $ | Agents | `task end` |
+|---|---|---|---|---|---|
+| Default | PASS | 149.5 | 0.053181 | 10 | Removed `run/task`, no leftover |
+| Open 1 | PASS | 205.4 | 0.065169 | 16 | Removed `run/task`, no leftover |
+| Open 2 | FAIL | 69.5 | 0.023220 | 1 | Not reached: `G:scenarios` asked a human about a scenarios ambiguity |
+| Open 3 | PASS | 183.9 | 0.060107 | 14 | Removed `run/task`, no leftover |
+
+The spend was $0.201677 in all. "Open" is the round D `--task`. Open 2 is round F's open point coming back, 1 time in 4 runs here after 0 in 3 in round G. The recordings are `tests/smoke/recordings/t51-default` and `t51-open-1` to `t51-open-3`.
+
+Where the sample is weak:
+
+- Every change is one file in a small sample repo. Task 52 added 5 `new_feature` runs with 10 refactor fix groups, and each group still touched one file, so a group that touches several files has still not been seen live.
+- The recorder now keeps `pb task end`'s output in `task-end.jsonl`, so from Task 52 on a count reads the recordings and needs no transcript.
+- If a later count is high, the tuning it points to: have `pb checkpoint` refuse a step that leaves changed files outside its `files_changed`, so the stage retries that agent at once instead of the run stopping at task end, and tell the writing agents in the paths branch that an unlisted file stops the run.
+
+### The count again
+
+2026-11-03, after Task 52. The 7 new runs that reached `pb task end` are S2's below: 2 `bug_fix` default runs and 5 `new_feature` runs, `t52-default-1`, `t52-default-2`, `t52-nf-3` and `t52-nf-5` to `t52-nf-8`. Each one's `task-end.jsonl` holds one call, and it printed `{"ok":true,"removed":...}`. None printed "the tree is dirty". Before its `task end` the main context ran no `git add`, `commit`, `checkout`, `restore`, `clean`, `stash` or `reset`, and its only `rm` was the cleanup of old `.pairingbuddy/*.json` at the start. Each `new_feature` run made 2 refactor commits, one from `refactor-tests` on `tests/test_cart.py` and one from `refactor-code` on `cart.py`, so the fixers' `files_changed` was right 10 times in 10. The 3 `new_feature` runs that did not reach `task end` are not counted. With the earlier 61 that is 0 in 68.
+
+## T2b: `new_feature` on the new path, and S2 for it
+
+2026-11-03, Claude Code as in T2a, Haiku through P16's env, each run one `claude -p` session on its own branch, six or four at the same time, each in its own repo. `new_feature` joins `migratedTypes` in `contracts/stages.json` and `MIGRATED_TYPES` in the coding skill. S2 takes `--type new_feature`: a cart sample with `line_total(p, q)` written with short names, a magic 1.25 and a reused variable, and the task "Add order_total(lines) to cart.py ...", one test in scope. GREEN changes `cart.py`, so `identify-code-issues` reads that file and finds the old code's smells. That is the refactor's "something real to do". Run it with `node tests/smoke/s2.mjs --type new_feature`.
+
+What S2 asserts now, for both types: the ledger's task type, stage order, the one placeholder commit, RED `test:` and GREEN `fix:` or `feat:` per test, or one `test:` for a covered test, `tests{}` exit codes, a coverage check after the last cycle, the full suite, and `G:scenarios` and `G:task-end` from `auto`. For `new_feature` it also asserts at least one refactor commit, each in place after its cycle's GREEN, typed `test` for `refactor-tests` and `refactor` or `test` for `refactor-code`, and for each one a passing run of the task's closed tests at that commit's parent. A `bug_fix` with a refactor commit fails. The ledger keeps only the last `tests.refactor`, so the closed-tests check reads the recorder's ledger snapshots. The ledger holds no coverage fact, so the coverage check reads the workflow agents the recorder took from the transcripts: the last `verify-test-coverage` in `code-tdd` must start after the last placeholders, RED, GREEN or refactor agent. That one check reads more than the ledger, commits and gate sources R22 names.
+
+**Result: on the final code, `new_feature` passed 4 of 4 and `bug_fix` default 2 of 2. Over the session `new_feature` passed 5 of 8. 4 of 4 puts the pass rate above about 47% at 95% confidence, so it is not proven stable, and one of the two causes below is fixed only in a prompt.**
+
+| Round | Run | Result | Total s | Cost $ | Agents | Commits | Where it ended |
+|---|---|---|---|---|---|---|---|
+| 1 | default 1 | PASS | 140.9 | 0.047104 | 10 | test, test, fix | |
+| 1 | default 2 | PASS | 135.0 | 0.050064 | 10 | test, test, fix | |
+| 1 | nf 1 | FAIL | 92.3 | 0.034460 | 0 | none | No run opened: after `classify-task` said `new_feature`, the main context called the old branch's agents directly, then stopped at RED on an ImportError |
+| 1 | nf 2 | FAIL | 213.8 | 0.069767 | 18 | test, test, feat, refactor | A stop at `G:task-end`: four returns asked whether 30.0 or a "no VAT" rule was right. The main context had added that rule to `task.json` itself |
+| 1 | nf 3 | PASS | 206.6 | 0.069111 | 16 | test, test, feat, test, refactor | |
+| 1 | nf 4 | FAIL | 166.7 | 0.067374 | 0 | none | No run opened, as in nf 1: the old branch's agents, called directly |
+| 2, final | nf 5 | PASS | 209.3 | 0.070468 | 16 | test, test, feat, test, refactor | |
+| 2 | nf 6 | PASS | 226.2 | 0.064410 | 16 | test, test, feat, test, refactor | |
+| 2 | nf 7 | PASS | 223.0 | 0.066936 | 16 | test, test, feat, test, refactor | |
+| 2 | nf 8 | PASS | 218.8 | 0.062965 | 16 | test, test, feat, test, refactor | |
+
+The smoke spend was $0.602659 in all, and no run came near its cap of $0.45, or $0.30 for `bug_fix`. The paid integration check ran once after, with 3 runs capped at $0.50 each, and its cost was not reported, so the session total is at most $2.11. In every passing `new_feature` run the closed tests ran green, exit 0, before each refactor commit, no gate was denied, and the stages took 16 agents: scenarios, placeholders, RED, GREEN, two finders, two fixers and the coverage check, with their runners. The recordings are `tests/smoke/recordings/t52-default-1`, `t52-default-2` and `t52-nf-1` to `t52-nf-8`.
+
+### Causes and fixes
+
+- **The old branch, taken for a migrated type (nf 1 and nf 4).** Both runs classified `new_feature`, never ran `pb run open`, and called `enumerate-scenarios-and-test-cases` and the rest by Agent, as the old `if task_type == "new_feature":` branch says. It is the first branch past the router. 2 in 4 here, against no such slip in the `bug_fix` runs since T2a. Fixed in the skill only: the router's body says every migrated type goes there and never to the old branches, a comment heads the old branches, and each migrated type's old branch starts with "Plan tasks and Solo only: the router takes every other <type>", as `config_change`'s already did. A test in `tests/js/code-router.test.mjs` holds each migrated type's branch to that line, and failed first. It held 4 in 4 in round 2, which is a small sample: it is a prompt, and T2a found that a prompt alone did not hold for the bootstrap question. A fix in code would have the gate deny an old-path TDD agent when no run exists and the classification is migrated, outside Solo. It cannot tell a plan task, which stays on the old path until T7 and also writes `task-classification.json`, from a plain one, so it needs a plan marker first. That is for the human to decide.
+- **The main context rewrote the task (nf 2).** It read "the sum of their line totals" as price times quantity, worked out that this gives 30.0, which is wrong, and wrote that rule into `task.json` as `context`. `pb run open` stored it, and every agent then saw the test's 30.0 as a contradiction and asked. The question was real given what they read, so the gate was right to ask. The fix is in the sample: the task now names `line_total(price, quantity)` and the sum, 25.0 plus 5.0, and a test in `tests/js/smoke-s2.test.mjs` holds it to that. It failed first. Still open: the main context may add its own reading to the human's task, and nothing checks it.
+
+### The scenarios stop in Task 51
+
+Task 51's open 2, `t51-open-2`, stopped at `G:scenarios`. Its scenarios return kept the named 0 and 100 percent cases, as round G says, and asked: "The task does not say how apply_discount should handle a percent below 0 or above 100 ... Those cases are left out until a human decides the expected behavior." That is not the covered-case rule from round G, which is about a named case an earlier fix already passes. It is round C's rule: a case the task does not mention is out of scope and no ambiguity. The agent had already left the cases out, so the ambiguity reports a choice and asks nothing new. The task's "edge cases too, such as 0 and 100 percent" makes it arguable: "such as" leaves room for out-of-range input to count as an edge case it names. So this round does not fix it. If the human decides out-of-range input is out of scope under "such as", the fix is round C's rule restated for an open list of named cases. If not, the stop was a real question.

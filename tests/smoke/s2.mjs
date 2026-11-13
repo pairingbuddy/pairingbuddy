@@ -1,18 +1,20 @@
 #!/usr/bin/env node
-// Smoke S2: `/pairingbuddy:code <bug>` end to end on a sample repo with a real test runner, on a cheap model.
+// Smoke S2: `/pairingbuddy:code <bug or feature>` end to end on a sample repo with a real test runner, on a cheap model.
 //
 // One capped `claude -p` session on a human-made branch, with the plugin loaded from outside its cwd and no inherited
-// policy env. It asserts control flow only, never output quality: stage order, the one placeholder `test:` commit, one
-// RED and one GREEN commit per test, or one `test:` commit for a test an earlier GREEN covered, tests{} exit codes and
-// gate sources. Every run is recorded for T4a. An open-scope --task, one that lets the scenarios name more than one
-// test, is how a covered test shows up.
+// policy env. It asserts control flow only, never output quality: the task type, stage order, the one placeholder
+// `test:` commit, one RED and one GREEN commit per test, or one `test:` commit for a test an earlier GREEN covered,
+// tests{} exit codes, the coverage check after the last cycle, and gate sources. A new_feature GREEN is `feat:`, and its
+// cycle's refactor must commit at least one fix group, `refactor:` or `test:`, each after the CLI ran the task's closed
+// tests green at that commit's parent. Every run is recorded for T4a. An open-scope --task, one that lets the scenarios
+// name more than one test, is how a covered test shows up.
 //
 // The sample uses pytest because pb's full-suite run passes the test directory to the runner and a `::` selector that
 // matches nothing exits non-zero. `node --test <dir>` does not take a directory, and its name pattern exits 0 on no match.
 //
 // Run it by hand, in a separate shell, from the repo root. It spends money, so no suite collects it:
 //
-//     node tests/smoke/s2.mjs [--budget-usd N] [--record-dir DIR] [--recording NAME] [--task TEXT]
+//     node tests/smoke/s2.mjs [--type bug_fix|new_feature] [--budget-usd N] [--record-dir DIR] [--recording NAME] [--task TEXT]
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,20 +22,39 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual, parseArgs } from "node:util";
 
+import { parseKey } from "../../shared-node/keys.mjs";
 import { BUDGET_USD, Budget, REPO_ROOT, SmokeError, cleanEnv, runClaude } from "./claude-run.mjs";
 import { RunRecorder } from "./run-recorder.mjs";
 
 const STAGES = ["code-scenarios", "code-tdd", "code-safety-net"];
 const GATES = ["G:scenarios", "G:task-end"];
-const BRANCH = "discount-bug";
 const RECORDINGS = join(REPO_ROOT, "tests", "smoke", "recordings");
 export const TASK = "Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it should return 90. One regression test for exactly that case is the whole scope";
+export const FEATURE_TASK = "Add order_total(lines) to cart.py: it takes a list of (price, quantity) pairs and returns the sum of line_total(price, quantity) over them, so order_total([(10, 2), (4, 1)]) returns 30.0, which is 25.0 plus 5.0. One test for exactly that example is the whole scope";
 
-const SAMPLE_FILES = {
+const BASE_FILES = {
   ".gitignore": ".pairingbuddy/\n__pycache__/\n.pytest_cache/\n",
   "pytest.ini": "[pytest]\npythonpath = .\n",
-  "discount.py": 'def apply_discount(price, percent):\n    """The price after taking off percent."""\n    return price * percent / 100\n',
-  "tests/test_discount.py": "from discount import apply_discount\n\n\ndef test_zero_price_stays_zero():\n    assert apply_discount(0, 10) == 0\n",
+};
+// The feature sits beside code with short names, a magic rate and a reused variable, so the cycle's refactor has
+// something real to fix in the file its GREEN changes.
+const CART = 'def line_total(p, q):\n    """The price of q items at p each, with VAT, rounded to cents."""\n    t = p * q\n    t = t * 1.25\n    t = round(t * 100) / 100\n    return t\n';
+const TYPES = {
+  bug_fix: {
+    branch: "discount-bug",
+    task: TASK,
+    green: "fix",
+    files: {
+      "discount.py": 'def apply_discount(price, percent):\n    """The price after taking off percent."""\n    return price * percent / 100\n',
+      "tests/test_discount.py": "from discount import apply_discount\n\n\ndef test_zero_price_stays_zero():\n    assert apply_discount(0, 10) == 0\n",
+    },
+  },
+  new_feature: {
+    branch: "order-total",
+    task: FEATURE_TASK,
+    green: "feat",
+    files: { "cart.py": CART, "tests/test_cart.py": "from cart import line_total\n\n\ndef test_line_total_adds_vat():\n    assert line_total(10, 2) == 25.0\n" },
+  },
 };
 
 const TEST_CONFIG = {
@@ -62,17 +83,21 @@ function writeTree(repo, files) {
 }
 
 // A fresh repo on a branch a human made from main. Signing is off, so a signer cannot flake the run.
-export function makeRepo(parent) {
+export function makeRepo(parent, type = "bug_fix") {
   const repo = join(parent, "repo");
-  writeTree(repo, { ...SAMPLE_FILES, ".pairingbuddy/test-config.json": JSON.stringify(TEST_CONFIG), ".pairingbuddy/doc-config.json": JSON.stringify(NO_DOCS) });
+  writeTree(repo, { ...BASE_FILES, ...TYPES[type].files, ".pairingbuddy/test-config.json": JSON.stringify(TEST_CONFIG), ".pairingbuddy/doc-config.json": JSON.stringify(NO_DOCS) });
   git(repo, "init", "-q", "-b", "main");
   git(repo, "config", "user.email", "smoke@example.invalid");
   git(repo, "config", "user.name", "smoke");
   git(repo, "config", "commit.gpgsign", "false");
   git(repo, "add", "-A");
   git(repo, "commit", "-q", "-m", "init");
-  git(repo, "switch", "-q", "-c", BRANCH);
+  git(repo, "switch", "-q", "-c", TYPES[type].branch);
   return repo;
+}
+
+function assertTaskType({ taskType }, type) {
+  if (taskType !== type) throw new SmokeError(`the task type is ${taskType}, expected ${type}`);
 }
 
 function assertStageOrder({ stages }) {
@@ -103,23 +128,68 @@ function assertTestRow(id, row, greenBefore) {
 
 const typeOf = ({ subject }) => /^\w+/.exec(subject)?.[0];
 
+// A cycle's committed fix groups, in the order the CLI took them. refactor-tests may touch tests alone, so it is a test
+// commit, and refactor-code is a refactor, or a test commit when it too touched only tests (D16).
+function refactorsOf(ledger, id) {
+  return (ledger.checkpoints ?? []).filter(({ step, committed, key }) => step === "refactor" && committed && parseKey(key).item === id).map(({ key, sha }) => ({ sha, types: parseKey(key).role === "refactor-tests" ? ["test"] : ["refactor", "test"] }));
+}
+
+// Each expected commit with the types it may have, oldest first: the placeholder, then each test's own.
+function expectedCommits(ledger, rows, green) {
+  const ofRow = ([id, row]) => (isCoveredRow(row) ? [{ id, sha: row.covered.sha, types: ["test"] }] : [{ id, sha: row.red.sha, types: ["test"] }, { id, sha: row.green.sha, types: [green] }, ...refactorsOf(ledger, id).map((fix) => ({ id, ...fix }))]);
+  return [{ id: null, sha: placeholderSha(ledger), types: ["test"] }, ...rows.flatMap(ofRow)];
+}
+
+const typesText = (expected) => expected.map(({ types }) => types.join("|"));
+
 // `log` is oldest first, with the sample's own commit left out.
-function assertCommits(ledger, log) {
+function assertCommits(ledger, log, green) {
   const rows = Object.entries(ledger.tests.perTest ?? {});
   if (rows.length === 0) throw new SmokeError("the ledger records no test");
   rows.forEach(([id, row], i) => assertTestRow(id, row, rows.slice(0, i).some(([, earlier]) => !isCoveredRow(earlier))));
-  const shasOf = (row) => (isCoveredRow(row) ? [row.covered.sha] : [row.red.sha, row.green.sha]);
-  const expected = ["test", ...rows.flatMap(([, row]) => (isCoveredRow(row) ? ["test"] : ["test", "fix"]))];
+  const expected = expectedCommits(ledger, rows, green);
   const types = log.map(typeOf);
-  const cycle = types.at(-1) === "docs" ? types.slice(0, -1) : types;
-  if (!isDeepStrictEqual(cycle, expected)) throw new SmokeError(`commit types are ${types}, expected ${expected}, then at most one docs`);
+  const cycle = types.at(-1) === "docs" && types.length === expected.length + 1 ? types.slice(0, -1) : types;
+  if (cycle.length !== expected.length || !cycle.every((type, i) => expected[i].types.includes(type))) throw new SmokeError(`commit types are ${types}, expected ${typesText(expected)}, then at most one docs`);
   const unlisted = log.filter(({ sha }) => !ledger.commits.includes(sha));
   if (unlisted.length > 0) throw new SmokeError(`commits not in the ledger: ${unlisted.map(({ subject }) => subject)}`);
-  if (log[0].sha !== placeholderSha(ledger)) throw new SmokeError("the first commit is not the placeholder commit");
-  const cycleShas = rows.flatMap(([id, row]) => shasOf(row).map((sha) => ({ id, sha })));
-  cycleShas.forEach(({ id, sha }, i) => {
+  if (log[0].sha !== expected[0].sha) throw new SmokeError("the first commit is not the placeholder commit");
+  expected.slice(1).forEach(({ id, sha }, i) => {
     if (log[1 + i].sha !== sha) throw new SmokeError(`test ${id}: commit ${2 + i} is not its own`);
   });
+}
+
+const refactorCommits = (ledger) => (ledger.checkpoints ?? []).filter(({ step, committed }) => step === "refactor" && committed);
+
+// The CLI runs the task's closed tests before each fix group's commit and records the run as tests.refactor, with the
+// HEAD the commit goes on. Only the last such run stays in the ledger, so the recorder's snapshots are the evidence.
+function assertRefactorsKeptGreen(ledger, log, snapshots) {
+  for (const { sha } of refactorCommits(ledger)) {
+    const parent = log[log.findIndex((entry) => entry.sha === sha) - 1]?.sha;
+    const green = snapshots.some(({ tests: { refactor } = {} }) => refactor?.head === parent && refactor.passed === true && refactor.runs.length > 0 && refactor.runs.every(({ exitCode }) => exitCode === 0));
+    if (!green) throw new SmokeError(`refactor commit ${sha} has no green run of the closed tests at its parent ${parent}`);
+  }
+}
+
+// new_feature's sample gives the refactor something real to fix, so a run that committed no fix group did not test it.
+function assertRefactors(ledger, log, snapshots, type) {
+  const count = refactorCommits(ledger).length;
+  if (type === "new_feature" && count === 0) throw new SmokeError("no refactor commit: the cycle's refactor fixed nothing");
+  if (type !== "new_feature" && count > 0) throw new SmokeError(`a ${type} run made ${count} refactor commits, and only new_feature refactors`);
+  assertRefactorsKeptGreen(ledger, log, snapshots);
+}
+
+const WORK_ROLES = ["implement-tests", "implement-code", "refactor-tests", "refactor-code", "create-test-placeholders"];
+const roleOf = ({ agentType }) => agentType?.replace(/^pairingbuddy:/, "");
+const lastTddAgent = (agents, roles) => agents.filter((spawn) => spawn.kind === "workflow_agent" && / code-tdd /.test(` ${spawn.name} `) && roles.includes(roleOf(spawn))).at(-1);
+
+// The coverage loop always ends on a check, so the last check comes after every cycle. G:task-end from auto means it
+// left no gap. The ledger keeps no coverage fact, so the workflow agents the recorder read are the evidence.
+function assertCoverageChecked(agents) {
+  const check = lastTddAgent(agents, ["verify-test-coverage"]);
+  if (check === undefined) throw new SmokeError("no coverage check ran in code-tdd");
+  const work = lastTddAgent(agents, WORK_ROLES);
+  if (work !== undefined && work.t > check.t) throw new SmokeError(`the last coverage check, at ${check.t} s, came before ${roleOf(work)} at ${work.t} s`);
 }
 
 function assertFullSuite({ tests: { full } }) {
@@ -133,10 +203,14 @@ function assertGates({ gates, policy }) {
   if (!isDeepStrictEqual(policy, { mode: "auto", source: "permission_mode" })) throw new SmokeError(`the gate policy is ${JSON.stringify(policy)}, so the env was not clean`);
 }
 
-export function assertControlFlow(ledger, log) {
+// snapshots are every ledger the recorder saw, and agents its spawn events.
+export function assertControlFlow(ledger, log, { type = "bug_fix", snapshots = [ledger], agents = [] } = {}) {
+  assertTaskType(ledger, type);
   assertStageOrder(ledger);
   placeholderSha(ledger);
-  assertCommits(ledger, log);
+  assertCommits(ledger, log, TYPES[type].green);
+  assertRefactors(ledger, log, snapshots, type);
+  assertCoverageChecked(agents);
   assertFullSuite(ledger);
   assertGates(ledger);
 }
@@ -160,8 +234,8 @@ const runIsOpen = (repo) => {
   }
 };
 
-async function runS2(budget, record, recording, task) {
-  const repo = makeRepo(record);
+async function runS2(budget, record, recording, task, type) {
+  const repo = makeRepo(record, type);
   const recorder = new RunRecorder(repo, recording, { streamPath: join(record, "stream.jsonl") }).start();
   const result = { passed: false, cause: "", tests: 0, commits: [] };
   try {
@@ -171,7 +245,7 @@ async function runS2(budget, record, recording, task) {
     if (runIsOpen(repo)) throw new SmokeError("the run was left open");
     const log = runLog(repo);
     result.commits = log.map(({ subject }) => subject);
-    assertControlFlow(recorder.last, log);
+    assertControlFlow(recorder.last, log, { type, snapshots: recorder.snapshots, agents: recorder.spawns() });
     result.tests = Object.keys(recorder.last.tests.perTest).length;
     result.passed = true;
   } catch (e) {
@@ -181,21 +255,23 @@ async function runS2(budget, record, recording, task) {
   } finally {
     recorder.stop();
   }
-  return { ...result, costUsd: Number(budget.spent.toFixed(6)), costKnown: budget.costKnown, seconds: Number(recorder.seconds().toFixed(1)), agents: recorder.last?.spend?.agents ?? null };
+  return { ...result, type, taskEnd: recorder.taskEnds.map(({ output }) => output), costUsd: Number(budget.spent.toFixed(6)), costKnown: budget.costKnown, seconds: Number(recorder.seconds().toFixed(1)), agents: recorder.last?.spend?.agents ?? null };
 }
 
 export function parseOptions(argv) {
-  const { values } = parseArgs({ args: argv, options: { "budget-usd": { type: "string" }, "record-dir": { type: "string" }, recording: { type: "string" }, task: { type: "string" } } });
+  const { values } = parseArgs({ args: argv, options: { type: { type: "string" }, "budget-usd": { type: "string" }, "record-dir": { type: "string" }, recording: { type: "string" }, task: { type: "string" } } });
+  const type = values.type ?? "bug_fix";
+  if (!Object.hasOwn(TYPES, type)) throw new Error(`--type is ${type}, and S2 knows ${Object.keys(TYPES).join(", ")}`);
   const budgetUsd = Math.min(Number(values["budget-usd"] ?? BUDGET_USD), BUDGET_USD);
-  return { budgetUsd, recordDir: values["record-dir"], recording: values.recording, task: values.task ?? TASK };
+  return { type, budgetUsd, recordDir: values["record-dir"], recording: values.recording, task: values.task ?? TYPES[type].task };
 }
 
 async function main() {
-  const { budgetUsd, recordDir, recording, task } = parseOptions(process.argv.slice(2));
+  const { type, budgetUsd, recordDir, recording, task } = parseOptions(process.argv.slice(2));
   const record = recordDir ?? mkdtempSync(join(tmpdir(), "pb-smoke-s2-"));
   mkdirSync(record, { recursive: true });
   const name = recording ?? new Date().toISOString().replaceAll(":", "-");
-  const result = await runS2(new Budget(budgetUsd), record, join(RECORDINGS, name), task);
+  const result = await runS2(new Budget(budgetUsd), record, join(RECORDINGS, name), task, type);
   console.log(JSON.stringify(result));
   console.log(`${result.passed ? "PASS" : "FAIL"} S2, repo in ${record}, recorded in ${join(RECORDINGS, name)}`);
   return result.passed ? 0 : 1;

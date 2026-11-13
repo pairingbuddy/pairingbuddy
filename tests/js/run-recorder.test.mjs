@@ -49,6 +49,7 @@ test("each new ledger seq is one snapshot with a time, and a partial write is sk
   assert.deepEqual(snapshots.map(({ ledger: { seq } }) => seq), [1, 2]);
   assert.ok(snapshots.every(({ t: at }) => Number.isFinite(at) && at >= 0));
   assert.equal(recorder.last.seq, 2, "the last ledger outlives the run");
+  assert.deepEqual(recorder.snapshots.map(({ seq }) => seq), [1, 2], "every ledger seen stays at hand for the smoke's checks");
   assert.equal(JSON.parse(readFileSync(ledger, "utf8")).seq, 2, "the ledger is left as it was");
 });
 
@@ -141,6 +142,21 @@ test("stop merges workflow agents into the spawn events, in time order", (t) => 
   assert.deepEqual(readJsonl(join(out, "spawns.jsonl")).map(({ kind }) => kind), ["Workflow", "workflow_agent"]);
 });
 
+test("the spawn events are at hand before stop, for the smoke's checks", (t) => {
+  const dir = workflowDir(t);
+  const { repo } = repoWithLedger(t);
+  let clock = Date.parse("2026-11-03T01:00:00.000Z");
+  const recorder = new RunRecorder(repo, join(tempDir(t), "rec"), { intervalMs: 1000, now: () => clock }).start();
+
+  clock += 1000;
+  recorder.line({ type: "user", message: { content: [{ type: "tool_result", content: `Transcript dir: ${dir}\n` }] } });
+
+  const spawns = recorder.spawns();
+  recorder.stop();
+
+  assert.deepEqual(spawns.map(({ agentType }) => agentType), ["pairingbuddy:implement-tests"]);
+});
+
 test("stop writes the spawn events beside the stream", (t) => {
   const { repo } = repoWithLedger(t);
   const out = join(tempDir(t), "rec");
@@ -150,6 +166,43 @@ test("stop writes the spawn events beside the stream", (t) => {
   recorder.stop();
 
   assert.equal(readJsonl(join(out, "spawns.jsonl"))[0].name, "w");
+});
+
+const bash = (id, command) => ({ type: "assistant", message: { content: [{ type: "tool_use", id, name: "Bash", input: { command } }] } });
+const result = (id, content, isError = false) => ({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content, is_error: isError }] } });
+
+test("what each pb task end printed is kept with its command, so a leftover count needs no transcript", (t) => {
+  const { repo } = repoWithLedger(t);
+  const out = join(tempDir(t), "rec");
+  let clock = 0;
+  const recorder = new RunRecorder(repo, out, { intervalMs: 1000, now: () => clock }).start();
+
+  recorder.line(bash("a", "node /p/cli/pb.mjs status --action"));
+  recorder.line(result("a", '{"ok":true}'));
+  clock = 2000;
+  recorder.line(bash("b", "node /p/cli/pb.mjs task end"));
+  clock = 3000;
+  recorder.line(result("b", "pb: the tree is dirty, so the task cannot end", true));
+  recorder.line(bash("c", "node /p/cli/pb.mjs task end"));
+  recorder.line(result("c", [{ type: "text", text: '{"ok":true,"removed":"/r/.pairingbuddy/run/task"}' }]));
+  recorder.stop();
+
+  assert.deepEqual(readJsonl(join(out, "task-end.jsonl")), [
+    { t: 3, command: "node /p/cli/pb.mjs task end", output: "pb: the tree is dirty, so the task cannot end", isError: true },
+    { t: 3, command: "node /p/cli/pb.mjs task end", output: '{"ok":true,"removed":"/r/.pairingbuddy/run/task"}', isError: false },
+  ]);
+});
+
+test("a run that never reached pb task end still writes an empty task-end file", (t) => {
+  const { repo } = repoWithLedger(t);
+  const out = join(tempDir(t), "rec");
+  const recorder = new RunRecorder(repo, out, { intervalMs: 1000 }).start();
+
+  recorder.line(bash("a", "echo task ended"));
+  recorder.line(result("a", "task ended"));
+  recorder.stop();
+
+  assert.equal(readFileSync(join(out, "task-end.jsonl"), "utf8"), "");
 });
 
 test("a recording under docs/plans is refused, before anything is written", (t) => {

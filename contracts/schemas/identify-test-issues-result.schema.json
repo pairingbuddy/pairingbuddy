@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Identify Test Issues Result",
+  "description": "Return of the identify-test-issues agent when its prompt gives paths: the pb key it was given, any open ambiguity, and the quality issues it found in the test code of the cycle. The refactor agent fixes them, and an empty list skips the fix",
+  "type": "object",
+  "required": [
+    "pb_key",
+    "ambiguity",
+    "issues"
+  ],
+  "properties": {
+    "pb_key": {
+      "type": "string",
+      "description": "The key from the prompt, copied exactly"
+    },
+    "ambiguity": {
+      "type": "string",
+      "description": "An open question a human should settle, or an empty string"
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "file",
+          "issue_type",
+          "description"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "File path where issue was found"
+          },
+          "line": {
+            "type": "integer",
+            "description": "Line number (optional)"
+          },
+          "issue_type": {
+            "type": "string",
+            "description": "Category of issue"
+          },
+          "description": {
+            "type": "string",
+            "description": "What the issue is"
+          },
+          "suggestion": {
+            "type": "string",
+            "description": "How to fix it (optional)"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

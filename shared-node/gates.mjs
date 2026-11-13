@@ -135,6 +135,28 @@ function ambiguityStop(dir, ledger, settled) {
   return open.length === 1 ? `the return ${open[0]} carries an open ambiguity` : `these returns carry an open ambiguity: ${open.join(", ")}`;
 }
 
+const COVERAGE_ROLE = "verify-test-coverage";
+
+// The newest coverage return that stands, since the loop closes gaps round by round and only its last word counts.
+function newestCoverage(dir, ledger) {
+  const standing = readdirSync(dir)
+    .filter((name) => name.endsWith(".json") && !name.startsWith(".") && !isVoidedReturn(name, ledger))
+    .map((file) => ({ file, key: returnFileKey(file) }))
+    .filter(({ key }) => key?.role === COVERAGE_ROLE && key.item === null)
+    .sort((a, b) => b.key.attempt - a.key.attempt || b.key.round - a.key.round);
+  return standing[0]?.file ?? null;
+}
+
+// Gaps the bounded coverage loop left. They outlive the stage's report, which the next stage's report replaces.
+function coverageStop(dir, ledger, settled) {
+  if (!existsSync(dir)) return null;
+  const file = newestCoverage(dir, ledger);
+  if (file === null || isSettled(file, settled, ledger)) return null;
+  const gaps = parsedOrNull(join(dir, file))?.gaps;
+  if (!Array.isArray(gaps)) return `the coverage return ${file} cannot be read`;
+  return gaps.length === 0 ? null : `coverage gaps remain: ${gaps.length}, in ${file}`;
+}
+
 function retriesStop({ retries }) {
   const exhausted = Object.keys(retries).find((stage) => !(retries[stage]?.used < retries[stage]?.max));
   return exhausted === undefined ? null : `retries are exhausted for ${exhausted}`;
@@ -148,7 +170,9 @@ function configStop({ configHash }, root) {
 function stopReason(contract, ledger, root) {
   const taskDir = join(root, ".pairingbuddy", "run", "task");
   if (ledger.stop !== null) return `the run stopped: ${ledger.stop.reason}`;
-  return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(join(taskDir, "artifacts"), ledger, settledStages(contract, ledger)) ?? reportStop(join(taskDir, "report.json"), ledger);
+  const artifacts = join(taskDir, "artifacts");
+  const settled = settledStages(contract, ledger);
+  return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(artifacts, ledger, settled) ?? coverageStop(artifacts, ledger, settled) ?? reportStop(join(taskDir, "report.json"), ledger);
 }
 
 // ---------- the decision ----------

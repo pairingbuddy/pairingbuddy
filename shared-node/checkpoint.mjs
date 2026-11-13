@@ -8,14 +8,16 @@ import { parseKey } from "./keys.mjs";
 
 const PROTECTED_BRANCHES = ["main", "master"];
 // A config step exists to change something, so its return must account for any change that is not there. tests says
-// what must run before the commit: the whole suite, the one test the key names, or nothing, since a placeholder proves
-// nothing. A step that runs one test takes a key that names it, and every other step's key names none.
+// what must run before the commit: the whole suite, the one test the key names, every test of the task a cycle closed,
+// or nothing, since a placeholder proves nothing. A key names a test exactly when its step works on one test's cycle.
+// A refactor is one fix group, typed by what it touched (D16), and only new_feature refactors per cycle.
 const STEPS = {
-  config: { type: "chore", role: "apply-config-change", provesChange: true, tests: "full" },
-  docs: { type: "docs", role: "update-documentation", provesChange: false, tests: "full" },
-  placeholders: { type: "test", role: "create-test-placeholders", provesChange: false, tests: "none" },
-  red: { type: "test", role: "implement-tests", provesChange: false, tests: "selected" },
-  green: { types: { bug_fix: "fix", new_feature: "feat" }, role: "implement-code", provesChange: false, tests: "selected" },
+  config: { type: "chore", roles: ["apply-config-change"], provesChange: true, tests: "full", namesTest: false },
+  docs: { type: "docs", roles: ["update-documentation"], provesChange: false, tests: "full", namesTest: false },
+  placeholders: { type: "test", roles: ["create-test-placeholders"], provesChange: false, tests: "none", namesTest: false },
+  red: { type: "test", roles: ["implement-tests"], provesChange: false, tests: "selected", namesTest: true },
+  green: { types: { bug_fix: "fix", new_feature: "feat" }, roles: ["implement-code"], provesChange: false, tests: "selected", namesTest: true },
+  refactor: { typeOfPaths: true, roles: ["refactor-code", "refactor-tests"], provesChange: false, tests: "closed", namesTest: true, taskTypes: ["new_feature"] },
 };
 const STATE_DIRECTORY = ".pairingbuddy";
 const REFUSED_DIRECTORIES = [STATE_DIRECTORY, ".git"];
@@ -48,12 +50,19 @@ export const isCheckpointCall = (step, key) => Object.hasOwn(STEPS, step) && isK
 
 export const testsOfStep = (step) => STEPS[step].tests;
 
-const namesTest = (step) => testsOfStep(step) === "selected";
+const namesTest = (step) => STEPS[step].namesTest;
 
-// The one key this step can use: its own role, with a test exactly when the step takes one. The gate allows no other.
+const rolesText = (step) => STEPS[step].roles.join(" or ");
+
+// Whether a step runs for this task type. A step with no list runs for any.
+export const stepRunsFor = (step, taskType) => STEPS[step].taskTypes === undefined || STEPS[step].taskTypes.includes(taskType);
+
+export const taskTypesOfStep = (step) => STEPS[step].taskTypes;
+
+// The one key this step can use: one of its own roles, with a test exactly when the step takes one. The gate allows no other.
 export function keyFitsStep(step, key) {
   const { role, item } = parseKey(key);
-  return role === STEPS[step].role && (item !== null) === namesTest(step);
+  return STEPS[step].roles.includes(role) && (item !== null) === namesTest(step);
 }
 
 // ---------- git ----------
@@ -111,7 +120,7 @@ export function assertCurrentKey(step, key, { stage: { name, status, attempt } }
   if (status !== "active") throw new CheckpointRefused(`no stage is active, so ${key} cannot be committed`);
   if (keyStage !== name) throw new CheckpointRefused(`${key} is from stage ${keyStage}, and the active stage is ${name}`);
   if (keyAttempt !== attempt) throw new CheckpointRefused(`${key} is from attempt ${keyAttempt}, and stage ${name} is at attempt ${attempt}`);
-  if (role !== STEPS[step].role) throw new CheckpointRefused(`${key} is from role ${role}, and step ${step} takes role ${STEPS[step].role}`);
+  if (!STEPS[step].roles.includes(role)) throw new CheckpointRefused(`${key} is from role ${role}, and step ${step} takes role ${rolesText(step)}`);
   if (namesTest(step) && parseKey(key).item === null) throw new CheckpointRefused(`${key} names no test, and step ${step} takes one`);
 }
 
@@ -188,18 +197,22 @@ function checkedPath(root, listed) {
 
 // ---------- the message ----------
 
-function commitType(step, taskType) {
+// A fix group that touched tests alone is a test commit, and any other is a refactor.
+const typeOfPaths = (paths, { testDirectories }) => (paths.every((path) => testDirectories.some((directory) => isInside(path, directory))) ? "test" : "refactor");
+
+function commitType(step, taskType, paths, scope) {
   const { type, types } = STEPS[step];
+  if (STEPS[step].typeOfPaths) return typeOfPaths(paths, scope);
   if (type !== undefined) return type;
   if (types !== undefined && Object.hasOwn(types, taskType ?? "")) return types[taskType];
   throw new CheckpointRefused(`step ${step} has no commit type for task type ${taskType}`);
 }
 
-function commitMessage(step, subject, taskType) {
+function commitMessage(step, subject, taskType, paths, scope) {
   if (typeof subject !== "string" || BREAKS_LINE.test(subject)) throw new CheckpointRefused(`commit_subject must be a single line: ${JSON.stringify(subject)}`);
   const bare = subject.trim().replace(TYPE_PREFIX, "").trim();
   if (bare === "") throw new CheckpointRefused(`commit_subject says nothing: ${JSON.stringify(subject)}`);
-  return `${commitType(step, taskType)}: ${bare}`;
+  return `${commitType(step, taskType, paths, scope)}: ${bare}`;
 }
 
 // ---------- the plan ----------
@@ -236,6 +249,9 @@ const SCOPE_CHECKS = {
   green(root, listed, { testFile }) {
     if (listed.includes(normalize(testFile)) || statusEntries(root, [testFile]).length > 0) throw new CheckpointRefused(`${testFile} changed: GREEN changes the code and leaves the test as RED committed it`);
   },
+  refactor(_root, listed, { testDirectories, role }) {
+    if (role === "refactor-tests") assertInTestDirectory(listed, testDirectories);
+  },
 };
 
 // What to commit, or null for no change. Every check that needs no test run is here, so a refusal costs none.
@@ -249,7 +265,7 @@ export function planCommit(root, artifactsDir, step, key, { alreadyCommitted = f
   SCOPE_CHECKS[step]?.(root, paths, scope);
   if (STEPS[step].provesChange && !alreadyCommitted) assertChangeProven(step, artifact, listed, paths);
   if (paths.length === 0) return null;
-  const message = commitMessage(step, artifact.commit_subject, taskType);
+  const message = commitMessage(step, artifact.commit_subject, taskType, paths, scope);
   assertNothingElseStaged(root, listed);
   return { paths, message };
 }

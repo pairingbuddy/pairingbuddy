@@ -30,7 +30,7 @@ const accepted = { cli_exit_code: 0, cli_output: "{\"ok\":true}" };
 const refused = (text) => ({ cli_exit_code: 1, cli_output: `pb: ${text}` });
 const stateOutput = (over = {}) => JSON.stringify({ ok: true, scenarios: SCENARIOS_PATH, tests: null, red: [], green: [], covered: [], ...over });
 
-// Everything goes well unless a responder says otherwise. A responder returns undefined to leave the default in place.
+// Everything goes well unless a responder says otherwise. A return with no gaps list sends the coverage loop nowhere. A responder returns undefined to leave the default in place.
 function standIn({ tests = [row("t1")], state = {}, runner = () => undefined, worker = () => undefined } = {}) {
   return async (prompt, opts) => {
     const pb_key = opts.schema.properties.pb_key.enum[0];
@@ -65,12 +65,13 @@ test("code-tdd-runs-placeholders-then-one-cycle-per-test-in-order", async () => 
     "checkpoint --step red --from code-tdd.implement-tests.t2.r1.a1",
     "implement-code code-tdd.implement-code.t2.r1.a1",
     "checkpoint --step green --from code-tdd.implement-code.t2.r1.a1",
+    "verify-test-coverage code-tdd.verify-test-coverage.-.r1.a1",
     "stage finish",
   ]);
   assert.equal(result.started, true);
   assert.equal(result.stopReason, null);
   assert.deepEqual(result.tests, ["t1", "t2"]);
-  assert.equal(result.spawned, 12);
+  assert.equal(result.spawned, 13);
 });
 
 test("code-tdd-runs-one-step-at-a-time", async () => {
@@ -100,6 +101,7 @@ test("code-tdd-labels-follow-the-contract", async () => {
     "pb1 code-tdd RED runner t1 r1",
     "pb1 code-tdd GREEN implement-code t1 r1",
     "pb1 code-tdd GREEN runner t1 r2",
+    "pb1 code-tdd - verify-test-coverage - r1",
     "pb1 code-tdd - runner - r3",
   ]);
   for (const { opts } of calls) assert.equal(readLabel(opts.label).unknown, false, opts.label);
@@ -374,12 +376,12 @@ test("code-tdd-retries-count-against-the-cap", async () => {
 });
 
 test("code-tdd-a-cycle-that-would-finish-on-the-cap-still-has-room-to-finish", async () => {
-  const tests = Array.from({ length: Math.floor((MAX_AGENTS - 5) / 4) }, (_, i) => row(`t${i}`));
+  const tests = Array.from({ length: Math.floor((MAX_AGENTS - 6) / 4) }, (_, i) => row(`t${i}`));
 
   const { calls, result } = await runStage({ tests });
 
   assert.equal(result.stopReason, null);
-  assert.equal(calls.length, tests.length * 4 + 4);
+  assert.equal(calls.length, tests.length * 4 + 5);
   assert.ok(calls.length <= MAX_AGENTS);
 });
 
@@ -395,6 +397,7 @@ test("code-tdd-a-re-run-skips-finished-tests-and-picks-up-where-each-stopped", a
     "checkpoint --step red --from code-tdd.implement-tests.t3.r1.a2",
     "implement-code code-tdd.implement-code.t3.r1.a2",
     "checkpoint --step green --from code-tdd.implement-code.t3.r1.a2",
+    "verify-test-coverage code-tdd.verify-test-coverage.-.r1.a2",
     "stage finish",
   ]);
   assert.deepEqual(result.tests, ["t1", "t2", "t3"]);
@@ -403,7 +406,7 @@ test("code-tdd-a-re-run-skips-finished-tests-and-picks-up-where-each-stopped", a
 test("code-tdd-a-re-run-with-everything-done-only-finishes", async () => {
   const { calls, result } = await runStage({ state: { red: ["t1"], green: ["t1"] } }, { ...ARGS, attempt: 2 });
 
-  assert.deepEqual(stepsOf(calls).slice(3), ["stage finish"]);
+  assert.deepEqual(stepsOf(calls).slice(3), ["verify-test-coverage code-tdd.verify-test-coverage.-.r1.a2", "stage finish"]);
   assert.equal(result.stopReason, null);
 });
 
@@ -422,6 +425,7 @@ test("code-tdd-a-test-covered-at-red-skips-its-green-and-the-next-test-goes-on",
     "checkpoint --step red --from code-tdd.implement-tests.t3.r1.a1",
     "implement-code code-tdd.implement-code.t3.r1.a1",
     "checkpoint --step green --from code-tdd.implement-code.t3.r1.a1",
+    "verify-test-coverage code-tdd.verify-test-coverage.-.r1.a1",
     "stage finish",
   ]);
   assert.equal(result.stopReason, null);
@@ -444,7 +448,7 @@ test("code-tdd-a-plain-red-relay-still-goes-to-green", async () => {
 test("code-tdd-a-re-run-skips-a-covered-test-entirely", async () => {
   const { calls, result } = await runStage({ tests: [row("t1"), row("t2")], state: { red: ["t1"], green: ["t1"], covered: ["t2"] } }, { ...ARGS, attempt: 2 });
 
-  assert.deepEqual(stepsOf(calls).slice(3), ["stage finish"]);
+  assert.deepEqual(stepsOf(calls).slice(3), ["verify-test-coverage code-tdd.verify-test-coverage.-.r1.a2", "stage finish"]);
   assert.equal(result.stopReason, null);
   assert.deepEqual(result.covered, ["t2"]);
 });
