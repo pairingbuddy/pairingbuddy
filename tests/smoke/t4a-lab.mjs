@@ -1,11 +1,14 @@
 // T4a lab: builds a throwaway S2 repo outside the worktree, with the task text and a start script beside it.
-//   node tests/smoke/t4a-lab.mjs setup [--broken] [--type bug_fix|new_feature]
+//   node tests/smoke/t4a-lab.mjs setup [--broken load|render] [--type bug_fix|new_feature] [--ask] [--sound on|off] [--plugin-dir <dir>]
+// The repo has a bare origin with main (as S2), and start.sh puts a recording gh shim first on PATH. --plugin-dir runs
+// another checkout instead of this one; with --broken, the broken copy is made from that checkout.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { makeRepo, TASK, FEATURE_TASK } from "./s2.mjs";
+import { makeS2Repo, TASK, FEATURE_TASK } from "./s2.mjs";
+import { installGhShim } from "../js/gh-shim.mjs";
 import { makeBrokenCopy } from "./broken-plugin.mjs";
 import { CHEAP_MODEL, DROPPED_PREFIXES, REPO_ROOT } from "./claude-run.mjs";
 
@@ -16,13 +19,14 @@ const pad = (n) => String(n).padStart(2, "0");
 
 const stamp = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 
-function startScript(repo, task, pluginDir, { ask = false, settings = null } = {}) {
+function startScript(repo, task, pluginDir, ghEnv, { ask = false, settings = null } = {}) {
   return `#!/bin/sh
 for v in $(env | cut -d= -f1); do
   case "$v" in
     ${DROPPED_PREFIXES.map((p) => `${p}*`).join("|")}) unset "$v" 2>/dev/null || true ;;
   esac
 done
+${Object.entries(ghEnv).map(([k, v]) => `export ${k}=${k === "PATH" ? `${shq(v.split(":")[0])}:"$PATH"` : shq(v)}`).join("\n")}
 export ANTHROPIC_DEFAULT_OPUS_MODEL=${shq(CHEAP_MODEL)}
 export ANTHROPIC_DEFAULT_SONNET_MODEL=${shq(CHEAP_MODEL)}
 cd ${shq(repo)} || exit 1
@@ -40,21 +44,22 @@ const parseLabName = (name) => ({
   quiet: name.endsWith("-quiet"),
 });
 
-export function setupLab({ root = LABS_ROOT(), broken = false, type = "bug_fix", ask = false, sound = true, now = new Date() } = {}) {
+export function setupLab({ root = LABS_ROOT(), broken = false, type = "bug_fix", ask = false, sound = true, pluginDir: given = REPO_ROOT, now = new Date() } = {}) {
   const dir = join(root, labName({ now, broken, ask, sound }));
   mkdirSync(dir, { recursive: true });
-  const repo = makeRepo(dir, type);
+  const { repo } = makeS2Repo(dir, type);
   const task = join(dir, "task.txt");
   writeFileSync(task, `${TASKS[type]}\n`);
-  const pluginDir = broken ? makeBrokenCopy({ mode: broken, into: join(dir, "plugin") }) : REPO_ROOT;
+  const pluginDir = broken ? makeBrokenCopy({ mode: broken, into: join(dir, "plugin"), from: given }) : given;
   let settings = null;
   if (!sound) {
     settings = join(dir, "settings.json");
     const off = { options: { alertSound: false } };
     writeFileSync(settings, JSON.stringify({ pluginConfigs: { pairingbuddy: off, "pairingbuddy@inline": off } }));
   }
+  const gh = installGhShim({ parent: dir, remember: true });
   const start = join(dir, "start.sh");
-  writeFileSync(start, startScript(repo, TASKS[type], pluginDir, { ask, settings }), { mode: 0o755 });
+  writeFileSync(start, startScript(repo, TASKS[type], pluginDir, gh.env(), { ask, settings }), { mode: 0o755 });
   return { dir, repo, task, start };
 }
 
@@ -79,7 +84,7 @@ export function showLab({ root = LABS_ROOT() } = {}) {
   const mode = flags ? `${base} (${flags})` : base;
   const repo = join(dir, "repo");
   const run = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
-  const commits = run(repo, "log", "--format=%h %s", "main..HEAD") || "none";
+  const commits = run(repo, "log", "--format=%h %s", "origin/main..HEAD") || "none";
   let ledger = "no ledger yet";
   try {
     const { stage } = JSON.parse(readFileSync(join(repo, ".pairingbuddy/run/task/ledger.json"), "utf8"));
@@ -96,7 +101,7 @@ export function showLab({ root = LABS_ROOT() } = {}) {
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
   const [command, ...rest] = process.argv.slice(2);
-  const usage = "usage: t4a-lab.mjs setup [--broken load|render] [--type bug_fix|new_feature] [--ask] [--sound on|off] | show";
+  const usage = "usage: t4a-lab.mjs setup [--broken load|render] [--type bug_fix|new_feature] [--ask] [--sound on|off] [--plugin-dir <dir>] | show";
   const flag = (name, fallback) => {
     const at = rest.indexOf(name);
     return at >= 0 ? rest[at + 1] : fallback;
@@ -105,6 +110,7 @@ if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.
   const type = flag("--type", "bug_fix");
   const ask = rest.includes("--ask");
   const sound = flag("--sound", "on");
+  const pluginDir = flag("--plugin-dir", REPO_ROOT);
   if (command === "show") {
     if (latestLab() === null) {
       console.error(showLab());
@@ -114,6 +120,6 @@ if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.
     console.error(usage);
     process.exitCode = 2;
   } else {
-    console.log(`sh ${setupLab({ broken, type, ask, sound: sound === "on" }).start}`);
+    console.log(`sh ${setupLab({ broken, type, ask, sound: sound === "on", pluginDir }).start}`);
   }
 }

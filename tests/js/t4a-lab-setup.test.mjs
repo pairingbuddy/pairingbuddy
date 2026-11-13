@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 
 const { setupLab } = await import("../smoke/t4a-lab.mjs");
-const { makeRepo, TASK, FEATURE_TASK } = await import("../smoke/s2.mjs");
+const { makeS2Repo, TASK, FEATURE_TASK } = await import("../smoke/s2.mjs");
 const { BROKEN_MARKER } = await import("../smoke/broken-plugin.mjs");
 const { REPO_ROOT, CHEAP_MODEL } = await import("../smoke/claude-run.mjs");
 
@@ -29,13 +29,24 @@ describe("setup-builds-s2-repo", () => {
   it("builds the bug_fix repo inside the given root's lab dir", () => {
     withTempRoot((root) => {
       const labsRoot = join(root, "labs");
-      const reference = makeRepo(join(root, "reference"), "bug_fix");
+      const { repo: reference } = makeS2Repo(join(root, "reference"), "bug_fix");
       const bug = setupLab({ root: labsRoot, now: new Date(2026, 10, 4, 9, 8, 7) });
 
-      assert.equal(branchOf(bug.repo), branchOf(reference), "the lab repo is on the branch makeRepo makes");
-      assert.deepEqual(filesOf(bug.repo), filesOf(reference), "the lab repo holds the files makeRepo makes");
+      assert.equal(branchOf(bug.repo), branchOf(reference), "the lab repo is on the branch makeS2Repo leaves");
+      assert.deepEqual(filesOf(bug.repo), filesOf(reference), "the lab repo holds the files makeS2Repo makes");
       assert.ok(!relative(labsRoot, bug.repo).startsWith(".."), "the lab repo is inside the given root's lab dir");
       assert.equal(readFileSync(bug.task, "utf8").trim(), TASK, "task.txt holds the S2 task");
+    });
+  });
+
+  it("gives the lab repo a bare origin holding main, with origin/HEAD at main", () => {
+    withTempRoot((root) => {
+      const lab = setupLab({ root: join(root, "labs"), now: new Date(2026, 10, 4, 9, 8, 6) });
+
+      const origin = git(lab.repo, "remote", "get-url", "origin");
+      assert.equal(git(origin, "rev-parse", "--is-bare-repository"), "true", "origin is a bare repo");
+      assert.equal(git(origin, "rev-parse", "main"), git(lab.repo, "rev-parse", "main"), "origin holds the lab's main");
+      assert.equal(git(lab.repo, "symbolic-ref", "refs/remotes/origin/HEAD"), "refs/remotes/origin/main", "origin/HEAD points at main");
     });
   });
 
@@ -86,6 +97,55 @@ describe("setup-healthy-start-line", () => {
   });
 });
 
+describe("setup-gh-shim", () => {
+  it("puts a recording gh shim inside the lab dir first on PATH, logging inside the lab dir", () => {
+    withTempRoot((root) => {
+      const lab = setupLab({ root: join(root, "labs"), now: new Date(2026, 10, 4, 9, 8, 5) });
+
+      const seen = runStart(root, lab);
+      const shimDir = seen.env.PATH.split(":")[0];
+      execFileSync(join(shimDir, "gh"), ["pr", "create", "--head", "x"], { env: seen.env });
+      const calls = readFileSync(seen.env.GH_SHIM_LOG, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+
+      assert.ok(!relative(lab.dir, shimDir).startsWith(".."), "the first PATH entry is inside the lab dir");
+      assert.ok(!relative(lab.dir, seen.env.GH_SHIM_LOG).startsWith(".."), "the shim logs inside the lab dir");
+      assert.deepEqual(calls.map(({ argv }) => argv), [["pr", "create", "--head", "x"]], "the gh there records its calls");
+    });
+  });
+});
+
+describe("setup-plugin-dir", () => {
+  it("starts claude with the given plugin dir instead of REPO_ROOT, and the CLI takes --plugin-dir", () => {
+    withTempRoot((root) => {
+      const other = join(root, "other-checkout");
+      mkdirSync(other);
+      const lab = setupLab({ root: join(root, "labs"), pluginDir: other, now: new Date(2026, 10, 4, 9, 8, 4) });
+
+      const seen = runStart(root, lab);
+      const out = execFileSync("node", [join(REPO_ROOT, "tests/smoke/t4a-lab.mjs"), "setup", "--plugin-dir", other], { env: { ...process.env, T4A_LABS: join(root, "cli-labs") }, encoding: "utf8" }).trim();
+
+      assert.equal(seen.argv[seen.argv.indexOf("--plugin-dir") + 1], other, "--plugin-dir is the given dir");
+      assert.ok(readFileSync(out.slice("sh ".length), "utf8").includes(`--plugin-dir '${other}'`), "the CLI's start.sh uses the given dir");
+    });
+  });
+
+  it("copies the given plugin dir, not REPO_ROOT, when broken", () => {
+    withTempRoot((root) => {
+      const other = join(root, "other-checkout");
+      mkdirSync(join(other, "mod"), { recursive: true });
+      writeFileSync(join(other, "mod/register.tsx"), "// other checkout\n");
+      const lab = setupLab({ root: join(root, "labs"), pluginDir: other, broken: "load", now: new Date(2026, 10, 4, 9, 8, 3) });
+
+      const seen = runStart(root, lab);
+      const copy = join(lab.dir, "plugin");
+
+      assert.equal(seen.argv[seen.argv.indexOf("--plugin-dir") + 1], copy, "the broken copy still wins");
+      const copied = readFileSync(join(copy, "mod/register.tsx"), "utf8");
+      assert.ok(copied.includes("// other checkout") && copied.includes(BROKEN_MARKER), "the broken copy is made from the given dir");
+    });
+  });
+});
+
 const BROKEN_FILES = { load: "mod/register.tsx", render: "mod/pane.tsx" };
 
 describe("setup-broken-start-line", () => {
@@ -106,9 +166,9 @@ describe("setup-broken-start-line", () => {
         assert.equal(seen.argv[seen.argv.indexOf("--plugin-dir") + 1], pluginDir, "--plugin-dir is the lab's plugin copy");
         assert.ok(!seen.argv.includes(REPO_ROOT), "REPO_ROOT is not in the argv");
         assert.deepEqual(seen.argv.filter((a) => a !== pluginDir), healthySeen.argv.filter((a) => a !== REPO_ROOT), "the other argv is the healthy lab's");
-        const { PATH: _p, PWD: _w, ...env } = seen.env;
-        const { PATH: _hp, PWD: _hw, ...healthyEnv } = healthySeen.env;
-        assert.deepEqual(env, healthyEnv, "the env, apart from the per-lab PATH and PWD, is the healthy lab's");
+        const { PATH: _p, PWD: _w, GH_SHIM_LOG: _l, GH_SHIM_OPENED: _o, ...env } = seen.env;
+        const { PATH: _hp, PWD: _hw, GH_SHIM_LOG: _hl, GH_SHIM_OPENED: _ho, ...healthyEnv } = healthySeen.env;
+        assert.deepEqual(env, healthyEnv, "the env, apart from the per-lab PATH, PWD and gh shim files, is the healthy lab's");
       });
     });
   }

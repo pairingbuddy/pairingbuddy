@@ -25,12 +25,12 @@ function breakOnRender(source) {
   return source.replace(anchor, (head) => `${head}\n  throw new Error("${BROKEN_MARKER}")`);
 }
 
-export function makeBrokenCopy({ mode = "load", into } = {}) {
+export function makeBrokenCopy({ mode = "load", into, from = PLUGIN_ROOT } = {}) {
   if (!MODES.includes(mode)) throw new Error(`broken-plugin: unknown mode "${mode}"`);
   const dest = into ?? mkdtempSync(join(tmpdir(), "broken-plugin-"));
-  cpSync(PLUGIN_ROOT, dest, {
+  cpSync(from, dest, {
     recursive: true,
-    filter: (src) => !(dirname(src) === PLUGIN_ROOT && SKIPPED.has(basename(src))),
+    filter: (src) => !(dirname(src) === from && SKIPPED.has(basename(src))),
   });
   if (mode === "load") editFile(join(dest, "mod", "register.tsx"), breakOnLoad);
   else editFile(join(dest, "mod", "pane.tsx"), breakOnRender);
