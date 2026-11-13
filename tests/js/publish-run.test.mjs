@@ -519,3 +519,35 @@ describe("new-sha-voids-publish-approval", () => {
     assert.equal(gh.calls().some((call) => JSON.stringify(call).includes("create")), false, `no pr create: ${JSON.stringify(gh.calls())}`);
   });
 });
+
+// Scenario: unticked-plan-box-blocks-publish. A unit with an unticked [HUMAN] box is not done.
+describe("unticked-plan-box-blocks-publish", () => {
+  test("run-open-publish-refuses-unticked-human-box", () => {
+    const repo = endedTaskUnit({ tasks: [{ title: "Task 1: Fix the export" }] });
+    writeFileSync(
+      join(repo.dir, ".pairingbuddy", "plan.md"),
+      "# Plan\n\n#### PR: Export\n\n- [x] **Task 1: Fix the export**\n- [ ] **Task 2: [HUMAN] Check the fix by hand**\n",
+    );
+    changeUnit(repo, { plan: ".pairingbuddy/plan.md", unit: "Export" });
+
+    const result = pb(repo, "run", "open", "--kind", "publish");
+
+    assert.notEqual(result.code, 0, `an unticked box refuses, stdout ${result.stdout}`);
+    assert.match(result.stdout + result.stderr, /Task 2: \[HUMAN\] Check the fix by hand/, "it names the unticked box");
+    assert.equal(existsSync(taskDirOf(repo)), false, "no publish run was opened");
+  });
+
+  test("run-open-publish-opens-with-the-human-box-ticked", () => {
+    const repo = endedTaskUnit({ tasks: [{ title: "Task 1: Fix the export" }] });
+    writeFileSync(
+      join(repo.dir, ".pairingbuddy", "plan.md"),
+      "# Plan\n\n#### PR: Export\n\n- [x] **Task 1: Fix the export**\n- [x] **Task 2: [HUMAN] Check the fix by hand**\n",
+    );
+    changeUnit(repo, { plan: ".pairingbuddy/plan.md", unit: "Export" });
+
+    const result = pb(repo, "run", "open", "--kind", "publish");
+
+    assert.equal(result.code, 0, `a ticked human box does not block, stderr ${result.stderr}`);
+    assert.equal(existsSync(taskDirOf(repo)), true, "the publish run was opened");
+  });
+});

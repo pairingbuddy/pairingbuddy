@@ -945,3 +945,21 @@ describe("rebase-publish-end-to-end", () => {
     assert.match(stderr, new RegExp(`full suite failed at HEAD ${newHead.slice(0, 7)} after the rebase`), "pb publish names the failed suite at the new HEAD after the rebase");
   });
 });
+
+// Scenario: unticked-plan-box-blocks-publish. A unit with an unticked [HUMAN] box is not done.
+describe("unticked-plan-box-blocks-publish", () => {
+  test("pb-publish-refuses-unticked-human-box", () => {
+    const unit = publishableUnit({ tasks: [{ title: "Task 1: Fix the export" }] });
+    const humanBox = "Task 2: [HUMAN] Check the fix by hand";
+    const plan = `# Plan\n\n## Phase one\n\n#### PR: Export\n\n- [x] **Task 1: Fix the export**\n- [ ] **${humanBox}**\n`;
+    withPlan(unit.repo, plan);
+
+    const { gh, result } = publishUnit(unit);
+
+    assert.equal(result.code, REFUSED, `pb publish refuses with exit 1, stdout ${result.stdout}, stderr ${result.stderr}`);
+    assert.ok(`${result.stderr}${result.stdout}`.includes(humanBox), `the output names the unticked box, got ${result.stderr}`);
+    assert.deepEqual(gh.prCreates(), [], "gh pr create was not called");
+    assert.equal(remoteRef(unit.repo, `refs/heads/${unit.branch}`), null, "nothing was pushed to the remote");
+    assert.equal(readFileSync(planFile(unit.repo), "utf8"), plan, "no PR: line is written");
+  });
+});

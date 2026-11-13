@@ -30,16 +30,19 @@ const unitHeadingIndex = (lines, unit) =>
     return heading !== null && headingName(heading[2]) === headingName(unit);
   });
 
-// The labels of the boxes under the heading of a unit, up to the next heading of the same or a higher level. Null when
-// the plan has no such heading.
-export function boxLabelsUnder(text, unit) {
+// The boxes ({ label, ticked }) under the heading of a unit, up to the next heading of the same or a higher level. Null
+// when the plan has no such heading.
+export function boxesUnder(text, unit) {
   const lines = text.split("\n");
   const start = unitHeadingIndex(lines, unit);
   if (start === -1) return null;
   const level = HEADING.exec(lines[start])[1].length;
   const end = lines.findIndex((line, i) => i > start && (HEADING.exec(line)?.[1].length ?? Infinity) <= level);
-  return checkboxes(lines.slice(start + 1, end === -1 ? undefined : end).join("\n")).map(({ label }) => boxLabel(label));
+  return checkboxes(lines.slice(start + 1, end === -1 ? undefined : end).join("\n")).map(({ label, ticked }) => ({ label: boxLabel(label), ticked }));
 }
+
+// The labels of the boxes under the heading of a unit. Null when the plan has no such heading.
+export const boxLabelsUnder = (text, unit) => boxesUnder(text, unit)?.map(({ label }) => label) ?? null;
 
 // The "PR: <url>" line pb publish writes under a unit's heading; capture 1 is the url.
 export const PR_LINE = /^PR:\s+(\S*)/;

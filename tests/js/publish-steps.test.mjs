@@ -198,3 +198,16 @@ describe("publish-rebase-suite-evidence", () => {
     assert.ok(atOtherHead.includes(OLD.slice(0, 7)), "a rebaseSuite at another head falls back to the last-task message");
   });
 });
+
+// Scenario: unticked-plan-box-blocks-publish. A unit with an unticked [HUMAN] box is not done.
+describe("unticked-plan-box-blocks-publish", () => {
+  test("publish-steps-refuses-unticked-human-box", () => {
+    const unticked = "Task 2: [HUMAN] Check the fix by hand";
+
+    const plan = publishSteps(facts({ planUnticked: [unticked] }));
+
+    assert.deepEqual(plan.steps, [], "an unticked [HUMAN] box plans no steps");
+    assert.match(plan.refusals.join("\n"), /Task 2: \[HUMAN\] Check the fix by hand/, "the refusal names the unticked task");
+    assert.match(plan.refusals.join("\n"), /ticked by the human/, "the refusal says a [HUMAN] task is ticked by the human once done");
+  });
+});

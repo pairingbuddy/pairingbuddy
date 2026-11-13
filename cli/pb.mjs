@@ -14,8 +14,8 @@ import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs,
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
-import { PlanRefused, boxLabelsUnder, planFile, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
-import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, refreshPrReason, targetBranch, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
+import { PlanRefused, boxesUnder, planFile, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
+import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, refreshPrReason, targetBranch, untickedTasks, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
@@ -159,8 +159,11 @@ function assertPublishable(root) {
   if (!Array.isArray(unit?.tasks)) throw new Refusal(`${join(runDir, "unit.json")} has no tasks list, so no publish run was opened`);
   if (existsSync(join(runDir, "task"))) refuseRunOpen(join(runDir, "task"), "publish");
   if (unit.tasks.length === 0) throw new Refusal(`the unit has no ended task, so there is nothing to publish yet and no publish run was opened. End the task with ${pbCommand("task end")} first`);
-  const unrecorded = recordedTasks({ unit, ...unitPlan(root, unit) });
+  const facts = unitPlan(root, unit);
+  const unrecorded = recordedTasks({ unit, ...facts });
   if (unrecorded !== null) throw new Refusal(`${unrecorded}, so no publish run was opened. End each task with ${pbCommand("task end")} first`);
+  const unticked = untickedTasks(facts);
+  if (unticked !== null) throw new Refusal(`${unticked}, so no publish run was opened`);
 }
 
 // Claims run/task and writes the first ledger; a failed write removes the claim.
@@ -1491,14 +1494,16 @@ function taskEnd(args) {
 // The commits past the unit's base, oldest first. One rule for "nothing to publish", in gate eval and in pb publish.
 const unitCommits = (root, unit) => runGit(root, ["rev-list", "--reverse", `${unit.baseSha}..HEAD`]).split("\n").filter(Boolean);
 
-// The labels of the plan boxes under the unit's heading. planBoxes is null with no plan, no heading to go by, or no such
-// heading; planProblem says when the plan cannot be read.
+// The labels of the plan boxes under the unit's heading, and planUnticked, the unticked [HUMAN] ones (pb task end ticks
+// an agent box, a person ticks a human one). Both are null with no plan, no heading to go by, or no such heading;
+// planProblem says when the plan cannot be read.
 function unitPlan(root, unit) {
-  if (typeof unit.plan !== "string" || unit.plan === "" || typeof unit.unit !== "string" || unit.unit === "") return { planBoxes: null, planProblem: null };
+  if (typeof unit.plan !== "string" || unit.plan === "" || typeof unit.unit !== "string" || unit.unit === "") return { planBoxes: null, planUnticked: null, planProblem: null };
   try {
-    return { planBoxes: boxLabelsUnder(readFileSync(join(root, unit.plan), "utf8"), unit.unit), planProblem: null };
+    const boxes = boxesUnder(readFileSync(join(root, unit.plan), "utf8"), unit.unit);
+    return { planBoxes: boxes?.map(({ label }) => label) ?? null, planUnticked: boxes?.filter(({ label, ticked }) => !ticked && isHumanTitle(label)).map(({ label }) => label) ?? null, planProblem: null };
   } catch (e) {
-    return { planBoxes: null, planProblem: `the plan ${unit.plan} cannot be read: ${e.code ?? e.message}` };
+    return { planBoxes: null, planUnticked: null, planProblem: `the plan ${unit.plan} cannot be read: ${e.code ?? e.message}` };
   }
 }
 
