@@ -325,6 +325,33 @@ describe("publish-run-action-names-pb-publish-when-approved", () => {
   });
 });
 
+describe("refresh-run-action-names-pr-refresh", () => {
+  const refreshPublishRun = (answer) => {
+    const { repo } = publishRun({ approve: false });
+    changeLedger(repo, (ledger) => ({ kind: "refresh", taskType: "refresh", gates: { ...ledger.gates, "G:publish": answer } }));
+    return repo;
+  };
+
+  test("approved-refresh-action-is-pr-refresh", () => {
+    const repo = refreshPublishRun({ source: "human", answer: "approve" });
+
+    const action = statusAction(repo);
+
+    assert.ok(action.includes(pbCommand("pr refresh")), `the action names pb pr refresh: ${action}`);
+    assert.equal(action.includes(pbCommand("publish")), false, `it does not name pb publish: ${action}`);
+  });
+
+  test("keep-local-refresh-action-is-pr-refresh", () => {
+    const repo = refreshPublishRun({ source: "human", answer: "keep-local" });
+
+    const action = statusAction(repo);
+
+    assert.ok(action.includes(pbCommand("pr refresh")), `the action names pb pr refresh: ${action}`);
+    assert.equal(action.includes(pbCommand("publish")), false, `it does not name pb publish: ${action}`);
+    assert.match(action, /left unchanged/, `the action says the PR is left unchanged: ${action}`);
+  });
+});
+
 describe("keep-local-ends-publish-run", () => {
   test("keep-local-removes-run-task", () => {
     const unit = publishRun({ approve: false, commits: 2 });

@@ -568,6 +568,8 @@ export const scenarios = [
       { id: "route-out-07", command: ["gh pr create --fill", "gh pr merge 1", "gh pr ready 1", "gh pr edit 1 --title t"], runState: "run", context: "main", expect: "deny", message: /pb publish/ },
       { id: "route-out-08", command: "git reset --hard", runState: "run", context: "main", expect: "deny", rule: "revert", message: /nothing reverts during a run/i, forbid: /pb rollback/ },
       { id: "route-out-09", command: "git checkout -b y", runState: "unit", context: "main", expect: "deny", rule: "branch", message: /unit is open/, forbid: /pb human/ },
+      { id: "route-out-10", command: "gh pr edit 7 --title t --body-file b.md", runState: "run", context: "main", expect: "deny", message: /pb pr refresh/ },
+      { id: "route-out-11", command: "gh pr edit 7 --title t --body-file b.md", runState: "run", context: "subagent", expect: "deny", message: /pb pr refresh/ },
     ],
   },
   {

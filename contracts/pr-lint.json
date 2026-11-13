@@ -1,5 +1,5 @@
 {
-  "_doc": "Defaults for pb pr lint. git-config pr.lint overrides them: a list (title_types, attribution_patterns, hype_words, expiring_patterns, expiring_marker_patterns) is added to the default list, a number replaces the default. expiring_patterns ignore case; expiring_marker_patterns are case-sensitive.",
+  "_doc": "Defaults for pb pr lint. git-config pr.lint overrides them: a list (title_types, attribution_patterns, hype_words, ai_phrases, expiring_patterns, expiring_marker_patterns) is added to the default list, a number replaces the default. expiring_patterns ignore case; expiring_marker_patterns are case-sensitive.",
   "title_types": [
     "feat",
     "fix",
@@ -11,6 +11,7 @@
   "title_max_length": 72,
   "budget_base_chars": 1500,
   "budget_chars_per_diff_line": 30,
+  "body_max_words": 250,
   "attribution_patterns": [
     "^\\s*co-authored-by:",
     "^\\s*claude-session:",
@@ -33,6 +34,20 @@
     "comprehensive",
     "leverage",
     "delve"
+  ],
+  "ai_phrases": [
+    "this change introduces",
+    "this commit introduces",
+    "introduces a new",
+    "worth noting",
+    "worth mentioning",
+    "it should be noted",
+    "in conclusion",
+    "in summary",
+    "a testament to",
+    "plays a crucial role",
+    "dive into",
+    "aims to"
   ],
   "expiring_patterns": [
     "\\bthis pr\\b",

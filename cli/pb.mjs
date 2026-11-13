@@ -9,12 +9,12 @@ import { isDeepStrictEqual } from "node:util";
 
 import { CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepRunsFor, taskTypesOfStep, testsOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
 import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
-import { KINDS, LEDGER_VERSION, isPublishRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
+import { KINDS, LEDGER_VERSION, isPublishRun, isRefreshRun, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, boxLabelsUnder, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
-import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, targetBranch, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
+import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, refreshPrReason, targetBranch, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
@@ -28,10 +28,11 @@ import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, len
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, needsTestSelection, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, runnersWithoutSelector, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
-import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readUnit, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
+import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
 import { VERB_CLASSES, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
+const RUN_OPEN_KINDS = KINDS.filter((k) => k !== "refresh");
 
 const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 
@@ -78,7 +79,7 @@ function assertBranchNotProtected(gitConfig, root, branch, action, hint = "") {
 function parseKind(args) {
   const i = args.indexOf("--kind");
   const kind = i === -1 ? undefined : args[i + 1];
-  if (!KINDS.includes(kind)) throw new UsageError(`usage: pb run open --kind ${KINDS.join("|")}`);
+  if (!RUN_OPEN_KINDS.includes(kind)) throw new UsageError(`usage: pb run open --kind ${RUN_OPEN_KINDS.join("|")}`);
   return kind;
 }
 
@@ -166,22 +167,8 @@ function assertPublishable(root) {
   if (unrecorded !== null) throw new Refusal(`${unrecorded}, so no publish run was opened. End each task with ${pbCommand("task end")} first`);
 }
 
-function runOpen(args) {
-  const kind = parseKind(args);
-  if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Refusal("Solo stays on the old path until T10, so no run was opened");
-  const root = toplevel();
-  assertNotStopped(root);
-  if (kind === "publish") assertPublishable(root);
-  const branch = currentBranch(root);
-  const gitConfig = loadGitConfigOrRefuse(root); // bootstraps git-config.json when missing; hashed below
-  assertBranchNotProtected(gitConfig, root, branch, "open a run", "; start the work on a unit branch with pb unit open");
-
-  const configHash = validatedConfigHash(root);
-  const gitConfigHash = fileHash(gitConfigPath(root));
-  const taskType = kind === "code" ? classifiedTaskType(root) : kind === "publish" ? "publish" : null;
-  assertTestsSelectable(root, configHash, taskType);
-  const task = storedTask(root);
-
+// Claims run/task and writes the first ledger.
+function claimRun({ root, kind, taskType, task, configHash }) {
   const runRoot = ensureRunRoot(root);
   const dir = join(runRoot, "task");
   // A non-recursive mkdir is the claim: exactly one concurrent opener wins, and an existing
@@ -198,7 +185,7 @@ function runOpen(args) {
     writeLedger(join(dir, "ledger.json"), {
       v: LEDGER_VERSION, seq: 0, sha: "0".repeat(64), kind, taskType, runId: randomUUID(),
       owner: { sessionId: null, lastSeen: null },
-      task, plan: { path: "", title: "" }, configHash, gitConfigHash,
+      task, plan: { path: "", title: "" }, configHash, gitConfigHash: fileHash(gitConfigPath(root)),
       policy: { mode: "", source: "" },
       stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null },
       stages: [], gates: {}, tests: {}, commits: [], retries: {},
@@ -208,7 +195,105 @@ function runOpen(args) {
     rmSync(dir, { recursive: true, force: true });
     throw e;
   }
+  return dir;
+}
+
+function runOpen(args) {
+  const kind = parseKind(args);
+  if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Refusal("Solo stays on the old path until T10, so no run was opened");
+  const root = toplevel();
+  assertNotStopped(root);
+  if (kind === "publish") assertPublishable(root);
+  const branch = currentBranch(root);
+  const gitConfig = loadGitConfigOrRefuse(root); // bootstraps git-config.json when missing; hashed below
+  assertBranchNotProtected(gitConfig, root, branch, "open a run", "; start the work on a unit branch with pb unit open");
+
+  const configHash = validatedConfigHash(root);
+  const taskType = kind === "code" ? classifiedTaskType(root) : kind === "publish" ? "publish" : null;
+  assertTestsSelectable(root, configHash, taskType);
+  const task = storedTask(root);
+
+  const dir = claimRun({ root, kind, taskType, task, configHash });
   return { ok: true, kind, branch, runDir: dir };
+}
+
+// Phase 1 of pb pr refresh: records the PR as it stands and opens a refresh run for the draft stage.
+function prRefresh() {
+  const root = toplevel();
+  if (existsSync(unitPathOf(root))) throw new Refusal("a unit is open (run/unit.json exists); refresh a pull request once its unit has published, so nothing was touched");
+  const taskDir = taskDirOf(root);
+  if (existsSync(taskDir)) {
+    if (isRefreshRun(readLedger(join(taskDir, "ledger.json")))) return applyRefresh(root);
+    refuseRunOpen(taskDir, "refresh");
+  }
+  const branch = currentBranch(root);
+  const gitConfig = loadGitConfigOrRefuse(root); // bootstraps git-config.json when missing; hashed by claimRun
+  assertBranchNotProtected(gitConfig, root, branch, "refresh a pull request", "; refresh from the unit branch that opened it");
+  assertCleanTree(root, "no refresh run was opened");
+  const view = viewPr(root, branch, "", prRefreshViewArgv(branch));
+  const foreign = refreshPrReason(view, { branch, head: runGit(root, ["rev-parse", "HEAD"]) });
+  if (foreign !== null) throw new Refusal(`${foreign}, so no refresh run was opened and nothing was touched`);
+  const remoteBase = `refs/remotes/${gitConfig.remote}/${view.baseRefName}`;
+  const baseRef = tryGit(root, ["rev-parse", "--verify", "--quiet", remoteBase]) ? remoteBase : `refs/heads/${view.baseRefName}`;
+  const baseSha = runGit(root, ["merge-base", "HEAD", baseRef]);
+  const task = `Refresh the title and body of the pull request ${view.url} from its whole diff`;
+  // Claim first: a refused opener must not overwrite an open run's refresh record.
+  const runDir = claimRun({ root, kind: "refresh", taskType: "refresh", task, configHash: validatedConfigHash(root) });
+  const refreshPath = refreshPathOf(root);
+  const bodyPath = refreshBodyPathOf(root);
+  try {
+    writeJsonAtomic(refreshPath, { url: view.url, number: view.number, branch, base: view.baseRefName, baseSha, headSha: view.headRefOid, title: view.title });
+    writeFileSync(bodyPath, view.body);
+  } catch (e) {
+    rmSync(runDir, { recursive: true, force: true });
+    rmSync(refreshPath, { force: true });
+    rmSync(bodyPath, { force: true });
+    throw e;
+  }
+  return { ok: true, result: "opened", kind: "refresh", url: view.url, runDir };
+}
+
+// Writes the approved body to a pid-named file for gh --body-file, runs fn with its path, and removes it after.
+function withBodySnapshot(root, body, fn) {
+  const snapshot = join(root, ".pairingbuddy", "run", `pr-body.${process.pid}.snapshot.md`);
+  writeFileSync(snapshot, body ?? "");
+  try {
+    return fn(snapshot);
+  } finally {
+    rmSync(snapshot, { force: true });
+  }
+}
+
+const REFRESH_KEPT_REASON = "the human answered keep local at G:publish, so the pull request was left unchanged";
+
+function endRefreshRun(root) {
+  endRun(join(root, ".pairingbuddy", "run"));
+  rmSync(refreshPathOf(root), { force: true });
+  rmSync(refreshBodyPathOf(root), { force: true });
+}
+
+// Phase 2 of pb pr refresh: sets the approved title and body on the PR, then ends the refresh run.
+function applyRefresh(root) {
+  const runRoot = join(root, ".pairingbuddy", "run");
+  const ledger = readLedger(join(runRoot, "task", "ledger.json"));
+  if (ledger.stop !== null) throw new Refusal(`not refreshed: the run stopped: ${ledger.stop.reason}`);
+  const approval = publishApproval(ledger);
+  if (approval === "keep-local") {
+    endRefreshRun(root);
+    return { ok: true, result: "kept-local", reason: REFRESH_KEPT_REASON };
+  }
+  if (approval !== "human") throw new Refusal(`not refreshed: ${PUBLISH_GATE} has no approval; run pb gate eval, and the human approves it with pb human approve ${PUBLISH_GATE}`);
+  const { url } = readPrSubjectOrRefuse(root);
+  const bound = readBound(root, ledger);
+  const voidReason = refusing(() => publishVoidReason(ledger, root, bound.current));
+  if (voidReason !== null) {
+    updateLedger(join(runRoot, "task", "ledger.json"), (current) => voidPublish(current, voidReason));
+    throw new Refusal(`not refreshed: ${voidReason}`);
+  }
+  withBodySnapshot(root, bound.body, (snapshot) => run(root, "gh", prEditArgv({ url, title: bound.draft.title, bodyFile: snapshot })));
+  const posted = bound.draft.coordination === null ? { warnings: [] } : postComment({ root }, url, bound.draft.coordination);
+  endRefreshRun(root);
+  return { ok: true, result: "refreshed", url, warnings: posted.warnings, ...(posted.pendingComment === undefined ? {} : { pendingComment: posted.pendingComment }) };
 }
 
 const approveCommand = (root, gate) => humanCommand(root, `approve ${gate}`);
@@ -277,7 +362,7 @@ function gateEval(args) {
 // A unit with no commits past its base has nothing to publish (D19): the gate is skipped and no approval is recorded.
 // Recording a skip so blockingGate and next-action agree is left to Task 71 (pb publish).
 function publishSkip(contract, ledger, root) {
-  if (dueGate(gatesFor(contract, ledger.taskType), ledger)?.name !== PUBLISH_GATE) return null;
+  if (dueGate(gatesFor(contract, ledger.taskType), ledger)?.name !== PUBLISH_GATE || isRefreshRun(ledger)) return null;
   if (unitCommits(root, readUnitOrRefuse(root)).length !== 0) return null;
   return { ok: true, result: "skip", gate: PUBLISH_GATE, reason: NO_COMMITS_REASON };
 }
@@ -290,18 +375,26 @@ function readUnitOrRefuse(root) {
   }
 }
 
-function publishCommits(root, unit) {
-  const rows = runGit(root, ["log", "--reverse", "--format=%H%x09%s", `${unit.baseSha}..HEAD`]).split("\n").filter(Boolean);
+function readPrSubjectOrRefuse(root) {
+  try {
+    return readPrSubject(root);
+  } catch (e) {
+    throw e instanceof PrLintRunRefused ? new Refusal(e.message) : e;
+  }
+}
+
+function publishCommits(root, subject) {
+  const rows = runGit(root, ["log", "--reverse", "--format=%H%x09%s", `${subject.baseSha}..HEAD`]).split("\n").filter(Boolean);
   return rows.map((row) => {
-    const [sha, ...subject] = row.split("\t");
-    return { sha, subject: subject.join("\t"), inUnit: unit.commits.includes(sha) };
+    const [sha, ...title] = row.split("\t");
+    return { sha, subject: title.join("\t"), inUnit: (subject.commits ?? []).includes(sha) };
   });
 }
 
 // What the human sees at G:publish: the draft, its lint, the coordination text apart from the body, and what would go out.
 // headSha, base and target are the facts a publish answer is held to (needsHuman.shown).
 function publishShown(root, ledger) {
-  const unit = readUnitOrRefuse(root);
+  const subject = readPrSubjectOrRefuse(root);
   const draft = readDraft(root, ledger.stage);
   if (!existsSync(prBodyPath(root))) throw new Refusal("run/pr-body.md is missing, so there is no draft to show");
   const lint = publishLint(root);
@@ -318,7 +411,7 @@ function publishShown(root, ledger) {
     target,
     headSha,
     testCommand: runner.command,
-    commits: publishCommits(root, unit),
+    commits: publishCommits(root, subject),
   };
 }
 
@@ -896,9 +989,9 @@ function assertGreenRunStands(root, { tests: { full } }) {
   if (full.head !== head) throw new Refusal(`the full suite ran at ${full.head}, and HEAD is now ${head}, so the task cannot end. Nothing was touched: put HEAD back, or ${rerun}`);
 }
 
-function assertCleanTree(root) {
+function assertCleanTree(root, outcome = "the task cannot end") {
   const remaining = remainingFiles(root);
-  if (remaining.length > 0) throw new Refusal(`the tree is dirty, so the task cannot end. Commit or remove these, nothing was touched: ${remaining.join(", ")}`);
+  if (remaining.length > 0) throw new Refusal(`the tree is dirty, so ${outcome}. Commit or remove these, nothing was touched: ${remaining.join(", ")}`);
 }
 
 function tickedPlan(root, { path, title }) {
@@ -1003,6 +1096,7 @@ function taskEnd(args) {
   const { root, path } = runLedgerPath();
   const ledger = readLedger(path);
   if (isPublishRun(ledger)) throw new Refusal(`this is a publish run, which has no task to end. Nothing was touched: run ${pbCommand("publish")} once G:publish is approved`);
+  if (isRefreshRun(ledger)) throw new Refusal(`a refresh run has no task to end. Nothing was touched: run ${pbCommand("pr refresh")} once G:publish is approved`);
   assertTaskFinished(ledger);
   assertCommitsOnHead(root, ledger);
   assertGreenRunStands(root, ledger);
@@ -1115,7 +1209,7 @@ function executePublish(steps, ctx) {
       url = openPr(ctx, step.recordedUrl);
     } else if (step.do === "comment") {
       const posted = postComment(ctx, url, step.text);
-      warnings = [...warnings, ...posted.warnings];
+      warnings = [...warnings, ...posted.warnings, ...(posted.posted ? recordCommented(root, unit, url) : [])];
       pendingComment = posted.pendingComment ?? pendingComment;
     } else if (step.do === "plan-line") {
       warnings = [...warnings, ...recordPrLine(root, unit, url)];
@@ -1130,9 +1224,9 @@ function executePublish(steps, ctx) {
 }
 
 // Posts the coordination text on the PR from a kept per-PR file outside run/, deleted once it posts. A failure after the
-// PR is open never stops the publish: the file stays, and the warning has gh's reason and the one command to post it by
-// hand. The unit closes either way, so a failed post is not retried by pb publish.
-function postComment({ root, unit }, url, text) {
+// PR is open never stops the caller: the file stays, and the warning has gh's reason and the one command to post it by
+// hand. A failed post is not retried.
+function postComment({ root }, url, text) {
   const kept = join(root, ".pairingbuddy", "pr-comments", `${url.match(/(\d+)$/)[1]}.md`);
   try {
     mkdirSync(dirname(kept), { recursive: true });
@@ -1155,12 +1249,16 @@ function postComment({ root, unit }, url, text) {
   } catch (e) {
     warnings.push(`the coordination comment was posted, but ${kept} could not be removed: ${e.message}`);
   }
+  return { warnings, posted: true };
+}
+
+function recordCommented(root, unit, url) {
   try {
     writeJsonAtomic(unitPathOf(root), { ...unit, pr: { ...unit.pr, url, commented: true } });
+    return [];
   } catch (e) {
-    warnings.push(`the coordination comment was posted on ${url}, but recording it failed (${e.message}); do not post it again`);
+    return [`the coordination comment was posted on ${url}, but recording it failed (${e.message}); do not post it again`];
   }
-  return { warnings };
 }
 
 // The PR gh knows for the unit branch, which must be from that branch into the target. Refuses a mismatch.
@@ -1170,8 +1268,8 @@ function verifiedPr(view, branch, target) {
   return view.url;
 }
 
-function viewPr(root, branch, context = "") {
-  const text = run(root, "gh", prViewArgv(branch), { context });
+function viewPr(root, branch, context = "", argv = prViewArgv(branch)) {
+  const text = run(root, "gh", argv, { context });
   try {
     return JSON.parse(text);
   } catch {
@@ -1190,13 +1288,7 @@ function openPr({ root, unit, gitConfig, ledger, bound }, recordedUrl) {
     if (url !== recordedUrl) throw new Refusal(`not published: unit.json records the PR ${recordedUrl}, but the PR for ${unit.branch} is ${url}`);
     return url;
   }
-  const snapshot = join(root, ".pairingbuddy", "run", `pr-body.${process.pid}.snapshot.md`);
-  writeFileSync(snapshot, bound.body ?? "");
-  try {
-    url = createdPr(root, unit, target, snapshot, bound.draft, ledger.policy?.mode, opened);
-  } finally {
-    rmSync(snapshot, { force: true });
-  }
+  url = withBodySnapshot(root, bound.body, (snapshot) => createdPr(root, unit, target, snapshot, bound.draft, ledger.policy?.mode, opened));
   writeJsonAtomic(unitPathOf(root), { ...unit, pr: { url } });
   return url;
 }
@@ -1391,7 +1483,7 @@ function readDraft(root, stage) {
 function prLint(args) {
   assertNoArgs(args, "pr lint");
   const root = toplevel();
-  if (!existsSync(unitPathOf(root))) throw new Refusal("no unit is open (run/unit.json is missing), so there is no draft to lint");
+  if (!existsSync(unitPathOf(root)) && !existsSync(refreshPathOf(root))) throw new Refusal("no unit is open (run/unit.json is missing), so there is no draft to lint");
   const title = currentDraftTitle(root);
   // Issue 1, by plan: a lint failure is recorded here (exit 0) and goes to the human at G:publish, not stopped here.
   return refusing(() => runPrLint(root, title));
@@ -1436,11 +1528,11 @@ const jsonText = (value) => JSON.stringify(value, null, 2) + "\n";
 
 function snapshot(args) {
   const root = toplevel();
-  const unit = readUnitOrRefuse(root);
+  const subject = readPrSubjectOrRefuse(root);
   assertNoArgs(args, "snapshot");
   const git = (argv) => runGit(root, argv, { trim: false, env: GIT_ENV });
-  const diff = git(subjectDiffArgv(unit.baseSha));
-  const changed = parseChanged(git(changedArgv(unit.baseSha)));
+  const diff = git(subjectDiffArgv(subject.baseSha));
+  const changed = parseChanged(git(changedArgv(subject.baseSha)));
   const nearest = nearestFiles(parseTracked(git(trackedFilesArgv())), changed.map((c) => c.path));
   const paths = buildCorpus(insideRepo(root, [...inRepoDocs(root), ...conventionPaths(root), "CLAUDE.md", ...nearest]), (p) => existsSync(join(root, p)));
   const runDir = join(root, ".pairingbuddy", "run");
@@ -1684,7 +1776,7 @@ export const VERBS = {
   rollback,
   snapshot,
   "unit open": unitOpen, "git doctor": gitDoctor, "pr lint": prLint,
-  "run open": runOpen, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
+  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
   "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 

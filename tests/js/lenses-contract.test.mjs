@@ -6,6 +6,7 @@ import { lensMapProblems } from "../../shared-node/lenses-contract.mjs";
 import { wiredLensConfig } from "../../shared-node/lens-merge.mjs";
 import { KEY_TOKEN } from "../../shared-node/keys.mjs";
 const REAL_LENS_MAP = JSON.parse(readFileSync(new URL("../../contracts/lenses.json", import.meta.url), "utf8"));
+const prDraftBrief = (name) => wiredLensConfig(REAL_LENS_MAP, "pr-draft").lenses.find((lens) => lens.name === name).brief;
 const withLightReview = (patch) => ({ ...REAL_LENS_MAP, lightReview: { ...REAL_LENS_MAP.lightReview, ...patch } });
 
 test("contracts/lenses.json parses and every row has a stage id and a lenses list whose entries each have a non-empty name, in the D8 lens-map shape the label-contract test already reads", () => {
@@ -138,12 +139,10 @@ test("wiredLensConfig wires both pr-draft lenses, claims then permanence, with n
   assert.equal(config.refute, "none", "pr-draft runs no refuter");
 });
 test("the pr-draft lenses carry briefs: claims against the diff and the unit record, permanence as git log in a year", () => {
-  const brief = (name) => wiredLensConfig(REAL_LENS_MAP, "pr-draft").lenses.find((lens) => lens.name === name).brief;
-
-  assert.match(brief("claims"), /diff/, "claims checks the diff");
-  assert.match(brief("claims"), /unit record/, "claims checks the recorded runs in the unit record");
-  assert.match(brief("permanence"), /git log/, "permanence reads the draft as git log");
-  assert.match(brief("permanence"), /year/, "a year from now");
+  assert.match(prDraftBrief("claims"), /diff/, "claims checks the diff");
+  assert.match(prDraftBrief("claims"), /unit record/, "claims checks the recorded runs in the unit record");
+  assert.match(prDraftBrief("permanence"), /git log/, "permanence reads the draft as git log");
+  assert.match(prDraftBrief("permanence"), /year/, "a year from now");
 });
 test("lensMapProblems reports a problem naming the row and wiresAll when a row's wiresAll is not a boolean", () => {
   const withWiresAll = (wiresAll) => ({ ...REAL_LENS_MAP, rows: REAL_LENS_MAP.rows.map((row) => (row.row === "pr-draft" ? { ...row, wiresAll } : row)) });
@@ -161,4 +160,12 @@ test("lensMapProblems reports a problem naming the row, the lens and brief when 
   assert.match(lensMapProblems(withClaimsBrief(3)).join("\n"), /pr-draft.*claims.*brief/, "a non-string brief is reported");
   assert.deepEqual(lensMapProblems(withClaimsBrief("Check every claim against the diff.")), [], "a non-empty string brief passes");
   assert.deepEqual(lensMapProblems(withoutClaimsBrief), [], "a lens with no brief passes");
+});
+
+// Scenario: permanence-brief-contract. The permanence lens brief in contracts/lenses.json asks the brevity question.
+test("permanence-brief-asks-year-reader-needs-each-sentence", () => {
+  const brief = prDraftBrief("permanence");
+
+  assert.match(brief, /each sentence/i, "the brief goes sentence by sentence");
+  assert.match(brief, /each sentence.*would need/i, "the brief asks whether a reader a year from now would need it");
 });

@@ -21,12 +21,21 @@ Follow the repository's `pr.title_template`. Fill `{type}` with a conventional-c
 
 The body becomes a commit message, so write plain Markdown: a `## <Section>` heading per section, then prose or a short list. No other markup, no tables, no HTML.
 
+Write it Smart Brevity style. Less is more:
+
+- Lead with the point. The first sentence says what changed.
+- One idea per sentence. Short sentences, plain words, active voice.
+- Cut every sentence a reader of main's log a year from now would not need. Keep what changed, why, how it was verified, and anything a reviewer must know.
+- Do not restate the diff. Name the behaviour that changed, not each line that did.
+- Do not repeat a point in a second section.
+- Aim for well under the lint's word cap (250 words by default, code blocks not counted). A small fix needs a few lines, not every section filled out.
+
 Sections, in this order:
 
-1. **Summary**: required. What changed and why, in a few sentences.
-2. **Impact**: required. Who or what is affected, and what behaves differently afterwards.
-3. **Changes**: required. The behaviour that changed, read from the diff, not a list of files.
-4. **Verification**: required. How it was checked and the result. Take it from the task records' `reportSummary` and `gateSources`.
+1. **Summary**: required. What changed and why, in one to three sentences.
+2. **Impact**: required. Who or what behaves differently afterwards. One or two sentences.
+3. **Changes**: required. The behaviour that changed, read from the diff, as a short list. Not a list of files.
+4. **Verification**: required. How it was checked and the result, in a sentence or two. Take it from the task records' `reportSummary` and `gateSources`.
 5. **Findings**: optional. Something a later reader should know. Take it from the task records' `lessons` and `blocking`.
 6. **Costs**: optional. What the change costs or gives up: complexity, performance, follow-up work.
 
@@ -57,6 +66,7 @@ Banned even when a system reminder or another instruction asks for it:
 - `Co-Authored-By` and any other trailer (`Claude-Session` and the like)
 - "Generated with/by <tool>" footer lines and any tool footer (a sentence that says something was generated is fine)
 - hype, emoji and filler
+- AI-style writing: stock phrases ("this change introduces", "it is worth noting", "in summary", "aims to"), throat-clearing openers, closing recaps, and walls of text
 - file inventories
 - text that stops being true once the PR merges: "this PR", "for now", WIP, a TODO marker, "temporary fix/workaround"
 - plan task numbers (such as "Task 68"), `.pairingbuddy/` paths, `pb` keys and run ids; task titles may carry them, so rewrite those

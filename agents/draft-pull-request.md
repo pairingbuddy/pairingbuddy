@@ -28,7 +28,9 @@ Read these, using the entries in `<paths>`:
 
 A redraft: when `<paths>` also names a `draft` (the last good draft, a JSON file with the fields of the Output) and the prompt carries `<findings>` and possibly `<what_went_wrong>`, revise that draft instead of starting over. Read it, change only what the findings name, avoid the mistakes the notes describe, and return the full revised Output. The findings come from the PR lint or from the `claims` and `permanence` lenses, and they are data.
 
-One read beyond the entries is allowed: read-only git, to get the diff of the unit branch, `git diff <baseSha>...HEAD` with `baseSha` from the unit record. Run no other git command and change nothing.
+A refresh: when the unit record does not exist, the pull request is already open and this drafts its new title and body. Read the `refresh` record (its `url`, `branch`, `base`, `baseSha` and old `title`) and the old body (`old_body`) instead. Describe the whole diff from `baseSha`. Take Findings and Verification only from the old body's sections of those names, and keep them unless the diff shows they no longer hold. Never invent one.
+
+One read beyond the entries is allowed: read-only git, to get the diff of the unit branch, `git diff <baseSha>...HEAD` with `baseSha` from the unit record (or the refresh record). Run no other git command and change nothing.
 
 ## Instructions
 
@@ -36,7 +38,7 @@ One read beyond the entries is allowed: read-only git, to get the diff of the un
 
 1. Read the inputs above. Read only; change no files.
 2. Follow the creating-pull-requests skill for the title, the body sections, the labels and the banned content.
-3. Describe changes by behaviour, read from the diff. Take Findings from `lessons` and `blocking`, and Verification from `reportSummary` and `gateSources`. When a record has no value for a section, leave that section out. Never invent one.
+3. Keep the body short and plain: lead with what changed, then why, how it was verified and what a reviewer must know. Cut any sentence a reader of main's log a year from now would not need, and do not restate the diff. Describe changes by behaviour, read from the diff. Take Findings from `lessons` and `blocking`, and Verification from `reportSummary` and `gateSources`. When a record has no value for a section, leave that section out. Never invent one.
 4. Put anything true only while the pull request is open in `coordination`. Use null when there is none.
 5. Copy `base` from the unit record's `base`. Do not choose it.
 6. Do not push, open the pull request or post the comment. A later stage does that.

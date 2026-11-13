@@ -176,3 +176,98 @@ test("failure-carries-message-and-line", () => {
   assert.equal(failure?.line, lineOfHype);
   assert.ok(failure?.message && failure.message.length > 0, "the failure says how to fix it");
 });
+
+// Scenario: word-count-rule. The word-count rule caps the PR body at body_max_words, counting prose words only.
+test("word-count-over-cap-fails", () => {
+  const body = Array.from({ length: 251 }, () => "word").join(" ");
+
+  const result = lint({ body });
+
+  assert.equal(result.ok, false);
+  const failure = failureOf(result, "word-count");
+  assert.equal(failure?.text, "251 words exceeds 250");
+  assert.equal(failure?.line, null);
+});
+
+test("word-count-exactly-at-cap-passes", () => {
+  const body = Array.from({ length: 250 }, () => "word").join(" ");
+
+  const result = lint({ body });
+
+  assert.equal(failureOf(result, "word-count"), undefined);
+});
+
+test("word-count-ignores-code-blocks-and-table-rows", () => {
+  const body = [
+    "one two three",
+    "",
+    "```",
+    "alpha beta gamma delta",
+    "epsilon zeta eta theta",
+    "```",
+    "",
+    "~~~",
+    "iota kappa lambda mu",
+    "nu xi omicron pi",
+    "~~~",
+    "",
+    "four five",
+    "",
+    "| first | second |",
+    "| --- | --- |",
+    "| cell one | cell two |",
+  ].join("\n");
+
+  const result = lint({ body, config: { body_max_words: 4 } });
+
+  assert.equal(failureOf(result, "word-count")?.text, "5 words exceeds 4", "only the five prose words are counted");
+});
+
+// Scenario: ai-phrase-rule. The ai-phrase rule flags stock AI phrases in the PR body.
+const aiPhraseCases = [
+  ["worth noting", "It is Worth Noting that the export stays."],
+  ["this change introduces", "This change introduces an export."],
+  ["in summary", "In summary, readers get a button."],
+];
+for (const [phrase, sentence] of aiPhraseCases) {
+  test(`ai-phrase-${phrase.replaceAll(" ", "-")}-names-phrase-and-line`, () => {
+    const body = `${BODY}\n${sentence}\n`;
+    const lineOfPhrase = body.split("\n").findIndex((text) => text.includes(sentence)) + 1;
+
+    const result = lint({ body });
+
+    const failure = failureOf(result, "ai-phrase");
+    assert.equal(result.ok, false, `${phrase} fails`);
+    assert.equal(failure?.text, phrase, `${phrase} is named`);
+    assert.equal(failure?.line, lineOfPhrase, `${phrase} is on its body line`);
+  });
+}
+
+// Late safeguards from a mutation check of the ai-phrase and word-count rules.
+const insideLongerWordCases = [
+  ["left", "The parser claims to be fast."],
+  ["right", "It aims tomorrow at the cache."],
+];
+for (const [side, sentence] of insideLongerWordCases) {
+  test(`phrase-inside-a-longer-word-passes-${side}`, () => {
+    const body = `${BODY}\n${sentence}\n`;
+
+    const result = lint({ body });
+
+    assert.equal(failureOf(result, "ai-phrase"), undefined, `${side} side letter keeps the phrase from matching`);
+  });
+}
+
+test("word-count-and-ai-phrase-failures-carry-a-message", () => {
+  const wordCount = failureOf(lint({ config: { body_max_words: 1 } }), "word-count");
+  const aiPhrase = failureOf(lint({ body: `${BODY}\nIt is worth noting that the export stays.\n` }), "ai-phrase");
+
+  assert.ok(wordCount?.message, "the word-count failure has a message");
+  assert.ok(aiPhrase?.message, "the ai-phrase failure has a message");
+});
+
+test("words-split-on-any-whitespace", () => {
+  const result = lint({ body: "one\ttwo\tthree\n", config: { body_max_words: 2 } });
+
+  assert.equal(failureOf(result, "word-count")?.text, "3 words exceeds 2");
+});

@@ -9,7 +9,7 @@
     "v": { "const": 1 },
     "seq": { "type": "integer", "minimum": 0 },
     "sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "kind": { "enum": ["code", "plan"] },
+    "kind": { "enum": ["code", "plan", "publish", "refresh"] },
     "taskType": { "type": ["string", "null"] },
     "owner": {
       "type": "object",

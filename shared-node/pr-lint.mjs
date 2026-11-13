@@ -5,8 +5,8 @@ import { readFileSync } from "node:fs";
 
 const DEFAULTS_URL = new URL("../contracts/pr-lint.json", import.meta.url);
 const PATH_LINE = /^\s*[-*]\s+`?[\w.-]+(?:\/[\w.-]+)+`?\s*$/;
-const LIST_KEYS = ["title_types", "attribution_patterns", "hype_words", "expiring_patterns", "expiring_marker_patterns"];
-const SCALAR_KEYS = ["title_max_length", "budget_base_chars", "budget_chars_per_diff_line", "file_inventory_min_lines"];
+const LIST_KEYS = ["title_types", "attribution_patterns", "hype_words", "expiring_patterns", "expiring_marker_patterns", "ai_phrases"];
+const SCALAR_KEYS = ["title_max_length", "budget_base_chars", "budget_chars_per_diff_line", "file_inventory_min_lines", "body_max_words"];
 
 export class PrLintConfigRefused extends Error {}
 
@@ -48,8 +48,10 @@ const MESSAGES = {
   "title-form": "Rewrite the title to follow the repository's title template, with a listed type.",
   "title-length": "Shorten the title to the maximum length.",
   "size-budget": "Cut the body to fit the size budget; drop detail the diff already shows.",
+  "word-count": "Cut the body to the word cap: keep what changed, why, how it was verified and what a reviewer must know; drop the rest.",
   attribution: "Remove this attribution or trailer line; the body carries no tool footer or git trailer.",
   hype: "Replace this word with a plain statement of the fact.",
+  "ai-phrase": "Cut this stock phrase and state the fact directly.",
   "file-inventory": "Remove the list of file paths; describe the behaviour that changed instead.",
   "expiring-text": "Reword so it stays true after merge: state the fact, not the moment, task number or work state.",
 };
@@ -77,14 +79,31 @@ function budgetFailures(body, diffLines, rules) {
   return body.length > budget ? [failure("size-budget", `${body.length} chars exceeds ${budget}`, null)] : [];
 }
 
+function proseLines(lines) {
+  let inFence = false;
+  return lines.filter(({ text }) => {
+    const trimmed = text.trim();
+    if (/^(```|~~~)/.test(trimmed)) {
+      inFence = !inFence;
+      return false;
+    }
+    return !inFence && !trimmed.startsWith("|");
+  });
+}
+
+function wordCountFailures(lines, cap) {
+  const words = proseLines(lines).flatMap(({ text }) => text.split(/\s+/)).filter(Boolean).length;
+  return words > cap ? [failure("word-count", `${words} words exceeds ${cap}`, null)] : [];
+}
+
 function attributionFailures(lines, patterns) {
   const regexes = patterns.map((source) => new RegExp(source, "iu"));
   return lines.filter(({ text }) => regexes.some((regex) => regex.test(text))).map(({ text, line }) => failure("attribution", text.trim(), line));
 }
 
-function hypeFailures(lines, words) {
-  const regexes = words.map((word) => new RegExp(`\\b${escapeRegex(word)}\\b`, "gi"));
-  return lines.flatMap(({ text, line }) => regexes.flatMap((regex) => [...text.matchAll(regex)].map((match) => failure("hype", match[0].toLowerCase(), line))));
+function phraseFailures(lines, phrases, rule) {
+  const regexes = phrases.map((phrase) => new RegExp(`(?<!\\w)${escapeRegex(phrase)}(?!\\w)`, "gi"));
+  return lines.flatMap(({ text, line }) => regexes.flatMap((regex) => [...text.matchAll(regex)].map((match) => failure(rule, match[0].toLowerCase(), line))));
 }
 
 function inventoryFailures(lines, minLines) {
@@ -106,8 +125,10 @@ export function lintDraft({ title, body, diffLines, titleTemplate, config = {}, 
   const failures = [
     ...titleFailures(title, titleTemplate, rules),
     ...budgetFailures(body, diffLines, rules),
+    ...wordCountFailures(lines, rules.body_max_words),
     ...attributionFailures(lines, rules.attribution_patterns),
-    ...hypeFailures(lines, rules.hype_words),
+    ...phraseFailures(lines, rules.hype_words, "hype"),
+    ...phraseFailures(lines, rules.ai_phrases, "ai-phrase"),
     ...inventoryFailures(lines, rules.file_inventory_min_lines),
     ...expiringFailures(lines, rules),
   ];

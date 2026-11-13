@@ -13,16 +13,33 @@ export class PrLintRunRefused extends Error {}
 
 const runDirOf = (root) => join(root, ".pairingbuddy", "run");
 export const prBodyPath = (root) => join(runDirOf(root), "pr-body.md");
+export const refreshPathOf = (root) => join(runDirOf(root), "refresh.json");
+export const refreshBodyPathOf = (root) => join(runDirOf(root), "refresh-body.md");
 export const prLintPath = (root) => join(runDirOf(root), "pr-lint.json");
 export const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 
+const unitPathOf = (root) => join(runDirOf(root), "unit.json");
+
 export function readUnit(root) {
-  const path = join(runDirOf(root), "unit.json");
+  const path = unitPathOf(root);
   if (!existsSync(path)) throw new PrLintRunRefused(`no unit is open (${path} is missing)`);
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch (e) {
     throw new PrLintRunRefused(`${path} is unreadable: ${e.message}`);
+  }
+}
+
+// The record a PR draft is linted against: the open unit, else the refresh record of a refresh run.
+export const isRefreshSubject = (root) => !existsSync(unitPathOf(root)) && existsSync(refreshPathOf(root));
+
+export function readPrSubject(root) {
+  if (!isRefreshSubject(root)) return readUnit(root);
+  const refresh = refreshPathOf(root);
+  try {
+    return JSON.parse(readFileSync(refresh, "utf8"));
+  } catch (e) {
+    throw new PrLintRunRefused(`${refresh} is unreadable: ${e.message}`);
   }
 }
 
@@ -57,7 +74,7 @@ function diffLinesSince(root, baseSha) {
 }
 
 export function runPrLint(root, title) {
-  const unit = readUnit(root);
+  const unit = readPrSubject(root);
   if (!existsSync(prBodyPath(root))) throw new PrLintRunRefused("run/pr-body.md is missing, so there is no draft to lint");
   const body = readFileSync(prBodyPath(root), "utf8");
   const { pr } = readGitConfig(root);

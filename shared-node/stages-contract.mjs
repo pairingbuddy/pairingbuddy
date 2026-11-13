@@ -147,6 +147,22 @@ export default {
           "class": "continue"
         }
       }
+    },
+    "refresh": {
+      "nodes": [
+        {
+          "name": "pr-draft",
+          "gate": "G:publish",
+          "evidence": [
+            "artifact:draft-pull-request"
+          ]
+        }
+      ],
+      "gates": {
+        "G:publish": {
+          "class": "continue"
+        }
+      }
     }
   }
 }

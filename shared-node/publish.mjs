@@ -124,6 +124,7 @@ export const upstreamArgv = (remote, branch) => ["branch", `--set-upstream-to=${
 
 // What `gh pr view` has to say about the unit branch's PR, and the shape of a PR URL.
 export const prViewArgv = (branch) => ["pr", "view", "--json", "url,headRefName,baseRefName", "--", branch];
+export const prRefreshViewArgv = (branch) => ["pr", "view", "--json", "url,number,title,body,headRefName,baseRefName,headRefOid,state", "--", branch];
 export const PR_URL = /^https:\/\/[^\s/]+\/[^\s]+\/pull\/\d+$/;
 
 // Why a PR found by `gh pr view` is not this unit's, or null when it is.
@@ -131,6 +132,14 @@ export function foreignPrReason(view, { branch, target }) {
   if (typeof view?.url !== "string" || !PR_URL.test(view.url)) return `gh gave ${JSON.stringify(view?.url)}, which is not a pull request URL`;
   if (view.headRefName !== branch) return `the pull request ${view.url} is from ${view.headRefName}, not the unit branch ${branch}`;
   if (view.baseRefName !== target) return `the pull request ${view.url} is into ${view.baseRefName}, not the target ${target}`;
+  return null;
+}
+
+// A refresh only rewrites the pull request the current branch opened.
+export function refreshPrReason(view, { branch, head }) {
+  if (view.headRefName !== branch) return `the pull request ${view.url} is from ${view.headRefName}, not the current branch ${branch}`;
+  if (view.state !== "OPEN") return `the pull request ${view.url} is ${view.state}, not OPEN`;
+  if (view.headRefOid !== head) return `the pull request ${view.url} is at ${String(view.headRefOid).slice(0, 7)}, which differs from HEAD (${String(head).slice(0, 7)}): push the review fixes first, since pb pr refresh pushes nothing`;
   return null;
 }
 
@@ -142,6 +151,8 @@ export function prCreateArgv({ title, bodyFile, base, branch, labels = [], polic
     ...labels.flatMap((label) => ["--label", label]),
   ];
 }
+
+export const prEditArgv = ({ url, title, bodyFile }) => ["pr", "edit", url, "--title", title, "--body-file", bodyFile];
 
 const refused = (refusals) => ({ refusals, steps: [] });
 

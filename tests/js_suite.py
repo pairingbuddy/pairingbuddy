@@ -78,6 +78,7 @@ JS_TEST_FILES = [
     "tests/js/pr-lint-safeguards.test.mjs",
     "tests/js/pr-lint-cli.test.mjs",
     "tests/js/pr-lint-run-safeguards.test.mjs",
+    "tests/js/pr-refresh.test.mjs",
     "tests/js/publish.test.mjs",
     "tests/js/publish-steps.test.mjs",
     "tests/js/publish-gate-answers.test.mjs",
