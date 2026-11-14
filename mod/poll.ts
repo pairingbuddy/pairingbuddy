@@ -2,6 +2,8 @@ import type { EngineInterface, PluginOptions } from 'claude-code'
 import { pollInputs, type Polled } from './inputs'
 import { alertOn } from './alert'
 import { runStart } from '../shared-node/glance.mjs'
+import { codeRunOf } from '../shared-node/end-state.mjs'
+import type { CodeRun } from './inputs'
 
 export const POLL_MS = 1000
 const INPUTS = { plugin: 'pairingbuddy', key: 'inputs' } as const
@@ -34,8 +36,22 @@ function unitStart(state: PollerState, polled: Polled): string | null {
   return startedAt
 }
 
-export type PollerState = { started: boolean; polling: boolean; unit: UnitStart }
-export const newPollerState = (): PollerState => ({ started: false, polling: false, unit: null })
+// The unit's last code run and its pull request, kept while the unit is the same, so the end state outlives the code run's ledger
+// (the publish run replaces it) and unit.json (pb publish closes it). A code ledger read replaces the code run; a different open
+// unit drops both. With no unit open, as after pb publish, they are kept.
+export type UnitRecord = { key: string | null; codeRun: CodeRun | null; prUrl: string | null } | null
+
+function unitRecord(state: PollerState, polled: Polled): { codeRun: CodeRun | null; prUrl: string | null } {
+  const key = polled.unit?.key ?? null
+  const kept = state.record !== null && (key === null || state.record.key === null || state.record.key === key) ? state.record : null
+  const read = codeRunOf(polled.ledger) as CodeRun | null
+  const record = { key: key ?? kept?.key ?? null, codeRun: read ?? kept?.codeRun ?? null, prUrl: polled.unit?.prUrl ?? kept?.prUrl ?? null }
+  state.record = record
+  return { codeRun: record.codeRun, prUrl: record.prUrl }
+}
+
+export type PollerState = { started: boolean; polling: boolean; unit: UnitStart; record: UnitRecord }
+export const newPollerState = (): PollerState => ({ started: false, polling: false, unit: null, record: null })
 
 // One poller per register: the poll exists so the band redraws and the alert fires every second, since a render may not wait on files.
 // A start while one runs only reads once, a tick is skipped while a poll is in flight, and a failed poll is dropped.
@@ -47,7 +63,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
     state.polling = true
     try {
       const read = await pollInputs($)
-      const polled = { ...read, since: unitStart(state, read) }
+      const polled = { ...read, since: unitStart(state, read), ...unitRecord(state, read) }
       await $.state.set(INPUTS, polled)
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.
       await alertOn($, polled.ledger, options)

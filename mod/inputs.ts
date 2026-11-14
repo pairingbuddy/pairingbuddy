@@ -5,6 +5,7 @@ const TESTS = '.pairingbuddy/tests.json'
 const SCENARIOS = '.pairingbuddy/scenarios.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
 const UNIT = '.pairingbuddy/run/unit.json'
+const CHANGED = '.pairingbuddy/run/changed.json'
 
 export type Spawn = { kind: 'Agent' | 'workflow_agent'; name: string; subagentType?: string; startedAt?: string; agentId?: string; finished?: boolean }
 type Spend = { agents: number; tokens: number; tokensKnown: boolean }
@@ -28,8 +29,14 @@ export type Ledger = {
 // names: test id to description, narrowed from tests.json and scenarios.json by the poller; absent means no names known.
 export type Call = { agentId?: unknown; at?: string; input: Record<string, unknown> }
 // unit: the open unit, by its identity (branch and base) and its last ended task's steps; since: when the unit's first run began.
-export type Unit = { key: string; taskStages: string[] }
-export type Inputs = { ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; names?: Record<string, string>; unit?: Unit | null; since?: string }
+// prUrl: the pull request the unit record names, once pb publish has opened it.
+export type Unit = { key: string; taskStages: string[]; prUrl?: string }
+// What the pane keeps of the unit's last code run (shared-node/end-state.mjs codeRunOf), so the end state outlives its ledger.
+export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; testsPassing: number; safetyNet: { attempt?: number; startedAt?: string } | null; rollbacks: unknown[] }
+// What the last pb publish printed: the url it opened, or the result when it opened none; codeRunId ties it to the code run it published.
+export type Published = { url?: string; result?: string; codeRunId?: string | null }
+// changed: the paths run/changed.json lists (null when it does not read); prUrl: the unit's pull request as the poller last saw it.
+export type Inputs = { ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; names?: Record<string, string>; unit?: Unit | null; since?: string; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {
@@ -109,21 +116,32 @@ export function unitOf(file: unknown): Unit | null {
   if (typeof branch !== 'string' || !Array.isArray(tasks)) return null
   const last = tasks.at(-1) as { stages?: unknown } | undefined
   const stages = Array.isArray(last?.stages) ? last.stages.filter((name): name is string => typeof name === 'string') : []
-  return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)] }
+  const url = ((file as { pr?: { url?: unknown } }).pr)?.url
+  return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}) }
 }
 
-export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; names: Record<string, string>; unit: Unit | null; since?: string | null }
+// The paths run/changed.json lists ({ path, status } entries), or null when it is absent or does not read.
+export function changedOf(file: unknown): string[] | null {
+  if (!Array.isArray(file)) return null
+  return file.map(entry => (entry as { path?: unknown })?.path).filter((path): path is string => typeof path === 'string' && path !== '')
+}
+
+export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; names: Record<string, string>; unit: Unit | null; changed: string[] | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null }
 
 // The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
 export async function pollInputs($: EngineInterface): Promise<Polled> {
-  const [{ inputs: { ledger, tests, testsComplete, now }, testsFile }, scenarios, unitFile] = await Promise.all([readInputsAndTests($, []), readJson($, SCENARIOS), readJson($, UNIT)])
+  const [{ inputs: { ledger, tests, testsComplete, now }, testsFile }, scenarios, unitFile, changedFile] = await Promise.all([readInputsAndTests($, []), readJson($, SCENARIOS), readJson($, UNIT), readJson($, CHANGED)])
   const names = testNames({ tests: testsFile, scenarios })
-  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, names, unit: unitOf(unitFile) }
+  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, names, unit: unitOf(unitFile), changed: changedOf(changedFile) }
 }
 
-type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; names?: Record<string, string>; unit?: Unit | null; since?: string | null } | null
+type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; names?: Record<string, string>; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null } | null
 
 // The one place the atom's loosely typed ledger is narrowed; null until the first poll, which reads as idle.
-export function fromPolled(polled: PolledState, spawns: Spawn[], calls: Call[] = []): Inputs {
-  return { ledger: (polled?.ledger ?? undefined) as Ledger, spawns, calls, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined, names: polled?.names ?? undefined, unit: polled?.unit ?? null, since: polled?.since ?? undefined }
+export function fromPolled(polled: PolledState, spawns: Spawn[], calls: Call[] = [], published: Published | null = null): Inputs {
+  return {
+    ledger: (polled?.ledger ?? undefined) as Ledger, spawns, calls, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined,
+    names: polled?.names ?? undefined, unit: polled?.unit ?? null, since: polled?.since ?? undefined,
+    changed: polled?.changed ?? null, codeRun: polled?.codeRun ?? null, prUrl: polled?.prUrl ?? null, published,
+  }
 }

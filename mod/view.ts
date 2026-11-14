@@ -6,6 +6,7 @@ import { lensRound } from '../shared-node/lens-round.mjs'
 import type { LensRound } from '../shared-node/lens-round.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { cycleMarker, loopingTries, nameOf, progressRow, stepAge } from '../shared-node/now-building.mjs'
+import { endRows, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
 import type { Inputs, Ledger } from './inputs'
 
 export type Tone = 'error' | 'warning' | 'dim'
@@ -37,7 +38,13 @@ export type View = {
   test?: TestLine
   tries?: Tries
   lensRound?: LensRound
+  // The DONE, GOAL and PR rows, each a dash until the task is done; endRound, once the work is finished, is the review the REVIEW row sums up.
+  end: EndRows
+  endRound?: LensRound
 }
+
+export type EndRows = Record<'done' | 'goal' | 'pr', string>
+const NO_END: EndRows = { done: '—', goal: '—', pr: '—' }
 
 const EMPTY = '—'
 const UNKNOWN = 'unknown'
@@ -114,11 +121,27 @@ function buildTestRows({ ledger, spawns, tests, testsComplete, now, names }: Inp
   return { progress, test, tries: loopingTries({ spawns, perTest, stage }) }
 }
 
+// The pull request as far as it is known: what pb publish printed for this code run, else the url the unit record names.
+function prOf({ published, prUrl, codeRun, calls = [] }: Inputs) {
+  const title = prTitleOf(calls)
+  const ours = published && (published.codeRunId == null || published.codeRunId === codeRun?.runId) ? published : null
+  if (ours?.url || ours?.result) return { ...ours, title }
+  return prUrl ? { url: prUrl, title } : undefined
+}
+
+// The end rows once the task is done; while no stage runs, the work is finished and its review is told as one summary.
+function endState(inputs: Inputs, running: boolean): Pick<View, 'end' | 'endRound'> {
+  const round = safetyNetRound({ codeRun: inputs.codeRun, calls: inputs.calls, spawns: inputs.spawns })
+  const end = endRows({ codeRun: inputs.codeRun, changed: inputs.changed, round, pr: prOf(inputs) }) as EndRows
+  const finished = inputs.codeRun?.taskEndPassed === true && !running && round !== undefined
+  return finished ? { end, endRound: round } : { end }
+}
+
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
   const view = toned(buildPlainView(inputs))
   if (!inputs.ledger) return view
-  return { ...view, ...buildTestRows(inputs, false), steps: unitSteps(inputs, false), lensRound: lensRound({ ledger: inputs.ledger, calls: inputs.calls, spawns: inputs.spawns }) }
+  return { ...view, ...buildTestRows(inputs, false), steps: unitSteps(inputs, false), lensRound: lensRound({ ledger: inputs.ledger, calls: inputs.calls, spawns: inputs.spawns }), ...endState(inputs, view.running) }
 }
 
 const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since }: Inputs) => glance({ ledger, spawns, tests, now, since, testsComplete, leaveOutUnknown: true })
@@ -128,11 +151,11 @@ const looping = (text: string) => (text === UNKNOWN ? 'no' : text)
 
 function buildPlainView(inputs: Inputs): View {
   const { ledger } = inputs
-  if (!ledger) return { ledger, running: false, rows: NO_RUN_ROWS, band: [], unknownLabels: [], steps: [] }
+  if (!ledger) return { ledger, running: false, rows: NO_RUN_ROWS, band: [], unknownLabels: [], steps: [], end: NO_END }
   const running = isStageActive(ledger)
   const shown = glanceOf(inputs)
   const rows = { now: shown.rows.now, spent: shown.rows.spent, looping: looping(shown.rows.looping) }
-  const base = { ledger, running, band: shown.band, unknownLabels: shown.unknownLabels, steps: [] }
+  const base = { ledger, running, band: shown.band, unknownLabels: shown.unknownLabels, steps: [], end: NO_END }
   const gate = waitingGate(ledger)
   if (gate) {
     const band = running ? shown.band : shown.band.filter((segment: Segment) => segment.id === 'needsYou')
@@ -171,6 +194,7 @@ export function buildEndedView(inputs: Inputs): View {
     steps: unitSteps(inputs, true),
     ...buildTestRows(inputs, true),
     lensRound: ledger ? lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns, ended: true }) : undefined,
+    ...endState(inputs, false),
   }
   return toned(view)
 }

@@ -200,7 +200,7 @@ test('replay-keeps-one-layout-and-fits-at-widths', async ($, on) => {
   const cells = (text: string) => [...text].length
   const textOf = (node: any): string => (node.children ?? []).map((child: any) => (typeof child === 'string' ? child : textOf(child))).join('')
   const isRow = (node: any) => node?.type === 'Box' && (node.children ?? []).length > 0 && node.children.every((child: any) => child?.type === 'Text')
-  const LABELS = ['NOW', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'REVIEW']
+  const LABELS = ['DONE', 'GOAL', 'PR', 'NOW', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'REVIEW']
 
   for (const [name, recording] of [['g-open-1', calm], ['probe-2', looping]] as const) {
     for (const columns of WIDTHS) {

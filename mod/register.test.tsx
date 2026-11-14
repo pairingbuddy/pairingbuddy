@@ -62,5 +62,5 @@ test('pb-reopens-pane-with-focus', async ($, on) => {
 test('tool-call-hook-records-calls-and-passes-through', () => {
   const registered = recordHooks().filter(hook => hook.event === 'tool.call')
 
-  expect(registered.map(hook => hook.matcher), 'the mod registers one tool.call hook, for StructuredOutput calls').toEqual([{ tool: 'StructuredOutput' }])
+  expect(registered.map(hook => hook.matcher), 'the mod registers two tool.call hooks: StructuredOutput calls, and Bash calls for what pb publish opened').toEqual([{ tool: 'StructuredOutput' }, { tool: 'Bash' }])
 })

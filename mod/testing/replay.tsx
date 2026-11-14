@@ -55,17 +55,19 @@ export type Rig = {
   spawned: number
   // How many times each path has been read, so a step can wait for its poll to arrive.
   reads: Map<string, number>
+  // What a tool call answers, by tool name: a test sets a Bash call's output here. Any other tool answers 'ok'.
+  toolResults: Map<string, unknown>
 }
 
 // Registers the handlers once per test, before `$` is first touched (the engine allows one handler per
 // event, so a second registration throws). Every replay() in the test reuses the returned rig.
 export function setupReplay(on: Function): Rig {
-  const rig: Rig = { served: new Map(), unreadable: new Set(), clock: mock.clock(on, { now: 0 }) as Rig['clock'], now: 0, spawned: 0, reads: new Map() }
+  const rig: Rig = { served: new Map(), unreadable: new Set(), clock: mock.clock(on, { now: 0 }) as Rig['clock'], now: 0, spawned: 0, reads: new Map(), toolResults: new Map() }
   on('command.register', (_: unknown, e: { name: string }) => ({ value: { command: e.name } }))
   on('agent.spawn', () => ({ model: 'recorded', agentId: `recorded-${++rig.spawned}` }))
   // The end of a recorded agent's turn: the mod hears it above this, which only answers it.
   on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
-  on('tool.call', () => ({ result: 'ok' }))
+  on('tool.call', (_: unknown, e: { tool: string }) => ({ result: rig.toolResults.has(e.tool) ? rig.toolResults.get(e.tool) : 'ok' }))
   on('session.root', () => ({ value: ROOT }))
   on('session.start', () => ({ cwd: ROOT }))
   on('fs.read', (_: unknown, e: { path: string }) => {

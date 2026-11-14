@@ -1,5 +1,6 @@
 import { plainName } from '../shared-node/plain-names.mjs'
-import { lensLines } from '../shared-node/lens-round.mjs'
+import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
+import { endReviewLines } from '../shared-node/end-state.mjs'
 import { fitTries } from '../shared-node/now-building.mjs'
 import type { PaneTags, RowTones, View } from './view'
 
@@ -74,13 +75,17 @@ function paneRows(view: View, columns: number) {
   const one = (text: string, props: Props = {}): Part[][] => [[{ text, props: text === EMPTY ? { dimColor: true } : props }]]
   const nowProps = { ...toneProps(rowTones.now), ...(rowTones.now === 'warning' ? { bold: true } : {}) }
   const tries = view.tries?.length ? [[{ text: fitTries(view.tries, width).trimStart(), props: { dimColor: true } }]] : []
+  const review = view.endRound ? endReviewLines(view.endRound, width) : lensLines(view.lensRound, width)
   return [
+    ...rowLines('DONE', one(cutAtWord(view.end.done, width))),
+    ...rowLines('GOAL', one(cutAtWord(view.end.goal, width))),
+    ...rowLines('PR', one(cutAtWord(view.end.pr, width))),
     ...rowLines('NOW', one(rows.now, nowProps)),
     ...rowLines('SPENT', one(rows.spent, toneProps(rowTones.spent))),
     ...rowLines('LOOPING', [...one(rows.looping, toneProps(rowTones.looping)), ...tries]),
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
     ...rowLines('TESTS', testsParts(view, width)),
-    ...rowLines('REVIEW', lensLines(view.lensRound, width).map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
+    ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
   ]
 }
 

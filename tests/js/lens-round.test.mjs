@@ -114,6 +114,7 @@ test("lens-returned-with-found-count", () => {
     "a lens that was spawned and returned appears once, returned, next to the still-running lens",
   );
   assert.equal(round.lenses[0].found, 3, "a returned lens reports found equal to its findings length");
+  assert.deepEqual(round.lenses.map((lens) => lens.id), ["code", "tests"], "each lens keeps its id, so a reader can pick one lens out");
 });
 test("lens-uncovered-on-return-without-findings", () => {
   const spawns = [spawnFor({ item: "code" })];
@@ -617,7 +618,7 @@ test("lens-fold-ignores-odd-input-and-other-stop-codes", () => {
   const otherStop = lensRound({ ledger: ledgerFor({ stop: stepFailed }), calls: [], spawns: [spawnFor({ item: "code" })], contract });
   const otherStopOnly = lensRound({ ledger: ledgerFor({ stop: stepFailed }), calls: [], spawns: [], contract });
 
-  assert.deepEqual(nonArray.lenses, [{ name: plainName("code"), state: "uncovered" }], "a lens whose findings are not an array is uncovered, and does not throw");
+  assert.deepEqual(nonArray.lenses, [{ id: "code", name: plainName("code"), state: "uncovered" }], "a lens whose findings are not an array is uncovered, and does not throw");
   assert.equal(unknownVerdict.findings[0].verdict, "challenging", "an unknown refuter verdict leaves the finding being challenged while a refuter is spawned");
   assert.deepEqual(nullStart.lenses.map(({ name }) => name), [plainName("code")], "a ledger stage with no start time still counts a spawn that has one");
   assert.equal(nullStage, undefined, "a ledger whose stage is null shows no round and does not throw");

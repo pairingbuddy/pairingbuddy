@@ -197,8 +197,8 @@ const sinceStart = (items, timeOf, startedAt) =>
 // The lenses seen from a spawn or a return, in first-seen order; a return overrides its spawn by lens item.
 function lensStates(spawned, returned, nameOf) {
   const lenses = new Map();
-  for (const label of spawned) lenses.set(label.item, { name: nameOf(label.item), ...spawnState(label) });
-  for (const one of returned) lenses.set(one.key.item, { name: nameOf(one.key.item), ...returnState(one) });
+  for (const label of spawned) lenses.set(label.item, { id: label.item, name: nameOf(label.item), ...spawnState(label) });
+  for (const one of returned) lenses.set(one.key.item, { id: one.key.item, name: nameOf(one.key.item), ...returnState(one) });
   return [...lenses.values()];
 }
 
@@ -342,7 +342,7 @@ function findingLine({ word, where, ...finding }, columns) {
   return { text: `${lead}${cutAtWord(gist, columns - lead.length)}`, whole: true };
 }
 
-function findingLines(findings, columns) {
+export function findingLines(findings, columns) {
   const lines = findings.slice(0, SHOWN_FINDINGS).map((finding) => findingLine(finding, columns));
   const more = findings.length - SHOWN_FINDINGS;
   return more > 0 ? [...lines, { text: `  + ${more} more`, tone: "dim" }] : lines;
@@ -352,7 +352,7 @@ const cut = (text, columns) => (text.length > columns ? `${text.slice(0, columns
 
 // A line longer than columns folds at its PART_BREAK breaks onto indented continuation lines that each fit;
 // a whole line, a line with no break (or a part still too long) is cut to columns characters, the last being an ellipsis.
-function fit({ text, whole = false, ...rest }, columns) {
+export function fit({ text, whole = false, ...rest }, columns) {
   if (!(columns > 0) || text.length <= columns) return [{ text, ...rest }];
   if (whole) return [{ text: cut(text, columns), ...rest }];
   const rows = [];

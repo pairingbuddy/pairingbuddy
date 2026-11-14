@@ -1,11 +1,12 @@
 import { expect, test } from 'claude-code/testing'
-import { BAND } from './testing/band'
+import { BAND, LEDGER, ROOT } from './testing/band'
 import { PANE, paneLines, replay, setupReplay, type Rig, type Step } from './testing/replay'
 import gOpen1 from './fixtures/replay/g-open-1'
 import probe2 from './fixtures/replay/probe-2'
 import s4Rollback from './fixtures/replay/s4-rollback'
 import { bandColumns } from './band'
 import { PHASE_COLOURS } from './pane'
+import { POLL_MS } from './poll'
 import { fitBand, glance, runStart } from '../shared-node/glance.mjs'
 import { MAX_FIX_UNDOS } from '../shared-node/limits.mjs'
 import { PHASES, ROLES } from '../shared-node/labels.mjs'
@@ -116,7 +117,9 @@ test('with the pane open, every row in order, the step list in plain names with 
   const rig = setupReplay(on)
   const steps = await drawn($, rig, gOpen1, TESTS['g-open-1'])
 
-  const review = at(steps, 148.104).lines
+  const all = at(steps, 148.104).lines
+  expect(all.slice(0, 3), 'the end rows lead, and read a dash before the task is done').toEqual(['DONE     —', 'GOAL     —', 'PR       —'])
+  const review = all.slice(3)
   expect(review[0], `the NOW row names the step in ${JSON.stringify(review)}`).toBe('NOW      safety-net review')
   expect(review[1], 'SPENT leaves out what is not measured').toMatch(/^SPENT {4}6 agents · \d+:\d\d$/)
   expect(review[2], 'nothing is looping').toBe('LOOPING  no')
@@ -274,4 +277,33 @@ test('replay-fixes-match-recorded-rollbacks-and-verdicts', async ($, on) => {
   expect(atRollback[1], `at the rollback's own step t=${rolledAt}: ${JSON.stringify(atRollback)}`).toBe('         3 issues found · 3 to fix')
   expect(review(last.lines)[1], `at the end of the stage the retried fix was kept: ${JSON.stringify(last.lines)}`).toBe('         3 issues found · 3 fixed')
   expect(last.lines.some(line => /^ {2}fix \d+ |^fixes {2}/.test(line.trim() === line ? line : line.slice(9))), 'no fix block: the finding words say what happened').toBe(false)
+})
+
+// s4-rollback runs on through G:task-end and the publish run's pr-draft; pb publish then opens the PR and closes the unit.
+const S4_CHANGED = { '.pairingbuddy/run/changed.json': JSON.stringify([{ path: 'README.md', status: 'M' }, { path: 'discount.py', status: 'M' }, { path: 'tests/test_discount.py', status: 'M' }]) }
+
+test('replay-end-state-after-the-publish-says-done-goal-and-pr', async ($, on) => {
+  const rig = setupReplay(on)
+  const steps = await drawn($, rig, s4Rollback, S4_TEST_IDS, PANE, S4_CHANGED)
+  const publishing = steps.at(-1)!.lines
+  expect(publishing.slice(0, 3), `while the publish run waits on G:publish: ${JSON.stringify(publishing)}`).toEqual([
+    'DONE     README.md, discount.py, tests/test_discount.py · 1 test passing',
+    'GOAL     met · Fix this bug in discount.py: apply_discount(100, 10) returns 10',
+    'PR       —',
+  ])
+
+  rig.toolResults.set('Bash', { stdout: '{"ok":true,"result":"published","url":"https://github.com/o/r/pull/12","warnings":[]}\n', stderr: '' })
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'tu-publish', command: 'node <plugin>/cli/pb.mjs publish' })
+  rig.served.delete(`${ROOT}/${LEDGER}`)
+  await rig.clock.advance(POLL_MS * 2)
+  const ended = await paneLines($)
+
+  expect(ended.slice(0, 3), `after the publish: ${JSON.stringify(ended)}`).toEqual([
+    'DONE     README.md, discount.py, tests/test_discount.py · 1 test passing',
+    'GOAL     met · Fix this bug in discount.py: apply_discount(100, 10) returns 10',
+    'PR       opened · #12 fix: apply_discount returns price after discount',
+  ])
+  const review = ended.slice(ended.findIndex(line => line.startsWith('REVIEW')))
+  expect(review[0], 'the review is the work\'s, in one summary line').toBe('REVIEW   review: 3 issues, all fixed')
+  expect(review.slice(1).every(line => !line.includes('…')), `no finding is cut with an ellipsis: ${JSON.stringify(review)}`).toBe(true)
 })
