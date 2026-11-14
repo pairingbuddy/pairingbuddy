@@ -122,7 +122,7 @@ test('with the pane open, every row in order, the step list in plain names with 
   expect(review[2], 'nothing is looping').toBe('LOOPING  no')
   expect(review.filter(line => /^(LEFT|OFF TRACK)\b/.test(line)), 'LEFT and OFF TRACK are gone').toEqual([])
   expect(review.slice(3, 7), 'steps done, then current, in plain names').toEqual(['STEPS    ○ work out the task type', '         ✓ write scenarios', '         ✓ build test by test', '         ▸ safety-net review'])
-  expect(review, 'the tests stay listed, and no test is current in the review').toEqual(expect.arrayContaining(['TESTS    ✓ 1 done   ◌ 3 covered', 'TEST     —']))
+  expect(review, 'the tests stay listed, and no test is current in the review').toEqual(expect.arrayContaining(['TESTS    ✓ 1 done   ◌ 3 covered']))
 
   const building = at(steps, 49.891).lines
   expect(building, 'steps at tdd: done, current, to come').toEqual(expect.arrayContaining(['         ✓ write scenarios', '         ▸ build test by test', '         ○ safety-net review']))

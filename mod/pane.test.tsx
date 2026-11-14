@@ -274,7 +274,7 @@ test('pane-draws-the-review-row-and-no-test-in-the-safety-net-review', async ($,
   engine(on, lensLedger('code-safety-net'))
   await start($)
 
-  // The last test's step belongs to the TDD stage; in the review, TEST reads a dash and NOW names the review.
+  // The last test's step belongs to the TDD stage; in the review, no test is current and NOW names the review.
   await $.agent.spawn({ prompt: 'p', description: 'd', name: 'pb1 code-tdd GREEN implement-code ten-percent-off r1', subagentType: 'pairingbuddy:implement-code' })
   const spawned = await $.agent.spawn({ prompt: 'p', description: 'd', name: 'pb1 code-safety-net - lens code r1', subagentType: 'pairingbuddy:lens' })
   await $.tool.call({ tool: 'StructuredOutput', tool_use_id: 'tu1', pb_key: 'code-safety-net.lens.code.r1.a1', findings: [{ where: 'discount.py:3', claim: 'rounds the wrong way' }], agentId: spawned.agentId })
@@ -288,7 +288,8 @@ test('pane-draws-the-review-row-and-no-test-in-the-safety-net-review', async ($,
     '           to fix · rounds the wrong way · discount.py:3',
   ])
   expect(lines, 'NOW names the review, not the last test').toContain('NOW      safety-net review')
-  expect(lines, 'TEST reads a dash outside build test by test').toContain('TEST     —')
+  expect(lines, 'no test is current outside build test by test').toContain('TESTS    —')
+  expect(lines.some(line => line.startsWith('TEST ')), 'there is no TEST row').toBe(false)
   expect(lines.some(line => /agents? of \d+/.test(line)), 'no "n agents of 1000" line').toBe(false)
 })
 

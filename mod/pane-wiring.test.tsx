@@ -8,7 +8,7 @@ import { LEDGER, ROOT, SNAPSHOT_RUNNING, engine, start } from './testing/band'
 import { POLL_MS } from './poll'
 import { fromPolled } from './inputs'
 
-test('pane-draws-the-tests-and-test-rows', async ($, on) => {
+test('pane-draws-one-tests-row-with-a-line-per-test', async ($, on) => {
   const clock = mock.clock(on, { now: Date.parse('2026-11-04T08:20:00.000Z') })
   const record = (passed: boolean) => ({ stage: 'code-tdd', attempt: 1, done: passed, passed, exitCodes: [passed ? 0 : 1], timedOut: false, excerpt: '' })
   const selector = (id: string) => ({ runner_id: 'pytest', test_file: 'tests/test_discount.py', test_function: id })
@@ -33,9 +33,9 @@ test('pane-draws-the-tests-and-test-rows', async ($, on) => {
   const lines = await paneLines($)
 
   const shown = JSON.stringify(lines)
-  expect(lines, `the TESTS row marks the finished test done and the current one: ${shown}`).toContain('TESTS    ✓ ten percent off   ▸ zero percent keeps price')
-  expect(lines, `the TEST row names the current test, its cycle and the step age: ${shown}`).toContain('TEST     zero percent keeps price  ✓RED ●GREEN  1:30')
-  expect(lines.findIndex(line => line.startsWith('TESTS')), 'TESTS comes before TEST').toBeLessThan(lines.findIndex(line => line.startsWith('TEST ')))
+  const from = lines.findIndex(line => line.startsWith('TESTS'))
+  expect(lines.slice(from, from + 2), `one line per test, the current one with its cycle and step age: ${shown}`).toEqual(['TESTS    ✓ ten percent off', '         ▸ zero percent keeps price  ✓RED ●GREEN  1:30'])
+  expect(lines.some(line => line.startsWith('TEST ')), `there is no separate TEST row: ${shown}`).toBe(false)
   const marker = nodes.find(node => node.text === '●GREEN')
   expect(marker!.props.color, 'the lit GREEN step uses its fixed phase colour').toBe(PHASE_COLOURS.GREEN)
   const texts = nodes.map(node => node.text)
@@ -84,7 +84,6 @@ test('marker-is-hidden-when-no-phase-is-known', async ($, on) => {
 
   const lines = await paneLines($)
   expect(lines, `the seen test is listed: ${JSON.stringify(lines)}`).toContain('TESTS    · ten percent off')
-  expect(lines, 'with no step on a test the TEST row reads a dash').toContain('TEST     —')
   expect(lines.some(text => /RED|GREEN|REFACTOR/.test(text)), `no phase marker is drawn with no live phase: ${JSON.stringify(lines)}`).toBe(false)
 })
 
@@ -138,7 +137,7 @@ test('poller-reads-tests-and-scenarios', async ($, on) => {
     }
     expect(threw, `${variant.name}: drawing the pane does not throw`).toBeUndefined()
     const shown = JSON.stringify(everyText)
-    expect(everyText.some(text => text === 'TEST     '), `${variant.name}: the TEST row is drawn: ${shown}`).toBe(true)
+    expect(everyText.some(text => text === 'TESTS    '), `${variant.name}: the TESTS row is drawn: ${shown}`).toBe(true)
     if (variant.described) {
       expect(everyText.some(text => text.includes(DESCRIPTION)), `${variant.name}: the pane shows the scenario description: ${shown}`).toBe(true)
     } else {
@@ -178,7 +177,7 @@ test('replay-matches-recorded-run', async ($, on) => {
   // In the safety-net review no test is current: TEST reads a dash and no phase is lit.
   const review = at(calmSteps, 'spawn', 'pb1 code-safety-net - update-documentation - r1')
   expect(review, 'the safety-net review lights no phase').not.toContain('●GREEN')
-  expect(review[review.indexOf('TEST     ') + 1], 'TEST reads a dash outside build test by test').toBe('—')
+  expect(review.some(text => /^▸ /.test(text) && /\d:\d\d$/.test(text)), 'no test line carries a step age outside build test by test').toBe(false)
 
   // Looping run, probe-2: GREEN is lit on the first test's GREEN spawn, RED is lit on the third try at zero-percent-keeps-full-price.
   const green = at(loopingSteps, 'spawn', 'pb1 code-tdd GREEN implement-code ten-percent-off-hundred r1')
@@ -201,7 +200,7 @@ test('replay-keeps-one-layout-and-fits-at-widths', async ($, on) => {
   const cells = (text: string) => [...text].length
   const textOf = (node: any): string => (node.children ?? []).map((child: any) => (typeof child === 'string' ? child : textOf(child))).join('')
   const isRow = (node: any) => node?.type === 'Box' && (node.children ?? []).length > 0 && node.children.every((child: any) => child?.type === 'Text')
-  const LABELS = ['NOW', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'TEST', 'REVIEW']
+  const LABELS = ['NOW', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'REVIEW']
 
   for (const [name, recording] of [['g-open-1', calm], ['probe-2', looping]] as const) {
     for (const columns of WIDTHS) {
@@ -215,7 +214,7 @@ test('replay-keeps-one-layout-and-fits-at-widths', async ($, on) => {
         const labels = rows.map(row => textOf(row.children[0]).trim()).filter(label => label !== '')
         // One layout: every row, in the same order, at every step.
         expect(labels, `${where}: the rows`).toEqual(LABELS)
-        // The rows the pane folds itself fit the width: TESTS, TEST and REVIEW; the one-sentence rows and the steps are cut by their Text.
+        // The rows the pane folds itself fit the width: TESTS and REVIEW; the one-sentence rows and the steps are cut by their Text.
         const folded = rows.slice(rows.findIndex(row => textOf(row.children[0]).trim() === 'TESTS'))
         for (const row of folded) expect(cells(textOf(row)), `${where}: the row "${textOf(row)}" fits the body width ${columns}`).toBeLessThanOrEqual(columns)
         expect(rows.length, `${where}: the pane's ${rows.length} rows fit the ${BODY_ROWS} body rows`).toBeLessThanOrEqual(BODY_ROWS)
