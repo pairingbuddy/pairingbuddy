@@ -100,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Human gates are asked with the question box: on `needs-human` the router and the stop hook pass `pb gate eval`'s question to AskUserQuestion unchanged, then check `pb status --action`; the `!` approve command is shown only when the gate still waits. The router also tells the session to speak to the human in plain gate and stage names.
 - Workflow bundles pretty-print inlined JSON, so no line exceeds 2000 chars and Claude Code's "Run a dynamic workflow?" dialog can approve them (a 7302-char `LENSES` line made it refuse approval); the bundler fails on an inlined value that cannot fit.
 - The coding skill's open-run check no longer says to stop on an open run outside Solo; it continues the run through `pb status --action`, matching Plan Loop step 1 and the Stop hook.
 - `pb run open --kind publish` and `pb publish` refuse a unit whose plan still has an unticked `[HUMAN]` task, naming it, and write nothing; found live in smoke S6, where a session published past the human stop.

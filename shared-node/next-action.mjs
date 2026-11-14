@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { PUBLISH_GATE, answeredGate, blockingGate, gatesFor, isPublishApproved, publishApproval } from "./gates.mjs";
+import { PUBLISH_GATE, answeredGate, blockingGate, gateQuestion, gatesFor, isPublishApproved, publishApproval } from "./gates.mjs";
 import { LedgerShaMismatch, isPublishRun, isRefreshRun, readLedger } from "./ledger.mjs";
 import { coveredTests, fixesOf, spendTotals } from "./stage-run.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, startLeaseSecondsLeft } from "./stages.mjs";
@@ -41,6 +41,12 @@ function activeAction(ledger, pluginRoot) {
   return `Stage ${name} is active at attempt ${attempt}. Wait for its workflow. If that workflow was killed or refused to start, ${clears}`;
 }
 
+// The question box first, since the tap records its answer; the ! command only when an asked question left the gate waiting.
+function askHuman(root, gate) {
+  const asked = JSON.stringify({ questions: [gateQuestion(gate)] });
+  return `If you have not asked them yet, ask with AskUserQuestion, passing exactly this question: ${asked}. Then run ${pbCommand("status --action")}. If you asked and the gate still waits, show them ${humanCommand(root, `approve ${gate}`)} and go no further: only they run it.`;
+}
+
 // The order is what the gate enforces: a stop, then a gate, and only then a stage. A stop comes before an active
 // stage because every stop the run raises leaves its stage active.
 export function nextAction(contract, ledger, root, pluginRoot) {
@@ -54,7 +60,7 @@ export function nextAction(contract, ledger, root, pluginRoot) {
   if (isStageActive(ledger)) return activeAction(ledger, pluginRoot);
   if (ledger.needsHuman !== null) {
     const { gate, reason } = ledger.needsHuman;
-    return `Gate ${gate} needs the human: ${reason}. Show them the question and go no further: only they run ${humanCommand(root, `approve ${gate}`)}`;
+    return `Gate ${gate} needs the human: ${reason}. ${askHuman(root, gate)}`;
   }
   const gate = blockingGate(gates, ledger);
   if (gate !== undefined) return `Gate ${gate.name} is due. Run ${pbCommand("gate eval")}.`;

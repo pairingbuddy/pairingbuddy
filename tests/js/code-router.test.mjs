@@ -678,3 +678,30 @@ test("solo-keeps-old-plan-loop-and-plan-tasks-curate-with-skill", () => {
   assert.match(soloPlanLoop, /classify_task\(task\)/, "the Solo plan loop still calls classify_task(task)");
   assert.doesNotMatch(soloPlanLoop, /pb run open/, "the Solo plan loop does not call pb run open");
 });
+
+describe("router-asks-gates-with-the-question-box", () => {
+  test("needs-human-asks-with-askuserquestion-unchanged", () => {
+    const section = routerSection();
+
+    sentencesSaying("that a needs-human gate is asked with AskUserQuestion, the question passed unchanged", section, /On `needs-human`/, /AskUserQuestion/, /exactly as `pb gate eval` gave it/);
+    sentencesSaying("that pb status --action is run after the question", section, /^Then run `pb status --action`/);
+  });
+
+  test("the-bang-command-is-only-the-fallback", () => {
+    const section = routerSection();
+
+    sentencesSaying("that the ! command is shown only when the gate still waits after the question", section, /Only if the gate still waits/, /`humanCommand`/, /stop/);
+  });
+
+  test("publish-gate-is-asked-as-in-step-4", () => {
+    const section = routerSection();
+
+    sentencesSaying("that a needs-human G:publish is asked as in step 4", section, /On `needs-human`, ask the human as in step 4/);
+  });
+
+  test("the-human-hears-plain-names", () => {
+    const section = routerSection();
+
+    sentencesSaying("that the human hears the plain gate and stage names, not ids or pb commands", section, /When you talk to the human/, /plain names/, /"your OK on the task type"/, /not `G:type`/, /`pb status --action`/, /`code-safety-net`/);
+  });
+});

@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { readLedger, updateLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { COMMIT_FAILED, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
 import { runReport } from "../../shared-node/next-action.mjs";
+import { gateQuestion } from "../../shared-node/gates.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const hook = (name) => join(ROOT, "hooks", name);
@@ -257,6 +258,15 @@ describe("Stop hook", () => {
     assertBlocks(stdout, /G:task-end/);
     assertBlocks(stdout, /permission mode is default/);
     assertBlocks(stdout, /human approve G:task-end/);
+  });
+
+  test("a gate waiting on the human is asked with the question box first, the exact question in hand", () => {
+    const { dir } = makeRun(allDone({ needsHuman: { gate: TASK_END, reason: "permission mode is default", seq: 1 } }));
+
+    const reason = stopReason(stop(dir));
+
+    assert.ok(reason.includes(`AskUserQuestion, passing exactly this question: ${JSON.stringify({ questions: [gateQuestion(TASK_END)] })}`), reason);
+    assert.ok(reason.indexOf("AskUserQuestion") < reason.indexOf("human approve G:task-end"), "the ! command is the fallback, named after the question box");
   });
 
   test("a stop comes before a gate waiting on the human", () => {
