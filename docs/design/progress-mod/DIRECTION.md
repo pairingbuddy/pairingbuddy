@@ -73,3 +73,41 @@ Planning uses the same rows. Its pane adds the aim, decisions, open questions (t
 | Suggestions | `.pairingbuddy/human-guidance.json`, already passed to every spawn | exists; needs a task-specific marking for curate-guidance |
 | Reports | `$.fs.write` plus `$.process.run(['open', path])` | Task 57 onward; needs a kept location that R5 allows |
 | Alerts and auto-open | `stop` or `needsHuman` in the ledger, then `$.ui.open`, toast and sound | Task 58 |
+
+## Fixed layout (2026-11-14)
+
+Found in the third watched run: the pane changed shape as the run moved. Rows came and went, the step list switched from the code steps to the publish step, and lines such as "1 active", "▸ now", "✓ made to pass" and "4 agents of 1000" appeared and vanished. The human: "It would be better to have well-defined designs … keep the general layout the same."
+
+The pane now has one layout for the whole unit, from the first step to the published pull request. Every row is always drawn, in this order, with its label in a fixed-width column. A row with nothing to show reads `—`; it never disappears.
+
+```
+NOW      <one plain sentence about the active step>
+SPENT    27 agents · 3:35
+LOOPING  no
+STEPS    ✓ work out the task type
+         ✓ write scenarios
+         ✓ build test by test
+         ▸ safety-net review
+         ○ write the pull request
+TESTS    ✓ order total sums line totals
+TEST     order total sums line totals  ✓RED ●GREEN ›REFACTOR  0:03
+REVIEW   the code 1 · the tests 0 · docs and plan 0
+         1 issue found · 1 fixed
+           fixed · order_total uses sum() with the default integer start, …
+
+Pairing Buddy only watches; it never changes your run
+[ r open report ]
+suggest: a note for the next agent
+[ dismiss ]
+```
+
+Rules:
+
+- **STEPS is the whole unit.** The code steps for the task type, then the publish step, in one list. In the publish run the code steps show as done.
+- **NOW, TEST and the band follow the active step.** Outside "build test by test", TEST reads `—`, and NOW and the band name the active step, never the last test.
+- **SPENT counts the whole unit.** Agents and time both, so neither resets when the publish run starts.
+- **LOOPING** reads `no`, or names the step and its try when a step is on its second try or later. "try 1 of 3" is never shown. After the run it reads `—`.
+- **REVIEW** shows the latest review round of the active step (or the last one, after it ends). One line per lens with its finding count, one summary line, then one line per finding.
+- **Finding words.** `checking` (a refuter is on it), `to fix` (upheld, fix not tried yet), `fixing`, `fixed`, `not a real problem` (knocked down), `left as is` (still open when the round ended). The summary counts the same words: `3 issues found · 1 fixed · 1 left as is · 1 not a real problem`.
+- **Phase colours are fixed, not theme keys.** RED red, GREEN green, REFACTOR blue, the lit one bold, so a theme that maps "success" to blue cannot turn GREEN blue.
+- **Removed:** "n active", "n unknown" and the legend under the test line, the "▸ now" and "✓ made to pass" sub-step lines, the "n agents of 1000" line, and the LEFT and OFF TRACK rows (never measured live). The progress row of earlier tests is the TESTS row.
