@@ -9,7 +9,14 @@ const entry = (name, mark) => ({ id: name, name, mark });
 const PROGRESS = { entries: [entry("a", "done"), entry("b", "covered"), entry("c", "current"), entry("d", "waiting"), entry("e", "waiting")] };
 
 test("legend-keeps-its-first-entry-at-any-width", () => {
-  assert.equal(fitLegend(5), "✓ made to pass");
+  assert.equal(fitLegend(5, fitProgress(PROGRESS, undefined)), "✓ made to pass");
+});
+
+test("legend-explains-only-the-marks-the-progress-row-shows", () => {
+  assert.equal(fitLegend(undefined, "✓ a   ▸ c"), "✓ made to pass   ▸ now", "no covered or waiting test is shown, so their marks are not explained");
+  assert.equal(fitLegend(undefined, "▸ c   · d   +2 more"), "▸ now   · to do");
+  assert.equal(fitLegend(undefined, "✓ 2 done   ◌ 1 covered   ▸ c"), "✓ made to pass   ◌ already passed, nothing to fix   ▸ now", "folded counts carry their marks too");
+  assert.equal(fitLegend(undefined, ""), "", "an empty row needs no legend");
 });
 
 test("progress-row-is-whole-with-no-width-budget", () => {
