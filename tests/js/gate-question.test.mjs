@@ -10,31 +10,112 @@ import { loadStages } from "../../shared-node/stages.mjs";
 const POLICY = "the gate policy is default, not auto";
 
 describe("each gate asks in plain words", () => {
-  test("G:scenarios asks whether the scenarios are right and building can start", () => {
-    const { header, question } = gateQuestion("G:scenarios", { reason: POLICY });
+  test("G:scenarios shows the scenarios with their tests indented, then asks", () => {
+    const scenarios = [
+      { description: "order total sums the lines", tests: ["two lines add up", "no lines give zero"] },
+      { description: "a bad line is refused", tests: ["a negative quantity raises"] },
+    ];
+    const { header, question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
 
     assert.equal(header, "Scenarios");
-    assert.equal(question, "Are these scenarios right, and should it start building? Auto mode is off, so this asks you.");
+    assert.equal(question, [
+      "Scenarios (2 scenarios, 3 tests):",
+      "- order total sums the lines",
+      "    - two lines add up",
+      "    - no lines give zero",
+      "- a bad line is refused",
+      "    - a negative quantity raises",
+      "Auto mode is off, so this asks you.",
+      "Start building these?",
+    ].join("\n"));
   });
 
-  test("G:type names the task type in plain words", () => {
-    const { header, question } = gateQuestion("G:type", { reason: POLICY, taskType: "new_feature" });
+  test("G:scenarios folds a long list after 12 lines, saying how many more the report holds", () => {
+    const scenarios = Array.from({ length: 5 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: [`test ${i + 1}a`, `test ${i + 1}b`] }));
+    const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
+    const lines = question.split("\n");
+
+    assert.equal(lines[0], "Scenarios (5 scenarios, 10 tests):");
+    assert.deepEqual(lines.slice(1, 14), [
+      "- scenario 1", "    - test 1a", "    - test 1b",
+      "- scenario 2", "    - test 2a", "    - test 2b",
+      "- scenario 3", "    - test 3a", "    - test 3b",
+      "- scenario 4", "    - test 4a", "    - test 4b",
+      "+ 3 more in the report",
+    ]);
+  });
+
+  test("G:type opens with the task type and the classifier's gist, then asks", () => {
+    const { header, question } = gateQuestion("G:type", { reason: POLICY, taskType: "new_feature", facts: { rationale: "Adds order_total to cart.py. Nothing existing changes." } });
 
     assert.equal(header, "Task type");
-    assert.equal(question, "Is the task type right? (new feature) Auto mode is off, so this asks you.");
+    assert.equal(question, "Task type: new feature. Adds order_total to cart.py.\nAuto mode is off, so this asks you.\nIs that the right type?");
   });
 
-  test("G:publish asks to open the pull request", () => {
-    const { header, question } = gateQuestion("G:publish", { reason: POLICY });
+  test("G:task-end gives the goal, what was built and what the review did, then asks", () => {
+    const facts = {
+      goal: "Add order_total(lines) to cart.py. It returns the sum of price times quantity.",
+      files: ["cart.py", "tests/test_cart.py"],
+      tests: 1,
+      passing: true,
+      review: ["fixed"],
+    };
+    const { header, question } = gateQuestion("G:task-end", { reason: POLICY, facts });
+
+    assert.equal(header, "Task done");
+    assert.equal(question, [
+      "Goal: Add order_total(lines) to cart.py.",
+      "Built: cart.py, tests/test_cart.py; 1 test, all passing.",
+      "Review: 1 issue, 1 fixed, 0 left as is.",
+      "Auto mode is off, so this asks you.",
+      "Is the task done?",
+    ].join("\n"));
+  });
+
+  test("G:task-end gives the goal check's gist when it had something to say", () => {
+    const goalCheck = [{ gist: "The README does not name order_total", outcome: "fixed" }, { gist: "Plan says cents", outcome: "left as is" }];
+    const { question } = gateQuestion("G:task-end", { reason: POLICY, facts: { review: ["fixed", "left as is"], goalCheck } });
+
+    assert.equal(question, [
+      "Review: 2 issues, 1 fixed, 1 left as is.",
+      "Goal check: The README does not name order_total (fixed); + 1 more in the report.",
+      "Auto mode is off, so this asks you.",
+      "Is the task done?",
+    ].join("\n"));
+  });
+
+  test("G:task-end leaves out every line whose fact could not be read", () => {
+    const { question } = gateQuestion("G:task-end", { reason: POLICY, facts: { tests: 2 } });
+
+    assert.equal(question, "Built: 2 tests.\nAuto mode is off, so this asks you.\nIs the task done?");
+  });
+
+  test("G:publish gives the title and the body's first text lines, then asks to open it", () => {
+    const body = "\nAdds order_total(lines) to cart.py.\n\nWhy: the checkout needs a total.\n";
+    const { header, question } = gateQuestion("G:publish", { reason: POLICY, facts: { title: "Add order_total to the cart", body } });
 
     assert.equal(header, "Publish");
-    assert.equal(question, "Open the pull request? Auto mode is off, so this asks you.");
+    assert.equal(question, [
+      "Pull request: Add order_total to the cart",
+      "Adds order_total(lines) to cart.py.",
+      "Why: the checkout needs a total.",
+      "Auto mode is off, so this asks you.",
+      "Open it?",
+    ].join("\n"));
+  });
+
+  test("G:publish folds a long body after 8 lines", () => {
+    const body = Array.from({ length: 11 }, (_, i) => `line ${i + 1}`).join("\n");
+    const lines = gateQuestion("G:publish", { reason: POLICY, facts: { title: "T", body } }).question.split("\n");
+
+    assert.deepEqual(lines.slice(1, 10), ["line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8", "+ 3 more lines in .pairingbuddy/run/pr-body.md"]);
   });
 
   test("G:publish on a pull request refresh asks to update it", () => {
-    const { question } = gateQuestion("G:publish", { reason: "a pull request refresh is approved by a human", refresh: true });
+    const { question } = gateQuestion("G:publish", { reason: "a pull request refresh is approved by a human", refresh: true, facts: { title: "T" } });
 
-    assert.match(question, /^Update the pull request\? /);
+    assert.match(question, /^Pull request: T\n/);
+    assert.match(question, /\nUpdate it\?$/);
   });
 
   test("G:scope asks whether the tidy-up list is right", () => {
@@ -95,9 +176,9 @@ const WHYS = [
 ];
 
 describe("the question says why it asks, in plain words", () => {
-  test("each reason gives its plain line after the question", () => {
+  test("each reason gives its plain line before the ask", () => {
     for (const [reason, why] of WHYS) {
-      assert.equal(gateQuestion("G:task-end", { reason }).question, `Is this task done? ${why}`, reason);
+      assert.equal(gateQuestion("G:task-end", { reason }).question, `${why}\nIs the task done?`, reason);
     }
   });
 });
