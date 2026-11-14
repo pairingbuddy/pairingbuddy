@@ -34,7 +34,7 @@ export type Call = { agentId?: unknown; at?: string; input: Record<string, unkno
 // prUrl: the pull request the unit record names, once pb publish has opened it.
 export type Unit = { key: string; taskStages: string[]; prUrl?: string }
 // What the pane keeps of the unit's last code run (shared-node/end-state.mjs codeRunOf), so the end state outlives its ledger.
-export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; testsPassing: number; safetyNet: { attempt?: number; startedAt?: string } | null; rollbacks: unknown[] }
+export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; testsPassing: number; perTest?: Record<string, { green?: { passed: boolean }; covered?: { done: boolean } }>; safetyNet: { attempt?: number; startedAt?: string } | null; rollbacks: unknown[] }
 // What the last pb publish printed: the url it opened, or the result when it opened none; codeRunId ties it to the code run it published.
 export type Published = { url?: string; result?: string; codeRunId?: string | null }
 // changed: the paths run/changed.json lists (null when it does not read); prUrl: the unit's pull request as the poller last saw it.

@@ -102,7 +102,8 @@ test("the code run's record: its task, whether the task-end gate passed, its pas
   const passed = codeRunOf(codeLedger({ "G:task-end": { source: "human-cli", answer: "approve" } }));
   const waiting = codeRunOf({ ...codeLedger({}), needsHuman: { gate: "G:task-end" } });
 
-  assert.deepEqual(passed, { runId: "run-1", task: TASK, taskEndPassed: true, testsPassing: 2, safetyNet: { attempt: 1, startedAt: SAFETY_NET_START }, rollbacks: [] });
+  const perTest = { a: { green: { passed: true } }, b: { green: { passed: true } }, c: {} };
+  assert.deepEqual(passed, { runId: "run-1", task: TASK, taskEndPassed: true, testsPassing: 2, perTest, safetyNet: { attempt: 1, startedAt: SAFETY_NET_START }, rollbacks: [] }, "each test keeps only the marks the TESTS row reads");
   assert.equal(waiting.taskEndPassed, false, "a gate still waiting has not passed");
   assert.equal(codeRunOf({ kind: "publish", stage: { name: "pr-draft" } }), null, "a publish run is no code run");
   assert.equal(codeRunOf(undefined), null);

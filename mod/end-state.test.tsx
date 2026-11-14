@@ -124,3 +124,23 @@ test('end-state-from-the-code-runs-end-through-the-publish', async ($, on) => {
   ])
   expect(rowOf(published, 'REVIEW'), 'the end review is the work\'s, not the pull request draft\'s').toBe('REVIEW   review: 1 issue, all left as is')
 })
+
+test('tests-row-keeps-the-code-runs-tests-through-the-publish', async ($, on) => {
+  const rig = setupReplay(on)
+  const perTest = Object.fromEntries(['t1', 't2', 't3', 't4', 't5'].map(id => [id, { red: { done: true }, green: { passed: true, done: true } }]))
+  const signedOffRun = { ...codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), tests: { perTest } }
+  serve(rig, { [LEDGER]: signedOffRun, [UNIT]: unitFile })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+  const atCodeEnd = rowOf(await paneLines($), 'TESTS')
+  expect(atCodeEnd, 'the finished code run folds its passing tests').toBe('TESTS    ✓ 5 done')
+
+  serve(rig, { [LEDGER]: publishRun, [UNIT]: unitFile })
+  await rig.clock.advance(POLL_MS * 2)
+  expect(rowOf(await paneLines($), 'TESTS'), 'while the publish run drafts the pull request').toBe(atCodeEnd)
+
+  serve(rig, {})
+  await rig.clock.advance(POLL_MS * 2)
+  expect(rowOf(await paneLines($), 'TESTS'), 'once the publish run is over').toBe(atCodeEnd)
+})
