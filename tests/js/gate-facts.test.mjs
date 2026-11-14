@@ -6,8 +6,10 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { gateFacts } from "../../shared-node/gate-facts.mjs";
+import { loadStages } from "../../shared-node/stages.mjs";
 import { baseLedger } from "./ledger-fixture.mjs";
 
 const dirs = [];
@@ -121,5 +123,37 @@ describe("G:task-end", () => {
     const root = makeRoot();
 
     assert.equal(Object.hasOwn(gateFacts("G:task-end", root, atStage(SAFETY_NET)), "review"), false);
+  });
+});
+
+const CONTRACT = loadStages(fileURLToPath(new URL("../..", import.meta.url)));
+
+describe("open doubts", () => {
+  const DOUBT = "Should an empty cart total 0 or None? The task does not say, and the tests pass either way.";
+  const tddDone = () => atStage(SAFETY_NET, { stages: [{ name: "code-tdd", status: "done", attempt: 1 }, { name: SAFETY_NET, status: "done", attempt: 1 }] });
+
+  test("each gate gives every open doubt in full, with the plain name of the step that had it", () => {
+    const root = makeRoot();
+    writeReturn(root, "code-tdd.implement-code.t1.r1.a1", { ambiguity: DOUBT, commit_subject: "x", files_changed: [] });
+
+    for (const gate of ["G:type", "G:scenarios", "G:task-end"]) {
+      assert.deepEqual(gateFacts(gate, root, tddDone(), CONTRACT).doubts, [{ step: "making the test pass", ambiguity: DOUBT }], gate);
+    }
+  });
+
+  test("a doubt a human already approved past is not shown again", () => {
+    const root = makeRoot();
+    writeReturn(root, "code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1", { ambiguity: DOUBT, scenarios: [] });
+    const ledger = { ...tddDone(), gates: { "G:scenarios": { source: "human", answer: "approve" } } };
+
+    assert.equal(Object.hasOwn(gateFacts("G:task-end", root, ledger, CONTRACT), "doubts"), false);
+  });
+
+  test("a return that cannot be read leaves every doubt out rather than show part of them", () => {
+    const root = makeRoot();
+    writeReturn(root, "code-tdd.implement-code.t1.r1.a1", { ambiguity: DOUBT });
+    writeFileSync(join(artifactsOf(root), "code-tdd.implement-code.t2.r1.a1.json"), "{ not json");
+
+    assert.equal(Object.hasOwn(gateFacts("G:task-end", root, tddDone(), CONTRACT), "doubts"), false);
   });
 });

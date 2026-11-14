@@ -250,6 +250,17 @@ describe("report-content", () => {
     assert.deepEqual(itemsOf(section), changed, "one entry per changed file, in order");
   });
 
+  test("report-doubts: every open doubt the question names is held in full, with its step", async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "done" });
+    const long = `Should an empty cart total 0 or None? ${"The task does not say which one it wants. ".repeat(5)}`.trim();
+    const doubts = [{ step: "making the test pass", ambiguity: long }, ...["b?", "c?", "d?"].map((ambiguity) => ({ step: "listing scenarios", ambiguity }))];
+    const ledger = { ...input.ledger, needsHuman: { gate: "G:task-end", reason: "these returns carry an open ambiguity: a, b", seq: 1, doubts } };
+
+    const section = sectionOf(renderReport({ ...input, ledger }), "OPEN DOUBTS");
+
+    assert.deepEqual(itemsOf(section), [`making the test pass: ${long}`, "listing scenarios: b?", "listing scenarios: c?", "listing scenarios: d?"]);
+  });
+
   // Every recorded string the report prints: the task text, a test id and a commit subject. (A stop prints the plain name of its
   // code, never the recorded reason text, so it carries no recorded string.) Each is injected hostile and must come out escaped.
   const HOSTILE = `<script>alert("x")</script> & 'q'`;

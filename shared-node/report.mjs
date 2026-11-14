@@ -214,6 +214,14 @@ function builtSection({ changed }) {
   return section("BUILT", body);
 }
 
+// Every open doubt the pending question names, in full: the question cuts each to a line and folds past three into this.
+// A question with no doubt to name has no section.
+function doubtsSection({ ledger }) {
+  const doubts = ledger?.needsHuman?.doubts;
+  if (!Array.isArray(doubts) || doubts.length === 0) return "";
+  return `\n${section("OPEN DOUBTS", `<ul>\n${doubts.map(({ step, ambiguity }) => `<li>${escape(step)}: ${escape(ambiguity)}</li>`).join("\n")}\n</ul>`)}`;
+}
+
 const SHORT_SHA = 7;
 
 const commitItem = (commit) => `<li>${escape(String(commit?.sha ?? "").slice(0, SHORT_SHA))} ${escape(commit?.subject)}</li>`;
@@ -283,7 +291,7 @@ ${STYLE}
 <h1>${title(ledger?.task)}</h1>
 <p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(Number.isFinite(ranFor) ? ranFor : timing?.seconds)}</p>
 </header>
-${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete })}
+${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete })}${doubtsSection({ ledger })}
 ${stepsSection({ ledger })}
 ${scenariosSection({ scenarios })}
 ${testsSection({ ledger, spawns, tests })}

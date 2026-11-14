@@ -1251,6 +1251,15 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
     assert.deepEqual(asked.question.options.map(({ label }) => label), ANSWERS);
   });
 
+  test("the question names the open doubt, and the ledger keeps it in full for the report", () => {
+    const repo = scenariosRepo({ ambiguity: "Does the fix cover the retry path?" });
+
+    const asked = gateEval(repo, "auto");
+
+    assert.equal(asked.question.question, "Unsure (listing scenarios): Does the fix cover the retry path?\nStart building these despite this?");
+    assert.deepEqual(repo.ledger().needsHuman.doubts, [{ step: "listing scenarios", ambiguity: "Does the fix cover the retry path?" }]);
+  });
+
   // ---------- a doubt the round knocked down ----------
 
   const lensKey = (lens = "necessity", attempt = 1) => `${SCENARIOS}.lens.${lens}.r1.a${attempt}`;

@@ -10,7 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
-import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
+import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
@@ -455,9 +455,11 @@ function gateEval(args) {
     if (reason === null) return repeatedAfter(contract, recordAuto(open, gate, autoBinding), gate, root);
     const facts = gate === PUBLISH_GATE ? { shown: { headSha: shown.headSha, base: shown.base, target: shown.target } } : {};
     // The facts go into the stored text, so the session cannot change or misreport what the human judges by.
-    const asked = gate === PUBLISH_GATE ? { title: shown.title, body: shown.body } : gateFacts(gate, root, open);
+    const asked = gate === PUBLISH_GATE ? { title: shown.title, body: shown.body, ...gateFacts(gate, root, open, contract) } : gateFacts(gate, root, open, contract);
     question = gateQuestion(gate, { reason, taskType: open.taskType, refresh: isRefreshRun(open), facts: asked });
-    return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, question, ...facts } };
+    // The question cuts the doubts it names; the ledger keeps them in full, so the report it points to holds them.
+    const doubts = questionDoubts(reason, asked);
+    return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, question, ...facts, ...(doubts === null ? {} : { doubts }) } };
   });
   if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto" };
   const asked = { ok: true, result: "needs-human", gate, reason, question, humanCommand: approveCommand(root, gate) };

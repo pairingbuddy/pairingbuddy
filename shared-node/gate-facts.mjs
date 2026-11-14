@@ -4,8 +4,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { firstSentence, keptFixLenses } from "./gates.mjs";
+import { firstSentence, keptFixLenses, openDoubts } from "./gates.mjs";
 import { findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
+import { plainName } from "./plain-names.mjs";
+import { returnFileKey } from "./stages.mjs";
 import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt, standingScenariosKey } from "./stage-run.mjs";
 import { scenarioRows } from "./standing-scenarios.mjs";
 
@@ -94,7 +96,23 @@ function taskEndFacts(root, ledger) {
 
 const READERS = { "G:type": typeFacts, "G:scenarios": scenarioFacts, "G:task-end": taskEndFacts };
 
+// The step a return came from, in plain words: its agent's name, else its stage's.
+const stepOf = (file) => {
+  const key = returnFileKey(file);
+  return plainName(key?.role ?? "") ?? plainName(key?.stage ?? "");
+};
+
+// Every open doubt in full, with the step that had it. One that cannot be told leaves them all out, so none is hidden.
+function doubtsOf(root, ledger, contract) {
+  const open = openDoubts(contract, ledger, root);
+  if (open === null || open.length === 0) return undefined;
+  const doubts = open.map(({ file, ambiguity }) => ({ step: stepOf(file), ambiguity: text(ambiguity) }));
+  return doubts.every(({ step, ambiguity }) => step !== undefined && ambiguity !== undefined) ? doubts : undefined;
+}
+
 // A gate's reader that fails as a whole leaves its facts out: the question still asks, with less to show.
-export function gateFacts(gate, root, ledger) {
-  return fact(() => READERS[gate]?.(root, ledger)) ?? {};
+// The contract settles which doubts a human already approved; without it no doubt is read.
+export function gateFacts(gate, root, ledger, contract) {
+  const doubts = contract === undefined ? undefined : fact(() => doubtsOf(root, ledger, contract));
+  return { ...(fact(() => READERS[gate]?.(root, ledger)) ?? {}), ...(doubts === undefined ? {} : { doubts }) };
 }
