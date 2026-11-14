@@ -11,6 +11,10 @@ const ROWS: [keyof Rows, string][] = [
   ['now', 'NOW'], ['spent', 'SPENT'], ['left', 'LEFT'], ['looping', 'LOOPING'], ['offTrack', 'OFF TRACK'],
 ]
 
+// A row whose whole value is unknown says nothing, so it is not drawn; NOW always is.
+const UNKNOWN = 'unknown'
+const isShown = (key: keyof Rows, value: string) => key === 'now' || value !== UNKNOWN
+
 export function stepLines(ledger: Ledger, ended = false): string[] {
   if (!ledger) return []
   const done = new Set((ledger?.stages ?? []).filter(stage => stage.status === 'done').map(stage => stage.name))
@@ -65,7 +69,7 @@ export function Pane({ Box, Text, Button, Input, rows, rowTones = {}, columns = 
   return (
     <Box flexDirection="column">
       {ROWS.flatMap(([key, label]) => [
-        <Text key={key} {...toneProps(rowTones[key])} {...(key === 'now' && rowTones.now === 'warning' ? { bold: true } : {})}>{`${label}  ${rows[key]}`}</Text>,
+        ...(isShown(key, rows[key]) ? [<Text key={key} {...toneProps(rowTones[key])} {...(key === 'now' && rowTones.now === 'warning' ? { bold: true } : {})}>{`${label}  ${rows[key]}`}</Text>] : []),
         ...(key === 'looping' && nowBuilding?.tries?.length ? [<Text key="tries" dimColor wrap="truncate-end">{fitTries(nowBuilding.tries, columns)}</Text>] : []),
       ])}
       {stepLines(ledger, ended).map(line => <Text key={line} {...stepProps(line)}>{line}</Text>)}
@@ -80,7 +84,7 @@ export function Pane({ Box, Text, Button, Input, rows, rowTones = {}, columns = 
       {ledger && (
         <>
           <Button key="report" label="r open report" hotkey="r" onPress={onReport} />
-          {!ended && <Input key="suggest" label="suggest" onSubmit={onSuggest} />}
+          {!ended && <Input key="suggest" label="suggest" placeholder="a note for the next agent" onSubmit={onSuggest} />}
         </>
       )}
       <Button key="dismiss" label="dismiss" role="dismiss" onPress={onDismiss} />

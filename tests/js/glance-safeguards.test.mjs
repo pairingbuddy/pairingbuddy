@@ -18,7 +18,7 @@ test("current-test-outside-a-complete-list-leaves-what-is-left-unknown", () => {
   const { rows, band } = glance({ ledger: {}, spawns: tries(1, "t9"), tests: ["t1", "t2"], testsComplete: true });
 
   assert.equal(rows.left, "unknown");
-  assert.equal(band.find(({ id }) => id === "left").text, "left: unknown");
+  assert.equal(band.find(({ id }) => id === "left"), undefined, "the band leaves out a left segment with no value");
 });
 
 test("tokens-not-known-read-tokens-unknown", () => {
@@ -31,6 +31,18 @@ test("tokens-known-read-their-count", () => {
   const { rows } = glance({ ledger: { spend: { tokens: 120, tokensKnown: true } }, spawns: [], ranFor: 5 });
 
   assert.equal(rows.spent, "0 agents · 0:05 · 120 output tokens · % of plan unknown");
+});
+
+test("for-the-pane-unknown-tokens-and-plan-share-are-left-out-of-spent", () => {
+  const { rows } = glance({ ledger: { spend: { tokens: 0 } }, spawns: [], ranFor: 5, leaveOutUnknown: true });
+
+  assert.equal(rows.spent, "0 agents · 0:05");
+});
+
+test("with-no-step-the-band-leaves-out-looping", () => {
+  const { band } = glance({ ledger: {}, spawns: [] });
+
+  assert.equal(band.find(({ id }) => id === "looping"), undefined);
 });
 
 test("gate-with-no-plain-name-reads-as-its-id", () => {

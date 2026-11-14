@@ -451,7 +451,7 @@ test("spend-line-dim-with-known-or-unknown-tokens", () => {
   const single = lensLines(roundWith({ tokensKnown: true, spawns: [twoSpawns[0]], max: 7 }), 200);
 
   assert.deepEqual(known.at(-1), { text: "2 agents of 1000 \u00b7 13876 output tokens", tone: "dim" }, "the spend line is last, dim, and shows the known output tokens; the agent count comes from the spawns, not the entry's spend.agents of 99");
-  assert.deepEqual(unknown.at(-1), { text: "2 agents of 1000 \u00b7 output tokens unknown until this step ends", tone: "dim" }, "unknown tokens read as unknown until this step ends");
+  assert.deepEqual(unknown.at(-1), { text: "2 agents of 1000", tone: "dim" }, "tokens not yet known are left out of the spend line");
   assert.deepEqual(single.at(-1), { text: "1 agent of 7 \u00b7 13876 output tokens", tone: "dim" }, "a one-agent round says '1 agent', singular");
   assert.equal([...known, ...unknown, ...single].some(({ text }) => text.includes("$")), false, "no line shows a dollar sign");
 });
@@ -528,11 +528,7 @@ test("lines-truncate-and-fold-to-columns", () => {
     [{ text: "findings  5 found · 1 standing · 1 knocked down" }, { text: "  1 being challenged · 2 not challenged" }],
     "a long summary breaks at ' · ' onto an indented continuation row",
   );
-  assert.deepEqual(
-    narrow.at(-1),
-    { text: "  output tokens unknown until this step ends", tone: "dim" },
-    "the spend line's continuation row keeps the dim tone",
-  );
+  assert.deepEqual(narrow.at(-1), { text: "3 agents of 1000", tone: "dim" }, "the spend line fits at 60 columns and keeps the dim tone");
 });
 test("lines-contain-no-internal-ids", () => {
   const agentConfig = readFileSync(new URL("../../contracts/agent-config.yaml", import.meta.url), "utf8");

@@ -87,7 +87,7 @@ function buildNowBuilding({ ledger, spawns, tests, testsComplete, now, names }: 
 function buildPlainView({ ledger, spawns, tests, testsComplete, now }: Inputs): View {
   if (!ledger) return { ledger, running: false, rows: NO_RUN_ROWS, band: [], unknownLabels: [] }
   const running = isStageActive(ledger)
-  const shown = glance({ ledger, spawns, tests, now, testsComplete })
+  const shown = glance({ ledger, spawns, tests, now, testsComplete, leaveOutUnknown: true })
   const gate = waitingGate(ledger)
   if (gate) {
     const needs = needsYouLine(gate)
@@ -119,6 +119,6 @@ export function buildEndedView(inputs: Inputs): View {
 }
 
 function buildPlainEndedView({ ledger, spawns, tests, testsComplete, now }: Inputs): View {
-  const { rows, unknownLabels } = glance({ ledger, spawns, tests, now, testsComplete })
+  const { rows, unknownLabels } = glance({ ledger, spawns, tests, now, testsComplete, leaveOutUnknown: true })
   return { ledger, ended: true, running: false, rows: { ...rows, now: 'last run finished' }, band: [], unknownLabels }
 }

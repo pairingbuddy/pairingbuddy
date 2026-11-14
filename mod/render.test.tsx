@@ -95,12 +95,12 @@ test("the running band puts a separator between each glance segment", async ($, 
 
   const shown = await bandTexts($, WIDE)
 
-  for (const segment of ['left:', 'looping:', 'off track:', 'needs you:']) {
-    const at = shown.findIndex(text => text.startsWith(segment))
-    expect(at, `the band draws a "${segment}" segment: ${JSON.stringify(shown)}`).toBeGreaterThan(0)
-    expect(isSeparator(shown[at - 1]), `a separator is drawn right before "${segment}": ${JSON.stringify(shown)}`).toBe(true)
+  for (const [name, isSegment] of [['spent', (text: string) => /agents?$/.test(text)], ['needs you', (text: string) => text.startsWith('needs you:')]] as const) {
+    const at = shown.findIndex(isSegment)
+    expect(at, `the band draws a "${name}" segment: ${JSON.stringify(shown)}`).toBeGreaterThan(0)
+    expect(isSeparator(shown[at - 1]), `a separator is drawn right before "${name}": ${JSON.stringify(shown)}`).toBe(true)
   }
-  expect(shown.join(''), `no segment runs into the next: ${JSON.stringify(shown)}`).not.toMatch(/agentsleft|unknownlooping|unknownoff track|unknownneeds you/)
+  expect(shown.join(''), `no segment runs into the next: ${JSON.stringify(shown)}`).not.toMatch(/scenarios\d|scenariostime|agentsneeds you/)
 })
 
 test("the details button is set off from the last segment by a space", async ($, on) => {
@@ -142,7 +142,7 @@ test('the pb hint is lowest priority: "/pb" shows when all content fits but the 
   expect(shown.join(' '), `at ${COLUMNS} columns no content is cut: ${JSON.stringify(shown)}`).toContain(content[content.length - 1].text)
 })
 
-test('at 70 columns with a standing stop needs-you is kept whole and the hint shows only because the row still fits', async ($, on) => {
+test('at 70 columns with a standing stop needs-you is kept whole and the hint shows only if the row still fits', async ($, on) => {
   const COLUMNS = 70
   bandEngine(on, stopped({ code: 'step-failed' }))
   await start($)
@@ -151,7 +151,7 @@ test('at 70 columns with a standing stop needs-you is kept whole and the hint sh
 
   const joined = shown.join('')
   expect(joined.includes('/pb') ? joined.length <= COLUMNS : true, `the hint is shown only when the row still fits: ${JSON.stringify(shown)}`).toBe(true)
-  expect(joined, `with whole-segment dropping there is room for the hint at ${COLUMNS} columns: ${JSON.stringify(shown)}`).toContain('/pb')
+  expect(shown.slice(0, 3), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['write scenarios', ' │ ', '0 agents'])
   expect(shown.some(text => text === 'needs you · opened details'), `the standing needs-you is kept whole: ${JSON.stringify(shown)}`).toBe(true)
   expect(joined.length, `the band is within ${COLUMNS} columns: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(COLUMNS)
 })
@@ -244,7 +244,7 @@ test('no-ledger-no-snapshot-stays-idle: with no ledger and no snapshot the band 
   expect(ended.join(''), `no ledger but a snapshot: last run finished: ${JSON.stringify(ended)}`).toContain('Pairing Buddy · last run finished')
 })
 
-test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning and a stop in error in pane and band, while unknown values and the SPENT row stay dimColor', async ($, on) => {
+test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning and a stop in error in pane and band, while the spend stays dimColor and unknown values are not drawn', async ($, on) => {
   const run = bandEngine(on, needingHuman())
   const nodes = async (surface: Record<string, unknown>): Promise<{ text: string; props: Record<string, unknown> }[]> => {
     const mounted = await $.ui.mount({ ...surface, surface: 'terminal' })
@@ -265,10 +265,10 @@ test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning
   expect(starting(gateBand, 'needs you').props.color, 'a needs-you gate in the band is warning').toBe('warning')
   expect(starting(stopBand, 'needs you').props.color, 'a stop in the band is error').toBe('error')
   expect(starting(stopPane, 'NOW').props.color, 'a stop in the pane NOW row is error').toBe('error')
-  expect(starting(gateBand, 'looping:').props.dimColor, 'an unknown band segment is dim').toBe(true)
-  expect(starting(gateBand, 'time unknown').props.dimColor, 'the band spend segment is dim').toBe(true)
+  expect(gateBand.find(node => node.text.startsWith('looping:')), 'an unknown band segment is not drawn').toBeUndefined()
+  expect(starting(gateBand, '0 agents').props.dimColor, 'the band spend segment is dim').toBe(true)
   expect(starting(stopPane, 'SPENT').props.dimColor, 'the pane SPENT row is dim').toBe(true)
-  expect(starting(stopPane, 'LOOPING').props.dimColor, 'an unknown pane row is dim').toBe(true)
+  expect(stopPane.find(node => node.text.startsWith('LOOPING')), 'an unknown pane row is not drawn').toBeUndefined()
 })
 
 test('band-leads-with-needs-you-at-a-gate', async ($, on) => {

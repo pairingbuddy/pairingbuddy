@@ -295,9 +295,10 @@ function fit({ text, ...rest }, columns) {
   return rows.map((row) => ({ text: cut(row, columns), ...rest }));
 }
 
+// Tokens not yet known (they land when the step ends) are left out rather than said to be unknown.
 function spendLine({ agents, maxAgents, tokens }) {
-  const tokenPart = tokens === null ? `${TOKENS_UNIT} unknown until this step ends` : `${tokens} ${TOKENS_UNIT}`;
-  return { text: `${plural(agents, "agent")} of ${maxAgents}${PART_BREAK}${tokenPart}`, tone: "dim" };
+  const tokenPart = tokens === null ? "" : `${PART_BREAK}${tokens} ${TOKENS_UNIT}`;
+  return { text: `${plural(agents, "agent")} of ${maxAgents}${tokenPart}`, tone: "dim" };
 }
 
 // The plain pane lines for a round (the object lensRound returns), in order.
