@@ -171,7 +171,7 @@ test('details-button-opens-pane-with-focus: pressing the band details button ope
   expect(calls.opened[0].holdToasts, 'the pane holds no toasts').toBeUndefined()
 })
 
-test('pane-step-lines-use-theme-keys: the current step line uses a theme key and is lit, done ticks use color success, and not-started lines stay plain or dim', async ($, on) => {
+test('pane-step-lines-use-marks-not-colours: the current step is bold, and no step line is coloured', async ($, on) => {
   // code-scenarios is done, code-tdd is running, the safety-net review has not started.
   engine(on, {
     ...SNAPSHOT_RUNNING,
@@ -189,10 +189,10 @@ test('pane-step-lines-use-theme-keys: the current step line uses a theme key and
   const current = line('▸')
   const done = line('✓')
   const todo = line('○')
-  expect(current?.props.color, 'the current step is lit with the claude theme key').toBe('claude')
+  expect(current?.props.color, 'the current step has no colour').toBeUndefined()
   expect(current?.props.bold, 'the current step is bold').toBe(true)
   expect(current?.props.dimColor, 'the current step is not dim').not.toBe(true)
-  expect(done?.props.color, 'a done tick is in the success theme key').toBe('success')
+  expect(done?.props.color, 'a done step has no colour').toBeUndefined()
   expect(todo?.props.color, 'a step not started has no colour').toBeUndefined()
   expect(todo?.props.bold, 'a step not started is not bold').not.toBe(true)
 })

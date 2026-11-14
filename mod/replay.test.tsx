@@ -192,14 +192,10 @@ test('across band and pane text for the replayed recordings, no rendered string 
   expect(strings, 'the band and pane drew text to check').toBeGreaterThan(100)
 })
 
-// ThemeKey, from types/claude-code.d.ts in the bundled plugin-authoring reference.
-const THEME_KEYS = [
-  'text', 'inverseText', 'inactive', 'subtle', 'suggestion', 'remember', 'success', 'error', 'warning', 'merged', 'claude',
-  'permission', 'planMode', 'autoAccept', 'promptBorder', 'bashBorder', 'ide', 'diffAdded', 'diffRemoved', 'diffAddedDimmed',
-  'diffRemovedDimmed', 'diffAddedWord', 'diffRemovedWord',
-]
+// Colour means one thing: the TDD phase (its fixed colour), "needs you" (warning) and a stop (error). Nothing else is coloured.
+const MEANING_COLOURS = ['warning', 'error']
 
-test('every-color-prop-is-a-theme-key-but-the-phases: across every drawn Text in band and pane over the replay recordings, each color prop is a ThemeKey value, and only the lit phase has its fixed colour', async ($, on) => {
+test('colour-means-one-thing: across every drawn Text in band and pane over the replay recordings, only the lit phase, needs-you and a stop are coloured', async ($, on) => {
   const rig = setupReplay(on)
   const colours = new Set<string>()
   let nodes = 0
@@ -212,13 +208,20 @@ test('every-color-prop-is-a-theme-key-but-the-phases: across every drawn Text in
         colours.add(String(color))
         const phase = /^[●](RED|GREEN|REFACTOR)$/.exec(node.text)?.[1]
         if (phase) expect(color, `${name} t=${step.t}: the lit ${phase} has its fixed colour`).toBe(PHASE_COLOURS[phase])
-        else expect(THEME_KEYS, `${name} t=${step.t}: "${node.text}" is coloured ${JSON.stringify(color)}`).toContain(color)
+        else expect(MEANING_COLOURS, `${name} t=${step.t}: "${node.text}" is coloured ${JSON.stringify(color)}`).toContain(color)
       }
     }
   }
 
   expect(nodes, 'the band and pane drew text to check').toBeGreaterThan(100)
-  expect([...colours], 'the recordings drew some colour at all, the phases among them').toEqual(expect.arrayContaining(['claude', 'success', PHASE_COLOURS.RED, PHASE_COLOURS.GREEN]))
+  expect([...colours], 'the recordings drew the phases').toEqual(expect.arrayContaining([PHASE_COLOURS.RED, PHASE_COLOURS.GREEN]))
+})
+
+test('colour-means-one-thing-in-a-review: over the s4-rollback replay, a lens that has finished but not yet returned is not drawn in a colour', async ($, on) => {
+  const rig = setupReplay(on)
+  const steps = await drawn($, rig, s4Rollback, S4_TEST_IDS, PANE)
+  const coloured = steps.flatMap(step => step.pane.filter(node => node.props.color !== undefined && !/^●(RED|GREEN|REFACTOR)$/.test(node.text)).map(node => `t=${step.t} ${node.props.color}: ${node.text}`))
+  expect(coloured.filter(line => !/^t=\S+ (warning|error): (needs you|stopped)/.test(line)), 'only needs-you and a stop are coloured').toEqual([])
 })
 
 // mod/fixtures/replay/s4-rollback/ is one S4 bug_fix run with a rolled-back fix, recorded in tests/smoke/recordings/s4-t85-run4/.

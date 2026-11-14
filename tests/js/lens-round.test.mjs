@@ -805,11 +805,11 @@ test("review-lines-are-the-lenses-the-summary-and-the-findings-only", () => {
   assert.deepEqual(
     lensLines(round, 200),
     [
-      { text: "the code 1 · the tests 0 · needed or not … · docs and plan not covered", tone: "warning" },
+      { text: "the code 1 · the tests 0 · needed or not … · docs and plan not covered" },
       { text: "1 issue found · 1 fixing" },
       { text: "  fixing · one · a.mjs:1", whole: true },
     ].map(({ whole, ...line }) => line),
-    "no header, fixes block, stopped line or agent count: a running lens reads '…', an uncovered one 'not covered' and puts the line in warning tone",
+    "no header, fixes block, stopped line or agent count: a running lens reads '…', an uncovered one 'not covered', with no tone: colour marks only a phase, needs-you or a stop",
   );
   assert.deepEqual(lensLines(quiet, 200), [{ text: "the code 0" }, { text: "no issues found" }], "a round with no findings says so");
 });

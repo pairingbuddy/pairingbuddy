@@ -341,11 +341,10 @@ function fit({ text, whole = false, ...rest }, columns) {
 }
 
 // The plain lines of the REVIEW row for a round (the object lensRound returns), in order: the lenses with their finding
-// counts (in warning tone when one is not covered), the summary, then one line per finding.
+// counts, the summary, then one line per finding. No line carries a colour: colour marks only a phase, needs-you or a stop.
 export function lensLines(round, columns = 0) {
   if (!round) return [];
-  const uncovered = round.lenses.some(({ state }) => state === LENS_STATES.uncovered);
-  const lenses = round.lenses.length ? [{ text: round.lenses.map(lensSummary).join(PART_BREAK), ...(uncovered ? { tone: "warning" } : {}) }] : [];
+  const lenses = round.lenses.length ? [{ text: round.lenses.map(lensSummary).join(PART_BREAK) }] : [];
   const lines = [...lenses, { text: findingsSummary(round.findings) }, ...findingLines(round.findings)];
   return lines.flatMap((line) => fit(line, columns));
 }

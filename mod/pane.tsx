@@ -18,7 +18,8 @@ type Props = Record<string, unknown>
 type Part = { text: string; props?: Props }
 
 const toneProps = (tone?: string): Props => (tone === 'dim' ? { dimColor: true } : tone ? { color: tone } : {})
-const stepProps = (line: string): Props => (line.startsWith('▸') ? { color: 'claude', bold: true } : line.startsWith('✓') ? { color: 'success' } : {})
+// Steps read by their marks, never by colour: only the active one is bold.
+const stepProps = (line: string): Props => (line.startsWith('▸') ? { bold: true } : {})
 const emptyLine = (): Part[] => [{ text: EMPTY, props: { dimColor: true } }]
 
 // One row: its label on the first line, a blank label column on the rest; a row with no lines reads EMPTY.
