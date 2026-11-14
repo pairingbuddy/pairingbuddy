@@ -11,6 +11,7 @@ import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt } from "./stage-ru
 import { acceptVerdict, findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { plainName } from "./plain-names.mjs";
+import { goalGist } from "./end-state.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
 import { isRefreshRun } from "./ledger.mjs";
@@ -104,9 +105,12 @@ function goalCheckLine(findings) {
   return [`Goal check: ${gist} (${outcome})${more}.`];
 }
 
+// The most a goal line holds: the goal's first sentence, cut by the goal gist rule when longer. The report holds the whole goal.
+const MAX_GOAL_LINE = 120;
+
 function taskEndLines({ facts }) {
   const goal = firstSentence(facts.goal);
-  return [...(goal === null ? [] : [`Goal: ${goal}`]), ...builtLine(facts), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck)];
+  return [...(goal === null ? [] : [goalGist(`Goal: ${goal}`, MAX_GOAL_LINE)]), ...builtLine(facts), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck)];
 }
 
 const MAX_BODY_LINES = 8;

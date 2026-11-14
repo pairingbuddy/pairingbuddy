@@ -181,3 +181,19 @@ A big task (15 scenarios, 40 tests, 20 changed files, 8 findings, names over 100
 - **TESTS row.** At most 5 lines: the done and covered counts, up to 3 tests, then `+n more`. While the total is not known yet (tests.json does not list every test seen), the hidden tests are still counted, as `+n more so far`.
 - **REVIEW at the end.** The summary line, the first 3 findings, then `+ n more`: 5 lines at most.
 - **Cut at a word.** DONE, GOAL, PR and REVIEW never cut a word with "…". Test names in TESTS may still be cut with "…".
+
+## Fifth watched run (2026-11-14)
+
+The human's findings:
+- PR stayed `—` after the pull request opened.
+- A gate said "A step was unsure about something." The human asked: what am I approving?
+- REVIEW opened with `the code 1 · the tests 0 · docs and plan 0`. The numbers needed a legend.
+- TESTS went back to `—` once the publish run started, and stayed so at the end.
+- GOAL cut a long goal mid-clause (`…over them, so`).
+
+What changed:
+- **PR.** The pane reads the last JSON object `pb publish` printed, one line or pretty-printed, also when another command follows it (`pb publish; echo "exit=$?"`).
+- **Doubts in questions.** A gate that asks over an open doubt shows one line per doubt, `Unsure (<step>): <doubt>`, cut at a word near 120 characters, at most 3, then `+ n more in the report`. It then asks over the doubt: "Is the task done despite this?", "Start building these despite this?", "Is that the right type despite this?". The ledger keeps every doubt in full (`needsHuman.doubts`); the report lists them under OPEN DOUBTS. With no doubt, the why line stays ("Auto mode is off, so this asks you.").
+- **REVIEW's first line** names what was checked, with no counts: `checked: the code, the tests, docs and plan`. A lens still running reads under `still looking at:`, one that returned nothing usable under `could not check:`. A cycle's quick review reads `quick review done`. The summary line (`1 issue found · 1 checking`) and the finding lines stay. This replaces "one line per lens with its finding count" above.
+- **TESTS through the publish.** During the publish run and after it, TESTS shows the finished code run's tests, folded as usual (`✓ 5 done`).
+- **GOAL gist.** The goal's first sentence. When it is wider than the room, it is cut at the last clause break (`: `, `; `, `, `) that fits; a comma inside brackets or backticks does not count. With none, it is cut at the last word. The task-done question's `Goal:` line follows the same rule within 120 characters. The report keeps the whole goal.

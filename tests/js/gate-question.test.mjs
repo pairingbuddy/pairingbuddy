@@ -101,6 +101,13 @@ describe("each gate asks in plain words", () => {
     ].join("\n"));
   });
 
+  test("G:task-end gives a long goal's gist: its first sentence cut at the last clause that fits 120 characters", () => {
+    const goal = "Add order_total(lines) to cart.py so that it returns the sum of price times quantity over every line in the cart, so the checkout page can show one total, rounded to cents. Then document it.";
+    const [line] = gateQuestion("G:task-end", { reason: POLICY, facts: { goal } }).question.split("\n");
+
+    assert.equal(line, "Goal: Add order_total(lines) to cart.py so that it returns the sum of price times quantity over every line in the cart");
+  });
+
   test("G:task-end leaves out every line whose fact could not be read", () => {
     const { question } = gateQuestion("G:task-end", { reason: POLICY, facts: { tests: 2 } });
 

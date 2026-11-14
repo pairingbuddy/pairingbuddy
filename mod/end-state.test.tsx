@@ -125,6 +125,20 @@ test('end-state-from-the-code-runs-end-through-the-publish', async ($, on) => {
   expect(rowOf(published, 'REVIEW'), 'the end review is the work\'s, not the pull request draft\'s').toBe('REVIEW   review: 1 issue, all left as is')
 })
 
+test('goal-row-shows-the-gist-cut-at-a-clause-not-mid-clause', async ($, on) => {
+  const rig = setupReplay(on)
+  const task = 'Add order_total to cart.py so it sums price times quantity over every line, so the checkout can show one total. Then document it.'
+  serve(rig, { [LEDGER]: { ...codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), task }, [UNIT]: unitFile })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await lensReturn($, 'corpus-misalignment', [])
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = await paneLines($, { bodyColumns: 100 })
+
+  expect(rowOf(lines, 'GOAL')).toBe('GOAL     met · Add order_total to cart.py so it sums price times quantity over every line')
+})
+
 test('tests-row-keeps-the-code-runs-tests-through-the-publish', async ($, on) => {
   const rig = setupReplay(on)
   const perTest = Object.fromEntries(['t1', 't2', 't3', 't4', 't5'].map(id => [id, { red: { done: true }, green: { passed: true, done: true } }]))

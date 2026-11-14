@@ -288,7 +288,7 @@ test('replay-end-state-after-the-publish-says-done-goal-and-pr', async ($, on) =
   const publishing = steps.at(-1)!.lines
   expect(publishing.slice(0, 3), `while the publish run waits on G:publish: ${JSON.stringify(publishing)}`).toEqual([
     'DONE     README.md, discount.py, tests/test_discount.py · 1 test passing',
-    'GOAL     met · Fix this bug in discount.py: apply_discount(100, 10) returns 10',
+    'GOAL     met · Fix this bug in discount.py',
     'PR       —',
   ])
 
@@ -300,7 +300,7 @@ test('replay-end-state-after-the-publish-says-done-goal-and-pr', async ($, on) =
 
   expect(ended.slice(0, 3), `after the publish: ${JSON.stringify(ended)}`).toEqual([
     'DONE     README.md, discount.py, tests/test_discount.py · 1 test passing',
-    'GOAL     met · Fix this bug in discount.py: apply_discount(100, 10) returns 10',
+    'GOAL     met · Fix this bug in discount.py',
     'PR       opened · #12 fix: apply_discount returns price after discount',
   ])
   const review = ended.slice(ended.findIndex(line => line.startsWith('REVIEW')))

@@ -1,6 +1,6 @@
 import { plainName } from '../shared-node/plain-names.mjs'
 import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
-import { endReviewLines } from '../shared-node/end-state.mjs'
+import { endReviewLines, goalGist } from '../shared-node/end-state.mjs'
 import { fitTries } from '../shared-node/now-building.mjs'
 import type { PaneTags, RowTones, View } from './view'
 
@@ -79,7 +79,7 @@ function paneRows(view: View, columns: number) {
   const review = view.endRound ? endReviewLines(view.endRound, width) : lensLines(view.lensRound, width)
   return [
     ...rowLines('DONE', one(cutAtWord(view.end.done, width))),
-    ...rowLines('GOAL', one(cutAtWord(view.end.goal, width))),
+    ...rowLines('GOAL', one(goalGist(view.end.goal, width))),
     ...rowLines('PR', one(cutAtWord(view.end.pr, width))),
     ...rowLines('NOW', one(rows.now, nowProps)),
     ...rowLines('SPENT', one(rows.spent, toneProps(rowTones.spent))),
