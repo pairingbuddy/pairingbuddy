@@ -44,17 +44,20 @@ test("live agent count equals the number of agent.spawn events, not ledger spend
   assert.match(result.rows.spent, new RegExp(`^${LIVE_AGENT_SPAWNS_THROUGH_THIRD_ZERO_PERCENT_TRY} agents`), "SPENT starts with the spawn count");
 });
 
-test("try 1 reads 'no, this step: try 1 of 3'; three tries at the same test read 'yes: 3 tries at the same step' with the NOW sentence ending '3rd try'", async () => {
+test("try 1 reads 'no', never 'try 1 of 3'; a 2nd and 3rd try name the step and the try, with the NOW sentence ending '3rd try'", async () => {
   const ledger = await ledgerAtSeq("probe-2", TDD_ACTIVE_SEQ);
   const tests = ["ten-percent-off-hundred", "zero-percent-keeps-full-price"];
   const calmSpawns = probeSpawns.slice(0, THROUGH_FIRST_RED_TRY);
+  const secondTrySpawns = probeSpawns.slice(0, THROUGH_THIRD_ZERO_PERCENT_TRY - 2);
   const thirdTrySpawns = probeSpawns.slice(0, THROUGH_THIRD_ZERO_PERCENT_TRY);
 
   const calm = glance({ ledger, spawns: calmSpawns, tests, now: SOME_TIME });
+  const second = glance({ ledger, spawns: secondTrySpawns, tests, now: SOME_TIME });
   const looping = glance({ ledger, spawns: thirdTrySpawns, tests, now: SOME_TIME });
 
-  assert.equal(calm.rows.looping, `no · this step: try 1 of ${MAX_TRIES}`);
-  assert.equal(looping.rows.looping, "yes: 3 tries at the same step");
+  assert.equal(calm.rows.looping, "no");
+  assert.equal(second.rows.looping, `writing a failing test · try 2 of ${MAX_TRIES}`);
+  assert.equal(looping.rows.looping, `writing a failing test · try 3 of ${MAX_TRIES}`);
   assert.match(looping.rows.now, /writing a failing test/, "NOW still names the step");
   assert.match(looping.rows.now, /3rd try$/, "NOW ends with the try count");
 });
@@ -74,8 +77,7 @@ test("a calm cycle after a GREEN runner checkpoint does not read as looping, bec
 
   const result = glance({ ledger, spawns, tests, now: SOME_TIME });
 
-  assert.match(result.rows.looping, /^no/, "each agent ran once, so there is no loop");
-  assert.match(result.rows.looping, new RegExp(`try 1 of ${MAX_TRIES}`), "each agent is on its first try");
+  assert.equal(result.rows.looping, "no", "each agent ran once, so there is no loop");
   assert.doesNotMatch(result.rows.now, /2nd try/, "a runner checkpoint is not a retry");
 });
 

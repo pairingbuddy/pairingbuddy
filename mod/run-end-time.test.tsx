@@ -2,8 +2,8 @@
 // and the report shows the same run time as the ended pane. Runs under `claude plugin test .`.
 import { expect, mock, test } from 'claude-code/testing'
 import { POLL_MS } from './poll'
-import { engine, SNAPSHOT_RUNNING, start, texts } from './testing/band'
-import { PANE } from './testing/replay'
+import { engine, SNAPSHOT_RUNNING, start } from './testing/band'
+import { PANE, paneLines } from './testing/replay'
 import { recordReportCalls, REPORT_KEY } from './testing/report'
 
 test('poller-records-ended-at-when-ledger-disappears', async ($, on) => {
@@ -47,8 +47,8 @@ test('report-after-run-end-shows-same-run-time-as-pane', async ($, on) => {
   await clock.advance(POLL_MS)
   run.serve(null)
   await clock.advance(POLL_MS)
+  const spentLine = (await paneLines($)).find((text) => text.startsWith('SPENT'))
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const spentLine = (await texts(pane)).find((text) => text.startsWith('SPENT'))
   await pane.press({ key: REPORT_KEY })
   await pane.unmount()
 

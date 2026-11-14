@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, start, texts } from './testing/band'
 import { POLL_MS } from './poll'
-import { PANE } from './testing/replay'
+import { PANE, paneLines } from './testing/replay'
 import { plainName } from '../shared-node/plain-names.mjs'
 
 const TESTS_PATH = `${ROOT}/.pairingbuddy/tests.json`
@@ -86,7 +86,8 @@ test('ticks do not overlap while a poll is still running', async ($, on) => {
 
 test('a tests.json entry without a test_id is not counted', async ($, on) => {
   engine(on, {
-    [LEDGER_PATH]: JSON.stringify(SNAPSHOT_RUNNING),
+    // The spawn is a TDD step, so the ledger is in the TDD stage: only the active stage's steps count.
+    [LEDGER_PATH]: JSON.stringify({ ...SNAPSHOT_RUNNING, stage: { ...SNAPSHOT_RUNNING.stage, name: 'code-tdd' } }),
     [TESTS_PATH]: JSON.stringify({ tests: [{ test_id: 'first' }, {}, { test_id: '' }, { test_id: 'last' }] }),
   })
   await start($)
@@ -137,10 +138,9 @@ test('tests-read-from-ledger-per-test: with the real seq 10 ledger and no tests.
   await start($)
   await spawn($, label(PER_TEST))
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
 
   const shownBand = (await texts(band)).join(' | ')
-  const shownPane = await texts(pane)
+  const shownPane = await paneLines($)
   const now = shownPane.find(text => text.startsWith('NOW')) ?? ''
   const left = shownPane.find(text => text.startsWith('LEFT'))
 
@@ -150,5 +150,4 @@ test('tests-read-from-ledger-per-test: with the real seq 10 ledger and no tests.
   expect(now, 'the pane NOW row does not claim a total').not.toMatch(/\bof\b/)
   expect(left, 'LEFT is not drawn: perTest does not give the total, so nothing is known to be left').toBeUndefined()
   await band.unmount()
-  await pane.unmount()
 })

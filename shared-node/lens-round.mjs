@@ -6,8 +6,6 @@ import { plainName } from "./plain-names.mjs";
 import { MAX_FIX_UNDOS } from "./limits.mjs";
 import { acceptVerdict, lensOfFinding } from "./lens-merge.mjs";
 import { ATTEMPT_CAP } from "./stop-codes.mjs";
-import { maxAgentsOf } from "./stage-graph.mjs";
-import { TOKENS_UNIT } from "./spent-line.mjs";
 import { plural } from "./glance.mjs";
 
 // The plain name for an id, or the id with its dashes as spaces when there is none.
@@ -48,7 +46,7 @@ function lensReturns(calls, stage, attempt) {
 const PART_BREAK = " · ";
 
 // The shown verdicts, named once: the key is the tally name in counts, the value is what the view shows.
-const VERDICTS = { stands: "stands", knockedDown: "knocked-down", challenging: "challenging", unchallenged: "unchallenged", fixed: "fixed", fixUndone: "fix-undone" };
+const VERDICTS = { stands: "stands", knockedDown: "knocked-down", challenging: "challenging", unchallenged: "unchallenged", fixed: "fixed", fixing: "fixing", fixUndone: "fix-undone" };
 
 // The lens states, named once.
 const LENS_STATES = { returned: "returned", running: "running", uncovered: "uncovered" };
@@ -89,7 +87,7 @@ function returnState(one) {
 function returnFindings(one, verdicts) {
   return findingEntries(one).map(({ finding, index }) => {
     const id = buildFindingId({ lens: one.key.item, index });
-    return { id, lens: shownName(one.key.item), where: finding.where, claim: finding.claim, verdict: verdicts.get(id) ?? VERDICTS.unchallenged };
+    return { id, lens: shownName(one.key.item), where: finding.where, claim: finding.claim, focus: finding.focus, verdict: verdicts.get(id) ?? VERDICTS.unchallenged };
   });
 }
 
@@ -97,14 +95,26 @@ function lensFindings(returned, verdicts) {
   return returned.flatMap((one) => returnFindings(one, verdicts));
 }
 
-// A finding still standing whose lens a kept fix answered reads fixed; one whose lens fix was only undone still stands, and says so.
+// The fix loop groups the upheld findings by lens, in finding order, as g1, g2, ...; so a fix group names the lens at its place.
+function groupLenses(findings) {
+  const upheld = findings.filter(({ verdict }) => verdict === VERDICTS.stands || verdict === VERDICTS.unchallenged);
+  const lenses = [...new Set(upheld.map(lensOfFinding))];
+  return new Map(lenses.map((lens, i) => [`g${i + 1}`, lens]));
+}
+
+// A finding still upheld whose lens a kept fix answered reads fixed; one whose lens's fix is under way reads fixing; one whose
+// lens fix was only undone is to fix again. A fix names its lens by the check's finding, else by its group's place.
 function answeredByFixes(findings, fixes) {
-  const lensesOf = (outcome) => new Set(fixes.filter((fix) => fix.outcome === outcome && fix.lens !== undefined).map(({ lens }) => lens));
-  const [kept, undone] = [lensesOf(FIX_OUTCOMES.kept), lensesOf(FIX_OUTCOMES.undone)];
+  const byGroup = groupLenses(findings);
+  const lensOfFix = (fix) => fix.lens ?? byGroup.get(fix.group);
+  const lensesOf = (outcomes) => new Set(fixes.filter((fix) => outcomes.includes(fix.outcome)).map(lensOfFix).filter((lens) => lens !== undefined));
+  const inProgress = [FIX_OUTCOMES.fixing, FIX_OUTCOMES.checking, FIX_OUTCOMES.undoing];
+  const [kept, fixing, undone] = [lensesOf([FIX_OUTCOMES.kept]), lensesOf(inProgress), lensesOf([FIX_OUTCOMES.undone])];
   const settled = (verdict) => verdict === VERDICTS.stands || verdict === VERDICTS.unchallenged;
   return findings.map((finding) => {
     const lens = lensOfFinding(finding);
     if (finding.verdict !== VERDICTS.knockedDown && kept.has(lens)) return { ...finding, verdict: VERDICTS.fixed };
+    if (settled(finding.verdict) && fixing.has(lens)) return { ...finding, verdict: VERDICTS.fixing };
     return settled(finding.verdict) && undone.has(lens) ? { ...finding, verdict: VERDICTS.fixUndone } : finding;
   });
 }
@@ -183,33 +193,78 @@ const sinceStart = (items, timeOf, startedAt) =>
     return Number.isNaN(seen) || Number.isNaN(started) || seen >= started;
   });
 
-function spendOf({ ledger, spawns, contract, stage, attempt }) {
-  const stages = Array.isArray(ledger.stages) ? ledger.stages : [];
-  const entry = stages.find((done) => done.name === stage && done.attempt === attempt);
-  const tokens = entry?.spend?.tokensKnown && typeof entry.spend.tokens === "number" ? entry.spend.tokens : null;
-  return { agents: stageLabels(spawns, stage).length, maxAgents: maxAgentsOf(contract, stage), tokens };
-}
-
 // The lenses seen from a spawn or a return, in first-seen order; a return overrides its spawn by lens item.
-function lensStates(spawned, returned) {
+function lensStates(spawned, returned, nameOf) {
   const lenses = new Map();
-  for (const label of spawned) lenses.set(label.item, { name: shownName(label.item), ...spawnState(label) });
-  for (const one of returned) lenses.set(one.key.item, { name: shownName(one.key.item), ...returnState(one) });
+  for (const label of spawned) lenses.set(label.item, { name: nameOf(label.item), ...spawnState(label) });
+  for (const one of returned) lenses.set(one.key.item, { name: nameOf(one.key.item), ...returnState(one) });
   return [...lenses.values()];
 }
 
+const LIGHT_REVIEW = "light-review";
+
+// A cycle's light review is a lens spawn that names a TDD phase; its item is the test, so only the latest test's review is
+// the round, and its lens reads by the light review's plain name. Any other round shows every lens by its own name.
+function reviewScope(spawned, returned) {
+  const light = spawned.filter((label) => label.phase !== null);
+  if (!light.length) return { spawned, returned, nameOf: shownName, light: null };
+  const item = light.at(-1).item;
+  return { spawned: spawned.filter((label) => label.item === item), returned: returned.filter(({ key }) => key.item === item), nameOf: () => plainName(LIGHT_REVIEW), light: { item } };
+}
+
+// The light review's test focuses go to the tests fixer, the rest to the code fixer (as code-tdd splits them).
+const TEST_FOCUSES = ["test-quality", "test-level"];
+const fixerOf = (finding) => (TEST_FOCUSES.includes(finding.focus) ? "refactor-tests" : "refactor-code");
+
+// A light review finding reads fixing while its side's fixer runs on the test, and fixed once that fixer finished.
+function answeredByFixers(findings, labels, item) {
+  const fixers = (role) => labels.filter((label) => label.role === role && label.item === item);
+  return findings.map((finding) => {
+    if (finding.verdict !== VERDICTS.unchallenged && finding.verdict !== VERDICTS.stands) return finding;
+    const runs = fixers(fixerOf(finding));
+    if (!runs.length) return finding;
+    return { ...finding, verdict: runs.some((run) => !run.finished) ? VERDICTS.fixing : VERDICTS.fixed };
+  });
+}
+
+// A light review has ended once a later agent in the stage works on another test.
+function movedOn(labels, item) {
+  const last = labels.findLastIndex((label) => label.role === "lens" && label.item === item);
+  return labels.slice(last + 1).some((label) => label.item !== item);
+}
+
+// What happens to a finding, in the words the per-finding lines and the summary both use, in the summary's order.
+export const FINDING_WORDS = { fixed: "fixed", fixing: "fixing", toFix: "to fix", checking: "checking", leftAsIs: "left as is", notReal: "not a real problem" };
+
+// A finding no refuter challenged is upheld, as one its refuter upheld is; one whose fix was undone is to fix again.
+const VERDICT_WORDS = {
+  [VERDICTS.stands]: FINDING_WORDS.toFix,
+  [VERDICTS.knockedDown]: FINDING_WORDS.notReal,
+  [VERDICTS.challenging]: FINDING_WORDS.checking,
+  [VERDICTS.unchallenged]: FINDING_WORDS.toFix,
+  [VERDICTS.fixed]: FINDING_WORDS.fixed,
+  [VERDICTS.fixing]: FINDING_WORDS.fixing,
+  [VERDICTS.fixUndone]: FINDING_WORDS.toFix,
+};
+
+// A finding still open once its round ended was left as is.
+const OPEN_WORDS = [FINDING_WORDS.toFix, FINDING_WORDS.fixing, FINDING_WORDS.checking];
+function findingWord(verdict, ended) {
+  const word = VERDICT_WORDS[verdict];
+  return ended && OPEN_WORDS.includes(word) ? FINDING_WORDS.leftAsIs : word;
+}
+
 /**
- * @typedef {{ stage: string, lenses: { name: string, state: string, found?: number }[], findings: { id: string, lens: string, where?: string, claim?: string, verdict: string }[],
- *   counts: Record<string, number>, fixes: { group: string, round: number, outcome: string, why?: string, lens?: string }[], undone: number, cap: number, stopped: boolean,
- *   spend: { agents: number, maxAgents: number, tokens: number | null } }} LensRound
+ * @typedef {{ stage: string, lenses: { name: string, state: string, found?: number }[], findings: { id: string, lens: string, where?: string, claim?: string, verdict: string, word: string }[],
+ *   counts: Record<string, number>, fixes: { group: string, round: number, outcome: string, why?: string, lens?: string }[], undone: number, cap: number, stopped: boolean }} LensRound
  */
 
 /**
  * The round for a ledger; total over a partial one: undefined unless ledger.stage is an object with a string name.
- * A call is { agentId?, at?, input }; `at` is an ISO time.
+ * A call is { agentId?, at?, input }; `at` is an ISO time. ended: the run is over, so the round is too, whatever its last ledger said.
  * @returns {LensRound | undefined}
  */
-export function lensRound({ ledger, calls: allCalls = [], spawns: allSpawns = [], contract }) {
+export function lensRound({ ledger, calls: allCalls = [], spawns: allSpawns = [], ended: runEnded = false }) {
   const current = ledger?.stage;
   if (!current || typeof current.name !== "string") return undefined;
   const spawns = sinceStart(allSpawns, (spawn) => spawn.startedAt, current.startedAt);
@@ -217,85 +272,38 @@ export function lensRound({ ledger, calls: allCalls = [], spawns: allSpawns = []
   const stage = ledger.stage.name;
   const attempt = ledger.stage.attempt;
   const stopped = ledger.stop?.code === ATTEMPT_CAP;
-  const spawned = roleSpawns(spawns, stage, "lens");
-  const returned = lensReturns(calls, stage, attempt);
+  const { spawned, returned, nameOf, light } = reviewScope(roleSpawns(spawns, stage, "lens"), lensReturns(calls, stage, attempt));
   if (!spawned.length && !returned.length && !stopped) return undefined;
   const sources = { calls, spawns, stage, attempt, stageRollbacks: stageRollbacksOf(ledger, stage) };
   const fixes = fixOutcomes(sources);
-  const findings = answeredByFixes(lensFindings(returned, refuterVerdicts(sources)), fixes);
-  const spend = spendOf({ ledger, spawns, contract, stage, attempt });
+  const labels = stageLabels(spawns, stage);
+  const ended = runEnded || current.status !== "active" || (light !== null && movedOn(labels, light.item));
+  const answered = answeredByFixes(lensFindings(returned, refuterVerdicts(sources)), fixes);
+  const findings = (light ? answeredByFixers(answered, labels, light.item) : answered).map((finding) => ({ ...finding, word: findingWord(finding.verdict, ended) }));
   return {
     stage: shownName(stage),
-    lenses: lensStates(spawned, returned),
+    lenses: lensStates(spawned, returned, nameOf),
     findings,
     counts: verdictCounts(findings),
     fixes,
     undone: sources.stageRollbacks.length,
     cap: MAX_FIX_UNDOS,
     stopped,
-    spend,
   };
 }
 
-const LENS_MARKS = { [LENS_STATES.returned]: "✓", [LENS_STATES.running]: "▸", [LENS_STATES.uncovered]: "✗" };
-
+// A returned lens reads by its finding count, a running one by an ellipsis, one that returned nothing usable as not covered.
 function lensSummary({ name, state, found }) {
-  return `${LENS_MARKS[state]} ${name}${state === LENS_STATES.returned ? ` ${found}` : ""}`;
+  const shown = { [LENS_STATES.returned]: `${found}`, [LENS_STATES.running]: "…", [LENS_STATES.uncovered]: "not covered" };
+  return `${name} ${shown[state]}`;
 }
 
-// The plain verdict wording, named once; the per-finding lines and the count line both use it. A finding no refuter
-// challenged stands, as one its refuter upheld does.
-const VERDICT_WORDS = {
-  [VERDICTS.stands]: "stands",
-  [VERDICTS.knockedDown]: "dropped, shown wrong",
-  [VERDICTS.challenging]: "being checked",
-  [VERDICTS.unchallenged]: "stands",
-  [VERDICTS.fixed]: "fixed",
-  [VERDICTS.fixUndone]: "stands, fix undone",
-};
-
-// The issues count line: how many were found, then what happens to them, each part left out when 0. An issue no refuter
-// challenged stands, as one its refuter upheld does.
-function findingsSummary(counts) {
-  const stand = counts.stands + counts.unchallenged + counts.fixUndone;
-  const parts = [
-    `${plural(counts.found, "issue")} found`,
-    ...(counts.fixed > 0 ? [`${counts.fixed} fixed`] : []),
-    ...(stand > 0 ? [`${stand} ${stand === 1 ? "stands" : "stand"}`] : []),
-    ...(counts.challenging > 0 ? [`${counts.challenging} being checked`] : []),
-    ...(counts.knockedDown > 0 ? [`${counts.knockedDown} dropped`] : []),
-  ];
+// The issues count line: how many were found, then how many read each word, each part left out when 0.
+function findingsSummary(findings) {
+  if (!findings.length) return "no issues found";
+  const counted = Object.values(FINDING_WORDS).map((word) => [word, findings.filter((finding) => finding.word === word).length]);
+  const parts = [`${plural(findings.length, "issue")} found`, ...counted.filter(([, count]) => count > 0).map(([word, count]) => `${count} ${word}`)];
   return parts.join(PART_BREAK);
-}
-
-const FIX_WORDS = {
-  [FIX_OUTCOMES.undone]: "undone",
-  [FIX_OUTCOMES.kept]: "kept",
-  [FIX_OUTCOMES.undoing]: "being undone",
-  [FIX_OUTCOMES.checking]: "being checked",
-  [FIX_OUTCOMES.fixing]: "fixing",
-};
-
-// A kept fix needs no reason: that the check found it better is what kept means.
-function fixLine({ outcome, why }, index) {
-  const reason = why && outcome !== FIX_OUTCOMES.kept ? `: ${why}` : "";
-  return { text: `  fix ${index + 1}  ${FIX_WORDS[outcome]}${reason}` };
-}
-
-// The fixes count line: how many were tried, how many kept, and how many undone against the cap; kept and undone left out when 0.
-function fixesSummary({ fixes, undone, cap }) {
-  const kept = fixes.filter(({ outcome }) => outcome === FIX_OUTCOMES.kept).length;
-  const parts = [`${fixes.length} tried`, ...(kept > 0 ? [`${kept} kept`] : []), ...(undone > 0 ? [`${undone} undone of ${cap} allowed`] : [])];
-  return `fixes  ${parts.join(", ")}`;
-}
-
-const SHOWN_FIXES = 4;
-
-// The last few fix lines, numbered by place in the whole list, behind a dim count of the earlier ones.
-function foldedFixLines(fixes) {
-  const hidden = Math.max(0, fixes.length - SHOWN_FIXES);
-  const shown = fixes.map(fixLine).slice(hidden);
-  return hidden ? [{ text: `  ${hidden} earlier`, tone: "dim" }, ...shown] : shown;
 }
 
 const SHOWN_FINDINGS = 3;
@@ -305,8 +313,8 @@ const RUN_FOLDER = ".pairingbuddy/run/";
 const shownWhere = (where) => (typeof where === "string" && where.startsWith(RUN_FOLDER) ? where.slice(RUN_FOLDER.length) : where);
 
 // One line per finding, never folded: what happens to it, the point, then where.
-function findingLine({ verdict, where, claim }) {
-  return { text: `  ${[VERDICT_WORDS[verdict], claim, shownWhere(where)].filter(Boolean).join(PART_BREAK)}`, whole: true };
+function findingLine({ word, where, claim }) {
+  return { text: `  ${[word, claim, shownWhere(where)].filter(Boolean).join(PART_BREAK)}`, whole: true };
 }
 
 function findingLines(findings) {
@@ -332,25 +340,12 @@ function fit({ text, whole = false, ...rest }, columns) {
   return rows.map((row) => ({ text: cut(row, columns), ...rest }));
 }
 
-// Tokens not yet known (they land when the step ends) are left out rather than said to be unknown.
-function spendLine({ agents, maxAgents, tokens }) {
-  const tokenPart = tokens === null ? "" : `${PART_BREAK}${tokens} ${TOKENS_UNIT}`;
-  return { text: `${plural(agents, "agent")} of ${maxAgents}${tokenPart}`, tone: "dim" };
-}
-
-// The plain pane lines for a round (the object lensRound returns), in order.
+// The plain lines of the REVIEW row for a round (the object lensRound returns), in order: the lenses with their finding
+// counts (in warning tone when one is not covered), the summary, then one line per finding.
 export function lensLines(round, columns = 0) {
   if (!round) return [];
-  const lines = [{ text: `review round${PART_BREAK}${round.stage}` }];
-  lines.push({ text: `lenses  ${round.lenses.map(lensSummary).join(PART_BREAK)}` });
-  const uncovered = round.lenses.filter(({ state }) => state === LENS_STATES.uncovered);
-  if (uncovered.length) lines.push({ text: `not covered: ${uncovered.map(({ name }) => name).join(", ")}`, tone: "warning" });
-  if (round.counts.found > 0) lines.push({ text: findingsSummary(round.counts) }, ...findingLines(round.findings));
-  if (round.fixes.length || round.undone > 0) {
-    lines.push({ text: fixesSummary(round) });
-    lines.push(...foldedFixLines(round.fixes));
-  }
-  if (round.stopped) lines.push({ text: `stopped: ${plainName(ATTEMPT_CAP)}`, tone: "error" });
-  lines.push(spendLine(round.spend));
+  const uncovered = round.lenses.some(({ state }) => state === LENS_STATES.uncovered);
+  const lenses = round.lenses.length ? [{ text: round.lenses.map(lensSummary).join(PART_BREAK), ...(uncovered ? { tone: "warning" } : {}) }] : [];
+  const lines = [...lenses, { text: findingsSummary(round.findings) }, ...findingLines(round.findings)];
   return lines.flatMap((line) => fit(line, columns));
 }

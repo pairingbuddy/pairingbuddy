@@ -1,13 +1,13 @@
-// The "now building" block's data: folds per-test progress into marks (done, covered, current, waiting), builds the legend key line
-// for those marks, and fits the progress row, legend and looping tries to a width budget. Pure; no node: imports.
-import { currentStep, elapsed, isLooping } from "./glance.mjs";
+// The TESTS and TEST rows' data: folds per-test progress into marks (done, covered, current, waiting) and fits the progress row and
+// the looping tries to a width budget. Pure; no node: imports.
+import { currentStep, elapsed, isLooping, stageOf } from "./glance.mjs";
 import { resultWords } from "./report.mjs";
 import { PHASES, readLabel, refactorsPerCycle } from "./labels.mjs";
 
 const SHOWN = 3;
 
-export function progressRow({ tests, perTest, spawns, testsComplete = false }) {
-  const current = currentStep(spawns)?.item ?? null;
+export function progressRow({ tests, perTest, spawns, testsComplete = false, stage }) {
+  const current = currentStep(spawns, stage)?.item ?? null;
   const entries = (Array.isArray(tests) ? tests : []).map((test) => {
     const id = test.test_id;
     const done = Boolean(perTest?.[id]?.green?.passed);
@@ -32,26 +32,6 @@ const GAP = "   ";
 
 // No width budget means it fits; width counts code points, not UTF-16 units.
 const fitsWidth = (text, columns) => !(columns > 0) || [...text].length <= columns;
-
-const LEGEND = [
-  ["done", "made to pass"],
-  ["covered", "already passed, nothing to fix"],
-  ["current", "now"],
-  ["waiting", "to do"],
-];
-
-// Whether the progress row draws a mark: each of its items starts with its glyph, the first at the start, the rest after GAP.
-const drawsMark = (row, glyph) => String(row ?? "").split(GAP).some((part) => part.startsWith(`${glyph} `));
-
-// The key to the marks the progress row draws, as one line, glyphs taken from MARKS; empty when it draws none.
-// Whole entries drop from the end until it fits the width.
-export function fitLegend(columns, row) {
-  const entries = LEGEND.filter(([mark]) => drawsMark(row, MARKS[mark])).map(([mark, words]) => `${MARKS[mark]} ${words}`);
-  const fits = (count) => fitsWidth(entries.slice(0, count).join(GAP), columns);
-  let count = entries.length;
-  while (count > 1 && !fits(count)) count -= 1;
-  return entries.slice(0, count).join(GAP);
-}
 
 const rowText = ({ folded = 0, coveredFolded = 0, entries, more = 0 }) => {
   const parts = entries.map((entry) => `${MARKS[entry.mark]} ${entry.name}`);
@@ -129,7 +109,7 @@ export const testName = ({ testId, tests, scenarios }) => nameOf(testNames({ tes
 // The RED/GREEN/REFACTOR marker as data the pane colours: a tick before the steps this test passed, a bullet before the
 // current step, a chevron before the steps to come. No steps at all when the current step names no phase of the cycle.
 export function cycleMarker({ spawns, ledger }) {
-  const current = currentStep(spawns)?.phase;
+  const current = currentStep(spawns, stageOf(ledger))?.phase;
   const phases = refactorsPerCycle(ledger?.taskType) ? PHASES : PHASES.filter((name) => name !== "REFACTOR");
   const at = phases.indexOf(current);
   if (at < 0) return { steps: [] };
@@ -138,7 +118,7 @@ export function cycleMarker({ spawns, ledger }) {
 }
 
 // How long the current step has run, as a run-time clock; unknown when the spawn or the clock carries no time.
-export const stepAge = ({ spawns, now }) => elapsed(currentStep(spawns)?.startedAt, now);
+export const stepAge = ({ spawns, now, stage }) => elapsed(currentStep(spawns, stage)?.startedAt, now);
 
 // The ledger's record is the latest try's only once that try's runner has spawned. Where earlier tries had runners, the latest
 // try has one too before its result counts; where no runner is labelled at all, the record is taken as the latest try's.
@@ -150,8 +130,8 @@ function latestHasRun(spawns, current) {
 }
 
 // Once the current step has looped, every try at it with its result; the ledger's record describes the latest try only.
-export function loopingTries({ spawns, perTest }) {
-  const current = currentStep(spawns);
+export function loopingTries({ spawns, perTest, stage }) {
+  const current = currentStep(spawns, stage);
   if (!current || !isLooping(current.tries)) return undefined;
   const step = current.phase;
   const record = perTest?.[current.item];
@@ -162,12 +142,3 @@ export function loopingTries({ spawns, perTest }) {
     return { step, number, result };
   });
 }
-
-// A spawn is only seen to finish when it carries an agentId, so that one check splits the active count from the unknown count.
-const hasAgentId = (spawn) => spawn?.agentId !== undefined;
-
-// How many spawned agents are still running: spawns with an agentId not yet marked finished.
-export const activeAgents = ({ spawns }) => (spawns ?? []).filter((spawn) => hasAgentId(spawn) && !spawn.finished).length;
-
-// How many spawns carry no agentId, so cannot be seen to finish.
-export const unknownAgents = ({ spawns }) => (spawns ?? []).filter((spawn) => !hasAgentId(spawn)).length;

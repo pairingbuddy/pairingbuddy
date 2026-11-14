@@ -77,9 +77,10 @@ if (lintReport === null) return fixStop(stage, { stopReason: 'step-failed' }, RO
 
 // A lint that failed is fixed first: its failures become findings for a redraft loop, and no lens runs while that loop stops the stage.
 let lintLoop = null;
+let lintFindings = [];
 if (!lintReport.ok) {
   // The ids are `${LINT_LENS}-<n>`: the fix loop finds the lint group by that name.
-  const findings = lintReport.failures.map(({ rule, text }, i) => ({
+  lintFindings = lintReport.failures.map(({ rule, text }, i) => ({
     id: `${LINT_LENS}-${i + 1}`,
     rule,
     claim: text,
@@ -94,13 +95,17 @@ if (!lintReport.ok) {
     checkSchema: COURSE_VERDICT_SCHEMA,
     priorRollbacks: rolledBack,
     fix: redraftFix(draftPath),
-  }, findings, agentBudget);
+  }, lintFindings, agentBudget);
 }
+
+// The lint's findings end like a lens group's: fixed when the redraft that answered them passed the lint, else left as is.
+const lintReview = lintLoop === null ? [] : findingOutcomes({ survivors: lintFindings }, lintLoop.keptLenses);
+const reviewOf = (lensReview) => ({ findings: [...lintReview, ...(lensReview?.findings ?? [])], notCovered: lensReview?.notCovered ?? [] });
 
 // An agent-budget end of the lint loop is not a stop: the lint still fails, no lens gets to run, and the stage goes on to the final runner.
 const lintBudgetEnded = lintLoop?.stopReason === 'agent-budget';
 if (lintLoop !== null && !lintBudgetEnded) {
-  const stopped = await fixStop(stage, lintLoop, ROUND.finish);
+  const stopped = await fixStop(stage, { ...lintLoop, review: reviewOf(null) }, ROUND.finish);
   if (stopped !== null) return stopped;
 }
 
@@ -137,10 +142,12 @@ if (!lintBudgetEnded) {
     priorLessons: carried.priorLessons,
     fix: redraftFix(lastGoodDraft),
   });
-  const lensStopped = await fixStop(stage, lensResult, ROUND.finish);
+  const lensStopped = await fixStop(stage, { ...lensResult, review: reviewOf(lensResult.review) }, ROUND.finish);
   if (lensStopped !== null) return lensStopped;
 }
 
 const runner = await runCommands(stage, ['pr lint', 'stage finish'], { round: ROUND.finish });
 
-return { started: true, pbKey, label, result, snapshot, lint, lensAttack: lensResult, runner };
+// The draft the stage ends with is the last one a fix kept: the lens loop's, else the lint loop's, else the first.
+const end = endState({ review: reviewOf(lintBudgetEnded ? null : lensResult.review), final: (lintBudgetEnded ? undefined : lensResult.final) ?? lintLoop?.final }, result);
+return { started: true, ...end, pbKey, label, snapshot, lint, lensAttack: lensResult, runner };

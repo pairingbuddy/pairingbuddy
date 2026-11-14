@@ -35,7 +35,7 @@ describe("report-content", () => {
     assert.match(section, /<strong>Where it stopped<\/strong>\s*stopped: a step kept failing/);
     assert.match(section, /<strong>Spent<\/strong>\s*18 agents · 2:36 · tokens unknown · % of plan unknown/);
     assert.match(section, /<strong>Left<\/strong>\s*unknown/);
-    assert.match(section, /<strong>Looping<\/strong>\s*yes: 3 tries at the same step/);
+    assert.match(section, /<strong>Looping<\/strong>\s*writing a failing test · try 3 of 3/);
     assert.match(section, /<strong>Off track<\/strong>\s*unknown/);
   });
 

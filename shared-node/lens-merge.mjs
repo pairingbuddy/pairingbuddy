@@ -93,6 +93,20 @@ export function settleLensRound({ refuting, uncovered, sent, pastCut }, verdicts
   };
 }
 
+// What became of each finding of a settled round, in plain words. A refuted finding was not a real problem; a survivor
+// whose lens a kept fix answered was fixed (a fix group is one lens's survivors); every other finding was left as is,
+// since the fix loop is only given survivors. keptLenses: the lenses whose fix group a kept fix answered. The gate's
+// open-doubt check and the stage's return to the session both read this one rule.
+export function findingOutcomes({ survivors = [], refuted = [], unrefuted = [] }, keptLenses = []) {
+  const kept = new Set(keptLenses);
+  const outcomeOf = ({ id, claim, where }, outcome) => ({ id, claim, where, outcome });
+  return [
+    ...survivors.map((finding) => outcomeOf(finding, kept.has(lensOfFinding(finding)) ? 'fixed' : 'left as is')),
+    ...refuted.map((finding) => outcomeOf(finding, 'not a real problem')),
+    ...unrefuted.map((finding) => outcomeOf(finding, 'left as is')),
+  ];
+}
+
 // The report's one call: rank, then settle over the verdicts the tap recorded.
 export function mergeLensReturns(returns, config, verdicts = []) {
   return settleLensRound(rankLensReturns(returns, config), verdicts);

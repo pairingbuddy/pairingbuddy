@@ -74,3 +74,29 @@ test("a-review-round-agent-is-no-step-on-a-test", () => {
 
   assert.equal(now, "safety-net review", "a refuter's finding or a fix group is not a test, so NOW names the stage");
 });
+
+test("spent-time-counts-from-the-unit-start-when-one-is-given", () => {
+  const unitStart = "2026-11-14T10:00:00.000Z";
+  const ledger = { stage: { name: "pr-draft", status: "active", startedAt: "2026-11-14T10:03:00.000Z" }, stages: [] };
+  const now = Date.parse("2026-11-14T10:03:35.000Z");
+
+  const unit = glance({ ledger, spawns: [], now, since: unitStart, leaveOutUnknown: true });
+  const run = glance({ ledger, spawns: [], now, leaveOutUnknown: true });
+
+  assert.equal(unit.rows.spent, "0 agents · 3:35", "the publish run's time keeps counting from the unit's start");
+  assert.equal(unit.band.find(({ id }) => id === "spent").text, "3:35 · 0 agents", "the band's time does too");
+  assert.equal(run.rows.spent, "0 agents · 0:35", "with no unit start the run's own start stands");
+});
+
+test("now-and-the-band-follow-the-active-stage-never-the-last-test", () => {
+  const ledger = { stage: { name: "code-safety-net", status: "active" } };
+  const spawns = [
+    { kind: "workflow_agent", name: "pb1 code-tdd REFACTOR refactor-tests order-total r1" },
+    { kind: "workflow_agent", name: "pb1 code-safety-net - lens code r1" },
+  ];
+
+  const { rows, band } = glance({ ledger, spawns, tests: ["order-total"], testsComplete: true });
+
+  assert.equal(rows.now, "safety-net review", "a test step of an earlier stage is not the current step");
+  assert.equal(band.find(({ id }) => id === "where").text, "safety-net review", "the band names the active stage, not the last test's phase");
+});

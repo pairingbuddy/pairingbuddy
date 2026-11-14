@@ -55,6 +55,7 @@ JS_TEST_FILES = [
     "tests/js/keys-labels.test.mjs",
     "tests/js/lens-attack.test.mjs",
     "tests/js/lens-round.test.mjs",
+    "tests/js/review-outcomes.test.mjs",
     "tests/js/read-confinement.test.mjs",
     "tests/js/lens-schema.test.mjs",
     "tests/js/refuter-schema.test.mjs",

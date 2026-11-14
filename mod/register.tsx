@@ -54,7 +54,7 @@ function drawGlance(
   return Promise.all([read($, inputsAtom), read($, openedAtom), read($, noteAtom), read($, pendingAtom), read($, lastRunAtom), read($, endedAtAtom)]).then(([polled, opened, note, pending, lastRun, endedAt]) => {
     const live = fromPolled(polled, spawns, calls)
     // With no live ledger the last polled one is shown as a finished run.
-    const snapshot = fromPolled(lastRun as Parameters<typeof fromPolled>[0], spawns)
+    const snapshot = fromPolled(lastRun as Parameters<typeof fromPolled>[0], spawns, calls)
     // The ended view measures to the moment the run ended, the same end time the report uses.
     const endedMs = typeof endedAt === 'string' ? Date.parse(endedAt) : NaN
     const view = live.ledger || !snapshot.ledger ? buildView(live) : buildEndedView(Number.isNaN(endedMs) ? snapshot : { ...snapshot, now: endedMs })
@@ -84,6 +84,7 @@ export const register: Register = (on, options) => {
   on('session.start', ($, e, next) => {
     spawns.length = 0
     calls.length = 0
+    poller.unit = null
     if (!e.isInteractive) {
       return next(e)
     }
@@ -138,22 +139,17 @@ export const register: Register = (on, options) => {
     <Band Box={Box} Text={Text} Button={Button} band={band} running={running} waiting={waiting} ended={ended} between={between} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($, true).catch(() => {}) }} />
   )))
 
-  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button, Input }, { rows, rowTones, ledger, ended, unknownLabels, nowBuilding, lensRound }, _opened, note, pending) => (
+  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button, Input }, view, _opened, note, pending) => (
     <Pane
       Box={Box}
       Text={Text}
       Button={Button}
       Input={Input}
-      lensRound={lensRound}
-      rows={rows}
-      rowTones={rowTones}
+      view={view}
       columns={e.props.bodyColumns}
-      ledger={ledger}
-      ended={ended}
-      unknownLabels={unknownLabels}
-      nowBuilding={nowBuilding}
+      unknownLabels={view.unknownLabels}
       note={note}
-      suggestion={suggestionView(pending, () => nextAgent(contract, ledger, spawns))}
+      suggestion={suggestionView(pending, () => nextAgent(contract, view.ledger, spawns))}
       onReport={() => openReport($, spawns)}
       onSuggest={(text) => submitSuggestion($, spawns, text)}
       onDismiss={() => closePane($)}

@@ -1,11 +1,12 @@
 import { expect, test } from 'claude-code/testing'
 import { BAND } from './testing/band'
-import { PANE, replay, setupReplay, type Rig, type Step } from './testing/replay'
+import { PANE, paneLines, replay, setupReplay, type Rig, type Step } from './testing/replay'
 import gOpen1 from './fixtures/replay/g-open-1'
 import probe2 from './fixtures/replay/probe-2'
 import s4Rollback from './fixtures/replay/s4-rollback'
 import { bandColumns } from './band'
-import { fitBand, glance } from '../shared-node/glance.mjs'
+import { PHASE_COLOURS } from './pane'
+import { fitBand, glance, runStart } from '../shared-node/glance.mjs'
 import { MAX_FIX_UNDOS } from '../shared-node/limits.mjs'
 import { PHASES, ROLES } from '../shared-node/labels.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
@@ -27,6 +28,15 @@ const DRAWN_AROUND_SEGMENTS = (text: string) => text === ' │ ' || text === ' '
 // The band's segment texts: what is drawn without the separators, the gap, the details button text and the hint.
 const texts = (step: Step) => step.texts.map(node => node.text).filter(text => !DRAWN_AROUND_SEGMENTS(text))
 const paneTexts = (step: { pane: Step['texts'] }) => step.pane.map(node => node.text)
+// The unit's start as the poller keeps it: the earliest run start the ledgers served so far gave.
+function sinceTracker() {
+  let since: string | undefined
+  return (ledger: unknown) => {
+    const start = runStart(ledger)
+    if (!Number.isNaN(Date.parse(start)) && (since === undefined || Date.parse(start) < Date.parse(since))) since = start
+    return since
+  }
+}
 function at<T extends { t: number }>(steps: T[], t: number): T {
   const found = steps.find(step => step.t === t)
   if (!found) throw new Error(`no step at t=${t}`)
@@ -40,11 +50,11 @@ async function mountPane($: any): Promise<{ text: string; props: Record<string, 
   return found
 }
 
-async function drawn($: any, rig: Rig, recording: any, ids: string[], mount: Record<string, unknown> = BAND) {
-  const steps: (Step & { band: string[]; pane: Step['texts'] })[] = []
-  for await (const step of replay($, rig, recording, { files: testsFile(ids), mount: { ...mount, surface: 'terminal' } })) {
+async function drawn($: any, rig: Rig, recording: any, ids: string[], mount: Record<string, unknown> = BAND, files: Record<string, string> = {}) {
+  const steps: (Step & { band: string[]; pane: Step['texts']; lines: string[] })[] = []
+  for await (const step of replay($, rig, recording, { files: { ...testsFile(ids), ...files }, mount: { ...mount, surface: 'terminal' } })) {
     const paneTexts = await mountPane($)
-    steps.push({ ...step, band: texts(step), pane: paneTexts.map((node: any) => ({ text: node.text, props: node.props })) })
+    steps.push({ ...step, band: texts(step), pane: paneTexts.map((node: any) => ({ text: node.text, props: node.props })), lines: await paneLines($) })
   }
   return steps
 }
@@ -55,10 +65,12 @@ async function drawn($: any, rig: Rig, recording: any, ids: string[], mount: Rec
 test("band at each recorded step, in time order, shows the design's segments while a stage is active and one dim idle text otherwise", async ($, on) => {
   const rig = setupReplay(on)
   const shown: [number, string[]][] = []
+  const sinceOf = sinceTracker()
   for await (const step of replay($, rig, gOpen1, { files: testsFile(TESTS['g-open-1']) })) {
     const active = (step.ledger as any)?.stage?.status === 'active'
+    const since = sinceOf(step.ledger)
     const expected = active
-      ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS['g-open-1'], now: step.now, testsComplete: true }).band, bandColumns(80))
+      ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS['g-open-1'], now: step.now, since, testsComplete: true }).band, bandColumns(80))
           .map((segment: { text: string }) => segment.text)
       : quietBand(texts(step))
 
@@ -85,10 +97,12 @@ test('at 139, 80 and 50 columns the band draws exactly the fitted glance segment
         steps.push(step)
       }
 
+      const sinceOf = sinceTracker()
       for (const step of steps) {
         const active = (step.ledger as any)?.stage?.status === 'active'
+        const since = sinceOf(step.ledger)
         const expected = active
-          ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now, testsComplete: true }).band, bandColumns(bodyColumns))
+          ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now, since, testsComplete: true }).band, bandColumns(bodyColumns))
               .map((segment: { text: string }) => segment.text)
           : quietBand(texts(step))
 
@@ -98,39 +112,38 @@ test('at 139, 80 and 50 columns the band draws exactly the fitted glance segment
   }
 })
 
-test('with the pane open, the glance rows with a value, the step list in plain names with done/current/to-do marks, and the dim footer render from the same replay', async ($, on) => {
+test('with the pane open, every row in order, the step list in plain names with done/current/to-do marks, and the dim footer render from the same replay', async ($, on) => {
   const rig = setupReplay(on)
   const steps = await drawn($, rig, gOpen1, TESTS['g-open-1'])
 
-  const review = paneTexts(at(steps, 148.104))
-  expect(review, `the NOW row names the step in ${JSON.stringify(review)}`).toContain('NOW  safety-net review')
-  expect(review, `SPENT leaves out what is not measured in ${JSON.stringify(review)}`).toContain('SPENT  6 agents')
-  for (const label of ['LEFT', 'LOOPING', 'OFF TRACK']) {
-    expect(review.filter(text => text.startsWith(label)), `a ${label} row with no value is not drawn in ${JSON.stringify(review)}`).toEqual([])
-  }
-  expect(review, 'steps done, then current, in plain names').toEqual(expect.arrayContaining(['✓ write scenarios', '✓ build test by test', '▸ safety-net review']))
+  const review = at(steps, 148.104).lines
+  expect(review[0], `the NOW row names the step in ${JSON.stringify(review)}`).toBe('NOW      safety-net review')
+  expect(review[1], 'SPENT leaves out what is not measured').toMatch(/^SPENT {4}6 agents · \d+:\d\d$/)
+  expect(review[2], 'nothing is looping').toBe('LOOPING  no')
+  expect(review.filter(line => /^(LEFT|OFF TRACK)\b/.test(line)), 'LEFT and OFF TRACK are gone').toEqual([])
+  expect(review.slice(3, 7), 'steps done, then current, in plain names').toEqual(['STEPS    ○ work out the task type', '         ✓ write scenarios', '         ✓ build test by test', '         ▸ safety-net review'])
+  expect(review, 'the tests stay listed, and no test is current in the review').toEqual(expect.arrayContaining(['TESTS    ✓ 1 done   ◌ 3 covered', 'TEST     —']))
 
-  const building = paneTexts(at(steps, 49.891))
-  expect(building, 'steps at tdd: done, current, to come').toEqual(expect.arrayContaining(['✓ write scenarios', '▸ build test by test', '○ safety-net review']))
+  const building = at(steps, 49.891).lines
+  expect(building, 'steps at tdd: done, current, to come').toEqual(expect.arrayContaining(['         ✓ write scenarios', '         ▸ build test by test', '         ○ safety-net review']))
 
   const footer = at(steps, 148.104).pane.at(-1)!
   expect(footer.props.dimColor, 'the last thing drawn is the dim footer').toBe(true)
 })
 
-test('replaying probe-2 shows LOOPING "yes: 3 tries" and the 3rd-try NOW sentence', async ($, on) => {
+test('replaying probe-2 shows LOOPING naming the step and its 3rd try, and the 3rd-try NOW sentence', async ($, on) => {
   const rig = setupReplay(on)
   const steps = await drawn($, rig, probe2, TESTS['probe-2'])
 
   const third = at(steps, 125.887)
   const second = at(steps, 121.827)
-  const pane = paneTexts(third)
+  const pane = third.lines
   expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['RED · test 2 of 2', 'looping: yes']))
-  expect(pane.some(text => text.startsWith('LOOPING') && text.includes('yes: 3 tries at the same step')), `pane LOOPING row in ${JSON.stringify(pane)}`).toBe(true)
-  expect(
-    pane.some(text => text.startsWith('NOW') && text.includes('writing a failing test for zero percent keeps full price · test 2 of 2, 3rd try')),
-    `pane NOW row in ${JSON.stringify(pane)}`,
-  ).toBe(true)
+  expect(pane, `pane LOOPING row in ${JSON.stringify(pane)}`).toContain('LOOPING  writing a failing test · try 3 of 3')
+  expect(pane, `pane NOW row in ${JSON.stringify(pane)}`).toContain('NOW      writing a failing test for zero percent keeps full price · test 2 of 2, 3rd try')
   expect(second.band, 'band at the 2nd try is not looping yet').toContain('looping: no')
+  expect(second.lines, 'the 2nd try names the step and its try').toContain('LOOPING  writing a failing test · try 2 of 3')
+  expect(steps.flatMap(step => step.lines).some(line => line.includes('try 1 of')), 'a first try is never spelled out').toBe(false)
 })
 
 test('across band and pane text for the replayed recordings, no rendered string contains a gate id, stage id or agent id', async ($, on) => {
@@ -186,7 +199,7 @@ const THEME_KEYS = [
   'diffRemovedDimmed', 'diffAddedWord', 'diffRemovedWord',
 ]
 
-test('every-color-prop-is-a-theme-key: across every drawn Text in band and pane over the replay recordings, each color prop is a ThemeKey value and no hex, rgb or ANSI name', async ($, on) => {
+test('every-color-prop-is-a-theme-key-but-the-phases: across every drawn Text in band and pane over the replay recordings, each color prop is a ThemeKey value, and only the lit phase has its fixed colour', async ($, on) => {
   const rig = setupReplay(on)
   const colours = new Set<string>()
   let nodes = 0
@@ -197,13 +210,15 @@ test('every-color-prop-is-a-theme-key: across every drawn Text in band and pane 
         const color = node.props.color
         if (color === undefined) continue
         colours.add(String(color))
-        expect(THEME_KEYS, `${name} t=${step.t}: "${node.text}" is coloured ${JSON.stringify(color)}`).toContain(color)
+        const phase = /^[●](RED|GREEN|REFACTOR)$/.exec(node.text)?.[1]
+        if (phase) expect(color, `${name} t=${step.t}: the lit ${phase} has its fixed colour`).toBe(PHASE_COLOURS[phase])
+        else expect(THEME_KEYS, `${name} t=${step.t}: "${node.text}" is coloured ${JSON.stringify(color)}`).toContain(color)
       }
     }
   }
 
   expect(nodes, 'the band and pane drew text to check').toBeGreaterThan(100)
-  expect([...colours], 'the recordings drew some colour at all').toEqual(expect.arrayContaining(['claude', 'success']))
+  expect([...colours], 'the recordings drew some colour at all, the phases among them').toEqual(expect.arrayContaining(['claude', 'success', PHASE_COLOURS.RED, PHASE_COLOURS.GREEN]))
 })
 
 // mod/fixtures/replay/s4-rollback/ is one S4 bug_fix run with a rolled-back fix, recorded in tests/smoke/recordings/s4-t85-run4/.
@@ -232,12 +247,13 @@ test('replay-counts-match-recorded-lens-record', async ($, on) => {
   expect([record.survivors, record.refuted, record.unrefuted], 'the recorded lens record: survivors, refuted, unrefuted').toEqual([3, 0, 0])
   expect(record.uncovered, 'the recorded lens record has no uncovered lens').toEqual([])
 
-  const shown = paneTexts(last)
+  const shown = last.lines
+  const review = shown.slice(shown.findIndex(line => line.startsWith('REVIEW')))
 
-  // The three survivors stand after the refuters; the kept fixes' checks then name two lenses, so their issues read fixed.
-  expect(shown.filter(text => text.includes(' issues found')), `the pane's issues line at t=${last.t}: ${JSON.stringify(shown)}`).toEqual(['3 issues found · 2 fixed · 1 stands'])
-  expect(shown.some(text => text.includes('being checked ·') || text.startsWith('  being checked')), 'nothing is still being checked at the end of the stage').toBe(false)
-  expect(shown.some(text => text.startsWith('not covered')), 'no lens is left uncovered').toBe(false)
+  // The three survivors are upheld after the refuters; a kept fix answered each one's lens, so all read fixed.
+  expect(review.slice(0, 2), `the pane's REVIEW row at t=${last.t}: ${JSON.stringify(shown)}`).toEqual(['REVIEW   the code 1 · the tests 1 · docs and plan 1', '         3 issues found · 3 fixed'])
+  expect(review.some(line => /\b(checking|to fix|fixing)\b/.test(line)), 'nothing is still open at the end of the stage').toBe(false)
+  expect(review.some(line => line.includes('not covered')), 'no lens is left uncovered').toBe(false)
 })
 
 test('replay-fixes-match-recorded-rollbacks-and-verdicts', async ($, on) => {
@@ -249,18 +265,10 @@ test('replay-fixes-match-recorded-rollbacks-and-verdicts', async ($, on) => {
   expect(rollbacks[0].kind, 'the recorded rollback was a red one').toBe('red')
   const rolledAt = s4Rollback.ledger.find(snapshot => rollbacksIn(snapshot).length > 0)!.t
 
-  const shown = paneTexts(last)
-
-  const fixBlock = shown.slice(shown.findIndex(text => text.startsWith('fixes')))
-  expect(fixBlock.slice(0, 5), `the pane's fix block at t=${last.t}: ${JSON.stringify(shown)}`).toEqual([
-    `fixes  4 tried, 3 kept, 1 undone of ${MAX_FIX_UNDOS} allowed`,
-    '  fix 1  undone: the tests went red',
-    '  fix 2  kept',
-    '  fix 3  kept',
-    '  fix 4  kept',
-  ])
-  expect(shown.filter(text => /^ {2}fix \d+ /.test(text)).length, 'the pane draws exactly four fix lines').toBe(4)
-
-  const atRollback = at(steps, rolledAt)
-  expect(paneTexts(atRollback).filter(text => text.startsWith('fixes')), `the pane's fixes summary at the rollback's own step t=${rolledAt}`).toEqual([expect.stringContaining('1 undone')])
+  const review = (lines: string[]) => lines.slice(lines.findIndex(line => line.startsWith('REVIEW')))
+  const atRollback = review(at(steps, rolledAt).lines)
+  // The first fix went red and was undone, so its finding is to fix again; the other groups' fixes have not started.
+  expect(atRollback[1], `at the rollback's own step t=${rolledAt}: ${JSON.stringify(atRollback)}`).toBe('         3 issues found · 3 to fix')
+  expect(review(last.lines)[1], `at the end of the stage the retried fix was kept: ${JSON.stringify(last.lines)}`).toBe('         3 issues found · 3 fixed')
+  expect(last.lines.some(line => /^ {2}fix \d+ |^fixes {2}/.test(line.trim() === line ? line : line.slice(9))), 'no fix block: the finding words say what happened').toBe(false)
 })

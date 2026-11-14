@@ -391,6 +391,7 @@ test("On attempt-cap the safety net returns at once with no docs agent and no fi
   assert.equal(countOf(calls, "pairingbuddy:update-documentation"), 0, "no docs agent runs");
   assert.equal(commandsOf.some((c) => c.includes(" stage finish")), false, "no finishing runner");
   assert.equal(commandsOf.some((c) => c.includes(" stage stop")), false, "no stage stop runner, the CLI already recorded the stop");
+  assert.deepEqual(result.review.findings.map(({ outcome }) => outcome), ["left as is"], "a stopped stage's return says its finding was left as is: every fix was undone");
 });
 // Test case: safety-net-step-failed-runs-stage-stop
 test("On step-failed the safety net runs one runner `stage stop step-failed` and returns", async () => {

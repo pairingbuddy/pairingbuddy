@@ -93,4 +93,4 @@ if (stopped !== null) return stopped;
 
 const runner = await runCommands(stage, ['spike write', 'stage finish'], { round: nextRound() });
 
-return { started: true, pbKey, label, result, snapshot, lensAttack: lensResult, runner };
+return { started: true, ...endState(lensResult, result), pbKey, label, snapshot, lensAttack: lensResult, runner };

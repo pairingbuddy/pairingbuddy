@@ -1,22 +1,28 @@
-// Safeguards for shared-node/now-building.mjs: the legend keeps one entry at any width, the progress row folds waiting then
+// Safeguards for shared-node/now-building.mjs: the current test follows the ledger stage, the progress row folds waiting then
 // finished items at narrow widths, the looping tries line picks its fallbacks, nameOf spaces out an unnamed id, and the
-// latest try's result waits for its runner when earlier tries had one. fitLegend at 140 and 55 columns is the mod's.
+// latest try's result waits for its runner when earlier tries had one.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fitLegend, fitProgress, fitTries, loopingTries, nameOf } from "../../shared-node/now-building.mjs";
+import { cycleMarker, fitProgress, fitTries, loopingTries, nameOf, progressRow, stepAge } from "../../shared-node/now-building.mjs";
 
 const entry = (name, mark) => ({ id: name, name, mark });
 const PROGRESS = { entries: [entry("a", "done"), entry("b", "covered"), entry("c", "current"), entry("d", "waiting"), entry("e", "waiting")] };
 
-test("legend-keeps-its-first-entry-at-any-width", () => {
-  assert.equal(fitLegend(5, fitProgress(PROGRESS, undefined)), "✓ made to pass");
-});
+test("the-current-test-its-marker-age-and-tries-follow-the-ledger-stage", () => {
+  const tdd = (phase, role, item) => ({ kind: "workflow_agent", name: `pb1 code-tdd ${phase} ${role} ${item} r1`, startedAt: "2026-11-14T10:00:00.000Z" });
+  const spawns = [tdd("RED", "implement-tests", "t1"), tdd("RED", "implement-tests", "t1"), tdd("RED", "implement-tests", "t1")];
+  const review = { stage: { name: "code-safety-net", status: "active" } };
+  const building = { stage: { name: "code-tdd", status: "active" } };
+  const now = Date.parse("2026-11-14T10:00:03.000Z");
 
-test("legend-explains-only-the-marks-the-progress-row-shows", () => {
-  assert.equal(fitLegend(undefined, "✓ a   ▸ c"), "✓ made to pass   ▸ now", "no covered or waiting test is shown, so their marks are not explained");
-  assert.equal(fitLegend(undefined, "▸ c   · d   +2 more"), "▸ now   · to do");
-  assert.equal(fitLegend(undefined, "✓ 2 done   ◌ 1 covered   ▸ c"), "✓ made to pass   ◌ already passed, nothing to fix   ▸ now", "folded counts carry their marks too");
-  assert.equal(fitLegend(undefined, ""), "", "an empty row needs no legend");
+  assert.deepEqual(progressRow({ tests: [{ test_id: "t1" }], spawns, stage: "code-safety-net" }).entries.map(({ mark }) => mark), ["waiting"], "no test is current outside its stage");
+  assert.deepEqual(cycleMarker({ spawns, ledger: review }).steps, [], "no phase is lit outside the TDD stage");
+  assert.equal(stepAge({ spawns, now, stage: "code-safety-net" }), "time unknown", "no step age outside its stage");
+  assert.equal(loopingTries({ spawns, stage: "code-safety-net" }), undefined, "no tries outside its stage");
+  assert.equal(progressRow({ tests: [{ test_id: "t1" }], spawns, stage: "code-tdd" }).entries[0].mark, "current", "in its stage the test is current");
+  assert.equal(cycleMarker({ spawns, ledger: building }).steps.find(({ lit }) => lit).name, "RED", "in its stage the phase is lit");
+  assert.equal(stepAge({ spawns, now, stage: "code-tdd" }), "0:03");
+  assert.equal(loopingTries({ spawns, stage: "code-tdd" }).length, 3);
 });
 
 test("progress-row-is-whole-with-no-width-budget", () => {

@@ -246,7 +246,9 @@ test("The result carries every return field, with neutral values for the ones la
 
   const { result } = await runLensAttack(config, respond);
 
-  assert.deepEqual(Object.keys(result).sort(), ["agentsUsed", "attempts", "lessons", "refuted", "stopReason", "survivors", "uncovered", "unrefuted"], "the result carries exactly the D8 return fields");
+  assert.deepEqual(Object.keys(result).sort(), ["agentsUsed", "attempts", "lessons", "refuted", "review", "stopReason", "survivors", "uncovered", "unrefuted"], "the result carries exactly the D8 return fields, and the review the session reports from");
+  assert.equal(Object.keys(result)[0], "review", "the review comes first, before the round's pre-fix lists");
+  assert.deepEqual(result.review, { findings: [], notCovered: [] }, "a round with no findings reviews to nothing");
   assert.deepEqual(result.refuted, [], "refuted is neutral");
   assert.deepEqual(result.unrefuted, [], "unrefuted is neutral");
   assert.equal(result.attempts, 0, "attempts is neutral");

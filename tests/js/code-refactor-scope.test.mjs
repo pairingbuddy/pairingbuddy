@@ -141,7 +141,7 @@ test("one-scope-lens-no-refuters-no-fix", async () => {
 });
 
 test("stage-finish-runs-last", async () => {
-  // After the lens round a runner runs 'stage finish' as the final step and the stage returns {started, pbKey, label, result, lensAttack, runner}.
+  // After the lens round a runner runs 'stage finish' as the final step and the stage returns {started, review, result, pbKey, label, lensAttack, runner}.
   const agent = async (_prompt, { agentType, schema }) => {
     const pb_key = schema.properties.pb_key.enum[0];
     if (agentType === "pairingbuddy:runner") return { pb_key, ...GREEN_RELAY };
@@ -163,7 +163,7 @@ test("stage-finish-runs-last", async () => {
   const finishKey = last.opts.schema.properties.pb_key.enum[0];
   assert.notEqual(finishKey, testRunner.opts.schema.properties.pb_key.enum[0], "the finishing runner's key differs from the test runner's");
   assert.ok(last.prompt.includes(`pb_spent_output_tokens: ${spentAtFinish - spentAtStart}`), "the finish runner's spent line is output tokens spent since the stage started");
-  assert.deepEqual(Object.keys(result).sort(), ["label", "lensAttack", "pbKey", "result", "runner", "started"], "the stage returns exactly these fields");
+  assert.deepEqual(Object.keys(result).sort(), ["label", "lensAttack", "pbKey", "result", "review", "runner", "started"], "the stage returns exactly these fields");
   assert.equal(result.started, true, "started is true");
   assert.equal(result.runner.pbKey, finishKey, "runner.pbKey is the finishing runner's key");
 });

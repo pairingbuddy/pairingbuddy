@@ -332,6 +332,8 @@ Outside Solo, every non-plan task runs through workflow stages instead of the br
 
 When you talk to the human, all through the run, not only at a stop, use the plain names the progress pane shows, such as "your OK on the task type" or "safety-net review", not `G:type`, `pb status --action` or a stage id like `code-safety-net`. Do not name a stage like `code-scenarios`, say "auto-passed" or give a workflow id like `wf_54e3ede7`: say what happened and what comes next, as in "The task type is settled; writing scenarios now." The `!` command and the AskUserQuestion words stay exactly as the CLI gives them.
 
+A stage's return leads with `review` and then `result`, the end state: `result` is what the stage ended with, such as the pull request title and body a fix kept, not the first draft. In your end-of-run summary, take review outcomes only from `review`, never from `survivors` or the other finding lists further down, which are the round before any fix. Tell each finding by its plain outcome: "fixed", "left as is" or "not a real problem". When a finding reads "fixed", say it was fixed, never say it went out with the problem, and never offer `pb pr refresh` or any other fix for it.
+
 `pb stage finish`, which the workflow's last agent runs, is the only proof a stage ran. Never read a workflow's reported status as a result: a workflow can report completed with no work done. After each workflow, `pb status` decides. If the stage did not finish, or `stop` is set, stop and report the `pb status` output.
 
 Never do a stage's work yourself, and never call its agents directly. Once a run exists, the gate denies a direct call to a pipeline agent and names the workflow to start instead. If a deny names a different `pluginRoot` or attempt, use the one it names.

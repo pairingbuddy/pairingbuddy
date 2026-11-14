@@ -71,4 +71,4 @@ const lensResult = await lensAttack({
 
 const runner = await runCommands(stage, ['stage finish'], { round: nextRound() });
 
-return { started: true, pbKey, label, result, lensAttack: lensResult, runner };
+return { started: true, ...endState(lensResult, result), pbKey, label, lensAttack: lensResult, runner };

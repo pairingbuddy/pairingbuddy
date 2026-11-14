@@ -38,7 +38,8 @@ function fixGroupsOf(survivors) {
 const fixArtifactPathOf = (key) => `.pairingbuddy/run/task/artifacts/${key}.json`;
 
 // One fix attempt for attempt.group; attempt is { group, fixAttempt, notes, failedAttempts, before, artifactMode, retry, mustChangeApproach, rejectedApproaches (default []) }.
-// Returns { outcome, key }; red, lint-failed, rejected, repeated and kept also return the fix's approach, rejected also returns the verdict, and kept in artifact mode also returns the kept artifact's path.
+// Returns { outcome, key }; red, lint-failed, rejected, repeated and kept also return the fix's approach, rejected also returns the verdict, and kept in artifact mode also returns the kept artifact's path and the fix's return (the artifact itself).
+// A kept outcome is checked (checked: true) when a check passed it: the checker said better, or the lint passed a lint group. A kept fix that committed nothing is not checked: it changed nothing, so it answered nothing.
 // Outcomes:
 //   'failed': no fix returned, the checkpoint was refused for a reason other than red tests, the lint relay (fix.lint) was not a readable verdict, or the checker gave no verdict (null); nothing is rolled back and the loop stops.
 //   'red': the tests failed, so the fix is rolled back (code mode only: artifact mode has no checkpoint, so it never goes red).
@@ -85,7 +86,7 @@ async function fixGroup(config, attempt, spent) {
     if (relay.cli_exit_code !== 0 && TESTS_FAILED.test(relay.cli_output ?? '')) return { outcome: 'red', key, approach };
     if (relay.cli_exit_code !== 0) return { outcome: 'failed', key };
     // No commit means fix.diff is stale (pb only accepts a no-change fix with a reason in ambiguity, which reaches the human), so skip the checker.
-    if (relayedJson(relay.cli_output ?? '')?.committed === false) return { outcome: 'kept', key, approach };
+    if (relayedJson(relay.cli_output ?? '')?.committed === false) return { outcome: 'kept', key, approach, checked: false };
   }
   if (fix.lint && artifactMode) {
     spent.count += 1;
@@ -93,14 +94,14 @@ async function fixGroup(config, attempt, spent) {
     const lintReport = lintReportOf(lintRelay);
     if (lintReport === null) return { outcome: 'failed', key };
     if (!lintReport.ok) return { outcome: 'lint-failed', key, approach };
-    if (group.lens === LINT_LENS) return { outcome: 'kept', key, approach, artifact: fixArtifactPathOf(key) };
+    if (group.lens === LINT_LENS) return { outcome: 'kept', key, approach, checked: true, artifact: fixArtifactPathOf(key), final: fixed };
   }
   spent.count += 1;
   const diff = artifactMode ? { before, after: fixArtifactPathOf(key) } : { fix_diff: FIX_DIFF_PATH };
   const verdict = await courseCheck({ stage: config.stage, attempt: config.attempt, group, fixAttempt, rollbacks: failedAttempts, diff, schema: config.checkSchema });
   if (verdict === null) return { outcome: 'failed', key };
   if (verdict.verdict !== 'better') return { outcome: 'rejected', key, verdict, approach };
-  return { outcome: 'kept', key, approach, ...(artifactMode ? { artifact: fixArtifactPathOf(key) } : {}) };
+  return { outcome: 'kept', key, approach, checked: true, ...(artifactMode ? { artifact: fixArtifactPathOf(key), final: fixed } : {}) };
 }
 
 // Returns { ok: false } when the rollback was refused, else { ok: true, relayed } with the relayed CLI JSON. The rollback runner's item is `<group>-rollback`: the checkpoint runner of the same attempt already holds item <group> in round fixAttemptRound(fixAttempt), and the retry's checkpoint holds <group> in the next round, so no round of item <group> is free.
@@ -119,7 +120,7 @@ function mistakeKeysOf(outcome, group, verdict) {
   return [mistakeKey(finding, verdict.mistake)];
 }
 
-// Returns { attempts, failedAttempts, lessons, stopReason, before }. attempts is the running count including priorAttempts, so a caller can pass it on. before is the last kept artifact's path, or the starting fix.before. lessons is the stage's growing note: one list for the whole loop, shown only in a retry's prompt. It starts from config.priorLessons when an earlier loop of the same stage (the lint loop) already wrote notes, since the note is the stage's.
+// Returns { attempts, failedAttempts, lessons, stopReason, before, keptLenses, final }. keptLenses lists the lenses whose group a checked fix answered, the input findingOutcomes reads. final is the last kept artifact itself (artifact mode), or undefined when none was kept. attempts is the running count including priorAttempts, so a caller can pass it on. before is the last kept artifact's path, or the starting fix.before. lessons is the stage's growing note: one list for the whole loop, shown only in a retry's prompt. It starts from config.priorLessons when an earlier loop of the same stage (the lint loop) already wrote notes, since the note is the stage's.
 async function fixLoop(config, survivors, budget = Infinity) {
   const spent = { count: 0 };
   let attempts = config.priorAttempts ?? 0;
@@ -128,9 +129,11 @@ async function fixLoop(config, survivors, budget = Infinity) {
   const artifactMode = config.fix.mode === 'artifact';
   let before = config.fix.before;
   let stopRecorded = false;
+  const keptLenses = [];
+  let final;
   // Loop-wide on purpose: a mistake key seen in any earlier fix group counts as a repeat in this stage.
   const seenMistakes = new Set();
-  const stop = (stopReason) => ({ spawned: spent.count, attempts, failedAttempts, lessons, stopReason, stopRecorded, before });
+  const stop = (stopReason) => ({ spawned: spent.count, attempts, failedAttempts, lessons, stopReason, stopRecorded, before, keptLenses, final });
   for (const group of fixGroupsOf(survivors)) {
     let retry = false;
     let mustChangeApproach = false;
@@ -140,9 +143,10 @@ async function fixLoop(config, survivors, budget = Infinity) {
       if (budget - spent.count < 4) return stop('agent-budget');
       attempts += 1;
       const attempt = { group, fixAttempt: attempts, notes: retry ? lessons : [], retry, mustChangeApproach, rejectedApproaches, failedAttempts, before, artifactMode };
-      const { outcome, key, artifact, verdict, approach } = await fixGroup(config, attempt, spent);
+      const { outcome, key, artifact, verdict, approach, checked, final: kept } = await fixGroup(config, attempt, spent);
       if (outcome === 'kept') {
-        if (artifactMode) before = artifact;
+        if (checked) keptLenses.push(group.lens);
+        if (artifactMode) [before, final] = [artifact, kept];
         break;
       }
       if (outcome === 'failed') return stop('step-failed');
