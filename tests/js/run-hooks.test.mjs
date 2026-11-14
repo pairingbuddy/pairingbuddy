@@ -253,7 +253,7 @@ describe("Stop hook", () => {
   });
 
   test("a gate waiting on the human names the command only they run", () => {
-    const { dir } = makeRun(allDone({ needsHuman: { gate: TASK_END, reason: "permission mode is default", seq: 1 } }));
+    const { dir } = makeRun(allDone({ needsHuman: { gate: TASK_END, reason: "permission mode is default", seq: 1, question: gateQuestion(TASK_END) } }));
     const stdout = stop(dir);
     assertBlocks(stdout, /G:task-end/);
     assertBlocks(stdout, /permission mode is default/);
@@ -261,12 +261,23 @@ describe("Stop hook", () => {
   });
 
   test("a gate waiting on the human is asked with the question box first, the exact question in hand", () => {
-    const { dir } = makeRun(allDone({ needsHuman: { gate: TASK_END, reason: "permission mode is default", seq: 1 } }));
+    const { dir } = makeRun(allDone({ needsHuman: { gate: TASK_END, reason: "permission mode is default", seq: 1, question: gateQuestion(TASK_END) } }));
 
     const reason = stopReason(stop(dir));
 
     assert.ok(reason.includes(`AskUserQuestion, passing exactly this question: ${JSON.stringify({ questions: [gateQuestion(TASK_END)] })}`), reason);
     assert.ok(reason.indexOf("AskUserQuestion") < reason.indexOf("human approve G:task-end"), "the ! command is the fallback, named after the question box");
+  });
+
+  test("a gate waiting on the human is named in plain words, and only the ! command carries the gate id", () => {
+    const { dir } = makeRun(allDone({ needsHuman: { gate: TASK_END, reason: "permission mode is default", seq: 1, question: gateQuestion(TASK_END) } }));
+
+    const reason = stopReason(stop(dir));
+
+    assert.ok(reason.includes("waiting for your sign-off at the end"), reason);
+    assert.ok(reason.includes("still needs your sign-off at the end"), reason);
+    const outsideCommand = reason.replace(/!cd \S+ && node \S+ human approve G:task-end/, "").replace(/AskUserQuestion, passing exactly this question: \{.*?\}\]\}/, "");
+    assert.doesNotMatch(outsideCommand, /G:task-end/, outsideCommand);
   });
 
   test("a stop comes before a gate waiting on the human", () => {
@@ -286,6 +297,13 @@ describe("Stop hook", () => {
     const gates = { [TASK_END]: { source: "human", answer: "stop" } };
     const stdout = stop(makeRun(allDone({ gates, stop: { reason: "the human answered stop", seq: 1, code: HUMAN_STOPPED } })).dir);
     assertBlocks(stdout, /human approve G:task-end/);
+  });
+
+  test("a human's stop is named by the plain gate name", () => {
+    const gates = { [TASK_END]: { source: "human", answer: "stop" } };
+    const reason = stopReason(stop(makeRun(allDone({ gates, stop: { reason: "the human answered stop", seq: 1, code: HUMAN_STOPPED } })).dir));
+
+    assert.ok(reason.includes("The human answered stop at your sign-off at the end."), reason);
   });
 
   test("a finished run says to end the task", () => {

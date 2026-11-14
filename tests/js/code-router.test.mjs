@@ -704,4 +704,12 @@ describe("router-asks-gates-with-the-question-box", () => {
 
     sentencesSaying("that the human hears the plain gate and stage names, not ids or pb commands", section, /When you talk to the human/, /plain names/, /"your OK on the task type"/, /not `G:type`/, /`pb status --action`/, /`code-safety-net`/);
   });
+
+  test("the-whole-narration-is-plain", () => {
+    const section = routerSection();
+
+    sentencesSaying("that plain names hold all through the run, not only at a stop", section, /When you talk to the human/, /all through the run, not only at a stop/);
+    sentencesSaying("that the narration names no stage, auto-pass or workflow id", section, /stage like `code-scenarios`/, /"auto-passed"/, /workflow id like `wf_54e3ede7`/);
+    sentencesSaying("an example of plain narration", section, /"The task type is settled; writing scenarios now\."/);
+  });
 });

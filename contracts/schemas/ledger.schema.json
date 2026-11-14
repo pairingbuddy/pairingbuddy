@@ -124,6 +124,26 @@
                 "base": { "type": "string" },
                 "target": { "type": "string" }
               }
+            },
+            "question": {
+              "description": "The question gate eval issued for this gate, exactly as the human is asked it. May be absent. The hooks record an answer only to this question.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["question", "header", "options", "multiSelect"],
+              "properties": {
+                "question": { "type": "string", "minLength": 1 },
+                "header": { "type": "string", "minLength": 1, "maxLength": 12 },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["label", "description"],
+                    "properties": { "label": { "type": "string" }, "description": { "type": "string" } }
+                  }
+                },
+                "multiSelect": { "type": "boolean" }
+              }
             }
           }
         }

@@ -6,7 +6,8 @@
 //   auto-pass:           {ok, result:"auto-pass", gate, source:"auto"}
 //   first ask:           {ok, result:"needs-human", gate, reason, question, humanCommand}
 //   tap recorded nothing:{ok, result:"needs-human-command", gate, reason, humanCommand}
-//   question:            {question:"Approve <gate>?", header:"PB gate: <gate>", options:[{label,...}] approve|redo|stop, multiSelect:false}
+//   question:            {question:"<plain question> <plain why>", header:"<plain, at most 12 characters>", options:[{label,...}] approve|redo|stop, multiSelect:false},
+//                        stored as needsHuman.question: the hooks record an answer only to that exact question
 //   humanCommand:        !cd <run root> && node <absolute path>/pb.mjs human approve <gate>
 //   answered redo:       the gate record and the stage's done state go, so no gate is due and the stage re-runs at attempt+1
 //   answered stop:       {ok, result:"answered", gate, answer:"stop", reason, humanCommand}, with ledger.stop set
@@ -21,6 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { gateQuestion } from "../../shared-node/gates.mjs";
 import { readLedger, updateLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { COMMIT_FAILED } from "../../shared-node/verbs.mjs";
 import { fixture, recordedAnswer, sha256, SESSION } from "./tap-fixture.mjs";
@@ -472,7 +474,7 @@ const OPTION_CHANGES = {
 const ALTERED_QUESTIONS = [
   ...Object.entries(OPTION_CHANGES).map(([label, change]) => ({ name: `a question with options ${label}`, altered: (q) => [change(q)] })),
   { name: "a question with other text", altered: (q) => [{ ...q, question: "Shall I go on?" }] },
-  { name: "a question with another gate's header", altered: (q) => [{ ...q, header: "PB gate: G:publish" }] },
+  { name: "a question with another header", altered: (q) => [{ ...q, header: "Publish" }] },
   { name: "a multi-select question", altered: (q) => [{ ...q, multiSelect: true }] },
   { name: "a question with no multiSelect", altered: ({ multiSelect: _dropped, ...q }) => [q] },
   { name: "a question followed by a decoy", altered: (q) => [q, { ...q, question: "Anything else?", header: "Other" }] },
@@ -585,7 +587,7 @@ describe("a model cannot supply the policy", () => {
     const { repo, asked } = askedRepo();
     writeFileSync(repo.ledgerPath, "{");
 
-    assertNotDenied(runGate(repo, recordedQuestion(repo, { questions: [{ ...asked.question, header: "PB gate: other" }] })));
+    assertNotDenied(runGate(repo, recordedQuestion(repo, { questions: [{ ...asked.question, header: "Other" }] })));
   });
 
   test("a decoy question in the same call does not pass the tap, whichever comes first", () => {
@@ -612,13 +614,13 @@ describe("a model cannot supply the policy", () => {
 // ---------- the question and the needsHuman record ----------
 
 describe("needs-human output", () => {
-  test("carries the exact question text, the PB gate header and the three answers", () => {
+  test("asks in plain words, with why it asks, a short header and the three answers", () => {
     const repo = makeRepo();
 
     const { question } = gateEval(repo);
 
-    assert.equal(question.question, `Approve ${TASK_END}?`);
-    assert.equal(question.header, `PB gate: ${TASK_END}`);
+    assert.equal(question.question, "Is this task done? Auto mode is off, so this asks you.");
+    assert.equal(question.header, "Task done");
     assert.deepEqual(question.options.map(({ label }) => label), ANSWERS);
     assert.equal(question.multiSelect, false);
   });
@@ -629,6 +631,14 @@ describe("needs-human output", () => {
     const { humanCommand } = gateEval(repo);
 
     assert.equal(humanCommand, `!cd ${repo.dir} && node ${join(ROOT, "cli", "pb.mjs")} human approve ${TASK_END}`);
+  });
+
+  test("stores the question it issued in needsHuman, so the hooks match the answer against it", () => {
+    const repo = makeRepo();
+
+    const { question } = gateEval(repo);
+
+    assert.deepEqual(repo.ledger().needsHuman.question, question);
   });
 
   test("writes needsHuman with the gate, the reason and a seq from this write", () => {
@@ -708,9 +718,10 @@ describe("the tap records AskUserQuestion answers", () => {
 
   const NOT_RECORDED = [
     { name: "a free-text answer", payload: (repo, q) => recordedAnswer(repo, q, "yes, go on") },
-    { name: "a question with no PB gate header", payload: (repo, q) => recordedAnswer(repo, { ...q, header: "Approve" }, "approve") },
-    { name: "a header naming another gate", payload: (repo, q) => recordedAnswer(repo, { ...q, header: "PB gate: G:publish" }, "approve") },
+    { name: "the question under another header", payload: (repo, q) => recordedAnswer(repo, { ...q, header: "Approve" }, "approve") },
+    { name: "another gate's question", payload: (repo) => recordedAnswer(repo, gateQuestion("G:publish", { reason: "the gate policy is default, not auto" }), "publish") },
     { name: "the right header on another question", payload: (repo, q) => recordedAnswer(repo, { ...q, question: "Shall I go on?" }, "approve") },
+    { name: "the question asked for an earlier reason", payload: (repo, q) => recordedAnswer(repo, gateQuestion(TASK_END, { reason: "it is a decide gate, which always asks" }), "approve") },
     { name: "a subagent's question", payload: (repo, q) => recordedAnswer(repo, q, "approve", { over: { agent_id: "a1", agent_type: "pairingbuddy:apply-config-change" } }) },
     { name: "answers in tool_input but none in the response", payload: (repo, q) => recordedAnswer(repo, q, "approve", { toolResponse: "the tool failed" }) },
   ];
@@ -725,6 +736,17 @@ describe("the tap records AskUserQuestion answers", () => {
       assert.equal(repo.ledger().needsHuman?.gate, TASK_END);
     });
   }
+
+  test("a waiting gate whose ledger holds no issued question records nothing, and its question is not denied", () => {
+    const { repo, asked } = askedRepo();
+    updateLedger(repo.ledgerPath, ({ needsHuman: { question: _dropped, ...pending }, ...ledger }) => ({ ...ledger, needsHuman: pending }));
+
+    assertNotDenied(runGate(repo, recordedQuestion(repo, { questions: [asked.question] })));
+    runTap(repo, recordedAnswer(repo, asked.question, "approve"));
+
+    assertNoRecord(repo);
+    assert.equal(repo.ledger().needsHuman?.gate, TASK_END);
+  });
 
   test("an answer when no gate is asking records nothing", () => {
     const { asked } = askedRepo();

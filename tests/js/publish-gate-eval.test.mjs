@@ -120,14 +120,13 @@ describe("publish-gate-shown", () => {
     assert.equal(shown.testCommand, config.runners[config.default_runner].command);
   });
 
-  test("the G:publish question carries the CLI's own text and header and passes isGateQuestionCall", () => {
+  test("the G:publish question is the one the ledger stores, so the tap matches it", () => {
     const { repo } = publishRepo();
 
     const { question } = evalGate(repo);
 
-    assert.equal(question.question, `Approve ${GATE}?`);
-    assert.equal(question.header, `PB gate: ${GATE}`);
-    assert.equal(isGateQuestionCall(GATE, [question]), true);
+    assert.deepEqual(repo.ledger().needsHuman.question, question);
+    assert.equal(isGateQuestionCall(repo.ledger().needsHuman.question, [question]), true);
   });
 
   test("the question offers exactly publish, keep local and redo", () => {

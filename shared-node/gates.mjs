@@ -10,6 +10,7 @@ import { buildFindingId, buildKey } from "./keys.mjs";
 import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt } from "./stage-run.mjs";
 import { acceptVerdict, lensOfFinding } from "./lens-merge.mjs";
 import { isPassed } from "./gate-passed.mjs";
+import { plainName } from "./plain-names.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
 import { isRefreshRun } from "./ledger.mjs";
@@ -26,9 +27,9 @@ const HUMAN_SOURCES = ["human", "human-cli"];
 const REPORT_LISTS = ["survivors", "gaps", "uncovered", "unrefuted"];
 
 export const GATE_OPTIONS = [
-  { label: "approve", description: "Approve this gate and let the run continue." },
-  { label: "redo", description: "Redo the stage before this gate." },
-  { label: "stop", description: "Stop here." },
+  { label: "approve", description: "Yes, carry on." },
+  { label: "redo", description: "No, do that step again." },
+  { label: "stop", description: "Stop the run here." },
 ];
 
 export const PUBLISH_GATE = "G:publish";
@@ -37,17 +38,62 @@ export const KEEP_LOCAL_LABEL = "keep local";
 export const KEEP_LOCAL = "keep-local";
 
 const PUBLISH_OPTIONS = [
-  { label: PUBLISH_LABEL, description: "Push the branch and open the pull request." },
-  { label: KEEP_LOCAL_LABEL, description: "Keep the commits on this branch and publish nothing." },
-  { label: "redo", description: "Redo the draft before this gate." },
+  { label: PUBLISH_LABEL, description: "Yes, push the branch and send the pull request." },
+  { label: KEEP_LOCAL_LABEL, description: "No, keep the commits here and publish nothing." },
+  { label: "redo", description: "No, rewrite the pull request first." },
 ];
 
 const optionsOf = (gate) => (gate === PUBLISH_GATE ? PUBLISH_OPTIONS : GATE_OPTIONS);
 
-const gateHeader = (gate) => `PB gate: ${gate}`;
-const gateQuestionText = (gate) => `Approve ${gate}?`;
+const typeNamed = (taskType) => (plainName(taskType ?? "") === undefined ? "" : ` (${plainName(taskType)})`);
 
-export const gateQuestion = (gate) => ({ question: gateQuestionText(gate), header: gateHeader(gate), options: optionsOf(gate), multiSelect: false });
+// What each gate asks the human, in plain words. The header is AskUserQuestion's chip, so it stays within 12 characters.
+const GATE_ASKS = {
+  "G:type": { header: "Task type", ask: ({ taskType }) => `Is the task type right?${typeNamed(taskType)}` },
+  "G:scenarios": { header: "Scenarios", ask: () => "Are these scenarios right, and should it start building?" },
+  "G:scope": { header: "Tidy-up", ask: () => "Is this the right list to tidy up?" },
+  "G:task-end": { header: "Task done", ask: () => "Is this task done?" },
+  "G:unit": { header: "Experiment", ask: () => "Is this experiment done?" },
+  [PUBLISH_GATE]: { header: "Publish", ask: ({ refresh }) => (refresh ? "Update the pull request?" : "Open the pull request?") },
+};
+
+// A gate the table does not know, such as one a test contract adds.
+const OTHER_ASK = { header: "Your OK", ask: () => "Can the run go on?" };
+
+// Why the gate asks, in plain words, from the reason askReason gave.
+const PLAIN_WHYS = [
+  [/^it is a decide gate/, "This step always asks you."],
+  [/^no classifier reports certain/, "The check was not sure, so it asks you."],
+  [/^(no gate policy is recorded|the gate policy is )/, "Auto mode is off, so this asks you."],
+  [/^the classifier does not report certain/, "The classifier was not sure of the type."],
+  [/^the classification lens has an open finding/, "A reviewer doubts the task type."],
+  [/no selector_template/, "A test runner can't run one test on its own."],
+  [/^the scope lens found/, "A reviewer doubts the tidy-up fits the goal."],
+  [/^the run stopped/, "The run stopped and needs you."],
+  [/^retries are exhausted/, "A step ran out of retries."],
+  [/config hash changed during the run$/, "A config file changed during the run."],
+  [/open ambiguity/, "A step was unsure about something."],
+  [/^coverage gaps remain/, "Some scenarios have no test yet."],
+  [/^a decide finding survived/, "A review found something only you can decide."],
+  [/^a lens is uncovered/, "One review did not get done."],
+  [/^an unrefuted high-severity finding/, "A serious review finding is still open."],
+  [/cannot be read$/, "A step's result could not be read."],
+  [/approval no longer holds/, "Something changed since your last OK."],
+  [/^the PR lint /, "The pull request text has not passed its checks."],
+  [/^a pull request refresh is approved by a human/, "Updating a pull request always asks you."],
+  [/^no lens record yet for the safety net/, "Not every task has had its safety-net review."],
+];
+
+const plainWhy = (reason) => PLAIN_WHYS.find(([pattern]) => pattern.test(reason))?.[1] ?? reason;
+
+// The question gate eval issues: pure, and stored in needsHuman, so the hooks match the answer against what was asked.
+export function gateQuestion(gate, { reason = "", taskType = null, refresh = false } = {}) {
+  const { header, ask } = GATE_ASKS[gate] ?? OTHER_ASK;
+  return { question: `${ask({ taskType, refresh })} ${plainWhy(reason)}`.trim(), header, options: optionsOf(gate), multiSelect: false };
+}
+
+// The question the pending gate asked, or null when no gate waits or the ledger holds none.
+export const pendingQuestion = (ledger) => ledger?.needsHuman?.question ?? null;
 
 export const fileHash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
@@ -447,13 +493,14 @@ export function voidPublish(ledger, reason) {
 
 // A model writes the dialog, so its words are the human's only when they are the words the CLI emitted, alone in
 // the call. Otherwise it could put "approve" on a description that says something else.
-export const isGateQuestionCall = (gate, questions) => Array.isArray(questions) && questions.length === 1 && isDeepStrictEqual(questions[0], gateQuestion(gate));
+export const isGateQuestionCall = (asked, questions) => asked !== null && Array.isArray(questions) && questions.length === 1 && isDeepStrictEqual(questions[0], asked);
 
-// The approve, redo or stop that a finished AskUserQuestion gave this gate, or null.
-export function gateAnswer(gate, toolResponse) {
-  if (!isGateQuestionCall(gate, toolResponse?.questions)) return null;
-  const answer = toolResponse.answers?.[gateQuestionText(gate)];
-  return optionsOf(gate).some(({ label }) => label === answer) ? answer : null;
+// The approve, redo or stop that a finished AskUserQuestion gave the pending gate, or null.
+export function gateAnswer(ledger, toolResponse) {
+  const asked = pendingQuestion(ledger);
+  if (!isGateQuestionCall(asked, toolResponse?.questions)) return null;
+  const answer = toolResponse.answers?.[asked.question];
+  return asked.options.some(({ label }) => label === answer) ? answer : null;
 }
 
 // A redo sends the stage back and leaves no record, so the gate comes due again when the stage finishes.
@@ -510,8 +557,8 @@ function guidanceFile(path) {
 
 // Only tool_response counts, as for the answer: it holds what the human wrote. A redo with no note still tells the
 // next attempt that the last one was sent back.
-function redoFeedback(gate, stage, attempt, toolResponse) {
-  const notes = toolResponse.annotations?.[gateQuestionText(gate)]?.notes;
+function redoFeedback(gate, stage, attempt, toolResponse, asked) {
+  const notes = toolResponse.annotations?.[asked.question]?.notes;
   if (typeof notes === "string" && notes.trim() !== "") return notes.trim();
   return `The human sent ${stage} back at ${gate} with no note, after attempt ${attempt}. Do not repeat that result.`;
 }
@@ -522,7 +569,7 @@ export function appendRedoFeedback(root, ledger, gates, toolResponse) {
   const { stage } = gates.find(({ name }) => name === gate);
   const path = join(root, ".pairingbuddy", "human-guidance.json");
   const file = guidanceFile(path);
-  const entry = { agent: stage, timestamp: new Date().toISOString(), context: `redo at ${gate}`, feedback: redoFeedback(gate, stage, ledger.stage.attempt, toolResponse) };
+  const entry = { agent: stage, timestamp: new Date().toISOString(), context: `redo at ${gate}`, feedback: redoFeedback(gate, stage, ledger.stage.attempt, toolResponse, ledger.needsHuman.question) };
   const temp = `${path}.${process.pid}.tmp`;
   writeFileSync(temp, `${JSON.stringify({ ...file, guidance: [...file.guidance, entry] }, null, 2)}\n`);
   renameSync(temp, path);
