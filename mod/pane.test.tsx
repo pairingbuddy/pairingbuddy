@@ -206,7 +206,7 @@ const AFTER_SCENARIOS = {
   gates: { ...SNAPSHOT_RUNNING.gates, 'G:type': { source: 'auto' } },
 }
 const nowRow = (shown: string[]) => shown.find(text => text.startsWith('NOW')) ?? ''
-const RETURNED_LENS = 'REVIEW   the code 1'
+const RETURNED_LENS = 'REVIEW   checked: the code'
 const hasReturnedLens = (lines: string[]) => lines.includes(RETURNED_LENS)
 
 test('pane-now-between-steps-has-no-band-label', async ($, on) => {

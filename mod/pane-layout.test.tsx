@@ -111,6 +111,6 @@ test('after-the-run-looping-and-test-read-a-dash-and-the-last-review-stays', asy
   expect(rowOf(lines, 'NOW'), 'the run is over').toBe('NOW      last run finished')
   expect(rowOf(lines, 'LOOPING'), 'after the run LOOPING reads a dash').toBe('LOOPING  —')
   expect(lines.some(line => /^\s+▸ .*\d:\d\d$/.test(line)), 'after the run no test is current').toBe(false)
-  expect(rowOf(lines, 'REVIEW'), 'the last review round stays').toBe('REVIEW   the code 1')
+  expect(rowOf(lines, 'REVIEW'), 'the last review round stays').toBe('REVIEW   checked: the code')
   expect(lines, 'its open finding was left as is').toContain('           left as is · one · a.py:1')
 })

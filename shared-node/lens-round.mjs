@@ -293,10 +293,23 @@ export function lensRound({ ledger, calls: allCalls = [], spawns: allSpawns = []
   };
 }
 
-// A returned lens reads by its finding count, a running one by an ellipsis, one that returned nothing usable as not covered.
-function lensSummary({ name, state, found }) {
-  const shown = { [LENS_STATES.returned]: `${found}`, [LENS_STATES.running]: "…", [LENS_STATES.uncovered]: "not covered" };
-  return `${name} ${shown[state]}`;
+// What the lens line says of the lenses in each state, in this order, so it needs no legend: the finding lines say what each found.
+const LENS_WORDS = [
+  [LENS_STATES.returned, "checked"],
+  [LENS_STATES.running, "still looking at"],
+  [LENS_STATES.uncovered, "could not check"],
+];
+
+// A cycle's quick review is one lens, so its line says how it went: "quick review done".
+const LIGHT_WORDS = { [LENS_STATES.returned]: "done", [LENS_STATES.running]: "under way", [LENS_STATES.uncovered]: "could not be done" };
+
+// The lens line's parts: one per state that has lenses, naming them, as "checked: the code, the tests".
+function lensParts(lenses) {
+  const quick = plainName(LIGHT_REVIEW);
+  if (lenses.length === 1 && lenses[0].name === quick) return [`${quick} ${LIGHT_WORDS[lenses[0].state]}`];
+  return LENS_WORDS.map(([state, words]) => [words, lenses.filter((lens) => lens.state === state).map(({ name }) => name)])
+    .filter(([, names]) => names.length > 0)
+    .map(([words, names]) => `${words}: ${names.join(", ")}`);
 }
 
 // The issues count line: how many were found, then how many read each word, each part left out when 0.
@@ -350,17 +363,23 @@ export function findingLines(findings, columns) {
 
 const cut = (text, columns) => (text.length > columns ? `${text.slice(0, columns - 1)}…` : text);
 
-// A line longer than columns folds at its PART_BREAK breaks onto indented continuation lines that each fit;
+// The breaks a line folds at: PART_BREAK, and for the lens line also the comma between lens names.
+const PART_FOLDS = /( · )/;
+const LENS_FOLDS = /( · |, )/;
+
+// A line longer than columns folds at its breaks (`at`, PART_BREAK by default) onto indented continuation lines that each fit;
 // a whole line, a line with no break (or a part still too long) is cut to columns characters, the last being an ellipsis.
-export function fit({ text, whole = false, ...rest }, columns) {
+export function fit({ text, whole = false, at = PART_FOLDS, ...rest }, columns) {
   if (!(columns > 0) || text.length <= columns) return [{ text, ...rest }];
   if (whole) return [{ text: cut(text, columns), ...rest }];
   const rows = [];
-  for (const part of text.split(PART_BREAK)) {
+  // Split with a capture, so the pieces alternate part, break, part: a joined row keeps the break it was split at.
+  const pieces = text.split(at);
+  for (let i = 0; i < pieces.length; i += 2) {
     const last = rows.length - 1;
-    const joined = last >= 0 ? `${rows[last]}${PART_BREAK}${part}` : undefined;
+    const joined = last >= 0 ? `${rows[last]}${pieces[i - 1]}${pieces[i]}` : undefined;
     if (joined !== undefined && joined.length <= columns) rows[last] = joined;
-    else rows.push(rows.length ? `  ${part}` : part);
+    else rows.push(rows.length ? `  ${pieces[i]}` : pieces[i]);
   }
   return rows.map((row) => ({ text: cut(row, columns), ...rest }));
 }
@@ -369,7 +388,7 @@ export function fit({ text, whole = false, ...rest }, columns) {
 // counts, the summary, then one line per finding. No line carries a colour: colour marks only a phase, needs-you or a stop.
 export function lensLines(round, columns = 0) {
   if (!round) return [];
-  const lenses = round.lenses.length ? [{ text: round.lenses.map(lensSummary).join(PART_BREAK) }] : [];
+  const lenses = round.lenses.length ? [{ text: lensParts(round.lenses).join(PART_BREAK), at: LENS_FOLDS }] : [];
   const lines = [...lenses, { text: findingsSummary(round.findings) }, ...findingLines(round.findings, columns)];
   return lines.flatMap((line) => fit(line, columns));
 }

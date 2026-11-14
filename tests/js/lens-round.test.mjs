@@ -541,7 +541,7 @@ test("odd-lens-returns-never-throw", () => {
     [2, 0],
     "each lens's found equals the findings it shows: 2 for the code lens, 0 for the one that shows none",
   );
-  assert.ok(lines.some(({ text }) => text.startsWith("the code 2 · ")), "the lenses line reads the code lens with 2");
+  assert.ok(lines.some(({ text }) => text.startsWith("checked: the code, ")), "the lenses line says the code lens was checked");
   assert.deepEqual(
     round.findings.map(({ where, claim }) => ({ where, claim })),
     [{ where: undefined, claim: "only a claim" }, { where: "b.mjs:2", claim: undefined }],
@@ -663,8 +663,8 @@ test("lines-word-short-lists", () => {
 
   assert.equal(texts(three).some((text) => text.includes("more")), false, "exactly 3 findings show no '+ n more' line");
   assert.equal(texts(three).filter((text) => text.startsWith("  ") && text.includes(".mjs")).length, 3, "all 3 findings are shown");
-  assert.equal(texts(bothUncovered)[0], "the code not covered · the tests not covered", "each uncovered lens says so on the lens line");
-  assert.deepEqual(texts(emptyReturn), ["the code 0", "no issues found"], "a lens that returned no findings shows a count of 0 and no finding lines");
+  assert.equal(texts(bothUncovered)[0], "could not check: the code, the tests", "the uncovered lenses are named as not checked on the lens line");
+  assert.deepEqual(texts(emptyReturn), ["checked: the code", "no issues found"], "a lens that returned no findings reads checked, with no finding lines");
 });
 
 test("lines-fit-exactly-at-the-column-edge", () => {
@@ -677,11 +677,11 @@ test("lines-fit-exactly-at-the-column-edge", () => {
   ];
   const summaryRound = lensRound({ ledger: ledgerFor(), calls, spawns: [], contract });
 
-  const lensEdge = lensLines(twoLenses, 13).slice(0, 2);
+  const lensEdge = lensLines(twoLenses, 17).slice(0, 2);
   const summaryEdge = lensLines(summaryRound, 25);
   const summaryAt = summaryEdge.findIndex(({ text }) => text.includes(" issues found"));
 
-  assert.deepEqual(lensEdge.map(({ text }) => text), ["the code 0", "  the tests 0"], "a continuation row exactly as long as the columns is not cut");
+  assert.deepEqual(lensEdge.map(({ text }) => text), ["checked: the code", "  the tests"], "the lens line folds between lens names, and a row exactly as long as the columns is not cut");
   assert.deepEqual(
     summaryEdge.slice(summaryAt, summaryAt + 2).map(({ text }) => text),
     ["2 issues found · 1 to fix", "  1 not a real problem"],
@@ -789,6 +789,7 @@ test("a-cycle-light-review-reads-quick-review-for-the-latest-test-only", () => {
 
   assert.deepEqual(round.lenses.map(({ name, found }) => ({ name, found })), [{ name: plainName("light-review"), found: 1 }], "only the latest test's review shows, under the light review's plain name");
   assert.equal(plainName("light-review"), "quick review", "the light review's plain name");
+  assert.equal(lines[0], "quick review done", "the lens line says in plain words that the quick review is done, with no count");
   assert.equal(lines.some((text) => text.includes("order total") || text.includes("empty order")), false, `no line names a test: ${JSON.stringify(lines)}`);
   assert.deepEqual(round.findings.map(({ claim }) => claim), ["new"], "only the latest test's findings show");
 });
@@ -821,11 +822,11 @@ test("review-lines-are-the-lenses-the-summary-and-the-findings-only", () => {
   assert.deepEqual(
     lensLines(round, 200),
     [
-      { text: "the code 1 · the tests 0 · needed or not … · docs and plan not covered" },
+      { text: "checked: the code, the tests · still looking at: needed or not · could not check: docs and plan" },
       { text: "1 issue found · 1 fixing" },
       { text: "  fixing · one · a.mjs:1", whole: true },
     ].map(({ whole, ...line }) => line),
-    "no header, fixes block, stopped line or agent count: a running lens reads '…', an uncovered one 'not covered', with no tone: colour marks only a phase, needs-you or a stop",
+    "no header, fixes block, stopped line or agent count: the lenses read in plain words by what became of them, with no counts and no tone: colour marks only a phase, needs-you or a stop",
   );
-  assert.deepEqual(lensLines(quiet, 200), [{ text: "the code 0" }, { text: "no issues found" }], "a round with no findings says so");
+  assert.deepEqual(lensLines(quiet, 200), [{ text: "checked: the code" }, { text: "no issues found" }], "a round with no findings says so");
 });

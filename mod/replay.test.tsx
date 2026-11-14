@@ -257,9 +257,9 @@ test('replay-counts-match-recorded-lens-record', async ($, on) => {
   const review = shown.slice(shown.findIndex(line => line.startsWith('REVIEW')))
 
   // The three survivors are upheld after the refuters; a kept fix answered each one's lens, so all read fixed.
-  expect(review.slice(0, 2), `the pane's REVIEW row at t=${last.t}: ${JSON.stringify(shown)}`).toEqual(['REVIEW   the code 1 · the tests 1 · docs and plan 1', '         3 issues found · 3 fixed'])
+  expect(review.slice(0, 2), `the pane's REVIEW row at t=${last.t}: ${JSON.stringify(shown)}`).toEqual(['REVIEW   checked: the code, the tests, docs and plan', '         3 issues found · 3 fixed'])
   expect(review.some(line => /\b(checking|to fix|fixing)\b/.test(line)), 'nothing is still open at the end of the stage').toBe(false)
-  expect(review.some(line => line.includes('not covered')), 'no lens is left uncovered').toBe(false)
+  expect(review.some(line => line.includes('could not check')), 'no lens is left uncovered').toBe(false)
 })
 
 test('replay-fixes-match-recorded-rollbacks-and-verdicts', async ($, on) => {
