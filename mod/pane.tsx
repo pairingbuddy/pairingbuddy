@@ -26,12 +26,14 @@ export function stepLines(ledger: Ledger, ended = false): string[] {
 }
 
 // The lit step is coloured by its phase through theme keys; the others are dim.
-const PHASE_COLOURS: Record<string, string> = { RED: 'error', GREEN: 'success', REFACTOR: 'claude' }
+const PHASE_COLOURS: Record<string, string> = { RED: 'error', GREEN: 'success', REFACTOR: 'suggestion' }
 function NowBuildingBlock({ Box, Text, block, columns }: Pick<PaneTags, 'Box' | 'Text'> & { block: NowBuilding; columns: number }) {
+  const row = fitProgress(block.progress, columns)
+  const legend = fitLegend(columns, row)
   return (
     <Box flexDirection="column">
       <Text bold wrap="truncate-end">now building</Text>
-      <Text wrap="truncate-end">{fitProgress(block.progress, columns)}</Text>
+      <Text wrap="truncate-end">{row}</Text>
       <Box>
         {block.current && <Text bold wrap="truncate-end">{`${block.current}  `}</Text>}
         {block.marker.steps.flatMap((step, i) => [
@@ -40,7 +42,7 @@ function NowBuildingBlock({ Box, Text, block, columns }: Pick<PaneTags, 'Box' | 
         ])}
         {block.age && <Text wrap="truncate-end">{`  ${block.age}`}</Text>}
       </Box>
-      <Text dimColor wrap="truncate-end">{fitLegend(columns)}</Text>
+      {legend && <Text dimColor wrap="truncate-end">{legend}</Text>}
       <Text dimColor wrap="truncate-end">{block.unknown > 0 ? `${block.active} active · ${block.unknown} unknown` : `${block.active} active`}</Text>
     </Box>
   )

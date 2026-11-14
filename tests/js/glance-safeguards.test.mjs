@@ -62,3 +62,15 @@ test("standing-needs-you-is-cut-after-shortening-so-what-fits-is-kept", () => {
 
   assert.deepEqual(fitted.map(({ text }) => text), ["you: something long"]);
 });
+
+test("a-review-round-agent-is-no-step-on-a-test", () => {
+  const ledger = { stage: { name: "code-safety-net", status: "active" } };
+  const review = [
+    { kind: "workflow_agent", name: "pb1 code-safety-net - refuter code-1 r1" },
+    { kind: "workflow_agent", name: "pb1 code-safety-net - course-checker g3 r5" },
+  ];
+
+  const now = glance({ ledger, spawns: review, tests: ["t1"] }).rows.now;
+
+  assert.equal(now, "safety-net review", "a refuter's finding or a fix group is not a test, so NOW names the stage");
+});

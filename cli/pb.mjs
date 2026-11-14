@@ -442,6 +442,7 @@ function gateEval(args) {
   const autoBinding = shown !== null && voided === null && autoPublishPasses(standing, root) ? refusing(() => publishBinding(root, standing, shown)) : undefined;
   let gate;
   let reason;
+  let question;
   // One transaction: the void of a stale approval, the due gate and the question, so no state sits between them.
   updateLedger(path, (ledger) => {
     const open = voided === null ? ledger : voidPublish(ledger, voided);
@@ -453,10 +454,11 @@ function gateEval(args) {
     if (reason === null && gate === PUBLISH_GATE && autoBinding === undefined) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
     if (reason === null) return repeatedAfter(contract, recordAuto(open, gate, autoBinding), gate, root);
     const facts = gate === PUBLISH_GATE ? { shown: { headSha: shown.headSha, base: shown.base, target: shown.target } } : {};
-    return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, ...facts } };
+    question = gateQuestion(gate, { reason, taskType: open.taskType, refresh: isRefreshRun(open) });
+    return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, question, ...facts } };
   });
   if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto" };
-  const asked = { ok: true, result: "needs-human", gate, reason, question: gateQuestion(gate), humanCommand: approveCommand(root, gate) };
+  const asked = { ok: true, result: "needs-human", gate, reason, question, humanCommand: approveCommand(root, gate) };
   return gate === PUBLISH_GATE ? { ...asked, shown } : asked;
 }
 

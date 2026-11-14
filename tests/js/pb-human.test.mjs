@@ -134,18 +134,12 @@ function stageCall(repo, stage) {
   };
 }
 
+// The answer to the question gate eval issued for the pending gate, exactly as the ledger stores it.
 function gateAnswerPayload(repo, gate, answer) {
   const recorded = fixture("posttooluse-askuserquestion.json");
-  const text = `Approve ${gate}?`;
-  const question = {
-    question: text, header: `PB gate: ${gate}`, multiSelect: false,
-    options: [
-      { label: "approve", description: "Approve this gate and let the run continue." },
-      { label: "redo", description: "Redo the stage before this gate." },
-      { label: "stop", description: "Stop here." },
-    ],
-  };
-  const response = { ...recorded.tool_input, questions: [question], answers: { [text]: answer } };
+  const { gate: pending, question } = repo.ledger().needsHuman;
+  assert.equal(pending, gate, "the gate answered is the one waiting");
+  const response = { ...recorded.tool_input, questions: [question], answers: { [question.question]: answer } };
   return { ...recorded, session_id: SESSION, cwd: repo.dir, tool_input: response, tool_response: response };
 }
 

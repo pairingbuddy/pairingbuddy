@@ -18,11 +18,12 @@ function ordinal(n) {
 }
 
 // The labels of the agent spawns that sit on a test, in order, runner checkpoints aside. One rule for the pane and the report.
+// Only a test's cycle names a phase: a review round's items (a finding, a fix group, a lens) are no tests.
 export function testLabels(spawns) {
   return (Array.isArray(spawns) ? spawns : [])
     .filter((spawn) => spawn && spawn.kind === "workflow_agent")
     .map((spawn) => ({ ...readLabel(spawn.name), startedAt: spawn.startedAt }))
-    .filter((label) => !label.unknown && label.item !== null && label.role !== RUNNER_ROLE);
+    .filter((label) => !label.unknown && label.item !== null && label.phase !== null && label.role !== RUNNER_ROLE);
 }
 
 // The one rule for "tries at the same step": the run of consecutive spawns, ending at labels[index], with the same role and test

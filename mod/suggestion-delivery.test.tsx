@@ -21,6 +21,15 @@ test('pane-says-delivered-after-next-spawn', async ($, on) => {
   expect(drawn.some((text) => text.includes(PENDING_PHRASE)), 'the pending line is gone once the agent spawned').toBe(false)
 })
 
+test('pane-says-delivered-to-workflow-agent-labelled-by-description', async ($, on) => {
+  await typeSuggestion($, on, { text: SUGGESTION_TEXT })
+  // A workflow script's agent() label arrives as the description, with no name.
+  await $.agent.spawn({ prompt: 'p', description: 'pb1 code-scenarios - enumerate-scenarios-and-test-cases - r1', subagentType: 'pairingbuddy:enumerate-scenarios-and-test-cases', workflow: { runId: 'wf_1', agentIndex: 1 } })
+
+  const drawn = await paneTexts($)
+  expect(drawn, 'the pane says the suggestion reached the workflow agent').toContain('delivered to listing scenarios')
+})
+
 test('spawn-before-suggestion-is-not-delivery', async ($, on) => {
   await startRunningPane($, on, {})
   await spawnStageAgent($, { stage: 'code-scenarios', role: 'enumerate-scenarios-and-test-cases' })

@@ -3,12 +3,13 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { PUBLISH_GATE, answeredGate, blockingGate, gateQuestion, gatesFor, isPublishApproved, publishApproval } from "./gates.mjs";
+import { PUBLISH_GATE, answeredGate, blockingGate, gatesFor, isPublishApproved, publishApproval } from "./gates.mjs";
 import { LedgerShaMismatch, isPublishRun, isRefreshRun, readLedger } from "./ledger.mjs";
 import { coveredTests, fixesOf, spendTotals } from "./stage-run.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, startLeaseSecondsLeft } from "./stages.mjs";
 import { humanCommand, pbCommand, shaMismatchRemedy } from "./verbs.mjs";
 import { SPIKE_SETUP_FILE } from "./unit-files.mjs";
+import { plainName } from "./plain-names.mjs";
 
 function nextStep(contract, ledger) {
   if (isStageActive(ledger)) return null;
@@ -41,10 +42,15 @@ function activeAction(ledger, pluginRoot) {
   return `Stage ${name} is active at attempt ${attempt}. Wait for its workflow. If that workflow was killed or refused to start, ${clears}`;
 }
 
+// The plain name the human knows a gate by, as the progress pane shows it.
+const plainGate = (gate) => plainName(gate) ?? `the human's OK at ${gate}`;
+
 // The question box first, since the tap records its answer; the ! command only when an asked question left the gate waiting.
-function askHuman(root, gate) {
-  const asked = JSON.stringify({ questions: [gateQuestion(gate)] });
-  return `If you have not asked them yet, ask with AskUserQuestion, passing exactly this question: ${asked}. Then run ${pbCommand("status --action")}. If you asked and the gate still waits, show them ${humanCommand(root, `approve ${gate}`)} and go no further: only they run it.`;
+function askHuman(root, gate, question) {
+  const fallback = `tell the human the run still needs ${plainGate(gate)} and show them ${humanCommand(root, `approve ${gate}`)}, then go no further: only they run it.`;
+  if (question === undefined) return `Ask the human for it: ${fallback}`;
+  const asked = JSON.stringify({ questions: [question] });
+  return `If you have not asked them yet, ask with AskUserQuestion, passing exactly this question: ${asked}. Then run ${pbCommand("status --action")}. If you asked and it still waits, ${fallback}`;
 }
 
 // The order is what the gate enforces: a stop, then a gate, and only then a stage. A stop comes before an active
@@ -55,12 +61,12 @@ export function nextAction(contract, ledger, root, pluginRoot) {
   const finishVerb = isPublishRun(ledger) ? "publish" : isRefreshRun(ledger) ? "pr refresh" : null;
   if (ledger.stop === null && finishVerb !== null && publishApproval(ledger) === "keep-local") return `The human answered keep local at ${PUBLISH_GATE}, so ${isPublishRun(ledger) ? "the unit is kept local" : "the PR is left unchanged"}. Run ${pbCommand(finishVerb)} to finish closing it.`;
   const answered = answeredGate(gates, ledger);
-  if (answered !== undefined) return `Gate ${answered.name} was answered ${answered.answer}. Only the human can go on: ask them to type ${humanCommand(root, `approve ${answered.name}`)}`;
+  if (answered !== undefined) return `The human answered ${answered.answer} at ${plainGate(answered.name)}. Only they can go on: ask them to type ${humanCommand(root, `approve ${answered.name}`)}`;
   if (ledger.stop !== null) return `The run has stopped: ${ledger.stop.reason}. Nothing skips a stop, so report ${pbCommand("status")} to the human and go no further. Only if they say to go on, ${pbCommand("stage fail")} clears it.`;
   if (isStageActive(ledger)) return activeAction(ledger, pluginRoot);
   if (ledger.needsHuman !== null) {
     const { gate, reason } = ledger.needsHuman;
-    return `Gate ${gate} needs the human: ${reason}. ${askHuman(root, gate)}`;
+    return `The run is waiting for ${plainGate(gate)}: ${reason}. ${askHuman(root, gate, ledger.needsHuman.question)}`;
   }
   const gate = blockingGate(gates, ledger);
   if (gate !== undefined) return `Gate ${gate.name} is due. Run ${pbCommand("gate eval")}.`;

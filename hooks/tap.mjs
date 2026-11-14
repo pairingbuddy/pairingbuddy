@@ -109,14 +109,9 @@ function runGates({ gatesFor, loadStages }, ledger) {
   return gatesFor(loadStages(pluginRoot()), ledger.taskType);
 }
 
-function askedAnswer({ gateAnswer }, ledger, toolResponse) {
-  const gate = ledger.needsHuman?.gate;
-  return gate === undefined ? null : gateAnswer(gate, toolResponse);
-}
-
 // Pure: the binding of a publish answer is computed once by the caller, never here.
 function withAnswer(modules, ledger, toolResponse, binding) {
-  const answer = askedAnswer(modules, ledger, toolResponse);
+  const answer = modules.gateAnswer(ledger, toolResponse);
   return answer === null ? ledger : modules.recordAnswer(ledger, ledger.needsHuman.gate, answer, runGates(modules, ledger), binding);
 }
 
@@ -136,7 +131,8 @@ function refuseAnswer({ updateLedger }, ledgerPath, gate, e) {
 function tapQuestion(modules, root, ledgerPath, toolResponse) {
   const { appendRedoFeedback, isBindingRefusal, publishBinding, readLedger, updateLedger, PUBLISH_LABEL, KEEP_LOCAL_LABEL } = modules;
   const ledger = readLedger(ledgerPath);
-  const answer = askedAnswer(modules, ledger, toolResponse);
+  // Recorded only on an exact match with the question gate eval issued and stored for the waiting gate.
+  const answer = modules.gateAnswer(ledger, toolResponse);
   if (answer === null) return;
   let binding;
   if (answer === PUBLISH_LABEL) {

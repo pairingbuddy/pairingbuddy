@@ -27,8 +27,8 @@ test("marker-lights-only-current-step", async (t) => {
 
   const layouts = [
     { current: "RED", lit: ["RED"], marks: ["\u25cf", "\u203a", "\u203a"] },
-    { current: "GREEN", lit: ["GREEN"], marks: ["\u203a", "\u25cf", "\u203a"] },
-    { current: "REFACTOR", lit: ["REFACTOR"], marks: ["\u203a", "\u203a", "\u25cf"] },
+    { current: "GREEN", lit: ["GREEN"], marks: ["\u2713", "\u25cf", "\u203a"] },
+    { current: "REFACTOR", lit: ["REFACTOR"], marks: ["\u2713", "\u2713", "\u25cf"] },
   ];
   for (const { current, lit, marks } of layouts) {
     await t.test(current, () => {
@@ -38,8 +38,16 @@ test("marker-lights-only-current-step", async (t) => {
       assert.deepEqual(marker.steps.map((step) => Object.keys(step)), [["name", "lit", "mark"], ["name", "lit", "mark"], ["name", "lit", "mark"]], `${current}: each step has exactly name, lit and mark`);
       assert.deepEqual(marker.steps.map((step) => step.name), ["RED", "GREEN", "REFACTOR"], `${current}: the steps read RED, GREEN, REFACTOR in order`);
       assert.deepEqual(marker.steps.filter((step) => step.lit).map((step) => step.name), lit, `${current}: only the current step is lit`);
-      assert.deepEqual(marker.steps.map((step) => step.mark), marks, `${current}: a bullet before the current step, chevrons before the others`);
+      assert.deepEqual(marker.steps.map((step) => step.mark), marks, `${current}: a tick before the steps passed, a bullet before the current step, chevrons before the steps to come`);
     });
+  }
+});
+
+test("marker-is-empty-when-no-step-names-a-phase", () => {
+  const unphased = [{ kind: "workflow_agent", name: buildLabel({ stage: "code-safety-net", phase: null, role: "refuter", item: "code-1", round: 1 }) }];
+
+  for (const [why, spawns] of [["no spawn yet", []], ["the current step has no phase", unphased]]) {
+    assert.deepEqual(cycleMarker({ spawns, ledger: { taskType: "new_feature" } }), { steps: [] }, `${why}: no step is drawn, rather than a marker with nothing lit`);
   }
 });
 
@@ -51,7 +59,7 @@ test("bug-fix-drops-refactor", () => {
 
   assert.deepEqual(marker.steps.map((step) => step.name), ["RED", "GREEN"], "a bug fix has no refactor step, so the marker reads RED, GREEN");
   assert.deepEqual(marker.steps.map((step) => step.lit), [false, true], "the current step is still the only one lit");
-  assert.deepEqual(marker.steps.map((step) => step.mark), ["\u203a", "\u25cf"], "a bullet before the current step, a chevron before the other");
+  assert.deepEqual(marker.steps.map((step) => step.mark), ["\u2713", "\u25cf"], "a tick before RED, passed, and a bullet before the current step");
 });
 
 test("step-age-unknown-without-clock", () => {

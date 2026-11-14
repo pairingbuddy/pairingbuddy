@@ -175,7 +175,7 @@ export function validateLedger(ledger) {
         checkNullableObject(ledger.stop, "stop", { reason: [isNonEmptyString, "a non-empty string"], seq: [isCount, "a non-negative integer"], code: [isNonEmptyString, "a non-empty string"] }, errors);
         break;
       case "needsHuman":
-        checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"], shown: [isObject, "an object"] }, errors, { optional: ["shown"] });
+        checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"], shown: [isObject, "an object"], question: [isObject, "an object"] }, errors, { optional: ["shown", "question"] });
         break;
       case "fixes":
         checkObject(ledger.fixes, "fixes", { rollbacks: [Array.isArray, "an array"] }, errors);

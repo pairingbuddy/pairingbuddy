@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 
 import { isCheckpointCall, isKey, keyFitsStep, parseRollbackArgs } from "./checkpoint.mjs";
 import { parseKey } from "./keys.mjs";
-import { answeredGate, blockingGate, gateQuestion, gatesFor, isGateQuestionCall } from "./gates.mjs";
+import { answeredGate, blockingGate, gatesFor, isGateQuestionCall, pendingQuestion } from "./gates.mjs";
 import { LedgerShaMismatch, ownerAgeMs, readLedger, updateLedger } from "./ledger.mjs";
 import { d17Denial } from "./d17.mjs";
 import { commonDirectory, findRepo } from "./git-files.mjs";
@@ -25,7 +25,6 @@ const EXPECTED_FIELDS = ["session_id", "cwd", "tool_name", "permission_mode"];
 const AGENT_PAIR = ["agent_id", "agent_type"];
 const PROTECTED_CONFIGS = ["test-config.json", "git-config.json"];
 const SETTINGS_FILES = ["settings.json", "settings.local.json"];
-const GATE_HEADER_START = "PB gate:";
 const RUNNER_AGENT = `${PREFIX}runner`;
 const PB_COMMAND = `node ${shellWord(join(PLUGIN_ROOT, "cli", "pb.mjs"))}`;
 // Each stop reason is spelled out, and a bare `stage stop` is not on the list.
@@ -440,15 +439,16 @@ function checkBash(payload, _ledgerPath, root) {
 
 // ---------- AskUserQuestion ----------
 
-const asksGate = (gate, question) => question?.question === gateQuestion(gate).question || (typeof question?.header === "string" && question.header.startsWith(GATE_HEADER_START));
+// A question with the pending gate's text or header is that gate's question, so it must be the one asked, exactly.
+const asksGate = (asked, question) => question?.question === asked.question || question?.header === asked.header;
 
 function checkQuestion({ tool_input: toolInput }, ledgerPath) {
   if (toolInput?.answers !== undefined) throw new Denied("AskUserQuestion cannot carry its own answers: only a human answers a question.");
-  const gate = readableLedger(ledgerPath)?.needsHuman?.gate;
+  const asked = pendingQuestion(readableLedger(ledgerPath));
   const questions = toolInput?.questions;
-  if (gate === undefined || !Array.isArray(questions) || !questions.some((question) => asksGate(gate, question))) return;
-  if (!isGateQuestionCall(gate, questions)) {
-    throw new Denied(`Gate ${gate} takes one question, exactly as pb gate eval gave it, with nothing else in the call: ${JSON.stringify(gateQuestion(gate))}`);
+  if (asked === null || !Array.isArray(questions) || !questions.some((question) => asksGate(asked, question))) return;
+  if (!isGateQuestionCall(asked, questions)) {
+    throw new Denied(`The waiting gate takes one question, exactly as pb gate eval gave it, with nothing else in the call: ${JSON.stringify(asked)}`);
   }
 }
 

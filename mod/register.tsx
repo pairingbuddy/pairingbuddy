@@ -118,7 +118,7 @@ export const register: Register = (on, options) => {
     const spawn = spawnOf(e)
     spawns.push(spawn)
     // Fire and forget: a mod-state write that stalls or fails must never hold or change the spawn result.
-    read($, pendingAtom).then((pending) => recordDelivery($, pending as PendingSuggestion | null, e.name)).catch(() => {})
+    read($, pendingAtom).then((pending) => recordDelivery($, pending as PendingSuggestion | null, spawn.name)).catch(() => {})
     // The stamp follows without holding the spawn; a failed clock leaves the spawn unstamped.
     startedAtOf($).then((startedAt) => { if (startedAt) spawn.startedAt = startedAt }).catch(() => {})
     // next(e) runs first and synchronously; the agent's id is read off its result when that lands.

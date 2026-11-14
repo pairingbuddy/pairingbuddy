@@ -35,11 +35,13 @@ const tapAnswer = (repo, question, answer) => {
 };
 
 const GATE = "G:task-end";
+const ASKED_REASON = "the human decides";
+const ASKED = gateQuestion(GATE, { reason: ASKED_REASON });
 const askedRepo = () => makeRepo({
   ledger: {
     stage: { name: "code-safety-net", status: "done", runId: "wf_1", attempt: ATTEMPT, startedAt: null },
     stages: [{ name: "code-safety-net", status: "done" }],
-    needsHuman: { gate: GATE, reason: "the human decides", seq: 1 },
+    needsHuman: { gate: GATE, reason: ASKED_REASON, seq: 1, question: ASKED },
   },
 });
 
@@ -69,7 +71,7 @@ const STOPPING_PATHS = {
     writeArtifact(repo, TESTS_KEY, returnOf(TESTS_KEY, { commit_subject: "add placeholders", tests: [row] }));
     return { repo, result: pb(repo, "checkpoint", "--step", "placeholders", "--from", TESTS_KEY) };
   },
-  "human answering stop": () => { const repo = askedRepo(); const { status, stdout, stderr } = tapAnswer(repo, gateQuestion(GATE), "stop"); return { repo, result: { code: status, stdout, stderr } }; },
+  "human answering stop": () => { const repo = askedRepo(); const { status, stdout, stderr } = tapAnswer(repo, ASKED, "stop"); return { repo, result: { code: status, stdout, stderr } }; },
 };
 const stopOn = (name) => STOPPING_PATHS[name]();
 

@@ -87,7 +87,7 @@ export function setupReplay(on: Function): Rig {
 // mounted, searched and unmounted. The handlers come from setupReplay, called once before `$` is touched.
 // A spawn step raises `agent.spawn` through the engine's `$`, so the mod under test (the instance the kit
 // mounted) sees it. An `Agent` record is a subagent of that type; a `workflow_agent` carries its label as
-// the spawn's `name`. A `Workflow` record is no agent, so it is not raised. Every step then redraws.
+// the spawn's `description`, with `workflow` set and no `name`, as a live workflow agent does. A `Workflow` record is no agent, so it is not raised. Every step then redraws.
 // A finish step raises `turn.complete` for a spawn that recorded a duration, at its `t` plus its `seconds`, with the
 // agentId the spawn resolved: that event carries a workflow agent's agentId (`agent.list` leaves workflow agents out).
 // A call step raises `tool.call` for a recorded StructuredOutput call at its `t`, with the arguments it recorded and the
@@ -204,9 +204,9 @@ async function feed($: any, recorded: Recorded): Promise<string | undefined> {
   } else if (recorded.kind === 'workflow_agent') {
     return (await $.agent.spawn({
       prompt: 'recorded',
-      description: String(recorded.phase),
-      name: String(recorded.name),
+      description: String(recorded.name),
       subagentType: String(recorded.agentType),
+      workflow: { runId: 'wf_recorded', agentIndex: 1 },
     })).agentId
   }
   return undefined

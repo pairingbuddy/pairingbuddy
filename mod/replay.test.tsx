@@ -234,8 +234,9 @@ test('replay-counts-match-recorded-lens-record', async ($, on) => {
 
   const shown = paneTexts(last)
 
-  expect(shown.filter(text => text.startsWith('findings')), `the pane's findings line at t=${last.t}: ${JSON.stringify(shown)}`).toEqual(['findings  3 found · 3 standing'])
-  expect(shown.some(text => text.includes('being challenged')), 'nothing is still being challenged at the end of the stage').toBe(false)
+  // The three survivors stand after the refuters; the kept fixes' checks then name two lenses, so their issues read fixed.
+  expect(shown.filter(text => text.includes(' issues found')), `the pane's issues line at t=${last.t}: ${JSON.stringify(shown)}`).toEqual(['3 issues found · 2 fixed · 1 stands'])
+  expect(shown.some(text => text.includes('being checked ·') || text.startsWith('  being checked')), 'nothing is still being checked at the end of the stage').toBe(false)
   expect(shown.some(text => text.startsWith('not covered')), 'no lens is left uncovered').toBe(false)
 })
 
@@ -252,11 +253,11 @@ test('replay-fixes-match-recorded-rollbacks-and-verdicts', async ($, on) => {
 
   const fixBlock = shown.slice(shown.findIndex(text => text.startsWith('fixes')))
   expect(fixBlock.slice(0, 5), `the pane's fix block at t=${last.t}: ${JSON.stringify(shown)}`).toEqual([
-    `fixes  4 tried · 1 undone of ${MAX_FIX_UNDOS} allowed`,
+    `fixes  4 tried, 3 kept, 1 undone of ${MAX_FIX_UNDOS} allowed`,
     '  fix 1  undone: the tests went red',
     '  fix 2  kept',
-    '  fix 3  kept: the check said it is better',
-    '  fix 4  kept: the check said it is better',
+    '  fix 3  kept',
+    '  fix 4  kept',
   ])
   expect(shown.filter(text => /^ {2}fix \d+ /.test(text)).length, 'the pane draws exactly four fix lines').toBe(4)
 

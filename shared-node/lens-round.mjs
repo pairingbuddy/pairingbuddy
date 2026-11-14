@@ -4,7 +4,7 @@ import { parseKey, buildFindingId } from "./keys.mjs";
 import { readLabel } from "./labels.mjs";
 import { plainName } from "./plain-names.mjs";
 import { MAX_FIX_UNDOS } from "./limits.mjs";
-import { acceptVerdict } from "./lens-merge.mjs";
+import { acceptVerdict, lensOfFinding } from "./lens-merge.mjs";
 import { ATTEMPT_CAP } from "./stop-codes.mjs";
 import { maxAgentsOf } from "./stage-graph.mjs";
 import { TOKENS_UNIT } from "./spent-line.mjs";
@@ -48,7 +48,7 @@ function lensReturns(calls, stage, attempt) {
 const PART_BREAK = " · ";
 
 // The shown verdicts, named once: the key is the tally name in counts, the value is what the view shows.
-const VERDICTS = { stands: "stands", knockedDown: "knocked-down", challenging: "challenging", unchallenged: "unchallenged" };
+const VERDICTS = { stands: "stands", knockedDown: "knocked-down", challenging: "challenging", unchallenged: "unchallenged", fixed: "fixed", fixUndone: "fix-undone" };
 
 // The lens states, named once.
 const LENS_STATES = { returned: "returned", running: "running", uncovered: "uncovered" };
@@ -97,6 +97,18 @@ function lensFindings(returned, verdicts) {
   return returned.flatMap((one) => returnFindings(one, verdicts));
 }
 
+// A finding still standing whose lens a kept fix answered reads fixed; one whose lens fix was only undone still stands, and says so.
+function answeredByFixes(findings, fixes) {
+  const lensesOf = (outcome) => new Set(fixes.filter((fix) => fix.outcome === outcome && fix.lens !== undefined).map(({ lens }) => lens));
+  const [kept, undone] = [lensesOf(FIX_OUTCOMES.kept), lensesOf(FIX_OUTCOMES.undone)];
+  const settled = (verdict) => verdict === VERDICTS.stands || verdict === VERDICTS.unchallenged;
+  return findings.map((finding) => {
+    const lens = lensOfFinding(finding);
+    if (finding.verdict !== VERDICTS.knockedDown && kept.has(lens)) return { ...finding, verdict: VERDICTS.fixed };
+    return settled(finding.verdict) && undone.has(lens) ? { ...finding, verdict: VERDICTS.fixUndone } : finding;
+  });
+}
+
 function verdictCounts(findings) {
   const counts = { found: findings.length };
   for (const tally of Object.keys(VERDICTS)) {
@@ -142,8 +154,10 @@ function fixOutcome({ item, round }, { checkerReturns, returnedFixes, checkers, 
   const sameFix = (other) => other.item === item && other.round === round;
   const verdict = checkerReturns.find(({ key, input }) => sameFix(key) && Object.hasOwn(CHECKER_VERDICTS, input.verdict));
   const rollback = rollbacks.find(({ key }) => sameFix(key));
-  if (rollback) return { outcome: FIX_OUTCOMES.undone, why: undoReason(rollback, verdict) };
-  if (verdict) return CHECKER_VERDICTS[verdict.input.verdict];
+  // The lens the fix answered: a group is one lens's findings, and the check names one of them (as the gate reads it).
+  const lens = typeof verdict?.input.finding_id === "string" ? { lens: lensOfFinding({ id: verdict.input.finding_id }) } : {};
+  if (rollback) return { outcome: FIX_OUTCOMES.undone, why: undoReason(rollback, verdict), ...lens };
+  if (verdict) return { ...CHECKER_VERDICTS[verdict.input.verdict], ...lens };
   if (returnedFixes.some(sameFix) && ordered.some((other) => other.round > round)) return { outcome: FIX_OUTCOMES.kept };
   return { outcome: checkers.some(sameFix) ? FIX_OUTCOMES.checking : FIX_OUTCOMES.fixing };
 }
@@ -186,7 +200,7 @@ function lensStates(spawned, returned) {
 
 /**
  * @typedef {{ stage: string, lenses: { name: string, state: string, found?: number }[], findings: { id: string, lens: string, where?: string, claim?: string, verdict: string }[],
- *   counts: Record<string, number>, fixes: { group: string, round: number, outcome: string, why?: string }[], undone: number, cap: number, stopped: boolean,
+ *   counts: Record<string, number>, fixes: { group: string, round: number, outcome: string, why?: string, lens?: string }[], undone: number, cap: number, stopped: boolean,
  *   spend: { agents: number, maxAgents: number, tokens: number | null } }} LensRound
  */
 
@@ -207,14 +221,15 @@ export function lensRound({ ledger, calls: allCalls = [], spawns: allSpawns = []
   const returned = lensReturns(calls, stage, attempt);
   if (!spawned.length && !returned.length && !stopped) return undefined;
   const sources = { calls, spawns, stage, attempt, stageRollbacks: stageRollbacksOf(ledger, stage) };
-  const findings = lensFindings(returned, refuterVerdicts(sources));
+  const fixes = fixOutcomes(sources);
+  const findings = answeredByFixes(lensFindings(returned, refuterVerdicts(sources)), fixes);
   const spend = spendOf({ ledger, spawns, contract, stage, attempt });
   return {
     stage: shownName(stage),
     lenses: lensStates(spawned, returned),
     findings,
     counts: verdictCounts(findings),
-    fixes: fixOutcomes(sources),
+    fixes,
     undone: sources.stageRollbacks.length,
     cap: MAX_FIX_UNDOS,
     stopped,
@@ -228,22 +243,29 @@ function lensSummary({ name, state, found }) {
   return `${LENS_MARKS[state]} ${name}${state === LENS_STATES.returned ? ` ${found}` : ""}`;
 }
 
-// The plain verdict wording, named once; the per-finding lines and the count line both use it.
+// The plain verdict wording, named once; the per-finding lines and the count line both use it. A finding no refuter
+// challenged stands, as one its refuter upheld does.
 const VERDICT_WORDS = {
   [VERDICTS.stands]: "stands",
-  [VERDICTS.knockedDown]: "knocked down",
-  [VERDICTS.challenging]: "being challenged",
-  [VERDICTS.unchallenged]: "not challenged",
+  [VERDICTS.knockedDown]: "dropped, shown wrong",
+  [VERDICTS.challenging]: "being checked",
+  [VERDICTS.unchallenged]: "stands",
+  [VERDICTS.fixed]: "fixed",
+  [VERDICTS.fixUndone]: "stands, fix undone",
 };
 
-// The findings count line's parts: the tally word per count, left out when 0 (found always shows).
-// Wording comes from VERDICT_WORDS; "standing" is the one tally word that differs from the per-finding "stands".
-const COUNT_WORD_OVERRIDES = { stands: "standing" };
-const COUNT_PARTS = Object.keys(VERDICTS).map((tally) => [tally, COUNT_WORD_OVERRIDES[tally] ?? VERDICT_WORDS[VERDICTS[tally]]]);
-
+// The issues count line: how many were found, then what happens to them, each part left out when 0. An issue no refuter
+// challenged stands, as one its refuter upheld does.
 function findingsSummary(counts) {
-  const parts = [`${counts.found} found`, ...COUNT_PARTS.filter(([tally]) => counts[tally] > 0).map(([tally, word]) => `${counts[tally]} ${word}`)];
-  return `findings  ${parts.join(PART_BREAK)}`;
+  const stand = counts.stands + counts.unchallenged + counts.fixUndone;
+  const parts = [
+    `${plural(counts.found, "issue")} found`,
+    ...(counts.fixed > 0 ? [`${counts.fixed} fixed`] : []),
+    ...(stand > 0 ? [`${stand} ${stand === 1 ? "stands" : "stand"}`] : []),
+    ...(counts.challenging > 0 ? [`${counts.challenging} being checked`] : []),
+    ...(counts.knockedDown > 0 ? [`${counts.knockedDown} dropped`] : []),
+  ];
+  return parts.join(PART_BREAK);
 }
 
 const FIX_WORDS = {
@@ -254,8 +276,17 @@ const FIX_WORDS = {
   [FIX_OUTCOMES.fixing]: "fixing",
 };
 
+// A kept fix needs no reason: that the check found it better is what kept means.
 function fixLine({ outcome, why }, index) {
-  return { text: `  fix ${index + 1}  ${FIX_WORDS[outcome]}${why ? `: ${why}` : ""}` };
+  const reason = why && outcome !== FIX_OUTCOMES.kept ? `: ${why}` : "";
+  return { text: `  fix ${index + 1}  ${FIX_WORDS[outcome]}${reason}` };
+}
+
+// The fixes count line: how many were tried, how many kept, and how many undone against the cap; kept and undone left out when 0.
+function fixesSummary({ fixes, undone, cap }) {
+  const kept = fixes.filter(({ outcome }) => outcome === FIX_OUTCOMES.kept).length;
+  const parts = [`${fixes.length} tried`, ...(kept > 0 ? [`${kept} kept`] : []), ...(undone > 0 ? [`${undone} undone of ${cap} allowed`] : [])];
+  return `fixes  ${parts.join(", ")}`;
 }
 
 const SHOWN_FIXES = 4;
@@ -269,8 +300,13 @@ function foldedFixLines(fixes) {
 
 const SHOWN_FINDINGS = 3;
 
+// Run files are the run's own working files, not the user's code, so their folder is left out.
+const RUN_FOLDER = ".pairingbuddy/run/";
+const shownWhere = (where) => (typeof where === "string" && where.startsWith(RUN_FOLDER) ? where.slice(RUN_FOLDER.length) : where);
+
+// One line per finding, never folded: what happens to it, the point, then where.
 function findingLine({ verdict, where, claim }) {
-  return { text: `  ${[VERDICT_WORDS[verdict], where, claim].filter(Boolean).join("  ")}` };
+  return { text: `  ${[VERDICT_WORDS[verdict], claim, shownWhere(where)].filter(Boolean).join(PART_BREAK)}`, whole: true };
 }
 
 function findingLines(findings) {
@@ -282,9 +318,10 @@ function findingLines(findings) {
 const cut = (text, columns) => (text.length > columns ? `${text.slice(0, columns - 1)}…` : text);
 
 // A line longer than columns folds at its PART_BREAK breaks onto indented continuation lines that each fit;
-// a line with no break (or a part still too long) is cut to columns characters, the last being an ellipsis.
-function fit({ text, ...rest }, columns) {
+// a whole line, a line with no break (or a part still too long) is cut to columns characters, the last being an ellipsis.
+function fit({ text, whole = false, ...rest }, columns) {
   if (!(columns > 0) || text.length <= columns) return [{ text, ...rest }];
+  if (whole) return [{ text: cut(text, columns), ...rest }];
   const rows = [];
   for (const part of text.split(PART_BREAK)) {
     const last = rows.length - 1;
@@ -310,7 +347,7 @@ export function lensLines(round, columns = 0) {
   if (uncovered.length) lines.push({ text: `not covered: ${uncovered.map(({ name }) => name).join(", ")}`, tone: "warning" });
   if (round.counts.found > 0) lines.push({ text: findingsSummary(round.counts) }, ...findingLines(round.findings));
   if (round.fixes.length || round.undone > 0) {
-    lines.push({ text: `fixes  ${round.fixes.length} tried${PART_BREAK}${round.undone} undone of ${round.cap} allowed` });
+    lines.push({ text: fixesSummary(round) });
     lines.push(...foldedFixLines(round.fixes));
   }
   if (round.stopped) lines.push({ text: `stopped: ${plainName(ATTEMPT_CAP)}`, tone: "error" });

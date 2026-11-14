@@ -271,7 +271,7 @@ describe("publish-run-action-walks-pr-draft-then-gate", () => {
 
     const action = statusAction(repo);
 
-    assert.match(action, /Gate G:publish needs the human/);
+    assert.match(action, /The run is waiting for your OK to publish/);
     assert.match(action, /human approve G:publish/, "it shows the human command");
     assert.equal(action.includes(pbCommand("publish")), false, "it does not name pb publish");
     assert.equal(action.includes(pbCommand("task end")), false, "it does not name pb task end");

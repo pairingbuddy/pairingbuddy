@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { gateQuestion } from "../../shared-node/gates.mjs";
 import { buildKey } from "../../shared-node/keys.mjs";
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 
@@ -437,24 +438,19 @@ describe("with no usable pointer the call stays outside any run", () => {
 
 // ---------- the tap ----------
 
+// The question gate eval issued for the pending gate, as the ledger stores it.
+const pending = (gate, reason) => ({ gate, reason, seq: 1, question: gateQuestion(gate, { reason }) });
+
 function questionAnswer(cwd, session, gate, answer) {
   const recorded = fixture("posttooluse-askuserquestion.json");
-  const text = `Approve ${gate}?`;
-  const asked = {
-    question: text, header: `PB gate: ${gate}`, multiSelect: false,
-    options: [
-      { label: "approve", description: "Approve this gate and let the run continue." },
-      { label: "redo", description: "Redo the stage before this gate." },
-      { label: "stop", description: "Stop here." },
-    ],
-  };
-  const response = { ...recorded.tool_input, questions: [asked], answers: { [text]: answer } };
+  const asked = gateQuestion(gate, { reason: "asked" });
+  const response = { ...recorded.tool_input, questions: [asked], answers: { [asked.question]: answer } };
   return { ...recorded, session_id: session, cwd, tool_input: response, tool_response: response };
 }
 
 describe("the tap uses the same lookup", () => {
   test("a human's answer from outside is recorded", () => {
-    const { repo, session, outside } = boundRepo(allDoneLedger({ needsHuman: { gate: TASK_END, reason: "asked", seq: 1 } }));
+    const { repo, session, outside } = boundRepo(allDoneLedger({ needsHuman: pending(TASK_END, "asked") }));
 
     runTap(questionAnswer(outside, session, TASK_END, "approve"));
 
@@ -484,7 +480,7 @@ describe("the tap uses the same lookup", () => {
   });
 
   test("an unbound session from outside reaches no run", () => {
-    const repo = makeRepo({ ledger: allDoneLedger({ needsHuman: { gate: TASK_END, reason: "asked", seq: 1 } }) });
+    const repo = makeRepo({ ledger: allDoneLedger({ needsHuman: pending(TASK_END, "asked") }) });
 
     runTap(questionAnswer(makeDir("binding-outside-"), newSession(), TASK_END, "approve"));
 

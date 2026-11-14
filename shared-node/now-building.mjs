@@ -40,9 +40,13 @@ const LEGEND = [
   ["waiting", "to do"],
 ];
 
-// The key to the progress marks as one line, glyphs taken from MARKS. Whole entries drop from the end until it fits the width.
-export function fitLegend(columns) {
-  const entries = LEGEND.map(([mark, words]) => `${MARKS[mark]} ${words}`);
+// Whether the progress row draws a mark: each of its items starts with its glyph, the first at the start, the rest after GAP.
+const drawsMark = (row, glyph) => String(row ?? "").split(GAP).some((part) => part.startsWith(`${glyph} `));
+
+// The key to the marks the progress row draws, as one line, glyphs taken from MARKS; empty when it draws none.
+// Whole entries drop from the end until it fits the width.
+export function fitLegend(columns, row) {
+  const entries = LEGEND.filter(([mark]) => drawsMark(row, MARKS[mark])).map(([mark, words]) => `${MARKS[mark]} ${words}`);
   const fits = (count) => fitsWidth(entries.slice(0, count).join(GAP), columns);
   let count = entries.length;
   while (count > 1 && !fits(count)) count -= 1;
@@ -122,11 +126,15 @@ export const nameOf = (names, testId) => (isText(testId) && Object.hasOwn(names 
 
 export const testName = ({ testId, tests, scenarios }) => nameOf(testNames({ tests, scenarios }), testId);
 
-// The RED/GREEN/REFACTOR marker as data the pane colours: a bullet before the current step, a chevron before the rest.
+// The RED/GREEN/REFACTOR marker as data the pane colours: a tick before the steps this test passed, a bullet before the
+// current step, a chevron before the steps to come. No steps at all when the current step names no phase of the cycle.
 export function cycleMarker({ spawns, ledger }) {
   const current = currentStep(spawns)?.phase;
   const phases = refactorsPerCycle(ledger?.taskType) ? PHASES : PHASES.filter((name) => name !== "REFACTOR");
-  return { steps: phases.map((name) => ({ name, lit: name === current, mark: name === current ? "●" : "›" })) };
+  const at = phases.indexOf(current);
+  if (at < 0) return { steps: [] };
+  const mark = (index) => (index < at ? "✓" : index === at ? "●" : "›");
+  return { steps: phases.map((name, index) => ({ name, lit: name === current, mark: mark(index) })) };
 }
 
 // How long the current step has run, as a run-time clock; unknown when the spawn or the clock carries no time.

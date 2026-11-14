@@ -273,6 +273,8 @@ test('pane-draws-lens-lines-below-now-building', async ($, on) => {
   engine(on, lensLedger('code-safety-net'))
   await start($)
 
+  // The last test's step is the now-building block's; a lens is no step on a test.
+  await $.agent.spawn({ prompt: 'p', description: 'd', name: 'pb1 code-tdd GREEN implement-code ten-percent-off r1', subagentType: 'pairingbuddy:implement-code' })
   const spawned = await $.agent.spawn({ prompt: 'p', description: 'd', name: 'pb1 code-safety-net - lens code r1', subagentType: 'pairingbuddy:lens' })
   await $.tool.call({ tool: 'StructuredOutput', tool_use_id: 'tu1', pb_key: 'code-safety-net.lens.code.r1.a1', findings: [{ where: 'discount.py:3', claim: 'rounds the wrong way' }], agentId: spawned.agentId })
   await clock.advance(POLL_MS * 2)

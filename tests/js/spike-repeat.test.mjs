@@ -166,16 +166,12 @@ test("gate-pass-last-unit-advances-to-document", async (t) => {
 const PAYLOADS = join(ROOT, "tests", "probes", "fixtures", "payloads");
 
 // What a finished AskUserQuestion carries when the human picks `answer` at `gate`.
+// The answer to the question gate eval issued for the pending gate, exactly as the ledger stores it.
 function gateAnswerPayload(repo, gate, answer) {
   const recorded = JSON.parse(readFileSync(join(PAYLOADS, "posttooluse-askuserquestion.json"), "utf8"));
-  const text = `Approve ${gate}?`;
-  const options = [
-    { label: "approve", description: "Approve this gate and let the run continue." },
-    { label: "redo", description: "Redo the stage before this gate." },
-    { label: "stop", description: "Stop here." },
-  ];
-  const question = { question: text, header: `PB gate: ${gate}`, multiSelect: false, options };
-  const response = { ...recorded.tool_input, questions: [question], answers: { [text]: answer } };
+  const { gate: pending, question } = repo.ledger().needsHuman;
+  assert.equal(pending, gate, "the gate answered is the one waiting");
+  const response = { ...recorded.tool_input, questions: [question], answers: { [question.question]: answer } };
   return { ...recorded, cwd: repo.dir, tool_input: response, tool_response: response };
 }
 

@@ -71,8 +71,10 @@ export async function startedAtOf($: EngineInterface): Promise<string | undefine
   }
 }
 
-// What an agent.spawn event says about the agent: a named one is a workflow agent, any other a subagent.
-export function spawnOf(e: Pick<AgentSpawnInput, 'name' | 'subagentType' | 'description'>): Spawn {
+// What an agent.spawn event says about the agent. A workflow script's agent() label arrives as the spawn's description, with
+// `workflow` set and no name; a named spawn is read as a workflow agent too. Any other is a subagent.
+export function spawnOf(e: Partial<Pick<AgentSpawnInput, 'name' | 'subagentType' | 'description' | 'workflow'>>): Spawn {
+  if (e.workflow) return { kind: 'workflow_agent', name: e.name ?? e.description ?? '', subagentType: e.subagentType }
   return e.name
     ? { kind: 'workflow_agent', name: e.name, subagentType: e.subagentType }
     : { kind: 'Agent', name: e.subagentType ?? e.description ?? '', subagentType: e.subagentType }
