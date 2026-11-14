@@ -243,8 +243,8 @@ test("counts-sum-verdicts", () => {
 
   assert.deepEqual(
     round.counts,
-    { found: 5, stands: 2, knockedDown: 1, challenging: 1, unchallenged: 1 },
-    "counts tally every finding across both lenses by its verdict, and stands, knockedDown, challenging and unchallenged sum to found",
+    { found: 5, stands: 2, knockedDown: 1, challenging: 1, unchallenged: 1, fixed: 0, fixUndone: 0 },
+    "counts tally every finding across both lenses by its verdict, and stands, knockedDown, challenging, unchallenged, fixed and fixUndone sum to found",
   );
 });
 
@@ -402,9 +402,9 @@ test("lines-show-header-lenses-and-findings-summary", () => {
       { text: "review round \u00b7 safety-net review" },
       { text: "lenses  \u2713 the code 2 \u00b7 \u2713 the tests 1 \u00b7 \u25b8 needed or not \u00b7 \u2717 docs and plan" },
       { text: "not covered: docs and plan", tone: "warning" },
-      { text: "findings  3 found \u00b7 1 standing \u00b7 1 knocked down \u00b7 1 not challenged" },
+      { text: "3 issues found \u00b7 2 stand \u00b7 1 dropped" },
     ],
-    "the first lines are the header, the lens summary, the uncovered lenses in warning tone, and the findings count line",
+    "the first lines are the header, the lens summary, the uncovered lenses in warning tone, and the issues count line, where an issue no refuter challenged stands",
   );
 });
 test("lines-show-fixes-and-stopped", () => {
@@ -419,7 +419,7 @@ test("lines-show-fixes-and-stopped", () => {
   const stoppedLines = lensLines(stopped, 200);
 
   const fixesBlock = [
-    { text: `fixes  4 tried \u00b7 1 undone of ${MAX_FIX_UNDOS} allowed` },
+    { text: `fixes  4 tried, 2 kept, 1 undone of ${MAX_FIX_UNDOS} allowed` },
     { text: "  fix 1  undone: the tests went red" },
     { text: "  fix 2  kept" },
     { text: "  fix 3  kept" },
@@ -486,24 +486,24 @@ test("lines-truncate-and-fold-to-columns", () => {
   const narrow = lensLines(round, 60);
   const uncut = lensLines(round, 0);
 
-  const findingStart = wide.findIndex(({ text }) => text.startsWith("  stands  "));
+  const findingStart = wide.findIndex(({ text }) => text.startsWith("  stands · "));
   assert.notEqual(findingStart, -1, "the finding lines are shown");
   assert.deepEqual(
     wide.slice(findingStart, findingStart + 4),
     [
-      { text: `  stands  a.mjs:1  ${longClaim}` },
-      { text: "  knocked down  b.mjs:2  second claim" },
-      { text: "  being challenged  c.mjs:3  third claim" },
+      { text: `  stands · ${longClaim} · a.mjs:1` },
+      { text: "  dropped, shown wrong · second claim · b.mjs:2" },
+      { text: "  being checked · third claim · c.mjs:3" },
       { text: "  + 2 more", tone: "dim" },
     ],
-    "only the first 3 findings show, each as verdict, where and claim, then a dim '+ n more' for the rest",
+    "only the first 3 findings show, each as what happens to it, the point, then where, then a dim '+ n more' for the rest",
   );
   const foldStart = wide.findIndex(({ text }) => text === "  2 earlier");
   assert.notEqual(foldStart, -1, "hidden earlier fixes are counted on a '  n earlier' line");
   assert.deepEqual(
     wide.slice(foldStart - 1, foldStart + 5),
     [
-      { text: "fixes  6 tried · 0 undone of " + MAX_FIX_UNDOS + " allowed" },
+      { text: "fixes  6 tried, 5 kept" },
       { text: "  2 earlier", tone: "dim" },
       { text: "  fix 3  kept" },
       { text: "  fix 4  kept" },
@@ -517,18 +517,29 @@ test("lines-truncate-and-fold-to-columns", () => {
   const cut = narrow.filter(({ text }) => text.endsWith("…"));
   assert.deepEqual(
     cut.map(({ text }) => text),
-    [`  stands  a.mjs:1  ${longClaim}`.slice(0, 59) + "…"],
-    "a line that was too long is cut to 60 characters ending with an ellipsis, and short lines are left whole",
+    [`  stands · ${longClaim} · a.mjs:1`.slice(0, 59) + "…"],
+    "a finding too long for the width stays one line, cut to 60 characters ending with an ellipsis, and short lines are left whole",
   );
   assert.deepEqual(uncut, wide, "columns 0 cuts nothing");
-  const findingsAt = narrow.findIndex(({ text }) => text.startsWith("findings  "));
-  assert.notEqual(findingsAt, -1, "the findings summary is shown");
+  const findingsAt = narrow.findIndex(({ text }) => text.includes(" issues found"));
+  assert.notEqual(findingsAt, -1, "the issues summary is shown");
   assert.deepEqual(
-    narrow.slice(findingsAt, findingsAt + 2),
-    [{ text: "findings  5 found · 1 standing · 1 knocked down" }, { text: "  1 being challenged · 2 not challenged" }],
-    "a long summary breaks at ' · ' onto an indented continuation row",
+    narrow[findingsAt],
+    { text: "5 issues found · 3 stand · 1 being checked · 1 dropped" },
+    "the summary says what happens to the issues: those not challenged and the upheld one stand",
   );
   assert.deepEqual(narrow.at(-1), { text: "3 agents of 1000", tone: "dim" }, "the spend line fits at 60 columns and keeps the dim tone");
+});
+test("finding-line-names-a-run-file-without-the-run-folder", () => {
+  const calls = [callFor({ item: "code", findings: [{ where: ".pairingbuddy/run/pr-body.md (Verification section, lines 13-15)", claim: "The Verification section reports a check that did not run" }] })];
+  const round = lensRound({ ledger: ledgerFor(), calls, spawns: [spawnFor({ item: "code" })], contract });
+
+  const lines = lensLines(round, 200);
+
+  assert.ok(
+    lines.some(({ text }) => text === "  stands · The Verification section reports a check that did not run · pr-body.md (Verification section, lines 13-15)"),
+    `a run file is named without .pairingbuddy/run/, since it is not the user's code: ${JSON.stringify(lines)}`,
+  );
 });
 test("lines-contain-no-internal-ids", () => {
   const agentConfig = readFileSync(new URL("../../contracts/agent-config.yaml", import.meta.url), "utf8");
@@ -583,7 +594,7 @@ test("lines-contain-no-internal-ids", () => {
   assert.ok(lines.some(({ text }) => text.startsWith("fixes  ")), "the fixes block renders");
   assert.ok(lines.some(({ text }) => text.startsWith("  fix 1")), "the fix rows render");
   assert.ok(lines.some(({ text, tone }) => tone === "error" && text.startsWith("stopped:")), "the attempt-cap stop row renders in plain form");
-  assert.ok(lines.some(({ text }) => text.startsWith("  stands")) && lines.some(({ text }) => text.startsWith("  knocked down")), "the refuter-driven finding states render");
+  assert.ok(lines.some(({ text }) => text.startsWith("  fixed")) && lines.some(({ text }) => text.startsWith("  dropped, shown wrong")), "the refuter- and fix-driven finding states render");
   assert.ok(lines.some(({ text }) => text.includes("made up lens")), "a lens with no plain name shows its raw name with spaces");
 });
 test("spawns-before-stage-start-not-shown", () => {
@@ -653,8 +664,8 @@ test("odd-lens-returns-never-throw", () => {
     [{ where: undefined, claim: "only a claim" }, { where: "b.mjs:2", claim: undefined }],
     "the findings with a part missing still show the part they have",
   );
-  assert.ok(lines.some(({ text }) => text === "  not challenged  only a claim"), "a finding with no where leaves the where out of its line");
-  assert.ok(lines.some(({ text }) => text === "  not challenged  b.mjs:2"), "a finding with no claim leaves the claim out of its line");
+  assert.ok(lines.some(({ text }) => text === "  stands · only a claim"), "a finding no refuter challenged stands, and with no where its line leaves the where out");
+  assert.ok(lines.some(({ text }) => text === "  stands · b.mjs:2"), "a finding with no claim leaves the claim out of its line");
 });
 
 // scenario lens-round-visibility: a lens return the mod saw before the stage started belongs to an earlier run
@@ -756,11 +767,11 @@ test("rollback-from-an-earlier-attempt-counts-as-undone-only", () => {
 
   assert.deepEqual(shownFixes(round), [{ group: "g1", round: 2, outcome: "fixing", why: undefined }], "a rollback of an earlier attempt does not undo this attempt's fix");
   assert.equal(round.undone, 1, "the stage's rollbacks are still counted");
-  assert.equal(lines.some(({ text }) => text === `fixes  1 tried · 1 undone of ${MAX_FIX_UNDOS} allowed`), true, "the fixes line counts the fix tried this attempt and the undo from before");
+  assert.equal(lines.some(({ text }) => text === `fixes  1 tried, 1 undone of ${MAX_FIX_UNDOS} allowed`), true, "the fixes line counts the fix tried this attempt and the undo from before");
 
   const rollbackOnly = lensRound({ ledger, calls: [], spawns: [spawnFor({ item: "code" })], contract });
   assert.deepEqual(rollbackOnly.fixes, [], "a rollback from an earlier attempt adds no fix to this attempt");
-  assert.equal(lensLines(rollbackOnly, 200).some(({ text }) => text === `fixes  0 tried · 1 undone of ${MAX_FIX_UNDOS} allowed`), true, "the fixes line shows 0 tried and 1 undone");
+  assert.equal(lensLines(rollbackOnly, 200).some(({ text }) => text === `fixes  0 tried, 1 undone of ${MAX_FIX_UNDOS} allowed`), true, "the fixes line shows 0 tried and 1 undone");
 });
 
 test("lines-word-fix-states-and-short-lists", () => {
@@ -786,19 +797,68 @@ test("lines-fit-exactly-at-the-column-edge", () => {
   const stageContract = { ...contract, stageMaxAgents: { ...contract.stageMaxAgents, [REVIEW_STAGE]: 1000 } };
   const zeroTokens = lensRound({ ledger: ledgerFor({ stages: [entry(0)] }), calls: [], spawns: [spawnFor({ item: "code" })], contract: stageContract });
   const findings = [{ where: "a.mjs:1", claim: "one" }, { where: "b.mjs:2", claim: "two" }];
-  const calls = [callFor({ item: "code", findings }), callFor({ role: "refuter", item: "code-1", finding_id: "code-1", verdict: "survives" })];
+  const calls = [
+    callFor({ item: "code", findings }),
+    callFor({ role: "refuter", item: "code-1", finding_id: "code-1", verdict: "survives" }),
+    callFor({ role: "refuter", item: "code-2", finding_id: "code-2", verdict: "refuted" }),
+  ];
   const summaryRound = lensRound({ ledger: ledgerFor(), calls, spawns: [], contract });
 
   const wide = lensLines(zeroTokens, 200);
   const spendEdge = lensLines(zeroTokens, 17).slice(-2);
-  const summaryEdge = lensLines(summaryRound, 30);
-  const summaryAt = summaryEdge.findIndex(({ text }) => text.startsWith("findings  "));
+  const summaryEdge = lensLines(summaryRound, 25);
+  const summaryAt = summaryEdge.findIndex(({ text }) => text.includes(" issues found"));
 
   assert.equal(wide.at(-1).text, "1 agent of 1000 · 0 output tokens", "known zero tokens read '0 output tokens', not unknown");
   assert.deepEqual(spendEdge.map(({ text }) => text), ["1 agent of 1000", "  0 output tokens"], "a continuation row exactly as long as the columns is not cut");
   assert.deepEqual(
     summaryEdge.slice(summaryAt, summaryAt + 2).map(({ text }) => text),
-    ["findings  2 found · 1 standing", "  1 not challenged"],
+    ["2 issues found · 1 stands", "  1 dropped"],
     "a join that lands exactly on the columns stays on one row",
   );
+});
+
+test("findings-say-fixed-when-a-kept-fix-answered-their-lens", () => {
+  const calls = [
+    callFor({ item: "code", findings: [{ where: "a.mjs:1", claim: "first code claim" }, { where: "b.mjs:2", claim: "second code claim" }] }),
+    callFor({ role: "refuter", item: "code-2", finding_id: "code-2", verdict: "refuted" }),
+    callFor({ role: "fix", item: "g1", round: 2, ambiguity: "none", commit_subject: "fix it", approach: "change the code", files_changed: ["a.mjs"] }),
+    callFor({ role: "course-checker", item: "g1", round: 2, finding_id: "code-1", verdict: "better" }),
+  ];
+  const round = lensRound({ ledger: ledgerFor(), calls, spawns: [spawnFor({ item: "code" })], contract });
+
+  const lines = lensLines(round, 200).map(({ text }) => text);
+
+  assert.ok(lines.includes("2 issues found · 1 fixed · 1 dropped"), `the summary counts the fixed issue: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("  fixed · first code claim · a.mjs:1"), "the issue whose lens a kept fix answered reads fixed");
+  assert.ok(lines.includes("  dropped, shown wrong · second code claim · b.mjs:2"), "a refuted issue stays dropped, never fixed");
+});
+
+test("findings-say-fix-undone-when-their-lens-fix-was-rolled-back", () => {
+  const calls = [
+    callFor({ item: "tests", findings: [{ where: "c.test.mjs:3", claim: "the test checks nothing" }] }),
+    callFor({ role: "fix", item: "g1", round: 2, ambiguity: "none", commit_subject: "fix it", approach: "change the test", files_changed: ["c.test.mjs"] }),
+    callFor({ role: "course-checker", item: "g1", round: 2, finding_id: "tests-1", verdict: "wrong-direction" }),
+  ];
+  const ledger = ledgerFor({ rollbacks: [rollbackAt({ item: "g1", round: 2, kind: "course" })] });
+  const round = lensRound({ ledger, calls, spawns: [spawnFor({ item: "tests" })], contract });
+
+  const lines = lensLines(round, 200).map(({ text }) => text);
+
+  assert.ok(lines.includes("  stands, fix undone · the test checks nothing · c.test.mjs:3"), `the issue whose fix was undone still stands, and says so: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("1 issue found · 1 stands"), "an issue whose fix was undone counts as standing");
+});
+
+test("a-kept-fix-reads-kept-without-the-checks-reason", () => {
+  const calls = [
+    callFor({ item: "code", findings: [{ where: "a.mjs:1", claim: "first code claim" }] }),
+    callFor({ role: "fix", item: "g1", round: 2, ambiguity: "none", commit_subject: "fix it", approach: "change the code", files_changed: ["a.mjs"] }),
+    callFor({ role: "course-checker", item: "g1", round: 2, finding_id: "code-1", verdict: "better" }),
+  ];
+  const round = lensRound({ ledger: ledgerFor(), calls, spawns: [spawnFor({ item: "code" })], contract });
+
+  const lines = lensLines(round, 200).map(({ text }) => text);
+
+  assert.ok(lines.includes("fixes  1 tried, 1 kept"), `the fixes line counts the kept fix: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("  fix 1  kept"), "a kept fix says kept; that the check found it better is what kept means");
 });
