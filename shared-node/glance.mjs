@@ -18,13 +18,18 @@ function ordinal(n) {
 }
 
 // The labels of the agent spawns that sit on a test, in order, runner checkpoints aside. One rule for the pane and the report.
-// Only a test's cycle names a phase: a review round's items (a finding, a fix group, a lens) are no tests.
-export function testLabels(spawns) {
+// Only a test's cycle names a phase: a review round's items (a finding, a fix group, a lens) are no tests. Given a stage,
+// only that stage's spawns count, so a step of an earlier stage is never the current one.
+export function testLabels(spawns, stage) {
   return (Array.isArray(spawns) ? spawns : [])
     .filter((spawn) => spawn && spawn.kind === "workflow_agent")
     .map((spawn) => ({ ...readLabel(spawn.name), startedAt: spawn.startedAt }))
-    .filter((label) => !label.unknown && label.item !== null && label.phase !== null && label.role !== RUNNER_ROLE);
+    .filter((label) => !label.unknown && label.item !== null && label.phase !== null && label.role !== RUNNER_ROLE)
+    .filter((label) => !stage || label.stage === stage);
 }
+
+// The stage the ledger names, or undefined when it names none.
+export const stageOf = (ledger) => (typeof ledger?.stage?.name === "string" && ledger.stage.name !== "" ? ledger.stage.name : undefined);
 
 // The one rule for "tries at the same step": the run of consecutive spawns, ending at labels[index], with the same role and test
 // (a run of one is try 1). Shared by the pane's current step and the report's per-step numbering.
@@ -35,9 +40,9 @@ export function triesAtStep(labels, index) {
   return tries;
 }
 
-// The current step is the last agent spawn on a test, with its tries at that step.
-export function currentStep(spawns) {
-  const labels = testLabels(spawns);
+// The current step is the last agent spawn on a test (in the given stage, when one is given), with its tries at that step.
+export function currentStep(spawns, stage) {
+  const labels = testLabels(spawns, stage);
   const last = labels.at(-1);
   if (!last) return undefined;
   return { ...last, tries: triesAtStep(labels, labels.length - 1) };
@@ -70,11 +75,11 @@ export function elapsed(startedAt, now, ranFor) {
 export const runStart = (ledger) => (ledger?.stages?.length > 0 ? ledger.stages[0].startedAt : ledger?.stage?.startedAt);
 
 // leaveOutUnknown drops the parts that are not measured (the pane's choice); the report keeps them, saying "unknown".
-function spentRow({ ledger, spawns, now, ranFor, leaveOutUnknown }) {
+function spentRow({ ledger, spawns, now, ranFor, since, leaveOutUnknown }) {
   const agents = agentCount(spawns);
   const known = ledger?.spend?.tokensKnown === true;
   const tokens = known ? `${ledger.spend.tokens} ${TOKENS_UNIT}` : "tokens unknown";
-  const parts = [plural(agents, "agent"), elapsed(runStart(ledger), now, ranFor), tokens, "% of plan unknown"];
+  const parts = [plural(agents, "agent"), elapsed(since ?? runStart(ledger), now, ranFor), tokens, "% of plan unknown"];
   return (leaveOutUnknown ? parts.filter((part) => !part.endsWith(UNKNOWN)) : parts).join(" · ");
 }
 
@@ -92,9 +97,12 @@ function leftRow(step, tests, complete) {
   return remaining ? `${remaining}, then ${SAFETY_NET}` : UNKNOWN;
 }
 
+// Unknown with no step on a test; "no" until that step is on its second try or later, then the step and its try. A first try
+// is never spelled out.
 function loopingRow(step) {
   if (!step) return UNKNOWN;
-  return isLooping(step.tries) ? `yes: ${step.tries} tries at the same step` : `no · this step: try ${step.tries} of ${MAX_TRIES}`;
+  if (step.tries < 2) return "no";
+  return `${plainName(step.role) ?? UNKNOWN} · try ${step.tries} of ${MAX_TRIES}`;
 }
 
 export const SEPARATOR = " │ ";
@@ -114,9 +122,9 @@ function bandLeft(step, tests, complete) {
 }
 
 // The run time is left out when it is unknown; the agent count always stands.
-function bandSpent({ ledger, spawns, now }) {
+function bandSpent({ ledger, spawns, now, since }) {
   const agents = agentCount(spawns);
-  return [elapsed(runStart(ledger), now), plural(agents, "agent")].filter((part) => !part.endsWith(UNKNOWN)).join(" · ");
+  return [elapsed(since ?? runStart(ledger), now), plural(agents, "agent")].filter((part) => !part.endsWith(UNKNOWN)).join(" · ");
 }
 
 const STOPPED = "stopped";
@@ -149,11 +157,11 @@ function bandNeedsYou(ledger) {
 // A band segment only when its value is known; an unknown one says nothing, so it is left out.
 const known = (id, text) => (text === undefined ? [] : [{ id, text }]);
 
-function bandSegments({ ledger, spawns, tests, now, complete }, step) {
+function bandSegments({ ledger, spawns, tests, now, since, complete }, step) {
   const looping = step ? `looping: ${isLooping(step.tries) ? "yes" : "no"}` : undefined;
   return [
     { id: "where", text: bandWhere(step, tests, ledger, complete) },
-    { id: "spent", text: bandSpent({ ledger, spawns, now }) },
+    { id: "spent", text: bandSpent({ ledger, spawns, now, since }) },
     ...known("left", bandLeft(step, tests, complete)),
     ...known("looping", looping),
     bandNeedsYou(ledger),
@@ -203,16 +211,17 @@ function unknownLabels(spawns) {
 
 // testsComplete: false says the list is only the tests seen so far, so no total ("of M") and no count left is claimed.
 // leaveOutUnknown: true leaves the unknown parts out of SPENT, for the pane.
-export function glance({ ledger, spawns, tests, now, ranFor, testsComplete = false, leaveOutUnknown = false } = {}) {
+// since: the unit's start, when known, so the time spent counts the whole unit and not only this run.
+export function glance({ ledger, spawns, tests, now, ranFor, since, testsComplete = false, leaveOutUnknown = false } = {}) {
   const list = Array.isArray(spawns) ? spawns : [];
   const names = Array.isArray(tests) ? tests : [];
-  const step = currentStep(list);
+  const step = currentStep(list, stageOf(ledger));
   const rows = {
     now: nowRow(step, names, ledger, testsComplete),
-    spent: spentRow({ ledger, spawns: list, now, ranFor, leaveOutUnknown }),
+    spent: spentRow({ ledger, spawns: list, now, ranFor, since, leaveOutUnknown }),
     left: leftRow(step, names, testsComplete),
     looping: loopingRow(step),
     offTrack: UNKNOWN,
   };
-  return { rows, band: bandSegments({ ledger, spawns: list, tests: names, now, complete: testsComplete }, step), unknownLabels: unknownLabels(list) };
+  return { rows, band: bandSegments({ ledger, spawns: list, tests: names, now, since, complete: testsComplete }, step), unknownLabels: unknownLabels(list) };
 }
