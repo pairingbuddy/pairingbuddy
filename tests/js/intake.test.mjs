@@ -193,6 +193,19 @@ test("result-carries-the-snapshot-and-the-lens-attack", async () => {
   assert.equal(result.snapshot.pbKey, "intake.runner.-.r1.a1", "the snapshot runner runs at round 1, before the finishing runner's round 2");
   assert.deepEqual(result.lensAttack.survivors, [], "the result carries the lens attack");
 });
+test("result-is-the-kept-reclassification-behind-the-review", async () => {
+  const base = fixLoopAgent();
+  const agent = async (prompt, opts) => {
+    const reply = await base(prompt, opts);
+    return opts.agentType === "pairingbuddy:classify-task" && prompt.includes("intake.fix.") ? { ...reply, task_type: "bug_fix" } : reply;
+  };
+
+  const { result } = await runScript(stagePath(), { args: ARGS, agent });
+
+  assert.deepEqual(Object.keys(result).slice(0, 3), ["started", "review", "result"], "the review comes first, then the result");
+  assert.deepEqual(result.review.findings.map(({ outcome }) => outcome), ["fixed"], "the finding the kept fix answered reads fixed");
+  assert.equal(result.result.task_type, "bug_fix", "the result is the classification the fix kept, not the first one");
+});
 test("attempt-cap-stop-runner-takes-round-2", async () => {
   const { calls } = await runScript(stagePath(), { args: ARGS, agent: fixLoopAgent({ verdict: "wrong-direction" }) });
 

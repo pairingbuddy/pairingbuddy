@@ -711,5 +711,8 @@ describe("router-asks-gates-with-the-question-box", () => {
     sentencesSaying("that plain names hold all through the run, not only at a stop", section, /When you talk to the human/, /all through the run, not only at a stop/);
     sentencesSaying("that the narration names no stage, auto-pass or workflow id", section, /stage like `code-scenarios`/, /"auto-passed"/, /workflow id like `wf_54e3ede7`/);
     sentencesSaying("an example of plain narration", section, /"The task type is settled; writing scenarios now\."/);
+    sentencesSaying("that the end-of-run summary takes review outcomes only from the return's review", section, /end-of-run summary/, /only from `review`/, /never from `survivors`/);
+    sentencesSaying("that each finding is told by its plain outcome", section, /"fixed"/, /"left as is"/, /"not a real problem"/);
+    sentencesSaying("that a fixed finding is never said to have gone out, nor offered a refresh", section, /reads "fixed"/, /never say it went out/, /`pb pr refresh`/);
   });
 });

@@ -1,5 +1,5 @@
 // One read-only lens agent per lens, each at its own model. rankLensReturns, settleLensRound and acceptVerdict come from the stage's pb-inline-module line.
-// Outside names: buildKey, buildLabel, lensSlug (the stage's pb-inline-module lines), asPromptData, corpusBlock, pinnedKey, taskBlock (the other shared sources), fixLoop (fix-loop.mjs), agent and log (the workflow runtime).
+// Outside names: buildKey, buildLabel, lensSlug, findingOutcomes (the stage's pb-inline-module lines), asPromptData, corpusBlock, pinnedKey, taskBlock (the other shared sources), fixLoop (fix-loop.mjs), agent and log (the workflow runtime).
 // Config fields read: stage, attempt, lenses (each { name, model }), subject, corpus, agentBudget (optional: what is left of the stage's maxAgents), priorRollbacks (optional, passed to fixLoop) and fix (optional: turns the fix loop on; fixLoop reads the rest). config.schema is the lens-result schema and config.refuterSchema the refuter-verdict schema; each call pins its own key into its schema, so the tap files the return. The tests' wrapper stage passes no schema, so the call then runs unpinned.
 
 async function lensAttack(config) {
@@ -70,5 +70,7 @@ async function lensAttack(config) {
   const roundStop = skipped.size > 0 ? 'agent-budget' : null;
   const fixed = config.fix !== undefined ? await fixLoop(config, settled.survivors, budget - results.length - attacked.length) : null;
   const stopReason = fixed?.stopReason ?? roundStop;
-  return { ...settled, agentsUsed: results.length + attacked.length + (fixed?.spawned ?? 0), ...(fixed === null ? {} : { attempts: fixed.attempts, lessons: fixed.lessons, stopRecorded: fixed.stopRecorded }), stopReason };
+  // review is what the session reports from: each finding's end, by the rule the gate reads too. survivors and the other lists are the round before any fix.
+  const review = { findings: findingOutcomes(settled, fixed?.keptLenses ?? []), notCovered: settled.uncovered };
+  return { review, ...settled, agentsUsed: results.length + attacked.length + (fixed?.spawned ?? 0), ...(fixed === null ? {} : { attempts: fixed.attempts, lessons: fixed.lessons, stopRecorded: fixed.stopRecorded, final: fixed.final }), stopReason };
 }

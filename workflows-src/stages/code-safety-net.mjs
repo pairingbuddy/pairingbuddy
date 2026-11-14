@@ -75,4 +75,4 @@ const result = await agent(prompt, { agentType: 'pairingbuddy:update-documentati
 
 const runner = await runCommands(stage, [`checkpoint --step docs --from ${pbKey}`, 'test --full', 'stage finish'], { round: 2 });
 
-return { started: true, pbKey, label, result, lensAttack: lensResult, runner };
+return { started: true, ...endState(lensResult, result), pbKey, label, lensAttack: lensResult, runner };

@@ -66,4 +66,4 @@ if (stopped !== null) return stopped;
 
 const runner = await runCommands(stage, ['stage finish'], { round: 2 });
 
-return { started: true, pbKey, label, result, snapshot, lensAttack: lensResult, runner };
+return { started: true, ...endState(lensResult, result), pbKey, label, snapshot, lensAttack: lensResult, runner };

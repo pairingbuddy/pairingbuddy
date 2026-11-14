@@ -281,6 +281,7 @@ test("lint-passing-redraft-kept-without-checker", async () => {
   for (const { prompt } of lensCalls) assert.equal(JSON.parse(blockOf(prompt, "subject")).draft, ".pairingbuddy/run/task/artifacts/pr-draft.fix.g1.r2.a1.json", "each lens reads the kept redraft");
   assertRanToFinal(calls);
   assert.ok(!result.stopReason, "the stage is not stopped");
+  assert.deepEqual(result.review.findings.map(({ id, outcome }) => ({ id, outcome })), [{ id: "lint-1", outcome: "fixed" }], "the lint failure the kept redraft passed reads fixed");
 });
 for (const [name, relay] of runnerFailures) {
   test(`redraft-lint-runner-failure-stops-step-failed: ${name}`, async () => {
@@ -507,4 +508,19 @@ test("the lens loop gets only the budget the lint loop left", async (t) => {
   assert.equal(fixCallsOf(calls).length - 2, lensRedraftsAllowed, "the lens loop makes only the redrafts its remaining budget allows");
   assert.equal(result.lensAttack.stopReason, "agent-budget", "the stage's return carries the stop reason");
   assertRanToFinal(calls);
+});
+
+// Scenario: the-return-tells-the-end-state. In a live run the return led with the first draft and the pre-fix survivors, so the
+// session said a fixed finding went out. The return now leads with what became of each finding, then the draft the stage kept.
+test("the-return-leads-with-the-review-then-the-kept-redraft", async () => {
+  const REDRAFT = { ...DRAFT, body: "body without the CI claim" };
+  const scripted = scriptedStandIn({ claims: [[CLAIMS_FINDING]], verdicts: [BETTER] });
+  const agent = async (prompt, opts) => (opts.label === "pb1 pr-draft - fix g1 r2" ? { pb_key: keyOf(prompt), ...REDRAFT } : scripted(prompt, opts));
+
+  const { result } = await runStage(ARGS, agent);
+
+  assert.deepEqual(Object.keys(result).slice(0, 3), ["started", "review", "result"], "the review comes first, then the result");
+  assert.deepEqual(result.review.findings, [{ id: "claims-1", claim: CLAIMS_FINDING.claim, where: CLAIMS_FINDING.where, outcome: "fixed" }], "the claims finding reads fixed");
+  assert.equal(result.result.body, REDRAFT.body, "the result is the redraft the stage kept, not the first draft");
+  assert.ok(!JSON.stringify(result).includes('"body":"body"'), "the first draft is not in the return: nothing reads it there");
 });

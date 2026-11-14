@@ -731,3 +731,17 @@ test("prior-rollbacks-count-toward-the-cap", async () => {
   assert.equal(result.stopReason, "attempt-cap", "the loop ends with attempt-cap");
   assert.equal(fixCallsOf(calls).length, 1, "one fix agent: the count starts at the prior rollbacks");
 });
+
+// Test case: review-says-what-became-of-each-finding
+test("review-says-what-became-of-each-finding: a group the checker found better is fixed, a group whose fix changed nothing is left as is", async () => {
+  const config = baseConfig();
+  const g1Key = fixKeyFor(config, "g1", 1);
+  const { respond } = scriptedAgents({ lenses: { code: [finding("R1", "one")], tests: [finding("R3", "three")] }, checkpoints: [{ ok: true, step: "fix", key: g1Key, committed: false }] });
+
+  const { result } = await runFixLoop(config, respond);
+
+  assert.deepEqual(result.review.findings.map(({ id, outcome }) => ({ id, outcome })), [
+    { id: "code-1", outcome: "left as is" },
+    { id: "tests-1", outcome: "fixed" },
+  ], "the unchanged code fix leaves its finding as is; the checked tests fix fixes its finding");
+});

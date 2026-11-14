@@ -998,7 +998,8 @@ function fixGroupsOf(survivors) {
 const fixArtifactPathOf = (key) => `.pairingbuddy/run/task/artifacts/${key}.json`;
 
 // One fix attempt for attempt.group; attempt is { group, fixAttempt, notes, failedAttempts, before, artifactMode, retry, mustChangeApproach, rejectedApproaches (default []) }.
-// Returns { outcome, key }; red, lint-failed, rejected, repeated and kept also return the fix's approach, rejected also returns the verdict, and kept in artifact mode also returns the kept artifact's path.
+// Returns { outcome, key }; red, lint-failed, rejected, repeated and kept also return the fix's approach, rejected also returns the verdict, and kept in artifact mode also returns the kept artifact's path and the fix's return (the artifact itself).
+// A kept outcome is checked (checked: true) when a check passed it: the checker said better, or the lint passed a lint group. A kept fix that committed nothing is not checked: it changed nothing, so it answered nothing.
 // Outcomes:
 //   'failed': no fix returned, the checkpoint was refused for a reason other than red tests, the lint relay (fix.lint) was not a readable verdict, or the checker gave no verdict (null); nothing is rolled back and the loop stops.
 //   'red': the tests failed, so the fix is rolled back (code mode only: artifact mode has no checkpoint, so it never goes red).
@@ -1045,7 +1046,7 @@ async function fixGroup(config, attempt, spent) {
     if (relay.cli_exit_code !== 0 && TESTS_FAILED.test(relay.cli_output ?? '')) return { outcome: 'red', key, approach };
     if (relay.cli_exit_code !== 0) return { outcome: 'failed', key };
     // No commit means fix.diff is stale (pb only accepts a no-change fix with a reason in ambiguity, which reaches the human), so skip the checker.
-    if (relayedJson(relay.cli_output ?? '')?.committed === false) return { outcome: 'kept', key, approach };
+    if (relayedJson(relay.cli_output ?? '')?.committed === false) return { outcome: 'kept', key, approach, checked: false };
   }
   if (fix.lint && artifactMode) {
     spent.count += 1;
@@ -1053,14 +1054,14 @@ async function fixGroup(config, attempt, spent) {
     const lintReport = lintReportOf(lintRelay);
     if (lintReport === null) return { outcome: 'failed', key };
     if (!lintReport.ok) return { outcome: 'lint-failed', key, approach };
-    if (group.lens === LINT_LENS) return { outcome: 'kept', key, approach, artifact: fixArtifactPathOf(key) };
+    if (group.lens === LINT_LENS) return { outcome: 'kept', key, approach, checked: true, artifact: fixArtifactPathOf(key), final: fixed };
   }
   spent.count += 1;
   const diff = artifactMode ? { before, after: fixArtifactPathOf(key) } : { fix_diff: FIX_DIFF_PATH };
   const verdict = await courseCheck({ stage: config.stage, attempt: config.attempt, group, fixAttempt, rollbacks: failedAttempts, diff, schema: config.checkSchema });
   if (verdict === null) return { outcome: 'failed', key };
   if (verdict.verdict !== 'better') return { outcome: 'rejected', key, verdict, approach };
-  return { outcome: 'kept', key, approach, ...(artifactMode ? { artifact: fixArtifactPathOf(key) } : {}) };
+  return { outcome: 'kept', key, approach, checked: true, ...(artifactMode ? { artifact: fixArtifactPathOf(key), final: fixed } : {}) };
 }
 
 // Returns { ok: false } when the rollback was refused, else { ok: true, relayed } with the relayed CLI JSON. The rollback runner's item is `<group>-rollback`: the checkpoint runner of the same attempt already holds item <group> in round fixAttemptRound(fixAttempt), and the retry's checkpoint holds <group> in the next round, so no round of item <group> is free.
@@ -1079,7 +1080,7 @@ function mistakeKeysOf(outcome, group, verdict) {
   return [mistakeKey(finding, verdict.mistake)];
 }
 
-// Returns { attempts, failedAttempts, lessons, stopReason, before }. attempts is the running count including priorAttempts, so a caller can pass it on. before is the last kept artifact's path, or the starting fix.before. lessons is the stage's growing note: one list for the whole loop, shown only in a retry's prompt. It starts from config.priorLessons when an earlier loop of the same stage (the lint loop) already wrote notes, since the note is the stage's.
+// Returns { attempts, failedAttempts, lessons, stopReason, before, keptLenses, final }. keptLenses lists the lenses whose group a checked fix answered, the input findingOutcomes reads. final is the last kept artifact itself (artifact mode), or undefined when none was kept. attempts is the running count including priorAttempts, so a caller can pass it on. before is the last kept artifact's path, or the starting fix.before. lessons is the stage's growing note: one list for the whole loop, shown only in a retry's prompt. It starts from config.priorLessons when an earlier loop of the same stage (the lint loop) already wrote notes, since the note is the stage's.
 async function fixLoop(config, survivors, budget = Infinity) {
   const spent = { count: 0 };
   let attempts = config.priorAttempts ?? 0;
@@ -1088,9 +1089,11 @@ async function fixLoop(config, survivors, budget = Infinity) {
   const artifactMode = config.fix.mode === 'artifact';
   let before = config.fix.before;
   let stopRecorded = false;
+  const keptLenses = [];
+  let final;
   // Loop-wide on purpose: a mistake key seen in any earlier fix group counts as a repeat in this stage.
   const seenMistakes = new Set();
-  const stop = (stopReason) => ({ spawned: spent.count, attempts, failedAttempts, lessons, stopReason, stopRecorded, before });
+  const stop = (stopReason) => ({ spawned: spent.count, attempts, failedAttempts, lessons, stopReason, stopRecorded, before, keptLenses, final });
   for (const group of fixGroupsOf(survivors)) {
     let retry = false;
     let mustChangeApproach = false;
@@ -1100,9 +1103,10 @@ async function fixLoop(config, survivors, budget = Infinity) {
       if (budget - spent.count < 4) return stop('agent-budget');
       attempts += 1;
       const attempt = { group, fixAttempt: attempts, notes: retry ? lessons : [], retry, mustChangeApproach, rejectedApproaches, failedAttempts, before, artifactMode };
-      const { outcome, key, artifact, verdict, approach } = await fixGroup(config, attempt, spent);
+      const { outcome, key, artifact, verdict, approach, checked, final: kept } = await fixGroup(config, attempt, spent);
       if (outcome === 'kept') {
-        if (artifactMode) before = artifact;
+        if (checked) keptLenses.push(group.lens);
+        if (artifactMode) [before, final] = [artifact, kept];
         break;
       }
       if (outcome === 'failed') return stop('step-failed');
@@ -1126,7 +1130,7 @@ async function fixLoop(config, survivors, budget = Infinity) {
 }
 
 // One read-only lens agent per lens, each at its own model. rankLensReturns, settleLensRound and acceptVerdict come from the stage's pb-inline-module line.
-// Outside names: buildKey, buildLabel, lensSlug (the stage's pb-inline-module lines), asPromptData, corpusBlock, pinnedKey, taskBlock (the other shared sources), fixLoop (fix-loop.mjs), agent and log (the workflow runtime).
+// Outside names: buildKey, buildLabel, lensSlug, findingOutcomes (the stage's pb-inline-module lines), asPromptData, corpusBlock, pinnedKey, taskBlock (the other shared sources), fixLoop (fix-loop.mjs), agent and log (the workflow runtime).
 // Config fields read: stage, attempt, lenses (each { name, model }), subject, corpus, agentBudget (optional: what is left of the stage's maxAgents), priorRollbacks (optional, passed to fixLoop) and fix (optional: turns the fix loop on; fixLoop reads the rest). config.schema is the lens-result schema and config.refuterSchema the refuter-verdict schema; each call pins its own key into its schema, so the tap files the return. The tests' wrapper stage passes no schema, so the call then runs unpinned.
 
 async function lensAttack(config) {
@@ -1197,7 +1201,9 @@ async function lensAttack(config) {
   const roundStop = skipped.size > 0 ? 'agent-budget' : null;
   const fixed = config.fix !== undefined ? await fixLoop(config, settled.survivors, budget - results.length - attacked.length) : null;
   const stopReason = fixed?.stopReason ?? roundStop;
-  return { ...settled, agentsUsed: results.length + attacked.length + (fixed?.spawned ?? 0), ...(fixed === null ? {} : { attempts: fixed.attempts, lessons: fixed.lessons, stopRecorded: fixed.stopRecorded }), stopReason };
+  // review is what the session reports from: each finding's end, by the rule the gate reads too. survivors and the other lists are the round before any fix.
+  const review = { findings: findingOutcomes(settled, fixed?.keptLenses ?? []), notCovered: settled.uncovered };
+  return { review, ...settled, agentsUsed: results.length + attacked.length + (fixed?.spawned ?? 0), ...(fixed === null ? {} : { attempts: fixed.attempts, lessons: fixed.lessons, stopRecorded: fixed.stopRecorded, final: fixed.final }), stopReason };
 }
 
 // One Sonnet lens call for the light review. ruleFocuses, settleFocuses, mergeLensReturns, buildKey, buildLabel and matchesGlob come from the stage's pb-inline-module lines.
@@ -1349,11 +1355,16 @@ async function runCommands(stage, commands, { tddPhase = null, item = null, roun
   return { pbKey, label, result };
 }
 
+// What a stage that reviewed its work tells the session first: review, how each finding ended (lensAttack's review), then
+// result, what the stage ends with: the artifact the last kept fix wrote, else the stage's own first return. The round's
+// pre-fix lists stay behind these, under lensAttack.
+const endState = (lensResult, result) => ({ review: lensResult.review, result: lensResult.final ?? result });
+
 // The early return for a lens round that stopped the stage, or null to carry on. A step-failed stop always needs a stop runner; an attempt-cap stop only when the fix loop has not recorded it already.
 async function fixStop(stage, lensResult, round) {
   const reason = lensResult.stopReason;
   if (reason !== 'step-failed' && reason !== 'attempt-cap') return null;
-  const early = { started: true, stopReason: reason, lensAttack: lensResult };
+  const early = { started: true, stopReason: reason, review: lensResult.review, lensAttack: lensResult };
   if (reason === 'attempt-cap' && lensResult.stopRecorded === true) return early;
   const runner = await runCommands(stage, [`stage stop ${reason}`], { round });
   return { ...early, runner };
@@ -1624,6 +1635,20 @@ function settleLensRound({ refuting, uncovered, sent, pastCut }, verdicts = []) 
   };
 }
 
+// What became of each finding of a settled round, in plain words. A refuted finding was not a real problem; a survivor
+// whose lens a kept fix answered was fixed (a fix group is one lens's survivors); every other finding was left as is,
+// since the fix loop is only given survivors. keptLenses: the lenses whose fix group a kept fix answered. The gate's
+// open-doubt check and the stage's return to the session both read this one rule.
+function findingOutcomes({ survivors = [], refuted = [], unrefuted = [] }, keptLenses = []) {
+  const kept = new Set(keptLenses);
+  const outcomeOf = ({ id, claim, where }, outcome) => ({ id, claim, where, outcome });
+  return [
+    ...survivors.map((finding) => outcomeOf(finding, kept.has(lensOfFinding(finding)) ? 'fixed' : 'left as is')),
+    ...refuted.map((finding) => outcomeOf(finding, 'not a real problem')),
+    ...unrefuted.map((finding) => outcomeOf(finding, 'left as is')),
+  ];
+}
+
 // The report's one call: rank, then settle over the verdicts the tap recorded.
 function mergeLensReturns(returns, config, verdicts = []) {
   return settleLensRound(rankLensReturns(returns, config), verdicts);
@@ -1733,9 +1758,10 @@ if (lintReport === null) return fixStop(stage, { stopReason: 'step-failed' }, RO
 
 // A lint that failed is fixed first: its failures become findings for a redraft loop, and no lens runs while that loop stops the stage.
 let lintLoop = null;
+let lintFindings = [];
 if (!lintReport.ok) {
   // The ids are `${LINT_LENS}-<n>`: the fix loop finds the lint group by that name.
-  const findings = lintReport.failures.map(({ rule, text }, i) => ({
+  lintFindings = lintReport.failures.map(({ rule, text }, i) => ({
     id: `${LINT_LENS}-${i + 1}`,
     rule,
     claim: text,
@@ -1750,13 +1776,17 @@ if (!lintReport.ok) {
     checkSchema: COURSE_VERDICT_SCHEMA,
     priorRollbacks: rolledBack,
     fix: redraftFix(draftPath),
-  }, findings, agentBudget);
+  }, lintFindings, agentBudget);
 }
+
+// The lint's findings end like a lens group's: fixed when the redraft that answered them passed the lint, else left as is.
+const lintReview = lintLoop === null ? [] : findingOutcomes({ survivors: lintFindings }, lintLoop.keptLenses);
+const reviewOf = (lensReview) => ({ findings: [...lintReview, ...(lensReview?.findings ?? [])], notCovered: lensReview?.notCovered ?? [] });
 
 // An agent-budget end of the lint loop is not a stop: the lint still fails, no lens gets to run, and the stage goes on to the final runner.
 const lintBudgetEnded = lintLoop?.stopReason === 'agent-budget';
 if (lintLoop !== null && !lintBudgetEnded) {
-  const stopped = await fixStop(stage, lintLoop, ROUND.finish);
+  const stopped = await fixStop(stage, { ...lintLoop, review: reviewOf(null) }, ROUND.finish);
   if (stopped !== null) return stopped;
 }
 
@@ -1793,10 +1823,12 @@ if (!lintBudgetEnded) {
     priorLessons: carried.priorLessons,
     fix: redraftFix(lastGoodDraft),
   });
-  const lensStopped = await fixStop(stage, lensResult, ROUND.finish);
+  const lensStopped = await fixStop(stage, { ...lensResult, review: reviewOf(lensResult.review) }, ROUND.finish);
   if (lensStopped !== null) return lensStopped;
 }
 
 const runner = await runCommands(stage, ['pr lint', 'stage finish'], { round: ROUND.finish });
 
-return { started: true, pbKey, label, result, snapshot, lint, lensAttack: lensResult, runner };
+// The draft the stage ends with is the last one a fix kept: the lens loop's, else the lint loop's, else the first.
+const end = endState({ review: reviewOf(lintBudgetEnded ? null : lensResult.review), final: (lintBudgetEnded ? undefined : lensResult.final) ?? lintLoop?.final }, result);
+return { started: true, ...end, pbKey, label, snapshot, lint, lensAttack: lensResult, runner };

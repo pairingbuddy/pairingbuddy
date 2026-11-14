@@ -47,11 +47,16 @@ async function runCommands(stage, commands, { tddPhase = null, item = null, roun
   return { pbKey, label, result };
 }
 
+// What a stage that reviewed its work tells the session first: review, how each finding ended (lensAttack's review), then
+// result, what the stage ends with: the artifact the last kept fix wrote, else the stage's own first return. The round's
+// pre-fix lists stay behind these, under lensAttack.
+const endState = (lensResult, result) => ({ review: lensResult.review, result: lensResult.final ?? result });
+
 // The early return for a lens round that stopped the stage, or null to carry on. A step-failed stop always needs a stop runner; an attempt-cap stop only when the fix loop has not recorded it already.
 async function fixStop(stage, lensResult, round) {
   const reason = lensResult.stopReason;
   if (reason !== 'step-failed' && reason !== 'attempt-cap') return null;
-  const early = { started: true, stopReason: reason, lensAttack: lensResult };
+  const early = { started: true, stopReason: reason, review: lensResult.review, lensAttack: lensResult };
   if (reason === 'attempt-cap' && lensResult.stopRecorded === true) return early;
   const runner = await runCommands(stage, [`stage stop ${reason}`], { round });
   return { ...early, runner };

@@ -8,7 +8,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus } from "./stages.mjs";
 import { buildFindingId, buildKey } from "./keys.mjs";
 import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt } from "./stage-run.mjs";
-import { acceptVerdict, lensOfFinding } from "./lens-merge.mjs";
+import { acceptVerdict, findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { plainName } from "./plain-names.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
@@ -234,8 +234,7 @@ function lensDoubtStands(key, { findings }, dir, ledger) {
   } catch {
     return true;
   }
-  const fixed = keptFixLenses(dir, stage, ledger);
-  const down = new Set([...round.refuted, ...round.survivors.filter((finding) => fixed.has(lensOfFinding(finding)))].map(({ id }) => id));
+  const down = new Set(findingOutcomes(round, keptFixLenses(dir, stage, ledger)).filter(({ outcome }) => outcome !== "left as is").map(({ id }) => id));
   return findings.some((_, i) => !down.has(findingIdOf(key.item, i + 1)));
 }
 
