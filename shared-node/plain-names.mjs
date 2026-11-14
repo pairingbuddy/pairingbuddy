@@ -91,6 +91,8 @@ const PLAIN_NAMES = {
   "config-fit": "fit with the config",
   "scope-serves-intent": "scope fits the goal",
   "claims-against-recorded-evidence": "claims checked against evidence",
+  // the one lens of a cycle's light review
+  "light-review": "quick review",
 };
 
 export function plainName(id) {

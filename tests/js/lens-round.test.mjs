@@ -243,8 +243,8 @@ test("counts-sum-verdicts", () => {
 
   assert.deepEqual(
     round.counts,
-    { found: 5, stands: 2, knockedDown: 1, challenging: 1, unchallenged: 1, fixed: 0, fixUndone: 0 },
-    "counts tally every finding across both lenses by its verdict, and stands, knockedDown, challenging, unchallenged, fixed and fixUndone sum to found",
+    { found: 5, stands: 2, knockedDown: 1, challenging: 1, unchallenged: 1, fixed: 0, fixing: 0, fixUndone: 0 },
+    "counts tally every finding across both lenses by its verdict, and stands, knockedDown, challenging, unchallenged, fixed, fixing and fixUndone sum to found",
   );
 });
 
@@ -350,111 +350,7 @@ test("fix-undone-by-rollback-kinds", () => {
   assert.equal(shown.undone, 6, "undone counts only this stage's rollbacks, not another stage's");
 });
 // scenario spend-against-caps: spend shows agents against the stage max and output tokens, never dollars
-test("spend-counts-this-stage-agents-against-max", () => {
-  const startedAt = "2026-01-01T10:00:00.000Z";
-  const ledger = ledgerFor({ startedAt });
-  const spawns = [
-    spawnFor({ item: "code", startedAt: "2026-01-01T10:00:01.000Z" }),
-    spawnFor({ role: "runner", item: "run", startedAt: "2026-01-01T10:00:02.000Z" }),
-    spawnFor({ role: "refuter", item: "code-1" }),
-    spawnFor({ role: "fix", item: "g1", round: 2, startedAt: "2026-01-01T10:00:03.000Z" }),
-    spawnFor({ item: "tests", startedAt: "2026-01-01T09:59:59.000Z" }),
-    spawnFor({ stage: "code-tdd", role: "implement-tests", item: "t1", startedAt: "2026-01-01T10:00:04.000Z" }),
-  ];
-
-  const stageContract = { ...contract, stageMaxAgents: { ...contract.stageMaxAgents, [REVIEW_STAGE]: 7 } };
-
-  const round = lensRound({ ledger, calls: [], spawns, contract: stageContract });
-
-  assert.equal(round.spend.agents, 4, "agents counts this stage's spawns of any role, with or without startedAt, and skips other stages and spawns before the stage started");
-  assert.equal(round.spend.maxAgents, 7, "maxAgents is the review stage's own cap, not the global one");
-});
-test("spend-tokens-known-or-null", () => {
-  const spawns = [spawnFor({ item: "code" })];
-  const entryFor = ({ name = REVIEW_STAGE, attempt = 1, tokens, tokensKnown }) => ({ name, status: "done", attempt, startedAt: "2026-01-01T10:00:00.000Z", spend: { agents: 3, tokens, tokensKnown } });
-  const tokensWith = (stages) => lensRound({ ledger: ledgerFor({ attempt: 2, stages }), calls: [], spawns, contract }).spend.tokens;
-
-  const known = tokensWith([entryFor({ attempt: 1, tokens: 999, tokensKnown: true }), entryFor({ attempt: 2, tokens: 13876, tokensKnown: true }), entryFor({ name: "code-tdd", attempt: 2, tokens: 5, tokensKnown: true })]);
-  const unknown = tokensWith([entryFor({ attempt: 2, tokens: 13876, tokensKnown: false })]);
-  const noEntry = tokensWith([entryFor({ attempt: 1, tokens: 999, tokensKnown: true })]);
-
-  assert.equal(known, 13876, "tokens come from the entry matching this stage name and attempt, not another attempt or stage");
-  assert.equal(unknown, null, "tokens are null when the entry's tokensKnown is false");
-  assert.equal(noEntry, null, "tokens are null when no entry matches this stage and attempt");
-});
-
 // scenario lens-lines: lensLines turns a round into plain, width-fitted pane lines
-test("lines-show-header-lenses-and-findings-summary", () => {
-  const spawns = [spawnFor({ item: "code" }), spawnFor({ item: "tests" }), spawnFor({ item: "necessity" }), spawnFor({ item: "corpus-misalignment", finished: true })];
-  const calls = [
-    callFor({ item: "code", findings: [{ where: "a.mjs:1", claim: "first code claim" }, { where: "b.mjs:2", claim: "second code claim" }] }),
-    callFor({ item: "tests", findings: [{ where: "c.test.mjs:3", claim: "first tests claim" }] }),
-    callFor({ role: "refuter", item: "code-1", finding_id: "code-1", verdict: "survives" }),
-    callFor({ role: "refuter", item: "code-2", finding_id: "code-2", verdict: "refuted" }),
-  ];
-  const round = lensRound({ ledger: ledgerFor(), calls, spawns, contract });
-
-  const lines = lensLines(round, 200);
-
-  assert.deepEqual(
-    lines.slice(0, 4),
-    [
-      { text: "review round \u00b7 safety-net review" },
-      { text: "lenses  \u2713 the code 2 \u00b7 \u2713 the tests 1 \u00b7 \u25b8 needed or not \u00b7 \u2717 docs and plan" },
-      { text: "not covered: docs and plan", tone: "warning" },
-      { text: "3 issues found \u00b7 2 stand \u00b7 1 dropped" },
-    ],
-    "the first lines are the header, the lens summary, the uncovered lenses in warning tone, and the issues count line, where an issue no refuter challenged stands",
-  );
-});
-test("lines-show-fixes-and-stopped", () => {
-  const rollbacks = [{ key: buildKey({ stage: REVIEW_STAGE, role: "fix", item: "g1", round: 2, attempt: 1 }), kind: "red", ref: "refs/pb/x", sha: "abc123", base: "def456" }];
-  const fixReturn = (item, round) => callFor({ role: "fix", item, round, ambiguity: "none", commit_subject: "fix it", approach: "change the code", files_changed: ["a.mjs"] });
-  const spawns = [spawnFor({ item: "code" }), spawnFor({ role: "fix", item: "g4", round: 5 })];
-  const calls = [fixReturn("g2", 3), fixReturn("g3", 4)];
-  const running = lensRound({ ledger: ledgerFor({ rollbacks }), calls, spawns, contract });
-  const stopped = lensRound({ ledger: ledgerFor({ rollbacks, stop: attemptCapStop() }), calls, spawns, contract });
-
-  const runningLines = lensLines(running, 200);
-  const stoppedLines = lensLines(stopped, 200);
-
-  const fixesBlock = [
-    { text: `fixes  4 tried, 2 kept, 1 undone of ${MAX_FIX_UNDOS} allowed` },
-    { text: "  fix 1  undone: the tests went red" },
-    { text: "  fix 2  kept" },
-    { text: "  fix 3  kept" },
-    { text: "  fix 4  fixing" },
-  ];
-  const runningStart = runningLines.findIndex(({ text }) => text.startsWith("fixes  "));
-  const stoppedStart = stoppedLines.findIndex(({ text }) => text.startsWith("fixes  "));
-  assert.notEqual(runningStart, -1, "a running round shows the fixes summary line");
-  assert.deepEqual(
-    runningLines.slice(runningStart, runningStart + fixesBlock.length),
-    fixesBlock,
-    "the fixes summary and one numbered line per fix sit together, with the reason after a colon only when there is one",
-  );
-  assert.equal(runningLines.some(({ text }) => text.startsWith("stopped")), false, "a round that has not stopped shows no stopped line");
-  assert.notEqual(stoppedStart, -1, "a stopped round shows the fixes summary line");
-  assert.deepEqual(
-    stoppedLines[stoppedStart + fixesBlock.length],
-    { text: "stopped: it ran out of fix attempts", tone: "error" },
-    "a stopped round shows the stopped line in error tone right after the fixes block",
-  );
-});
-test("spend-line-dim-with-known-or-unknown-tokens", () => {
-  const entry = (tokensKnown) => ({ name: REVIEW_STAGE, status: "done", attempt: 1, spend: { agents: 99, tokens: 13876, tokensKnown } });
-  const twoSpawns = [spawnFor({ item: "code" }), spawnFor({ role: "runner", item: "run" })];
-  const stageContract = (max) => ({ ...contract, stageMaxAgents: { ...contract.stageMaxAgents, [REVIEW_STAGE]: max } });
-  const roundWith = ({ tokensKnown, spawns, max }) => lensRound({ ledger: ledgerFor({ stages: [entry(tokensKnown)] }), calls: [], spawns, contract: stageContract(max) });
-  const known = lensLines(roundWith({ tokensKnown: true, spawns: twoSpawns, max: 1000 }), 200);
-  const unknown = lensLines(roundWith({ tokensKnown: false, spawns: twoSpawns, max: 1000 }), 200);
-  const single = lensLines(roundWith({ tokensKnown: true, spawns: [twoSpawns[0]], max: 7 }), 200);
-
-  assert.deepEqual(known.at(-1), { text: "2 agents of 1000 \u00b7 13876 output tokens", tone: "dim" }, "the spend line is last, dim, and shows the known output tokens; the agent count comes from the spawns, not the entry's spend.agents of 99");
-  assert.deepEqual(unknown.at(-1), { text: "2 agents of 1000", tone: "dim" }, "tokens not yet known are left out of the spend line");
-  assert.deepEqual(single.at(-1), { text: "1 agent of 7 \u00b7 13876 output tokens", tone: "dim" }, "a one-agent round says '1 agent', singular");
-  assert.equal([...known, ...unknown, ...single].some(({ text }) => text.includes("$")), false, "no line shows a dollar sign");
-});
 test("lines-truncate-and-fold-to-columns", () => {
   const longClaim = "the loop never stops when the queue is empty and the caller keeps waiting for more work";
   const findings = [
@@ -464,21 +360,11 @@ test("lines-truncate-and-fold-to-columns", () => {
     { where: "d.mjs:4", claim: "fourth claim" },
     { where: "e.mjs:5", claim: "fifth claim" },
   ];
-  const fixReturn = (item, round) => callFor({ role: "fix", item, round, ambiguity: "none", commit_subject: "fix it", approach: "change the code", files_changed: ["a.mjs"] });
-  const spawns = [
-    spawnFor({ item: "code" }),
-    spawnFor({ role: "refuter", item: "code-3" }),
-    spawnFor({ role: "fix", item: "g6", round: 7 }),
-  ];
+  const spawns = [spawnFor({ item: "code" }), spawnFor({ role: "refuter", item: "code-3" })];
   const calls = [
     callFor({ item: "code", findings }),
     callFor({ role: "refuter", item: "code-1", finding_id: "code-1", verdict: "survives" }),
     callFor({ role: "refuter", item: "code-2", finding_id: "code-2", verdict: "refuted" }),
-    fixReturn("g1", 2),
-    fixReturn("g2", 3),
-    fixReturn("g3", 4),
-    fixReturn("g4", 5),
-    fixReturn("g5", 6),
   ];
   const round = lensRound({ ledger: ledgerFor(), calls, spawns, contract });
 
@@ -486,49 +372,33 @@ test("lines-truncate-and-fold-to-columns", () => {
   const narrow = lensLines(round, 60);
   const uncut = lensLines(round, 0);
 
-  const findingStart = wide.findIndex(({ text }) => text.startsWith("  stands · "));
+  const findingStart = wide.findIndex(({ text }) => text.startsWith("  to fix · "));
   assert.notEqual(findingStart, -1, "the finding lines are shown");
   assert.deepEqual(
     wide.slice(findingStart, findingStart + 4),
     [
-      { text: `  stands · ${longClaim} · a.mjs:1` },
-      { text: "  dropped, shown wrong · second claim · b.mjs:2" },
-      { text: "  being checked · third claim · c.mjs:3" },
+      { text: `  to fix · ${longClaim} · a.mjs:1` },
+      { text: "  not a real problem · second claim · b.mjs:2" },
+      { text: "  checking · third claim · c.mjs:3" },
       { text: "  + 2 more", tone: "dim" },
     ],
     "only the first 3 findings show, each as what happens to it, the point, then where, then a dim '+ n more' for the rest",
   );
-  const foldStart = wide.findIndex(({ text }) => text === "  2 earlier");
-  assert.notEqual(foldStart, -1, "hidden earlier fixes are counted on a '  n earlier' line");
-  assert.deepEqual(
-    wide.slice(foldStart - 1, foldStart + 5),
-    [
-      { text: "fixes  6 tried, 5 kept" },
-      { text: "  2 earlier", tone: "dim" },
-      { text: "  fix 3  kept" },
-      { text: "  fix 4  kept" },
-      { text: "  fix 5  kept" },
-      { text: "  fix 6  fixing" },
-    ],
-    "only the last 4 fixes show, numbered by their place in the whole list, after a dim count of the earlier ones",
-  );
-  assert.equal(wide.some(({ text }) => text.startsWith("  fix 1 ") || text.startsWith("  fix 2 ")), false, "the folded fixes have no lines of their own");
   assert.equal(narrow.every(({ text }) => text.length <= 60), true, "at 60 columns no line is longer than 60");
   const cut = narrow.filter(({ text }) => text.endsWith("…"));
   assert.deepEqual(
     cut.map(({ text }) => text),
-    [`  stands · ${longClaim} · a.mjs:1`.slice(0, 59) + "…"],
+    [`  to fix · ${longClaim} · a.mjs:1`.slice(0, 59) + "…"],
     "a finding too long for the width stays one line, cut to 60 characters ending with an ellipsis, and short lines are left whole",
   );
   assert.deepEqual(uncut, wide, "columns 0 cuts nothing");
   const findingsAt = narrow.findIndex(({ text }) => text.includes(" issues found"));
   assert.notEqual(findingsAt, -1, "the issues summary is shown");
   assert.deepEqual(
-    narrow[findingsAt],
-    { text: "5 issues found · 3 stand · 1 being checked · 1 dropped" },
-    "the summary says what happens to the issues: those not challenged and the upheld one stand",
+    narrow.slice(findingsAt, findingsAt + 2),
+    [{ text: "5 issues found · 3 to fix · 1 checking" }, { text: "  1 not a real problem" }],
+    "the summary says what happens to the issues (those not challenged and the upheld one are to fix), folded to the width",
   );
-  assert.deepEqual(narrow.at(-1), { text: "3 agents of 1000", tone: "dim" }, "the spend line fits at 60 columns and keeps the dim tone");
 });
 test("finding-line-names-a-run-file-without-the-run-folder", () => {
   const calls = [callFor({ item: "code", findings: [{ where: ".pairingbuddy/run/pr-body.md (Verification section, lines 13-15)", claim: "The Verification section reports a check that did not run" }] })];
@@ -537,7 +407,7 @@ test("finding-line-names-a-run-file-without-the-run-folder", () => {
   const lines = lensLines(round, 200);
 
   assert.ok(
-    lines.some(({ text }) => text === "  stands · The Verification section reports a check that did not run · pr-body.md (Verification section, lines 13-15)"),
+    lines.some(({ text }) => text === "  to fix · The Verification section reports a check that did not run · pr-body.md (Verification section, lines 13-15)"),
     `a run file is named without .pairingbuddy/run/, since it is not the user's code: ${JSON.stringify(lines)}`,
   );
 });
@@ -591,10 +461,7 @@ test("lines-contain-no-internal-ids", () => {
       assert.equal(pattern.test(text), false, `line "${text}" must not match ${pattern}`);
     }
   }
-  assert.ok(lines.some(({ text }) => text.startsWith("fixes  ")), "the fixes block renders");
-  assert.ok(lines.some(({ text }) => text.startsWith("  fix 1")), "the fix rows render");
-  assert.ok(lines.some(({ text, tone }) => tone === "error" && text.startsWith("stopped:")), "the attempt-cap stop row renders in plain form");
-  assert.ok(lines.some(({ text }) => text.startsWith("  fixed")) && lines.some(({ text }) => text.startsWith("  dropped, shown wrong")), "the refuter- and fix-driven finding states render");
+  assert.ok(lines.some(({ text }) => text.startsWith("  fixed")) && lines.some(({ text }) => text.startsWith("  not a real problem")), "the refuter- and fix-driven finding states render");
   assert.ok(lines.some(({ text }) => text.includes("made up lens")), "a lens with no plain name shows its raw name with spaces");
 });
 test("spawns-before-stage-start-not-shown", () => {
@@ -658,14 +525,14 @@ test("odd-lens-returns-never-throw", () => {
     [2, 0],
     "each lens's found equals the findings it shows: 2 for the code lens, 0 for the one that shows none",
   );
-  assert.ok(lines.some(({ text }) => text.startsWith("lenses  ✓ the code 2 · ")), "the lenses line reads the code lens with 2");
+  assert.ok(lines.some(({ text }) => text.startsWith("the code 2 · ")), "the lenses line reads the code lens with 2");
   assert.deepEqual(
     round.findings.map(({ where, claim }) => ({ where, claim })),
     [{ where: undefined, claim: "only a claim" }, { where: "b.mjs:2", claim: undefined }],
     "the findings with a part missing still show the part they have",
   );
-  assert.ok(lines.some(({ text }) => text === "  stands · only a claim"), "a finding no refuter challenged stands, and with no where its line leaves the where out");
-  assert.ok(lines.some(({ text }) => text === "  stands · b.mjs:2"), "a finding with no claim leaves the claim out of its line");
+  assert.ok(lines.some(({ text }) => text === "  to fix · only a claim"), "a finding no refuter challenged is to fix, and with no where its line leaves the where out");
+  assert.ok(lines.some(({ text }) => text === "  to fix · b.mjs:2"), "a finding with no claim leaves the claim out of its line");
 });
 
 // scenario lens-round-visibility: a lens return the mod saw before the stage started belongs to an earlier run
@@ -711,7 +578,6 @@ test("partial-ledgers-never-throw", () => {
   assert.notEqual(lensRound({ ledger: stagesNotArray, calls: [], spawns, contract }), undefined, "stages that is not an array still shows the round");
   assert.equal(lensRound({ ledger: rollbacksNotArray, calls: [], spawns, contract }).undone, 0, "rollbacks that is not an array counts none");
   assert.equal(lensRound({ ledger: rollbacksWithNull, calls: [], spawns, contract }).undone, 0, "a null rollback is skipped");
-  assert.equal(lensRound({ ledger: tokensNotNumber, calls: [], spawns, contract }).spend.tokens, null, "tokens that is not a number shows as unknown");
 });
 
 // Late safeguards: edge behaviours that pin the fold and the lines against small changes.
@@ -763,20 +629,15 @@ test("rollback-from-an-earlier-attempt-counts-as-undone-only", () => {
   const spawns = [spawnFor({ item: "code" }), fixSpawn("g1", 2)];
 
   const round = lensRound({ ledger, calls: [], spawns, contract });
-  const lines = lensLines(round, 200);
 
   assert.deepEqual(shownFixes(round), [{ group: "g1", round: 2, outcome: "fixing", why: undefined }], "a rollback of an earlier attempt does not undo this attempt's fix");
   assert.equal(round.undone, 1, "the stage's rollbacks are still counted");
-  assert.equal(lines.some(({ text }) => text === `fixes  1 tried, 1 undone of ${MAX_FIX_UNDOS} allowed`), true, "the fixes line counts the fix tried this attempt and the undo from before");
 
   const rollbackOnly = lensRound({ ledger, calls: [], spawns: [spawnFor({ item: "code" })], contract });
   assert.deepEqual(rollbackOnly.fixes, [], "a rollback from an earlier attempt adds no fix to this attempt");
-  assert.equal(lensLines(rollbackOnly, 200).some(({ text }) => text === `fixes  0 tried, 1 undone of ${MAX_FIX_UNDOS} allowed`), true, "the fixes line shows 0 tried and 1 undone");
 });
 
-test("lines-word-fix-states-and-short-lists", () => {
-  const undoing = lensRound({ ledger: ledgerFor(), calls: [checkerCall({ item: "g1", round: 2, verdict: "wrong-direction" })], spawns: [spawnFor({ item: "code" }), fixSpawn("g1", 2)], contract });
-  const checking = lensRound({ ledger: ledgerFor(), calls: [], spawns: [spawnFor({ item: "code" }), fixSpawn("g1", 2), spawnFor({ role: "course-checker", item: "g1", round: 2 })], contract });
+test("lines-word-short-lists", () => {
   const threeFindings = [{ where: "a.mjs:1", claim: "one" }, { where: "b.mjs:2", claim: "two" }, { where: "c.mjs:3", claim: "three" }];
   const three = lensRound({ ledger: ledgerFor(), calls: [callFor({ item: "code", findings: threeFindings })], spawns: [], contract });
   const bothUncovered = lensRound({ ledger: ledgerFor(), calls: [], spawns: [spawnFor({ item: "code", finished: true }), spawnFor({ item: "tests", finished: true })], contract });
@@ -784,18 +645,14 @@ test("lines-word-fix-states-and-short-lists", () => {
 
   const texts = (round) => lensLines(round, 200).map(({ text }) => text);
 
-  assert.equal(texts(undoing).includes("  fix 1  being undone: the check said it went the wrong way"), true, "a wrong-direction check reads 'being undone'");
-  assert.equal(texts(checking).includes("  fix 1  being checked"), true, "a fix with a checker spawned reads 'being checked'");
   assert.equal(texts(three).some((text) => text.includes("more")), false, "exactly 3 findings show no '+ n more' line");
   assert.equal(texts(three).filter((text) => text.startsWith("  ") && text.includes(".mjs")).length, 3, "all 3 findings are shown");
-  assert.equal(texts(bothUncovered).includes("not covered: the code, the tests"), true, "two uncovered lenses are listed with a comma and a space");
-  assert.equal(texts(emptyReturn).some((text) => text.startsWith("findings  ")), false, "a lens that returned no findings shows no findings summary");
+  assert.equal(texts(bothUncovered)[0], "the code not covered · the tests not covered", "each uncovered lens says so on the lens line");
+  assert.deepEqual(texts(emptyReturn), ["the code 0", "no issues found"], "a lens that returned no findings shows a count of 0 and no finding lines");
 });
 
 test("lines-fit-exactly-at-the-column-edge", () => {
-  const entry = (tokens) => ({ name: REVIEW_STAGE, status: "done", attempt: 1, spend: { agents: 1, tokens, tokensKnown: true } });
-  const stageContract = { ...contract, stageMaxAgents: { ...contract.stageMaxAgents, [REVIEW_STAGE]: 1000 } };
-  const zeroTokens = lensRound({ ledger: ledgerFor({ stages: [entry(0)] }), calls: [], spawns: [spawnFor({ item: "code" })], contract: stageContract });
+  const twoLenses = lensRound({ ledger: ledgerFor(), calls: [callFor({ item: "code", findings: [] }), callFor({ item: "tests", findings: [] })], spawns: [], contract });
   const findings = [{ where: "a.mjs:1", claim: "one" }, { where: "b.mjs:2", claim: "two" }];
   const calls = [
     callFor({ item: "code", findings }),
@@ -804,16 +661,14 @@ test("lines-fit-exactly-at-the-column-edge", () => {
   ];
   const summaryRound = lensRound({ ledger: ledgerFor(), calls, spawns: [], contract });
 
-  const wide = lensLines(zeroTokens, 200);
-  const spendEdge = lensLines(zeroTokens, 17).slice(-2);
+  const lensEdge = lensLines(twoLenses, 13).slice(0, 2);
   const summaryEdge = lensLines(summaryRound, 25);
   const summaryAt = summaryEdge.findIndex(({ text }) => text.includes(" issues found"));
 
-  assert.equal(wide.at(-1).text, "1 agent of 1000 · 0 output tokens", "known zero tokens read '0 output tokens', not unknown");
-  assert.deepEqual(spendEdge.map(({ text }) => text), ["1 agent of 1000", "  0 output tokens"], "a continuation row exactly as long as the columns is not cut");
+  assert.deepEqual(lensEdge.map(({ text }) => text), ["the code 0", "  the tests 0"], "a continuation row exactly as long as the columns is not cut");
   assert.deepEqual(
     summaryEdge.slice(summaryAt, summaryAt + 2).map(({ text }) => text),
-    ["2 issues found · 1 stands", "  1 dropped"],
+    ["2 issues found · 1 to fix", "  1 not a real problem"],
     "a join that lands exactly on the columns stays on one row",
   );
 });
@@ -829,9 +684,9 @@ test("findings-say-fixed-when-a-kept-fix-answered-their-lens", () => {
 
   const lines = lensLines(round, 200).map(({ text }) => text);
 
-  assert.ok(lines.includes("2 issues found · 1 fixed · 1 dropped"), `the summary counts the fixed issue: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("2 issues found · 1 fixed · 1 not a real problem"), `the summary counts the fixed issue: ${JSON.stringify(lines)}`);
   assert.ok(lines.includes("  fixed · first code claim · a.mjs:1"), "the issue whose lens a kept fix answered reads fixed");
-  assert.ok(lines.includes("  dropped, shown wrong · second code claim · b.mjs:2"), "a refuted issue stays dropped, never fixed");
+  assert.ok(lines.includes("  not a real problem · second code claim · b.mjs:2"), "a refuted issue is not a real problem, never fixed");
 });
 
 test("findings-say-fix-undone-when-their-lens-fix-was-rolled-back", () => {
@@ -845,20 +700,116 @@ test("findings-say-fix-undone-when-their-lens-fix-was-rolled-back", () => {
 
   const lines = lensLines(round, 200).map(({ text }) => text);
 
-  assert.ok(lines.includes("  stands, fix undone · the test checks nothing · c.test.mjs:3"), `the issue whose fix was undone still stands, and says so: ${JSON.stringify(lines)}`);
-  assert.ok(lines.includes("1 issue found · 1 stands"), "an issue whose fix was undone counts as standing");
+  assert.ok(lines.includes("  to fix · the test checks nothing · c.test.mjs:3"), `the issue whose fix was undone is to fix again: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("1 issue found · 1 to fix"), "an issue whose fix was undone counts as to fix");
 });
 
-test("a-kept-fix-reads-kept-without-the-checks-reason", () => {
+// scenario finding-words: each finding and the summary read checking, to fix, fixing, fixed, not a real problem or left as is
+test("findings-read-checking-to-fix-and-not-a-real-problem", () => {
+  const spawns = [spawnFor({ item: "code" }), spawnFor({ role: "refuter", item: "code-3" })];
   const calls = [
-    callFor({ item: "code", findings: [{ where: "a.mjs:1", claim: "first code claim" }] }),
-    callFor({ role: "fix", item: "g1", round: 2, ambiguity: "none", commit_subject: "fix it", approach: "change the code", files_changed: ["a.mjs"] }),
-    callFor({ role: "course-checker", item: "g1", round: 2, finding_id: "code-1", verdict: "better" }),
+    callFor({ item: "code", findings: [{ where: "a.mjs:1", claim: "one" }, { where: "b.mjs:2", claim: "two" }, { where: "c.mjs:3", claim: "three" }, { where: "d.mjs:4", claim: "four" }] }),
+    callFor({ role: "refuter", item: "code-1", finding_id: "code-1", verdict: "survives" }),
+    callFor({ role: "refuter", item: "code-2", finding_id: "code-2", verdict: "refuted" }),
   ];
-  const round = lensRound({ ledger: ledgerFor(), calls, spawns: [spawnFor({ item: "code" })], contract });
+  const round = lensRound({ ledger: ledgerFor(), calls, spawns, contract });
 
   const lines = lensLines(round, 200).map(({ text }) => text);
 
-  assert.ok(lines.includes("fixes  1 tried, 1 kept"), `the fixes line counts the kept fix: ${JSON.stringify(lines)}`);
-  assert.ok(lines.includes("  fix 1  kept"), "a kept fix says kept; that the check found it better is what kept means");
+  assert.ok(lines.includes("4 issues found · 2 to fix · 1 checking · 1 not a real problem"), `the summary counts the plain words: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("  to fix · one · a.mjs:1"), "an upheld finding with no fix tried reads 'to fix'");
+  assert.ok(lines.includes("  not a real problem · two · b.mjs:2"), "a knocked-down finding reads 'not a real problem'");
+  assert.ok(lines.includes("  checking · three · c.mjs:3"), "a finding a refuter is on reads 'checking'");
+});
+
+test("findings-still-open-when-the-round-ended-read-left-as-is", () => {
+  const calls = [
+    callFor({ item: "code", findings: [{ where: "a.mjs:1", claim: "one" }, { where: "b.mjs:2", claim: "two" }] }),
+    callFor({ role: "refuter", item: "code-2", finding_id: "code-2", verdict: "refuted" }),
+  ];
+  const round = lensRound({ ledger: ledgerFor({ status: "done" }), calls, spawns: [spawnFor({ item: "code" })], contract });
+
+  const lines = lensLines(round, 200).map(({ text }) => text);
+
+  assert.ok(lines.includes("2 issues found · 1 left as is · 1 not a real problem"), `the summary counts the open finding as left as is: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("  left as is · one · a.mjs:1"), "a finding still open when the stage is no longer active reads 'left as is'");
+});
+
+test("findings-still-open-when-the-run-ended-read-left-as-is-though-the-last-ledger-was-active", () => {
+  const calls = [callFor({ item: "code", findings: [{ where: "a.mjs:1", claim: "one" }] })];
+  const round = lensRound({ ledger: ledgerFor(), calls, spawns: [spawnFor({ item: "code" })], ended: true });
+
+  assert.deepEqual(round.findings.map(({ word }) => word), ["left as is"], "an ended run's last snapshot still says active, yet its round is over");
+});
+
+test("findings-whose-fix-group-is-being-fixed-read-fixing", () => {
+  const spawns = [spawnFor({ item: "code" }), spawnFor({ item: "tests" }), spawnFor({ role: "fix", item: "g2", round: 3 })];
+  const calls = [
+    callFor({ item: "code", findings: [{ where: "a.mjs:1", claim: "one" }] }),
+    callFor({ item: "tests", findings: [{ where: "a.test.mjs:1", claim: "two" }] }),
+    callFor({ role: "fix", item: "g1", round: 2, ambiguity: "none", commit_subject: "fix it", approach: "change the code", files_changed: ["a.mjs"] }),
+    callFor({ role: "course-checker", item: "g1", round: 2, finding_id: "code-1", verdict: "better" }),
+  ];
+  const round = lensRound({ ledger: ledgerFor(), calls, spawns, contract });
+
+  const lines = lensLines(round, 200).map(({ text }) => text);
+
+  assert.ok(lines.includes("2 issues found · 1 fixed · 1 fixing"), `the summary counts the finding being fixed: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("  fixing · two · a.test.mjs:1"), "the second lens's findings are fix group g2, and its fix has no return yet");
+});
+
+// scenario quick-review: a cycle's light review is one lens on a test; it reads by a plain lens name, never the test's
+test("a-cycle-light-review-reads-quick-review-for-the-latest-test-only", () => {
+  const stage = "code-tdd";
+  const reviewOf = (item) => ({ kind: "workflow_agent", name: buildLabel({ stage, phase: "REFACTOR", role: "lens", item, round: 1 }) });
+  const spawns = [reviewOf("order-total-sums-line-totals"), reviewOf("empty-order-totals-zero")];
+  const calls = [
+    callFor({ stage, item: "order-total-sums-line-totals", findings: [{ where: "a.mjs:1", claim: "old", focus: "code-smell" }] }),
+    callFor({ stage, item: "empty-order-totals-zero", findings: [{ where: "b.mjs:2", claim: "new", focus: "code-smell" }] }),
+  ];
+  const round = lensRound({ ledger: ledgerFor({ stage }), calls, spawns, contract });
+
+  const lines = lensLines(round, 200).map(({ text }) => text);
+
+  assert.deepEqual(round.lenses.map(({ name, found }) => ({ name, found })), [{ name: plainName("light-review"), found: 1 }], "only the latest test's review shows, under the light review's plain name");
+  assert.equal(plainName("light-review"), "quick review", "the light review's plain name");
+  assert.equal(lines.some((text) => text.includes("order total") || text.includes("empty order")), false, `no line names a test: ${JSON.stringify(lines)}`);
+  assert.deepEqual(round.findings.map(({ claim }) => claim), ["new"], "only the latest test's findings show");
+});
+
+test("a-quick-review-finding-reads-fixing-then-fixed-by-its-sides-fixer-and-left-as-is-once-the-next-test-starts", () => {
+  const stage = "code-tdd";
+  const label = (role, item, phase = "REFACTOR") => buildLabel({ stage, phase, role, item, round: 1 });
+  const spawn = (role, item, rest = {}) => ({ kind: "workflow_agent", name: label(role, item, rest.phase), ...rest });
+  const calls = [callFor({ stage, item: "t1", findings: [{ where: "a.test.mjs:1", claim: "weak assert", focus: "test-quality" }, { where: "a.mjs:1", claim: "long function", focus: "code-smell" }, { where: "b.mjs:1", claim: "odd name", focus: "naming-and-domain" }] })];
+  const fixing = [spawn("lens", "t1", { finished: true }), spawn("refactor-tests", "t1", { finished: true }), spawn("refactor-code", "t1")];
+  const movedOn = [...fixing, spawn("implement-tests", "t2", { phase: "RED" })];
+
+  const wordsOf = (spawns) => lensRound({ ledger: ledgerFor({ stage }), calls, spawns, contract }).findings.map(({ claim, word }) => `${word} · ${claim}`);
+
+  assert.deepEqual(wordsOf(fixing), ["fixed · weak assert", "fixing · long function", "fixing · odd name"], "a test finding goes to the tests fixer and a code finding to the code fixer; a finished fixer fixed it");
+  assert.deepEqual(wordsOf(movedOn), ["fixed · weak assert", "left as is · long function", "left as is · odd name"], "once the next test starts, the cycle's review has ended");
+});
+
+// scenario review-row: the REVIEW row is one line of lenses with their counts, one summary line, then one line per finding
+test("review-lines-are-the-lenses-the-summary-and-the-findings-only", () => {
+  const rollbacks = [rollbackAt({ item: "g1", round: 2, kind: "red" })];
+  const spawns = [spawnFor({ item: "code" }), spawnFor({ item: "tests" }), spawnFor({ item: "necessity" }), spawnFor({ item: "corpus-misalignment", finished: true }), spawnFor({ role: "fix", item: "g1", round: 3 })];
+  const calls = [
+    callFor({ item: "code", findings: [{ where: "a.mjs:1", claim: "one" }] }),
+    callFor({ item: "tests", findings: [] }),
+  ];
+  const round = lensRound({ ledger: ledgerFor({ rollbacks, stop: attemptCapStop() }), calls, spawns, contract });
+  const quiet = lensRound({ ledger: ledgerFor(), calls: [callFor({ item: "code", findings: [] })], spawns: [spawnFor({ item: "code" })], contract });
+
+  assert.deepEqual(
+    lensLines(round, 200),
+    [
+      { text: "the code 1 · the tests 0 · needed or not … · docs and plan not covered", tone: "warning" },
+      { text: "1 issue found · 1 fixing" },
+      { text: "  fixing · one · a.mjs:1", whole: true },
+    ].map(({ whole, ...line }) => line),
+    "no header, fixes block, stopped line or agent count: a running lens reads '…', an uncovered one 'not covered' and puts the line in warning tone",
+  );
+  assert.deepEqual(lensLines(quiet, 200), [{ text: "the code 0" }, { text: "no issues found" }], "a round with no findings says so");
 });
