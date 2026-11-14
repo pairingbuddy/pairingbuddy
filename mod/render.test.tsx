@@ -244,7 +244,7 @@ test('no-ledger-no-snapshot-stays-idle: with no ledger and no snapshot the band 
   expect(ended.join(''), `no ledger but a snapshot: last run finished: ${JSON.stringify(ended)}`).toContain('Pairing Buddy · last run finished')
 })
 
-test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning and a stop in error in pane and band, while the spend stays dimColor and unknown values are not drawn', async ($, on) => {
+test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning and a stop in error in pane and band, while the spend stays dimColor and an unknown band segment is not drawn', async ($, on) => {
   const run = bandEngine(on, needingHuman())
   const nodes = async (surface: Record<string, unknown>): Promise<{ text: string; props: Record<string, unknown> }[]> => {
     const mounted = await $.ui.mount({ ...surface, surface: 'terminal' })
@@ -264,11 +264,10 @@ test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning
 
   expect(starting(gateBand, 'needs you').props.color, 'a needs-you gate in the band is warning').toBe('warning')
   expect(starting(stopBand, 'needs you').props.color, 'a stop in the band is error').toBe('error')
-  expect(starting(stopPane, 'NOW').props.color, 'a stop in the pane NOW row is error').toBe('error')
+  expect(starting(stopPane, 'stopped').props.color, 'a stop in the pane NOW row is error').toBe('error')
   expect(gateBand.find(node => node.text.startsWith('looping:')), 'an unknown band segment is not drawn').toBeUndefined()
   expect(starting(gateBand, '0 agents').props.dimColor, 'the band spend segment is dim').toBe(true)
-  expect(starting(stopPane, 'SPENT').props.dimColor, 'the pane SPENT row is dim').toBe(true)
-  expect(stopPane.find(node => node.text.startsWith('LOOPING')), 'an unknown pane row is not drawn').toBeUndefined()
+  expect(starting(stopPane, '0 agents').props.dimColor, 'the pane SPENT row is dim').toBe(true)
 })
 
 test('band-leads-with-needs-you-at-a-gate', async ($, on) => {

@@ -4,6 +4,7 @@ import { testNames } from '../shared-node/now-building.mjs'
 const TESTS = '.pairingbuddy/tests.json'
 const SCENARIOS = '.pairingbuddy/scenarios.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
+const UNIT = '.pairingbuddy/run/unit.json'
 
 export type Spawn = { kind: 'Agent' | 'workflow_agent'; name: string; subagentType?: string; startedAt?: string; agentId?: string; finished?: boolean }
 type Spend = { agents: number; tokens: number; tokensKnown: boolean }
@@ -11,6 +12,7 @@ type StageEntry = { name: string; status?: string; attempt?: number; startedAt?:
 // The ledger as the mod reads it: every field is optional, since the file may be partial.
 export type Ledger = {
   runId?: string
+  kind?: string
   taskType?: string | null
   stage?: { name?: string; status?: string; runId?: string | null; attempt?: number; startedAt?: string | null }
   stages?: StageEntry[]
@@ -25,7 +27,9 @@ export type Ledger = {
 
 // names: test id to description, narrowed from tests.json and scenarios.json by the poller; absent means no names known.
 export type Call = { agentId?: unknown; at?: string; input: Record<string, unknown> }
-export type Inputs = { ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; names?: Record<string, string> }
+// unit: the open unit, by its identity (branch and base) and its last ended task's steps; since: when the unit's first run began.
+export type Unit = { key: string; taskStages: string[] }
+export type Inputs = { ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; names?: Record<string, string>; unit?: Unit | null; since?: string }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {
@@ -99,16 +103,27 @@ function inputsOf({ ledger, testsFile, now, spawns }: { ledger: Ledger; testsFil
   return planned ? { ledger, spawns, tests: planned, testsComplete: true, now } : { ledger, spawns, tests: seen, testsComplete: false, now }
 }
 
-// The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
-export async function pollInputs($: EngineInterface): Promise<{ ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; names: Record<string, string> }> {
-  const [{ inputs: { ledger, tests, testsComplete, now }, testsFile }, scenarios] = await Promise.all([readInputsAndTests($, []), readJson($, SCENARIOS)])
-  const names = testNames({ tests: testsFile, scenarios })
-  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, names }
+// The open unit from run/unit.json, or null when none is open or the file does not read; its last task's steps, each once.
+export function unitOf(file: unknown): Unit | null {
+  const { branch, baseSha, tasks } = (file ?? {}) as { branch?: unknown; baseSha?: unknown; tasks?: unknown }
+  if (typeof branch !== 'string' || !Array.isArray(tasks)) return null
+  const last = tasks.at(-1) as { stages?: unknown } | undefined
+  const stages = Array.isArray(last?.stages) ? last.stages.filter((name): name is string => typeof name === 'string') : []
+  return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)] }
 }
 
-type Polled = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; names?: Record<string, string> } | null
+export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; names: Record<string, string>; unit: Unit | null; since?: string | null }
+
+// The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
+export async function pollInputs($: EngineInterface): Promise<Polled> {
+  const [{ inputs: { ledger, tests, testsComplete, now }, testsFile }, scenarios, unitFile] = await Promise.all([readInputsAndTests($, []), readJson($, SCENARIOS), readJson($, UNIT)])
+  const names = testNames({ tests: testsFile, scenarios })
+  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, names, unit: unitOf(unitFile) }
+}
+
+type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; names?: Record<string, string>; unit?: Unit | null; since?: string | null } | null
 
 // The one place the atom's loosely typed ledger is narrowed; null until the first poll, which reads as idle.
-export function fromPolled(polled: Polled, spawns: Spawn[], calls: Call[] = []): Inputs {
-  return { ledger: (polled?.ledger ?? undefined) as Ledger, spawns, calls, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined, names: polled?.names ?? undefined }
+export function fromPolled(polled: PolledState, spawns: Spawn[], calls: Call[] = []): Inputs {
+  return { ledger: (polled?.ledger ?? undefined) as Ledger, spawns, calls, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined, names: polled?.names ?? undefined, unit: polled?.unit ?? null, since: polled?.since ?? undefined }
 }

@@ -1,13 +1,14 @@
 // Scenario pane-wiring: the mod pane and poller wiring for the now-building block (mod tests via claude plugin test ., runner mod).
 import { expect, mock, test } from 'claude-code/testing'
-import { PANE, replay, setupReplay } from './testing/replay'
+import { PANE, paneLines, replay, setupReplay } from './testing/replay'
+import { PHASE_COLOURS } from './pane'
 import calm from './fixtures/replay/g-open-1'
 import looping from './fixtures/replay/probe-2'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, engine, start } from './testing/band'
 import { POLL_MS } from './poll'
 import { fromPolled } from './inputs'
 
-test('pane-renders-now-building-block', async ($, on) => {
+test('pane-draws-the-tests-and-test-rows', async ($, on) => {
   const clock = mock.clock(on, { now: Date.parse('2026-11-04T08:20:00.000Z') })
   const record = (passed: boolean) => ({ stage: 'code-tdd', attempt: 1, done: passed, passed, exitCodes: [passed ? 0 : 1], timedOut: false, excerpt: '' })
   const selector = (id: string) => ({ runner_id: 'pytest', test_file: 'tests/test_discount.py', test_function: id })
@@ -28,25 +29,19 @@ test('pane-renders-now-building-block', async ($, on) => {
 
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const nodes: { text: string; props: Record<string, unknown> }[] = await pane.findAll({ type: 'Text' })
-  const boxes: any[] = await pane.findAll({ type: 'Box' })
   await pane.unmount()
-  const rowTexts = (box: any): string[] => (box.children ?? []).filter((child: any) => child.type === 'Text').map((child: any) => (child.children ?? []).join(''))
-  const markerRow = boxes.map(rowTexts).find(texts => texts.includes('●GREEN') && texts.some(text => text.includes('1:30')))
+  const lines = await paneLines($)
 
-  const shown = nodes.map(node => node.text)
-  const at = (part: string) => shown.findIndex(text => text.includes(part))
-  expect(at('now building'), `the block is drawn before the unknown-label footer: ${JSON.stringify(shown)}`).toBeGreaterThanOrEqual(0)
-  expect(at('now building'), 'the block comes before the unknown-label footer').toBeLessThan(at('only watches'))
-  const progress = shown.find(text => text.includes('ten percent off') && text.includes('zero percent keeps price'))
-  expect(progress, `the progress row names both tests: ${JSON.stringify(shown)}`).toBeDefined()
-  expect(progress, 'the finished test is marked done').toContain('✓ ten percent off')
-  expect(progress, 'the current test is marked now').toContain('▸ zero percent keeps price')
+  const shown = JSON.stringify(lines)
+  expect(lines, `the TESTS row marks the finished test done and the current one: ${shown}`).toContain('TESTS    ✓ ten percent off   ▸ zero percent keeps price')
+  expect(lines, `the TEST row names the current test, its cycle and the step age: ${shown}`).toContain('TEST     zero percent keeps price  ✓RED ●GREEN  1:30')
+  expect(lines.findIndex(line => line.startsWith('TESTS')), 'TESTS comes before TEST').toBeLessThan(lines.findIndex(line => line.startsWith('TEST ')))
   const marker = nodes.find(node => node.text === '●GREEN')
-  expect(marker, `the lit GREEN step is drawn: ${JSON.stringify(shown)}`).toBeDefined()
-  expect(marker!.props.color, 'the lit GREEN step uses its phase colour key').toBe('success')
-  expect(markerRow, `the step age 1:30 sits on the same row as the marker: ${JSON.stringify(shown)}`).toBeDefined()
-  expect(shown.some(text => text.includes('3 active')), `the active count is drawn: ${JSON.stringify(shown)}`).toBe(true)
-  expect(shown.some(text => /\b1\b.*unknown/.test(text)), `the unknown count is drawn: ${JSON.stringify(shown)}`).toBe(true)
+  expect(marker!.props.color, 'the lit GREEN step uses its fixed phase colour').toBe(PHASE_COLOURS.GREEN)
+  const texts = nodes.map(node => node.text)
+  for (const removed of [/now building/, /\bactive\b/, /\d+ unknown$/, /made to pass|already passed|▸ now|to do/]) {
+    expect(texts.some(text => removed.test(text)), `nothing matching ${removed} is drawn: ${JSON.stringify(texts)}`).toBe(false)
+  }
 })
 
 test('marker-lights-the-live-phase-in-its-colour', async ($, on) => {
@@ -59,7 +54,8 @@ test('marker-lights-the-live-phase-in-its-colour', async ($, on) => {
     tests: { perTest: { [ID]: { selector: { runner_id: 'pytest', test_file: 'tests/test_discount.py', test_function: ID } } } },
   })
   await start($)
-  const steps = [['RED', 'implement-tests', 'error'], ['GREEN', 'implement-code', 'success'], ['REFACTOR', 'refactor-code', 'suggestion']]
+  // Fixed colours, never theme keys: a theme that maps success to blue cannot turn GREEN blue.
+  const steps = [['RED', 'implement-tests', '#e5534b'], ['GREEN', 'implement-code', '#3fb950'], ['REFACTOR', 'refactor-code', '#4c8dff']]
   for (const [phase, role, colour] of steps) {
     await $.agent.spawn({ prompt: 'p', description: `pb1 code-tdd ${phase} ${role} ${ID} r1`, subagentType: `pairingbuddy:${role}`, workflow: { runId: 'wf_1', agentIndex: 1 } })
     const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
@@ -86,11 +82,10 @@ test('marker-is-hidden-when-no-phase-is-known', async ($, on) => {
   })
   await start($)
 
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const shown: string[] = (await pane.findAll({ type: 'Text' })).map((node: { text: string }) => node.text)
-  await pane.unmount()
-  expect(shown.some(text => text.includes('now building')), `the block is drawn for the seen test: ${JSON.stringify(shown)}`).toBe(true)
-  expect(shown.some(text => /RED|GREEN|REFACTOR/.test(text)), `no phase marker is drawn with no live phase: ${JSON.stringify(shown)}`).toBe(false)
+  const lines = await paneLines($)
+  expect(lines, `the seen test is listed: ${JSON.stringify(lines)}`).toContain('TESTS    · ten percent off')
+  expect(lines, 'with no step on a test the TEST row reads a dash').toContain('TEST     —')
+  expect(lines.some(text => /RED|GREEN|REFACTOR/.test(text)), `no phase marker is drawn with no live phase: ${JSON.stringify(lines)}`).toBe(false)
 })
 
 test('poller-reads-tests-and-scenarios', async ($, on) => {
@@ -143,7 +138,7 @@ test('poller-reads-tests-and-scenarios', async ($, on) => {
     }
     expect(threw, `${variant.name}: drawing the pane does not throw`).toBeUndefined()
     const shown = JSON.stringify(everyText)
-    expect(everyText.some(text => text.includes('now building')), `${variant.name}: the now-building block is drawn: ${shown}`).toBe(true)
+    expect(everyText.some(text => text === 'TEST     '), `${variant.name}: the TEST row is drawn: ${shown}`).toBe(true)
     if (variant.described) {
       expect(everyText.some(text => text.includes(DESCRIPTION)), `${variant.name}: the pane shows the scenario description: ${shown}`).toBe(true)
     } else {
@@ -180,137 +175,54 @@ test('replay-matches-recorded-run', async ($, on) => {
   const calmCycleDone = shownOf(calmSteps.find(step => step.shown.some(text => text.startsWith('✓ 1 done'))), 'a step showing \'✓ 1 done\'')
   expect(calmCycleDone, 'the progress row folds the one finished test and the three covered tests into separate counts').toContain('✓ 1 done   ◌ 3 covered')
   expect(calmSteps.flatMap(step => step.shown).some(text => text.includes('REFACTOR')), 'a bug_fix run has no REFACTOR step').toBe(false)
-  // classify-task finished at 26.834 and every earlier workflow agent before update-documentation spawned at 148.104, so only it runs.
-  expect(at(calmSteps, 'spawn', 'pb1 code-safety-net - update-documentation - r1'), 'only the update-documentation agent is running').toContain('1 active')
-  expect(at(calmSteps, 'finish', 'pb1 code-safety-net - runner - r1'), 'the last recorded finish (159.04) leaves no agent active').toContain('0 active')
-  expect(last(calmSteps), 'every recorded finish has come, so no agent is active').toContain('0 active')
+  // In the safety-net review no test is current: TEST reads a dash and no phase is lit.
+  const review = at(calmSteps, 'spawn', 'pb1 code-safety-net - update-documentation - r1')
+  expect(review, 'the safety-net review lights no phase').not.toContain('●GREEN')
+  expect(review[review.indexOf('TEST     ') + 1], 'TEST reads a dash outside build test by test').toBe('—')
 
   // Looping run, probe-2: GREEN is lit on the first test's GREEN spawn, RED is lit on the third try at zero-percent-keeps-full-price.
   const green = at(loopingSteps, 'spawn', 'pb1 code-tdd GREEN implement-code ten-percent-off-hundred r1')
   expect(green, 'the GREEN step is the lit one').toContain('●GREEN')
   expect(green, 'RED is no longer lit, and shows as passed').toContain('✓RED')
-  expect(green, 'both Agents finished (14.505, 26.198) and the earlier runners too, so only this spawn runs').toContain('1 active')
   const thirdTry = at(loopingSteps, 'spawn', 'pb1 code-tdd RED implement-tests zero-percent-keeps-full-price r3')
   expect(thirdTry, 'the RED step is the lit one').toContain('●RED')
-  expect(thirdTry, 'the looping row names three tries').toContain('LOOPING  yes: 3 tries at the same step')
-  expect(thirdTry, 'the tries line lists the three tries at RED').toContain('  try 1 at RED: unknown · try 2 at RED: unknown · try 3 at RED: unknown')
-  expect(thirdTry, 'the earlier RED runner finished at 124.5, so only this spawn runs').toContain('1 active')
+  expect(thirdTry, 'the looping row names the step and its try').toContain('writing a failing test · try 3 of 3')
+  expect(thirdTry, 'the tries line lists the three tries at RED').toContain('try 1 at RED: unknown · try 2 at RED: unknown · try 3 at RED: unknown')
   // The ledger records the latest RED try only: at the 139.689 snapshot the third try's runner has run and the record
   // (passed false, exit 0) reads "passed straight away, refused"; the earlier tries keep no record of their own.
-  expect(ledgerAt(loopingSteps, 139.689), 'the tries line shows the third try\'s real result and the earlier two stay unknown').toContain('  try 1 at RED: unknown · try 2 at RED: unknown · try 3 at RED: passed straight away, refused (exit 0)')
-  expect(at(loopingSteps, 'finish', 'pb1 code-tdd - runner - r3'), 'the last recorded finish (141.14) leaves no agent active').toContain('0 active')
+  expect(ledgerAt(loopingSteps, 139.689), 'the tries line shows the third try\'s real result and the earlier two stay unknown').toContain('try 1 at RED: unknown · try 2 at RED: unknown · try 3 at RED: passed straight away, refused (exit 0)')
   expect(loopingSteps.flatMap(step => step.shown).some(text => text.includes('REFACTOR')), 'a bug_fix run has no REFACTOR step').toBe(false)
-  expect(last(loopingSteps), 'every recorded finish has come, so no agent is active').toContain('0 active')
 })
 
-test('replay-no-flicker-or-scroll-at-widths', async ($, on) => {
+test('replay-keeps-one-layout-and-fits-at-widths', async ($, on) => {
   const rig = setupReplay(on)
   const WIDTHS = [50, 80, 140]
   const BODY_ROWS = 30
   const cells = (text: string) => [...text].length
   const textOf = (node: any): string => (node.children ?? []).map((child: any) => (typeof child === 'string' ? child : textOf(child))).join('')
-  // The kit never paints, so a row's width is the sum of its Text widths: a Text child counts its text, a Box child is one row of its own Texts.
-  const rowWidth = (node: any): number => (node.type === 'Text' ? cells(textOf(node)) : (node.children ?? []).reduce((sum: number, child: any) => sum + rowWidth(child), 0))
-
-  // Rows a node draws: a Text is one row, a column Box stacks its children's rows, any other Box lays its children on one row.
-  const drawnRows = (node: any): number => (node.type === 'Box' && node.props?.flexDirection === 'column' ? (node.children ?? []).reduce((sum: number, child: any) => sum + drawnRows(child), 0) : 1)
+  const isRow = (node: any) => node?.type === 'Box' && (node.children ?? []).length > 0 && node.children.every((child: any) => child?.type === 'Text')
+  const LABELS = ['NOW', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'TEST', 'REVIEW']
 
   for (const [name, recording] of [['g-open-1', calm], ['probe-2', looping]] as const) {
     for (const columns of WIDTHS) {
-      let triesLines = 0
       const mount = { ...PANE, props: { ...PANE.props, bodyColumns: columns, scroll: { offset: 0, bodyRows: BODY_ROWS } }, surface: 'terminal' }
-      let previous: { t: number; rows: number } | undefined
-      let shownSteps = 0
+      let steps = 0
       for await (const step of replay($, rig, recording, { mount, find: { type: 'Box' } })) {
+        if (!step.ledger) continue
+        steps++
         const where = `${name} at ${columns} columns, step t=${step.t} (${step.kind})`
-        const root: any = step.nodes
-        const children: any[] = root?.children ?? []
-        const block = children.find((child: any) => child.type === 'Box' && textOf((child.children ?? [])[0] ?? { children: [] }) === 'now building')
-        if (!block) {
-          previous = undefined
-          continue
-        }
-        shownSteps++
-        const rows: any[] = block.children ?? []
-        // Every row of the block, and the looping tries line the pane draws beside it, fits the body width.
-        for (const row of rows) {
-          expect(rowWidth(row), `${where}: the now-building row "${textOf(row)}" (${rowWidth(row)} cells) fits the body width ${columns}`).toBeLessThanOrEqual(columns)
-        }
-        // The looping tries line is the child directly under the LOOPING row; when the run is not looping, OFF TRACK follows instead.
-        const loopingAt = children.findIndex((node: any) => node.type === 'Text' && textOf(node).startsWith('LOOPING'))
-        const under = loopingAt >= 0 ? children[loopingAt + 1] : undefined
-        if (under && !textOf(under).startsWith('OFF TRACK')) {
-          triesLines++
-          expect(rowWidth(under), `${where}: the looping tries line "${textOf(under)}" fits the body width ${columns}`).toBeLessThanOrEqual(columns)
-        }
-        // No flicker: the block keeps its row count from one step to the next while it is shown.
-        if (previous) expect(rows.length, `${where}: the block keeps ${previous.rows} rows from step t=${previous.t}`).toBe(previous.rows)
-        previous = { t: step.t, rows: rows.length }
-        // Nothing needs to scroll: the rows the pane draws (a column Box such as the block contributes all its rows) fit the body rows.
-        const drawn = children.reduce((sum: number, child: any) => sum + drawnRows(child), 0)
-        expect(drawn, `${where}: the pane draws ${drawn} rows, within the ${BODY_ROWS} body rows`).toBeLessThanOrEqual(BODY_ROWS)
+        const rows: any[] = ((step.nodes as any)?.children ?? []).filter(isRow)
+        const labels = rows.map(row => textOf(row.children[0]).trim()).filter(label => label !== '')
+        // One layout: every row, in the same order, at every step.
+        expect(labels, `${where}: the rows`).toEqual(LABELS)
+        // The rows the pane folds itself fit the width: TESTS, TEST and REVIEW; the one-sentence rows and the steps are cut by their Text.
+        const folded = rows.slice(rows.findIndex(row => textOf(row.children[0]).trim() === 'TESTS'))
+        for (const row of folded) expect(cells(textOf(row)), `${where}: the row "${textOf(row)}" fits the body width ${columns}`).toBeLessThanOrEqual(columns)
+        expect(rows.length, `${where}: the pane's ${rows.length} rows fit the ${BODY_ROWS} body rows`).toBeLessThanOrEqual(BODY_ROWS)
       }
-      expect(shownSteps, `${name} at ${columns} columns: the block was shown on some step`).toBeGreaterThan(0)
-      if (name === 'probe-2') expect(triesLines, `${name} at ${columns} columns: the looping tries line was shown on some step`).toBeGreaterThan(0)
+      expect(steps, `${name} at ${columns} columns: some step had a ledger`).toBeGreaterThan(0)
     }
   }
-})
-
-test('now-building-draws-legend-line', async ($, on) => {
-  mock.clock(on, { now: Date.parse('2026-11-04T08:20:00.000Z') })
-  const record = { stage: 'code-tdd', attempt: 1, done: true, passed: true, exitCodes: [0], timedOut: false, excerpt: '' }
-  const selector = (id: string) => ({ runner_id: 'pytest', test_file: 'tests/test_discount.py', test_function: id })
-  engine(on, {
-    ...SNAPSHOT_RUNNING,
-    stage: { name: 'code-tdd', status: 'active', runId: null, attempt: 1, startedAt: '2026-11-04T08:19:00.000Z' },
-    tests: { perTest: {
-      'alpha': { selector: selector('alpha'), red: record, green: record },
-      'beta': { selector: selector('beta'), red: record, covered: { done: true } },
-      'gamma': { selector: selector('gamma'), red: record },
-      'delta': { selector: selector('delta') },
-    } },
-  })
-  await start($)
-  await $.agent.spawn({ prompt: 'p', description: 'pb1 code-tdd GREEN implement-code gamma r1', subagentType: 'pairingbuddy:implement-code', workflow: { runId: 'wf_1', agentIndex: 1 } })
-
-  const textOf = (node: any): string => (node.children ?? []).map((child: any) => (typeof child === 'string' ? child : textOf(child))).join('')
-  const blockTexts = async (columns: number) => {
-    const pane = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: columns }, surface: 'terminal' })
-    const boxes: any[] = await pane.findAll({ type: 'Box' })
-    await pane.unmount()
-    const block = boxes.find(box => textOf((box.children ?? [])[0] ?? { children: [] }) === 'now building')
-    expect(block, `the now-building block is drawn at ${columns} columns`).toBeDefined()
-    return (block.children ?? []).filter((child: any) => child.type === 'Text')
-  }
-  const legendAt = async (columns: number) => (await blockTexts(columns)).find((text: any) => /^. (made to pass|already passed|now|to do)/.test(textOf(text)))
-
-  const wide = await legendAt(140)
-  expect(wide, 'the legend Text is in the now-building block at 140 columns').toBeDefined()
-  expect(textOf(wide), 'the row draws all four marks, so the wide legend lists all four').toBe('✓ made to pass   ◌ already passed, nothing to fix   ▸ now   · to do')
-  expect(wide.props.dimColor, 'the legend is drawn faint').toBe(true)
-
-  const narrow = await legendAt(55)
-  expect(narrow, 'the legend Text is in the now-building block at 55 columns').toBeDefined()
-  expect(textOf(narrow), 'at 55 columns the last two entries are dropped whole, nothing is cut mid-word').toBe('✓ made to pass   ◌ already passed, nothing to fix')
-  expect(narrow.props.dimColor, 'the narrow legend is drawn faint').toBe(true)
-})
-
-test('now-building-legend-explains-only-drawn-marks', async ($, on) => {
-  mock.clock(on, { now: Date.parse('2026-11-04T08:20:00.000Z') })
-  const ID = 'ten-percent-off'
-  engine(on, {
-    ...SNAPSHOT_RUNNING,
-    stage: { name: 'code-tdd', status: 'active', runId: null, attempt: 1, startedAt: '2026-11-04T08:19:00.000Z' },
-    tests: { perTest: { [ID]: { selector: { runner_id: 'pytest', test_file: 'tests/test_discount.py', test_function: ID } } } },
-  })
-  await start($)
-  await $.agent.spawn({ prompt: 'p', description: `pb1 code-tdd RED implement-tests ${ID} r1`, subagentType: 'pairingbuddy:implement-tests', workflow: { runId: 'wf_1', agentIndex: 1 } })
-
-  const pane = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 140 }, surface: 'terminal' })
-  const shown: string[] = (await pane.findAll({ type: 'Text' })).map((node: { text: string }) => node.text)
-  await pane.unmount()
-  expect(shown, 'the row draws only the current test').toContain('▸ ten percent off')
-  expect(shown.some(text => /made to pass|already passed|to do/.test(text)), `marks the row does not draw are not explained: ${JSON.stringify(shown)}`).toBe(false)
 })
 
 test('from-polled-without-tests-complete-is-incomplete', async () => {

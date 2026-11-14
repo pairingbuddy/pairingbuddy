@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { BAND, bandTexts, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, texts, type Served } from './testing/band'
-import { PANE, dismissPane, paneTexts } from './testing/replay'
+import { PANE, dismissPane, paneLines, paneTexts } from './testing/replay'
 import { PANE_ID } from './pane-open'
 import { POLL_MS } from './poll'
 import { REPORT_LABEL, reportButton } from './testing/report'
@@ -206,12 +206,14 @@ const AFTER_SCENARIOS = {
   gates: { ...SNAPSHOT_RUNNING.gates, 'G:type': { source: 'auto' } },
 }
 const nowRow = (shown: string[]) => shown.find(text => text.startsWith('NOW')) ?? ''
+const RETURNED_LENS = 'REVIEW   the code 1'
+const hasReturnedLens = (lines: string[]) => lines.includes(RETURNED_LENS)
 
 test('pane-now-between-steps-has-no-band-label', async ($, on) => {
   engine(on, AFTER_SCENARIOS)
   await start($)
 
-  const now = nowRow(await paneTexts($))
+  const now = nowRow(await paneLines($))
   const band = (await bandTexts($, { bodyColumns: 200 })).join('')
 
   expect(now, `NOW reads the plain state: ${now}`).toContain('between steps · next: build test by test')
@@ -224,7 +226,7 @@ test('pane-now-run-open-has-no-band-label', async ($, on) => {
   engine(on, noStage)
   await start($)
 
-  const now = nowRow(await paneTexts($))
+  const now = nowRow(await paneLines($))
 
   expect(now, `NOW reads the plain run open: ${now}`).toContain('run open')
   expect(now, `NOW carries no band label: ${now}`).not.toContain('Pairing Buddy ·')
@@ -235,7 +237,7 @@ test('all-steps-done-before-task-end', async ($, on) => {
   engine(on, everyStageDone)
   await start($)
 
-  const now = nowRow(await paneTexts($))
+  const now = nowRow(await paneLines($))
   const band = (await bandTexts($, { bodyColumns: 200 })).join('')
 
   expect(band, `the band says all steps done: ${band}`).toContain('all steps done')
@@ -250,12 +252,11 @@ test('pane-now-names-what-is-needed', async ($, on) => {
   await start($)
 
   const now = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const node = (await now.findAll({ type: 'Text' })).find((n: any) => n.text.startsWith('NOW'))
+  const node = (await now.findAll({ type: 'Text' })).find((n: any) => n.text.startsWith('needs you'))
   await now.unmount()
 
-  expect(node?.text, 'NOW names the gate').toContain('needs you: your OK on the scenarios')
+  expect(nowRow(await paneLines($)), 'NOW names the gate').toBe('NOW      needs you: your OK on the scenarios')
   expect(node?.props.color, 'NOW is in the warning tone').toBe('warning')
-  expect(node?.text, 'NOW is not the between-steps line').not.toContain('between steps')
 })
 
 const STAGE_STARTED = '2026-11-04T08:19:00.000Z'
@@ -267,30 +268,28 @@ const lensLedger = (stage: string) => ({
   stage: { name: stage, status: 'active', runId: null, attempt: 1, startedAt: STAGE_STARTED },
 })
 
-test('pane-draws-lens-lines-below-now-building', async ($, on) => {
+test('pane-draws-the-review-row-and-no-test-in-the-safety-net-review', async ($, on) => {
   const clock = mock.clock(on, { now: Date.parse(AFTER_STAGE_START) })
   on('tool.call', () => ({ result: 'ok' }))
   engine(on, lensLedger('code-safety-net'))
   await start($)
 
-  // The last test's step is the now-building block's; a lens is no step on a test.
+  // The last test's step belongs to the TDD stage; in the review, TEST reads a dash and NOW names the review.
   await $.agent.spawn({ prompt: 'p', description: 'd', name: 'pb1 code-tdd GREEN implement-code ten-percent-off r1', subagentType: 'pairingbuddy:implement-code' })
   const spawned = await $.agent.spawn({ prompt: 'p', description: 'd', name: 'pb1 code-safety-net - lens code r1', subagentType: 'pairingbuddy:lens' })
   await $.tool.call({ tool: 'StructuredOutput', tool_use_id: 'tu1', pb_key: 'code-safety-net.lens.code.r1.a1', findings: [{ where: 'discount.py:3', claim: 'rounds the wrong way' }], agentId: spawned.agentId })
   await clock.advance(POLL_MS * 2)
 
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const nodes: { text: string; props: Record<string, unknown> }[] = await pane.findAll({ type: 'Text' })
-  await pane.unmount()
-  const shown = nodes.map(node => node.text)
-  const at = (part: string) => shown.findIndex(text => text.includes(part))
-  expect(at('review round · safety-net review'), `the review round heading is drawn: ${JSON.stringify(shown)}`).toBeGreaterThanOrEqual(0)
-  expect(at('now building'), `the now-building block is drawn: ${JSON.stringify(shown)}`).toBeGreaterThanOrEqual(0)
-  expect(at('review round'), 'the lens lines come after the now-building block').toBeGreaterThan(at('now building'))
-  expect(shown, 'the lenses line shows the returned lens and its count').toContain('lenses  ✓ the code 1')
-  const spend = nodes.find(node => node.text.startsWith('1 agent of'))
-  expect(spend, `the spend line is drawn: ${JSON.stringify(shown)}`).toBeDefined()
-  expect(spend!.props.dimColor, 'the spend line is dimmed').toBe(true)
+  const lines = await paneLines($)
+  const review = lines.slice(lines.findIndex(line => line.startsWith('REVIEW')))
+  expect(review.slice(0, 3), `the REVIEW row: lenses, summary, then each finding: ${JSON.stringify(lines)}`).toEqual([
+    RETURNED_LENS,
+    '         1 issue found · 1 to fix',
+    '           to fix · rounds the wrong way · discount.py:3',
+  ])
+  expect(lines, 'NOW names the review, not the last test').toContain('NOW      safety-net review')
+  expect(lines, 'TEST reads a dash outside build test by test').toContain('TEST     —')
+  expect(lines.some(line => /agents? of \d+/.test(line)), 'no "n agents of 1000" line').toBe(false)
 })
 
 test('pane-draws-no-lens-lines-without-a-review-round', async ($, on) => {
@@ -302,9 +301,9 @@ test('pane-draws-no-lens-lines-without-a-review-round', async ($, on) => {
   const spawned = await $.agent.spawn({ prompt: 'p', description: 'd', name: 'pb1 code-safety-net - lens code r1', subagentType: 'pairingbuddy:lens' })
   await $.tool.call({ tool: 'StructuredOutput', tool_use_id: 'tu1', pb_key: 'code-safety-net.lens.code.r1.a1', findings: [{ where: 'discount.py:3', claim: 'rounds the wrong way' }], agentId: spawned.agentId })
   await clock.advance(POLL_MS * 2)
-  const shown = await paneTexts($)
+  const lines = await paneLines($)
 
-  expect(shown.some(text => text.includes('review round')), `no review round is drawn while the stage is not a review: ${JSON.stringify(shown)}`).toBe(false)
+  expect(lines, `no review round is drawn while the stage is not a review: ${JSON.stringify(lines)}`).toContain('REVIEW   —')
 })
 
 const BEFORE_STAGE_START = '2026-11-04T08:18:00.000Z'
@@ -322,14 +321,11 @@ test('pane-wraps-lens-lines-at-a-narrow-width-into-indented-continuation-rows', 
   await recordLensCall($)
   await clock.advance(POLL_MS * 2)
 
-  const pane = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 30 }, surface: 'terminal' })
-  const nodes: { text: string }[] = await pane.findAll({ type: 'Text' })
-  await pane.unmount()
-  const shown = nodes.map(node => node.text)
+  const lines = await paneLines($, { bodyColumns: 30 })
+  const review = lines.slice(lines.findIndex(line => line.startsWith('REVIEW')))
 
-  expect(shown.some(text => text.startsWith('  ')), `a lens line wraps into a row starting with two spaces: ${JSON.stringify(shown)}`).toBe(true)
-  const lensRows = shown.slice(shown.findIndex(text => text.includes('review round')))
-  expect(lensRows.slice(0, -1).every(text => text.length <= 30), `no lens row is wider than the pane: ${JSON.stringify(lensRows)}`).toBe(true)
+  expect(review.some(line => line.startsWith(`${' '.repeat(9)}  `)), `a review line wraps into a row indented under the label: ${JSON.stringify(review)}`).toBe(true)
+  expect(review.every(line => line.length <= 30), `no review row is wider than the pane: ${JSON.stringify(review)}`).toBe(true)
 })
 
 test('pane-forgets-recorded-lens-calls-on-session-start-and-on-clear', async ($, on) => {
@@ -339,20 +335,20 @@ test('pane-forgets-recorded-lens-calls-on-session-start-and-on-clear', async ($,
   await start($)
   await recordLensCall($)
   await clock.advance(POLL_MS * 2)
-  expect((await paneTexts($)).some(text => text.includes('review round')), 'the round is drawn before the clear').toBe(true)
+  expect(hasReturnedLens(await paneLines($)), 'the round is drawn before the clear').toBe(true)
 
   await $.session.end({ sessionId: 's1', reason: 'clear' })
   await clock.advance(POLL_MS * 2)
-  const afterClear = await paneTexts($)
-  expect(afterClear.some(text => text.includes('lenses  ✓')), `no returned lens remains after a clear: ${JSON.stringify(afterClear)}`).toBe(false)
+  const afterClear = await paneLines($)
+  expect(hasReturnedLens(afterClear), `no returned lens remains after a clear: ${JSON.stringify(afterClear)}`).toBe(false)
 
   await recordLensCall($)
   await clock.advance(POLL_MS * 2)
-  expect((await paneTexts($)).some(text => text.includes('lenses  ✓')), 'a new call is drawn again').toBe(true)
+  expect(hasReturnedLens(await paneLines($)), 'a new call is drawn again').toBe(true)
   await start($)
   await clock.advance(POLL_MS * 2)
-  const afterStart = await paneTexts($)
-  expect(afterStart.some(text => text.includes('lenses  ✓')), `no returned lens remains after a session start: ${JSON.stringify(afterStart)}`).toBe(false)
+  const afterStart = await paneLines($)
+  expect(hasReturnedLens(afterStart), `no returned lens remains after a session start: ${JSON.stringify(afterStart)}`).toBe(false)
 })
 
 test('pane-does-not-count-a-lens-call-made-before-the-stage-started', async ($, on) => {
@@ -363,7 +359,7 @@ test('pane-does-not-count-a-lens-call-made-before-the-stage-started', async ($, 
   await recordLensCall($)
   await clock.advance(POLL_MS * 2)
 
-  const shown = await paneTexts($)
+  const shown = await paneLines($)
 
-  expect(shown.some(text => text.includes('lenses  ✓')), `a call from before the stage is not a returned lens: ${JSON.stringify(shown)}`).toBe(false)
+  expect(hasReturnedLens(shown), `a call from before the stage is not a returned lens: ${JSON.stringify(shown)}`).toBe(false)
 })

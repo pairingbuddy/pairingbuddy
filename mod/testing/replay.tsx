@@ -255,6 +255,17 @@ export async function paneTexts($: any): Promise<string[]> {
   return found
 }
 
+// The text a drawn node holds: a Text's own text, a Box's children's texts joined.
+const textOf = (node: any): string => (node?.type === 'Text' ? (node.text ?? (node.children ?? []).join('')) : (node?.children ?? []).map(textOf).join(''))
+
+// The pane's rows as drawn: every Box whose children are all Texts is one line, read as the joined text of its Texts.
+export async function paneLines($: any, props: Record<string, unknown> = {}): Promise<string[]> {
+  const pane = await $.ui.mount({ ...PANE, props: { ...PANE.props, ...props }, surface: 'terminal' })
+  const boxes: any[] = await pane.findAll({ type: 'Box' })
+  await pane.unmount()
+  return boxes.filter(box => (box.children ?? []).length > 0 && box.children.every((child: any) => child?.type === 'Text')).map(textOf)
+}
+
 // The human closes the pane: mount it on the terminal surface, press its dismiss button, unmount.
 export async function dismissPane($: any) {
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
