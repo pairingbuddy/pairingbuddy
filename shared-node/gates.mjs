@@ -6,8 +6,9 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus } from "./stages.mjs";
-import { buildKey } from "./keys.mjs";
-import { keptIntakeReturn } from "./stage-run.mjs";
+import { buildFindingId, buildKey } from "./keys.mjs";
+import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt } from "./stage-run.mjs";
+import { acceptVerdict, lensOfFinding } from "./lens-merge.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
@@ -154,6 +155,54 @@ function isSettled(file, settled, ledger) {
   return settled.has(key?.stage) || isCoveredPass(key, ledger);
 }
 
+// A lens finding's id, or null when the lens item cannot form one.
+function findingIdOf(lens, index) {
+  try {
+    return buildFindingId({ lens, index });
+  } catch {
+    return null;
+  }
+}
+
+// A fix was kept when its course check said better and nothing rolled it back. Returns the check, or null.
+function keptCheckOf({ pbKey, stage, item, round, attempt }, dir, ledger) {
+  if ((ledger.fixes?.rollbacks ?? []).some((rollback) => rollback?.key === pbKey)) return null;
+  const check = readReturn(dir, buildKey({ stage, role: "course-checker", item, round, attempt }));
+  return check?.verdict === "better" && typeof check.finding_id === "string" ? check : null;
+}
+
+// The lenses whose fix group a kept fix answered at this stage attempt: a group is one lens's survivors, and its check names one of them.
+function keptFixLenses(dir, stage, ledger) {
+  const fixes = returnsAt(dir, stage).filter(({ role }) => role === "fix");
+  return new Set(fixes.map((fix) => keptCheckOf(fix, dir, ledger)).filter((check) => check !== null).map((check) => lensOfFinding({ id: check.finding_id })));
+}
+
+// A lens's doubt stands while one of its findings stands: one its refuter did not knock down and no kept fix answered.
+// A lens with no findings, or a round the record cannot settle, keeps its doubt.
+function lensDoubtStands(key, { findings }, dir, ledger) {
+  if (!Array.isArray(findings) || findings.length === 0) return true;
+  const stage = { name: key.stage, attempt: key.attempt };
+  let round;
+  try {
+    round = lensRoundAt(dir, stage, ledger.taskType);
+  } catch {
+    return true;
+  }
+  const fixed = keptFixLenses(dir, stage, ledger);
+  const down = new Set([...round.refuted, ...round.survivors.filter((finding) => fixed.has(lensOfFinding(finding)))].map(({ id }) => id));
+  return findings.some((_, i) => !down.has(findingIdOf(key.item, i + 1)));
+}
+
+// Whether a return's doubt still stands after its round: a refuter's unless it knocked its finding down, a lens's while
+// one of its findings stands, a fix's unless it was kept. Every other return's doubt (the stage's own subject) stands.
+function doubtStands(file, artifact, dir, ledger) {
+  const key = returnFileKey(file);
+  if (key?.role === "refuter") return acceptVerdict(key.item, artifact)?.verdict !== "refuted";
+  if (key?.role === "lens") return lensDoubtStands(key, artifact, dir, ledger);
+  if (key?.role === "fix") return keptCheckOf({ ...key, pbKey: file.replace(/\.json$/, "") }, dir, ledger) === null;
+  return true;
+}
+
 // It names every open return, because approving this gate settles them all.
 function ambiguityStop(dir, ledger, settled) {
   if (!existsSync(dir)) return null;
@@ -162,7 +211,7 @@ function ambiguityStop(dir, ledger, settled) {
     const artifact = parsedOrNull(join(dir, file));
     if (artifact === null) return `the return ${file} cannot be read`;
     const { ambiguity = null } = artifact;
-    if (ambiguity !== null && ambiguity !== "" && !isSettled(file, settled, ledger)) open.push(file);
+    if (ambiguity !== null && ambiguity !== "" && !isSettled(file, settled, ledger) && doubtStands(file, artifact, dir, ledger)) open.push(file);
   }
   if (open.length === 0) return null;
   return open.length === 1 ? `the return ${open[0]} carries an open ambiguity` : `these returns carry an open ambiguity: ${open.join(", ")}`;
