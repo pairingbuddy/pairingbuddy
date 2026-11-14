@@ -49,7 +49,7 @@ const MARKS = { done: '✓', current: '▸', waiting: '·', covered: '◌' } as 
 const GAP = '  '
 
 // One TESTS row, a line per test: the folded counts first, then each test by its mark, the current one with its cycle marker and
-// step age, then "+n more". The current test's name gives way first, so its marker and age always fit the width.
+// step age, then "+n more" ("+n more so far" while the total is unknown). The current test's name gives way first, so its marker and age always fit the width.
 function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: number): Part[][] {
   const folded = [progress?.folded ? `${MARKS.done} ${progress.folded} done` : '', progress?.coveredFolded ? `${MARKS.covered} ${progress.coveredFolded} covered` : ''].filter(Boolean)
   const lines: Part[][] = folded.length ? [[{ text: folded.join('   ') }]] : []
@@ -65,7 +65,8 @@ function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: 
   }
   // A current test the list does not hold still gets its line.
   if (test?.current && !entries.some(entry => entry.mark === 'current')) lines.push(currentLine(test.current))
-  if (progress?.more) lines.push([{ text: `+${progress.more} more`, props: { dimColor: true } }])
+  // With the total not known yet, the count is of the tests seen so far.
+  if (progress?.more) lines.push([{ text: `+${progress.more} more${progress.known ? '' : ' so far'}`, props: { dimColor: true } }])
   return lines
 }
 

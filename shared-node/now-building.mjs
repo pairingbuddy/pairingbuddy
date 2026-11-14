@@ -6,7 +6,7 @@ import { PHASES, readLabel, refactorsPerCycle } from "./labels.mjs";
 
 const SHOWN = 3;
 
-export function progressRow({ tests, perTest, spawns, testsComplete = false, stage }) {
+export function progressRow({ tests, perTest, spawns, stage }) {
   const current = currentStep(spawns, stage)?.item ?? null;
   const entries = (Array.isArray(tests) ? tests : []).map((test) => {
     const id = test.test_id;
@@ -23,7 +23,7 @@ export function progressRow({ tests, perTest, spawns, testsComplete = false, sta
     ...(folded > 0 && { folded }),
     ...(coveredFolded > 0 && { coveredFolded }),
     entries: waitingOrCurrent.slice(0, SHOWN),
-    ...(testsComplete && more > 0 && { more }),
+    ...(more > 0 && { more }),
   };
 }
 

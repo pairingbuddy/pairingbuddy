@@ -65,7 +65,7 @@ test("short-list-does-not-fold", () => {
   assert.equal(row.more, undefined, "nothing is hidden, so there is no '+ n more'");
 });
 
-test("unknown-total-claims-no-more", () => {
+test("unknown-total-still-counts-the-hidden-tests-it-knows", () => {
   const { tests, perTest, spawns } = eightTestsWithThreeDone();
 
   const row = progressRow({ tests, perTest, spawns, testsComplete: false });
@@ -75,7 +75,7 @@ test("unknown-total-claims-no-more", () => {
     [["t4", "current"], ["t5", "waiting"], ["t6", "waiting"]],
     "the row still shows the tests it knows about",
   );
-  assert.equal(row.more, undefined, "the rest is unknown, so the row never claims a '+ n more' number");
+  assert.equal(row.more, 2, "the two known tests the row hides are counted, though more may come");
 });
 
 test("covered-test-marks-circle", () => {
