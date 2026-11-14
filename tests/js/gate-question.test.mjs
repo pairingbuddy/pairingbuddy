@@ -30,19 +30,36 @@ describe("each gate asks in plain words", () => {
     ].join("\n"));
   });
 
-  test("G:scenarios folds a long list after 12 lines, saying how many more the report holds", () => {
-    const scenarios = Array.from({ length: 5 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: [`test ${i + 1}a`, `test ${i + 1}b`] }));
+  test("G:scenarios that do not fit 12 lines with their tests show one line per scenario with its test count", () => {
+    const scenarios = Array.from({ length: 5 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: i === 0 ? ["test 1a"] : [`test ${i + 1}a`, `test ${i + 1}b`] }));
     const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
     const lines = question.split("\n");
 
-    assert.equal(lines[0], "Scenarios (5 scenarios, 10 tests):");
-    assert.deepEqual(lines.slice(1, 14), [
-      "- scenario 1", "    - test 1a", "    - test 1b",
-      "- scenario 2", "    - test 2a", "    - test 2b",
-      "- scenario 3", "    - test 3a", "    - test 3b",
-      "- scenario 4", "    - test 4a", "    - test 4b",
-      "+ 3 more in the report",
+    assert.deepEqual(lines.slice(0, 7), [
+      "Scenarios (5 scenarios, 9 tests):",
+      "- scenario 1 (1 test)",
+      "- scenario 2 (2 tests)",
+      "- scenario 3 (2 tests)",
+      "- scenario 4 (2 tests)",
+      "- scenario 5 (2 tests)",
+      "Auto mode is off, so this asks you.",
     ]);
+  });
+
+  test("G:scenarios past 15 scenarios folds the rest, saying how many more scenarios the report holds", () => {
+    const scenarios = Array.from({ length: 18 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: [`test ${i + 1}a`] }));
+    const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
+    const lines = question.split("\n");
+
+    assert.equal(lines[0], "Scenarios (18 scenarios, 18 tests):");
+    assert.deepEqual(lines.slice(15, 18), ["- scenario 15 (1 test)", "+ 3 more scenarios in the report", "Auto mode is off, so this asks you."]);
+  });
+
+  test("G:scenarios one past 15 says one more scenario", () => {
+    const scenarios = Array.from({ length: 16 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: [`test ${i + 1}a`] }));
+    const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
+
+    assert.equal(question.split("\n")[16], "+ 1 more scenario in the report");
   });
 
   test("G:type opens with the task type and the classifier's gist, then asks", () => {

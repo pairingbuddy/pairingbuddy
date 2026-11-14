@@ -63,13 +63,20 @@ const counted = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // A list kept readable in a terminal: the first `keep` rows, then how many more the report holds.
 const MAX_LIST_ROWS = 12;
-const folded = (rows, keep = MAX_LIST_ROWS, more = "in the report") => (rows.length <= keep ? rows : [...rows.slice(0, keep), `+ ${rows.length - keep} more ${more}`]);
+// `more` is the words after the count, or a function of the count for words that agree with it.
+const folded = (rows, keep = MAX_LIST_ROWS, more = "in the report") =>
+  rows.length <= keep ? rows : [...rows.slice(0, keep), `+ ${rows.length - keep} more ${typeof more === "function" ? more(rows.length - keep) : more}`];
 
+const MAX_SCENARIOS = 15;
+
+// Every scenario with its tests when they all fit the list's rows; otherwise one line per scenario with its test count, so no
+// scenario is cut off part way through its tests.
 function scenarioLines({ facts: { scenarios } }) {
   if (!Array.isArray(scenarios) || scenarios.length === 0) return [];
   const tests = scenarios.reduce((sum, { tests: cases }) => sum + cases.length, 0);
   const rows = scenarios.flatMap(({ description, tests: cases }) => [`- ${description}`, ...cases.map((test) => `    - ${test}`)]);
-  return [`Scenarios (${counted(scenarios.length, "scenario")}, ${counted(tests, "test")}):`, ...folded(rows)];
+  const shown = rows.length <= MAX_LIST_ROWS ? rows : folded(scenarios.map(({ description, tests: cases }) => `- ${description} (${counted(cases.length, "test")})`), MAX_SCENARIOS, (n) => `${n === 1 ? "scenario" : "scenarios"} in the report`);
+  return [`Scenarios (${counted(scenarios.length, "scenario")}, ${counted(tests, "test")}):`, ...shown];
 }
 
 const MAX_FILES = 5;
