@@ -1,6 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 import { renderReport } from '../shared-node/report.mjs'
-import { readInputs, type Inputs, type Spawn } from './inputs'
+import { readInputs, type Call, type Inputs, type Spawn } from './inputs'
 
 
 // The pane's one note line, as mod state: the report press and the suggest submit (./suggest) both write it, so the latest action wins.
@@ -62,7 +62,7 @@ async function fromSnapshot($: EngineInterface, live: Inputs): Promise<Inputs> {
 
 // A function declaration, not an arrow: the mod loader rejects an exported arrow taking $ across files.
 // Writes the run report under the reports folder. Never throws: a failed write or open is shown as the pane note, and only a failure before the write (reading inputs, session root) is dropped.
-export async function openReport($: EngineInterface, spawns: Spawn[]): Promise<void> {
+export async function openReport($: EngineInterface, spawns: Spawn[], calls: Call[] = []): Promise<void> {
   try {
     const live = await readInputs($, spawns)
     // With no live ledger the report is built from the last polled one.
@@ -75,7 +75,7 @@ export async function openReport($: EngineInterface, spawns: Spawn[]): Promise<v
     const shas = inputs.ledger.commits ?? []
     const commits = await readCommits($, shas)
     try {
-      await $.fs.write(path, renderReport({ ...inputs, commits, endedAt, now: live.ledger ? inputs.now : undefined }))
+      await $.fs.write(path, renderReport({ ...inputs, calls, commits, endedAt, now: live.ledger ? inputs.now : undefined }))
     } catch {
       await $.state.set(PANE_NOTE, "couldn't write the report")
       return

@@ -1,11 +1,12 @@
 import { expect, test } from 'claude-code/testing'
-import { BAND } from './testing/band'
+import { BAND, LEDGER, ROOT } from './testing/band'
 import { PANE, paneLines, replay, setupReplay, type Rig, type Step } from './testing/replay'
 import gOpen1 from './fixtures/replay/g-open-1'
 import probe2 from './fixtures/replay/probe-2'
 import s4Rollback from './fixtures/replay/s4-rollback'
 import { bandColumns } from './band'
 import { PHASE_COLOURS } from './pane'
+import { POLL_MS } from './poll'
 import { fitBand, glance, runStart } from '../shared-node/glance.mjs'
 import { MAX_FIX_UNDOS } from '../shared-node/limits.mjs'
 import { PHASES, ROLES } from '../shared-node/labels.mjs'
@@ -116,13 +117,15 @@ test('with the pane open, every row in order, the step list in plain names with 
   const rig = setupReplay(on)
   const steps = await drawn($, rig, gOpen1, TESTS['g-open-1'])
 
-  const review = at(steps, 148.104).lines
+  const all = at(steps, 148.104).lines
+  expect(all.slice(0, 3), 'the end rows lead, and read a dash before the task is done').toEqual(['DONE     —', 'GOAL     —', 'PR       —'])
+  const review = all.slice(3)
   expect(review[0], `the NOW row names the step in ${JSON.stringify(review)}`).toBe('NOW      safety-net review')
   expect(review[1], 'SPENT leaves out what is not measured').toMatch(/^SPENT {4}6 agents · \d+:\d\d$/)
   expect(review[2], 'nothing is looping').toBe('LOOPING  no')
   expect(review.filter(line => /^(LEFT|OFF TRACK)\b/.test(line)), 'LEFT and OFF TRACK are gone').toEqual([])
   expect(review.slice(3, 7), 'steps done, then current, in plain names').toEqual(['STEPS    ○ work out the task type', '         ✓ write scenarios', '         ✓ build test by test', '         ▸ safety-net review'])
-  expect(review, 'the tests stay listed, and no test is current in the review').toEqual(expect.arrayContaining(['TESTS    ✓ 1 done   ◌ 3 covered', 'TEST     —']))
+  expect(review, 'the tests stay listed, and no test is current in the review').toEqual(expect.arrayContaining(['TESTS    ✓ 1 done   ◌ 3 covered']))
 
   const building = at(steps, 49.891).lines
   expect(building, 'steps at tdd: done, current, to come').toEqual(expect.arrayContaining(['         ✓ write scenarios', '         ▸ build test by test', '         ○ safety-net review']))
@@ -192,14 +195,10 @@ test('across band and pane text for the replayed recordings, no rendered string 
   expect(strings, 'the band and pane drew text to check').toBeGreaterThan(100)
 })
 
-// ThemeKey, from types/claude-code.d.ts in the bundled plugin-authoring reference.
-const THEME_KEYS = [
-  'text', 'inverseText', 'inactive', 'subtle', 'suggestion', 'remember', 'success', 'error', 'warning', 'merged', 'claude',
-  'permission', 'planMode', 'autoAccept', 'promptBorder', 'bashBorder', 'ide', 'diffAdded', 'diffRemoved', 'diffAddedDimmed',
-  'diffRemovedDimmed', 'diffAddedWord', 'diffRemovedWord',
-]
+// Colour means one thing: the TDD phase (its fixed colour), "needs you" (warning) and a stop (error). Nothing else is coloured.
+const MEANING_COLOURS = ['warning', 'error']
 
-test('every-color-prop-is-a-theme-key-but-the-phases: across every drawn Text in band and pane over the replay recordings, each color prop is a ThemeKey value, and only the lit phase has its fixed colour', async ($, on) => {
+test('colour-means-one-thing: across every drawn Text in band and pane over the replay recordings, only the lit phase, needs-you and a stop are coloured', async ($, on) => {
   const rig = setupReplay(on)
   const colours = new Set<string>()
   let nodes = 0
@@ -212,13 +211,20 @@ test('every-color-prop-is-a-theme-key-but-the-phases: across every drawn Text in
         colours.add(String(color))
         const phase = /^[●](RED|GREEN|REFACTOR)$/.exec(node.text)?.[1]
         if (phase) expect(color, `${name} t=${step.t}: the lit ${phase} has its fixed colour`).toBe(PHASE_COLOURS[phase])
-        else expect(THEME_KEYS, `${name} t=${step.t}: "${node.text}" is coloured ${JSON.stringify(color)}`).toContain(color)
+        else expect(MEANING_COLOURS, `${name} t=${step.t}: "${node.text}" is coloured ${JSON.stringify(color)}`).toContain(color)
       }
     }
   }
 
   expect(nodes, 'the band and pane drew text to check').toBeGreaterThan(100)
-  expect([...colours], 'the recordings drew some colour at all, the phases among them').toEqual(expect.arrayContaining(['claude', 'success', PHASE_COLOURS.RED, PHASE_COLOURS.GREEN]))
+  expect([...colours], 'the recordings drew the phases').toEqual(expect.arrayContaining([PHASE_COLOURS.RED, PHASE_COLOURS.GREEN]))
+})
+
+test('colour-means-one-thing-in-a-review: over the s4-rollback replay, a lens that has finished but not yet returned is not drawn in a colour', async ($, on) => {
+  const rig = setupReplay(on)
+  const steps = await drawn($, rig, s4Rollback, S4_TEST_IDS, PANE)
+  const coloured = steps.flatMap(step => step.pane.filter(node => node.props.color !== undefined && !/^●(RED|GREEN|REFACTOR)$/.test(node.text)).map(node => `t=${step.t} ${node.props.color}: ${node.text}`))
+  expect(coloured.filter(line => !/^t=\S+ (warning|error): (needs you|stopped)/.test(line)), 'only needs-you and a stop are coloured').toEqual([])
 })
 
 // mod/fixtures/replay/s4-rollback/ is one S4 bug_fix run with a rolled-back fix, recorded in tests/smoke/recordings/s4-t85-run4/.
@@ -271,4 +277,33 @@ test('replay-fixes-match-recorded-rollbacks-and-verdicts', async ($, on) => {
   expect(atRollback[1], `at the rollback's own step t=${rolledAt}: ${JSON.stringify(atRollback)}`).toBe('         3 issues found · 3 to fix')
   expect(review(last.lines)[1], `at the end of the stage the retried fix was kept: ${JSON.stringify(last.lines)}`).toBe('         3 issues found · 3 fixed')
   expect(last.lines.some(line => /^ {2}fix \d+ |^fixes {2}/.test(line.trim() === line ? line : line.slice(9))), 'no fix block: the finding words say what happened').toBe(false)
+})
+
+// s4-rollback runs on through G:task-end and the publish run's pr-draft; pb publish then opens the PR and closes the unit.
+const S4_CHANGED = { '.pairingbuddy/run/changed.json': JSON.stringify([{ path: 'README.md', status: 'M' }, { path: 'discount.py', status: 'M' }, { path: 'tests/test_discount.py', status: 'M' }]) }
+
+test('replay-end-state-after-the-publish-says-done-goal-and-pr', async ($, on) => {
+  const rig = setupReplay(on)
+  const steps = await drawn($, rig, s4Rollback, S4_TEST_IDS, PANE, S4_CHANGED)
+  const publishing = steps.at(-1)!.lines
+  expect(publishing.slice(0, 3), `while the publish run waits on G:publish: ${JSON.stringify(publishing)}`).toEqual([
+    'DONE     README.md, discount.py, tests/test_discount.py · 1 test passing',
+    'GOAL     met · Fix this bug in discount.py: apply_discount(100, 10) returns 10',
+    'PR       —',
+  ])
+
+  rig.toolResults.set('Bash', { stdout: '{"ok":true,"result":"published","url":"https://github.com/o/r/pull/12","warnings":[]}\n', stderr: '' })
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'tu-publish', command: 'node <plugin>/cli/pb.mjs publish' })
+  rig.served.delete(`${ROOT}/${LEDGER}`)
+  await rig.clock.advance(POLL_MS * 2)
+  const ended = await paneLines($)
+
+  expect(ended.slice(0, 3), `after the publish: ${JSON.stringify(ended)}`).toEqual([
+    'DONE     README.md, discount.py, tests/test_discount.py · 1 test passing',
+    'GOAL     met · Fix this bug in discount.py: apply_discount(100, 10) returns 10',
+    'PR       opened · #12 fix: apply_discount returns price after discount',
+  ])
+  const review = ended.slice(ended.findIndex(line => line.startsWith('REVIEW')))
+  expect(review[0], 'the review is the work\'s, in one summary line').toBe('REVIEW   review: 3 issues, all fixed')
+  expect(review.slice(1).every(line => !line.includes('…')), `no finding is cut with an ellipsis: ${JSON.stringify(review)}`).toBe(true)
 })

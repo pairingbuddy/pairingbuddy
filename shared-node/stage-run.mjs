@@ -8,7 +8,7 @@ import { parseFixNotes } from "./fix-notes.mjs";
 import { lensSlug, parseKey } from "./keys.mjs";
 import { acceptVerdict, mergeLensReturns, wiredLensConfig } from "./lens-merge.mjs";
 import { TOKENS_UNIT, isFinishCommand, returnKeyOf, spentTokensOf } from "./spent-line.mjs";
-import { evidenceFor, maxAgentsOf, returnFileKey } from "./stages.mjs";
+import { evidenceFor, isVoidedAttempt, maxAgentsOf, returnFileKey } from "./stages.mjs";
 import { TestRunRefused, testRows } from "./test-run.mjs";
 
 const REPORT_LISTS = ["survivors", "refuted", "gaps", "uncovered", "unrefuted"];
@@ -57,6 +57,12 @@ export function keptIntakeReturn(artifactsDir, attempt) {
   if (pbKey === null) return null;
   return { role: returnFileKey(`${pbKey}.json`).role, content: readReturn(artifactsDir, pbKey) };
 }
+
+// The scenarios that stand: the newest enumerator return or code-scenarios fix whose attempt is not void, or null. The tdd
+// stage writes tests from these, and G:scenarios shows them.
+export const standingScenariosKey = (artifactsDir, ledger) =>
+  newestReturnMatching(artifactsDir, ({ role, item, stage, attempt }) =>
+    ((role === "enumerate-scenarios-and-test-cases" && item === null) || (role === "fix" && stage === "code-scenarios")) && !isVoidedAttempt(ledger, stage, attempt));
 
 // ---------- evidence ----------
 

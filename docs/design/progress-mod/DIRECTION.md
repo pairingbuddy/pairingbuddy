@@ -111,3 +111,62 @@ Rules:
 - **Finding words.** `checking` (a refuter is on it), `to fix` (upheld, fix not tried yet), `fixing`, `fixed`, `not a real problem` (knocked down), `left as is` (still open when the round ended). The summary counts the same words: `3 issues found · 1 fixed · 1 left as is · 1 not a real problem`.
 - **Phase colours are fixed, not theme keys.** RED red, GREEN green, REFACTOR blue, the lit one bold, so a theme that maps "success" to blue cannot turn GREEN blue.
 - **Removed:** "n active", "n unknown" and the legend under the test line, the "▸ now" and "✓ made to pass" sub-step lines, the "n agents of 1000" line, and the LEFT and OFF TRACK rows (never measured live). The progress row of earlier tests is the TESTS row.
+
+## Fourth watched run (2026-11-14): show what you ask about, gist before detail
+
+The human's findings:
+- A question gave the task type only in brackets at the end.
+- The scenarios question did not show the scenarios.
+- "Is this task done?" gave nothing to judge it by.
+- TESTS and TEST read as the same thing.
+- Long finding text was cut with "…".
+- A colour changed under the reader (yellow to white).
+- The end state talked about review fixes instead of whether the work is done and meets the goal.
+
+### Gate questions carry what they ask about
+
+Each question opens with its subject, then gives the facts needed to answer, then asks. The text is built by `pb gate eval` and stored, so the session cannot change it.
+
+- **Task type:** "Task type: new feature. Adds order_total to cart.py." Then the why line. Then "Is that the right type?"
+- **Scenarios:** "Scenarios (1 scenario, 1 test):", then one line per scenario with its test cases indented, folded after about 12 lines with "+ n more in the report". Then the why line. Then "Start building these?"
+- **Task done:** "Goal: <the task's first sentence>". "Built: <changed files>; <n> tests, all passing." "Review: <n> issues, <n> fixed, <n> left as is." When the safety-net's goal check had something to say, "Goal check: <its gist>". Then the why line. Then "Is the task done?"
+- **Publish:** "Pull request: <title>", then the body's first lines, then "Open it?"
+
+### Gist first, detail on request
+
+Every review finding carries a short `title` of 60 characters at most, written by the lens. The pane shows the title, never a cut-off claim. The full claim stays in the report (`r`). For older returns with no title, the pane uses the claim's first sentence and cuts it at a word boundary.
+
+### One TESTS row
+
+TEST is folded into TESTS. There is one line per test, the current one with its phase marker and age:
+
+```
+TESTS    ✓ ten percent off hundred
+         ▸ zero percent keeps full price  ●RED ›GREEN ›REFACTOR  0:11
+         · rounding
+```
+
+Long lists fold as before.
+
+### Colour means one thing
+
+Colour marks only:
+- the TDD phase (red, green, blue);
+- "needs you" (yellow), until you answer;
+- a stop (red).
+
+Steps use marks, not colours: ✓ done, ▸ active in bold, ○ to do. Nothing changes colour except when one of those three meanings starts or ends.
+
+### The end state answers "is it done, and what was done"
+
+When the unit is finished, the top of the pane reads:
+
+```
+DONE     order_total added to cart.py · 1 test passing
+GOAL     met · <the task's first sentence>
+PR       opened · #7 feat: add order_total summing line totals
+```
+
+Review moves below that as one summary line (`review: 4 issues, all fixed`), with the finding titles under it.
+
+As built: DONE, GOAL and PR are the first three rows at every step, each `—` until the task-end gate has passed, so the layout stays fixed. DONE lists run/changed.json's paths and the code run's passing tests. GOAL reads `met` only when the task-end gate passed and the safety-net's alignment lens (`corpus-misalignment`, or any lens named `*goal`) returned with no finding still open; `in doubt · <gist>` when one is open; `not checked` when that lens did not return or its returns are not known (a new session). PR reads `—` between the code run's end and the publish, then what `pb publish` printed (`opened · #7 <title>`, or `not opened · kept local`), else unit.json's `pr.url`. While the publish run's pr-draft runs, REVIEW shows that round; once no stage runs, it is the safety-net summary.

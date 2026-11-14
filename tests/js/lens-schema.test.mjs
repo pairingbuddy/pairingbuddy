@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { violations } from "./schema-check.mjs";
 
 const schema = JSON.parse(readFileSync(new URL("../../contracts/schemas/lens-result.schema.json", import.meta.url), "utf8"));
-const finding = { rule: "no-magic-numbers", severity: "high", kind: "fix-here", claim: "A literal 42 is used without a name.", where: "src/a.py:12" };
+const finding = { rule: "no-magic-numbers", severity: "high", kind: "fix-here", title: "Unnamed literal 42", claim: "A literal 42 is used without a name.", where: "src/a.py:12" };
 const valid = () => ({ pb_key: "k", ambiguity: null, findings: [{ ...finding }] });
 
 test("a valid result passes", () => {
@@ -35,6 +35,22 @@ test("a finding without claim fails", () => {
   delete result.findings[0].claim;
 
   assert.ok(violations(schema, result).includes("$.findings[0].claim: required property is missing"), "claim is required on a finding");
+});
+
+test("a finding without title fails: every new return gives the gist", () => {
+  const result = valid();
+  delete result.findings[0].title;
+
+  assert.ok(violations(schema, result).includes("$.findings[0].title: required property is missing"), "title is required on a finding");
+});
+
+test("a title longer than 60 characters fails", () => {
+  const result = valid();
+  result.findings[0].title = "x".repeat(61);
+
+  assert.notDeepEqual(violations(schema, result), [], "a title is at most 60 characters");
+  result.findings[0].title = "x".repeat(60);
+  assert.deepEqual(violations(schema, result), [], "60 characters is a title");
 });
 
 test("a finding without where fails", () => {

@@ -171,7 +171,7 @@ test('details-button-opens-pane-with-focus: pressing the band details button ope
   expect(calls.opened[0].holdToasts, 'the pane holds no toasts').toBeUndefined()
 })
 
-test('pane-step-lines-use-theme-keys: the current step line uses a theme key and is lit, done ticks use color success, and not-started lines stay plain or dim', async ($, on) => {
+test('pane-step-lines-use-marks-not-colours: the current step is bold, and no step line is coloured', async ($, on) => {
   // code-scenarios is done, code-tdd is running, the safety-net review has not started.
   engine(on, {
     ...SNAPSHOT_RUNNING,
@@ -189,10 +189,10 @@ test('pane-step-lines-use-theme-keys: the current step line uses a theme key and
   const current = line('▸')
   const done = line('✓')
   const todo = line('○')
-  expect(current?.props.color, 'the current step is lit with the claude theme key').toBe('claude')
+  expect(current?.props.color, 'the current step has no colour').toBeUndefined()
   expect(current?.props.bold, 'the current step is bold').toBe(true)
   expect(current?.props.dimColor, 'the current step is not dim').not.toBe(true)
-  expect(done?.props.color, 'a done tick is in the success theme key').toBe('success')
+  expect(done?.props.color, 'a done step has no colour').toBeUndefined()
   expect(todo?.props.color, 'a step not started has no colour').toBeUndefined()
   expect(todo?.props.bold, 'a step not started is not bold').not.toBe(true)
 })
@@ -274,7 +274,7 @@ test('pane-draws-the-review-row-and-no-test-in-the-safety-net-review', async ($,
   engine(on, lensLedger('code-safety-net'))
   await start($)
 
-  // The last test's step belongs to the TDD stage; in the review, TEST reads a dash and NOW names the review.
+  // The last test's step belongs to the TDD stage; in the review, no test is current and NOW names the review.
   await $.agent.spawn({ prompt: 'p', description: 'd', name: 'pb1 code-tdd GREEN implement-code ten-percent-off r1', subagentType: 'pairingbuddy:implement-code' })
   const spawned = await $.agent.spawn({ prompt: 'p', description: 'd', name: 'pb1 code-safety-net - lens code r1', subagentType: 'pairingbuddy:lens' })
   await $.tool.call({ tool: 'StructuredOutput', tool_use_id: 'tu1', pb_key: 'code-safety-net.lens.code.r1.a1', findings: [{ where: 'discount.py:3', claim: 'rounds the wrong way' }], agentId: spawned.agentId })
@@ -288,7 +288,8 @@ test('pane-draws-the-review-row-and-no-test-in-the-safety-net-review', async ($,
     '           to fix · rounds the wrong way · discount.py:3',
   ])
   expect(lines, 'NOW names the review, not the last test').toContain('NOW      safety-net review')
-  expect(lines, 'TEST reads a dash outside build test by test').toContain('TEST     —')
+  expect(lines, 'no test is current outside build test by test').toContain('TESTS    —')
+  expect(lines.some(line => line.startsWith('TEST ')), 'there is no TEST row').toBe(false)
   expect(lines.some(line => /agents? of \d+/.test(line)), 'no "n agents of 1000" line').toBe(false)
 })
 

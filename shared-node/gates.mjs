@@ -45,16 +45,89 @@ const PUBLISH_OPTIONS = [
 
 const optionsOf = (gate) => (gate === PUBLISH_GATE ? PUBLISH_OPTIONS : GATE_OPTIONS);
 
-const typeNamed = (taskType) => (plainName(taskType ?? "") === undefined ? "" : ` (${plainName(taskType)})`);
+// The first sentence of a model's text, ending in a stop, or null when there is no text.
+export function firstSentence(text) {
+  if (typeof text !== "string" || text.trim() === "") return null;
+  const sentence = text.trim().split(/(?<=[.!?])\s+/)[0].replace(/\s+/g, " ");
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+}
+
+function typeLines({ taskType, facts }) {
+  const type = plainName(taskType ?? "");
+  if (type === undefined) return [];
+  const gist = firstSentence(facts.rationale);
+  return [`Task type: ${type}.${gist === null ? "" : ` ${gist}`}`];
+}
+
+const counted = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// A list kept readable in a terminal: the first `keep` rows, then how many more the report holds.
+const MAX_LIST_ROWS = 12;
+const folded = (rows, keep = MAX_LIST_ROWS, more = "in the report") => (rows.length <= keep ? rows : [...rows.slice(0, keep), `+ ${rows.length - keep} more ${more}`]);
+
+function scenarioLines({ facts: { scenarios } }) {
+  if (!Array.isArray(scenarios) || scenarios.length === 0) return [];
+  const tests = scenarios.reduce((sum, { tests: cases }) => sum + cases.length, 0);
+  const rows = scenarios.flatMap(({ description, tests: cases }) => [`- ${description}`, ...cases.map((test) => `    - ${test}`)]);
+  return [`Scenarios (${counted(scenarios.length, "scenario")}, ${counted(tests, "test")}):`, ...folded(rows)];
+}
+
+const MAX_FILES = 5;
+
+function builtLine({ files, tests, passing }) {
+  const shown = Array.isArray(files) && files.length > 0 ? folded(files, MAX_FILES).join(", ") : null;
+  const run = [...(tests > 0 ? [counted(tests, "test")] : []), ...(passing === true ? [tests > 0 ? "all passing" : "the full test suite passes"] : [])].join(", ");
+  const parts = [shown, run === "" ? null : run].filter((part) => part !== null);
+  return parts.length === 0 ? [] : [`Built: ${parts.join("; ")}.`];
+}
+
+function reviewLine(outcomes) {
+  if (!Array.isArray(outcomes)) return [];
+  if (outcomes.length === 0) return ["Review: no issues."];
+  const count = (outcome) => outcomes.filter((each) => each === outcome).length;
+  const notReal = count("not a real problem");
+  return [`Review: ${counted(outcomes.length, "issue")}, ${count("fixed")} fixed, ${count("left as is")} left as is${notReal > 0 ? `, ${notReal} not a real problem` : ""}.`];
+}
+
+// The goal check's first finding, with how many more there are. A check with nothing to say gives no line.
+function goalCheckLine(findings) {
+  if (!Array.isArray(findings) || findings.length === 0) return [];
+  const [{ gist, outcome }] = findings;
+  const more = findings.length > 1 ? `; + ${findings.length - 1} more in the report` : "";
+  return [`Goal check: ${gist} (${outcome})${more}.`];
+}
+
+function taskEndLines({ facts }) {
+  const goal = firstSentence(facts.goal);
+  return [...(goal === null ? [] : [`Goal: ${goal}`]), ...builtLine(facts), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck)];
+}
+
+const MAX_BODY_LINES = 8;
+
+// The body's text lines, with no blank ones, so the few lines a terminal shows are all text.
+function bodyRows(body) {
+  if (typeof body !== "string") return [];
+  const rows = body.split(/\r?\n/).filter((row) => row.trim() !== "");
+  return folded(rows, MAX_BODY_LINES, "lines in .pairingbuddy/run/pr-body.md");
+}
+
+const publishLines = ({ facts: { title, body } }) => (typeof title === "string" ? [`Pull request: ${title}`, ...bodyRows(body)] : bodyRows(body));
+
+// "it" needs the title line before it to name the pull request.
+function publishAsk(refresh, titled) {
+  if (titled) return refresh ? "Update it?" : "Open it?";
+  return refresh ? "Update the pull request?" : "Open the pull request?";
+}
 
 // What each gate asks the human, in plain words. The header is AskUserQuestion's chip, so it stays within 12 characters.
+// A gate with `lines` opens with its subject and the facts to judge it by, then the why line, then asks, one line each.
 const GATE_ASKS = {
-  "G:type": { header: "Task type", ask: ({ taskType }) => `Is the task type right?${typeNamed(taskType)}` },
-  "G:scenarios": { header: "Scenarios", ask: () => "Are these scenarios right, and should it start building?" },
+  "G:type": { header: "Task type", lines: typeLines, ask: ({ taskType }) => (plainName(taskType ?? "") === undefined ? "Is the task type right?" : "Is that the right type?") },
+  "G:scenarios": { header: "Scenarios", lines: scenarioLines, ask: () => "Start building these?" },
   "G:scope": { header: "Tidy-up", ask: () => "Is this the right list to tidy up?" },
-  "G:task-end": { header: "Task done", ask: () => "Is this task done?" },
+  "G:task-end": { header: "Task done", lines: taskEndLines, ask: () => "Is the task done?" },
   "G:unit": { header: "Experiment", ask: () => "Is this experiment done?" },
-  [PUBLISH_GATE]: { header: "Publish", ask: ({ refresh }) => (refresh ? "Update the pull request?" : "Open the pull request?") },
+  [PUBLISH_GATE]: { header: "Publish", lines: publishLines, ask: ({ refresh, facts }) => publishAsk(refresh, typeof facts.title === "string") },
 };
 
 // A gate the table does not know, such as one a test contract adds.
@@ -87,9 +160,13 @@ const PLAIN_WHYS = [
 const plainWhy = (reason) => PLAIN_WHYS.find(([pattern]) => pattern.test(reason))?.[1] ?? reason;
 
 // The question gate eval issues: pure, and stored in needsHuman, so the hooks match the answer against what was asked.
-export function gateQuestion(gate, { reason = "", taskType = null, refresh = false } = {}) {
-  const { header, ask } = GATE_ASKS[gate] ?? OTHER_ASK;
-  return { question: `${ask({ taskType, refresh })} ${plainWhy(reason)}`.trim(), header, options: optionsOf(gate), multiSelect: false };
+// facts: what pb gate eval read for this gate (see gate-facts.mjs); a fact it could not read is absent, and its line is left out.
+export function gateQuestion(gate, { reason = "", taskType = null, refresh = false, facts = {} } = {}) {
+  const { header, ask, lines } = GATE_ASKS[gate] ?? OTHER_ASK;
+  const context = { taskType, refresh, facts };
+  const why = plainWhy(reason);
+  const question = lines === undefined ? `${ask(context)} ${why}`.trim() : [...lines(context), ...(why === "" ? [] : [why]), ask(context)].join("\n");
+  return { question, header, options: optionsOf(gate), multiSelect: false };
 }
 
 // The question the pending gate asked, or null when no gate waits or the ledger holds none.
@@ -218,7 +295,7 @@ function keptCheckOf({ pbKey, stage, item, round, attempt }, dir, ledger) {
 }
 
 // The lenses whose fix group a kept fix answered at this stage attempt: a group is one lens's survivors, and its check names one of them.
-function keptFixLenses(dir, stage, ledger) {
+export function keptFixLenses(dir, stage, ledger) {
   const fixes = returnsAt(dir, stage).filter(({ role }) => role === "fix");
   return new Set(fixes.map((fix) => keptCheckOf(fix, dir, ledger)).filter((check) => check !== null).map((check) => lensOfFinding({ id: check.finding_id })));
 }

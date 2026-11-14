@@ -22,3 +22,14 @@ test("a survivor whose lens a kept fix answered is fixed, a refuted finding is n
     { id: "permanence-3", claim: "claim permanence-3", where: "a.mjs:1", outcome: "left as is" },
   ]);
 });
+
+test("an outcome carries the finding's title when the lens gave one, and no title key when it gave none", () => {
+  const round = { survivors: [{ ...finding("code-1"), title: "Rounds the wrong way" }], refuted: [], unrefuted: [{ ...finding("code-2"), blocking: false }] };
+
+  const outcomes = findingOutcomes(round, ["code"]);
+
+  assert.deepEqual(outcomes, [
+    { id: "code-1", title: "Rounds the wrong way", claim: "claim code-1", where: "a.mjs:1", outcome: "fixed" },
+    { id: "code-2", claim: "claim code-2", where: "a.mjs:1", outcome: "left as is" },
+  ]);
+});

@@ -6,7 +6,7 @@
 //   auto-pass:           {ok, result:"auto-pass", gate, source:"auto"}
 //   first ask:           {ok, result:"needs-human", gate, reason, question, humanCommand}
 //   tap recorded nothing:{ok, result:"needs-human-command", gate, reason, humanCommand}
-//   question:            {question:"<plain question> <plain why>", header:"<plain, at most 12 characters>", options:[{label,...}] approve|redo|stop, multiSelect:false},
+//   question:            {question:"<subject and facts lines>\n<plain why>\n<plain ask>", header:"<plain, at most 12 characters>", options:[{label,...}] approve|redo|stop, multiSelect:false},
 //                        stored as needsHuman.question: the hooks record an answer only to that exact question
 //   humanCommand:        !cd <run root> && node <absolute path>/pb.mjs human approve <gate>
 //   answered redo:       the gate record and the stage's done state go, so no gate is due and the stage re-runs at attempt+1
@@ -619,10 +619,21 @@ describe("needs-human output", () => {
 
     const { question } = gateEval(repo);
 
-    assert.equal(question.question, "Is this task done? Auto mode is off, so this asks you.");
+    assert.equal(question.question, "Auto mode is off, so this asks you.\nIs the task done?");
     assert.equal(question.header, "Task done");
     assert.deepEqual(question.options.map(({ label }) => label), ANSWERS);
     assert.equal(question.multiSelect, false);
+  });
+
+  test("carries the facts it asks about, read from the run, into the stored question", () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo.dir, ".pairingbuddy", "task.json"), JSON.stringify({ description: "Set x to 2. It was 1." }));
+    writeFileSync(join(repo.dir, ".pairingbuddy", "run", "changed.json"), JSON.stringify([{ path: "config.toml", status: "M" }]));
+
+    const { question } = gateEval(repo);
+
+    assert.equal(question.question, "Goal: Set x to 2.\nBuilt: config.toml.\nAuto mode is off, so this asks you.\nIs the task done?");
+    assert.deepEqual(repo.ledger().needsHuman.question, question);
   });
 
   test("carries the ! command for this plugin's CLI", () => {

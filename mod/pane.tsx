@@ -1,6 +1,7 @@
 import { plainName } from '../shared-node/plain-names.mjs'
-import { lensLines } from '../shared-node/lens-round.mjs'
-import { fitProgress, fitTries } from '../shared-node/now-building.mjs'
+import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
+import { endReviewLines } from '../shared-node/end-state.mjs'
+import { fitTries } from '../shared-node/now-building.mjs'
 import type { PaneTags, RowTones, View } from './view'
 
 // Every row is always drawn, in this order, its label in a column this wide; a row with nothing to show reads EMPTY.
@@ -18,7 +19,8 @@ type Props = Record<string, unknown>
 type Part = { text: string; props?: Props }
 
 const toneProps = (tone?: string): Props => (tone === 'dim' ? { dimColor: true } : tone ? { color: tone } : {})
-const stepProps = (line: string): Props => (line.startsWith('▸') ? { color: 'claude', bold: true } : line.startsWith('✓') ? { color: 'success' } : {})
+// Steps read by their marks, never by colour: only the active one is bold.
+const stepProps = (line: string): Props => (line.startsWith('▸') ? { bold: true } : {})
 const emptyLine = (): Part[] => [{ text: EMPTY, props: { dimColor: true } }]
 
 // One row: its label on the first line, a blank label column on the rest; a row with no lines reads EMPTY.
@@ -34,18 +36,37 @@ function cutName(name: string, room: number) {
   return room > 1 ? `${[...name].slice(0, room - 1).join('')}…` : '…'
 }
 
-function testParts(test: View['test'], width: number): Part[][] {
-  if (!test) return []
+// The current test's cycle marker and step age, as parts.
+function cycleParts(test: NonNullable<View['test']>): Part[] {
   const marker = test.marker.steps.flatMap((step, i): Part[] => [
     ...(i > 0 ? [{ text: ' ' }] : []),
     { text: `${step.mark}${step.name}`, props: step.lit ? { color: PHASE_COLOURS[step.name], bold: true } : { dimColor: true } },
   ])
-  const age = test.age ? [{ text: `  ${test.age}` }] : []
-  // The test's name gives way first, so the cycle marker and the step age always fit the width.
-  const rest = [...marker, ...age].reduce((sum, part) => sum + cells(part.text), 0)
-  const GAP = '  '
-  const name = test.current ? [{ text: `${cutName(test.current, width > 0 ? width - rest - GAP.length : 0)}${GAP}`, props: { bold: true } }] : []
-  return [[...name, ...marker, ...age]]
+  return [...marker, ...(test.age ? [{ text: `  ${test.age}` }] : [])]
+}
+
+const MARKS = { done: '✓', current: '▸', waiting: '·', covered: '◌' } as const
+const GAP = '  '
+
+// One TESTS row, a line per test: the folded counts first, then each test by its mark, the current one with its cycle marker and
+// step age, then "+n more". The current test's name gives way first, so its marker and age always fit the width.
+function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: number): Part[][] {
+  const folded = [progress?.folded ? `${MARKS.done} ${progress.folded} done` : '', progress?.coveredFolded ? `${MARKS.covered} ${progress.coveredFolded} covered` : ''].filter(Boolean)
+  const lines: Part[][] = folded.length ? [[{ text: folded.join('   ') }]] : []
+  const entries = progress?.entries ?? []
+  const currentLine = (name: string): Part[] => {
+    const cycle = test ? cycleParts(test) : []
+    const rest = cycle.reduce((sum, part) => sum + cells(part.text), 0)
+    const room = width > 0 ? width - rest - (cycle.length ? GAP.length : 0) : 0
+    return [{ text: `${cutName(`${MARKS.current} ${name}`, room)}${cycle.length ? GAP : ''}`, props: { bold: true } }, ...cycle]
+  }
+  for (const entry of entries) {
+    lines.push(entry.mark === 'current' ? currentLine(entry.name) : [{ text: cutName(`${MARKS[entry.mark]} ${entry.name}`, width) }])
+  }
+  // A current test the list does not hold still gets its line.
+  if (test?.current && !entries.some(entry => entry.mark === 'current')) lines.push(currentLine(test.current))
+  if (progress?.more) lines.push([{ text: `+${progress.more} more`, props: { dimColor: true } }])
+  return lines
 }
 
 function paneRows(view: View, columns: number) {
@@ -54,15 +75,17 @@ function paneRows(view: View, columns: number) {
   const one = (text: string, props: Props = {}): Part[][] => [[{ text, props: text === EMPTY ? { dimColor: true } : props }]]
   const nowProps = { ...toneProps(rowTones.now), ...(rowTones.now === 'warning' ? { bold: true } : {}) }
   const tries = view.tries?.length ? [[{ text: fitTries(view.tries, width).trimStart(), props: { dimColor: true } }]] : []
+  const review = view.endRound ? endReviewLines(view.endRound, width) : lensLines(view.lensRound, width)
   return [
+    ...rowLines('DONE', one(cutAtWord(view.end.done, width))),
+    ...rowLines('GOAL', one(cutAtWord(view.end.goal, width))),
+    ...rowLines('PR', one(cutAtWord(view.end.pr, width))),
     ...rowLines('NOW', one(rows.now, nowProps)),
     ...rowLines('SPENT', one(rows.spent, toneProps(rowTones.spent))),
     ...rowLines('LOOPING', [...one(rows.looping, toneProps(rowTones.looping)), ...tries]),
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
-    // Folding keeps the current test whole, so a name still too long is cut.
-    ...rowLines('TESTS', view.progress ? [[{ text: cutName(fitProgress(view.progress, width), width) }]] : []),
-    ...rowLines('TEST', testParts(view.test, width)),
-    ...rowLines('REVIEW', lensLines(view.lensRound, width).map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
+    ...rowLines('TESTS', testsParts(view, width)),
+    ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
   ]
 }
 

@@ -172,3 +172,25 @@ test('report-from-snapshot-ignores-stale-legacy-tests', async ($, on) => {
   expect(html.includes('not reached'), 'no test card says not reached').toBe(false)
   expect(html.includes(legacyId), 'the legacy-only id is not shown').toBe(false)
 })
+
+test('report-keeps-the-full-claim-the-pane-shows-the-title-of', async ($, on) => {
+  const ledger = { ...SNAPSHOT_RUNNING, stage: { name: 'code-safety-net', status: 'active', runId: null, attempt: 1, startedAt: '2026-11-03T06:39:00Z' } }
+  engine(on, ledger)
+  on('tool.call', () => ({ result: 'ok' }))
+  const clock = mock.clock(on, { now: Date.parse('2026-11-03T06:40:00Z') })
+  const recorder = recordReportCalls(on)
+  await start($)
+  const claim = 'apply_discount rounds half down. Every order of 10.5 is billed 10, a lost cent each time.'
+  const lens = await $.agent.spawn({ prompt: 'p', description: 'pb1 code-safety-net - lens code r1', subagentType: 'pairingbuddy:lens', workflow: { runId: 'wf_1', agentIndex: 1 } })
+  await $.tool.call({ tool: 'StructuredOutput', tool_use_id: 'tu1', pb_key: 'code-safety-net.lens.code.r1.a1', findings: [{ title: 'Rounds half down', claim, where: 'discount.py:3' }], agentId: lens.agentId })
+  await clock.advance(POLL_MS)
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await pane.press({ key: REPORT_KEY })
+  await pane.unmount()
+
+  writtenFileName(recorder.writes, 'the press writes one report')
+  const html = recorder.writes[0].text.match(/<h2>REVIEW<\/h2>[\s\S]*?<\/section>/)?.[0] ?? ''
+  expect(html, 'the report names the finding by its title').toContain('<strong>Rounds half down</strong>')
+  expect(html, 'and keeps the full claim').toContain(claim)
+})

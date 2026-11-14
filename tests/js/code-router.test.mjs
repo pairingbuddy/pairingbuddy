@@ -714,5 +714,7 @@ describe("router-asks-gates-with-the-question-box", () => {
     sentencesSaying("that the end-of-run summary takes review outcomes only from the return's review", section, /end-of-run summary/, /only from `review`/, /never from `survivors`/);
     sentencesSaying("that each finding is told by its plain outcome", section, /"fixed"/, /"left as is"/, /"not a real problem"/);
     sentencesSaying("that a fixed finding is never said to have gone out, nor offered a refresh", section, /reads "fixed"/, /never say it went out/, /`pb pr refresh`/);
+    sentencesSaying("that a passed gate is told by who passed it: the human's click or auto mode", section, /who passed a gate/, /"you answered/, /"auto mode passed/);
+    sentencesSaying("that the session never claims it approved a gate", section, /never say you approved/, /on the human's behalf/);
   });
 });

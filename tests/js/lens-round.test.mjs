@@ -114,6 +114,7 @@ test("lens-returned-with-found-count", () => {
     "a lens that was spawned and returned appears once, returned, next to the still-running lens",
   );
   assert.equal(round.lenses[0].found, 3, "a returned lens reports found equal to its findings length");
+  assert.deepEqual(round.lenses.map((lens) => lens.id), ["code", "tests"], "each lens keeps its id, so a reader can pick one lens out");
 });
 test("lens-uncovered-on-return-without-findings", () => {
   const spawns = [spawnFor({ item: "code" })];
@@ -372,24 +373,25 @@ test("lines-truncate-and-fold-to-columns", () => {
   const narrow = lensLines(round, 60);
   const uncut = lensLines(round, 0);
 
+  // With no title, the gist is the claim's first sentence cut at a word boundary to 60 characters, never with an ellipsis.
+  const gist = "the loop never stops when the queue is empty and the caller";
   const findingStart = wide.findIndex(({ text }) => text.startsWith("  to fix · "));
   assert.notEqual(findingStart, -1, "the finding lines are shown");
   assert.deepEqual(
     wide.slice(findingStart, findingStart + 4),
     [
-      { text: `  to fix · ${longClaim} · a.mjs:1` },
+      { text: `  to fix · ${gist} · a.mjs:1` },
       { text: "  not a real problem · second claim · b.mjs:2" },
       { text: "  checking · third claim · c.mjs:3" },
       { text: "  + 2 more", tone: "dim" },
     ],
-    "only the first 3 findings show, each as what happens to it, the point, then where, then a dim '+ n more' for the rest",
+    "only the first 3 findings show, each as what happens to it, the gist, then where, then a dim '+ n more' for the rest",
   );
   assert.equal(narrow.every(({ text }) => text.length <= 60), true, "at 60 columns no line is longer than 60");
-  const cut = narrow.filter(({ text }) => text.endsWith("…"));
-  assert.deepEqual(
-    cut.map(({ text }) => text),
-    [`  to fix · ${longClaim} · a.mjs:1`.slice(0, 59) + "…"],
-    "a finding too long for the width stays one line, cut to 60 characters ending with an ellipsis, and short lines are left whole",
+  assert.equal(narrow.some(({ text }) => text.includes("…")), false, "no finding is cut with an ellipsis");
+  assert.ok(
+    narrow.some(({ text }) => text === "  to fix · the loop never stops when the queue is empty and"),
+    `a finding too long for the width gives up its where, then its gist is cut at a word boundary: ${JSON.stringify(narrow)}`,
   );
   assert.deepEqual(uncut, wide, "columns 0 cuts nothing");
   const findingsAt = narrow.findIndex(({ text }) => text.includes(" issues found"));
@@ -399,6 +401,20 @@ test("lines-truncate-and-fold-to-columns", () => {
     [{ text: "5 issues found · 3 to fix · 1 checking" }, { text: "  1 not a real problem" }],
     "the summary says what happens to the issues (those not challenged and the upheld one are to fix), folded to the width",
   );
+});
+test("finding-line-shows-the-title-and-else-the-first-sentence-of-the-claim", () => {
+  const findings = [
+    { title: "Loop never ends on an empty queue", where: "a.mjs:1", claim: "The loop never stops when the queue is empty. The caller then waits forever." },
+    { where: "b.mjs:2", claim: "The rounding goes the wrong way. It should round half up." },
+  ];
+  const round = lensRound({ ledger: ledgerFor(), calls: [callFor({ item: "code", findings })], spawns: [spawnFor({ item: "code" })], contract });
+
+  const lines = lensLines(round, 200).map(({ text }) => text);
+
+  assert.equal(round.findings[0].title, "Loop never ends on an empty queue", "the round carries the title");
+  assert.equal(round.findings[0].claim, findings[0].claim, "the round keeps the full claim for the report");
+  assert.ok(lines.includes("  to fix · Loop never ends on an empty queue · a.mjs:1"), `the title is shown, never the claim: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("  to fix · The rounding goes the wrong way. · b.mjs:2"), `with no title, the first sentence is: ${JSON.stringify(lines)}`);
 });
 test("finding-line-names-a-run-file-without-the-run-folder", () => {
   const calls = [callFor({ item: "code", findings: [{ where: ".pairingbuddy/run/pr-body.md (Verification section, lines 13-15)", claim: "The Verification section reports a check that did not run" }] })];
@@ -602,7 +618,7 @@ test("lens-fold-ignores-odd-input-and-other-stop-codes", () => {
   const otherStop = lensRound({ ledger: ledgerFor({ stop: stepFailed }), calls: [], spawns: [spawnFor({ item: "code" })], contract });
   const otherStopOnly = lensRound({ ledger: ledgerFor({ stop: stepFailed }), calls: [], spawns: [], contract });
 
-  assert.deepEqual(nonArray.lenses, [{ name: plainName("code"), state: "uncovered" }], "a lens whose findings are not an array is uncovered, and does not throw");
+  assert.deepEqual(nonArray.lenses, [{ id: "code", name: plainName("code"), state: "uncovered" }], "a lens whose findings are not an array is uncovered, and does not throw");
   assert.equal(unknownVerdict.findings[0].verdict, "challenging", "an unknown refuter verdict leaves the finding being challenged while a refuter is spawned");
   assert.deepEqual(nullStart.lenses.map(({ name }) => name), [plainName("code")], "a ledger stage with no start time still counts a spawn that has one");
   assert.equal(nullStage, undefined, "a ledger whose stage is null shows no round and does not throw");
@@ -805,11 +821,11 @@ test("review-lines-are-the-lenses-the-summary-and-the-findings-only", () => {
   assert.deepEqual(
     lensLines(round, 200),
     [
-      { text: "the code 1 · the tests 0 · needed or not … · docs and plan not covered", tone: "warning" },
+      { text: "the code 1 · the tests 0 · needed or not … · docs and plan not covered" },
       { text: "1 issue found · 1 fixing" },
       { text: "  fixing · one · a.mjs:1", whole: true },
     ].map(({ whole, ...line }) => line),
-    "no header, fixes block, stopped line or agent count: a running lens reads '…', an uncovered one 'not covered' and puts the line in warning tone",
+    "no header, fixes block, stopped line or agent count: a running lens reads '…', an uncovered one 'not covered', with no tone: colour marks only a phase, needs-you or a stop",
   );
   assert.deepEqual(lensLines(quiet, 200), [{ text: "the code 0" }, { text: "no issues found" }], "a round with no findings says so");
 });

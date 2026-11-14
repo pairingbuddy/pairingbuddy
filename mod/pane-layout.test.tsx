@@ -4,7 +4,7 @@ import { paneLines, setupReplay, type Rig } from './testing/replay'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
 
-const ROWS = ['NOW', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'TEST', 'REVIEW']
+const ROWS = ['DONE', 'GOAL', 'PR', 'NOW', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'REVIEW']
 const LABEL_WIDTH = 9
 
 // The rows the pane starts with a label, in order.
@@ -28,7 +28,7 @@ test('every-row-is-drawn-in-order-with-a-fixed-label-width-and-a-dash-when-empty
   expect(labelsOf(lines), `the rows, in order: ${JSON.stringify(lines)}`).toEqual(ROWS)
   for (const label of ROWS) expect(rowOf(lines, label), `${label} sits in a ${LABEL_WIDTH}-wide label column: ${JSON.stringify(lines)}`).toBeDefined()
   expect(rowOf(lines, 'NOW'), 'NOW names the active step').toBe('NOW      write scenarios')
-  for (const label of ['TESTS', 'TEST', 'REVIEW']) expect(rowOf(lines, label), `${label} has nothing to show yet, so it reads a dash`).toBe(`${label.padEnd(LABEL_WIDTH)}—`)
+  for (const label of ['DONE', 'GOAL', 'PR', 'TESTS', 'REVIEW']) expect(rowOf(lines, label), `${label} has nothing to show yet, so it reads a dash`).toBe(`${label.padEnd(LABEL_WIDTH)}—`)
   expect(rowOf(lines, 'LOOPING'), 'no step is looping').toBe('LOOPING  no')
   expect(lines.some(line => /^(LEFT|OFF TRACK)\b/.test(line)), 'LEFT and OFF TRACK are gone').toBe(false)
 })
@@ -110,7 +110,7 @@ test('after-the-run-looping-and-test-read-a-dash-and-the-last-review-stays', asy
 
   expect(rowOf(lines, 'NOW'), 'the run is over').toBe('NOW      last run finished')
   expect(rowOf(lines, 'LOOPING'), 'after the run LOOPING reads a dash').toBe('LOOPING  —')
-  expect(rowOf(lines, 'TEST'), 'after the run no test is current').toBe('TEST     —')
+  expect(lines.some(line => /^\s+▸ .*\d:\d\d$/.test(line)), 'after the run no test is current').toBe(false)
   expect(rowOf(lines, 'REVIEW'), 'the last review round stays').toBe('REVIEW   the code 1')
   expect(lines, 'its open finding was left as is').toContain('           left as is · one · a.py:1')
 })

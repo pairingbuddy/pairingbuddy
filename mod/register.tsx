@@ -1,5 +1,6 @@
 import { atom, read, type EngineInterface, type PluginOptions, type Register, type RenderElement, type RenderInput } from 'claude-code'
-import { fromPolled, spawnOf, startedAtOf, type Call, type Spawn } from './inputs'
+import { fromPolled, spawnOf, startedAtOf, type Call, type Published, type Spawn } from './inputs'
+import { recordPublished } from './published'
 import { newPollerState, startPoller, type PollerState } from './poll'
 import { nextAgent } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
@@ -30,6 +31,9 @@ const noteAtom = atom({ plugin: 'pairingbuddy', key: 'pane-note' }, null)
 // The same key the suggest submit writes (PENDING in ./suggest); the kit's scan reads the atom's literals from this file.
 const pendingAtom = atom({ plugin: 'pairingbuddy', key: 'pending-suggestion' }, null)
 
+// What the last pb publish printed, written by the Bash hook below.
+const publishedAtom = atom({ plugin: 'pairingbuddy', key: 'published' }, null)
+
 async function startWatching($: EngineInterface, poller: PollerState, options: PluginOptions) {
   await $.command.register({ name: 'pb', description: 'Open the Pairing Buddy pane' })
   await startPoller($, poller, options)
@@ -51,10 +55,10 @@ function drawGlance(
   const tags = $.ui.resolve(e)
 
   // Until the first poll lands there is nothing to draw from, so the view is the idle one.
-  return Promise.all([read($, inputsAtom), read($, openedAtom), read($, noteAtom), read($, pendingAtom), read($, lastRunAtom), read($, endedAtAtom)]).then(([polled, opened, note, pending, lastRun, endedAt]) => {
-    const live = fromPolled(polled, spawns, calls)
+  return Promise.all([read($, inputsAtom), read($, openedAtom), read($, noteAtom), read($, pendingAtom), read($, lastRunAtom), read($, endedAtAtom), read($, publishedAtom)]).then(([polled, opened, note, pending, lastRun, endedAt, published]) => {
+    const live = fromPolled(polled, spawns, calls, published as Published | null)
     // With no live ledger the last polled one is shown as a finished run.
-    const snapshot = fromPolled(lastRun as Parameters<typeof fromPolled>[0], spawns, calls)
+    const snapshot = fromPolled(lastRun as Parameters<typeof fromPolled>[0], spawns, calls, published as Published | null)
     // The ended view measures to the moment the run ended, the same end time the report uses.
     const endedMs = typeof endedAt === 'string' ? Date.parse(endedAt) : NaN
     const view = live.ledger || !snapshot.ledger ? buildView(live) : buildEndedView(Number.isNaN(endedMs) ? snapshot : { ...snapshot, now: endedMs })
@@ -85,6 +89,7 @@ export const register: Register = (on, options) => {
     spawns.length = 0
     calls.length = 0
     poller.unit = null
+    poller.record = null
     if (!e.isInteractive) {
       return next(e)
     }
@@ -109,6 +114,13 @@ export const register: Register = (on, options) => {
     // The stamp follows without holding the call; a failed clock leaves the call unstamped.
     startedAtOf($).then((at) => { if (at) call.at = at }).catch(() => {})
     return next(e)
+  })
+
+  // A pb publish call is read for what it opened once it has run; never held, denied or changed.
+  on('tool.call', { tool: 'Bash' }, ($, e, next) => {
+    const result = next(e)
+    Promise.resolve(result).then((ran) => recordPublished($, e.command, ran)).catch(() => {})
+    return result
   })
 
   on('command.run', ($, e, next) => {
@@ -150,7 +162,7 @@ export const register: Register = (on, options) => {
       unknownLabels={view.unknownLabels}
       note={note}
       suggestion={suggestionView(pending, () => nextAgent(contract, view.ledger, spawns))}
-      onReport={() => openReport($, spawns)}
+      onReport={() => openReport($, spawns, calls)}
       onSuggest={(text) => submitSuggestion($, spawns, text)}
       onDismiss={() => closePane($)}
     />

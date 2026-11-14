@@ -890,3 +890,25 @@ test("build-report-wires-both-pr-draft-lenses", () => {
   assert.deepEqual(report.survivors.map((s) => s.id), ["claims-1"], "the claims finding survives, with the claims lens's id");
   assert.deepEqual(report.uncovered, ["permanence"], "the permanence lens has no return, so it alone is uncovered");
 });
+
+// The pane shows each finding's gist; the report keeps the whole claim, under its title.
+test("report-review-section-gives-each-finding-its-title-and-full-claim", () => {
+  const stage = { name: "code-safety-net", status: "active", runId: "wf_1", attempt: 1, startedAt: null };
+  const ledger = { task: "Fix the discount", stage, stages: [], tests: {}, fixes: { rollbacks: [] } };
+  const claim = "apply_discount rounds 0.5 down. Callers that charge 10.5 are billed 10, which is a lost cent on every order.";
+  const calls = [{ input: { pb_key: "code-safety-net.lens.code.r1.a1", findings: [{ title: "Rounds half down", claim, where: "discount.py:3" }, { claim: "No title <here>. More detail.", where: "b.py:1" }] } }];
+
+  const review = sectionOf(renderReport({ ledger, spawns: [], calls, tests: [] }), "REVIEW");
+
+  assert.ok(review.includes("<strong>Rounds half down</strong>"), `the title leads the finding: ${review}`);
+  assert.ok(review.includes(claim), "the full claim is kept");
+  assert.ok(review.includes("discount.py:3"), "where it is");
+  assert.ok(review.includes("to fix"), "what happens to it, in the pane's words");
+  assert.ok(review.includes("<strong>No title &lt;here&gt;.</strong>"), "a finding with no title leads with its first sentence, escaped");
+});
+
+test("report-review-section-says-when-no-review-ran", () => {
+  const ledger = { task: "t", stage: { name: "code-tdd", status: "active", attempt: 1, startedAt: null }, stages: [], tests: {} };
+
+  assert.match(sectionOf(renderReport({ ledger, spawns: [], calls: [], tests: [] }), "REVIEW"), /no review round yet/);
+});

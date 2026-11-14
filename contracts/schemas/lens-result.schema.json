@@ -15,11 +15,12 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["rule", "severity", "kind", "claim", "where"],
+        "required": ["rule", "severity", "kind", "title", "claim", "where"],
         "properties": {
           "rule": { "type": "string" },
           "severity": { "type": "string", "enum": ["high", "medium", "low"] },
           "kind": { "type": "string", "enum": ["fix-here", "risk", "drift"] },
+          "title": { "type": "string", "maxLength": 60, "description": "The gist of the finding in at most 60 characters, like a commit subject" },
           "claim": { "type": "string", "description": "What is wrong, in one or two sentences, grounded in evidence the agent read" },
           "where": { "type": "string", "description": "A file path with an optional line, or the subject item" }
         }
