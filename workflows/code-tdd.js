@@ -654,6 +654,7 @@ const LIGHT_REVIEW_SCHEMA = {
           "rule",
           "severity",
           "kind",
+          "title",
           "claim",
           "where"
         ],
@@ -680,6 +681,11 @@ const LIGHT_REVIEW_SCHEMA = {
               "risk",
               "drift"
             ]
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The gist of the finding in at most 60 characters, like a commit subject"
           },
           "claim": {
             "type": "string",
@@ -1888,7 +1894,8 @@ function settleLensRound({ refuting, uncovered, sent, pastCut }, verdicts = []) 
 // open-doubt check and the stage's return to the session both read this one rule.
 function findingOutcomes({ survivors = [], refuted = [], unrefuted = [] }, keptLenses = []) {
   const kept = new Set(keptLenses);
-  const outcomeOf = ({ id, claim, where }, outcome) => ({ id, claim, where, outcome });
+  // The title is the gist a lens gives with each new finding; older returns carry none, so it is left out then.
+  const outcomeOf = ({ id, title, claim, where }, outcome) => ({ id, ...(typeof title === 'string' ? { title } : {}), claim, where, outcome });
   return [
     ...survivors.map((finding) => outcomeOf(finding, kept.has(lensOfFinding(finding)) ? 'fixed' : 'left as is')),
     ...refuted.map((finding) => outcomeOf(finding, 'not a real problem')),

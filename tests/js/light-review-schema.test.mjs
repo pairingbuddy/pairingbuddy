@@ -4,12 +4,23 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { violations } from "./schema-check.mjs";
 
-const finding = { focus: "code-smell", rule: "no-magic-numbers", severity: "high", kind: "fix-here", claim: "A literal 42 is used without a name.", where: "src/a.py:12" };
+const finding = { focus: "code-smell", rule: "no-magic-numbers", severity: "high", kind: "fix-here", title: "Unnamed literal 42", claim: "A literal 42 is used without a name.", where: "src/a.py:12" };
 const valid = () => ({
   pb_key: "k",
   ambiguity: null,
   focus_changes: [{ focus: "design-fit", change: "add", reason: "new boundary" }],
   findings: [{ ...finding }],
+});
+
+test("schema-requires-a-finding-title-of-at-most-60-characters", () => {
+  const schema = JSON.parse(readFileSync(new URL("../../contracts/schemas/light-review-result.schema.json", import.meta.url), "utf8"));
+  const untitled = valid();
+  delete untitled.findings[0].title;
+  const long = valid();
+  long.findings[0].title = "x".repeat(61);
+
+  assert.ok(violations(schema, untitled).includes("$.findings[0].title: required property is missing"), "title is required");
+  assert.notDeepEqual(violations(schema, long), [], "a title is at most 60 characters");
 });
 
 test("schema-rejects-change-without-reason", () => {

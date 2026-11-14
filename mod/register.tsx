@@ -150,7 +150,7 @@ export const register: Register = (on, options) => {
       unknownLabels={view.unknownLabels}
       note={note}
       suggestion={suggestionView(pending, () => nextAgent(contract, view.ledger, spawns))}
-      onReport={() => openReport($, spawns)}
+      onReport={() => openReport($, spawns, calls)}
       onSuggest={(text) => submitSuggestion($, spawns, text)}
       onDismiss={() => closePane($)}
     />

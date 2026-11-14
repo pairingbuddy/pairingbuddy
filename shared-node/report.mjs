@@ -7,6 +7,7 @@ import { glance, runStart, testLabels, currentStep, triesAtStep, isLooping } fro
 import { readLabel } from "./labels.mjs";
 import { stageNamesFor } from "./stage-graph.mjs";
 import contract from "./stages-contract.mjs";
+import { findingGist, lensRound } from "./lens-round.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
@@ -207,6 +208,17 @@ function commitsSection({ commits }) {
   return section("COMMITS", body);
 }
 
+// Each finding of the review round the pane shows, by its gist (the lens's title, else the claim's first sentence), with
+// the full claim under it, where it is and what happens to it in the pane's words.
+const findingItem = (finding) =>
+  `<li><strong>${escape(findingGist(finding))}</strong> · ${escape(finding.word)}${finding.where ? ` · ${escape(finding.where)}` : ""}<br>${escape(finding.claim)}</li>`;
+
+function reviewSection({ ledger, calls, spawns, round = lensRound({ ledger, calls: calls ?? [], spawns: spawns ?? [] }) }) {
+  if (!round) return section("REVIEW", "<p>no review round yet</p>");
+  const body = round.findings.length ? `<ul>\n${round.findings.map(findingItem).join("\n")}\n</ul>` : "<p>no issues found</p>";
+  return section("REVIEW", `<p>${escape(round.stage)}</p>\n${body}`);
+}
+
 function whatYouCanDo({ ledger, spawns, tests }) {
   const step = NEXT_STEP[outcome(ledger)]({ ledger, spawns, tests });
   return section("WHAT YOU CAN DO", `<p>1. ${escape(step)}</p>`);
@@ -241,7 +253,7 @@ function title(task) {
   return task.split(/\n\s*\n/).map((paragraph) => escape(paragraph.trim())).join("<br>");
 }
 
-export function renderReport({ ledger, spawns, timing, commits, tests, testsComplete, endedAt, now } = {}) {
+export function renderReport({ ledger, spawns, calls, timing, commits, tests, testsComplete, endedAt, now } = {}) {
   const ranFor = runSeconds(ledger, endedAt, now);
   const state = outcome(ledger);
   const taskType = plainName(ledger?.taskType) ?? "unknown type";
@@ -258,6 +270,7 @@ ${STYLE}
 ${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete })}
 ${stepsSection({ ledger })}
 ${testsSection({ ledger, spawns, tests })}
+${reviewSection({ ledger, calls, spawns })}
 ${commitsSection({ commits })}
 ${whatYouCanDo({ ledger, spawns, tests })}
 <footer>Written by Pairing Buddy from the run's ledger and agent labels. One self-contained file, nothing loaded from the network.</footer>

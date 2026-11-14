@@ -372,24 +372,25 @@ test("lines-truncate-and-fold-to-columns", () => {
   const narrow = lensLines(round, 60);
   const uncut = lensLines(round, 0);
 
+  // With no title, the gist is the claim's first sentence cut at a word boundary to 60 characters, never with an ellipsis.
+  const gist = "the loop never stops when the queue is empty and the caller";
   const findingStart = wide.findIndex(({ text }) => text.startsWith("  to fix · "));
   assert.notEqual(findingStart, -1, "the finding lines are shown");
   assert.deepEqual(
     wide.slice(findingStart, findingStart + 4),
     [
-      { text: `  to fix · ${longClaim} · a.mjs:1` },
+      { text: `  to fix · ${gist} · a.mjs:1` },
       { text: "  not a real problem · second claim · b.mjs:2" },
       { text: "  checking · third claim · c.mjs:3" },
       { text: "  + 2 more", tone: "dim" },
     ],
-    "only the first 3 findings show, each as what happens to it, the point, then where, then a dim '+ n more' for the rest",
+    "only the first 3 findings show, each as what happens to it, the gist, then where, then a dim '+ n more' for the rest",
   );
   assert.equal(narrow.every(({ text }) => text.length <= 60), true, "at 60 columns no line is longer than 60");
-  const cut = narrow.filter(({ text }) => text.endsWith("…"));
-  assert.deepEqual(
-    cut.map(({ text }) => text),
-    [`  to fix · ${longClaim} · a.mjs:1`.slice(0, 59) + "…"],
-    "a finding too long for the width stays one line, cut to 60 characters ending with an ellipsis, and short lines are left whole",
+  assert.equal(narrow.some(({ text }) => text.includes("…")), false, "no finding is cut with an ellipsis");
+  assert.ok(
+    narrow.some(({ text }) => text === "  to fix · the loop never stops when the queue is empty and"),
+    `a finding too long for the width gives up its where, then its gist is cut at a word boundary: ${JSON.stringify(narrow)}`,
   );
   assert.deepEqual(uncut, wide, "columns 0 cuts nothing");
   const findingsAt = narrow.findIndex(({ text }) => text.includes(" issues found"));
@@ -399,6 +400,20 @@ test("lines-truncate-and-fold-to-columns", () => {
     [{ text: "5 issues found · 3 to fix · 1 checking" }, { text: "  1 not a real problem" }],
     "the summary says what happens to the issues (those not challenged and the upheld one are to fix), folded to the width",
   );
+});
+test("finding-line-shows-the-title-and-else-the-first-sentence-of-the-claim", () => {
+  const findings = [
+    { title: "Loop never ends on an empty queue", where: "a.mjs:1", claim: "The loop never stops when the queue is empty. The caller then waits forever." },
+    { where: "b.mjs:2", claim: "The rounding goes the wrong way. It should round half up." },
+  ];
+  const round = lensRound({ ledger: ledgerFor(), calls: [callFor({ item: "code", findings })], spawns: [spawnFor({ item: "code" })], contract });
+
+  const lines = lensLines(round, 200).map(({ text }) => text);
+
+  assert.equal(round.findings[0].title, "Loop never ends on an empty queue", "the round carries the title");
+  assert.equal(round.findings[0].claim, findings[0].claim, "the round keeps the full claim for the report");
+  assert.ok(lines.includes("  to fix · Loop never ends on an empty queue · a.mjs:1"), `the title is shown, never the claim: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("  to fix · The rounding goes the wrong way. · b.mjs:2"), `with no title, the first sentence is: ${JSON.stringify(lines)}`);
 });
 test("finding-line-names-a-run-file-without-the-run-folder", () => {
   const calls = [callFor({ item: "code", findings: [{ where: ".pairingbuddy/run/pr-body.md (Verification section, lines 13-15)", claim: "The Verification section reports a check that did not run" }] })];

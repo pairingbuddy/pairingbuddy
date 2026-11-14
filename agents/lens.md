@@ -34,7 +34,7 @@ The prompt contains:
 
 1. Read the `<lens>` (or, in a light review, each focus in `<focuses>`) and the `<subject>`. When a `<task>` is given, use it as context for what the subject is meant to achieve; it does not widen the lens. Read the files listed in `<corpus>` as the evidence to check the subject against, and read only what else the subject points at. If `<corpus>` is `none`, there is no corpus to read.
 2. Look for what the lens (or each focus) covers and nothing outside it. Do not change anything.
-3. For each finding, give the rule it breaks (an empty string if no rule applies), its severity (`high`, `medium` or `low`), the claim (what is wrong, in one or two sentences, grounded in evidence you read) and where it is (a file path with an optional line, or the subject item).
+3. For each finding, give the rule it breaks (an empty string if no rule applies), its severity (`high`, `medium` or `low`), a title (the gist in at most 60 characters, like the first line of a commit message: the reader sees it first and reads the claim only for detail), the claim (what is wrong, in one or two sentences, grounded in evidence you read) and where it is (a file path with an optional line, or the subject item).
 4. If the lens or subject leaves something unresolved that affected the review, describe it in `ambiguity`. Otherwise use null.
 5. Light review only (when `<focuses>` is given instead of `<lens>`): you may add a focus from `<catalog>` or drop a given one, only with a stated reason, and keep at most two focuses. Record each change in `focus_changes` and tag each finding with its focus.
 
@@ -51,6 +51,7 @@ For a lens review (`<lens>` given), return the result as your StructuredOutput w
       "rule": "string (rule the finding breaks, may be empty)",
       "severity": "high | medium | low",
       "kind": "fix-here | risk | drift",
+      "title": "string (the gist, at most 60 characters, like a commit subject)",
       "claim": "string (what is wrong, one or two sentences, grounded in evidence read)",
       "where": "string (file path with optional line, or the subject item)"
     }
@@ -77,6 +78,7 @@ For a light review (`<focuses>` given), return exactly these fields instead:
       "rule": "string (rule the finding breaks, may be empty)",
       "severity": "high | medium | low",
       "kind": "fix-here | risk | drift",
+      "title": "string (the gist, at most 60 characters, like a commit subject)",
       "claim": "string (what is wrong, one or two sentences, grounded in evidence read)",
       "where": "string (file path with optional line, or the subject item)"
     }

@@ -87,7 +87,8 @@ function returnState(one) {
 function returnFindings(one, verdicts) {
   return findingEntries(one).map(({ finding, index }) => {
     const id = buildFindingId({ lens: one.key.item, index });
-    return { id, lens: shownName(one.key.item), where: finding.where, claim: finding.claim, focus: finding.focus, verdict: verdicts.get(id) ?? VERDICTS.unchallenged };
+    const title = typeof finding.title === "string" && finding.title.trim() !== "" ? { title: finding.title.trim() } : {};
+    return { id, lens: shownName(one.key.item), where: finding.where, ...title, claim: finding.claim, focus: finding.focus, verdict: verdicts.get(id) ?? VERDICTS.unchallenged };
   });
 }
 
@@ -255,7 +256,7 @@ function findingWord(verdict, ended) {
 }
 
 /**
- * @typedef {{ stage: string, lenses: { name: string, state: string, found?: number }[], findings: { id: string, lens: string, where?: string, claim?: string, verdict: string, word: string }[],
+ * @typedef {{ stage: string, lenses: { name: string, state: string, found?: number }[], findings: { id: string, lens: string, where?: string, title?: string, claim?: string, verdict: string, word: string }[],
  *   counts: Record<string, number>, fixes: { group: string, round: number, outcome: string, why?: string, lens?: string }[], undone: number, cap: number, stopped: boolean }} LensRound
  */
 
@@ -312,13 +313,37 @@ const SHOWN_FINDINGS = 3;
 const RUN_FOLDER = ".pairingbuddy/run/";
 const shownWhere = (where) => (typeof where === "string" && where.startsWith(RUN_FOLDER) ? where.slice(RUN_FOLDER.length) : where);
 
-// One line per finding, never folded: what happens to it, the point, then where.
-function findingLine({ word, where, claim }) {
-  return { text: `  ${[word, claim, shownWhere(where)].filter(Boolean).join(PART_BREAK)}`, whole: true };
+// The most a gist holds, as the lens's title does.
+export const GIST_LENGTH = 60;
+
+// Text cut to at most `room` characters at a word boundary, never with an ellipsis; a single word longer than the room is cut at the room.
+export function cutAtWord(text, room) {
+  if (!(room > 0) || [...text].length <= room) return text;
+  const head = [...text].slice(0, room + 1).join("");
+  const space = head.lastIndexOf(" ");
+  return (space > 0 ? head.slice(0, space) : [...text].slice(0, room).join("")).trimEnd();
 }
 
-function findingLines(findings) {
-  const lines = findings.slice(0, SHOWN_FINDINGS).map(findingLine);
+// The gist of a finding: its title, or for an older return with none, the claim's first sentence cut at a word boundary.
+export function findingGist({ title, claim }) {
+  if (typeof title === "string" && title.trim() !== "") return title.trim();
+  if (typeof claim !== "string") return "";
+  const first = claim.trim().split(/(?<=[.!?])\s+/)[0];
+  return cutAtWord(first, GIST_LENGTH);
+}
+
+// One line per finding, never folded: what happens to it, the gist, then where. Too long for the columns, where gives way first,
+// then the gist is cut at a word boundary; nothing is cut with an ellipsis.
+function findingLine({ word, where, ...finding }, columns) {
+  const gist = findingGist(finding);
+  const full = `  ${[word, gist, shownWhere(where)].filter(Boolean).join(PART_BREAK)}`;
+  if (!(columns > 0) || full.length <= columns) return { text: full, whole: true };
+  const lead = `  ${word}${PART_BREAK}`;
+  return { text: `${lead}${cutAtWord(gist, columns - lead.length)}`, whole: true };
+}
+
+function findingLines(findings, columns) {
+  const lines = findings.slice(0, SHOWN_FINDINGS).map((finding) => findingLine(finding, columns));
   const more = findings.length - SHOWN_FINDINGS;
   return more > 0 ? [...lines, { text: `  + ${more} more`, tone: "dim" }] : lines;
 }
@@ -345,6 +370,6 @@ function fit({ text, whole = false, ...rest }, columns) {
 export function lensLines(round, columns = 0) {
   if (!round) return [];
   const lenses = round.lenses.length ? [{ text: round.lenses.map(lensSummary).join(PART_BREAK) }] : [];
-  const lines = [...lenses, { text: findingsSummary(round.findings) }, ...findingLines(round.findings)];
+  const lines = [...lenses, { text: findingsSummary(round.findings) }, ...findingLines(round.findings, columns)];
   return lines.flatMap((line) => fit(line, columns));
 }
