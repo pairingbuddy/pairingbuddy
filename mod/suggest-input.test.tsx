@@ -152,3 +152,12 @@ test('button-key-letter-labels-carry-that-hotkey', async ($, on) => {
     expect(button.props.hotkey, `the button "${button.props.label}" carries its leading letter as hotkey`).toBe(button.props.label[0])
   }
 })
+
+test('empty-suggest-input-says-what-it-is-for', async ($, on) => {
+  engine(on)
+  await start($)
+
+  const input = await findOnPane($, { type: 'Input', key: 'suggest' })
+
+  expect(input?.props?.placeholder, 'an empty suggest field is not a bare "suggest:": it says the note goes to the next agent').toBe('a note for the next agent')
+})

@@ -215,3 +215,41 @@ test("another-stage-fix-return-does-not-decide-g-type", () => {
   assert.equal(result.code, 0, `pb gate eval exits 0, stderr ${result.stderr}`);
   assert.deepEqual(JSON.parse(result.stdout), { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto" }, "only intake's own returns decide G:type");
 });
+
+// ---------- a doubt the fix answered ----------
+
+const CLASSIFICATION_FINDING = { rule: "confidence-fits-evidence", severity: "medium", kind: "fix-here", claim: "rating 'certain' is overconfident", where: "classification" };
+const lensReturn = (ambiguity = "The task text is short.") => ({ role: "lens", item: "classification", round: 1, ambiguity, findings: [CLASSIFICATION_FINDING] });
+const fixReturn = (ambiguity = "Likely, not certain?") => ({ role: "fix", item: "g1", round: 2, confidence: "certain", ambiguity });
+const checkerReturn = (verdict = "better") => ({ role: "course-checker", item: "g1", round: 2, finding_id: "classification-1", verdict, mistake: "none", what_went_wrong: "" });
+
+test("a lens doubt and a fix doubt pass once the check kept the fix", () => {
+  const repo = repoAtTypeGate({ confidence: "likely", extraReturns: [lensReturn(), fixReturn(), checkerReturn()] });
+
+  const result = pb(repo, "gate", "eval");
+
+  assert.equal(result.code, 0, `pb gate eval exits 0, stderr ${result.stderr}`);
+  assert.deepEqual(JSON.parse(result.stdout), { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto" }, "the kept fix answered the lens's finding, so neither doubt stands");
+});
+
+const LENS_FILE = "intake.lens.classification.r1.a1.json";
+const FIX_FILE = "intake.fix.g1.r2.a1.json";
+
+test("a fix the check did not keep keeps its doubt and the lens's", () => {
+  const repo = repoAtTypeGate({ confidence: "certain", extraReturns: [lensReturn(), fixReturn(), checkerReturn("wrong-direction")] });
+
+  const out = evalNeedsHuman(repo);
+
+  assert.equal(out.reason, `these returns carry an open ambiguity: ${FIX_FILE}, ${LENS_FILE}`);
+});
+
+test("a fix the ledger rolled back keeps its doubt, even with a better check", () => {
+  const repo = repoAtTypeGate({ confidence: "certain", extraReturns: [lensReturn(null), fixReturn(), checkerReturn()] });
+  const ledgerPath = join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json");
+  const ledger = readLedger(ledgerPath);
+  writeLedger(ledgerPath, { ...ledger, fixes: { rollbacks: [{ key: FIX_FILE.replace(/\.json$/, ""), kind: "artifact", ref: null, sha: null, base: null }] } });
+
+  const out = evalNeedsHuman(repo);
+
+  assert.equal(out.reason, `the return ${FIX_FILE} carries an open ambiguity`);
+});

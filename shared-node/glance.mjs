@@ -1,5 +1,6 @@
 // The five "at a glance" rows, as plain sentences (docs/design/progress-mod/DIRECTION.md).
-// Pure; tolerates missing or partial input. What cannot be known is shown as "unknown", never invented.
+// Pure; tolerates missing or partial input. What cannot be known is never invented: the rows say "unknown" (the report
+// shows them so), the pane leaves unknown parts out with leaveOutUnknown, and the band leaves unknown segments out.
 import { plainName } from "./plain-names.mjs";
 import { readLabel } from "./labels.mjs";
 import { MAX_TRIES } from "./limits.mjs";
@@ -67,10 +68,13 @@ export function elapsed(startedAt, now, ranFor) {
 // that lacks its start leaves the run's start unknown, never the current stage's.
 export const runStart = (ledger) => (ledger?.stages?.length > 0 ? ledger.stages[0].startedAt : ledger?.stage?.startedAt);
 
-function spentRow({ ledger, spawns, now, ranFor }) {
+// leaveOutUnknown drops the parts that are not measured (the pane's choice); the report keeps them, saying "unknown".
+function spentRow({ ledger, spawns, now, ranFor, leaveOutUnknown }) {
   const agents = agentCount(spawns);
-  const tokens = ledger?.spend?.tokensKnown === true ? `${ledger.spend.tokens} ${TOKENS_UNIT}` : "tokens unknown";
-  return `${plural(agents, "agent")} · ${elapsed(runStart(ledger), now, ranFor)} · ${tokens} · % of plan unknown`;
+  const known = ledger?.spend?.tokensKnown === true;
+  const tokens = known ? `${ledger.spend.tokens} ${TOKENS_UNIT}` : "tokens unknown";
+  const parts = [plural(agents, "agent"), elapsed(runStart(ledger), now, ranFor), tokens, "% of plan unknown"];
+  return (leaveOutUnknown ? parts.filter((part) => !part.endsWith(UNKNOWN)) : parts).join(" · ");
 }
 
 function nowRow(step, tests, ledger, complete) {
@@ -102,14 +106,16 @@ function bandWhere(step, tests, ledger, complete) {
   return `${step.phase} · test ${position}${complete ? ` of ${tests.length}` : ""}`;
 }
 
+// Undefined when nothing left can be counted: the band leaves the segment out.
 function bandLeft(step, tests, complete) {
   const remaining = remainingTests(step, tests, { more: false, complete });
-  return `left: ${remaining ?? UNKNOWN}${remaining ? " + review" : ""}`;
+  return remaining ? `left: ${remaining} + review` : undefined;
 }
 
+// The run time is left out when it is unknown; the agent count always stands.
 function bandSpent({ ledger, spawns, now }) {
   const agents = agentCount(spawns);
-  return `${elapsed(runStart(ledger), now)} · ${plural(agents, "agent")}`;
+  return [elapsed(runStart(ledger), now), plural(agents, "agent")].filter((part) => !part.endsWith(UNKNOWN)).join(" · ");
 }
 
 const STOPPED = "stopped";
@@ -139,14 +145,16 @@ function bandNeedsYou(ledger) {
   return { id: "needsYou", text: `needs you: ${stopName(ledger.stop) ?? STOPPED}`, standing: true };
 }
 
+// A band segment only when its value is known; an unknown one says nothing, so it is left out.
+const known = (id, text) => (text === undefined ? [] : [{ id, text }]);
+
 function bandSegments({ ledger, spawns, tests, now, complete }, step) {
-  const looping = step ? (isLooping(step.tries) ? "yes" : "no") : UNKNOWN;
+  const looping = step ? `looping: ${isLooping(step.tries) ? "yes" : "no"}` : undefined;
   return [
     { id: "where", text: bandWhere(step, tests, ledger, complete) },
     { id: "spent", text: bandSpent({ ledger, spawns, now }) },
-    { id: "left", text: bandLeft(step, tests, complete) },
-    { id: "looping", text: `looping: ${looping}` },
-    { id: "offTrack", text: `off track: ${UNKNOWN}` },
+    ...known("left", bandLeft(step, tests, complete)),
+    ...known("looping", looping),
     bandNeedsYou(ledger),
   ];
 }
@@ -193,13 +201,14 @@ function unknownLabels(spawns) {
 }
 
 // testsComplete: false says the list is only the tests seen so far, so no total ("of M") and no count left is claimed.
-export function glance({ ledger, spawns, tests, now, ranFor, testsComplete = false } = {}) {
+// leaveOutUnknown: true leaves the unknown parts out of SPENT, for the pane.
+export function glance({ ledger, spawns, tests, now, ranFor, testsComplete = false, leaveOutUnknown = false } = {}) {
   const list = Array.isArray(spawns) ? spawns : [];
   const names = Array.isArray(tests) ? tests : [];
   const step = currentStep(list);
   const rows = {
     now: nowRow(step, names, ledger, testsComplete),
-    spent: spentRow({ ledger, spawns: list, now, ranFor }),
+    spent: spentRow({ ledger, spawns: list, now, ranFor, leaveOutUnknown }),
     left: leftRow(step, names, testsComplete),
     looping: loopingRow(step),
     offTrack: UNKNOWN,

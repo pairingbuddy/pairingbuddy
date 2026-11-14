@@ -296,6 +296,9 @@ function mergedLensRound(current, artifactsDir, stageName, lensMap, taskType) {
   return { merged: mergeLensReturns(returns, config, verdicts), lensRan: latestByLens.some(({ latest }) => latest !== undefined) };
 }
 
+// The settled lens round of one stage attempt (survivors, refuted, unrefuted), by the same merge the report uses.
+export const lensRoundAt = (artifactsDir, stage, taskType, lensMap = LENS_MAP) => mergedLensRound(returnsAt(artifactsDir, stage), artifactsDir, stage.name, lensMap, taskType).merged;
+
 // Each coverage round returns the gaps it still sees, so the newest round of the attempt speaks for the stage.
 function coverageGaps(current, returns) {
   const rounds = current.map((key, i) => ({ ...key, artifact: returns[i] })).filter(({ role, item }) => role === COVERAGE_ROLE && item === null);

@@ -1218,6 +1218,66 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
     assert.deepEqual(asked.question.options.map(({ label }) => label), ANSWERS);
   });
 
+  // ---------- a doubt the round knocked down ----------
+
+  const lensKey = (lens = "necessity", attempt = 1) => `${SCENARIOS}.lens.${lens}.r1.a${attempt}`;
+  const refuterKey = (finding = "necessity-1", attempt = 1) => `${SCENARIOS}.refuter.${finding}.r1.a${attempt}`;
+  const FINDING = { rule: "one-test-per-behaviour", severity: "medium", kind: "fix-here", claim: "scenario 2 repeats scenario 1", where: "scenarios.json" };
+  const writeArtifact = (repo, key, body) => writeFileSync(join(repo.taskDir, "artifacts", `${key}.json`), JSON.stringify({ pb_key: key, ...body }));
+  const writeLens = (repo, { ambiguity = "Is scenario 2 a separate case?", findings = [FINDING] } = {}) => writeArtifact(repo, lensKey(), { ambiguity, findings });
+  const writeRefuter = (repo, { verdict, ambiguity = "The task text is short.", finding = "necessity-1" }) => writeArtifact(repo, refuterKey(finding), { finding_id: finding, verdict, ambiguity });
+
+  test("a lens doubt whose only finding the refuter knocked down passes, and so does the refuter's doubt", () => {
+    const repo = scenariosRepo();
+    writeLens(repo);
+    writeRefuter(repo, { verdict: "refuted" });
+
+    assertAutoPassed(repo, gateEval(repo, "auto"), G_SCENARIOS);
+  });
+
+  test("a finding the refuter upheld keeps both doubts, and the gate names both returns", () => {
+    const repo = scenariosRepo();
+    writeLens(repo);
+    writeRefuter(repo, { verdict: "survives" });
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, G_SCENARIOS);
+    assert.equal(asked.reason, `these returns carry an open ambiguity: ${lensKey()}.json, ${refuterKey()}.json`);
+  });
+
+  test("a lens with one finding knocked down and one not challenged keeps its doubt", () => {
+    const repo = scenariosRepo();
+    writeLens(repo, { findings: [FINDING, { ...FINDING, claim: "scenario 3 repeats scenario 1" }] });
+    writeRefuter(repo, { verdict: "refuted", ambiguity: null });
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, G_SCENARIOS);
+    assert.equal(asked.reason, `the return ${lensKey()}.json carries an open ambiguity`);
+  });
+
+  test("a lens doubt with no findings stands, since nothing in the round answered it", () => {
+    const repo = scenariosRepo();
+    writeLens(repo, { findings: [] });
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, G_SCENARIOS);
+    assert.equal(asked.reason, `the return ${lensKey()}.json carries an open ambiguity`);
+  });
+
+  test("the subject's doubt always counts, and the gate names only it beside a knocked-down lens", () => {
+    const repo = scenariosRepo({ ambiguity: "Which path?" });
+    writeLens(repo);
+    writeRefuter(repo, { verdict: "refuted" });
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, G_SCENARIOS);
+    assert.equal(asked.reason, `the return ${keyAt(1)}.json carries an open ambiguity`);
+  });
+
   test("stage finish refuses with no return at this attempt, and finishes with one", () => {
     const repo = makeRepo({
       ledger: {

@@ -98,14 +98,15 @@ test('at 139, 80 and 50 columns the band draws exactly the fitted glance segment
   }
 })
 
-test('with the pane open, the five glance rows, the step list in plain names with done/current/to-do marks, and the dim footer render from the same replay', async ($, on) => {
+test('with the pane open, the glance rows with a value, the step list in plain names with done/current/to-do marks, and the dim footer render from the same replay', async ($, on) => {
   const rig = setupReplay(on)
   const steps = await drawn($, rig, gOpen1, TESTS['g-open-1'])
 
   const review = paneTexts(at(steps, 148.104))
-  const rows = { NOW: 'safety-net review', SPENT: '6 agents · time unknown · tokens unknown · % of plan unknown', LEFT: 'unknown', LOOPING: 'unknown', 'OFF TRACK': 'unknown' }
-  for (const [label, value] of Object.entries(rows)) {
-    expect(review.some(text => text.startsWith(label) && text.includes(value)), `a ${label} row reading "${value}" in ${JSON.stringify(review)}`).toBe(true)
+  expect(review, `the NOW row names the step in ${JSON.stringify(review)}`).toContain('NOW  safety-net review')
+  expect(review, `SPENT leaves out what is not measured in ${JSON.stringify(review)}`).toContain('SPENT  6 agents')
+  for (const label of ['LEFT', 'LOOPING', 'OFF TRACK']) {
+    expect(review.filter(text => text.startsWith(label)), `a ${label} row with no value is not drawn in ${JSON.stringify(review)}`).toEqual([])
   }
   expect(review, 'steps done, then current, in plain names').toEqual(expect.arrayContaining(['✓ write scenarios', '✓ build test by test', '▸ safety-net review']))
 
