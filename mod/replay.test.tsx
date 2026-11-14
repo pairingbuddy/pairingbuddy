@@ -257,9 +257,9 @@ test('replay-counts-match-recorded-lens-record', async ($, on) => {
   const review = shown.slice(shown.findIndex(line => line.startsWith('REVIEW')))
 
   // The three survivors are upheld after the refuters; a kept fix answered each one's lens, so all read fixed.
-  expect(review.slice(0, 2), `the pane's REVIEW row at t=${last.t}: ${JSON.stringify(shown)}`).toEqual(['REVIEW   the code 1 · the tests 1 · docs and plan 1', '         3 issues found · 3 fixed'])
+  expect(review.slice(0, 2), `the pane's REVIEW row at t=${last.t}: ${JSON.stringify(shown)}`).toEqual(['REVIEW   checked: the code, the tests, docs and plan', '         3 issues found · 3 fixed'])
   expect(review.some(line => /\b(checking|to fix|fixing)\b/.test(line)), 'nothing is still open at the end of the stage').toBe(false)
-  expect(review.some(line => line.includes('not covered')), 'no lens is left uncovered').toBe(false)
+  expect(review.some(line => line.includes('could not check')), 'no lens is left uncovered').toBe(false)
 })
 
 test('replay-fixes-match-recorded-rollbacks-and-verdicts', async ($, on) => {
@@ -288,7 +288,7 @@ test('replay-end-state-after-the-publish-says-done-goal-and-pr', async ($, on) =
   const publishing = steps.at(-1)!.lines
   expect(publishing.slice(0, 3), `while the publish run waits on G:publish: ${JSON.stringify(publishing)}`).toEqual([
     'DONE     README.md, discount.py, tests/test_discount.py · 1 test passing',
-    'GOAL     met · Fix this bug in discount.py: apply_discount(100, 10) returns 10',
+    'GOAL     met · Fix this bug in discount.py',
     'PR       —',
   ])
 
@@ -300,7 +300,7 @@ test('replay-end-state-after-the-publish-says-done-goal-and-pr', async ($, on) =
 
   expect(ended.slice(0, 3), `after the publish: ${JSON.stringify(ended)}`).toEqual([
     'DONE     README.md, discount.py, tests/test_discount.py · 1 test passing',
-    'GOAL     met · Fix this bug in discount.py: apply_discount(100, 10) returns 10',
+    'GOAL     met · Fix this bug in discount.py',
     'PR       opened · #12 fix: apply_discount returns price after discount',
   ])
   const review = ended.slice(ended.findIndex(line => line.startsWith('REVIEW')))

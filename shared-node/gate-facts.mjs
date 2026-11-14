@@ -4,27 +4,20 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { firstSentence, keptFixLenses } from "./gates.mjs";
+import { firstSentence, keptFixLenses, openDoubts } from "./gates.mjs";
 import { findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
+import { plainName } from "./plain-names.mjs";
+import { returnFileKey } from "./stages.mjs";
 import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt, standingScenariosKey } from "./stage-run.mjs";
+import { scenarioRows } from "./standing-scenarios.mjs";
 
 const artifactsDirOf = (root) => join(root, ".pairingbuddy", "run", "task", "artifacts");
 
 const text = (value) => (typeof value === "string" && value.trim() !== "" ? value : undefined);
 
-// A row of a list in the question: its text on one line, so a model's line break cannot break the layout.
-const oneLine = (value) => text(value)?.replace(/\s+/g, " ").trim();
-
 function typeFacts(root, ledger) {
   const rationale = text(keptIntakeReturn(artifactsDirOf(root), ledger.stage.attempt)?.content?.rationale);
   return rationale === undefined ? {} : { rationale };
-}
-
-// A model wrote the list, so a malformed scenario or test case drops the whole list rather than show part of it.
-function scenarioRows(scenarios) {
-  if (!Array.isArray(scenarios) || scenarios.length === 0) return undefined;
-  const rows = scenarios.map((s) => ({ description: oneLine(s?.description), tests: Array.isArray(s?.test_cases) ? s.test_cases.map((c) => oneLine(c?.description)) : [undefined] }));
-  return rows.every(({ description, tests }) => description !== undefined && !tests.includes(undefined)) ? rows : undefined;
 }
 
 function scenarioFacts(root, ledger) {
@@ -103,7 +96,23 @@ function taskEndFacts(root, ledger) {
 
 const READERS = { "G:type": typeFacts, "G:scenarios": scenarioFacts, "G:task-end": taskEndFacts };
 
+// The step a return came from, in plain words: its agent's name, else its stage's.
+const stepOf = (file) => {
+  const key = returnFileKey(file);
+  return plainName(key?.role ?? "") ?? plainName(key?.stage ?? "");
+};
+
+// Every open doubt in full, with the step that had it. One that cannot be told leaves them all out, so none is hidden.
+function doubtsOf(root, ledger, contract) {
+  const open = openDoubts(contract, ledger, root);
+  if (open === null || open.length === 0) return undefined;
+  const doubts = open.map(({ file, ambiguity }) => ({ step: stepOf(file), ambiguity: text(ambiguity) }));
+  return doubts.every(({ step, ambiguity }) => step !== undefined && ambiguity !== undefined) ? doubts : undefined;
+}
+
 // A gate's reader that fails as a whole leaves its facts out: the question still asks, with less to show.
-export function gateFacts(gate, root, ledger) {
-  return fact(() => READERS[gate]?.(root, ledger)) ?? {};
+// The contract settles which doubts a human already approved; without it no doubt is read.
+export function gateFacts(gate, root, ledger, contract) {
+  const doubts = contract === undefined ? undefined : fact(() => doubtsOf(root, ledger, contract));
+  return { ...(fact(() => READERS[gate]?.(root, ledger)) ?? {}), ...(doubts === undefined ? {} : { doubts }) };
 }

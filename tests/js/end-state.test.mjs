@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { codeRunOf, endRows, endReviewLines, prTitleOf, safetyNetRound } from "../../shared-node/end-state.mjs";
+import { codeRunOf, endRows, endReviewLines, goalGist, prTitleOf, safetyNetRound } from "../../shared-node/end-state.mjs";
 
 const DASH = "—";
 const TASK = "Add order_total to cart.py. It sums the line totals.";
@@ -102,7 +102,8 @@ test("the code run's record: its task, whether the task-end gate passed, its pas
   const passed = codeRunOf(codeLedger({ "G:task-end": { source: "human-cli", answer: "approve" } }));
   const waiting = codeRunOf({ ...codeLedger({}), needsHuman: { gate: "G:task-end" } });
 
-  assert.deepEqual(passed, { runId: "run-1", task: TASK, taskEndPassed: true, testsPassing: 2, safetyNet: { attempt: 1, startedAt: SAFETY_NET_START }, rollbacks: [] });
+  const perTest = { a: { green: { passed: true } }, b: { green: { passed: true } }, c: {} };
+  assert.deepEqual(passed, { runId: "run-1", task: TASK, taskEndPassed: true, testsPassing: 2, perTest, safetyNet: { attempt: 1, startedAt: SAFETY_NET_START }, rollbacks: [] }, "each test keeps only the marks the TESTS row reads");
   assert.equal(waiting.taskEndPassed, false, "a gate still waiting has not passed");
   assert.equal(codeRunOf({ kind: "publish", stage: { name: "pr-draft" } }), null, "a publish run is no code run");
   assert.equal(codeRunOf(undefined), null);
@@ -126,4 +127,14 @@ test("GOAL reads not checked when no alignment verdict was recorded", () => {
   assert.equal(endRows({ codeRun: finishedRun(), round: round({ state: "uncovered" }) }).goal, "not checked", "the alignment lens returned nothing usable");
   assert.equal(endRows({ codeRun: finishedRun(), round: round({ state: "running" }) }).goal, "not checked", "the alignment lens never returned");
   assert.equal(endRows({ codeRun: finishedRun(), round: noAlignmentLens }).goal, "not checked", "no alignment lens ran");
+});
+
+test("a goal too wide for its room is cut at the last clause break that fits, else at the last word", () => {
+  const goal = "met · Add order_total to cart.py so it sums price times quantity over them, so the checkout can show one total";
+
+  assert.equal(goalGist(goal, 200), goal, "a goal that fits is left whole");
+  assert.equal(goalGist(goal, 100), "met · Add order_total to cart.py so it sums price times quantity over them", "cut at the comma, never mid-clause");
+  assert.equal(goalGist("met · Goal: sum the lines; keep the tax apart", 30), "met · Goal: sum the lines", "a semicolon and a colon are clause breaks too");
+  assert.equal(goalGist("met · Add order_total to cart.py so it sums price", 30), "met · Add order_total to", "with no clause break that fits, cut at the last word");
+  assert.equal(goalGist("met · Fix discount.py: apply_discount(100, 10) returns 10 and it should return 90", 50), "met · Fix discount.py", "a comma inside brackets or code is not a clause break");
 });

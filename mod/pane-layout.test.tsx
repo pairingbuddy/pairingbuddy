@@ -65,13 +65,13 @@ test('a-spike-unit-has-no-publish-step-since-it-closes-kept-local', async ($, on
 
 test('the-publish-run-lists-the-unit-tasks-steps-as-done-before-the-publish-step', async ($, on) => {
   const rig = setupReplay(on)
-  // The code run's tests.json is still on disk; its tests are not the publish run's to list as to do.
+  // The code run's tests.json is still on disk, but no code run was seen: TESTS shows only a seen code run's tests.
   await serve($, rig, { [LEDGER]: PUBLISH_RUN, [UNIT]: unitFile([{ stages: BUG_FIX_STEPS }]), '.pairingbuddy/tests.json': { tests: [{ test_id: 'order-total' }] } }, '2026-11-14T10:03:10.000Z')
   const lines = await paneLines($)
 
   expect(stepsOf(lines), 'the code steps stay, done').toEqual(['✓ work out the task type', '✓ write scenarios', '✓ build test by test', '✓ safety-net review', '▸ write the pull request'])
   expect(rowOf(lines, 'NOW'), 'NOW names the publish step').toBe('NOW      write the pull request')
-  expect(rowOf(lines, 'TESTS'), 'the publish run has no tests of its own').toBe('TESTS    —')
+  expect(rowOf(lines, 'TESTS'), 'with no code run seen, the publish run lists none of tests.json as to do').toBe('TESTS    —')
 })
 
 test('the-publish-run-shows-one-done-line-when-the-unit-does-not-say-its-steps', async ($, on) => {
@@ -111,6 +111,6 @@ test('after-the-run-looping-and-test-read-a-dash-and-the-last-review-stays', asy
   expect(rowOf(lines, 'NOW'), 'the run is over').toBe('NOW      last run finished')
   expect(rowOf(lines, 'LOOPING'), 'after the run LOOPING reads a dash').toBe('LOOPING  —')
   expect(lines.some(line => /^\s+▸ .*\d:\d\d$/.test(line)), 'after the run no test is current').toBe(false)
-  expect(rowOf(lines, 'REVIEW'), 'the last review round stays').toBe('REVIEW   the code 1')
+  expect(rowOf(lines, 'REVIEW'), 'the last review round stays').toBe('REVIEW   checked: the code')
   expect(lines, 'its open finding was left as is').toContain('           left as is · one · a.py:1')
 })

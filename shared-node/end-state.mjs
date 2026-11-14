@@ -2,7 +2,7 @@
 // the pull request. Built from what the run recorded only; what cannot be known is never inferred. Pure; no node: imports.
 import { plural } from "./glance.mjs";
 import { lensOfFinding } from "./lens-merge.mjs";
-import { FINDING_WORDS, findingGist, findingLines, fit, lensRound } from "./lens-round.mjs";
+import { FINDING_WORDS, cutAtWord, findingGist, findingLines, fit, lensRound } from "./lens-round.mjs";
 import { isPassed } from "./gate-passed.mjs";
 
 const DASH = "—";
@@ -18,11 +18,15 @@ const TASK_END = "G:task-end";
 const SAFETY_NET = "code-safety-net";
 const PUBLISH_KIND = "publish";
 
+// A test's record cut to the marks the TESTS row reads: passed, or covered by an earlier test.
+const testMarks = (record) => ({ ...(record?.green?.passed === true && { green: { passed: true } }), ...(record?.covered?.done === true && { covered: { done: true } }) });
+
 // What the pane keeps of a code run's ledger once the publish run has replaced it: the task, whether its task-end gate
-// passed, how many of its tests pass, and where its safety-net round ran. Null for a publish run or no ledger.
+// passed, its tests' marks and how many pass, and where its safety-net round ran. Null for a publish run or no ledger.
 export function codeRunOf(ledger) {
   if (!ledger || typeof ledger !== "object" || ledger.kind === PUBLISH_KIND) return null;
-  const perTest = ledger.tests?.perTest && typeof ledger.tests.perTest === "object" ? Object.values(ledger.tests.perTest) : [];
+  const records = ledger.tests?.perTest && typeof ledger.tests.perTest === "object" ? ledger.tests.perTest : {};
+  const perTest = Object.values(records);
   const stages = [...(Array.isArray(ledger.stages) ? ledger.stages : []), ledger.stage].filter((stage) => stage?.name === SAFETY_NET);
   const safetyNet = stages.at(-1);
   return {
@@ -30,6 +34,7 @@ export function codeRunOf(ledger) {
     task: ledger.task,
     taskEndPassed: ledger.gates && typeof ledger.gates === "object" ? isPassed(ledger, TASK_END) : false,
     testsPassing: perTest.filter((record) => record?.green?.passed === true).length,
+    perTest: Object.fromEntries(Object.entries(records).map(([id, record]) => [id, testMarks(record)])),
     safetyNet: safetyNet ? { attempt: safetyNet.attempt, startedAt: safetyNet.startedAt } : null,
     rollbacks: Array.isArray(ledger.fixes?.rollbacks) ? ledger.fixes.rollbacks : [],
   };
@@ -94,6 +99,33 @@ function doneText(codeRun, changed) {
 
 // The task's first sentence, the goal it was given.
 export const firstSentence = (task) => (typeof task === "string" ? task.trim().split(/(?<=[.!?])\s+/)[0] : "");
+
+const OPENERS = { "(": ")", "[": "]", "{": "}" };
+
+// Where the clauses of a text end: each ": ", "; " or ", " outside brackets and backticks, so a comma in `f(a, b)` is not one.
+function clauseEnds(text) {
+  const ends = [];
+  const open = [];
+  let code = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === "`") code = !code;
+    else if (code) continue;
+    else if (Object.hasOwn(OPENERS, char)) open.push(OPENERS[char]);
+    else if (char === open.at(-1)) open.pop();
+    else if (open.length === 0 && i > 0 && ":;,".includes(char) && text[i + 1] === " ") ends.push(i);
+  }
+  return ends;
+}
+
+// A goal's gist told in `room` characters: whole when it fits, else cut at the last clause break (": ", "; ", ", ") that fits,
+// else at the last word that fits. Never cut mid-clause when a clause ends in the room; the report holds the whole goal.
+export function goalGist(text, room) {
+  if (!(room > 0) || [...text].length <= room) return text;
+  const head = [...text].slice(0, room + 1).join("");
+  const clauseEnd = clauseEnds(head).at(-1);
+  return clauseEnd === undefined ? cutAtWord(text, room) : head.slice(0, clauseEnd);
+}
 
 // Met only on a recorded verdict: the task-end gate passed (checked by the caller) and the goal lens returned with no finding
 // still open. A goal lens that did not return, or a round that is not known, is not checked.

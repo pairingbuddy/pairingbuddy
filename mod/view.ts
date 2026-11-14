@@ -105,16 +105,31 @@ function unitSteps({ ledger, unit }: Inputs, ended: boolean): string[] {
   return publishes ? [...own, `○ ${plainName(PUBLISH_STEP)}`] : own
 }
 
-// The TESTS, TEST and LOOPING-tries parts, folded from the same inputs as the rows. Only the active stage's spawns count, so outside
-// "build test by test" no test is current and TEST reads as a dash. A publish run has no tests of its own, though the code run's
-// tests.json is still on disk.
-function buildTestRows({ ledger, spawns, tests, testsComplete, now, names }: Inputs, ended: boolean): Pick<View, 'progress' | 'test' | 'tries'> {
-  if (isPublishRun(ledger)) return {}
-  const stage = stageOf(ledger)
-  const perTest = ledger?.tests?.perTest
+// The TESTS row's progress: each test by its mark, named, or undefined when there is no test to show.
+function progressOf({ tests, perTest, spawns, testsComplete, stage, names }: { tests: string[]; perTest: unknown; spawns: Inputs['spawns']; testsComplete: boolean; stage: unknown; names: Inputs['names'] }) {
   const row = progressRow({ tests: tests.map(id => ({ test_id: id })), perTest, spawns, testsComplete, stage })
   const named = row.entries.map((entry: { id: string; mark: Progress['entries'][number]['mark'] }) => ({ ...entry, name: nameOf(names, entry.id) }))
-  const progress = named.length > 0 || row.folded || row.coveredFolded ? { ...row, known: testsComplete, entries: named } : undefined
+  return named.length > 0 || row.folded || row.coveredFolded ? { ...row, known: testsComplete, entries: named } : undefined
+}
+
+// A publish run has no tests of its own, so TESTS keeps the finished code run's: tests.json's order when it lists every one the
+// code run recorded, else the recorded ones. No test is current. With no code run seen, tests.json alone shows nothing.
+function codeRunProgress({ codeRun, tests, names }: Inputs): Pick<View, 'progress'> {
+  const perTest = codeRun?.perTest ?? {}
+  const recorded = Object.keys(perTest)
+  if (recorded.length === 0) return {}
+  const planned = tests.length > 0 && recorded.every(id => tests.includes(id))
+  return { progress: progressOf({ tests: planned ? tests : recorded, perTest, spawns: [], testsComplete: planned, stage: undefined, names }) }
+}
+
+// The TESTS, TEST and LOOPING-tries parts, folded from the same inputs as the rows. Only the active stage's spawns count, so outside
+// "build test by test" no test is current and TEST reads as a dash.
+function buildTestRows(inputs: Inputs, ended: boolean): Pick<View, 'progress' | 'test' | 'tries'> {
+  const { ledger, spawns, tests, testsComplete, now, names } = inputs
+  if (isPublishRun(ledger)) return codeRunProgress(inputs)
+  const stage = stageOf(ledger)
+  const perTest = ledger?.tests?.perTest
+  const progress = progressOf({ tests, perTest, spawns, testsComplete, stage, names })
   const step = ended ? undefined : currentStep(spawns, stage)
   if (!step) return { progress }
   const test = { current: nameOf(names, step.item), marker: cycleMarker({ spawns, ledger }), age: stepAge({ spawns, now, stage }) }

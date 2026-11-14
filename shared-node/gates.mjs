@@ -11,6 +11,7 @@ import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt } from "./stage-ru
 import { acceptVerdict, findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { plainName } from "./plain-names.mjs";
+import { goalGist } from "./end-state.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
 import { isRefreshRun } from "./ledger.mjs";
@@ -63,13 +64,20 @@ const counted = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // A list kept readable in a terminal: the first `keep` rows, then how many more the report holds.
 const MAX_LIST_ROWS = 12;
-const folded = (rows, keep = MAX_LIST_ROWS, more = "in the report") => (rows.length <= keep ? rows : [...rows.slice(0, keep), `+ ${rows.length - keep} more ${more}`]);
+// `more` is the words after the count, or a function of the count for words that agree with it.
+const folded = (rows, keep = MAX_LIST_ROWS, more = "in the report") =>
+  rows.length <= keep ? rows : [...rows.slice(0, keep), `+ ${rows.length - keep} more ${typeof more === "function" ? more(rows.length - keep) : more}`];
 
+const MAX_SCENARIOS = 15;
+
+// Every scenario with its tests when they all fit the list's rows; otherwise one line per scenario with its test count, so no
+// scenario is cut off part way through its tests.
 function scenarioLines({ facts: { scenarios } }) {
   if (!Array.isArray(scenarios) || scenarios.length === 0) return [];
   const tests = scenarios.reduce((sum, { tests: cases }) => sum + cases.length, 0);
   const rows = scenarios.flatMap(({ description, tests: cases }) => [`- ${description}`, ...cases.map((test) => `    - ${test}`)]);
-  return [`Scenarios (${counted(scenarios.length, "scenario")}, ${counted(tests, "test")}):`, ...folded(rows)];
+  const shown = rows.length <= MAX_LIST_ROWS ? rows : folded(scenarios.map(({ description, tests: cases }) => `- ${description} (${counted(cases.length, "test")})`), MAX_SCENARIOS, (n) => `${n === 1 ? "scenario" : "scenarios"} in the report`);
+  return [`Scenarios (${counted(scenarios.length, "scenario")}, ${counted(tests, "test")}):`, ...shown];
 }
 
 const MAX_FILES = 5;
@@ -97,9 +105,12 @@ function goalCheckLine(findings) {
   return [`Goal check: ${gist} (${outcome})${more}.`];
 }
 
+// The most a goal line holds: the goal's first sentence, cut by the goal gist rule when longer. The report holds the whole goal.
+const MAX_GOAL_LINE = 120;
+
 function taskEndLines({ facts }) {
   const goal = firstSentence(facts.goal);
-  return [...(goal === null ? [] : [`Goal: ${goal}`]), ...builtLine(facts), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck)];
+  return [...(goal === null ? [] : [goalGist(`Goal: ${goal}`, MAX_GOAL_LINE)]), ...builtLine(facts), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck)];
 }
 
 const MAX_BODY_LINES = 8;
@@ -159,11 +170,33 @@ const PLAIN_WHYS = [
 
 const plainWhy = (reason) => PLAIN_WHYS.find(([pattern]) => pattern.test(reason))?.[1] ?? reason;
 
+const AMBIGUITY_REASON = /open ambiguity/;
+
+// The open doubts a question shows: the facts' doubts when the gate asks over them, else none.
+export const questionDoubts = (reason, { doubts } = {}) => (AMBIGUITY_REASON.test(reason) && Array.isArray(doubts) && doubts.length > 0 ? doubts : null);
+
+const MAX_DOUBT = 120;
+
+// A doubt on one line, cut at the last word that fits; the report holds it in full.
+function doubtText(ambiguity) {
+  const line = ambiguity.trim().replace(/\s+/g, " ");
+  return line.length <= MAX_DOUBT ? line : `${line.slice(0, MAX_DOUBT + 1).replace(/\s+\S*$/, "")}…`;
+}
+
+const MAX_DOUBTS = 3;
+
+const doubtLines = (doubts) => folded(doubts.map(({ step, ambiguity }) => `Unsure (${step}): ${doubtText(ambiguity)}`), MAX_DOUBTS);
+
+// The ask, turned so the human knows they decide over the doubts.
+const despite = (asked, doubts) => `${asked.replace(/\?$/, "")} despite ${doubts.length === 1 ? "this" : "these"}?`;
+
 // The question gate eval issues: pure, and stored in needsHuman, so the hooks match the answer against what was asked.
 // facts: what pb gate eval read for this gate (see gate-facts.mjs); a fact it could not read is absent, and its line is left out.
 export function gateQuestion(gate, { reason = "", taskType = null, refresh = false, facts = {} } = {}) {
   const { header, ask, lines } = GATE_ASKS[gate] ?? OTHER_ASK;
   const context = { taskType, refresh, facts };
+  const doubts = questionDoubts(reason, facts);
+  if (doubts !== null) return { question: [...(lines?.(context) ?? []), ...doubtLines(doubts), despite(ask(context), doubts)].join("\n"), header, options: optionsOf(gate), multiSelect: false };
   const why = plainWhy(reason);
   const question = lines === undefined ? `${ask(context)} ${why}`.trim() : [...lines(context), ...(why === "" ? [] : [why]), ask(context)].join("\n");
   return { question, header, options: optionsOf(gate), multiSelect: false };
@@ -325,18 +358,33 @@ function doubtStands(file, artifact, dir, ledger) {
   return true;
 }
 
-// It names every open return, because approving this gate settles them all.
-function ambiguityStop(dir, ledger, settled) {
-  if (!existsSync(dir)) return null;
+// The returns whose ambiguity is still open, each with its ambiguity, in file order. `unreadable` names the first return
+// that cannot be read, which may hide one more.
+function openReturns(dir, ledger, settled) {
   const open = [];
+  if (!existsSync(dir)) return { open };
   for (const file of readdirSync(dir).filter((name) => name.endsWith(".json") && !name.startsWith(".") && !isVoidedReturn(name, ledger)).sort()) {
     const artifact = parsedOrNull(join(dir, file));
-    if (artifact === null) return `the return ${file} cannot be read`;
+    if (artifact === null) return { open, unreadable: file };
     const { ambiguity = null } = artifact;
-    if (ambiguity !== null && ambiguity !== "" && !isSettled(file, settled, ledger) && doubtStands(file, artifact, dir, ledger)) open.push(file);
+    if (ambiguity !== null && ambiguity !== "" && !isSettled(file, settled, ledger) && doubtStands(file, artifact, dir, ledger)) open.push({ file, ambiguity });
   }
+  return { open };
+}
+
+// It names every open return, because approving this gate settles them all.
+function ambiguityStop(dir, ledger, settled) {
+  const { open, unreadable } = openReturns(dir, ledger, settled);
+  if (unreadable !== undefined) return `the return ${unreadable} cannot be read`;
   if (open.length === 0) return null;
-  return open.length === 1 ? `the return ${open[0]} carries an open ambiguity` : `these returns carry an open ambiguity: ${open.join(", ")}`;
+  const files = open.map(({ file }) => file);
+  return files.length === 1 ? `the return ${files[0]} carries an open ambiguity` : `these returns carry an open ambiguity: ${files.join(", ")}`;
+}
+
+// The open ambiguities the gate's stop would name, by the same rule, as { file, ambiguity }; null when a return cannot be read.
+export function openDoubts(contract, ledger, root) {
+  const { open, unreadable } = openReturns(artifactsDir(root), ledger, settledStages(contract, ledger));
+  return unreadable === undefined ? open : null;
 }
 
 const COVERAGE_ROLE = "verify-test-coverage";

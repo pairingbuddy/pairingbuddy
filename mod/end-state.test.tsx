@@ -18,6 +18,13 @@ test('published-reads-only-what-pb-publish-printed', () => {
   expect(publishedOf('pb publish', { deny: 'no' }), 'a denied call records nothing').toBeNull()
 })
 
+test('published-reads-a-pretty-printed-publish-before-the-exit-line', () => {
+  const printed = JSON.stringify({ ok: true, result: 'published', url: 'https://github.com/o/r/pull/8', warnings: ['the plan has no PR: line'], pendingComment: { body: 'x' } }, null, 2)
+  const ran = { result: { stdout: `pushing...\n${printed}\nexit=0\n`, stderr: '' } }
+
+  expect(publishedOf('node "/p/cli/pb.mjs" publish; echo "exit=$?"', ran)).toEqual({ result: 'published', url: 'https://github.com/o/r/pull/8' })
+})
+
 const LABEL_WIDTH = 9
 const rowOf = (lines: string[], label: string) => lines.find(line => line.startsWith(label.padEnd(LABEL_WIDTH)))
 const UNIT = '.pairingbuddy/run/unit.json'
@@ -116,4 +123,38 @@ test('end-state-from-the-code-runs-end-through-the-publish', async ($, on) => {
     'PR       opened · #7 feat: add order_total',
   ])
   expect(rowOf(published, 'REVIEW'), 'the end review is the work\'s, not the pull request draft\'s').toBe('REVIEW   review: 1 issue, all left as is')
+})
+
+test('goal-row-shows-the-gist-cut-at-a-clause-not-mid-clause', async ($, on) => {
+  const rig = setupReplay(on)
+  const task = 'Add order_total to cart.py so it sums price times quantity over every line, so the checkout can show one total. Then document it.'
+  serve(rig, { [LEDGER]: { ...codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), task }, [UNIT]: unitFile })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await lensReturn($, 'corpus-misalignment', [])
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = await paneLines($, { bodyColumns: 100 })
+
+  expect(rowOf(lines, 'GOAL')).toBe('GOAL     met · Add order_total to cart.py so it sums price times quantity over every line')
+})
+
+test('tests-row-keeps-the-code-runs-tests-through-the-publish', async ($, on) => {
+  const rig = setupReplay(on)
+  const perTest = Object.fromEntries(['t1', 't2', 't3', 't4', 't5'].map(id => [id, { red: { done: true }, green: { passed: true, done: true } }]))
+  const signedOffRun = { ...codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), tests: { perTest } }
+  serve(rig, { [LEDGER]: signedOffRun, [UNIT]: unitFile })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+  const atCodeEnd = rowOf(await paneLines($), 'TESTS')
+  expect(atCodeEnd, 'the finished code run folds its passing tests').toBe('TESTS    ✓ 5 done')
+
+  serve(rig, { [LEDGER]: publishRun, [UNIT]: unitFile })
+  await rig.clock.advance(POLL_MS * 2)
+  expect(rowOf(await paneLines($), 'TESTS'), 'while the publish run drafts the pull request').toBe(atCodeEnd)
+
+  serve(rig, {})
+  await rig.clock.advance(POLL_MS * 2)
+  expect(rowOf(await paneLines($), 'TESTS'), 'once the publish run is over').toBe(atCodeEnd)
 })

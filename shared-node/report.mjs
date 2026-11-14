@@ -199,6 +199,29 @@ function stepsSection({ ledger }) {
   return section("STEPS", `<table>\n${head}\n${rows.join("\n")}\n</table>`);
 }
 
+// Every scenario the run stands on, each with its tests under it: the scenarios question folds a long list into this.
+// `scenarios` is [{ description, tests: [description] }], as the scenarios gate reads them; absent reads as unknown.
+const scenarioItem = ({ description, tests }) => `<li>${escape(description)}\n<ul>\n${tests.map((test) => `<li>${escape(test)}</li>`).join("\n")}\n</ul></li>`;
+
+function scenariosSection({ scenarios }) {
+  const body = Array.isArray(scenarios) ? `<ul>\n${scenarios.map(scenarioItem).join("\n")}\n</ul>` : `<p>${UNKNOWN}</p>`;
+  return section("SCENARIOS", body);
+}
+
+// Every file run/changed.json lists: the task-done question folds a long list into this. Absent reads as unknown.
+function builtSection({ changed }) {
+  const body = Array.isArray(changed) ? `<ul>\n${changed.map((path) => `<li>${escape(path)}</li>`).join("\n")}\n</ul>` : `<p>${UNKNOWN}</p>`;
+  return section("BUILT", body);
+}
+
+// Every open doubt the pending question names, in full: the question cuts each to a line and folds past three into this.
+// A question with no doubt to name has no section.
+function doubtsSection({ ledger }) {
+  const doubts = ledger?.needsHuman?.doubts;
+  if (!Array.isArray(doubts) || doubts.length === 0) return "";
+  return `\n${section("OPEN DOUBTS", `<ul>\n${doubts.map(({ step, ambiguity }) => `<li>${escape(step)}: ${escape(ambiguity)}</li>`).join("\n")}\n</ul>`)}`;
+}
+
 const SHORT_SHA = 7;
 
 const commitItem = (commit) => `<li>${escape(String(commit?.sha ?? "").slice(0, SHORT_SHA))} ${escape(commit?.subject)}</li>`;
@@ -244,6 +267,7 @@ th{text-align:left;color:var(--muted);font-weight:400;padding:4px 12px 4px 0}
 td{padding:4px 12px 4px 0;vertical-align:top}
 ul{list-style:none;padding:0}
 li{margin:2px 0}
+ul ul{padding-left:2ch}
 .looped p strong{color:var(--amber);min-width:0;text-transform:none;font-size:inherit}
 footer{color:var(--faint);margin-top:40px;font-size:12px}`;
 
@@ -253,7 +277,7 @@ function title(task) {
   return task.split(/\n\s*\n/).map((paragraph) => escape(paragraph.trim())).join("<br>");
 }
 
-export function renderReport({ ledger, spawns, calls, timing, commits, tests, testsComplete, endedAt, now } = {}) {
+export function renderReport({ ledger, spawns, calls, timing, commits, tests, testsComplete, endedAt, now, scenarios, changed } = {}) {
   const ranFor = runSeconds(ledger, endedAt, now);
   const state = outcome(ledger);
   const taskType = plainName(ledger?.taskType) ?? "unknown type";
@@ -267,9 +291,11 @@ ${STYLE}
 <h1>${title(ledger?.task)}</h1>
 <p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(Number.isFinite(ranFor) ? ranFor : timing?.seconds)}</p>
 </header>
-${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete })}
+${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete })}${doubtsSection({ ledger })}
 ${stepsSection({ ledger })}
+${scenariosSection({ scenarios })}
 ${testsSection({ ledger, spawns, tests })}
+${builtSection({ changed })}
 ${reviewSection({ ledger, calls, spawns })}
 ${commitsSection({ commits })}
 ${whatYouCanDo({ ledger, spawns, tests })}

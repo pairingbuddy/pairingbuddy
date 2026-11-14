@@ -225,6 +225,42 @@ describe("report-content", () => {
     assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Where it stopped<\/strong>/, "the rest of the report still renders");
   });
 
+  // The gate questions fold long lists into "+ n more in the report", so the report holds every scenario and every changed file.
+  test("report-scenarios: every scenario is listed with each of its tests", async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "done" });
+    const scenarios = [
+      { description: "order total sums the lines", tests: ["two lines add up", "no lines give zero"] },
+      { description: "a bad line is refused", tests: ["a negative quantity raises"] },
+    ];
+
+    const section = sectionOf(renderReport({ ...input, scenarios }), "SCENARIOS");
+
+    for (const text of ["order total sums the lines", "two lines add up", "no lines give zero", "a bad line is refused", "a negative quantity raises"]) {
+      assert.ok(section.includes(text), `the section lists ${text}`);
+    }
+    assert.ok(section.indexOf("no lines give zero") < section.indexOf("a bad line is refused"), "a scenario's tests sit under it, before the next scenario");
+  });
+
+  test("report-built: every changed file is listed", async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "done" });
+    const changed = Array.from({ length: 7 }, (_, i) => `src/file_${i + 1}.py`);
+
+    const section = sectionOf(renderReport({ ...input, changed }), "BUILT");
+
+    assert.deepEqual(itemsOf(section), changed, "one entry per changed file, in order");
+  });
+
+  test("report-doubts: every open doubt the question names is held in full, with its step", async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "done" });
+    const long = `Should an empty cart total 0 or None? ${"The task does not say which one it wants. ".repeat(5)}`.trim();
+    const doubts = [{ step: "making the test pass", ambiguity: long }, ...["b?", "c?", "d?"].map((ambiguity) => ({ step: "listing scenarios", ambiguity }))];
+    const ledger = { ...input.ledger, needsHuman: { gate: "G:task-end", reason: "these returns carry an open ambiguity: a, b", seq: 1, doubts } };
+
+    const section = sectionOf(renderReport({ ...input, ledger }), "OPEN DOUBTS");
+
+    assert.deepEqual(itemsOf(section), [`making the test pass: ${long}`, "listing scenarios: b?", "listing scenarios: c?", "listing scenarios: d?"]);
+  });
+
   // Every recorded string the report prints: the task text, a test id and a commit subject. (A stop prints the plain name of its
   // code, never the recorded reason text, so it carries no recorded string.) Each is injected hostile and must come out escaped.
   const HOSTILE = `<script>alert("x")</script> & 'q'`;

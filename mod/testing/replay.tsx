@@ -76,7 +76,16 @@ export function setupReplay(on: Function): Rig {
     return rig.served.has(e.path) ? { value: rig.served.get(e.path) } : { deny: `ENOENT ${e.path}` }
   })
   on('fs.exists', (_: unknown, e: { path: string }) => ({ value: rig.served.has(e.path) }))
-  on('fs.list', () => ({ value: [] }))
+  // A folder lists the served files and folders directly under it.
+  on('fs.list', (_: unknown, e: { path: string }) => {
+    const names = new Map<string, 'file' | 'dir'>()
+    for (const file of rig.served.keys()) {
+      if (!file.startsWith(`${e.path}/`)) continue
+      const rest = file.slice(e.path.length + 1)
+      names.set(rest.split('/')[0], rest.includes('/') ? 'dir' : 'file')
+    }
+    return { value: [...names].map(([name, kind]) => ({ name, kind, size: 0 })) }
+  })
   on('fs.stat', (_: unknown, e: { path: string }) =>
     rig.served.has(e.path)
       ? { value: { kind: 'file', size: rig.served.get(e.path)!.length, mtimeMs: 0, isLink: false } }

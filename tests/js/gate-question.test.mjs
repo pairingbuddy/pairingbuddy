@@ -30,19 +30,36 @@ describe("each gate asks in plain words", () => {
     ].join("\n"));
   });
 
-  test("G:scenarios folds a long list after 12 lines, saying how many more the report holds", () => {
-    const scenarios = Array.from({ length: 5 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: [`test ${i + 1}a`, `test ${i + 1}b`] }));
+  test("G:scenarios that do not fit 12 lines with their tests show one line per scenario with its test count", () => {
+    const scenarios = Array.from({ length: 5 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: i === 0 ? ["test 1a"] : [`test ${i + 1}a`, `test ${i + 1}b`] }));
     const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
     const lines = question.split("\n");
 
-    assert.equal(lines[0], "Scenarios (5 scenarios, 10 tests):");
-    assert.deepEqual(lines.slice(1, 14), [
-      "- scenario 1", "    - test 1a", "    - test 1b",
-      "- scenario 2", "    - test 2a", "    - test 2b",
-      "- scenario 3", "    - test 3a", "    - test 3b",
-      "- scenario 4", "    - test 4a", "    - test 4b",
-      "+ 3 more in the report",
+    assert.deepEqual(lines.slice(0, 7), [
+      "Scenarios (5 scenarios, 9 tests):",
+      "- scenario 1 (1 test)",
+      "- scenario 2 (2 tests)",
+      "- scenario 3 (2 tests)",
+      "- scenario 4 (2 tests)",
+      "- scenario 5 (2 tests)",
+      "Auto mode is off, so this asks you.",
     ]);
+  });
+
+  test("G:scenarios past 15 scenarios folds the rest, saying how many more scenarios the report holds", () => {
+    const scenarios = Array.from({ length: 18 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: [`test ${i + 1}a`] }));
+    const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
+    const lines = question.split("\n");
+
+    assert.equal(lines[0], "Scenarios (18 scenarios, 18 tests):");
+    assert.deepEqual(lines.slice(15, 18), ["- scenario 15 (1 test)", "+ 3 more scenarios in the report", "Auto mode is off, so this asks you."]);
+  });
+
+  test("G:scenarios one past 15 says one more scenario", () => {
+    const scenarios = Array.from({ length: 16 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: [`test ${i + 1}a`] }));
+    const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
+
+    assert.equal(question.split("\n")[16], "+ 1 more scenario in the report");
   });
 
   test("G:type opens with the task type and the classifier's gist, then asks", () => {
@@ -82,6 +99,13 @@ describe("each gate asks in plain words", () => {
       "Auto mode is off, so this asks you.",
       "Is the task done?",
     ].join("\n"));
+  });
+
+  test("G:task-end gives a long goal's gist: its first sentence cut at the last clause that fits 120 characters", () => {
+    const goal = "Add order_total(lines) to cart.py so that it returns the sum of price times quantity over every line in the cart, so the checkout page can show one total, rounded to cents. Then document it.";
+    const [line] = gateQuestion("G:task-end", { reason: POLICY, facts: { goal } }).question.split("\n");
+
+    assert.equal(line, "Goal: Add order_total(lines) to cart.py so that it returns the sum of price times quantity over every line in the cart");
   });
 
   test("G:task-end leaves out every line whose fact could not be read", () => {
@@ -180,6 +204,58 @@ describe("the question says why it asks, in plain words", () => {
     for (const [reason, why] of WHYS) {
       assert.equal(gateQuestion("G:task-end", { reason }).question, `${why}\nIs the task done?`, reason);
     }
+  });
+});
+
+const AMBIGUITY = "the return code-tdd.implement-code.t1.r1.a1.json carries an open ambiguity";
+
+describe("a gate that asks over an open doubt says what the doubt is", () => {
+  test("G:task-end names the step and its doubt, then asks whether the task is done despite it", () => {
+    const doubts = [{ step: "making the test pass", ambiguity: "Should an empty cart total 0 or None?" }];
+    const { question } = gateQuestion("G:task-end", { reason: AMBIGUITY, facts: { tests: 1, doubts } });
+
+    assert.equal(question, ["Built: 1 test.", "Unsure (making the test pass): Should an empty cart total 0 or None?", "Is the task done despite this?"].join("\n"));
+  });
+
+  test("a long doubt is kept to one line and cut at a word near 120 characters", () => {
+    const ambiguity = `The task says\n  totals are rounded, ${"but it does not say whether ".repeat(6)}half cents round up.`;
+    const { question } = gateQuestion("G:task-end", { reason: AMBIGUITY, facts: { doubts: [{ step: "making the test pass", ambiguity }] } });
+    const [line] = question.split("\n");
+    const said = line.replace("Unsure (making the test pass): ", "");
+
+    assert.ok(said.endsWith("…") && said.length <= 121, `cut near 120: ${said}`);
+    assert.ok(ambiguity.replace(/\s+/g, " ").startsWith(`${said.slice(0, -1)} `), `cut at a word: ${said}`);
+  });
+
+  test("past three doubts the rest are counted as in the report", () => {
+    const doubts = ["a?", "b?", "c?", "d?", "e?"].map((ambiguity) => ({ step: "writing a failing test", ambiguity }));
+    const { question } = gateQuestion("G:task-end", { reason: AMBIGUITY, facts: { doubts } });
+
+    assert.equal(question, [
+      "Unsure (writing a failing test): a?",
+      "Unsure (writing a failing test): b?",
+      "Unsure (writing a failing test): c?",
+      "+ 2 more in the report",
+      "Is the task done despite these?",
+    ].join("\n"));
+  });
+
+  test("the task type and scenarios questions keep their facts and ask despite the doubt", () => {
+    const doubts = [{ step: "listing scenarios", ambiguity: "Is a refund a separate case?" }];
+    const scenarios = [{ description: "order total sums the lines", tests: ["two lines add up"] }];
+
+    assert.equal(gateQuestion("G:type", { reason: AMBIGUITY, taskType: "new_feature", facts: { rationale: "Adds order_total.", doubts } }).question, "Task type: new feature. Adds order_total.\nUnsure (listing scenarios): Is a refund a separate case?\nIs that the right type despite this?");
+    assert.equal(gateQuestion("G:scenarios", { reason: AMBIGUITY, facts: { scenarios, doubts } }).question, [
+      "Scenarios (1 scenario, 1 test):",
+      "- order total sums the lines",
+      "    - two lines add up",
+      "Unsure (listing scenarios): Is a refund a separate case?",
+      "Start building these despite this?",
+    ].join("\n"));
+  });
+
+  test("with doubts that could not be read the question still says a step was unsure", () => {
+    assert.equal(gateQuestion("G:task-end", { reason: AMBIGUITY, facts: {} }).question, "A step was unsure about something.\nIs the task done?");
   });
 });
 

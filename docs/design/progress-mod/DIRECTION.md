@@ -170,3 +170,30 @@ PR       opened · #7 feat: add order_total summing line totals
 Review moves below that as one summary line (`review: 4 issues, all fixed`), with the finding titles under it.
 
 As built: DONE, GOAL and PR are the first three rows at every step, each `—` until the task-end gate has passed, so the layout stays fixed. DONE lists run/changed.json's paths and the code run's passing tests. GOAL reads `met` only when the task-end gate passed and the safety-net's alignment lens (`corpus-misalignment`, or any lens named `*goal`) returned with no finding still open; `in doubt · <gist>` when one is open; `not checked` when that lens did not return or its returns are not known (a new session). PR reads `—` between the code run's end and the publish, then what `pb publish` printed (`opened · #7 <title>`, or `not opened · kept local`), else unit.json's `pr.url`. While the publish run's pr-draft runs, REVIEW shows that round; once no stage runs, it is the safety-net summary.
+
+## Long lists (2026-11-14)
+
+A big task (15 scenarios, 40 tests, 20 changed files, 8 findings, names over 100 characters) keeps every question and row short. Every "+ n more in the report" points at a list the report (`r`) really holds.
+
+- **Scenarios question.** All scenarios with their tests indented when they fit 12 lines. Otherwise one line per scenario with its count (`- order_total sums price times quantity (3 tests)`), no test lines, up to 15 scenarios, then `+ n more scenarios in the report`. A scenario is never cut off part way through its tests. The header `Scenarios (N scenarios, M tests):` stays. This replaces the 12-line fold above.
+- **Task-done question.** `Built:` stays one line: the first 5 changed files, then `+ n more in the report`.
+- **Report.** SCENARIOS lists every standing scenario with its tests (the same standing return `pb gate eval` reads). BUILT lists every path in `run/changed.json`. REVIEW already lists every finding the goal check folds.
+- **TESTS row.** At most 5 lines: the done and covered counts, up to 3 tests, then `+n more`. While the total is not known yet (tests.json does not list every test seen), the hidden tests are still counted, as `+n more so far`.
+- **REVIEW at the end.** The summary line, the first 3 findings, then `+ n more`: 5 lines at most.
+- **Cut at a word.** DONE, GOAL, PR and REVIEW never cut a word with "…". Test names in TESTS may still be cut with "…".
+
+## Fifth watched run (2026-11-14)
+
+The human's findings:
+- PR stayed `—` after the pull request opened.
+- A gate said "A step was unsure about something." The human asked: what am I approving?
+- REVIEW opened with `the code 1 · the tests 0 · docs and plan 0`. The numbers needed a legend.
+- TESTS went back to `—` once the publish run started, and stayed so at the end.
+- GOAL cut a long goal mid-clause (`…over them, so`).
+
+What changed:
+- **PR.** The pane reads the last JSON object `pb publish` printed, one line or pretty-printed, also when another command follows it (`pb publish; echo "exit=$?"`).
+- **Doubts in questions.** A gate that asks over an open doubt shows one line per doubt, `Unsure (<step>): <doubt>`, cut at a word near 120 characters, at most 3, then `+ n more in the report`. It then asks over the doubt: "Is the task done despite this?", "Start building these despite this?", "Is that the right type despite this?". The ledger keeps every doubt in full (`needsHuman.doubts`); the report lists them under OPEN DOUBTS. With no doubt, the why line stays ("Auto mode is off, so this asks you.").
+- **REVIEW's first line** names what was checked, with no counts: `checked: the code, the tests, docs and plan`. A lens still running reads under `still looking at:`, one that returned nothing usable under `could not check:`. A cycle's quick review reads `quick review done`. The summary line (`1 issue found · 1 checking`) and the finding lines stay. This replaces "one line per lens with its finding count" above.
+- **TESTS through the publish.** During the publish run and after it, TESTS shows the finished code run's tests, folded as usual (`✓ 5 done`).
+- **GOAL gist.** The goal's first sentence. When it is wider than the room, it is cut at the last clause break (`: `, `; `, `, `) that fits; a comma inside brackets or backticks does not count. With none, it is cut at the last word. The task-done question's `Goal:` line follows the same rule within 120 characters. The report keeps the whole goal.
