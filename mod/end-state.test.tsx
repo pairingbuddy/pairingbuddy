@@ -18,6 +18,13 @@ test('published-reads-only-what-pb-publish-printed', () => {
   expect(publishedOf('pb publish', { deny: 'no' }), 'a denied call records nothing').toBeNull()
 })
 
+test('published-reads-a-pretty-printed-publish-before-the-exit-line', () => {
+  const printed = JSON.stringify({ ok: true, result: 'published', url: 'https://github.com/o/r/pull/8', warnings: ['the plan has no PR: line'], pendingComment: { body: 'x' } }, null, 2)
+  const ran = { result: { stdout: `pushing...\n${printed}\nexit=0\n`, stderr: '' } }
+
+  expect(publishedOf('node "/p/cli/pb.mjs" publish; echo "exit=$?"', ran)).toEqual({ result: 'published', url: 'https://github.com/o/r/pull/8' })
+})
+
 const LABEL_WIDTH = 9
 const rowOf = (lines: string[], label: string) => lines.find(line => line.startsWith(label.padEnd(LABEL_WIDTH)))
 const UNIT = '.pairingbuddy/run/unit.json'

@@ -6,21 +6,34 @@ const PUBLISHED = { plugin: 'pairingbuddy', key: 'published' } as const
 // The same key the poller writes (INPUTS in ./poll), read here for the code run the publish belongs to.
 const INPUTS = { plugin: 'pairingbuddy', key: 'inputs' } as const
 
-// A shell command that runs pb publish (`pb publish`, `node .../pb.mjs publish`, with or without quotes).
-const PUBLISH_COMMAND = /(^|[\s/"'])pb(\.mjs)?["']?\s+publish(\s|$)/
+// A shell command that runs pb publish (`pb publish`, `node .../pb.mjs publish`, with or without quotes, alone or followed
+// by another command such as `; echo "exit=$?"`).
+const PUBLISH_COMMAND = /(^|[\s/"'])pb(\.mjs)?["']?\s+publish(?=$|[\s;&|)])/
 
-// What pb publish printed, from its last JSON line: the url it opened, or its result when it opened none. Null for anything else.
+// What pb publish printed, from the last JSON object in its stdout (one line or pretty-printed; lines after it, such as
+// an `echo "exit=$?"`, are skipped): the url it opened, or its result when it opened none. Null for anything else.
 export function publishedOf(command: unknown, ran: unknown): Published | null {
   if (typeof command !== 'string' || !PUBLISH_COMMAND.test(command)) return null
   const stdout = (ran as { result?: { stdout?: unknown } } | null)?.result?.stdout
   if (typeof stdout !== 'string') return null
-  for (const line of stdout.trim().split('\n').reverse()) {
-    try {
-      const out = JSON.parse(line) as { result?: unknown; url?: unknown }
-      if (typeof out?.result !== 'string') continue
-      return { result: out.result, ...(typeof out.url === 'string' && out.url !== '' ? { url: out.url } : {}) }
-    } catch {
-      // Not a JSON line; try the one before.
+  const out = lastObject(stdout.split('\n'))
+  if (typeof out?.result !== 'string') return null
+  return { result: out.result, ...(typeof out.url === 'string' && out.url !== '' ? { url: out.url } : {}) }
+}
+
+// The last top-level JSON object in the lines: it opens on a line starting with `{` and closes on the first later line
+// that makes it parse. Lines that are not JSON, before or after it, are skipped.
+function lastObject(lines: string[]): { result?: unknown; url?: unknown } | null {
+  for (let start = lines.length - 1; start >= 0; start--) {
+    if (!lines[start].startsWith('{')) continue
+    for (let end = start; end < lines.length; end++) {
+      if (!lines[end].trimEnd().endsWith('}')) continue
+      try {
+        const out = JSON.parse(lines.slice(start, end + 1).join('\n'))
+        if (out !== null && typeof out === 'object' && !Array.isArray(out)) return out
+      } catch {
+        // Not a whole object yet; try a later closing line.
+      }
     }
   }
   return null
