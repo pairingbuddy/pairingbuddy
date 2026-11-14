@@ -1,11 +1,13 @@
 import type { AgentSpawnInput, EngineInterface } from 'claude-code'
 import { testNames } from '../shared-node/now-building.mjs'
+import { isStandingScenarios, newestKeyAmong, scenarioRows } from '../shared-node/standing-scenarios.mjs'
 
 const TESTS = '.pairingbuddy/tests.json'
 const SCENARIOS = '.pairingbuddy/scenarios.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
 const UNIT = '.pairingbuddy/run/unit.json'
 const CHANGED = '.pairingbuddy/run/changed.json'
+const ARTIFACTS = '.pairingbuddy/run/task/artifacts'
 
 export type Spawn = { kind: 'Agent' | 'workflow_agent'; name: string; subagentType?: string; startedAt?: string; agentId?: string; finished?: boolean }
 type Spend = { agents: number; tokens: number; tokensKnown: boolean }
@@ -144,4 +146,25 @@ export function fromPolled(polled: PolledState, spawns: Spawn[], calls: Call[] =
     names: polled?.names ?? undefined, unit: polled?.unit ?? null, since: polled?.since ?? undefined,
     changed: polled?.changed ?? null, codeRun: polled?.codeRun ?? null, prUrl: polled?.prUrl ?? null, published,
   }
+}
+
+export type ScenarioRow = { description: string; tests: string[] }
+
+// The scenarios that stand, by the rule pb gate eval reads them with for the scenarios question, or undefined when they do not read.
+async function readScenarios($: EngineInterface, ledger: Ledger): Promise<ScenarioRow[] | undefined> {
+  try {
+    const entries = await $.fs.list(`${await $.session.root()}/${ARTIFACTS}`)
+    const key = newestKeyAmong(entries.filter(entry => entry.kind === 'file').map(entry => entry.name), isStandingScenarios(ledger))
+    if (key === null) return undefined
+    const artifact = (await readJson($, `${ARTIFACTS}/${key}.json`)) as { pb_key?: unknown; scenarios?: unknown } | undefined
+    return artifact?.pb_key === key ? scenarioRows(artifact.scenarios) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// What the report lists in full where a gate question folds: the standing scenarios and every changed file. Never throws.
+export async function readReportLists($: EngineInterface, ledger: Ledger): Promise<{ scenarios?: ScenarioRow[]; changed: string[] | null }> {
+  const [scenarios, changedFile] = await Promise.all([readScenarios($, ledger), readJson($, CHANGED)])
+  return { scenarios, changed: changedOf(changedFile) }
 }

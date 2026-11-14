@@ -7,24 +7,15 @@ import { join } from "node:path";
 import { firstSentence, keptFixLenses } from "./gates.mjs";
 import { findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
 import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt, standingScenariosKey } from "./stage-run.mjs";
+import { scenarioRows } from "./standing-scenarios.mjs";
 
 const artifactsDirOf = (root) => join(root, ".pairingbuddy", "run", "task", "artifacts");
 
 const text = (value) => (typeof value === "string" && value.trim() !== "" ? value : undefined);
 
-// A row of a list in the question: its text on one line, so a model's line break cannot break the layout.
-const oneLine = (value) => text(value)?.replace(/\s+/g, " ").trim();
-
 function typeFacts(root, ledger) {
   const rationale = text(keptIntakeReturn(artifactsDirOf(root), ledger.stage.attempt)?.content?.rationale);
   return rationale === undefined ? {} : { rationale };
-}
-
-// A model wrote the list, so a malformed scenario or test case drops the whole list rather than show part of it.
-function scenarioRows(scenarios) {
-  if (!Array.isArray(scenarios) || scenarios.length === 0) return undefined;
-  const rows = scenarios.map((s) => ({ description: oneLine(s?.description), tests: Array.isArray(s?.test_cases) ? s.test_cases.map((c) => oneLine(c?.description)) : [undefined] }));
-  return rows.every(({ description, tests }) => description !== undefined && !tests.includes(undefined)) ? rows : undefined;
 }
 
 function scenarioFacts(root, ledger) {

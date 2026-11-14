@@ -5,6 +5,7 @@ import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from
 import { basename, dirname, join } from "node:path";
 
 import { parseFixNotes } from "./fix-notes.mjs";
+import { isStandingScenarios, newestKeyAmong } from "./standing-scenarios.mjs";
 import { lensSlug, parseKey } from "./keys.mjs";
 import { acceptVerdict, mergeLensReturns, wiredLensConfig } from "./lens-merge.mjs";
 import { TOKENS_UNIT, isFinishCommand, returnKeyOf, spentTokensOf } from "./spent-line.mjs";
@@ -38,14 +39,7 @@ export function readReturn(artifactsDir, pbKey) {
 }
 
 // The newest return under any key that match accepts, newest by attempt then round, or null.
-export function newestReturnMatching(artifactsDir, match) {
-  const found = readdirSync(artifactsDir)
-    .filter((file) => file.endsWith(".json") && !file.startsWith("."))
-    .map((file) => ({ pbKey: file.slice(0, -".json".length), ...returnFileKey(file) }))
-    .filter(match)
-    .sort((a, b) => b.attempt - a.attempt || b.round - a.round);
-  return found[0]?.pbKey ?? null;
-}
+export const newestReturnMatching = (artifactsDir, match) => newestKeyAmong(readdirSync(artifactsDir), match);
 
 // The newest return of a role under any key with no item, or null. keep decides which attempts count.
 export const newestReturn = (artifactsDir, role, keep = () => true) => newestReturnMatching(artifactsDir, (key) => key.role === role && key.item === null && keep(key));
@@ -60,9 +54,7 @@ export function keptIntakeReturn(artifactsDir, attempt) {
 
 // The scenarios that stand: the newest enumerator return or code-scenarios fix whose attempt is not void, or null. The tdd
 // stage writes tests from these, and G:scenarios shows them.
-export const standingScenariosKey = (artifactsDir, ledger) =>
-  newestReturnMatching(artifactsDir, ({ role, item, stage, attempt }) =>
-    ((role === "enumerate-scenarios-and-test-cases" && item === null) || (role === "fix" && stage === "code-scenarios")) && !isVoidedAttempt(ledger, stage, attempt));
+export const standingScenariosKey = (artifactsDir, ledger) => newestReturnMatching(artifactsDir, isStandingScenarios(ledger));
 
 // ---------- evidence ----------
 

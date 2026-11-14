@@ -1,6 +1,7 @@
 // Scenario long-lists: a big task keeps the pane readable (docs/design/progress-mod/DIRECTION.md, "Long lists").
 import { expect, test } from 'claude-code/testing'
-import { paneLines, setupReplay, type Rig } from './testing/replay'
+import { PANE, paneLines, setupReplay, type Rig } from './testing/replay'
+import { recordReportCalls, REPORT_KEY } from './testing/report'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
 
@@ -33,4 +34,36 @@ test('tests-the-row-hides-are-counted-so-far-while-the-total-is-unknown', async 
   const row = testsRow(await paneLines($))
 
   expect(row.at(-1), `the two hidden tests are counted, and "so far" says more may come: ${JSON.stringify(row)}`).toBe(`${' '.repeat(LABEL_WIDTH)}+2 more so far`)
+})
+
+const ARTIFACTS = '.pairingbuddy/run/task/artifacts'
+const SCENARIOS_KEY = 'code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1'
+const scenarioReturn = (scenarios: { description: string; tests: string[] }[], pbKey = SCENARIOS_KEY) => ({
+  pb_key: pbKey,
+  scenarios: scenarios.map(({ description, tests }) => ({ description, test_cases: tests.map(test => ({ description: test })) })),
+})
+
+async function pressReport($: any) {
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await pane.press({ key: REPORT_KEY })
+  await pane.unmount()
+}
+
+const sectionOf = (html: string, name: string) => html.match(new RegExp(`<h2>${name}</h2>[\\s\\S]*?</section>`))?.[0] ?? ''
+
+test('the-report-lists-the-standing-scenarios-and-every-changed-file', async ($, on) => {
+  const rig = setupReplay(on)
+  const recorder = recordReportCalls(on)
+  const ledger = { ...SNAPSHOT_RUNNING, stage: { name: 'code-tdd', status: 'active', runId: null, attempt: 1, startedAt: TDD_START }, stages: [{ name: 'code-scenarios', status: 'done', attempt: 1, startedAt: TDD_START }] }
+  const scenarios = [{ description: 'order total sums the lines', tests: ['two lines add up', 'no lines give zero'] }, { description: 'a bad line is refused', tests: ['a negative quantity raises'] }]
+  const changed = Array.from({ length: 7 }, (_, i) => `src/file_${i + 1}.py`)
+  await serve($, rig, { [LEDGER]: ledger, [`${ARTIFACTS}/${SCENARIOS_KEY}.json`]: scenarioReturn(scenarios), '.pairingbuddy/run/changed.json': changed.map(path => ({ path, status: 'M' })) })
+
+  await pressReport($)
+
+  const html = recorder.writes[0]?.text ?? ''
+  for (const text of ['order total sums the lines', 'two lines add up', 'no lines give zero', 'a bad line is refused', 'a negative quantity raises']) {
+    expect(sectionOf(html, 'SCENARIOS'), `the report's scenarios hold ${text}`).toContain(text)
+  }
+  for (const path of changed) expect(sectionOf(html, 'BUILT'), `the report's built list holds ${path}`).toContain(path)
 })

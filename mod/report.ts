@@ -1,6 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 import { renderReport } from '../shared-node/report.mjs'
-import { readInputs, type Call, type Inputs, type Spawn } from './inputs'
+import { readInputs, readReportLists, type Call, type Inputs, type Spawn } from './inputs'
 
 
 // The pane's one note line, as mod state: the report press and the suggest submit (./suggest) both write it, so the latest action wins.
@@ -74,8 +74,9 @@ export async function openReport($: EngineInterface, spawns: Spawn[], calls: Cal
     const path = `${await $.session.root()}/${REPORTS_DIR}/${stampOf(inputs.now ?? Date.now())}-${slugOf(inputs.ledger.task)}.html`
     const shas = inputs.ledger.commits ?? []
     const commits = await readCommits($, shas)
+    const lists = await readReportLists($, inputs.ledger)
     try {
-      await $.fs.write(path, renderReport({ ...inputs, calls, commits, endedAt, now: live.ledger ? inputs.now : undefined }))
+      await $.fs.write(path, renderReport({ ...inputs, ...lists, calls, commits, endedAt, now: live.ledger ? inputs.now : undefined }))
     } catch {
       await $.state.set(PANE_NOTE, "couldn't write the report")
       return
