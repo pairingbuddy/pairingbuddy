@@ -170,3 +170,14 @@ PR       opened · #7 feat: add order_total summing line totals
 Review moves below that as one summary line (`review: 4 issues, all fixed`), with the finding titles under it.
 
 As built: DONE, GOAL and PR are the first three rows at every step, each `—` until the task-end gate has passed, so the layout stays fixed. DONE lists run/changed.json's paths and the code run's passing tests. GOAL reads `met` only when the task-end gate passed and the safety-net's alignment lens (`corpus-misalignment`, or any lens named `*goal`) returned with no finding still open; `in doubt · <gist>` when one is open; `not checked` when that lens did not return or its returns are not known (a new session). PR reads `—` between the code run's end and the publish, then what `pb publish` printed (`opened · #7 <title>`, or `not opened · kept local`), else unit.json's `pr.url`. While the publish run's pr-draft runs, REVIEW shows that round; once no stage runs, it is the safety-net summary.
+
+## Long lists (2026-11-14)
+
+A big task (15 scenarios, 40 tests, 20 changed files, 8 findings, names over 100 characters) keeps every question and row short. Every "+ n more in the report" points at a list the report (`r`) really holds.
+
+- **Scenarios question.** All scenarios with their tests indented when they fit 12 lines. Otherwise one line per scenario with its count (`- order_total sums price times quantity (3 tests)`), no test lines, up to 15 scenarios, then `+ n more scenarios in the report`. A scenario is never cut off part way through its tests. The header `Scenarios (N scenarios, M tests):` stays. This replaces the 12-line fold above.
+- **Task-done question.** `Built:` stays one line: the first 5 changed files, then `+ n more in the report`.
+- **Report.** SCENARIOS lists every standing scenario with its tests (the same standing return `pb gate eval` reads). BUILT lists every path in `run/changed.json`. REVIEW already lists every finding the goal check folds.
+- **TESTS row.** At most 5 lines: the done and covered counts, up to 3 tests, then `+n more`. While the total is not known yet (tests.json does not list every test seen), the hidden tests are still counted, as `+n more so far`.
+- **REVIEW at the end.** The summary line, the first 3 findings, then `+ n more`: 5 lines at most.
+- **Cut at a word.** DONE, GOAL, PR and REVIEW never cut a word with "…". Test names in TESTS may still be cut with "…".
