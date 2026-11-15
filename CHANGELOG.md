@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The band uses the pane's colours: the current step in the accent `#39c5cf` with bold, the TDD phase word (RED, GREEN, REFACTOR) in its phase colour, needs-you yellow and bold, a stop red. Nothing else in it is coloured.
 - The band leads with the goal: its gist, bold as the pane's GOAL, on its own row above the step row, from the first ledger through the end of the run. The band is two rows at most. The gist is whole when it fits, else cut at a clause break, else a word, never with "…".
 - The done alert no longer sets the status line. Claude Code draws every plugin status line as `⚠ <plugin>: <text>` in the warning colour, which read as "something went wrong". Done now plays the sound, opens the pane, says it in the band and sends one native notice (`$.ui.notify`, titled Pairing Buddy). The status line stays for needs-you and a stop.
+- The scenarios agent reads the existing code the task builds on before it writes expected values, and never restates a number that contradicts the task text; a mismatch between the task and the code is an open question. The refuter gets the task (a `<task>` block) and never knocks down a factual mismatch between a scenario or test description and the task text or code as not a real problem.
 
 ### Added
 

@@ -107,6 +107,16 @@ test("Each lens prompt carries the run's task in a <task> block", async () => {
   });
 });
 
+test("Each refuter prompt carries the run's task in a <task> block, so it can check a finding's facts against the task text", async () => {
+  const config = refutingConfig(1, { task: "zebra-task-6612" });
+
+  const { calls } = await runLensAttack(config, refuterStandIn([ranked(1)]));
+
+  const refuters = refuterCallsOf(calls);
+  assert.equal(refuters.length, 1, "the finding was sent to a refuter");
+  assert.equal(/<task>\n([\s\S]*?)\n<\/task>/.exec(refuters[0].prompt)?.[1], JSON.stringify(config.task));
+});
+
 // lens-merge
 test("Each lens prompt has a <corpus> section listing the corpus paths, and says none when the corpus is empty", async () => {
   const withCorpus = { ...ONE_LENS, corpus: ["src/a.mjs", "docs/b.md"] };

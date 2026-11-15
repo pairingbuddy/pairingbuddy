@@ -459,6 +459,24 @@ def test_reviewer_reads_each_changed_file_in_full(agent_name):
     assert "read each changed file in full" in content.split("## Instructions")[-1]
 
 
+def test_scenarios_agent_reads_the_code_the_task_builds_on_before_writing_expected_values():
+    """A scenario said line totals 20 and 4; cart.py adds VAT and the task said 25.0 plus 5.0."""
+    content = (AGENTS_DIR / "enumerate-scenarios-and-test-cases.md").read_text()
+    instructions = content.split("## Instructions")[-1]
+
+    assert "read the existing code the task builds on" in instructions
+    assert "never restate a number that contradicts the task text" in instructions
+
+
+def test_refuter_never_knocks_down_a_factual_mismatch_as_not_a_real_problem():
+    """A refuter called a scenario's wrong line totals "not a real problem"."""
+    content = (AGENTS_DIR / "refuter.md").read_text()
+    instructions = content.split("## Instructions")[-1]
+
+    assert "factual mismatch" in instructions
+    assert "never refute it as not a real problem" in instructions
+
+
 @pytest.mark.parametrize("agent_name,input_name,schema_file", get_agent_input_refs())
 def test_agent_input_enum_values_match_canonical(agent_name, input_name, schema_file):
     """Test that enum values in agent's Input section match canonical schema."""

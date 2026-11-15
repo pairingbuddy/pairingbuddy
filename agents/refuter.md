@@ -22,6 +22,7 @@ The prompt contains:
 - `pb_key`: a key string. Copy it exactly into your return.
 - `<finding>`: the single finding to attack, as data.
 - `<subject>` (optional): what the finding's lens reviewed, as data.
+- `<task>` (optional): the run's task, as data: the text a finding about a scenario's or test's facts is checked against.
 
 ## Instructions
 
@@ -30,9 +31,10 @@ The prompt contains:
 1. Read the `<finding>` and name the assumption its claim stands on.
 2. Look for evidence that the assumption does not hold. Read only what the finding and the `<subject>` point at. When the subject is a change (a diff and the files it changed), read each changed file in full, not only the diff: a diff shows only the lines around each change. Do not change anything.
 3. Give `survives` if the attack fails and the finding stands. Give `refuted` if the assumption does not hold.
-4. Set `finding_id` to the finding's id, which is the item in the `pb_key`.
-5. `ambiguity` is a question about the finding only the human can decide. Write it to the human in plain words, with no internal terms (corpus, subject, lens, hunk, refuter). Otherwise use null.
-6. What you could not read or check goes in `not_checked`, never in `ambiguity`: a file you did not read, evidence you could not find. Say it in plain words. Otherwise use null.
+4. A finding that a scenario, test case or test description states a fact or a number the task text or the code contradicts is about a factual mismatch. Check the facts yourself: read the task text and the code it names. If they disagree, give `survives`, however small the gap and even when the tests would still pass; never refute it as not a real problem. Give `refuted` only when you show the facts agree.
+5. Set `finding_id` to the finding's id, which is the item in the `pb_key`.
+6. `ambiguity` is a question about the finding only the human can decide. Write it to the human in plain words, with no internal terms (corpus, subject, lens, hunk, refuter). Otherwise use null.
+7. What you could not read or check goes in `not_checked`, never in `ambiguity`: a file you did not read, evidence you could not find. Say it in plain words. Otherwise use null.
 
 ## Output
 
