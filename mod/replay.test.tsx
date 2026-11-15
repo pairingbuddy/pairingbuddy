@@ -123,7 +123,7 @@ test('with the pane open, every row in order, the step list in plain names with 
   expect(all.slice(0, 5), `the goal leads, then STATUS, and PR and BUILT read a dash before the task is done: ${JSON.stringify(all)}`).toEqual([
     'GOAL     Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it',
     '         should return 90.',
-    'STATUS   working · safety-net review',
+    'STATUS   ● working · safety-net review',
     'PR       —',
     'BUILT    —',
   ])
@@ -150,7 +150,7 @@ test('replaying probe-2 shows LOOPING naming the step and its 3rd try, and the 3
   const pane = third.lines
   expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['RED · test 2 of 2', 'looping: yes']))
   expect(pane, `pane LOOPING row in ${JSON.stringify(pane)}`).toContain('LOOPING  writing a failing test · try 3 of 3')
-  expect(pane, `pane STATUS row in ${JSON.stringify(pane)}`).toEqual(expect.arrayContaining(['STATUS   working · writing a failing test for zero percent keeps full price', '         test 2 of 2, 3rd try']))
+  expect(pane, `pane STATUS row in ${JSON.stringify(pane)}`).toEqual(expect.arrayContaining(['STATUS   ● working · writing a failing test for zero percent keeps full price', '         test 2 of 2, 3rd try']))
   expect(second.band, 'band at the 2nd try is not looping yet').toContain('looping: no')
   expect(second.lines, 'the 2nd try names the step and its try').toContain('LOOPING  writing a failing test · try 2 of 3')
   expect(steps.flatMap(step => step.lines).some(line => line.includes('try 1 of')), 'a first try is never spelled out').toBe(false)
@@ -206,6 +206,10 @@ test('across band and pane text for the replayed recordings, no rendered string 
 // "needs you" (warning) and a stop (error). Nothing else is coloured.
 const MEANING_COLOURS = ['warning', 'error']
 const isLitNow = (node: { text: string; props: Record<string, unknown> }) => node.text.startsWith('▸ ') && node.props.color === ACCENT_COLOUR && node.props.bold === true
+// The pane's nodes under the first glance's rule: the detail rows.
+const details = <T extends { text: string; props: Record<string, unknown> }>(pane: T[]) => pane.slice(pane.findIndex(node => node.props.dimColor === true && /^─{3,}$/.test(node.text)) + 1)
+// STATUS's working head: the run is at work, so its mark is in the accent too, calm (not bold).
+const isWorkingHead = (node: { text: string; props: Record<string, unknown> }) => node.text === '● working' && node.props.color === ACCENT_COLOUR && node.props.bold === undefined
 
 // The band is held to the same code by its own test below (colour-means-one-thing-in-the-band).
 test('colour-means-one-thing: across every drawn Text in the pane over the replay recordings, only the lit phase, the current step and test, needs-you and a stop are coloured', async ($, on) => {
@@ -221,7 +225,7 @@ test('colour-means-one-thing: across every drawn Text in the pane over the repla
         colours.add(String(color))
         const phase = /^[●](RED|GREEN|REFACTOR)$/.exec(node.text)?.[1]
         if (phase) expect(color, `${name} t=${step.t}: the lit ${phase} has its fixed colour`).toBe(PHASE_COLOURS[phase])
-        else if (color === ACCENT_COLOUR) expect(isLitNow(node), `${name} t=${step.t}: only a current line is in the accent: "${node.text}"`).toBe(true)
+        else if (color === ACCENT_COLOUR) expect(isLitNow(node) || isWorkingHead(node), `${name} t=${step.t}: only a current line or the working head is in the accent: "${node.text}"`).toBe(true)
         else expect(MEANING_COLOURS, `${name} t=${step.t}: "${node.text}" is coloured ${JSON.stringify(color)}`).toContain(color)
       }
     }
@@ -269,8 +273,9 @@ test('colour-means-one-thing-in-the-band: the step in the accent, the phase word
 test('colour-means-one-thing-in-a-review: over the s4-rollback replay, a lens that has finished but not yet returned is not drawn in a colour', async ($, on) => {
   const rig = setupReplay(on)
   const steps = await drawn($, rig, s4Rollback, S4_TEST_IDS, PANE)
-  const coloured = steps.flatMap(step => step.pane.filter(node => node.props.color !== undefined && !/^●(RED|GREEN|REFACTOR)$/.test(node.text) && !isLitNow(node)).map(node => `t=${step.t} ${node.props.color}: ${node.text}`))
-  expect(coloured.filter(line => !/^t=\S+ (warning|error): (needs you|stopped)/.test(line)), 'only needs-you and a stop are coloured').toEqual([])
+  // STATUS is held to its own code by colour-means-one-thing; here, only the rows under it.
+  const coloured = steps.flatMap(step => details(step.pane).filter(node => node.props.color !== undefined && !/^●(RED|GREEN|REFACTOR)$/.test(node.text) && !isLitNow(node)).map(node => `t=${step.t} ${node.props.color}: ${node.text}`))
+  expect(coloured, 'under the first glance, only the lit phase and the current step and test are coloured').toEqual([])
 })
 
 // mod/fixtures/replay/s4-rollback/ is one S4 bug_fix run with a rolled-back fix, recorded in tests/smoke/recordings/s4-t85-run4/.
@@ -333,7 +338,7 @@ test('replay-end-state-after-the-publish-says-done-goal-and-pr', async ($, on) =
   const steps = await drawn($, rig, s4Rollback, S4_TEST_IDS, PANE, S4_CHANGED)
   const publishing = steps.at(-1)!.lines
   expect(publishing.slice(2, 5), `while the publish run waits on G:publish: ${JSON.stringify(publishing)}`).toEqual([
-    'STATUS   working · all steps done',
+    'STATUS   ● working · all steps done',
     'PR       —',
     'BUILT    README.md, discount.py, tests/test_discount.py · 1 test passing',
   ])

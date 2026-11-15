@@ -288,7 +288,7 @@ test('pane-draws-the-review-row-and-no-test-in-the-safety-net-review', async ($,
     '         1 issue found · 1 to fix',
     '           to fix · rounds the wrong way · discount.py:3',
   ])
-  expect(lines, 'STATUS names the review, not the last test').toContain('STATUS   working · safety-net review')
+  expect(lines, 'STATUS names the review, not the last test').toContain('STATUS   ● working · safety-net review')
   expect(lines, 'no test is current outside build test by test').toContain('TESTS    —')
   expect(lines.some(line => line.startsWith('TEST ')), 'there is no TEST row').toBe(false)
   expect(lines.some(line => /agents? of \d+/.test(line)), 'no "n agents of 1000" line').toBe(false)

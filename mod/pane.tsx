@@ -2,7 +2,7 @@ import { plainName } from '../shared-node/plain-names.mjs'
 import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
 import { endReviewLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
 import { fitTries } from '../shared-node/now-building.mjs'
-import type { PaneTags, RowTones, View } from './view'
+import type { PaneTags, RowTones, Status, StatusState, View } from './view'
 
 // Every row is always drawn, in this order, its label in a column this wide; a row with nothing to show reads EMPTY.
 const LABEL_WIDTH = 9
@@ -91,12 +91,32 @@ const one = (text: string, props: Props = {}): Part[][] => [[{ text, props: text
 // A row that wraps at its parts, then words, onto as many lines as it needs, never cut.
 const wrapped = (text: string, room: number, props: Props = {}): Part[][] => (text === EMPTY ? one(text) : wrapAtParts(text, room).map((line: string) => [{ text: line, props }]))
 
+// How each state leads STATUS: its head (a mark and the state's word) and how the head and what follows it are drawn.
+// sep joins the head to what follows.
+type Look = { head: string; sep: string; headProps: Props; whatProps: Props }
+export const STATUS_LOOKS: Record<StatusState, Look> = {
+  needsYou: { head: 'needs you', sep: ' · ', headProps: { color: 'warning', bold: true }, whatProps: { color: 'warning', bold: true } },
+  stopped: { head: 'stopped', sep: ' · ', headProps: { color: 'error' }, whatProps: { color: 'error' } },
+  done: { head: 'done', sep: ' · ', headProps: {}, whatProps: {} },
+  working: { head: '● working', sep: ' · ', headProps: { color: ACCENT_COLOUR }, whatProps: {} },
+  quiet: { head: '', sep: '', headProps: {}, whatProps: {} },
+}
+
+// STATUS as lines: the head, then what follows it, wrapping at its parts, then words; never cut.
+function statusLines(status: Status, width: number): Part[][] {
+  const look = STATUS_LOOKS[status.state]
+  const text = [look.head, status.what].filter(Boolean).join(look.sep)
+  return wrapAtParts(text, width).map((line: string, i: number) => {
+    if (i > 0 || !look.head || !line.startsWith(look.head)) return [{ text: line, props: look.whatProps }]
+    const rest = line.slice(look.head.length)
+    return [{ text: look.head, props: look.headProps }, ...(rest ? [{ text: rest, props: look.whatProps }] : [])]
+  })
+}
+
 // The first glance: GOAL, then STATUS, which answers "am I needed now?".
 function topRows(view: View, columns: number) {
-  const { rows, rowTones = {} as RowTones } = view
   const width = columns > 0 ? columns - LABEL_WIDTH : 0
-  const statusProps = { ...toneProps(rowTones.status), ...(rowTones.status === 'warning' ? { bold: true } : {}) }
-  return [...goalRows(view, columns), ...rowLines('STATUS', wrapped(view.status ?? rows.now, width, statusProps), FIRST_GLANCE_LABEL)]
+  return [...goalRows(view, columns), ...rowLines('STATUS', statusLines(view.status, width), FIRST_GLANCE_LABEL)]
 }
 
 // The details under the rule, read after the first glance.

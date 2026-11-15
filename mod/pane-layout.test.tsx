@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { PANE, paneLines, setupReplay, type Rig } from './testing/replay'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
+import { ACCENT_COLOUR } from './pane'
 
 const ROWS = ['GOAL', 'STATUS', 'PR', 'BUILT', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'REVIEW']
 const LABEL_WIDTH = 9
@@ -27,7 +28,7 @@ test('every-row-is-drawn-in-order-with-a-fixed-label-width-and-a-dash-when-empty
 
   expect(labelsOf(lines), `the rows, in order: ${JSON.stringify(lines)}`).toEqual(ROWS)
   for (const label of ROWS) expect(rowOf(lines, label), `${label} sits in a ${LABEL_WIDTH}-wide label column: ${JSON.stringify(lines)}`).toBeDefined()
-  expect(rowOf(lines, 'STATUS'), 'STATUS says the run is working, on the active step').toBe('STATUS   working · write test scenarios')
+  expect(rowOf(lines, 'STATUS'), 'STATUS says the run is working, on the active step').toBe('STATUS   ● working · write test scenarios')
   for (const label of ['PR', 'BUILT', 'TESTS', 'REVIEW']) expect(rowOf(lines, label), `${label} has nothing to show yet, so it reads a dash`).toBe(`${label.padEnd(LABEL_WIDTH)}—`)
   expect(rowOf(lines, 'LOOPING'), 'no step is looping').toBe('LOOPING  no')
   expect(lines.some(line => /^(LEFT|OFF TRACK|NOW|DONE)\b/.test(line)), 'LEFT, OFF TRACK, NOW and DONE are gone').toBe(false)
@@ -89,6 +90,24 @@ test('the-first-glance-labels-are-bold-and-the-detail-labels-dim-with-their-valu
   expect([looping.text, looping.props.dimColor], 'a detail value stays readable, not dim').toEqual(['no', undefined])
 })
 
+// STATUS's head (its mark and state word) as drawn, and what follows it on the row.
+function statusOf(drawn: { text: string; props: Record<string, unknown> }[]) {
+  const at = drawn.findIndex(node => node.text === 'STATUS'.padEnd(LABEL_WIDTH))
+  return { head: drawn[at + 1], rest: drawn[at + 2] }
+}
+
+test('status-working-leads-with-a-calm-mark-in-the-accent', async ($, on) => {
+  const rig = setupReplay(on)
+  await serve($, rig, { [LEDGER]: SNAPSHOT_RUNNING })
+
+  const lines = await paneLines($)
+  const { head, rest } = statusOf(await paneNodes($))
+
+  expect(rowOf(lines, 'STATUS'), 'a dot, the state, then the step').toBe('STATUS   ● working · write test scenarios')
+  expect([head.text, head.props.color, head.props.bold, head.props.inverse], 'the mark and state in the accent, calm: not bold, no block').toEqual(['● working', ACCENT_COLOUR, undefined, undefined])
+  expect([rest.text, rest.props.color], 'the step after it is plain').toEqual([' · write test scenarios', undefined])
+})
+
 const UNIT = '.pairingbuddy/run/unit.json'
 const BUG_FIX_STEPS = ['intake', 'code-scenarios', 'code-tdd', 'code-safety-net']
 const unitFile = (tasks: { stages: string[] }[] = []) => ({ unit: null, plan: null, tracer: null, branch: 'fix/order-total', base: 'main', baseSha: 'abc', tasks, commits: [] })
@@ -126,7 +145,7 @@ test('the-publish-run-lists-the-unit-tasks-steps-as-done-before-the-publish-step
   const lines = await paneLines($)
 
   expect(stepsOf(lines), 'the code steps stay, done').toEqual(['✓ work out the task type', '✓ write test scenarios', '✓ build test by test', '✓ safety-net review', '▸ write the pull request'])
-  expect(rowOf(lines, 'STATUS'), 'STATUS names the publish step').toBe('STATUS   working · write the pull request')
+  expect(rowOf(lines, 'STATUS'), 'STATUS names the publish step').toBe('STATUS   ● working · write the pull request')
   expect(rowOf(lines, 'TESTS'), 'with no code run seen, the publish run lists none of tests.json as to do').toBe('TESTS    —')
 })
 

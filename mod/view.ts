@@ -13,7 +13,11 @@ export type Tone = 'error' | 'warning' | 'dim'
 // lit: where the run is now, drawn as the pane draws its current step (the accent with bold, the phase word in its colour).
 export type Segment = { id: string; text: string; standing?: boolean; tone?: Tone; bold?: boolean; lit?: boolean }
 export type Rows = Record<'now' | 'spent' | 'looping', string>
-export type RowTones = Partial<Record<keyof Rows | 'status', Tone>>
+export type RowTones = Partial<Record<keyof Rows, Tone>>
+// What STATUS says, so the human cycling sessions sees at once whether they are needed: the run's state, then what it is about
+// (the step, the question, why it stopped, the verdict). quiet: nothing runs and nothing waits on the human.
+export type StatusState = 'needsYou' | 'stopped' | 'done' | 'working' | 'quiet'
+export type Status = { state: StatusState; what?: string }
 // The kit's own types for the elements a render hook draws with.
 export type Tags = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
 // The Pane alone also draws the suggest Input.
@@ -41,8 +45,8 @@ export type View = {
   lensRound?: LensRound
   // The GOAL row: the task's first sentence from the moment the run knows its task, else a dash.
   goal: string
-  // The STATUS row: what state the run is in, in plain words (working, needs you, stopped, done).
-  status: string
+  // The STATUS row: what state the run is in (working, needs you, stopped, done, or quiet) and what about.
+  status: Status
   // The unit's work is over with nothing left to run: the done alert fires on it.
   done?: boolean
   // The BUILT (done) and PR rows, each a dash until the task is done; endRound, once the work is finished, is the review the REVIEW row sums up.
@@ -70,17 +74,10 @@ function bandTone(segment: Segment, ledger: NonNullable<Ledger>): Pick<Segment, 
 
 const waitingGate = (ledger: NonNullable<Ledger>) => (ledger.stop ? undefined : ledger.needsHuman?.gate || undefined)
 
-function rowTones(ledger: NonNullable<Ledger>): RowTones {
-  const tones: RowTones = { spent: 'dim' }
-  if (ledger.stop) tones.status = 'error'
-  else if (waitingGate(ledger)) tones.status = 'warning'
-  return tones
-}
-
 function toned(view: View): View {
   const { ledger } = view
   if (!ledger) return view
-  return { ...view, band: view.band.map(segment => ({ ...segment, ...bandTone(segment, ledger) })), rowTones: rowTones(ledger) }
+  return { ...view, band: view.band.map(segment => ({ ...segment, ...bandTone(segment, ledger) })), rowTones: { spent: 'dim' } }
 }
 
 // The run's own steps for its task type, each marked done, current or to come.
@@ -169,26 +166,22 @@ function endState(inputs: Inputs, running: boolean, live: boolean): Pick<View, '
 }
 
 const STATUS_PART = ' · '
-const WORKING = 'working'
 const NEXT_PUBLISH = `next: ${plainName(PUBLISH_STEP)}`
 
 // What state a live run is in: stopped, needs you, or working on its step (or between steps).
-function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean): string {
-  if (ledger.stop) {
-    const why = stopName(ledger.stop)
-    return why ? `stopped${STATUS_PART}${why}` : 'stopped'
-  }
+function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean): Status {
+  if (ledger.stop) return { state: 'stopped', what: stopName(ledger.stop) }
   const gate = waitingGate(ledger)
-  if (gate) return `needs you${STATUS_PART}${gateLine(gate)}`
-  if (view.between === ALL_DONE && publishes && !isPublishRun(ledger)) return `${WORKING}${STATUS_PART}${NEXT_PUBLISH}`
-  return `${WORKING}${STATUS_PART}${view.rows.now}`
+  if (gate) return { state: 'needsYou', what: gateLine(gate) }
+  if (view.between === ALL_DONE && publishes && !isPublishRun(ledger)) return { state: 'working', what: NEXT_PUBLISH }
+  return { state: 'working', what: view.rows.now }
 }
 
 // A run that is over: done, waiting on the publish run, or ended without the sign-off.
-function endedStatus(inputs: Inputs, end: { doneStatus?: string }): string {
-  if (end.doneStatus) return end.doneStatus
-  if (inputs.codeRun?.taskEndPassed === true) return `between runs${STATUS_PART}${NEXT_PUBLISH}`
-  return `ended${STATUS_PART}not signed off`
+function endedStatus(inputs: Inputs, end: { doneStatus?: string }): Status {
+  if (end.doneStatus) return { state: 'done', what: end.doneStatus.replace(/^done · /, '') }
+  if (inputs.codeRun?.taskEndPassed === true) return { state: 'quiet', what: `between runs${STATUS_PART}${NEXT_PUBLISH}` }
+  return { state: 'quiet', what: `ended${STATUS_PART}not signed off` }
 }
 
 // What the band and the pane show for what was read.
@@ -208,11 +201,11 @@ const looping = (text: string) => (text === UNKNOWN ? 'no' : text)
 
 function buildPlainView(inputs: Inputs): View {
   const { ledger } = inputs
-  if (!ledger) return { ledger, running: false, rows: NO_RUN_ROWS, band: [], unknownLabels: [], steps: [], goal: EMPTY, status: NO_RUN_ROWS.now, end: NO_END }
+  if (!ledger) return { ledger, running: false, rows: NO_RUN_ROWS, band: [], unknownLabels: [], steps: [], goal: EMPTY, status: { state: 'quiet', what: NO_RUN_ROWS.now }, end: NO_END }
   const running = isStageActive(ledger)
   const shown = glanceOf(inputs)
   const rows = { now: shown.rows.now, spent: shown.rows.spent, looping: looping(shown.rows.looping) }
-  const base = { ledger, running, band: shown.band, unknownLabels: shown.unknownLabels, steps: [], goal: EMPTY, status: EMPTY, end: NO_END }
+  const base = { ledger, running, band: shown.band, unknownLabels: shown.unknownLabels, steps: [], goal: EMPTY, status: { state: 'quiet' as const, what: EMPTY }, end: NO_END }
   const gate = waitingGate(ledger)
   if (gate) {
     const band = running ? shown.band : shown.band.filter((segment: Segment) => segment.id === 'needsYou')
