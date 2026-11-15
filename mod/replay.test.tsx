@@ -239,6 +239,51 @@ test('colour-means-one-thing: across every drawn Text in the pane over the repla
   expect([...colours], 'the recordings drew the phases and the accent').toEqual(expect.arrayContaining([PHASE_COLOURS.RED, PHASE_COLOURS.GREEN, ACCENT_COLOUR]))
 })
 
+// STATUS draws the eye in proportion to urgency: a block (inverse) only for needs-you (yellow) and a stop (red), what follows it
+// in the same colour but no block; done bold and uncoloured; working in the accent, calm; a quiet state behind a dim ○. Yellow
+// and red appear nowhere but STATUS.
+const STATUS_HEADS: Record<string, Record<string, unknown>> = {
+  '▲ NEEDS YOU': { color: 'warning', inverse: true, bold: true },
+  '✕ STOPPED': { color: 'error', inverse: true, bold: true },
+  '✓ DONE': { color: undefined, inverse: undefined, bold: true },
+  '● working': { color: ACCENT_COLOUR, inverse: undefined, bold: undefined },
+  '○': { color: undefined, inverse: undefined, dimColor: true },
+}
+const statusRow = <T extends { text: string }>(pane: T[]) => pane.slice(pane.findIndex(node => node.text === 'STATUS   ') + 1, pane.findIndex(node => /^─{3,}$/.test(node.text)))
+
+// Checks one drawn pane's STATUS against STATUS_HEADS and returns the head it led with.
+function checkStatus(pane: Step['texts'], at: string): string {
+  const row = statusRow(pane)
+  const [head, ...rest] = row.filter(node => node.text.trim() !== '')
+  const look = STATUS_HEADS[head.text]
+  expect(look, `${at}: STATUS leads with one of the five heads, not "${head.text}"`).toBeDefined()
+  for (const [prop, value] of Object.entries(look)) expect(head.props[prop], `${at}: "${head.text}" ${prop}`).toBe(value)
+  for (const node of rest) {
+    expect(node.props.inverse, `${at}: only the head is a block: "${node.text}"`).toBeUndefined()
+    expect(node.props.color, `${at}: what follows "${head.text}" is in its colour`).toBe(look.inverse ? look.color : undefined)
+  }
+  const elsewhere = pane.filter(node => !row.includes(node))
+  expect(elsewhere.filter(node => node.props.inverse !== undefined || MEANING_COLOURS.includes(String(node.props.color))).map(node => node.text), `${at}: no block, yellow or red outside STATUS`).toEqual([])
+  return head.text
+}
+
+test('colour-means-one-thing-in-status: a block only for a stop, working calm in the accent, over g-open-1 and probe-2', async ($, on) => {
+  const rig = setupReplay(on)
+  const heads = new Set<string>()
+  for (const [name, recording] of [['g-open-1', gOpen1], ['probe-2', probe2]] as const) {
+    for (const step of await drawn($, rig, recording, TESTS[name], PANE)) heads.add(checkStatus(step.pane, `${name} t=${step.t}`))
+  }
+
+  expect([...heads], 'the recordings drew a stop and working').toEqual(expect.arrayContaining(['✕ STOPPED', '● working']))
+})
+
+test('colour-means-one-thing-in-status: a block for needs-you, over s4-rollback', async ($, on) => {
+  const rig = setupReplay(on)
+  const heads = new Set((await drawn($, rig, s4Rollback, S4_TEST_IDS, PANE)).map(step => checkStatus(step.pane, `s4-rollback t=${step.t}`)))
+
+  expect([...heads], 'the recording drew needs-you and working').toEqual(expect.arrayContaining(['▲ NEEDS YOU', '● working']))
+})
+
 // The band uses the pane's code, so it trains the eye: where the run is now in the accent with bold, the TDD phase word in its
 // phase colour, needs-you in yellow with bold, a stop in red. Nothing else in the band is coloured.
 test('colour-means-one-thing-in-the-band: the step in the accent, the phase word in its colour, needs-you and a stop, nothing else', async ($, on) => {
