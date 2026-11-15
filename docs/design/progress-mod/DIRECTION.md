@@ -16,8 +16,8 @@ Remaining step: a quick narrow re-look by the human before Task 60 is ticked.
 
 ## Chosen direction
 
-- **The band is the default.** One row above the prompt, always visible, answers five questions: where, spent, left, looping, off track. It also shows "needs you". See [R4-1](round-4/R4-1-band-tdd-calm.png).
-- **The pane holds the details.** The band's `▸ details` button (click, or ctrl+x tab then enter) or `/pb` opens the pane, and esc or × closes it. The pane also opens by itself when the run stops or needs you, or the unit is done with nothing left to do (sixth watched run), and the band then reads "needs you · opened details". See [R4-7](round-4/R4-7-switching-storyboard.png).
+- **The band is the default.** Always visible above the prompt: the goal's gist on its first row (seventh watched run), then one row that answers where, spent, left and looping, and shows "needs you". See [R4-1](round-4/R4-1-band-tdd-calm.png) and "The band" under "Fixed layout".
+- **The pane holds the details.** The band's `▸ details` button (click, or ctrl+x tab then enter) or `/pb` opens the pane, and esc or × closes it. The pane also opens by itself, without the keyboard, when a run starts (seventh watched run), when the run stops or needs you, and when the unit is done with nothing left to do (sixth watched run); for a question the band then reads "needs you · opened details". See [R4-7](round-4/R4-7-switching-storyboard.png).
 - **The HTML report gives depth.** The pane's `open report` writes a self-contained page and opens it in the browser. There is one report for a TDD run and one for a planning run. See [R5-3](round-5/R5-3-report-tdd.png) and [R5-4](round-5/R5-4-report-plan.png).
 
 ## The five rows
@@ -72,7 +72,7 @@ Planning uses the same rows. Its pane adds the aim, decisions, open questions (t
 | % of plan | tokens divided by the plan's quota | **no source yet**; the mod can't read the quota |
 | Suggestions | `.pairingbuddy/human-guidance.json`, already passed to every spawn | exists; needs a task-specific marking for curate-guidance |
 | Reports | `$.fs.write` plus `$.process.run(['open', path])` | Task 57 onward; needs a kept location that R5 allows |
-| Alerts and auto-open | `stop` or `needsHuman` in the ledger, then `$.ui.open`, toast and sound | Task 58 |
+| Alerts and auto-open | a new run, `stop` or `needsHuman` in the ledger, or a done unit, then `$.ui.open`, sound, the status line (needs-you and stop only) and `$.ui.notify` (done) | Task 58; sixth and seventh watched runs |
 
 ## Fixed layout (2026-11-14, updated 2026-11-15)
 
@@ -123,8 +123,22 @@ Rules:
 - **REVIEW** shows the latest review round of the active step (or the last one, after it ends): what was checked, one summary line, then one line per finding.
 - **Finding words.** `checking` (a refuter is on it), `to fix` (upheld, fix not tried yet), `fixing`, `fixed`, `not a real problem` (knocked down), `left as is` (still open when the round ended). The summary counts the same words: `3 issues found · 1 fixed · 1 left as is · 1 not a real problem`.
 - **Colours are fixed hex values, not theme keys,** readable on dark and light, so a theme that maps "success" to blue cannot turn GREEN blue: RED `#e5534b`, GREEN `#3fb950`, REFACTOR `#4c8dff`, and the accent `#39c5cf` for where the run is now. See "Colour means one thing" below.
-- **Nothing is cut with "…".** Rows wrap. Two places keep a cut, each at a word and never with an ellipsis: a TESTS line stays one line (the current test's name gives way so its marker and age fit; the report's SCENARIOS holds every name whole), and a REVIEW finding stays one line (its where gives way, then its gist; the report's REVIEW keeps the full claim). The band is one row by design: it drops segments first and may end in "…" only as a last resort.
+- **Nothing is cut with "…".** Rows wrap. Two places keep a cut, each at a word and never with an ellipsis: a TESTS line stays one line (the current test's name gives way so its marker and age fit; the report's SCENARIOS holds every name whole), and a REVIEW finding stays one line (its where gives way, then its gist; the report's REVIEW keeps the full claim). The band's goal row is cut at a clause break, else a word, never with "…". The band's step row is one row by design: it drops segments first and may end in "…" only as a last resort.
 - **Removed:** "n active", "n unknown" and the legend under the test line, the "▸ now" and "✓ made to pass" sub-step lines, the "n agents of 1000" line, the LEFT and OFF TRACK rows (never measured live), and since the sixth watched run NOW (now STATUS) and DONE (now BUILT). The progress row of earlier tests is the TESTS row.
+
+### The band (seventh watched run)
+
+The band is two rows at most, under a dim rule: the goal row, then the step row. This is the single truth for the band's layout.
+
+```
+────────────────────────────────────────────────────────────────────────────────
+Fix this bug in discount.py
+RED · test 2 of 2 │ 1:12 · 8 agents │ looping: no │ needs you: no ▸ details
+```
+
+- **The goal row** is the goal's gist, bold as the pane's GOAL and not coloured: the whole first sentence when it fits beside the [-] control, else cut at the last clause break (`: `, `; `, `, ` outside brackets and backticks), else the last word, never with "…". It is drawn from the first ledger to the end of the run (also once the run is over, so the done band says what was done), and only while idle is there none.
+- **The goal has its own row** at every width, so the step row stays where the eye learnt to find it. At 139 columns most goals are whole; at 80 and 50 the gist is often the goal's first clause.
+- **The step row** is the row it always was: the step (or the phase and test), spent, left, looping and needs-you, dropping segments by priority, then the `▸ details` button and the `/pb` hint while they fit. With no stage active it is the one quiet line (idle, between steps, last run finished, done).
 
 ## Fourth watched run (2026-11-14): show what you ask about, gist before detail
 
@@ -164,10 +178,10 @@ Long lists fold as before.
 
 ### Colour means one thing
 
-Colour marks only (updated in the sixth watched run; this list is the single truth):
-- the TDD phase (red, green, blue), on the lit step of the cycle marker;
-- where the run is now (the accent, cyan `#39c5cf`, with bold), on the ▸ current step in STEPS and the current test's line in TESTS;
-- "needs you" (yellow), until you answer;
+Colour marks only, in the pane and the band alike (updated in the seventh watched run; this list is the single truth):
+- the TDD phase (red, green, blue, with bold), on the lit step of the cycle marker and on the band's phase word (`RED · test 2 of 2`);
+- where the run is now (the accent, cyan `#39c5cf`, with bold), on the ▸ current step in STEPS, the current test's line in TESTS, and the band's step (`write test scenarios`, or the `· test 2 of 2` after the phase word);
+- "needs you" (yellow, with bold), until you answer;
 - a stop (red).
 
 Steps read by their marks: ✓ done, ▸ active (lit), ○ to do. Nothing else is coloured, and nothing changes colour except when one of those four meanings starts or ends.
@@ -244,7 +258,7 @@ What changed:
 - **GOAL from the first ledger.** The task's first sentence, on up to two lines, then cut at a clause or word; the report keeps the whole task.
 - **STATUS replaces NOW** and says the state: working, needs you, stopped, done (with the goal's verdict and the pull request, "nothing left to do"), between runs, or ended without the sign-off.
 - **BUILT is the old DONE.**
-- **Done alert.** When no run is live, the task was signed off and nothing is left to publish, the mod alerts as for a question: the sound, the status line and the pane, with "done · ready for your next task", once per run end. The band says it too, not dim. A stop alerts as a stop, never as done.
+- **Done alert.** When no run is live, the task was signed off and nothing is left to publish, the mod alerts as for a question: the sound, the status line and the pane, with "done · ready for your next task", once per run end. The band says it too, not dim. A stop alerts as a stop, never as done. (The status line was dropped for done in the seventh watched run.)
 - **Accent colour** `#39c5cf` with bold on the current step and the current test. "Colour means one thing" above is updated.
 - **No "…" in the pane.** PR, BUILT, STATUS, the LOOPING tries and long REVIEW parts wrap. A TESTS line and a REVIEW finding stay one line and are cut at a word; the report holds both whole. The band keeps its last-resort "…".
 - **"write test scenarios"** is the scenarios step's plain name in the pane, band and report.
@@ -253,3 +267,22 @@ What changed:
 ### The footer
 
 The pane's footer read "Pairing Buddy only watches; it never changes your run". The human read it as false (Pairing Buddy writes code all run) and as wasted space. It meant only that the pane itself never steers the run, which the human does not need told. Removed.
+
+## Seventh watched run (2026-11-15)
+
+The run had no question: every gate passed in auto mode.
+
+The human's findings:
+- The pane never showed until the done alert opened it; only the band was there. "Is that expected?"
+- The band did not use the pane's colours. The same code in both "trains the human to find things".
+- The band did not say what the session was for.
+- The done alert read "⚠ pairingbuddy: done · ready for your next task" in the status line. The ⚠ reads as "something went wrong".
+- A scenario said the line totals of `order_total([(10, 2), (4, 1)])` are 20 and 4, where the task said 30.0 "which is 25.0 plus 5.0" (`line_total` in cart.py adds 25% VAT). A reviewer flagged it, and the refuter called it "not a real problem".
+
+What changed:
+- **The pane opens when a run starts.** Once per run, without the keyboard, the first poll that sees a run opens the pane. The run is kept in the mod's store before the open, so a pane the human dismissed is never opened again for that run, also after a reload; a store that fails opens nothing, since opening every poll would undo a dismissal. A run first seen with a question or a stop is opened by its alert alone. Unasked, Claude Code places a pane only from 144 columns (110 once the human asked for it); below that it waits undrawn, and one transcript line gives the reason and says to press `▸ details` or type `/pb`. The band's details button stays the way in; the band itself is unchanged, its room going to the goal and the step.
+- **The band uses the pane's colours.** See "Colour means one thing", now the single truth for both.
+- **The goal leads the band** on its own row. See "The band" under "Fixed layout".
+- **Done leaves the status line alone.** Claude Code draws every plugin status line as a pinned notice `⚠ <plugin>: <text>` in the warning colour (`$.ui.status` adds the notice with no colour, and the notice row always draws the ⚠ figure); a plugin cannot change the mark or the colour. So done plays the sound, opens the pane, says it in the band (bold) and sends one native notice through the human's notification channel (`$.ui.notify`, titled "Pairing Buddy"), which carries no warning mark. The status line stays for needs-you and a stop, where a warning mark fits.
+- **Scenarios check the code.** The scenarios agent reads the existing code the task builds on before it writes an expected value, and never restates a number that contradicts the task text. When the task and the code disagree, that is an open question, not a pick.
+- **A factual mismatch is a real problem.** The refuter now gets the task (`<task>`), and a finding that a scenario or test description states a fact or number the task text or the code contradicts survives when the facts disagree, however small the gap; the refuter never knocks it down as not a real problem.
