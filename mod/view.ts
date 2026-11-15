@@ -153,7 +153,8 @@ function buildTestRows(inputs: Inputs, ended: boolean): Pick<View, 'progress' | 
   if (isPublishRun(ledger)) return codeRunProgress(inputs)
   const stage = stageOf(ledger)
   const perTest = ledger?.tests?.perTest
-  const progress = progressOf({ tests, perTest, spawns, testsComplete, stage, names })
+  // An ended run has no current step, so its last test reads done, not current.
+  const progress = progressOf({ tests, perTest, spawns: ended ? [] : spawns, testsComplete, stage, names })
   const step = ended ? undefined : currentStep(spawns, stage)
   if (!step) return { progress }
   const test = { current: nameOf(names, step.item), marker: cycleMarker({ spawns, ledger }), age: stepAge({ spawns, now, stage }) }

@@ -112,3 +112,17 @@ test("current-test-is-never-pushed-out-by-covered-tests", () => {
     "the folded line counts done and covered apart and still names the current test",
   );
 });
+
+test("a-test-in-refactor-is-current-not-done", () => {
+  const tests = [{ test_id: "order-total" }];
+  const perTest = { "order-total": GREEN_RECORD };
+  const spawns = [spawnFor("GREEN", "implement-code", "order-total"), spawnFor("REFACTOR", "refactor-code", "order-total")];
+
+  const row = progressRow({ tests, perTest, spawns, testsComplete: true });
+
+  assert.deepEqual(
+    row.entries.map((entry) => [entry.id, entry.mark]),
+    [["order-total", "current"]],
+    "its GREEN passed, but while a step on it is the current one its cycle is not over: current, shown once",
+  );
+});
