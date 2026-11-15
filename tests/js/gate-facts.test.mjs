@@ -149,6 +149,14 @@ describe("open doubts", () => {
     }
   });
 
+  test("a lens's or a refuter's doubt is told as a reviewer's", () => {
+    const root = makeRoot();
+    writeReturn(root, `${SAFETY_NET}.lens.code.r1.a1`, { ambiguity: DOUBT, findings: [] });
+    writeReturn(root, `${SAFETY_NET}.refuter.code-1.r1.a1`, { ambiguity: "Is 0 a valid quantity?", finding_id: "code-1", verdict: "survives" });
+
+    assert.deepEqual(gateFacts("G:task-end", root, tddDone(), CONTRACT).doubts, [{ step: "a reviewer", ambiguity: DOUBT }, { step: "a reviewer", ambiguity: "Is 0 a valid quantity?" }]);
+  });
+
   test("a doubt a human already approved past is not shown again", () => {
     const root = makeRoot();
     writeReturn(root, "code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1", { ambiguity: DOUBT, scenarios: [] });

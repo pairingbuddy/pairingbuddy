@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { firstSentence, keptFixLenses, openDoubts } from "./gates.mjs";
+import { REVIEWER, firstSentence, keptFixLenses, openDoubts } from "./gates.mjs";
 import { findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
 import { plainName } from "./plain-names.mjs";
 import { returnFileKey } from "./stages.mjs";
@@ -91,9 +91,12 @@ function taskEndFacts(root, ledger) {
 
 const READERS = { "G:type": typeFacts, "G:scenarios": scenarioFacts, "G:task-end": taskEndFacts };
 
-// The step a return came from, in plain words: its agent's name, else its stage's.
+const REVIEW_ROLES = ["lens", "refuter"];
+
+// The step a return came from, in plain words: a reviewer for a lens or refuter, else its agent's name, else its stage's.
 const stepOf = (file) => {
   const key = returnFileKey(file);
+  if (REVIEW_ROLES.includes(key?.role)) return REVIEWER;
   return plainName(key?.role ?? "") ?? plainName(key?.stage ?? "");
 };
 

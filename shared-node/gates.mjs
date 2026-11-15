@@ -190,7 +190,12 @@ const MAX_DOUBTS = 3;
 // Where pb gate eval writes the full question, under the target project's root.
 export const QUESTION_FILE = ".pairingbuddy/run/question.md";
 
-const doubtLines = (doubts, fullAt) => folded(doubts.map(({ step, ambiguity }) => `Unsure (${step}): ${doubtText(ambiguity)}`), MAX_DOUBTS, fullAt);
+// The step name a lens or refuter doubt carries: the human needs no word for how the review was split up.
+export const REVIEWER = "a reviewer";
+
+const doubtLine = ({ step, ambiguity }) => (step === REVIEWER ? `A reviewer was unsure: ${doubtText(ambiguity)}` : `Unsure (${step}): ${doubtText(ambiguity)}`);
+
+const doubtLines = (doubts, fullAt) => folded(doubts.map(doubtLine), MAX_DOUBTS, fullAt);
 
 // The ask, turned so the human knows they decide over the doubts.
 const despite = (asked, doubts) => `${asked.replace(/\?$/, "")} despite ${doubts.length === 1 ? "this" : "these"}?`;

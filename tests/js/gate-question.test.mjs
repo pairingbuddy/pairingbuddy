@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 
 import { fileURLToPath } from "node:url";
 
-import { fullQuestion, gateQuestion } from "../../shared-node/gates.mjs";
+import { REVIEWER, fullQuestion, gateQuestion } from "../../shared-node/gates.mjs";
 import { loadStages } from "../../shared-node/stages.mjs";
 
 const POLICY = "the gate policy is default, not auto";
@@ -216,6 +216,13 @@ describe("a gate that asks over an open doubt says what the doubt is", () => {
     const { question } = gateQuestion("G:task-end", { reason: AMBIGUITY, facts: { tests: 1, doubts } });
 
     assert.equal(question, ["Built: 1 test.", "Unsure (making the test pass): Should an empty cart total 0 or None?", "Is the task done despite this?"].join("\n"));
+  });
+
+  test("a reviewer's doubt says a reviewer was unsure, in plain words", () => {
+    const doubts = [{ step: REVIEWER, ambiguity: "Should an empty cart total 0 or None?" }];
+    const { question } = gateQuestion("G:task-end", { reason: AMBIGUITY, facts: { doubts } });
+
+    assert.equal(question, ["A reviewer was unsure: Should an empty cart total 0 or None?", "Is the task done despite this?"].join("\n"));
   });
 
   test("a long doubt is shown whole on one line, its whitespace collapsed: the question box wraps it", () => {
