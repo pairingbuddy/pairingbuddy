@@ -120,3 +120,12 @@ test("a standing needs-you that carries its own short form takes it when it alon
   assert.deepEqual(kept.map((segment) => segment.text), ["▲ your sign-off at the end"], "the other segments give way first, then the short form stands in");
   assert.deepEqual(fitBand(leading, 120), leading, "with room, the whole form stays");
 });
+
+test("a lead segment that carries shorter forms keeps its whole text while the others give way, then takes the longest shorter form that fits", () => {
+  const where = { id: "where", text: "● GREEN · subtotals of two lines", shorter: ["● GREEN · subtotals of two", "● GREEN · subtotals of", "● GREEN · subtotals", "● GREEN · test 1"] };
+  const band = [where, { id: "spent", text: "5:41 · 14 agents" }, { id: "looping", text: "looping: no" }];
+
+  assert.deepEqual(fitBand(band, 32).map((segment) => segment.text), ["● GREEN · subtotals of two lines"], "spent and looping give way first; the name stays whole");
+  assert.deepEqual(fitBand(band, 24).map((segment) => segment.text), ["● GREEN · subtotals of"], "alone and too wide, it is cut at a word, never with an ellipsis");
+  assert.deepEqual(fitBand(band, 16).map((segment) => segment.text), ["● GREEN · test 1"], "with no room for a word of the name, it falls back to the test's number");
+});

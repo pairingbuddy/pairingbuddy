@@ -182,7 +182,8 @@ function truncate(text, overflow) {
 const shortNeedsYou = (segments) => segments.map((segment) => (segment.id === "needsYou" ? { ...segment, text: segment.short ?? segment.text.replace(/^needs you:/, "you:") } : segment));
 
 // Narrowing order: drop "left:", then the "≈ %" of spent, then shorten needs-you (shortNeedsYou).
-// If it still does not fit, drop whole segments, last (lowest priority) first; a segment is never cut unless it is the only one left.
+// If it still does not fit, drop whole segments, last (lowest priority) first; a segment is never cut unless it is the only one left,
+// and then it takes its shorter forms (shorter, longest first) before any cut.
 // When an event stands (its segment carries standing: true), needs-you is kept whole: it is shortened only if that alone fits,
 // the other segments give first, and it is cut only as a last resort. The band is never wider than the columns.
 export function fitBand(segments, columns) {
@@ -198,6 +199,10 @@ export function fitBand(segments, columns) {
     const last = band.findLastIndex((segment) => !standing || segment.id !== "needsYou");
     band = band.filter((_, i) => i !== last);
   }
+  // A lead segment alone and still too wide takes the longest of its shorter forms that fits (the current test's name cut at a
+  // word, then its number), before the last-resort cut.
+  const shorter = !standing && bandWidth(band) > columns && band[0].shorter?.find((text) => text.length <= columns);
+  if (shorter) band = withText(band, band[0].id, () => shorter);
   if (standing && bandWidth(band) > columns) {
     const short = shortNeedsYou(band);
     band = withText(short, "needsYou", (text) => truncate(text, bandWidth(short) - columns));

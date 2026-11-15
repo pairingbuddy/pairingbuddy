@@ -13,8 +13,9 @@ import { STATUS_LOOKS } from './pane'
 export type Tone = 'error' | 'warning' | 'dim'
 // lit: where the run is now, drawn as the pane draws its current step (the accent with bold, the phase word in its colour).
 // state: the segment leads the band with the run's status; its text opens with that state's band head (or, in its short form,
-// the mark alone). short: the text fitBand takes when the room is short.
-export type Segment = { id: string; text: string; short?: string; standing?: boolean; tone?: Tone; bold?: boolean; lit?: boolean; state?: StatusState }
+// the mark alone). short: the text fitBand takes when the room is short. shorter: the texts, longest first, a lead segment
+// left alone takes before it is cut.
+export type Segment = { id: string; text: string; short?: string; shorter?: string[]; standing?: boolean; tone?: Tone; bold?: boolean; lit?: boolean; state?: StatusState }
 export type Rows = Record<'now' | 'spent' | 'looping', string>
 export type RowTones = Partial<Record<keyof Rows, Tone>>
 // What STATUS says, so the human cycling sessions sees at once whether they are needed: the run's state, then what it is about
@@ -89,7 +90,21 @@ export function statusFirst(band: Segment[], ledger?: Ledger): Segment[] {
     return [lead, ...band.filter(segment => segment !== standing).map(segment => ({ ...segment, lit: undefined }))]
   }
   const working = STATUS_LOOKS.working.bandHead
-  return band.filter(segment => segment.id !== 'needsYou').map(segment => (segment.id === 'where' ? { ...segment, text: `${working} ${segment.text}`, state: 'working' as const } : segment))
+  const led = (text: string) => `${working} ${text}`
+  return band
+    .filter(segment => segment.id !== 'needsYou')
+    .map(segment => (segment.id === 'where' ? { ...segment, text: led(segment.text), ...(segment.shorter && { shorter: segment.shorter.map(led) }), state: 'working' as const } : segment))
+}
+
+// The band names the test the run is on after its phase, as TESTS does: `GREEN · <name>`. Short of room it gives way to the name
+// cut at a word, then to the test's number (glance's `GREEN · test 1`).
+export function namedWhere(band: Segment[], { ledger, spawns, tests, names }: Pick<Inputs, 'ledger' | 'spawns' | 'tests' | 'names'>): Segment[] {
+  const step = currentStep(spawns, stageOf(ledger))
+  if (!step || !tests.includes(step.item)) return band
+  const words = nameOf(names, step.item).split(' ')
+  const as = (count: number) => `${step.phase} · ${words.slice(0, count).join(' ')}`
+  const cuts = Array.from({ length: words.length - 1 }, (_, i) => as(words.length - 1 - i))
+  return band.map(segment => (segment.id === 'where' ? { ...segment, text: as(words.length), shorter: [...cuts, segment.text] } : segment))
 }
 
 function toned(view: View): View {
@@ -224,10 +239,11 @@ function buildPlainView(inputs: Inputs): View {
   const running = isStageActive(ledger)
   const shown = glanceOf(inputs)
   const rows = { now: shown.rows.now, spent: shown.rows.spent, looping: looping(shown.rows.looping) }
-  const base = { ledger, running, band: shown.band, unknownLabels: shown.unknownLabels, steps: [], goal: EMPTY, status: { state: 'quiet' as const, what: EMPTY }, end: NO_END }
+  const named = namedWhere(shown.band, inputs)
+  const base = { ledger, running, band: named, unknownLabels: shown.unknownLabels, steps: [], goal: EMPTY, status: { state: 'quiet' as const, what: EMPTY }, end: NO_END }
   const gate = waitingGate(ledger)
   if (gate) {
-    const band = running ? shown.band : shown.band.filter((segment: Segment) => segment.id === 'needsYou')
+    const band = running ? named : named.filter((segment: Segment) => segment.id === 'needsYou')
     return { ...base, waiting: true, band, rows: { ...rows, now: needsYouLine(gate) } }
   }
   if (running) return { ...base, rows }
