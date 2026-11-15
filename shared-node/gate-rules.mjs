@@ -260,7 +260,7 @@ function activeDenial(stage, ledger) {
   const wait = `Stage ${name} is active at attempt ${attempt}. Wait for it to finish before starting ${called}. A stranded stage is cleared by the human running pb stage fail.`;
   if (!isStageUnstarted(ledger)) return wait;
   const seconds = startLeaseSecondsLeft(ledger.stage, Date.now());
-  if (seconds > 0) return `${wait} It has no recorded run yet: ${seconds} seconds remain on its start lease.`;
+  if (seconds > 0) return `${wait} It has no recorded run yet: ${seconds} seconds remain on its start lease. If its Workflow call was declined or failed before it ran, pb stage release frees the start now: then start ${workflowName(name)} at attempt ${attempt} again.`;
   if (name === stage) return null;
   return `Stage ${name} is active at attempt ${attempt} with no recorded run, so it may never have started. Restart ${workflowName(name)} at attempt ${attempt} before starting ${called}.`;
 }

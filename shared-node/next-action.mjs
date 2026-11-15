@@ -39,6 +39,7 @@ function activeAction(ledger, pluginRoot) {
   const { name, attempt } = ledger.stage;
   const clears = `${pbCommand("stage fail")} clears the stage.`;
   if (isStranded(ledger)) return `Stage ${name} has no recorded run and its start lease is over, so its workflow never started. ${startAction({ stage: name, attempt }, pluginRoot, ledger.task)} If it cannot start, ${clears}`;
+  if (isStageUnstarted(ledger)) return `Stage ${name} is active at attempt ${attempt} with no recorded run yet. If its Workflow call was declined or failed before it ran, run ${pbCommand("stage release")} to free the start now. Then: ${startAction({ stage: name, attempt }, pluginRoot, ledger.task)} Otherwise wait for its workflow.`;
   return `Stage ${name} is active at attempt ${attempt}. Wait for its workflow. If that workflow was killed or refused to start, ${clears}`;
 }
 
