@@ -719,6 +719,7 @@ const REFACTOR_TESTS_SCHEMA = {
     "ambiguity",
     "commit_subject",
     "approach",
+    "no_change_reason",
     "files_changed"
   ],
   "properties": {
@@ -728,7 +729,7 @@ const REFACTOR_TESTS_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question, or an issue the agent could not fix without changing behaviour, or why a fix changed nothing, or an empty string"
+      "description": "An open question a human should settle, or an issue the agent could not fix without changing behaviour, or an edit that was refused or failed, or an empty string. pb gate eval shows every non-empty one to the human as a doubt"
     },
     "commit_subject": {
       "type": "string",
@@ -737,6 +738,10 @@ const REFACTOR_TESTS_SCHEMA = {
     "approach": {
       "type": "string",
       "description": "One short sentence naming how the fix goes about it, so a retry can be told which approaches were rejected, or empty string when nothing changed"
+    },
+    "no_change_reason": {
+      "type": "string",
+      "description": "Why nothing needed changing (for example, an earlier fix group already resolved the finding), or an empty string when files changed. It lets pb checkpoint accept a fix that changed nothing without asking the human"
     },
     "files_changed": {
       "type": "array",
@@ -759,6 +764,7 @@ const REFACTOR_CODE_SCHEMA = {
     "ambiguity",
     "commit_subject",
     "approach",
+    "no_change_reason",
     "files_changed"
   ],
   "properties": {
@@ -768,7 +774,7 @@ const REFACTOR_CODE_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question, or an issue the agent could not fix without changing behaviour, or why a fix changed nothing, or an empty string"
+      "description": "An open question a human should settle, or an issue the agent could not fix without changing behaviour, or an edit that was refused or failed, or an empty string. pb gate eval shows every non-empty one to the human as a doubt"
     },
     "commit_subject": {
       "type": "string",
@@ -777,6 +783,10 @@ const REFACTOR_CODE_SCHEMA = {
     "approach": {
       "type": "string",
       "description": "One short sentence naming how the fix goes about it, so a retry can be told which approaches were rejected, or empty string when nothing changed"
+    },
+    "no_change_reason": {
+      "type": "string",
+      "description": "Why nothing needed changing (for example, an earlier fix group already resolved the finding), or an empty string when files changed. It lets pb checkpoint accept a fix that changed nothing without asking the human"
     },
     "files_changed": {
       "type": "array",
@@ -1306,7 +1316,7 @@ async function fixGroup(config, attempt, spent) {
     const { result: relay } = await runCommands(config.stage, [`checkpoint --step fix --from ${key}`], { item: group.id, round });
     if (relay.cli_exit_code !== 0 && TESTS_FAILED.test(relay.cli_output ?? '')) return { outcome: 'red', key, approach };
     if (relay.cli_exit_code !== 0) return { outcome: 'failed', key };
-    // No commit means fix.diff is stale (pb only accepts a no-change fix with a reason in ambiguity, which reaches the human), so skip the checker.
+    // No commit means fix.diff is stale (pb only accepts a no-change fix that says why: in no_change_reason, or as a doubt in ambiguity, which reaches the human), so skip the checker.
     if (relayedJson(relay.cli_output ?? '')?.committed === false) return { outcome: 'kept', key, approach, checked: false };
   }
   if (fix.lint && artifactMode) {
