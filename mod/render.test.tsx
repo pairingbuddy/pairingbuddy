@@ -67,7 +67,7 @@ test('band draws one dim "Pairing Buddy · idle" on every surface without throwi
     const drawn = await drawnOnEverySurface($)
 
     for (const surface of SURFACES) {
-      expect(drawn[surface], `${surface} band draws idle for a ${name} ledger`).toContain(name === 'no current stage yet' ? 'Pairing Buddy · between steps · next: ' : ['missing stage', 'missing stage and stages', 'missing owner', 'empty document'].includes(name) ? 'Pairing Buddy · run open' : 'Pairing Buddy · idle')
+      expect(drawn[surface], `${surface} band draws idle for a ${name} ledger`).toContain(name === 'no current stage yet' ? '"text":"between steps · next: ' : ['missing stage', 'missing stage and stages', 'missing owner', 'empty document'].includes(name) ? '"text":"run open' : 'Pairing Buddy · idle')
       expect(drawn[surface], `${surface} idle text is dim`).toContain('"dimColor":true')
     }
     expect(served.asked, `the band read <root>/<LEDGER> for a ${name} ledger`).toContain(LEDGER_PATH)

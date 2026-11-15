@@ -210,16 +210,18 @@ const nowRow = (shown: string[]) => shown.find(text => text.startsWith('STATUS')
 const RETURNED_LENS = 'REVIEW   checked: the code'
 const hasReturnedLens = (lines: string[]) => lines.includes(RETURNED_LENS)
 
-test('pane-now-between-steps-has-no-band-label', async ($, on) => {
+test('between-steps-the-pane-and-the-band-lead-with-the-working-mark', async ($, on) => {
   engine(on, AFTER_SCENARIOS)
   await start($)
 
   const now = nowRow(await paneLines($))
-  const band = (await bandTexts($, { bodyColumns: 200 })).join('')
+  const mounted = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 200 }, surface: 'terminal' })
+  const [mark, rest] = (await mounted.findAll({ type: 'Text' })).filter((node: any) => node.text !== undefined && !/^─+$/.test(node.text) && !node.props.bold)
+  await mounted.unmount()
 
-  expect(now, `STATUS reads the plain state: ${now}`).toContain('working · between steps · next: build test by test')
-  expect(now, `STATUS carries no band label: ${now}`).not.toContain('Pairing Buddy ·')
-  expect(band, `the band keeps its label: ${band}`).toContain('Pairing Buddy · between steps')
+  expect(now, `STATUS reads the plain state: ${now}`).toBe('STATUS   ● working · between steps · next: build test by test')
+  expect([mark.text, mark.props.color], 'the band leads with the working mark in the accent').toEqual(['● ', ACCENT_COLOUR])
+  expect([rest.text, rest.props.dimColor], 'then the quiet line, dim, with no "Pairing Buddy" label: the goal row above names the session').toEqual(['between steps · next: build test by test · /pb for details', true])
 })
 
 test('pane-now-run-open-has-no-band-label', async ($, on) => {

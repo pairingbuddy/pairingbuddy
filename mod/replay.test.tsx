@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { BAND, LEDGER, ROOT, isGoalRow, joinSegments } from './testing/band'
+import { BAND, LEDGER, ROOT, isGoalRow, isStatusHead, joinSegments } from './testing/band'
 import { PANE, paneLines, replay, setupReplay, type Rig, type Step } from './testing/replay'
 import gOpen1 from './fixtures/replay/g-open-1'
 import probe2 from './fixtures/replay/probe-2'
@@ -26,7 +26,8 @@ const testsFile = (ids: string[]) => ({
 const IDLE_TEXT = 'Pairing Buddy · idle · /pb for details'
 // Without an active stage the band is one text: idle, or "last run finished" once a run has ended ("✓ DONE · ready for your next
 // task" when it left nothing to do).
-const quietBand = (shown: string[]) => (shown.length === 1 && /^(Pairing Buddy · (idle|last run finished|run open|all steps done|between steps · next: [^·]+)|✓ DONE · ready for your next task) ?(· \/pb( for details)?)?$/.test(shown[0]) ? shown : [IDLE_TEXT])
+// Between steps the run is at work, so its quiet line leads with the working mark.
+const quietBand = (shown: string[]) => (shown.length === 1 && /^(Pairing Buddy · (idle|last run finished)|● (run open|all steps done|between steps · next: [^·]+)|✓ DONE · ready for your next task) ?(· \/pb( for details)?)?$/.test(shown[0]) ? shown : [IDLE_TEXT])
 const DRAWN_AROUND_SEGMENTS = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details' || text.startsWith(' │ /pb')
 // The band's segment texts: what is drawn without the separators, the gap, the details button text and the hint.
 // The goal row above them is left out; colour-means-one-thing-in-the-band reads every node.
@@ -81,7 +82,9 @@ test("band at each recorded step, in time order, shows the design's segments whi
     shown.push([step.t, texts(step)])
 
     expect(texts(step), `band at t=${step.t}`).toEqual(expected)
-    if (!active) expect(step.texts.filter(node => !isGoalRow(node))[0].props.dimColor, `idle text at t=${step.t} is dim`).toBe(true)
+    // The quiet line is dim behind its mark; only the done line is not, its call to action at full strength.
+    const quiet = step.texts.filter(node => !isGoalRow(node) && !isStatusHead(node))
+    if (!active && !texts(step)[0].startsWith('✓ DONE')) expect(quiet[0].props.dimColor, `idle text at t=${step.t} is dim`).toBe(true)
   }
 
   expect(shown.length, 'the recording was replayed').toBeGreaterThan(10)

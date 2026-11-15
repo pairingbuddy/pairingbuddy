@@ -86,13 +86,14 @@ export function Band({ Box, Text, Button, band, goal, columns, running, waiting,
   const content = running || waiting ? fitBand(source, bandColumns(columns)) : undefined
   const hint = [HINT, SHORT_HINT].find(candidate => JSON.stringify(fitBand(source, bandColumns(columns, candidate))) === JSON.stringify(content))
   const shown = content
-  // Between steps the text is the same dim line; its hint gives way first when the width is short.
-  const room = columns - CONTROL_WIDTH - DETAILS.length - 1
-  const labelled = between ? `Pairing Buddy · ${between}` : undefined
-  const idleText = labelled
-    ? [`${labelled}${IDLE_SEPARATOR}${HINT}`, `${labelled}${IDLE_SEPARATOR}${SHORT_HINT}`, labelled].find(text => text.length <= room) ?? labelled
+  // Between steps the run is still at work: the working mark leads, then the same dim line, whose hint gives way first when the
+  // width is short. The goal row above names the session, so the line needs no "Pairing Buddy" label.
+  const working = `${STATUS_LOOKS.working.bandHead} `
+  const room = columns - CONTROL_WIDTH - DETAILS.length - 1 - (between ? working.length : 0)
+  const idleText = between
+    ? [`${between}${IDLE_SEPARATOR}${HINT}`, `${between}${IDLE_SEPARATOR}${SHORT_HINT}`, between].find(text => text.length <= room) ?? between
     : ended ? ENDED : IDLE
-  const finished = ended && done && !labelled
+  const finished = ended && done && !between
   // The goal leads on its own row, so the step below it stays where the eye learnt to find it: two rows at most.
   const gist = bandGoal(goal, columns)
 
@@ -108,7 +109,7 @@ export function Band({ Box, Text, Button, band, goal, columns, running, waiting,
           ])
         : finished
           ? <Box marginRight={1}><Text key="done" wrap="truncate-end" {...STATUS_LOOKS.done.headProps}>{STATUS_LOOKS.done.bandHead}</Text><Text key="done-rest" wrap="truncate-end">{DONE_REST}</Text></Box>
-          : <Box marginRight={1}><Text dimColor wrap="truncate-end">{idleText}</Text></Box>}
+          : <Box marginRight={1}>{between && <Text key="working" wrap="truncate-end" {...STATUS_LOOKS.working.headProps}>{working}</Text>}<Text dimColor wrap="truncate-end">{idleText}</Text></Box>}
       {shown && <Text key="gap"> </Text>}
       <Button key="details" label={DETAILS} onPress={onDetails}>{shown && <Text>{DETAILS}</Text>}</Button>
       {shown && hint && <Text key="hint" wrap="truncate-end">{`${SEPARATOR}${hint} `}</Text>}
