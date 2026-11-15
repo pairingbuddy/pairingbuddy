@@ -91,16 +91,16 @@ const one = (text: string, props: Props = {}): Part[][] => [[{ text, props: text
 // A row that wraps at its parts, then words, onto as many lines as it needs, never cut.
 const wrapped = (text: string, room: number, props: Props = {}): Part[][] => (text === EMPTY ? one(text) : wrapAtParts(text, room).map((line: string) => [{ text: line, props }]))
 
-// How each state leads STATUS: its head (a mark and the state's word) and how the head and what follows it are drawn.
+// How each state leads STATUS: its head (its mark and the state's word) and how the head and what follows it are drawn.
 // sep joins the head to what follows. The band leads its row with bandHead: the same head, but a working run's mark alone,
-// since the band's room goes to the step.
-type Look = { head: string; bandHead: string; sep: string; headProps: Props; whatProps: Props }
+// since the band's room goes to the step; a narrow band shortens a question or a stop to its mark alone.
+type Look = { mark: string; head: string; bandHead: string; sep: string; headProps: Props; whatProps: Props }
 export const STATUS_LOOKS: Record<StatusState, Look> = {
-  needsYou: { head: '▲ NEEDS YOU', bandHead: '▲ NEEDS YOU', sep: ' · ', headProps: { color: 'warning', inverse: true, bold: true }, whatProps: { color: 'warning', bold: true } },
-  stopped: { head: '✕ STOPPED', bandHead: '✕ STOPPED', sep: ' · ', headProps: { color: 'error', inverse: true, bold: true }, whatProps: { color: 'error' } },
-  done: { head: '✓ DONE', bandHead: '✓ DONE', sep: ' · ', headProps: { bold: true }, whatProps: {} },
-  working: { head: '● working', bandHead: '●', sep: ' · ', headProps: { color: ACCENT_COLOUR }, whatProps: {} },
-  quiet: { head: '○', bandHead: '○', sep: ' ', headProps: { dimColor: true }, whatProps: {} },
+  needsYou: { mark: '▲', head: '▲ NEEDS YOU', bandHead: '▲ NEEDS YOU', sep: ' · ', headProps: { color: 'warning', inverse: true, bold: true }, whatProps: { color: 'warning', bold: true } },
+  stopped: { mark: '✕', head: '✕ STOPPED', bandHead: '✕ STOPPED', sep: ' · ', headProps: { color: 'error', inverse: true, bold: true }, whatProps: { color: 'error' } },
+  done: { mark: '✓', head: '✓ DONE', bandHead: '✓ DONE', sep: ' · ', headProps: { bold: true }, whatProps: {} },
+  working: { mark: '●', head: '● working', bandHead: '●', sep: ' · ', headProps: { color: ACCENT_COLOUR }, whatProps: {} },
+  quiet: { mark: '○', head: '○', bandHead: '○', sep: ' ', headProps: { dimColor: true }, whatProps: {} },
 }
 
 // STATUS as lines: the head, then what follows it, wrapping at its parts, then words; never cut.

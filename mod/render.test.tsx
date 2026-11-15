@@ -150,8 +150,7 @@ test('at 75 columns with a standing stop needs-you is kept whole and the hint sh
 
   const joined = shown.join('')
   expect(joined.includes('/pb') ? joined.length <= COLUMNS : true, `the hint is shown only when the row still fits: ${JSON.stringify(shown)}`).toBe(true)
-  expect(shown.slice(0, 3), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['write test scenarios', ' │ ', '0 agents'])
-  expect(shown.some(text => text === 'needs you · opened details'), `the standing needs-you is kept whole: ${JSON.stringify(shown)}`).toBe(true)
+  expect(shown.slice(0, 5), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['✕ STOPPED · opened details', ' │ ', 'write test scenarios', ' │ ', '0 agents'])
   expect(joined.length, `the band is within ${COLUMNS} columns: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(COLUMNS)
 })
 
@@ -261,8 +260,8 @@ test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning
   const stopBand = await nodes(band)
   const stopPane = await nodes(PANE)
 
-  expect(starting(gateBand, 'needs you').props.color, 'a needs-you gate in the band is warning').toBe('warning')
-  expect(starting(stopBand, 'needs you').props.color, 'a stop in the band is error').toBe('error')
+  expect(starting(gateBand, '▲ NEEDS YOU').props.color, 'a needs-you gate in the band is warning').toBe('warning')
+  expect(starting(stopBand, '✕ STOPPED').props.color, 'a stop in the band is error').toBe('error')
   expect(starting(stopPane, '✕ STOPPED').props.color, 'a stop in the pane STATUS row is error').toBe('error')
   expect(gateBand.find(node => node.text.startsWith('looping:')), 'an unknown band segment is not drawn').toBeUndefined()
   expect(starting(gateBand, '0 agents').props.dimColor, 'the band spend segment is dim').toBe(true)
@@ -279,8 +278,8 @@ test('band-leads-with-needs-you-at-a-gate', async ($, on) => {
   await band.unmount()
 
   const shown = nodes.map((node: any) => node.text as string)
-  const needs = nodes.find((node: any) => node.text.startsWith('needs you'))
-  expect(shown[0], `under the goal, the band's row leads with needs you: ${JSON.stringify(shown)}`).toBe('needs you: your OK on the scenarios')
+  const needs = nodes.find((node: any) => node.text.startsWith('▲ NEEDS YOU'))
+  expect(shown.slice(0, 2).join(''), `under the goal, the band's row leads with needs you: ${JSON.stringify(shown)}`).toBe('▲ NEEDS YOU · your OK on the scenarios')
   expect(needs?.props.color, 'needs you is in the warning colour').toBe('warning')
   expect(needs?.props.bold, 'needs you is bold').toBe(true)
   expect(shown.join(''), 'no dim between-steps line').not.toContain('between steps')

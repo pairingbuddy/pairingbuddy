@@ -74,7 +74,7 @@ test("band at each recorded step, in time order, shows the design's segments whi
     const active = (step.ledger as any)?.stage?.status === 'active'
     const since = sinceOf(step.ledger)
     const expected = active
-      ? fitBand(statusFirst(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS['g-open-1'], now: step.now, since, testsComplete: true }).band), bandColumns(80))
+      ? fitBand(statusFirst(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS['g-open-1'], now: step.now, since, testsComplete: true }).band, step.ledger as any), bandColumns(80))
           .map((segment: { text: string }) => segment.text)
       : quietBand(texts(step))
 
@@ -106,7 +106,7 @@ test('at 139, 80 and 50 columns the band draws exactly the fitted glance segment
         const active = (step.ledger as any)?.stage?.status === 'active'
         const since = sinceOf(step.ledger)
         const expected = active
-          ? fitBand(statusFirst(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now, since, testsComplete: true }).band), bandColumns(bodyColumns))
+          ? fitBand(statusFirst(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now, since, testsComplete: true }).band, step.ledger as any), bandColumns(bodyColumns))
               .map((segment: { text: string }) => segment.text)
           : quietBand(texts(step))
 
@@ -240,7 +240,7 @@ test('colour-means-one-thing: across every drawn Text in the pane over the repla
 // phase colour, needs-you in yellow with bold, a stop in red. Nothing else in the band is coloured.
 test('colour-means-one-thing-in-the-band: the step in the accent, the phase word in its colour, needs-you and a stop, nothing else', async ($, on) => {
   const rig = setupReplay(on)
-  const seen = { phase: new Set<string>(), accent: 0, mark: 0 }
+  const seen = { phase: new Set<string>(), accent: 0, mark: 0, block: 0 }
   for (const [name, recording] of [['g-open-1', gOpen1], ['probe-2', probe2]] as const) {
     for await (const step of replay($, rig, recording, { files: testsFile(TESTS[name]) })) {
       const active = (step.ledger as any)?.stage?.status === 'active'
@@ -261,18 +261,25 @@ test('colour-means-one-thing-in-the-band: the step in the accent, the phase word
           expect(bold, `${at} in the accent is bold`).toBe(true)
           expect(where !== undefined && where.endsWith(node.text), `${at} is the step the band names (${where})`).toBe(true)
           seen.accent++
+        } else if (/^(▲ NEEDS YOU|✕ STOPPED)$/.test(node.text)) {
+          expect([color, node.props.inverse, bold], `${at} leads the band in its block, as STATUS draws it`).toEqual([node.text.startsWith('▲') ? 'warning' : 'error', true, true])
+          seen.block++
         } else {
-          expect(/^(needs you|you):/.test(node.text), `${at} is coloured ${JSON.stringify(color)}`).toBe(true)
+          expect(node.text.startsWith(' · '), `${at} is coloured ${JSON.stringify(color)}: only what follows a needs-you or stop block may be`).toBe(true)
           expect(MEANING_COLOURS, `${at} is needs-you or a stop`).toContain(color)
+          expect(node.props.inverse, `${at} is no block`).toBeUndefined()
         }
       }
-      if (where) expect(step.texts.some(node => node.props.color === ACCENT_COLOUR), `${name} t=${step.t}: the step "${where}" is lit`).toBe(true)
+      // A question or a stop leads instead, and the step behind it is a detail: nothing else draws the eye.
+      const standing = Boolean((step.ledger as any)?.stop || (step.ledger as any)?.needsHuman?.gate)
+      if (where) expect(step.texts.some(node => node.props.color === ACCENT_COLOUR), `${name} t=${step.t}: the step "${where}" is lit unless a question or stop leads`).toBe(!standing)
     }
   }
 
   expect([...seen.phase], 'the band drew phase words').toEqual(expect.arrayContaining(['RED', 'GREEN']))
   expect(seen.accent, 'the band drew the step in the accent').toBeGreaterThan(0)
   expect(seen.mark, 'the band led with the working mark').toBeGreaterThan(0)
+  expect(seen.block, 'the band led with a stop block (probe-2 stops)').toBeGreaterThan(0)
 })
 
 test('colour-means-one-thing-in-a-review: over the s4-rollback replay, a lens that has finished but not yet returned is not drawn in a colour', async ($, on) => {

@@ -140,9 +140,10 @@ export function engine(on: Function, ledger: unknown = SNAPSHOT_RUNNING, open: (
 export const isSeparatorRule = (node: { text?: string; props?: Record<string, unknown> }): boolean =>
   node.props?.dimColor === true && /^[─━═\-_—]{3,}$/.test((node.text ?? '').trim())
 
-// A status head the band leads its row with ('● ', '▲ NEEDS YOU', '✕ STOPPED', '✓ DONE'), as drawn: in its state's head props.
+// A status head the band leads its row with ('● ', '▲ NEEDS YOU', '✕ STOPPED', '✓ DONE', or a narrow band's mark alone), as
+// drawn: in its state's head props.
 export const isStatusHead = (node: { text: string; props: Record<string, unknown> }): boolean =>
-  Object.values(STATUS_LOOKS).some(look => node.text.trimEnd() === look.bandHead && node.props.color === (look.headProps as Record<string, unknown>).color && node.props.inverse === (look.headProps as Record<string, unknown>).inverse)
+  Object.values(STATUS_LOOKS).some(look => [look.bandHead, look.mark].includes(node.text.trimEnd()) && node.props.color === (look.headProps as Record<string, unknown>).color && node.props.inverse === (look.headProps as Record<string, unknown>).inverse)
 // What ends a segment on the band's row: a separator, the gap before the details button, the button, the hint.
 const endsSegment = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details' || text.startsWith(' │ /pb')
 
@@ -195,8 +196,9 @@ export async function bandTexts($: any, props: Record<string, unknown> = {}): Pr
   return shown
 }
 
-// What the band reads once an alert has run and the pane is placed.
-export const NEEDS_YOU_OPENED = 'needs you · opened details'
+// What the band leads with once an alert has run and the pane is placed: for a question, and for a stop.
+export const NEEDS_YOU_OPENED = '▲ NEEDS YOU · opened details'
+export const STOPPED_OPENED = '✕ STOPPED · opened details'
 
 // Whether any line of the band's texts includes the wording.
 export function bandSays(shown: string[], wording: string): boolean {

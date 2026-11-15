@@ -29,10 +29,15 @@ export function bandGoal(goal: string | undefined, columns: number) {
   return goalGist(goal.trim().replace(/\s+/g, ' '), columns > 0 ? columns - CONTROL_WIDTH : 0)
 }
 
-export const OPENED_DETAILS = 'needs you · opened details'
+const OPENED_DETAILS = 'opened details'
 
-// Once the alert opened the pane, the needs-you segment reads as opened; fitBand keeps it whole.
-const asOpened = (band: Segment[]): Segment[] => band.map(segment => (segment.id === 'needsYou' && segment.standing ? { ...segment, text: OPENED_DETAILS } : segment))
+// Once the alert opened the pane, the question or stop that leads the band reads as opened, behind its head; fitBand keeps it whole.
+const asOpened = (band: Segment[]): Segment[] =>
+  band.map(segment => {
+    if (segment.id !== 'needsYou' || !segment.standing || !segment.state) return segment
+    const look = STATUS_LOOKS[segment.state]
+    return { ...segment, text: `${look.bandHead}${look.sep}${OPENED_DETAILS}`, short: `${look.mark} ${OPENED_DETAILS}` }
+  })
 
 const LIT = { color: ACCENT_COLOUR, bold: true }
 
@@ -48,10 +53,12 @@ function litParts(text: string): { text: string; props: Record<string, unknown> 
 // rest keeps the space after the head in the head's Text, so its phase word stands alone.
 function statusParts(segment: Segment & { state: NonNullable<Segment['state']> }): { text: string; props: Record<string, unknown> }[] {
   const look = STATUS_LOOKS[segment.state]
-  const rest = segment.text.slice(look.bandHead.length)
-  if (!segment.lit) return [{ text: look.bandHead, props: look.headProps }, ...(rest ? [{ text: rest, props: look.whatProps }] : [])]
+  // The short form leads with the mark alone.
+  const head = segment.text.startsWith(look.bandHead) ? look.bandHead : look.mark
+  const rest = segment.text.slice(head.length)
+  if (!segment.lit) return [{ text: head, props: look.headProps }, ...(rest ? [{ text: rest, props: look.whatProps }] : [])]
   const gap = rest.length - rest.trimStart().length
-  return [{ text: `${look.bandHead}${rest.slice(0, gap)}`, props: look.headProps }, ...litParts(rest.slice(gap))]
+  return [{ text: `${head}${rest.slice(0, gap)}`, props: look.headProps }, ...litParts(rest.slice(gap))]
 }
 
 // One segment's Texts: its status head first when it leads, else lit, else in its tone.

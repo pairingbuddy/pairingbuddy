@@ -12,8 +12,9 @@ import { STATUS_LOOKS } from './pane'
 
 export type Tone = 'error' | 'warning' | 'dim'
 // lit: where the run is now, drawn as the pane draws its current step (the accent with bold, the phase word in its colour).
-// state: the segment leads the band with the run's status; its text opens with that state's band head.
-export type Segment = { id: string; text: string; standing?: boolean; tone?: Tone; bold?: boolean; lit?: boolean; state?: StatusState }
+// state: the segment leads the band with the run's status; its text opens with that state's band head (or, in its short form,
+// the mark alone). short: the text fitBand takes when the room is short.
+export type Segment = { id: string; text: string; short?: string; standing?: boolean; tone?: Tone; bold?: boolean; lit?: boolean; state?: StatusState }
 export type Rows = Record<'now' | 'spent' | 'looping', string>
 export type RowTones = Partial<Record<keyof Rows, Tone>>
 // What STATUS says, so the human cycling sessions sees at once whether they are needed: the run's state, then what it is about
@@ -76,10 +77,17 @@ function bandTone(segment: Segment, ledger: NonNullable<Ledger>): Pick<Segment, 
 
 const waitingGate = (ledger: NonNullable<Ledger>) => (ledger.stop ? undefined : ledger.needsHuman?.gate || undefined)
 
-// The band leads with the run's status, as STATUS does. While nothing waits on the human, the step leads behind the working
-// mark, and the calm "needs you: no" is left out: the mark already says it.
-export function statusFirst(band: Segment[]): Segment[] {
-  if (band.some(segment => segment.id === 'needsYou' && segment.standing)) return band
+// The band leads with the run's status, as STATUS does. A question or a stop leads in its block, with what it needs or why,
+// and the step behind it is a detail, no longer lit. While nothing waits on the human, the step leads behind the working mark,
+// and the calm "needs you: no" is left out: the mark already says it.
+export function statusFirst(band: Segment[], ledger?: Ledger): Segment[] {
+  const standing = band.find(segment => segment.id === 'needsYou' && segment.standing)
+  if (standing) {
+    const status: Status = ledger?.stop ? { state: 'stopped', what: stopName(ledger.stop) } : { state: 'needsYou', what: gateLine(ledger?.needsHuman?.gate) }
+    const look = STATUS_LOOKS[status.state]
+    const lead = { ...standing, state: status.state, text: [look.bandHead, status.what].filter(Boolean).join(look.sep), short: [look.mark, status.what].filter(Boolean).join(' ') }
+    return [lead, ...band.filter(segment => segment !== standing).map(segment => ({ ...segment, lit: undefined }))]
+  }
   const working = STATUS_LOOKS.working.bandHead
   return band.filter(segment => segment.id !== 'needsYou').map(segment => (segment.id === 'where' ? { ...segment, text: `${working} ${segment.text}`, state: 'working' as const } : segment))
 }
@@ -87,7 +95,7 @@ export function statusFirst(band: Segment[]): Segment[] {
 function toned(view: View): View {
   const { ledger } = view
   if (!ledger) return view
-  return { ...view, band: statusFirst(view.band.map(segment => ({ ...segment, ...bandTone(segment, ledger) }))), rowTones: { spent: 'dim' } }
+  return { ...view, band: statusFirst(view.band.map(segment => ({ ...segment, ...bandTone(segment, ledger) })), ledger), rowTones: { spent: 'dim' } }
 }
 
 // The run's own steps for its task type, each marked done, current or to come.
