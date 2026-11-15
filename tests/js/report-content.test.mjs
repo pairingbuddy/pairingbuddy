@@ -183,7 +183,7 @@ describe("report-content", () => {
     const rows = rowsOf(section);
 
     assert.deepEqual(rows.map(([name]) => name), graph.map(plainName), "one row per stage in graph order, named in plain words");
-    assert.deepEqual(rows[1], ["write scenarios", "0:00", "0:18", "0:18"], "a finished stage shows start, end and duration");
+    assert.deepEqual(rows[1], ["write test scenarios", "0:00", "0:18", "0:18"], "a finished stage shows start, end and duration");
     assert.deepEqual(rows[2], ["build test by test", "0:18", "unknown", "unknown"], "a stage with no recorded end shows unknown for end and duration");
     assert.deepEqual(rows[3], [plainName("code-safety-net"), "not reached", "", ""], "a stage after the stop is marked not reached");
     assert.deepEqual(graph.filter((id) => section.includes(id)), [], "the section shows no stage ids");

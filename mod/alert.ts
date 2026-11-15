@@ -2,6 +2,7 @@ import type { EngineInterface, PluginOptions } from 'claude-code'
 import type { Ledger } from './inputs'
 import { openPane } from './pane-open'
 import { needsYouLine, stopLine } from '../shared-node/glance.mjs'
+import { DONE_WORDS } from '../shared-node/end-state.mjs'
 
 const OPENED = { plugin: 'pairingbuddy', key: 'opened' }
 
@@ -24,18 +25,23 @@ function quietly(effect: () => unknown) {
   }
 }
 
-// Raises the alert for what the ledger shows. Never throws and never waits for the clip: a failed or slow alert must not break or block the poll or a hook.
-export async function alertOn($: EngineInterface, ledger: Ledger | null, options: PluginOptions = {}) {
-  await clearStaleStatus($, ledger)
-  if (!ledger) return
-  if (!(await anyUnseen($, ledger))) {
-    if (KINDS.every((kind) => standing(ledger)[kind] === null)) quietly(() => $.state.set(OPENED, false))
+// What the alert reads: the live ledger, or with none, the run whose end left nothing to do (done: its id, else null).
+type Event = { ledger: NonNullable<Ledger> } | { done: string }
+
+// Raises the alert for what the ledger shows, or, with no ledger, for a unit done with nothing left to do (done: the code run's
+// id). Never throws and never waits for the clip: a failed or slow alert must not break or block the poll or a hook.
+export async function alertOn($: EngineInterface, ledger: Ledger | null, options: PluginOptions = {}, done: string | null = null) {
+  const event: Event | null = ledger ? { ledger } : done ? { done } : null
+  await clearStaleStatus($, event)
+  if (!event) return
+  if (!(await anyUnseen($, event))) {
+    if (KINDS.every((kind) => standing(event)[kind] === null)) quietly(() => $.state.set(OPENED, false))
     return
   }
   // Read as the alert fires; an absent option means on.
   if (options.alertSound !== false) quietly(() => $.audio.play(SOUND))
-  quietly(() => setStatus($, ledger))
-  quietly(() => markStatusSet($, ledger))
+  quietly(() => setStatus($, event))
+  quietly(() => markStatusSet($, event))
   quietly(() => $.state.set(OPENED, false).then(() => openAndRecord($)))
 }
 
@@ -51,29 +57,35 @@ export function seenKey(root: string) {
   return `alert-seen:${root}`
 }
 
-const KINDS = ['stop', 'needsHuman'] as const
+const KINDS = ['stop', 'needsHuman', 'done'] as const
 
-type Seen = { run: string; stop: number | null; needsHuman: number | null }
+type Seen = { run: string; stop: number | null; needsHuman: number | null; done?: string | null }
 
 // The ledger's own runId; ledgers without one fall back to the plan and task.
 function runOf(ledger: NonNullable<Ledger>) {
   return ledger.runId ?? `${ledger.plan?.path ?? ''}|${ledger.task ?? ''}`
 }
 
-// What the ledger shows now: the run and the seq of each standing event.
-function standing(ledger: NonNullable<Ledger>): Seen {
-  return { run: runOf(ledger), stop: ledger.stop?.seq ?? null, needsHuman: ledger.needsHuman?.seq ?? null }
+// The key a done run's alert and status line are kept under, apart from the run's own stop or question.
+const doneRun = (done: string) => `done:${done}`
+const runOfEvent = (event: Event) => ('ledger' in event ? runOf(event.ledger) : doneRun(event.done))
+
+// What stands now: the run and the seq of each standing event, or the done run.
+function standing(event: Event): Seen {
+  if (!('ledger' in event)) return { run: doneRun(event.done), stop: null, needsHuman: null, done: event.done }
+  const { ledger } = event
+  return { run: runOf(ledger), stop: ledger.stop?.seq ?? null, needsHuman: ledger.needsHuman?.seq ?? null, done: null }
 }
 
 // An event is new when it stands now and the seen record is of another run or holds another seq for it.
 function hasNew(now: Seen, seen: Seen | undefined) {
-  return KINDS.some((kind) => now[kind] !== null && (seen?.run !== now.run || seen[kind] !== now[kind]))
+  return KINDS.some((kind) => (now[kind] ?? null) !== null && (seen?.run !== now.run || seen[kind] !== now[kind]))
 }
 
 // One record per project, overwritten as events arrive, in the mod's store so it survives a reload. A store that fails reads as unseen, so the alert still fires.
-async function anyUnseen($: EngineInterface, ledger: NonNullable<Ledger>) {
-  const now = standing(ledger)
-  if (KINDS.every((kind) => now[kind] === null)) return false
+async function anyUnseen($: EngineInterface, event: Event) {
+  const now = standing(event)
+  if (KINDS.every((kind) => (now[kind] ?? null) === null)) return false
   try {
     const key = seenKey(await $.session.root())
     const unseen = hasNew(now, (await $.store.get(key)) as Seen | undefined)
@@ -84,24 +96,26 @@ async function anyUnseen($: EngineInterface, ledger: NonNullable<Ledger>) {
   }
 }
 
-function statusWords(ledger: Ledger) {
+function statusWords(event: Event) {
+  if (!('ledger' in event)) return DONE_WORDS
+  const { ledger } = event
   if (ledger.stop) return stopLine(ledger.stop)
   const gate = ledger.needsHuman?.gate
   return gate ? needsYouLine(gate) : null
 }
 
 // The status line words the stop as the pane and band do.
-function setStatus($: EngineInterface, ledger: Ledger) {
-  const words = statusWords(ledger)
+function setStatus($: EngineInterface, event: Event) {
+  const words = statusWords(event)
   if (words) return $.ui.status(words)
 }
 
-// Clears the status line once, when it is set and its cause is gone: the ledger is gone, a new run began, or nothing is pending and no stop stands. A line never set is never cleared. The run it was set for is kept in mod state, which a new session starts without.
-async function clearStaleStatus($: EngineInterface, ledger: Ledger | null) {
+// Clears the status line once, when it is set and its cause is gone: the ledger is gone (and no done run stands), a new run began, or nothing is pending and no stop stands. A line never set is never cleared. The run it was set for is kept in mod state, which a new session starts without.
+async function clearStaleStatus($: EngineInterface, event: Event | null) {
   try {
     const setFor = (await $.state.get(STATUS_SET)).value
     if (!setFor) return
-    if (ledger && runOf(ledger) === setFor && statusWords(ledger)) return
+    if (event && runOfEvent(event) === setFor && statusWords(event)) return
     await $.state.set(STATUS_SET, null)
     quietly(() => $.ui.status(undefined))
   } catch {
@@ -110,6 +124,6 @@ async function clearStaleStatus($: EngineInterface, ledger: Ledger | null) {
 }
 
 // Records the run the status line was set for.
-async function markStatusSet($: EngineInterface, ledger: NonNullable<Ledger>) {
-  if (statusWords(ledger)) await $.state.set(STATUS_SET, runOf(ledger))
+async function markStatusSet($: EngineInterface, event: Event) {
+  if (statusWords(event)) await $.state.set(STATUS_SET, runOfEvent(event))
 }

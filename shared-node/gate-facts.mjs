@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { firstSentence, keptFixLenses, openDoubts } from "./gates.mjs";
+import { REVIEWER, firstSentence, keptFixLenses, openDoubts } from "./gates.mjs";
 import { findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
 import { plainName } from "./plain-names.mjs";
 import { returnFileKey } from "./stages.mjs";
@@ -59,14 +59,9 @@ const fullSuitePassed = ({ tests: { full } }) => (full?.passed === true ? true :
 
 // The lens that reads the change against the repo's docs and plan: the safety net's goal check.
 const GOAL_LENS = "corpus-misalignment";
-const MAX_GIST = 80;
 
-// A finding told short: the lens's title, or its claim's first sentence cut at a word boundary.
-function gistOf({ title, claim }) {
-  const gist = text(title) ?? firstSentence(claim);
-  if (gist === null || gist.length <= MAX_GIST) return gist;
-  return `${gist.slice(0, MAX_GIST).replace(/\s+\S*$/, "")}…`;
-}
+// A finding told short: the lens's title, or its claim's first sentence whole, since a cut sentence cannot be judged.
+const gistOf = ({ title, claim }) => text(title) ?? firstSentence(claim);
 
 // What became of each finding of the stage's lens round, by the rule the stage's return gives the session. A round
 // with no lens recorded has no review to tell.
@@ -96,9 +91,12 @@ function taskEndFacts(root, ledger) {
 
 const READERS = { "G:type": typeFacts, "G:scenarios": scenarioFacts, "G:task-end": taskEndFacts };
 
-// The step a return came from, in plain words: its agent's name, else its stage's.
+const REVIEW_ROLES = ["lens", "refuter"];
+
+// The step a return came from, in plain words: a reviewer for a lens or refuter, else its agent's name, else its stage's.
 const stepOf = (file) => {
   const key = returnFileKey(file);
+  if (REVIEW_ROLES.includes(key?.role)) return REVIEWER;
   return plainName(key?.role ?? "") ?? plainName(key?.stage ?? "");
 };
 

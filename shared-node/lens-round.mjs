@@ -361,17 +361,37 @@ export function findingLines(findings, columns) {
   return more > 0 ? [...lines, { text: `  + ${more} more`, tone: "dim" }] : lines;
 }
 
-const cut = (text, columns) => (text.length > columns ? `${text.slice(0, columns - 1)}…` : text);
+// Text wrapped at spaces into lines of at most `room` characters; a word wider than the room takes lines of its own,
+// split at the room. Nothing is cut and no ellipsis is added. No room gives one line.
+export function wrapAtWords(text, room) {
+  if (!(room > 0) || [...text].length <= room) return [text];
+  const lines = [];
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const chars = [...word];
+    const last = lines.at(-1);
+    if (last !== undefined && [...last].length + 1 + chars.length <= room) lines[lines.length - 1] = `${last} ${word}`;
+    else for (let at = 0; at < chars.length; at += room) lines.push(chars.slice(at, at + room).join(""));
+  }
+  return lines;
+}
+
+// A row wider than the columns wraps at its words, never cut: the lines after the first keep its indent, or take the fold's.
+function wrapRow(row, columns) {
+  if (row.length <= columns) return [row];
+  const indent = /^ */.exec(row)[0] || "  ";
+  const [first, ...rest] = wrapAtWords(row.trimStart(), columns - indent.length);
+  return [`${row.slice(0, row.length - row.trimStart().length)}${first}`, ...rest.map((line) => `${indent}${line}`)];
+}
 
 // The breaks a line folds at: PART_BREAK, and for the lens line also the comma between lens names.
 const PART_FOLDS = /( · )/;
 const LENS_FOLDS = /( · |, )/;
 
 // A line longer than columns folds at its breaks (`at`, PART_BREAK by default) onto indented continuation lines that each fit;
-// a whole line, a line with no break (or a part still too long) is cut to columns characters, the last being an ellipsis.
+// a whole line, a line with no break (or a part still too long) wraps at its words, so nothing is cut with an ellipsis.
 export function fit({ text, whole = false, at = PART_FOLDS, ...rest }, columns) {
   if (!(columns > 0) || text.length <= columns) return [{ text, ...rest }];
-  if (whole) return [{ text: cut(text, columns), ...rest }];
+  if (whole) return wrapRow(text, columns).map((row) => ({ text: row, ...rest }));
   const rows = [];
   // Split with a capture, so the pieces alternate part, break, part: a joined row keeps the break it was split at.
   const pieces = text.split(at);
@@ -381,7 +401,7 @@ export function fit({ text, whole = false, at = PART_FOLDS, ...rest }, columns) 
     if (joined !== undefined && joined.length <= columns) rows[last] = joined;
     else rows.push(rows.length ? `  ${pieces[i]}` : pieces[i]);
   }
-  return rows.map((row) => ({ text: cut(row, columns), ...rest }));
+  return rows.flatMap((row) => wrapRow(row, columns)).map((row) => ({ text: row, ...rest }));
 }
 
 // The plain lines of the REVIEW row for a round (the object lensRound returns), in order: the lenses with their finding

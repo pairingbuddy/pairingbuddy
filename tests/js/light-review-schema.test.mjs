@@ -8,8 +8,18 @@ const finding = { focus: "code-smell", rule: "no-magic-numbers", severity: "high
 const valid = () => ({
   pb_key: "k",
   ambiguity: null,
+  not_checked: null,
   focus_changes: [{ focus: "design-fit", change: "add", reason: "new boundary" }],
   findings: [{ ...finding }],
+});
+
+test("schema-requires-not-checked-apart-from-ambiguity", () => {
+  const schema = JSON.parse(readFileSync(new URL("../../contracts/schemas/light-review-result.schema.json", import.meta.url), "utf8"));
+  const result = valid();
+  delete result.not_checked;
+
+  assert.deepEqual(violations(schema, { ...valid(), not_checked: "the full cart.py was not read" }), [], "a not_checked string is valid");
+  assert.ok(violations(schema, result).includes("$.not_checked: required property is missing"), "not_checked is required");
 });
 
 test("schema-requires-a-finding-title-of-at-most-60-characters", () => {

@@ -1,6 +1,6 @@
 import { plainName } from '../shared-node/plain-names.mjs'
 import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
-import { endReviewLines, goalGist } from '../shared-node/end-state.mjs'
+import { endReviewLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
 import { fitTries } from '../shared-node/now-building.mjs'
 import type { PaneTags, RowTones, View } from './view'
 
@@ -12,6 +12,9 @@ const BLANK = label('')
 
 // Fixed colours, not theme keys, so a theme that maps "success" to blue cannot turn GREEN blue; readable on dark and light.
 export const PHASE_COLOURS: Record<string, string> = { RED: '#e5534b', GREEN: '#3fb950', REFACTOR: '#4c8dff' }
+// Where the run is now: the current step and the current test. Fixed for the same reason, and readable on dark and light.
+export const ACCENT_COLOUR = '#39c5cf'
+const LIT: Props = { color: ACCENT_COLOUR, bold: true }
 
 export type Suggestion = { state: 'pending'; nextAgent?: string } | { state: 'delivered'; to: string }
 
@@ -19,8 +22,8 @@ type Props = Record<string, unknown>
 type Part = { text: string; props?: Props }
 
 const toneProps = (tone?: string): Props => (tone === 'dim' ? { dimColor: true } : tone ? { color: tone } : {})
-// Steps read by their marks, never by colour: only the active one is bold.
-const stepProps = (line: string): Props => (line.startsWith('▸') ? { bold: true } : {})
+// Steps read by their marks; the active one is also lit, so it stands out in a glance.
+const stepProps = (line: string): Props => (line.startsWith('▸') ? LIT : {})
 const emptyLine = (): Part[] => [{ text: EMPTY, props: { dimColor: true } }]
 
 // One row: its label on the first line, a blank label column on the rest; a row with no lines reads EMPTY.
@@ -30,11 +33,9 @@ function rowLines(name: string, lines: Part[][]): { label: string; parts: Part[]
 
 const cells = (text: string) => [...text].length
 
-// Text cut to fit the room, ending in an ellipsis; no room given cuts nothing.
-function cutName(name: string, room: number) {
-  if (!(room > 0) || cells(name) <= room) return name
-  return room > 1 ? `${[...name].slice(0, room - 1).join('')}…` : '…'
-}
+// A test line stays one line, so a long name is cut at the last word that fits, never with an ellipsis (the report's SCENARIOS
+// holds it whole); no room given cuts nothing.
+const cutName = (name: string, room: number) => cutAtWord(name, room)
 
 // The current test's cycle marker and step age, as parts.
 function cycleParts(test: NonNullable<View['test']>): Part[] {
@@ -58,7 +59,7 @@ function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: 
     const cycle = test ? cycleParts(test) : []
     const rest = cycle.reduce((sum, part) => sum + cells(part.text), 0)
     const room = width > 0 ? width - rest - (cycle.length ? GAP.length : 0) : 0
-    return [{ text: `${cutName(`${MARKS.current} ${name}`, room)}${cycle.length ? GAP : ''}`, props: { bold: true } }, ...cycle]
+    return [{ text: `${cutName(`${MARKS.current} ${name}`, room)}${cycle.length ? GAP : ''}`, props: LIT }, ...cycle]
   }
   for (const entry of entries) {
     lines.push(entry.mark === 'current' ? currentLine(entry.name) : [{ text: cutName(`${MARKS[entry.mark]} ${entry.name}`, width) }])
@@ -70,18 +71,32 @@ function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: 
   return lines
 }
 
+// The GOAL row leads, bold, on up to two lines; a dash until the run names its task.
+function goalRows(view: View, columns: number) {
+  const width = columns > 0 ? columns - LABEL_WIDTH : 0
+  const goal = view.goal ?? EMPTY
+  const lines = goal === EMPTY ? [emptyLine()] : goalLines(goal, width).map((text: string) => [{ text, props: { bold: true } }])
+  return rowLines('GOAL', lines)
+}
+
+// The thin rule under the goal: the pane's width, or a fixed one before the first layout.
+const RULE_FALLBACK_WIDTH = 40
+const goalRule = (columns: number) => '─'.repeat(columns > 0 ? columns : RULE_FALLBACK_WIDTH)
+
 function paneRows(view: View, columns: number) {
   const { rows, rowTones = {} as RowTones } = view
   const width = columns > 0 ? columns - LABEL_WIDTH : 0
   const one = (text: string, props: Props = {}): Part[][] => [[{ text, props: text === EMPTY ? { dimColor: true } : props }]]
-  const nowProps = { ...toneProps(rowTones.now), ...(rowTones.now === 'warning' ? { bold: true } : {}) }
-  const tries = view.tries?.length ? [[{ text: fitTries(view.tries, width).trimStart(), props: { dimColor: true } }]] : []
+  // A row that wraps at its parts, then words, onto as many lines as it needs, never cut.
+  const wrapped = (text: string, room: number, props: Props = {}): Part[][] => (text === EMPTY ? one(text) : wrapAtParts(text, room).map((line: string) => [{ text: line, props }]))
+  const statusProps = { ...toneProps(rowTones.status), ...(rowTones.status === 'warning' ? { bold: true } : {}) }
+  // The tries fold to fit where they can (fitTries); what still overflows wraps, never cut.
+  const tries = view.tries?.length ? wrapped(fitTries(view.tries, width).trimStart(), width, { dimColor: true }) : []
   const review = view.endRound ? endReviewLines(view.endRound, width) : lensLines(view.lensRound, width)
   return [
-    ...rowLines('DONE', one(cutAtWord(view.end.done, width))),
-    ...rowLines('GOAL', one(goalGist(view.end.goal, width))),
-    ...rowLines('PR', one(cutAtWord(view.end.pr, width))),
-    ...rowLines('NOW', one(rows.now, nowProps)),
+    ...rowLines('STATUS', wrapped(view.status ?? rows.now, width, statusProps)),
+    ...rowLines('PR', wrapped(view.end.pr, width)),
+    ...rowLines('BUILT', wrapped(view.end.done, width)),
     ...rowLines('SPENT', one(rows.spent, toneProps(rowTones.spent))),
     ...rowLines('LOOPING', [...one(rows.looping, toneProps(rowTones.looping)), ...tries]),
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
@@ -103,6 +118,13 @@ export function Pane({ Box, Text, Button, Input, view, columns = 0, unknownLabel
   const { ledger, ended = false } = view
   return (
     <Box flexDirection="column">
+      {goalRows(view, columns).map(({ label: name, parts }, row) => (
+        <Box key={`goal-${row}`}>
+          <Text key="label" wrap="truncate-end">{name}</Text>
+          {parts.map((part, i) => <Text key={`part-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)}
+        </Box>
+      ))}
+      <Text key="goal-rule" dimColor wrap="truncate-end">{goalRule(columns)}</Text>
       {paneRows(view, columns).map(({ label: name, parts }, row) => (
         <Box key={`row-${row}`}>
           <Text key="label" wrap="truncate-end">{name}</Text>
@@ -112,7 +134,6 @@ export function Pane({ Box, Text, Button, Input, view, columns = 0, unknownLabel
       {unknownLabels.map((raw, i) => <Text key={`unknown-${i}`}>{raw}</Text>)}
       {unknownLabels.length > 0 && <Text dimColor>{`${unknownLabels.length} label${unknownLabels.length === 1 ? '' : 's'} unknown`}</Text>}
       <Text key="gap"> </Text>
-      <Text dimColor>Pairing Buddy only watches; it never changes your run</Text>
       {note && <Text>{note}</Text>}
       {suggestion?.state === 'pending' && <Text>{`applies at the next agent spawn: ${suggestion.nextAgent ? (plainName(suggestion.nextAgent) ?? suggestion.nextAgent) : 'the next agent'}`}</Text>}
       {suggestion?.state === 'delivered' && <Text>{`delivered to ${plainName(suggestion.to) ?? suggestion.to}`}</Text>}

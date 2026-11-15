@@ -3,7 +3,7 @@ const PLAIN_NAMES = {
   // stages
   intake: "work out the task type",
   "code-config": "make the config change",
-  "code-scenarios": "write scenarios",
+  "code-scenarios": "write test scenarios",
   "code-tdd": "build test by test",
   "code-safety-net": "safety-net review",
   "code-refactor-scope": "decide what to tidy up",

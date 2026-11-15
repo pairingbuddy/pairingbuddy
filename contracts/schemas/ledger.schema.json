@@ -146,7 +146,7 @@
               }
             },
             "doubts": {
-              "description": "The open doubts the question names, in full (the question cuts each to one line and shows at most three), each with the plain name of the step that had it, so the run report holds them all. May be absent.",
+              "description": "The open doubts the question names, in full (the question shows at most three, each whole on one line, and run/question.md holds them all), each with the plain name of the step that had it, so the run report holds them all. May be absent.",
               "type": "array",
               "minItems": 1,
               "items": {

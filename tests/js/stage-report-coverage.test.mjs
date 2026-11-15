@@ -74,3 +74,18 @@ test("report-light-review-return-is-no-lens-round", () => {
     assert.ok(!JSON.stringify(report[list]).includes(finding.claim), `the light-review finding is not in ${list}`);
   }
 });
+
+// Sixth watched run: what a reviewer could not read or check is a gap in the review, not a question for the human.
+test("what a lens or a refuter could not check goes to the report's notCovered, by the review it limits", () => {
+  const dir = artifactsWith({
+    "code-tdd.lens.code.r1.a2": { not_checked: "I did not read the full cart.py.", findings: [] },
+    "code-tdd.refuter.code-1.r1.a2": { not_checked: "The plan file was not there.", finding_id: "code-1", verdict: "survives" },
+    "code-tdd.lens.tests.r1.a2": { not_checked: null, findings: [] },
+  });
+
+  const { notCovered } = buildReport(LEDGER, dir);
+
+  assert.ok(notCovered.includes("the code review could not check: I did not read the full cart.py."), JSON.stringify(notCovered));
+  assert.ok(notCovered.includes("a reviewer could not check: The plan file was not there."), JSON.stringify(notCovered));
+  assert.equal(notCovered.filter((line) => line.includes("could not check")).length, 2, "a null not_checked adds nothing");
+});

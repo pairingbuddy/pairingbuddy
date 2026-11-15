@@ -61,7 +61,9 @@ function drawGlance(
     const snapshot = fromPolled(lastRun as Parameters<typeof fromPolled>[0], spawns, calls, published as Published | null)
     // The ended view measures to the moment the run ended, the same end time the report uses.
     const endedMs = typeof endedAt === 'string' ? Date.parse(endedAt) : NaN
-    const view = live.ledger || !snapshot.ledger ? buildView(live) : buildEndedView(Number.isNaN(endedMs) ? snapshot : { ...snapshot, now: endedMs })
+    // Whether a unit is still open is read now: pb publish closes it after the snapshot was taken.
+    const ended = { ...snapshot, unitOpen: live.unit !== null, ...(Number.isNaN(endedMs) ? {} : { now: endedMs }) }
+    const view = live.ledger || !snapshot.ledger ? buildView(live) : buildEndedView(ended)
     const reportNote = typeof note === 'string' ? note : null
     return draw(tags, view, opened === true, reportNote, pending as PendingSuggestion | null)
   })
@@ -147,8 +149,8 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button }, { band, running, waiting, ended, between }, opened) => (
-    <Band Box={Box} Text={Text} Button={Button} band={band} running={running} waiting={waiting} ended={ended} between={between} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($, true).catch(() => {}) }} />
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button }, { band, running, waiting, ended, done, between }, opened) => (
+    <Band Box={Box} Text={Text} Button={Button} band={band} running={running} waiting={waiting} ended={ended} done={done} between={between} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($, true).catch(() => {}) }} />
   )))
 
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button, Input }, view, _opened, note, pending) => (

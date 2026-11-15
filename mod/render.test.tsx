@@ -142,8 +142,8 @@ test('the pb hint is lowest priority: "/pb" shows when all content fits but the 
   expect(shown.join(' '), `at ${COLUMNS} columns no content is cut: ${JSON.stringify(shown)}`).toContain(content[content.length - 1].text)
 })
 
-test('at 70 columns with a standing stop needs-you is kept whole and the hint shows only if the row still fits', async ($, on) => {
-  const COLUMNS = 70
+test('at 75 columns with a standing stop needs-you is kept whole and the hint shows only if the row still fits', async ($, on) => {
+  const COLUMNS = 75
   bandEngine(on, stopped({ code: 'step-failed' }))
   await start($)
 
@@ -151,7 +151,7 @@ test('at 70 columns with a standing stop needs-you is kept whole and the hint sh
 
   const joined = shown.join('')
   expect(joined.includes('/pb') ? joined.length <= COLUMNS : true, `the hint is shown only when the row still fits: ${JSON.stringify(shown)}`).toBe(true)
-  expect(shown.slice(0, 3), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['write scenarios', ' │ ', '0 agents'])
+  expect(shown.slice(0, 3), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['write test scenarios', ' │ ', '0 agents'])
   expect(shown.some(text => text === 'needs you · opened details'), `the standing needs-you is kept whole: ${JSON.stringify(shown)}`).toBe(true)
   expect(joined.length, `the band is within ${COLUMNS} columns: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(COLUMNS)
 })
@@ -264,7 +264,7 @@ test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning
 
   expect(starting(gateBand, 'needs you').props.color, 'a needs-you gate in the band is warning').toBe('warning')
   expect(starting(stopBand, 'needs you').props.color, 'a stop in the band is error').toBe('error')
-  expect(starting(stopPane, 'stopped').props.color, 'a stop in the pane NOW row is error').toBe('error')
+  expect(starting(stopPane, 'stopped').props.color, 'a stop in the pane STATUS row is error').toBe('error')
   expect(gateBand.find(node => node.text.startsWith('looping:')), 'an unknown band segment is not drawn').toBeUndefined()
   expect(starting(gateBand, '0 agents').props.dimColor, 'the band spend segment is dim').toBe(true)
   expect(starting(stopPane, '0 agents').props.dimColor, 'the pane SPENT row is dim').toBe(true)

@@ -38,7 +38,8 @@ export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; t
 // What the last pb publish printed: the url it opened, or the result when it opened none; codeRunId ties it to the code run it published.
 export type Published = { url?: string; result?: string; codeRunId?: string | null }
 // changed: the paths run/changed.json lists (null when it does not read); prUrl: the unit's pull request as the poller last saw it.
-export type Inputs = { ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; names?: Record<string, string>; unit?: Unit | null; since?: string; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
+// unitOpen: whether a unit is open now, for a finished run drawn from its snapshot (whose unit is the one it last saw).
+export type Inputs = { unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; names?: Record<string, string>; unit?: Unit | null; since?: string; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {

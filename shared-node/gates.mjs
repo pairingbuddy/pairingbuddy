@@ -11,7 +11,6 @@ import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt } from "./stage-ru
 import { acceptVerdict, findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { plainName } from "./plain-names.mjs";
-import { goalGist } from "./end-state.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
 import { isRefreshRun } from "./ledger.mjs";
@@ -62,31 +61,36 @@ function typeLines({ taskType, facts }) {
 
 const counted = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-// A list kept readable in a terminal: the first `keep` rows, then how many more the report holds.
+// A list kept readable in a terminal: the first `keep` rows, then "+ n more" naming the full question file. With no file
+// to name (fullAt null) the list is the full question file's, and nothing folds.
 const MAX_LIST_ROWS = 12;
-// `more` is the words after the count, or a function of the count for words that agree with it.
-const folded = (rows, keep = MAX_LIST_ROWS, more = "in the report") =>
-  rows.length <= keep ? rows : [...rows.slice(0, keep), `+ ${rows.length - keep} more ${typeof more === "function" ? more(rows.length - keep) : more}`];
+// `noun` gives the words between the count and the path, agreeing with the count.
+const folded = (rows, keep, fullAt, noun = () => "") =>
+  fullAt === null || rows.length <= keep ? rows : [...rows.slice(0, keep), `+ ${rows.length - keep} more${noun(rows.length - keep)}: ${fullAt}`];
 
 const MAX_SCENARIOS = 15;
 
 // Every scenario with its tests when they all fit the list's rows; otherwise one line per scenario with its test count, so no
 // scenario is cut off part way through its tests.
-function scenarioLines({ facts: { scenarios } }) {
+function scenarioLines({ facts: { scenarios }, fullAt }) {
   if (!Array.isArray(scenarios) || scenarios.length === 0) return [];
   const tests = scenarios.reduce((sum, { tests: cases }) => sum + cases.length, 0);
   const rows = scenarios.flatMap(({ description, tests: cases }) => [`- ${description}`, ...cases.map((test) => `    - ${test}`)]);
-  const shown = rows.length <= MAX_LIST_ROWS ? rows : folded(scenarios.map(({ description, tests: cases }) => `- ${description} (${counted(cases.length, "test")})`), MAX_SCENARIOS, (n) => `${n === 1 ? "scenario" : "scenarios"} in the report`);
+  const shown = fullAt === null || rows.length <= MAX_LIST_ROWS ? rows : folded(scenarios.map(({ description, tests: cases }) => `- ${description} (${counted(cases.length, "test")})`), MAX_SCENARIOS, fullAt, (n) => ` ${n === 1 ? "scenario" : "scenarios"}`);
   return [`Scenarios (${counted(scenarios.length, "scenario")}, ${counted(tests, "test")}):`, ...shown];
 }
 
 const MAX_FILES = 5;
 
-function builtLine({ files, tests, passing }) {
-  const shown = Array.isArray(files) && files.length > 0 ? folded(files, MAX_FILES).join(", ") : null;
+// The fold goes last, so the path it names ends the line and a terminal can open it.
+function builtLine({ files, tests, passing }, fullAt) {
+  const listed = Array.isArray(files) && files.length > 0;
+  const more = listed && fullAt !== null ? files.length - MAX_FILES : 0;
+  const shown = listed ? (more > 0 ? files.slice(0, MAX_FILES) : files).join(", ") : null;
   const run = [...(tests > 0 ? [counted(tests, "test")] : []), ...(passing === true ? [tests > 0 ? "all passing" : "the full test suite passes"] : [])].join(", ");
   const parts = [shown, run === "" ? null : run].filter((part) => part !== null);
-  return parts.length === 0 ? [] : [`Built: ${parts.join("; ")}.`];
+  if (parts.length === 0) return [];
+  return [more > 0 ? `Built: ${parts.join("; ")}; + ${counted(more, "more file", "more files")}: ${fullAt}` : `Built: ${parts.join("; ")}.`];
 }
 
 function reviewLine(outcomes) {
@@ -97,32 +101,35 @@ function reviewLine(outcomes) {
   return [`Review: ${counted(outcomes.length, "issue")}, ${count("fixed")} fixed, ${count("left as is")} left as is${notReal > 0 ? `, ${notReal} not a real problem` : ""}.`];
 }
 
-// The goal check's first finding, with how many more there are. A check with nothing to say gives no line.
-function goalCheckLine(findings) {
+// The goal check's first finding, with how many more there are; the full question file lists them all. A check with
+// nothing to say gives no line.
+function goalCheckLine(findings, fullAt) {
   if (!Array.isArray(findings) || findings.length === 0) return [];
+  if (fullAt === null) return ["Goal check:", ...findings.map(({ gist, outcome }) => `- ${gist} (${outcome})`)];
   const [{ gist, outcome }] = findings;
-  const more = findings.length > 1 ? `; + ${findings.length - 1} more in the report` : "";
-  return [`Goal check: ${gist} (${outcome})${more}.`];
+  return [findings.length > 1 ? `Goal check: ${gist} (${outcome}); + ${findings.length - 1} more: ${fullAt}` : `Goal check: ${gist} (${outcome}).`];
 }
 
-// The most a goal line holds: the goal's first sentence, cut by the goal gist rule when longer. The report holds the whole goal.
-const MAX_GOAL_LINE = 120;
+const trimmed = (value) => (typeof value === "string" && value.trim() !== "" ? value.trim() : null);
 
-function taskEndLines({ facts }) {
-  const goal = firstSentence(facts.goal);
-  return [...(goal === null ? [] : [goalGist(`Goal: ${goal}`, MAX_GOAL_LINE)]), ...builtLine(facts), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck)];
+// The goal's first sentence, whole: the question box wraps it. The full question file holds the whole goal.
+function taskEndLines({ facts, fullAt }) {
+  const goal = fullAt === null ? trimmed(facts.goal) : firstSentence(facts.goal);
+  return [...(goal === null ? [] : [`Goal: ${goal}`]), ...builtLine(facts, fullAt), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck, fullAt)];
 }
 
 const MAX_BODY_LINES = 8;
 
-// The body's text lines, with no blank ones, so the few lines a terminal shows are all text.
-function bodyRows(body) {
+// The body's text lines, with no blank ones, so the few lines a terminal shows are all text. The full question file
+// holds the body as written.
+function bodyRows(body, fullAt) {
   if (typeof body !== "string") return [];
+  if (fullAt === null) return trimmed(body) === null ? [] : [trimmed(body)];
   const rows = body.split(/\r?\n/).filter((row) => row.trim() !== "");
-  return folded(rows, MAX_BODY_LINES, "lines in .pairingbuddy/run/pr-body.md");
+  return folded(rows, MAX_BODY_LINES, fullAt, (n) => (n === 1 ? " line" : " lines"));
 }
 
-const publishLines = ({ facts: { title, body } }) => (typeof title === "string" ? [`Pull request: ${title}`, ...bodyRows(body)] : bodyRows(body));
+const publishLines = ({ facts: { title, body }, fullAt }) => (typeof title === "string" ? [`Pull request: ${title}`, ...bodyRows(body, fullAt)] : bodyRows(body, fullAt));
 
 // "it" needs the title line before it to name the pull request.
 function publishAsk(refresh, titled) {
@@ -175,31 +182,54 @@ const AMBIGUITY_REASON = /open ambiguity/;
 // The open doubts a question shows: the facts' doubts when the gate asks over them, else none.
 export const questionDoubts = (reason, { doubts } = {}) => (AMBIGUITY_REASON.test(reason) && Array.isArray(doubts) && doubts.length > 0 ? doubts : null);
 
-const MAX_DOUBT = 120;
-
-// A doubt on one line, cut at the last word that fits; the report holds it in full.
-function doubtText(ambiguity) {
-  const line = ambiguity.trim().replace(/\s+/g, " ");
-  return line.length <= MAX_DOUBT ? line : `${line.slice(0, MAX_DOUBT + 1).replace(/\s+\S*$/, "")}…`;
-}
+// A doubt whole on one line: the question box wraps a long line, and a cut sentence cannot be judged.
+const doubtText = (ambiguity) => ambiguity.trim().replace(/\s+/g, " ");
 
 const MAX_DOUBTS = 3;
 
-const doubtLines = (doubts) => folded(doubts.map(({ step, ambiguity }) => `Unsure (${step}): ${doubtText(ambiguity)}`), MAX_DOUBTS);
+// Where pb gate eval writes the full question, under the target project's root.
+export const QUESTION_FILE = ".pairingbuddy/run/question.md";
+
+// The step name a lens or refuter doubt carries: the human needs no word for how the review was split up.
+export const REVIEWER = "a reviewer";
+
+const doubtLine = ({ step, ambiguity }) => (step === REVIEWER ? `A reviewer was unsure: ${doubtText(ambiguity)}` : `Unsure (${step}): ${doubtText(ambiguity)}`);
+
+const doubtLines = (doubts, fullAt) => folded(doubts.map(doubtLine), MAX_DOUBTS, fullAt);
 
 // The ask, turned so the human knows they decide over the doubts.
 const despite = (asked, doubts) => `${asked.replace(/\?$/, "")} despite ${doubts.length === 1 ? "this" : "these"}?`;
 
+// The question's lines, then its ask. fullAt null gives the full question file's lines: no list folds.
+function questionLines(gate, { reason = "", taskType = null, refresh = false, facts = {} }, fullAt) {
+  const { ask, lines } = GATE_ASKS[gate] ?? OTHER_ASK;
+  const context = { taskType, refresh, facts, fullAt };
+  const doubts = questionDoubts(reason, facts);
+  if (doubts !== null) return [...(lines?.(context) ?? []), ...doubtLines(doubts, fullAt), despite(ask(context), doubts)];
+  const why = plainWhy(reason);
+  if (lines === undefined) return [`${ask(context)} ${why}`.trim()];
+  return [...lines(context), ...(why === "" ? [] : [why]), ask(context)];
+}
+
 // The question gate eval issues: pure, and stored in needsHuman, so the hooks match the answer against what was asked.
 // facts: what pb gate eval read for this gate (see gate-facts.mjs); a fact it could not read is absent, and its line is left out.
-export function gateQuestion(gate, { reason = "", taskType = null, refresh = false, facts = {} } = {}) {
-  const { header, ask, lines } = GATE_ASKS[gate] ?? OTHER_ASK;
-  const context = { taskType, refresh, facts };
-  const doubts = questionDoubts(reason, facts);
-  if (doubts !== null) return { question: [...(lines?.(context) ?? []), ...doubtLines(doubts), despite(ask(context), doubts)].join("\n"), header, options: optionsOf(gate), multiSelect: false };
-  const why = plainWhy(reason);
-  const question = lines === undefined ? `${ask(context)} ${why}`.trim() : [...lines(context), ...(why === "" ? [] : [why]), ask(context)].join("\n");
-  return { question, header, options: optionsOf(gate), multiSelect: false };
+// fullAt: the file that holds the full question, which every fold names (pb gate eval passes its absolute path).
+export function gateQuestion(gate, { fullAt = QUESTION_FILE, ...asked } = {}) {
+  const { header } = GATE_ASKS[gate] ?? OTHER_ASK;
+  return { question: questionLines(gate, asked, fullAt).join("\n"), header, options: optionsOf(gate), multiSelect: false };
+}
+
+const isListRow = (line) => /^\s*- /.test(line);
+// A list's row stays under the row or the lead line ("Goal check:") before it.
+const joinsAbove = (line, above) => isListRow(line) && (isListRow(above) || above.endsWith(":"));
+
+// The full question as Markdown, for pb gate eval to write at QUESTION_FILE: the same lines with no list folded, every
+// doubt and the whole goal and body in full. A list stays under its lead line; every other line is its own paragraph.
+export function fullQuestion(gate, asked = {}) {
+  const { header } = GATE_ASKS[gate] ?? OTHER_ASK;
+  const lines = questionLines(gate, asked, null);
+  const body = lines.map((line, i) => (i === 0 ? line : `${joinsAbove(line, lines[i - 1]) ? "\n" : "\n\n"}${line}`)).join("");
+  return `# ${header}\n\n${body}\n`;
 }
 
 // The question the pending gate asked, or null when no gate waits or the ledger holds none.

@@ -214,7 +214,7 @@ function builtSection({ changed }) {
   return section("BUILT", body);
 }
 
-// Every open doubt the pending question names, in full: the question cuts each to a line and folds past three into this.
+// Every open doubt the pending question names, in full, as run/question.md holds them too.
 // A question with no doubt to name has no section.
 function doubtsSection({ ledger }) {
   const doubts = ledger?.needsHuman?.doubts;

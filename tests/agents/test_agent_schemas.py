@@ -451,6 +451,14 @@ def test_runner_runs_a_list_of_commands_and_stops_at_the_first_failure():
     assert "<command>`" not in content
 
 
+@pytest.mark.parametrize("agent_name", ["lens", "refuter"])
+def test_reviewer_reads_each_changed_file_in_full(agent_name):
+    """A diff hunk hides the code around a change, so a reviewer reads changed files whole."""
+    content = (AGENTS_DIR / f"{agent_name}.md").read_text()
+
+    assert "read each changed file in full" in content.split("## Instructions")[-1]
+
+
 @pytest.mark.parametrize("agent_name,input_name,schema_file", get_agent_input_refs())
 def test_agent_input_enum_values_match_canonical(agent_name, input_name, schema_file):
     """Test that enum values in agent's Input section match canonical schema."""

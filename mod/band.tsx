@@ -1,4 +1,5 @@
 import { fitBand, SEPARATOR } from '../shared-node/glance.mjs'
+import { DONE_WORDS } from '../shared-node/end-state.mjs'
 import type { Segment, Tags } from './view'
 
 const HINT = '/pb for details'
@@ -6,6 +7,8 @@ const SHORT_HINT = '/pb'
 const IDLE_SEPARATOR = ' · '
 const IDLE = `Pairing Buddy · idle${IDLE_SEPARATOR}${HINT}`
 const ENDED = `Pairing Buddy · last run finished${IDLE_SEPARATOR}${HINT}`
+// The unit is done with nothing left to do: said plainly and not dim, as the alert says it.
+const DONE = `Pairing Buddy · ${DONE_WORDS}${IDLE_SEPARATOR}${HINT}`
 export const DETAILS = '▸ details'
 const RULE_FALLBACK_WIDTH = 40
 // The pane's [-] control sits beside the band row, so the row gets this many fewer cells than bodyColumns.
@@ -23,13 +26,14 @@ export const OPENED_DETAILS = 'needs you · opened details'
 const asOpened = (band: Segment[]): Segment[] => band.map(segment => (segment.id === 'needsYou' && segment.standing ? { ...segment, text: OPENED_DETAILS } : segment))
 
 // While a stage is active, only the segments that fit beside the details button; otherwise one dim "idle".
-export function Band({ Box, Text, Button, band, columns, running, waiting, opened, ended, between, onDetails }: Tags & {
+export function Band({ Box, Text, Button, band, columns, running, waiting, opened, ended, done, between, onDetails }: Tags & {
   band: Segment[]
   columns: number
   running: boolean
   waiting?: boolean
   opened?: boolean
   ended?: boolean
+  done?: boolean
   between?: string
   onDetails: () => void
 }) {
@@ -43,7 +47,7 @@ export function Band({ Box, Text, Button, band, columns, running, waiting, opene
   const labelled = between ? `Pairing Buddy · ${between}` : undefined
   const idleText = labelled
     ? [`${labelled}${IDLE_SEPARATOR}${HINT}`, `${labelled}${IDLE_SEPARATOR}${SHORT_HINT}`, labelled].find(text => text.length <= room) ?? labelled
-    : ended ? ENDED : IDLE
+    : ended ? (done ? DONE : ENDED) : IDLE
 
   return (
     <Box flexDirection="column">
@@ -54,7 +58,7 @@ export function Band({ Box, Text, Button, band, columns, running, waiting, opene
             ...(i > 0 ? [<Text key={`sep-${segment.id}`} wrap="truncate-end">{SEPARATOR}</Text>] : []),
             <Text key={segment.id} color={segment.tone === 'dim' ? undefined : segment.tone} bold={segment.bold} dimColor={segment.tone === 'dim' ? true : undefined} wrap="truncate-end">{segment.text}</Text>,
           ])
-        : <Box marginRight={1}><Text dimColor wrap="truncate-end">{idleText}</Text></Box>}
+        : <Box marginRight={1}><Text dimColor={!(ended && done)} bold={ended && done ? true : undefined} wrap="truncate-end">{idleText}</Text></Box>}
       {shown && <Text key="gap"> </Text>}
       <Button key="details" label={DETAILS} onPress={onDetails}>{shown && <Text>{DETAILS}</Text>}</Button>
       {shown && hint && <Text key="hint" wrap="truncate-end">{`${SEPARATOR}${hint} `}</Text>}

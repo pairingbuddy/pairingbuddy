@@ -493,11 +493,12 @@ const LENSES = {
 const LENS_SCHEMA = {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Lens Result",
-  "description": "Return of the lens agent: the pb key it was given, any open ambiguity and its findings",
+  "description": "Return of the lens agent: the pb key it was given, any open question for the human, what it could not check, and its findings",
   "type": "object",
   "required": [
     "pb_key",
     "ambiguity",
+    "not_checked",
     "findings"
   ],
   "properties": {
@@ -510,7 +511,14 @@ const LENS_SCHEMA = {
         "string",
         "null"
       ],
-      "description": "An open question that affected the review, or null"
+      "description": "A question only the human can decide, in plain words to the human, or null. It stops the gate"
+    },
+    "not_checked": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "What the lens could not read or check, so the review does not cover it, or null. It goes to the report, never to the gate"
     },
     "findings": {
       "type": "array",
@@ -573,7 +581,8 @@ const REFUTER_SCHEMA = {
     "pb_key",
     "finding_id",
     "verdict",
-    "ambiguity"
+    "ambiguity",
+    "not_checked"
   ],
   "properties": {
     "pb_key": {
@@ -598,7 +607,14 @@ const REFUTER_SCHEMA = {
         "string",
         "null"
       ],
-      "description": "What in the finding or its evidence was unclear enough to affect the verdict, or null when nothing was"
+      "description": "A question about the finding only the human can decide, in plain words to the human, or null. It stops the gate"
+    },
+    "not_checked": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "What the refuter could not read or check, so its verdict does not cover it, or null. It goes to the report, never to the gate"
     }
   },
   "additionalProperties": false
@@ -1250,7 +1266,11 @@ async function lensAttack(config) {
   const fixed = config.fix !== undefined ? await fixLoop(config, settled.survivors, budget - results.length - attacked.length) : null;
   const stopReason = fixed?.stopReason ?? roundStop;
   // review is what the session reports from: each finding's end, by the rule the gate reads too. survivors and the other lists are the round before any fix.
-  const review = { findings: findingOutcomes(settled, fixed?.keptLenses ?? []), notCovered: settled.uncovered };
+  // What a lens or refuter said it could not read or check is a gap in the review, never a doubt for the human.
+  const limits = [...results, ...verdicts]
+    .filter((said) => typeof said?.not_checked === 'string' && said.not_checked.trim() !== '')
+    .map(({ not_checked }) => `a reviewer could not check: ${not_checked.trim()}`);
+  const review = { findings: findingOutcomes(settled, fixed?.keptLenses ?? []), notCovered: [...settled.uncovered, ...limits] };
   return { review, ...settled, agentsUsed: results.length + attacked.length + (fixed?.spawned ?? 0), ...(fixed === null ? {} : { attempts: fixed.attempts, lessons: fixed.lessons, stopRecorded: fixed.stopRecorded, final: fixed.final }), stopReason };
 }
 

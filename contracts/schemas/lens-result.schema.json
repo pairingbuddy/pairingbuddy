@@ -1,14 +1,18 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Lens Result",
-  "description": "Return of the lens agent: the pb key it was given, any open ambiguity and its findings",
+  "description": "Return of the lens agent: the pb key it was given, any open question for the human, what it could not check, and its findings",
   "type": "object",
-  "required": ["pb_key", "ambiguity", "findings"],
+  "required": ["pb_key", "ambiguity", "not_checked", "findings"],
   "properties": {
     "pb_key": { "type": "string", "description": "The key from the prompt, copied exactly" },
     "ambiguity": {
       "type": ["string", "null"],
-      "description": "An open question that affected the review, or null"
+      "description": "A question only the human can decide, in plain words to the human, or null. It stops the gate"
+    },
+    "not_checked": {
+      "type": ["string", "null"],
+      "description": "What the lens could not read or check, so the review does not cover it, or null. It goes to the report, never to the gate"
     },
     "findings": {
       "type": "array",

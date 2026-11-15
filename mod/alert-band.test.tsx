@@ -40,7 +40,8 @@ test('band-for-stop-and-for-needs-human: needs human, unseated', async ($, on) =
   alertEngine(on, { ledger: needingHuman({ gate: 'G:task-end' }), open: 'not-placed' })
   await start($)
 
-  const shown = await bandTexts($)
+  // Wide enough that "needs you:" is not shortened to "you:" to make room.
+  const shown = await bandTexts($, { bodyColumns: 120 })
 
   expect(shown.some(text => text.includes('needs you: your sign-off at the end')), `the band reads "needs you: your sign-off at the end": ${JSON.stringify(shown)}`).toBe(true)
   expect(shown.some(text => text.includes('opened details')), `the band never claims "opened details" when the pane did not seat: ${JSON.stringify(shown)}`).toBe(false)

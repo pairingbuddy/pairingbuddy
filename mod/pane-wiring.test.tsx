@@ -1,7 +1,7 @@
 // Scenario pane-wiring: the mod pane and poller wiring for the now-building block (mod tests via claude plugin test ., runner mod).
 import { expect, mock, test } from 'claude-code/testing'
 import { PANE, paneLines, replay, setupReplay } from './testing/replay'
-import { PHASE_COLOURS } from './pane'
+import { ACCENT_COLOUR, PHASE_COLOURS } from './pane'
 import calm from './fixtures/replay/g-open-1'
 import looping from './fixtures/replay/probe-2'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, engine, start } from './testing/band'
@@ -38,6 +38,13 @@ test('pane-draws-one-tests-row-with-a-line-per-test', async ($, on) => {
   expect(lines.some(line => line.startsWith('TEST ')), `there is no separate TEST row: ${shown}`).toBe(false)
   const marker = nodes.find(node => node.text === '●GREEN')
   expect(marker!.props.color, 'the lit GREEN step uses its fixed phase colour').toBe(PHASE_COLOURS.GREEN)
+  // Where the run is now: the current step and the current test, in the accent colour and bold.
+  const step = nodes.find(node => node.text === '▸ build test by test')
+  const test = nodes.find(node => node.text.startsWith('▸ zero percent keeps price'))
+  for (const [what, node] of [['the current step', step], ['the current test', test]] as const) {
+    expect(node?.props, `${what} is lit: ${JSON.stringify(node)}`).toEqual(expect.objectContaining({ color: ACCENT_COLOUR, bold: true }))
+  }
+  expect(nodes.find(node => node.text === '✓ ten percent off')?.props.color, 'a done test is not lit').toBeUndefined()
   const texts = nodes.map(node => node.text)
   for (const removed of [/now building/, /\bactive\b/, /\d+ unknown$/, /made to pass|already passed|▸ now|to do/]) {
     expect(texts.some(text => removed.test(text)), `nothing matching ${removed} is drawn: ${JSON.stringify(texts)}`).toBe(false)
@@ -200,7 +207,7 @@ test('replay-keeps-one-layout-and-fits-at-widths', async ($, on) => {
   const cells = (text: string) => [...text].length
   const textOf = (node: any): string => (node.children ?? []).map((child: any) => (typeof child === 'string' ? child : textOf(child))).join('')
   const isRow = (node: any) => node?.type === 'Box' && (node.children ?? []).length > 0 && node.children.every((child: any) => child?.type === 'Text')
-  const LABELS = ['DONE', 'GOAL', 'PR', 'NOW', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'REVIEW']
+  const LABELS = ['GOAL', 'STATUS', 'PR', 'BUILT', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'REVIEW']
 
   for (const [name, recording] of [['g-open-1', calm], ['probe-2', looping]] as const) {
     for (const columns of WIDTHS) {
@@ -214,9 +221,8 @@ test('replay-keeps-one-layout-and-fits-at-widths', async ($, on) => {
         const labels = rows.map(row => textOf(row.children[0]).trim()).filter(label => label !== '')
         // One layout: every row, in the same order, at every step.
         expect(labels, `${where}: the rows`).toEqual(LABELS)
-        // The rows the pane folds itself fit the width: TESTS and REVIEW; the one-sentence rows and the steps are cut by their Text.
-        const folded = rows.slice(rows.findIndex(row => textOf(row.children[0]).trim() === 'TESTS'))
-        for (const row of folded) expect(cells(textOf(row)), `${where}: the row "${textOf(row)}" fits the body width ${columns}`).toBeLessThanOrEqual(columns)
+        // Every line fits the width, so no Text is cut with an ellipsis: the pane wraps, or cuts a test line at a word.
+        for (const row of rows) expect(cells(textOf(row)), `${where}: the row "${textOf(row)}" fits the body width ${columns}`).toBeLessThanOrEqual(columns)
         expect(rows.length, `${where}: the pane's ${rows.length} rows fit the ${BODY_ROWS} body rows`).toBeLessThanOrEqual(BODY_ROWS)
       }
       expect(steps, `${name} at ${columns} columns: some step had a ledger`).toBeGreaterThan(0)
