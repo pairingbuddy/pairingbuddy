@@ -5,7 +5,7 @@ import { plainName } from '../shared-node/plain-names.mjs'
 import { POLL_MS } from './poll'
 import { needingHuman, stopped } from './testing/alert'
 import { PANE } from './testing/replay'
-import { BAND, bandTexts, isSeparatorRule, engine as bandEngine, LEDGER_PATH, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, SURFACES, ROOT, serveLedger, start, without, type Served } from './testing/band'
+import { BAND, bandTexts, isGoalRow, isSeparatorRule, engine as bandEngine, LEDGER_PATH, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, SURFACES, ROOT, serveLedger, start, without, type Served } from './testing/band'
 
 // The band draws what the session's poll read, so each test starts a session first; the poll runs at session start.
 function engine(on: Function, served: Served) {
@@ -22,7 +22,7 @@ async function drawnOnEverySurface($: any): Promise<Record<string, string>> {
   const drawn: Record<string, string> = {}
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    const text = (await ui.findAll({ type: 'Text' })).find((node: any) => !isSeparatorRule(node))
+    const text = (await ui.findAll({ type: 'Text' })).find((node: any) => !isSeparatorRule(node) && !isGoalRow(node))
     drawn[surface] = JSON.stringify(text ?? null)
     await ui.unmount()
   }
@@ -276,12 +276,12 @@ test('band-leads-with-needs-you-at-a-gate', async ($, on) => {
   await start($)
 
   const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 200 }, surface: 'terminal' })
-  const nodes = (await band.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node))
+  const nodes = (await band.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node))
   await band.unmount()
 
   const shown = nodes.map((node: any) => node.text as string)
   const needs = nodes.find((node: any) => node.text.startsWith('needs you'))
-  expect(shown[0], `the band leads with needs you: ${JSON.stringify(shown)}`).toBe('needs you: your OK on the scenarios')
+  expect(shown[0], `under the goal, the band's row leads with needs you: ${JSON.stringify(shown)}`).toBe('needs you: your OK on the scenarios')
   expect(needs?.props.color, 'needs you is in the warning colour').toBe('warning')
   expect(needs?.props.bold, 'needs you is bold').toBe(true)
   expect(shown.join(''), 'no dim between-steps line').not.toContain('between steps')

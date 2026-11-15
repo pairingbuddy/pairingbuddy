@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The pane no longer shows the "Pairing Buddy only watches" footer; it read as false and took a row.
 - The pane opens by itself, without the keyboard, when a run starts: once per run, never again for that run once dismissed (also after a reload). When the engine does not place it (under 144 columns unasked), one transcript line gives the reason and says to press ▸ details or type /pb.
 - The band uses the pane's colours: the current step in the accent `#39c5cf` with bold, the TDD phase word (RED, GREEN, REFACTOR) in its phase colour, needs-you yellow and bold, a stop red. Nothing else in it is coloured.
+- The band leads with the goal: its gist, bold as the pane's GOAL, on its own row above the step row, from the first ledger through the end of the run. The band is two rows at most. The gist is whole when it fits, else cut at a clause break, else a word, never with "…".
 
 ### Added
 

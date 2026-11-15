@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { BAND, LEDGER, ROOT, joinLit } from './testing/band'
+import { BAND, LEDGER, ROOT, isGoalRow, joinLit } from './testing/band'
 import { PANE, paneLines, replay, setupReplay, type Rig, type Step } from './testing/replay'
 import gOpen1 from './fixtures/replay/g-open-1'
 import probe2 from './fixtures/replay/probe-2'
@@ -28,7 +28,8 @@ const IDLE_TEXT = 'Pairing Buddy · idle · /pb for details'
 const quietBand = (shown: string[]) => (shown.length === 1 && /^Pairing Buddy · (idle|last run finished|done · ready for your next task|run open|all steps done|between steps · next: [^·]+) ?(· \/pb( for details)?)?$/.test(shown[0]) ? shown : [IDLE_TEXT])
 const DRAWN_AROUND_SEGMENTS = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details' || text.startsWith(' │ /pb')
 // The band's segment texts: what is drawn without the separators, the gap, the details button text and the hint.
-const texts = (step: Step) => joinLit(step.texts).map(node => node.text).filter(text => !DRAWN_AROUND_SEGMENTS(text))
+// The goal row above them is left out; colour-means-one-thing-in-the-band reads every node.
+const texts = (step: Step) => joinLit(step.texts.filter(node => !isGoalRow(node))).map(node => node.text).filter(text => !DRAWN_AROUND_SEGMENTS(text))
 const paneTexts = (step: { pane: Step['texts'] }) => step.pane.map(node => node.text)
 // The unit's start as the poller keeps it: the earliest run start the ledgers served so far gave.
 function sinceTracker() {
@@ -79,7 +80,7 @@ test("band at each recorded step, in time order, shows the design's segments whi
     shown.push([step.t, texts(step)])
 
     expect(texts(step), `band at t=${step.t}`).toEqual(expected)
-    if (!active) expect(step.texts[0].props.dimColor, `idle text at t=${step.t} is dim`).toBe(true)
+    if (!active) expect(step.texts.filter(node => !isGoalRow(node))[0].props.dimColor, `idle text at t=${step.t} is dim`).toBe(true)
   }
 
   expect(shown.length, 'the recording was replayed').toBeGreaterThan(10)

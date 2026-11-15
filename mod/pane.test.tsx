@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { plainName } from '../shared-node/plain-names.mjs'
-import { BAND, bandTexts, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, texts, type Served } from './testing/band'
+import { BAND, bandTexts, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, bandRowTexts, texts, type Served } from './testing/band'
 import { PANE, dismissPane, paneLines, paneTexts } from './testing/replay'
 import { PANE_ID } from './pane-open'
 import { ACCENT_COLOUR } from './pane'
@@ -50,7 +50,7 @@ test('the band\'s width budget subtracts the details button', async ($, on) => {
 
   const fitted = async (bodyColumns: number) => {
     const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns }, surface: 'terminal' })
-    const segments = await texts(band)
+    const segments = await bandRowTexts(band)
     const button = (await band.find({ type: 'Button', key: 'details' }))!.text!
     await band.unmount()
     return { segments, button }
@@ -102,15 +102,15 @@ test('with the band mounted, a ledger that goes from idle to an active stage cha
 
   // The one mount: `band` is the same handle before and after, so the redraw needs no remount.
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect(await texts(band), 'with no active stage the band is the dim idle text').toEqual([IDLE])
+  expect(await bandRowTexts(band), 'with no active stage the band is the dim idle text').toEqual([IDLE])
 
   served.ledger = JSON.stringify(SNAPSHOT_RUNNING)
-  expect(await texts(band), 'a changed ledger is not read by the render itself').toEqual([IDLE])
+  expect(await bandRowTexts(band), 'a changed ledger is not read by the render itself').toEqual([IDLE])
   await clock.advance(POLL_MS - 1)
-  expect(await texts(band), 'one ms before the interval the band is still idle').toEqual([IDLE])
+  expect(await bandRowTexts(band), 'one ms before the interval the band is still idle').toEqual([IDLE])
 
   await clock.advance(1)
-  const after = await texts(band)
+  const after = await bandRowTexts(band)
   expect(after.some(text => text.includes(plainName('code-scenarios'))), `the poll reads the new ledger and the band redraws: ${JSON.stringify(after)}`).toBe(true)
   await band.unmount()
 })

@@ -153,15 +153,24 @@ export function joinLit<T extends { text: string; props: Record<string, unknown>
   return joined
 }
 
+// The band's first row, the goal's gist: bold and uncoloured, as the pane's GOAL (the done text is bold too, but names Pairing
+// Buddy). The helpers that read the band's step row leave it out; a test of the goal reads it on its own.
+export const isGoalRow = (node: { type?: string; text?: string; props?: Record<string, unknown> }): boolean =>
+  (node.type === undefined || node.type === 'Text') && node.props?.bold === true && node.props?.color === undefined && node.props?.dimColor !== true && !(node.text ?? '').startsWith('Pairing Buddy')
+
 // The text of every Text node on a mounted surface, in order, without the band's separator rule.
 export const texts = async (surface: any) =>
   joinLit((await surface.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node))).map((node: any) => node.text as string)
 
-// The terminal band as drawn now: mounts it, collects its texts and unmounts it.
+// The band's step row on a mounted surface: its texts, without the rule and the goal row above it.
+export const bandRowTexts = async (surface: any) =>
+  joinLit((await surface.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node))).map((node: any) => node.text as string)
+
+// The terminal band's step row as drawn now: mounts it, collects its texts and unmounts it. The goal row is left out.
 // Optional props merge into the band's props, for example { bodyColumns: 200 } for a wide terminal.
 export async function bandTexts($: any, props: Record<string, unknown> = {}): Promise<string[]> {
   const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, ...props }, surface: 'terminal' })
-  const shown = await texts(band)
+  const shown = await bandRowTexts(band)
   await band.unmount()
   return shown
 }

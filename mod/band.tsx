@@ -1,5 +1,5 @@
 import { fitBand, SEPARATOR } from '../shared-node/glance.mjs'
-import { DONE_WORDS } from '../shared-node/end-state.mjs'
+import { DONE_WORDS, goalGist } from '../shared-node/end-state.mjs'
 import { PHASES } from '../shared-node/labels.mjs'
 import { ACCENT_COLOUR, PHASE_COLOURS } from './pane'
 import type { Segment, Tags } from './view'
@@ -21,6 +21,13 @@ const rule = (columns: number) => '─'.repeat(columns > 0 ? columns : RULE_FALL
 
 // The button and the space before it are always reserved; a hint (its separator and a trailing space) only when one is given.
 export const bandColumns = (columns: number, hint: string = '') => columns - CONTROL_WIDTH - DETAILS.length - 1 - (hint ? SEPARATOR.length + hint.length + 1 : 0)
+
+// The goal's gist for the band's first row: the whole goal when it fits beside the [-] control, else cut at the last clause
+// break, else the last word, that fits (never with "…"); undefined while no run names its goal. No room known cuts nothing.
+export function bandGoal(goal: string | undefined, columns: number) {
+  if (!goal || goal === '—') return undefined
+  return goalGist(goal.trim().replace(/\s+/g, ' '), columns > 0 ? columns - CONTROL_WIDTH : 0)
+}
 
 export const OPENED_DETAILS = 'needs you · opened details'
 
@@ -44,8 +51,9 @@ function segmentTexts(Text: Tags['Text'], segment: Segment) {
 }
 
 // While a stage is active, only the segments that fit beside the details button; otherwise one dim "idle".
-export function Band({ Box, Text, Button, band, columns, running, waiting, opened, ended, done, between, onDetails }: Tags & {
+export function Band({ Box, Text, Button, band, goal, columns, running, waiting, opened, ended, done, between, onDetails }: Tags & {
   band: Segment[]
+  goal?: string
   columns: number
   running: boolean
   waiting?: boolean
@@ -66,10 +74,13 @@ export function Band({ Box, Text, Button, band, columns, running, waiting, opene
   const idleText = labelled
     ? [`${labelled}${IDLE_SEPARATOR}${HINT}`, `${labelled}${IDLE_SEPARATOR}${SHORT_HINT}`, labelled].find(text => text.length <= room) ?? labelled
     : ended ? (done ? DONE : ENDED) : IDLE
+  // The goal leads on its own row, so the step below it stays where the eye learnt to find it: two rows at most.
+  const gist = bandGoal(goal, columns)
 
   return (
     <Box flexDirection="column">
     <Text key="rule" dimColor>{rule(columns)}</Text>
+    {gist && <Text key="goal" bold wrap="truncate-end">{gist}</Text>}
     <Box flexShrink={1}>
       {shown
         ? shown.flatMap((segment: Segment, i: number) => [
