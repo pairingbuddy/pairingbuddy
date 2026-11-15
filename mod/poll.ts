@@ -2,7 +2,7 @@ import type { EngineInterface, PluginOptions } from 'claude-code'
 import { pollInputs, type Polled } from './inputs'
 import { alertOn } from './alert'
 import { runStart } from '../shared-node/glance.mjs'
-import { codeRunOf } from '../shared-node/end-state.mjs'
+import { codeRunOf, isUnitDone } from '../shared-node/end-state.mjs'
 import type { CodeRun } from './inputs'
 
 export const POLL_MS = 1000
@@ -50,6 +50,14 @@ function unitRecord(state: PollerState, polled: Polled): { codeRun: CodeRun | nu
   return { codeRun: record.codeRun, prUrl: record.prUrl }
 }
 
+// The code run whose end left nothing to do, by its id, or null: no run is live, its task was signed off, and no unit is open
+// that would still publish (pb publish closes it). The done alert fires on it once.
+function doneRunOf(polled: Polled & { codeRun: CodeRun | null; prUrl: string | null }): string | null {
+  const { ledger, codeRun, unit, prUrl } = polled
+  const done = isUnitDone({ live: Boolean(ledger), codeRun, unitOpen: unit !== null, pr: prUrl ? { url: prUrl } : undefined })
+  return done ? (codeRun?.runId ?? codeRun?.task ?? 'done') : null
+}
+
 export type PollerState = { started: boolean; polling: boolean; unit: UnitStart; record: UnitRecord }
 export const newPollerState = (): PollerState => ({ started: false, polling: false, unit: null, record: null })
 
@@ -66,7 +74,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
       const polled = { ...read, since: unitStart(state, read), ...unitRecord(state, read) }
       await $.state.set(INPUTS, polled)
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.
-      await alertOn($, polled.ledger, options)
+      await alertOn($, polled.ledger, options, doneRunOf(polled))
       // The last ledger read is kept as the snapshot; a new one overwrites it, and a gone ledger leaves it.
       if (polled.ledger) {
         await $.state.set(LAST_RUN, polled)

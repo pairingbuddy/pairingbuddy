@@ -189,6 +189,9 @@ function prOutcome(pr) {
   return Object.hasOwn(NOT_OPENED, pr?.result ?? "") ? NOT_OPENED[pr.result] : undefined;
 }
 
+// The one wording for a unit done with nothing left to do, shared by the band and the status line.
+export const DONE_WORDS = "done · ready for your next task";
+
 // The unit's work is over with nothing left to run: no run is live, the task was signed off, and either the pull request's
 // fate is known or no unit is open that would still publish.
 export function isUnitDone({ live = false, codeRun, unitOpen = false, pr } = {}) {
