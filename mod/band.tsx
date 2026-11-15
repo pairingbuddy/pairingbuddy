@@ -7,10 +7,8 @@ import type { Segment, Tags } from './view'
 const HINT = '/pb for details'
 const SHORT_HINT = '/pb'
 const IDLE_SEPARATOR = ' · '
-const IDLE = `Pairing Buddy · idle${IDLE_SEPARATOR}${HINT}`
-const ENDED = `Pairing Buddy · last run finished${IDLE_SEPARATOR}${HINT}`
-// The unit is done with nothing left to do: STATUS's done head leads, then the call to action, plain and not dim.
-const DONE_REST = `${STATUS_LOOKS.done.sep}${READY}${IDLE_SEPARATOR}${HINT}`
+const IDLE = 'Pairing Buddy · idle'
+const ENDED = 'Pairing Buddy · last run finished'
 export const DETAILS = '▸ details'
 const RULE_FALLBACK_WIDTH = 40
 // The pane's [-] control sits beside the band row, so the row gets this many fewer cells than bodyColumns.
@@ -68,7 +66,17 @@ function segmentTexts(Text: Tags['Text'], segment: Segment) {
   return [<Text key={segment.id} color={segment.tone === 'dim' ? undefined : segment.tone} bold={segment.bold} dimColor={segment.tone === 'dim' ? true : undefined} wrap="truncate-end">{segment.text}</Text>]
 }
 
-// While a stage is active, only the segments that fit beside the details button; otherwise one dim "idle".
+// The band's one quiet line, when no step shows: its head, the words after it, and whether they are dim.
+// Between steps the run is still at work: the working mark leads, then the dim line; the goal row above names the session, so
+// it needs no "Pairing Buddy" label. Done leads with STATUS's done head, then the call to action, plain and not dim.
+function quietLine({ between, ended, done }: { between?: string; ended?: boolean; done?: boolean }): { head?: string; headProps?: Record<string, unknown>; words: string; dim: boolean } {
+  const { working, done: finished } = STATUS_LOOKS
+  if (between) return { head: `${working.bandHead} `, headProps: working.headProps, words: between, dim: true }
+  if (ended && done) return { head: finished.bandHead, headProps: finished.headProps, words: `${finished.sep}${READY}`, dim: false }
+  return { words: ended ? ENDED : IDLE, dim: true }
+}
+
+// While a stage is active or a question waits, only the segments that fit beside the details button; otherwise the quiet line.
 export function Band({ Box, Text, Button, band, goal, columns, running, waiting, opened, ended, done, between, onDetails }: Tags & {
   band: Segment[]
   goal?: string
@@ -86,14 +94,10 @@ export function Band({ Box, Text, Button, band, goal, columns, running, waiting,
   const content = running || waiting ? fitBand(source, bandColumns(columns)) : undefined
   const hint = [HINT, SHORT_HINT].find(candidate => JSON.stringify(fitBand(source, bandColumns(columns, candidate))) === JSON.stringify(content))
   const shown = content
-  // Between steps the run is still at work: the working mark leads, then the same dim line, whose hint gives way first when the
-  // width is short. The goal row above names the session, so the line needs no "Pairing Buddy" label.
-  const working = `${STATUS_LOOKS.working.bandHead} `
-  const room = columns - CONTROL_WIDTH - DETAILS.length - 1 - (between ? working.length : 0)
-  const idleText = between
-    ? [`${between}${IDLE_SEPARATOR}${HINT}`, `${between}${IDLE_SEPARATOR}${SHORT_HINT}`, between].find(text => text.length <= room) ?? between
-    : ended ? ENDED : IDLE
-  const finished = ended && done && !between
+  const quiet = quietLine({ between, ended, done })
+  // The hint gives way first when the width is short; with no width known yet it stays.
+  const room = columns > 0 ? columns - CONTROL_WIDTH - DETAILS.length - 1 - (quiet.head?.length ?? 0) : Infinity
+  const quietText = [`${quiet.words}${IDLE_SEPARATOR}${HINT}`, `${quiet.words}${IDLE_SEPARATOR}${SHORT_HINT}`, quiet.words].find(text => text.length <= room) ?? quiet.words
   // The goal leads on its own row, so the step below it stays where the eye learnt to find it: two rows at most.
   const gist = bandGoal(goal, columns)
 
@@ -107,9 +111,7 @@ export function Band({ Box, Text, Button, band, goal, columns, running, waiting,
             ...(i > 0 ? [<Text key={`sep-${segment.id}`} wrap="truncate-end">{SEPARATOR}</Text>] : []),
             ...segmentTexts(Text, segment),
           ])
-        : finished
-          ? <Box marginRight={1}><Text key="done" wrap="truncate-end" {...STATUS_LOOKS.done.headProps}>{STATUS_LOOKS.done.bandHead}</Text><Text key="done-rest" wrap="truncate-end">{DONE_REST}</Text></Box>
-          : <Box marginRight={1}>{between && <Text key="working" wrap="truncate-end" {...STATUS_LOOKS.working.headProps}>{working}</Text>}<Text dimColor wrap="truncate-end">{idleText}</Text></Box>}
+        : <Box marginRight={1}>{quiet.head && <Text key="head" wrap="truncate-end" {...quiet.headProps}>{quiet.head}</Text>}<Text key="quiet" dimColor={quiet.dim || undefined} wrap="truncate-end">{quietText}</Text></Box>}
       {shown && <Text key="gap"> </Text>}
       <Button key="details" label={DETAILS} onPress={onDetails}>{shown && <Text>{DETAILS}</Text>}</Button>
       {shown && hint && <Text key="hint" wrap="truncate-end">{`${SEPARATOR}${hint} `}</Text>}
