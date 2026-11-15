@@ -33,7 +33,7 @@ test('every-row-is-drawn-in-order-with-a-fixed-label-width-and-a-dash-when-empty
   expect(lines.some(line => /^(LEFT|OFF TRACK|NOW|DONE)\b/.test(line)), 'LEFT, OFF TRACK, NOW and DONE are gone').toBe(false)
 })
 
-test('goal-leads-the-pane-from-the-task-bold-wrapped-onto-two-lines-with-a-rule-under-it', async ($, on) => {
+test('goal-leads-the-pane-from-the-task-bold-wrapped-onto-two-lines', async ($, on) => {
   const rig = setupReplay(on)
   await serve($, rig, { [LEDGER]: SNAPSHOT_RUNNING })
 
@@ -48,8 +48,45 @@ test('goal-leads-the-pane-from-the-task-bold-wrapped-onto-two-lines-with-a-rule-
   ])
   const goal = drawn.filter((node: any) => ['Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it', 'should return 90.'].includes(node.text))
   expect(goal.map((node: any) => node.props.bold), 'the goal is bold').toEqual([true, true])
-  const at = drawn.findIndex((node: any) => node.text === 'should return 90.')
-  expect(drawn[at + 1]?.props?.dimColor === true && /^─{3,}$/.test(drawn[at + 1]?.text ?? ''), `a dim rule sits under the goal: ${JSON.stringify(drawn.map((node: any) => node.text))}`).toBe(true)
+})
+
+// The pane's Texts as drawn on the terminal, in order.
+async function paneNodes($: any): Promise<{ text: string; props: Record<string, unknown> }[]> {
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const drawn = await pane.findAll({ type: 'Text' })
+  await pane.unmount()
+  return drawn
+}
+const isRule = (node: { text: string; props: Record<string, unknown> }) => node.props.dimColor === true && /^─{3,}$/.test(node.text)
+
+test('the-first-glance-is-goal-then-status-with-the-rule-under-them', async ($, on) => {
+  const rig = setupReplay(on)
+  await serve($, rig, { [LEDGER]: SNAPSHOT_RUNNING })
+
+  const drawn = await paneNodes($)
+  const rule = drawn.findIndex(isRule)
+  const labels = drawn.map(node => node.text.trim()).filter(text => ROWS.includes(text))
+
+  expect(labels.slice(0, 2), 'GOAL then STATUS lead').toEqual(['GOAL', 'STATUS'])
+  expect(drawn.findIndex(node => node.text.trim() === 'STATUS'), `STATUS sits above the rule: ${JSON.stringify(drawn.map(node => node.text))}`).toBeLessThan(rule)
+  expect(drawn.findIndex(node => node.text.trim() === 'PR'), 'the details start under the rule').toBeGreaterThan(rule)
+  expect(drawn.filter(isRule).length, 'one rule').toBe(1)
+})
+
+test('the-first-glance-labels-are-bold-and-the-detail-labels-dim-with-their-values-at-full-strength', async ($, on) => {
+  const rig = setupReplay(on)
+  await serve($, rig, { [LEDGER]: SNAPSHOT_RUNNING })
+
+  const drawn = await paneNodes($)
+  const labelOf = (name: string) => drawn.find(node => node.text === name.padEnd(LABEL_WIDTH))!
+
+  for (const name of ['GOAL', 'STATUS']) {
+    expect(labelOf(name).props.bold, `${name} is in the first glance: bold`).toBe(true)
+    expect(labelOf(name).props.dimColor, `${name} is not dim`).toBeUndefined()
+  }
+  for (const name of ROWS.slice(2)) expect(labelOf(name).props.dimColor, `${name} is a detail: its label is dim`).toBe(true)
+  const looping = drawn[drawn.indexOf(labelOf('LOOPING')) + 1]
+  expect([looping.text, looping.props.dimColor], 'a detail value stays readable, not dim').toEqual(['no', undefined])
 })
 
 const UNIT = '.pairingbuddy/run/unit.json'
