@@ -82,12 +82,12 @@ export async function seenInEarlierSession(ledger: Parameters<typeof alertOn>[1]
 
 // The engine beneath the mod (band.tsx's `engine`), plus what the alert reaches for: the sound it plays and
 // the mod's own store, kept in memory. Every answer defaults to success. Registered before `$` is first touched.
-// Every recorded request to the engine is under `calls`: opened, closed, registered, played, status and toasted.
+// Every recorded request to the engine is under `calls`: opened, closed, registered, played, status, toasted and notified.
 // The pane also opens by itself once per run when the run starts; an alert test is about the alert's own open, so the store
 // says the pane already opened for the shared ledgers' run (they name no runId) unless the test passes startOpened: false.
 export function alertEngine(on: Function, { ledger = SNAPSHOT_RUNNING, seen, play = 'ok', store: storing = 'ok', open = 'ok', startOpened = true }: AlertAnswers = {}) {
   const base = engine(on, ledger, responder(open, PLACED))
-  const calls = { ...base.calls, played: [] as any[], status: [] as any[], toasted: [] as any[] }
+  const calls = { ...base.calls, played: [] as any[], status: [] as any[], toasted: [] as any[], notified: [] as any[] }
   const store = new Map<string, unknown>(seen)
   if (startOpened && !store.has(startOpenedKey(ROOT))) store.set(startOpenedKey(ROOT), runOf(SNAPSHOT_RUNNING as any))
   const stored = (action: 'get' | 'set' | 'delete' | 'keys', ok: (request: any) => unknown) =>
@@ -103,6 +103,10 @@ export function alertEngine(on: Function, { ledger = SNAPSHOT_RUNNING, seen, pla
   on('ui.status', (_: unknown, e: any) => {
     calls.status.push(e)
     return { value: undefined }
+  })
+  on('ui.notify', (_: unknown, e: any) => {
+    calls.notified.push(e)
+    return { value: { isSent: true, channel: 'terminal_bell' } }
   })
   on('store.get', (_: unknown, e: { key: string }) => stored('get', () => ({ value: store.get(e.key) }))(e))
   on('store.set', (_: unknown, e: { key: string; value: unknown }) =>

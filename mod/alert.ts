@@ -41,6 +41,7 @@ export async function alertOn($: EngineInterface, ledger: Ledger | null, options
   // Read as the alert fires; an absent option means on.
   if (options.alertSound !== false) quietly(() => $.audio.play(SOUND))
   quietly(() => setStatus($, event))
+  if (!('ledger' in event)) quietly(() => $.ui.notify(DONE_WORDS, { title: NOTICE_TITLE }))
   quietly(() => markStatusSet($, event))
   quietly(() => $.state.set(OPENED, false).then(() => openAndRecord($)))
 }
@@ -123,8 +124,12 @@ async function anyUnseen($: EngineInterface, event: Event) {
   }
 }
 
+// Claude Code draws every plugin status line as a warning ("⚠ pairingbuddy: …", in the warning colour), and $.ui.status takes no
+// mark or colour. That fits a question or a stop; done gets no status line and says so through a native notice instead.
+const NOTICE_TITLE = 'Pairing Buddy'
+
 function statusWords(event: Event) {
-  if (!('ledger' in event)) return DONE_WORDS
+  if (!('ledger' in event)) return null
   const { ledger } = event
   if (ledger.stop) return stopLine(ledger.stop)
   const gate = ledger.needsHuman?.gate
@@ -137,7 +142,7 @@ function setStatus($: EngineInterface, event: Event) {
   if (words) return $.ui.status(words)
 }
 
-// Clears the status line once, when it is set and its cause is gone: the ledger is gone (and no done run stands), a new run began, or nothing is pending and no stop stands. A line never set is never cleared. The run it was set for is kept in mod state, which a new session starts without.
+// Clears the status line once, when it is set and its cause is gone: the ledger is gone (a done run sets no line), a new run began, or nothing is pending and no stop stands. A line never set is never cleared. The run it was set for is kept in mod state, which a new session starts without.
 async function clearStaleStatus($: EngineInterface, event: Event | null) {
   try {
     const setFor = (await $.state.get(STATUS_SET)).value

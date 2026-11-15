@@ -1,5 +1,7 @@
 // Scenario alert-done (sixth watched run): when the unit's work is over with nothing left to do, the mod alerts as it does for
-// a question (sound, status line, pane), once per run end, so a finished session does not sit idle unnoticed.
+// a question, once per run end, so a finished session does not sit idle unnoticed. Since the seventh watched run it does so
+// with the sound, the pane, the band and a native notice, never the status line: Claude Code draws every plugin status line
+// as a warning ("⚠ pairingbuddy: …"), which read as "something went wrong".
 import { expect, mock, test } from 'claude-code/testing'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, bandTexts, start } from './testing/band'
 import { setupReplay } from './testing/replay'
@@ -18,7 +20,7 @@ const DONE_WORDS = 'done · ready for your next task'
 const UNIT = '.pairingbuddy/run/unit.json'
 const UNIT_FILE = { unit: null, plan: null, tracer: null, branch: 'fix/discount', base: 'main', baseSha: 'abc', tasks: [{ stages: ['intake', 'code-scenarios', 'code-tdd', 'code-safety-net'] }], commits: [] }
 
-test('done-alerts-once-with-sound-status-and-pane', async ($, on) => {
+test('done-alerts-once-with-sound-notice-and-pane-and-no-status-line', async ($, on) => {
   const clock = mock.clock(on, { now: 0 })
   const run = alertEngine(on, { ledger: SIGNED_OFF })
   await start($)
@@ -32,7 +34,8 @@ test('done-alerts-once-with-sound-status-and-pane', async ($, on) => {
   for (let poll = 0; poll < 3; poll++) await clock.advance(POLL_MS)
 
   expect(run.calls.played.length, 'the end plays one sound').toBe(1)
-  expect(run.calls.status.map(status => status.text), 'the status line says it is done').toEqual([DONE_WORDS])
+  expect(run.calls.status, 'no status line: the engine draws it as a warning').toEqual([])
+  expect(run.calls.notified.map(notice => [notice.text, notice.title]), 'one native notice says it is done').toEqual([[DONE_WORDS, 'Pairing Buddy']])
   expect(run.calls.opened.slice(atStart).map(open => open.id), 'the done alert opens the pane once').toEqual([PANE_ID])
 })
 
@@ -85,5 +88,5 @@ test('no-done-alert-while-the-open-unit-still-publishes-then-one-once-it-closes'
   rig.served.delete(`${ROOT}/${UNIT}`)
   for (let poll = 0; poll < 3; poll++) await rig.clock.advance(POLL_MS)
   expect(played.length, 'nothing is left to do: one sound').toBe(1)
-  expect(statuses, 'the status line says it is done').toEqual([DONE_WORDS])
+  expect(statuses, 'no status line for done').toEqual([])
 })
