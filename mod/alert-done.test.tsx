@@ -3,7 +3,7 @@
 // with the sound, the pane, the band and a native notice, never the status line: Claude Code draws every plugin status line
 // as a warning ("⚠ pairingbuddy: …"), which read as "something went wrong".
 import { expect, mock, test } from 'claude-code/testing'
-import { LEDGER, ROOT, SNAPSHOT_RUNNING, bandTexts, start } from './testing/band'
+import { BAND, LEDGER, ROOT, SNAPSHOT_RUNNING, bandTexts, isGoalRow, isSeparatorRule, start } from './testing/band'
 import { setupReplay } from './testing/replay'
 import { alertEngine } from './testing/alert'
 import { PANE_ID } from './pane-open'
@@ -49,7 +49,7 @@ test('a-stop-after-the-sign-off-alerts-as-a-stop-never-as-done', async ($, on) =
   expect(run.calls.status.map(status => status.text), 'as a stop').toEqual(['stopped: the commit failed'])
 })
 
-test('the-band-says-done-and-ready-for-the-next-task', async ($, on) => {
+test('the-band-leads-with-done-and-ready-for-the-next-task', async ($, on) => {
   const clock = mock.clock(on, { now: 0 })
   const run = alertEngine(on, { ledger: SIGNED_OFF })
   await start($)
@@ -57,10 +57,13 @@ test('the-band-says-done-and-ready-for-the-next-task', async ($, on) => {
   run.serve(null)
   await clock.advance(POLL_MS)
 
-  const shown = await bandTexts($)
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const [head, rest] = (await band.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node))
+  await band.unmount()
 
-  expect(shown.some(text => text.startsWith(`Pairing Buddy · ${DONE_WORDS}`)), `the band says it is done: ${JSON.stringify(shown)}`).toBe(true)
-  expect(shown.some(text => text.includes('last run finished')), 'not the vague "last run finished"').toBe(false)
+  expect([head.text, head.props.bold, head.props.color, head.props.inverse], 'the band leads with STATUS\'s done head: bold, uncoloured').toEqual(['✓ DONE', true, undefined, undefined])
+  expect([rest.text, rest.props.dimColor, rest.props.bold], 'the call to action follows, plain: not dim, not bold').toEqual([' · ready for your next task · /pb for details', undefined, undefined])
+  expect((await bandTexts($)).some(text => text.includes('last run finished')), 'not the vague "last run finished"').toBe(false)
 })
 
 test('no-done-alert-while-the-open-unit-still-publishes-then-one-once-it-closes', async ($, on) => {

@@ -177,7 +177,7 @@ function join<T extends { text: string; props: Record<string, unknown> }>(nodes:
 // The band's first row, the goal's gist: bold and uncoloured, as the pane's GOAL (the done text is bold too, but names Pairing
 // Buddy). The helpers that read the band's step row leave it out; a test of the goal reads it on its own.
 export const isGoalRow = (node: { type?: string; text?: string; props?: Record<string, unknown> }): boolean =>
-  (node.type === undefined || node.type === 'Text') && node.props?.bold === true && node.props?.color === undefined && node.props?.dimColor !== true && !(node.text ?? '').startsWith('Pairing Buddy')
+  (node.type === undefined || node.type === 'Text') && node.props?.bold === true && node.props?.color === undefined && node.props?.dimColor !== true && !(node.text ?? '').startsWith('Pairing Buddy') && !isStatusHead({ text: node.text ?? '', props: node.props ?? {} })
 
 // The text of every Text node on a mounted surface, in order, without the band's separator rule.
 export const texts = async (surface: any) =>

@@ -1,5 +1,5 @@
 import { fitBand, SEPARATOR } from '../shared-node/glance.mjs'
-import { DONE_WORDS, goalGist } from '../shared-node/end-state.mjs'
+import { READY, goalGist } from '../shared-node/end-state.mjs'
 import { PHASES } from '../shared-node/labels.mjs'
 import { ACCENT_COLOUR, PHASE_COLOURS, STATUS_LOOKS } from './pane'
 import type { Segment, Tags } from './view'
@@ -9,8 +9,8 @@ const SHORT_HINT = '/pb'
 const IDLE_SEPARATOR = ' · '
 const IDLE = `Pairing Buddy · idle${IDLE_SEPARATOR}${HINT}`
 const ENDED = `Pairing Buddy · last run finished${IDLE_SEPARATOR}${HINT}`
-// The unit is done with nothing left to do: said plainly and not dim, as the alert says it.
-const DONE = `Pairing Buddy · ${DONE_WORDS}${IDLE_SEPARATOR}${HINT}`
+// The unit is done with nothing left to do: STATUS's done head leads, then the call to action, plain and not dim.
+const DONE_REST = `${STATUS_LOOKS.done.sep}${READY}${IDLE_SEPARATOR}${HINT}`
 export const DETAILS = '▸ details'
 const RULE_FALLBACK_WIDTH = 40
 // The pane's [-] control sits beside the band row, so the row gets this many fewer cells than bodyColumns.
@@ -91,7 +91,8 @@ export function Band({ Box, Text, Button, band, goal, columns, running, waiting,
   const labelled = between ? `Pairing Buddy · ${between}` : undefined
   const idleText = labelled
     ? [`${labelled}${IDLE_SEPARATOR}${HINT}`, `${labelled}${IDLE_SEPARATOR}${SHORT_HINT}`, labelled].find(text => text.length <= room) ?? labelled
-    : ended ? (done ? DONE : ENDED) : IDLE
+    : ended ? ENDED : IDLE
+  const finished = ended && done && !labelled
   // The goal leads on its own row, so the step below it stays where the eye learnt to find it: two rows at most.
   const gist = bandGoal(goal, columns)
 
@@ -105,7 +106,9 @@ export function Band({ Box, Text, Button, band, goal, columns, running, waiting,
             ...(i > 0 ? [<Text key={`sep-${segment.id}`} wrap="truncate-end">{SEPARATOR}</Text>] : []),
             ...segmentTexts(Text, segment),
           ])
-        : <Box marginRight={1}><Text dimColor={!(ended && done)} bold={ended && done ? true : undefined} wrap="truncate-end">{idleText}</Text></Box>}
+        : finished
+          ? <Box marginRight={1}><Text key="done" wrap="truncate-end" {...STATUS_LOOKS.done.headProps}>{STATUS_LOOKS.done.bandHead}</Text><Text key="done-rest" wrap="truncate-end">{DONE_REST}</Text></Box>
+          : <Box marginRight={1}><Text dimColor wrap="truncate-end">{idleText}</Text></Box>}
       {shown && <Text key="gap"> </Text>}
       <Button key="details" label={DETAILS} onPress={onDetails}>{shown && <Text>{DETAILS}</Text>}</Button>
       {shown && hint && <Text key="hint" wrap="truncate-end">{`${SEPARATOR}${hint} `}</Text>}
