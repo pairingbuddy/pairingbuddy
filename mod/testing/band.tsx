@@ -1,3 +1,6 @@
+import { PHASES } from '../../shared-node/labels.mjs'
+import { ACCENT_COLOUR, PHASE_COLOURS } from '../pane'
+
 // Shared by the mod's tests. It lives outside the `*.test.tsx` pattern, so `claude plugin test` does
 // not run it, and outside register.tsx's imports, so it is not part of the mod itself.
 
@@ -137,9 +140,22 @@ export function engine(on: Function, ledger: unknown = SNAPSHOT_RUNNING, open: (
 export const isSeparatorRule = (node: { text?: string; props?: Record<string, unknown> }): boolean =>
   node.props?.dimColor === true && /^[─━═\-_—]{3,}$/.test((node.text ?? '').trim())
 
+// The band draws its lit step in two Texts, the phase word in its colour then the rest in the accent ('RED', ' · test 1 of 2');
+// read as text, they are the one segment they are. Nodes in drawing order; anything else is left as it is.
+export function joinLit<T extends { text: string; props: Record<string, unknown> }>(nodes: T[]): T[] {
+  const joined: T[] = []
+  for (const node of nodes) {
+    const last = joined.at(-1)
+    const afterPhase = last && PHASES.includes(last.text) && last.props.color === PHASE_COLOURS[last.text] && node.props.color === ACCENT_COLOUR
+    if (afterPhase) joined[joined.length - 1] = { ...last, text: `${last.text}${node.text}` }
+    else joined.push(node)
+  }
+  return joined
+}
+
 // The text of every Text node on a mounted surface, in order, without the band's separator rule.
 export const texts = async (surface: any) =>
-  (await surface.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node)).map((node: any) => node.text as string)
+  joinLit((await surface.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node))).map((node: any) => node.text as string)
 
 // The terminal band as drawn now: mounts it, collects its texts and unmounts it.
 // Optional props merge into the band's props, for example { bodyColumns: 200 } for a wide terminal.

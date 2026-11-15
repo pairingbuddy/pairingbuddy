@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { BAND, LEDGER, ROOT } from './testing/band'
+import { BAND, LEDGER, ROOT, joinLit } from './testing/band'
 import { PANE, paneLines, replay, setupReplay, type Rig, type Step } from './testing/replay'
 import gOpen1 from './fixtures/replay/g-open-1'
 import probe2 from './fixtures/replay/probe-2'
@@ -28,7 +28,7 @@ const IDLE_TEXT = 'Pairing Buddy · idle · /pb for details'
 const quietBand = (shown: string[]) => (shown.length === 1 && /^Pairing Buddy · (idle|last run finished|done · ready for your next task|run open|all steps done|between steps · next: [^·]+) ?(· \/pb( for details)?)?$/.test(shown[0]) ? shown : [IDLE_TEXT])
 const DRAWN_AROUND_SEGMENTS = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details' || text.startsWith(' │ /pb')
 // The band's segment texts: what is drawn without the separators, the gap, the details button text and the hint.
-const texts = (step: Step) => step.texts.map(node => node.text).filter(text => !DRAWN_AROUND_SEGMENTS(text))
+const texts = (step: Step) => joinLit(step.texts).map(node => node.text).filter(text => !DRAWN_AROUND_SEGMENTS(text))
 const paneTexts = (step: { pane: Step['texts'] }) => step.pane.map(node => node.text)
 // The unit's start as the poller keeps it: the earliest run start the ledgers served so far gave.
 function sinceTracker() {
@@ -206,13 +206,14 @@ test('across band and pane text for the replayed recordings, no rendered string 
 const MEANING_COLOURS = ['warning', 'error']
 const isLitNow = (node: { text: string; props: Record<string, unknown> }) => node.text.startsWith('▸ ') && node.props.color === ACCENT_COLOUR && node.props.bold === true
 
-test('colour-means-one-thing: across every drawn Text in band and pane over the replay recordings, only the lit phase, the current step and test, needs-you and a stop are coloured', async ($, on) => {
+// The band is held to the same code by its own test below (colour-means-one-thing-in-the-band).
+test('colour-means-one-thing: across every drawn Text in the pane over the replay recordings, only the lit phase, the current step and test, needs-you and a stop are coloured', async ($, on) => {
   const rig = setupReplay(on)
   const colours = new Set<string>()
   let nodes = 0
   for (const [name, recording] of [['g-open-1', gOpen1], ['probe-2', probe2]] as const) {
     for (const step of await drawn($, rig, recording, TESTS[name])) {
-      for (const node of [...step.texts, ...step.pane]) {
+      for (const node of step.pane) {
         nodes++
         const color = node.props.color
         if (color === undefined) continue
@@ -225,8 +226,43 @@ test('colour-means-one-thing: across every drawn Text in band and pane over the 
     }
   }
 
-  expect(nodes, 'the band and pane drew text to check').toBeGreaterThan(100)
+  expect(nodes, 'the pane drew text to check').toBeGreaterThan(100)
   expect([...colours], 'the recordings drew the phases and the accent').toEqual(expect.arrayContaining([PHASE_COLOURS.RED, PHASE_COLOURS.GREEN, ACCENT_COLOUR]))
+})
+
+// The band uses the pane's code, so it trains the eye: where the run is now in the accent with bold, the TDD phase word in its
+// phase colour, needs-you in yellow with bold, a stop in red. Nothing else in the band is coloured.
+test('colour-means-one-thing-in-the-band: the step in the accent, the phase word in its colour, needs-you and a stop, nothing else', async ($, on) => {
+  const rig = setupReplay(on)
+  const seen = { phase: new Set<string>(), accent: 0 }
+  for (const [name, recording] of [['g-open-1', gOpen1], ['probe-2', probe2]] as const) {
+    for await (const step of replay($, rig, recording, { files: testsFile(TESTS[name]) })) {
+      const active = (step.ledger as any)?.stage?.status === 'active'
+      const where = active ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now, testsComplete: true }).band, bandColumns(80)).find((segment: { id: string }) => segment.id === 'where')?.text : undefined
+      for (const node of step.texts) {
+        const { color, bold } = node.props
+        if (color === undefined) continue
+        const at = `${name} t=${step.t}: "${node.text}"`
+        if (PHASES.includes(node.text)) {
+          expect(color, `${at} is its phase's colour`).toBe(PHASE_COLOURS[node.text])
+          expect(bold, `${at} is bold, as the pane's lit phase`).toBe(true)
+          expect(where?.startsWith(node.text), `${at} is the phase of the step the band names`).toBe(true)
+          seen.phase.add(node.text)
+        } else if (color === ACCENT_COLOUR) {
+          expect(bold, `${at} in the accent is bold`).toBe(true)
+          expect(where !== undefined && where.endsWith(node.text), `${at} is the step the band names (${where})`).toBe(true)
+          seen.accent++
+        } else {
+          expect(/^(needs you|you):/.test(node.text), `${at} is coloured ${JSON.stringify(color)}`).toBe(true)
+          expect(MEANING_COLOURS, `${at} is needs-you or a stop`).toContain(color)
+        }
+      }
+      if (where) expect(step.texts.some(node => node.props.color === ACCENT_COLOUR), `${name} t=${step.t}: the step "${where}" is lit`).toBe(true)
+    }
+  }
+
+  expect([...seen.phase], 'the band drew phase words').toEqual(expect.arrayContaining(['RED', 'GREEN']))
+  expect(seen.accent, 'the band drew the step in the accent').toBeGreaterThan(0)
 })
 
 test('colour-means-one-thing-in-a-review: over the s4-rollback replay, a lens that has finished but not yet returned is not drawn in a colour', async ($, on) => {

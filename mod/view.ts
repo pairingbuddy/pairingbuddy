@@ -10,7 +10,8 @@ import { doneStatus, endRows, goalOf, isUnitDone, prTitleOf, safetyNetRound } fr
 import type { Inputs, Ledger } from './inputs'
 
 export type Tone = 'error' | 'warning' | 'dim'
-export type Segment = { id: string; text: string; standing?: boolean; tone?: Tone; bold?: boolean }
+// lit: where the run is now, drawn as the pane draws its current step (the accent with bold, the phase word in its colour).
+export type Segment = { id: string; text: string; standing?: boolean; tone?: Tone; bold?: boolean; lit?: boolean }
 export type Rows = Record<'now' | 'spent' | 'looping', string>
 export type RowTones = Partial<Record<keyof Rows | 'status', Tone>>
 // The kit's own types for the elements a render hook draws with.
@@ -58,13 +59,13 @@ const NO_RUN_ROWS: Rows = { now: 'no run', spent: EMPTY, looping: EMPTY }
 
 const isUnknown = (text: string) => text === '-' || text === EMPTY || /unknown$/.test(text)
 
-function bandTone(segment: Segment, ledger: NonNullable<Ledger>): Pick<Segment, 'tone' | 'bold'> {
+function bandTone(segment: Segment, ledger: NonNullable<Ledger>): Pick<Segment, 'tone' | 'bold' | 'lit'> {
   if (segment.id === 'needsYou') {
     if (!segment.standing) return {}
     return ledger.needsHuman?.gate ? { tone: 'warning', bold: true } : { tone: 'error' }
   }
   if (segment.id === 'spent' || isUnknown(segment.text)) return { tone: 'dim' }
-  return {}
+  return segment.id === 'where' ? { lit: true } : {}
 }
 
 const waitingGate = (ledger: NonNullable<Ledger>) => (ledger.stop ? undefined : ledger.needsHuman?.gate || undefined)
