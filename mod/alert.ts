@@ -52,6 +52,33 @@ async function openAndRecord($: EngineInterface) {
   else quietly(() => $.ui.log(`Details pane waits: ${placed?.reason ?? 'no room for it'}. Show it with /pb or a wider terminal.`))
 }
 
+const waitsLine = (reason?: string) => `The Pairing Buddy pane is not shown yet (${reason ?? 'no room for it'}). Press ▸ details in the band, or type /pb, to open it.`
+
+// The mod-store key of the run the pane last opened by itself for, per project.
+export function startOpenedKey(root: string) {
+  return `start-opened:${root}`
+}
+
+// Opens the pane, without the keyboard, once per run when the run is first seen, so a run with no question is not watched
+// through the band alone. The run is recorded before the open, so a dismissed pane is never opened again for it (also after
+// a reload); a store that fails opens nothing, as reopening every poll would undo a dismissal. A standing stop or question is
+// left to the alert, which opens it. Never throws.
+export async function openOnRunStart($: EngineInterface, ledger: Ledger | null) {
+  if (!ledger || typeof ledger !== 'object' || Array.isArray(ledger)) return
+  try {
+    const key = startOpenedKey(await $.session.root())
+    const run = runOf(ledger)
+    if ((await $.store.get(key)) === run) return
+    await $.store.set(key, run)
+    if (ledger.stop || ledger.needsHuman) return
+    const placed = (await openPane($)) as { isPlaced?: boolean; reason?: string } | undefined
+    // Unasked, the engine places a pane only from 144 columns (110 once asked for); else it waits undrawn, so say how to open it.
+    if (!placed?.isPlaced) quietly(() => $.ui.log(waitsLine(placed?.reason)))
+  } catch {
+    // A failed open is dropped; the band's details button stays the way in.
+  }
+}
+
 // The mod-store key of the seen record for a project.
 export function seenKey(root: string) {
   return `alert-seen:${root}`
@@ -62,7 +89,7 @@ const KINDS = ['stop', 'needsHuman', 'done'] as const
 type Seen = { run: string; stop: number | null; needsHuman: number | null; done?: string | null }
 
 // The ledger's own runId; ledgers without one fall back to the plan and task.
-function runOf(ledger: NonNullable<Ledger>) {
+export function runOf(ledger: NonNullable<Ledger>) {
   return ledger.runId ?? `${ledger.plan?.path ?? ''}|${ledger.task ?? ''}`
 }
 

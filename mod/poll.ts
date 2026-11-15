@@ -1,6 +1,6 @@
 import type { EngineInterface, PluginOptions } from 'claude-code'
 import { pollInputs, type Polled } from './inputs'
-import { alertOn } from './alert'
+import { alertOn, openOnRunStart } from './alert'
 import { runStart } from '../shared-node/glance.mjs'
 import { codeRunOf, isUnitDone } from '../shared-node/end-state.mjs'
 import type { CodeRun } from './inputs'
@@ -75,6 +75,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
       await $.state.set(INPUTS, polled)
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.
       await alertOn($, polled.ledger, options, doneRunOf(polled))
+      await openOnRunStart($, polled.ledger)
       // The last ledger read is kept as the snapshot; a new one overwrites it, and a gone ledger leaves it.
       if (polled.ledger) {
         await $.state.set(LAST_RUN, polled)

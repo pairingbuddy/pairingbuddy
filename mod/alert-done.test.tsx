@@ -24,6 +24,8 @@ test('done-alerts-once-with-sound-status-and-pane', async ($, on) => {
   await start($)
   await clock.advance(POLL_MS)
   expect(run.calls.played, 'a signed-off run that is still live is not done yet').toEqual([])
+  // The pane opened by itself when the run was first seen; the done alert's open comes after it.
+  const atStart = run.calls.opened.length
 
   // The run ends with no unit open: nothing is left to publish.
   run.serve(null)
@@ -31,7 +33,7 @@ test('done-alerts-once-with-sound-status-and-pane', async ($, on) => {
 
   expect(run.calls.played.length, 'the end plays one sound').toBe(1)
   expect(run.calls.status.map(status => status.text), 'the status line says it is done').toEqual([DONE_WORDS])
-  expect(run.calls.opened.map(open => open.id), 'the pane opens once').toEqual([PANE_ID])
+  expect(run.calls.opened.slice(atStart).map(open => open.id), 'the done alert opens the pane once').toEqual([PANE_ID])
 })
 
 test('a-stop-after-the-sign-off-alerts-as-a-stop-never-as-done', async ($, on) => {

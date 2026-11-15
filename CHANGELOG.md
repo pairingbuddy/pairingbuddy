@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - The pane no longer shows the "Pairing Buddy only watches" footer; it read as false and took a row.
+- The pane opens by itself, without the keyboard, when a run starts: once per run, never again for that run once dismissed (also after a reload). When the engine does not place it (under 144 columns unasked), one transcript line gives the reason and says to press ▸ details or type /pb.
 
 ### Added
 
