@@ -247,17 +247,36 @@ test('all-steps-done-before-task-end', async ($, on) => {
   expect(now, `STATUS never says run open: ${now}`).not.toContain('run open')
 })
 
-test('pane-now-names-what-is-needed', async ($, on) => {
+// STATUS's nodes as drawn: its head, then what follows it.
+async function statusNodes($: any) {
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const drawn = await pane.findAll({ type: 'Text' })
+  await pane.unmount()
+  const at = drawn.findIndex((node: any) => node.text === 'STATUS   ')
+  return { head: drawn[at + 1], rest: drawn[at + 2] }
+}
+
+test('pane-now-names-what-is-needed-in-the-strongest-treatment', async ($, on) => {
   const waiting = { ...AFTER_SCENARIOS, needsHuman: { gate: 'G:scenarios', reason: 'the human decides', seq: 6 } }
-  const run = engine(on, waiting)
+  engine(on, waiting)
   await start($)
 
-  const now = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const node = (await now.findAll({ type: 'Text' })).find((n: any) => n.text.startsWith('needs you'))
-  await now.unmount()
+  const { head, rest } = await statusNodes($)
 
-  expect(nowRow(await paneLines($)), 'STATUS names the gate').toBe('STATUS   needs you · your OK on the scenarios')
-  expect(node?.props.color, 'STATUS is in the warning tone').toBe('warning')
+  expect(nowRow(await paneLines($)), 'STATUS names the gate').toBe('STATUS   ▲ NEEDS YOU · your OK on the scenarios')
+  expect([head.text, head.props.color, head.props.inverse, head.props.bold], 'the head is a yellow block, bold: the one thing not to miss').toEqual(['▲ NEEDS YOU', 'warning', true, true])
+  expect([rest.text, rest.props.color, rest.props.bold, rest.props.inverse], 'what it needs follows in yellow, bold, not a block').toEqual([' · your OK on the scenarios', 'warning', true, undefined])
+})
+
+test('pane-status-says-why-it-stopped-as-strongly-in-red', async ($, on) => {
+  engine(on, { ...SNAPSHOT_RUNNING, stop: { code: 'step-failed', reason: 'the stage failed three times', seq: 3 } })
+  await start($)
+
+  const { head, rest } = await statusNodes($)
+
+  expect(nowRow(await paneLines($)), 'STATUS says why').toBe(`STATUS   ✕ STOPPED · ${plainName('step-failed')}`)
+  expect([head.text, head.props.color, head.props.inverse, head.props.bold], 'the head is a red block, bold').toEqual(['✕ STOPPED', 'error', true, true])
+  expect([rest.text, rest.props.color, rest.props.inverse], 'why follows in red, not a block').toEqual([` · ${plainName('step-failed')}`, 'error', undefined])
 })
 
 const STAGE_STARTED = '2026-11-04T08:19:00.000Z'

@@ -183,7 +183,9 @@ test('after-the-run-looping-and-test-read-a-dash-and-the-last-review-stays', asy
   await rig.clock.advance(POLL_MS * 2)
   const lines = await paneLines($)
 
-  expect(rowOf(lines, 'STATUS'), 'the run is over, without the sign-off').toBe('STATUS   ended · not signed off')
+  expect(rowOf(lines, 'STATUS'), 'the run is over, without the sign-off').toBe('STATUS   ○ ended · not signed off')
+  const { head, rest } = statusOf(await paneNodes($))
+  expect([head.text, head.props.dimColor, head.props.color, rest.text, rest.props.color], 'a quiet state: a dim open mark, the words plain').toEqual(['○', true, undefined, ' ended · not signed off', undefined])
   expect(rowOf(lines, 'LOOPING'), 'after the run LOOPING reads a dash').toBe('LOOPING  —')
   expect(lines.some(line => /^\s+▸ .*\d:\d\d$/.test(line)), 'after the run no test is current').toBe(false)
   expect(rowOf(lines, 'REVIEW'), 'the last review round stays').toBe('REVIEW   checked: the code')

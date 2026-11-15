@@ -37,15 +37,15 @@ test("STATUS says goal met only from a passed task-end gate and an alignment len
   const fixed = [{ id: "corpus-misalignment-1", title: "README says the old return", word: "fixed" }];
   const codeOnly = [{ id: "code-1", title: "Rounds half down", word: "left as is" }];
 
-  assert.equal(doneStatus({ codeRun: finishedRun(), round: round() }), "done · goal met · nothing left to do");
-  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ findings: fixed }) }), "done · goal met · nothing left to do", "a fixed alignment finding is closed");
-  assert.equal(doneStatus({ codeRun: finishedRun(), round: { ...round(), findings: codeOnly } }), "done · goal met · nothing left to do", "another lens's open finding says nothing about the goal");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round() }), "goal met · ready for your next task");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ findings: fixed }) }), "goal met · ready for your next task", "a fixed alignment finding is closed");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: { ...round(), findings: codeOnly } }), "goal met · ready for your next task", "another lens's open finding says nothing about the goal");
 });
 
 test("STATUS says goal in doubt with the gist when the alignment lens has a finding still open", () => {
   const open = [{ id: "corpus-misalignment-1", claim: "The plan asks for a total with tax. The diff sums without it.", word: "left as is" }];
 
-  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ findings: open }) }), "done · goal in doubt: The plan asks for a total with tax.", "a doubt is the human's to look at, so nothing-left-to-do is left out");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ findings: open }) }), "goal in doubt: The plan asks for a total with tax.", "a doubt is the human's to look at, so ready-for-your-next-task is left out");
 });
 
 test("PR reads a dash until the publish result or the unit record names it", () => {
@@ -116,17 +116,17 @@ test("the end round is the code run's safety-net round, read from the recorded r
   const round = safetyNetRound({ codeRun, calls, spawns: [] });
 
   assert.deepEqual(round.lenses.map(({ id, state }) => ({ id, state })), [{ id: "corpus-misalignment", state: "returned" }]);
-  assert.equal(doneStatus({ codeRun, round }), "done · goal met · nothing left to do");
+  assert.equal(doneStatus({ codeRun, round }), "goal met · ready for your next task");
   assert.equal(safetyNetRound({ codeRun: { ...codeRun, safetyNet: null }, calls, spawns: [] }), undefined, "no safety-net stage, no round");
 });
 
 test("STATUS says goal not checked when no alignment verdict was recorded", () => {
   const noAlignmentLens = { lenses: [{ id: "code", name: "the code", state: "returned", found: 0 }], findings: [] };
 
-  assert.equal(doneStatus({ codeRun: finishedRun() }), "done · goal not checked · nothing left to do", "no review round is known (the session that saw it is gone)");
-  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ state: "uncovered" }) }), "done · goal not checked · nothing left to do", "the alignment lens returned nothing usable");
-  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ state: "running" }) }), "done · goal not checked · nothing left to do", "the alignment lens never returned");
-  assert.equal(doneStatus({ codeRun: finishedRun(), round: noAlignmentLens }), "done · goal not checked · nothing left to do", "no alignment lens ran");
+  assert.equal(doneStatus({ codeRun: finishedRun() }), "goal not checked · ready for your next task", "no review round is known (the session that saw it is gone)");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ state: "uncovered" }) }), "goal not checked · ready for your next task", "the alignment lens returned nothing usable");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ state: "running" }) }), "goal not checked · ready for your next task", "the alignment lens never returned");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: noAlignmentLens }), "goal not checked · ready for your next task", "no alignment lens ran");
 });
 
 test("a goal too wide for its room is cut at the last clause break that fits, else at the last word", () => {
@@ -143,9 +143,9 @@ test("STATUS names the pull request's fate once the unit is done", () => {
   const codeRun = finishedRun();
   const met = { lenses: [{ id: "corpus-misalignment", state: "returned" }], findings: [] };
 
-  assert.equal(doneStatus({ codeRun, round: met, pr: { url: "https://github.com/o/r/pull/7" } }), "done · goal met · PR #7 opened · nothing left to do");
-  assert.equal(doneStatus({ codeRun, round: met, pr: { url: "https://example.com/review" } }), "done · goal met · PR opened · nothing left to do", "a url with no number");
-  assert.equal(doneStatus({ codeRun, round: met, pr: { result: "kept-local" } }), "done · goal met · kept local · nothing left to do");
+  assert.equal(doneStatus({ codeRun, round: met, pr: { url: "https://github.com/o/r/pull/7" } }), "goal met · PR #7 opened · ready for your next task");
+  assert.equal(doneStatus({ codeRun, round: met, pr: { url: "https://example.com/review" } }), "goal met · PR opened · ready for your next task", "a url with no number");
+  assert.equal(doneStatus({ codeRun, round: met, pr: { result: "kept-local" } }), "goal met · kept local · ready for your next task");
 });
 
 test("the unit is done only when no run is live, the task was signed off, and nothing is left to publish", () => {

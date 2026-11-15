@@ -1,7 +1,7 @@
 // Scenario end-state: once the unit's work is finished the pane leads with DONE, GOAL and PR, built from what the run recorded
 // (docs/design/progress-mod/DIRECTION.md, "The end state answers ..."). The rows are always drawn; before the end they read a dash.
 import { expect, test } from 'claude-code/testing'
-import { paneLines, setupReplay, type Rig } from './testing/replay'
+import { PANE, paneLines, setupReplay, type Rig } from './testing/replay'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
 import { publishedOf } from './published'
@@ -120,10 +120,14 @@ test('end-state-from-the-code-runs-end-through-the-publish', async ($, on) => {
   const published = await paneLines($)
   expect(published.slice(0, 4), `after the publish: ${JSON.stringify(published)}`).toEqual([
     'GOAL     Add order_total to cart.py.',
-    'STATUS   done · goal met · PR #7 opened · nothing left to do',
+    'STATUS   ✓ DONE · goal met · PR #7 opened · ready for your next task',
     'PR       opened · #7 feat: add order_total',
     'BUILT    cart.py, tests/test_cart.py · 1 test passing',
   ])
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const head = (await pane.findAll({ type: 'Text' })).find((node: any) => node.text === '✓ DONE')
+  await pane.unmount()
+  expect([head?.props.bold, head?.props.color, head?.props.inverse], 'done is bold and uncoloured: a call to action, not an alarm').toEqual([true, undefined, undefined])
   expect(rowOf(published, 'REVIEW'), 'the end review is the work\'s, not the pull request draft\'s').toBe('REVIEW   review: 1 issue, all left as is')
 })
 

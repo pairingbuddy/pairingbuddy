@@ -177,8 +177,10 @@ function prOutcome(pr) {
   return Object.hasOwn(NOT_OPENED, pr?.result ?? "") ? NOT_OPENED[pr.result] : undefined;
 }
 
-// The one wording for a unit done with nothing left to do, shared by the band and the status line.
-export const DONE_WORDS = "done · ready for your next task";
+// The call to action once the unit is done with nothing left to do.
+export const READY = "ready for your next task";
+// The one wording for a unit done with nothing left to do, shared by the band and the native notice.
+export const DONE_WORDS = `done · ${READY}`;
 
 // The unit's work is over with nothing left to run: no run is live, the task was signed off, and either the pull request's
 // fate is known or no unit is open that would still publish.
@@ -186,10 +188,10 @@ export function isUnitDone({ live = false, codeRun, unitOpen = false, pr } = {})
   return !live && codeRun?.taskEndPassed === true && (prOutcome(pr) !== undefined || !unitOpen);
 }
 
-// The STATUS row once the unit is done: the goal's verdict, the pull request, and that nothing is left to do. A goal in doubt
-// leaves out "nothing left to do": the doubt is the human's to look at.
+// What STATUS says after "done" once the unit is done: the goal's verdict, the pull request, and that it is ready for the next
+// task. A goal in doubt leaves the call to action out: the doubt is the human's to look at first.
 export function doneStatus({ codeRun, round, pr } = {}) {
   const goal = goalText(codeRun, round);
   const doubt = goal.startsWith(IN_DOUBT);
-  return ["done", `goal ${goal}`, prOutcome(pr), doubt ? undefined : "nothing left to do"].filter(Boolean).join(PART_BREAK);
+  return [`goal ${goal}`, prOutcome(pr), doubt ? undefined : READY].filter(Boolean).join(PART_BREAK);
 }

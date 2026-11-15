@@ -95,11 +95,11 @@ const wrapped = (text: string, room: number, props: Props = {}): Part[][] => (te
 // sep joins the head to what follows.
 type Look = { head: string; sep: string; headProps: Props; whatProps: Props }
 export const STATUS_LOOKS: Record<StatusState, Look> = {
-  needsYou: { head: 'needs you', sep: ' · ', headProps: { color: 'warning', bold: true }, whatProps: { color: 'warning', bold: true } },
-  stopped: { head: 'stopped', sep: ' · ', headProps: { color: 'error' }, whatProps: { color: 'error' } },
-  done: { head: 'done', sep: ' · ', headProps: {}, whatProps: {} },
+  needsYou: { head: '▲ NEEDS YOU', sep: ' · ', headProps: { color: 'warning', inverse: true, bold: true }, whatProps: { color: 'warning', bold: true } },
+  stopped: { head: '✕ STOPPED', sep: ' · ', headProps: { color: 'error', inverse: true, bold: true }, whatProps: { color: 'error' } },
+  done: { head: '✓ DONE', sep: ' · ', headProps: { bold: true }, whatProps: {} },
   working: { head: '● working', sep: ' · ', headProps: { color: ACCENT_COLOUR }, whatProps: {} },
-  quiet: { head: '', sep: '', headProps: {}, whatProps: {} },
+  quiet: { head: '○', sep: ' ', headProps: { dimColor: true }, whatProps: {} },
 }
 
 // STATUS as lines: the head, then what follows it, wrapping at its parts, then words; never cut.
@@ -107,7 +107,7 @@ function statusLines(status: Status, width: number): Part[][] {
   const look = STATUS_LOOKS[status.state]
   const text = [look.head, status.what].filter(Boolean).join(look.sep)
   return wrapAtParts(text, width).map((line: string, i: number) => {
-    if (i > 0 || !look.head || !line.startsWith(look.head)) return [{ text: line, props: look.whatProps }]
+    if (i > 0 || !line.startsWith(look.head)) return [{ text: line, props: look.whatProps }]
     const rest = line.slice(look.head.length)
     return [{ text: look.head, props: look.headProps }, ...(rest ? [{ text: rest, props: look.whatProps }] : [])]
   })

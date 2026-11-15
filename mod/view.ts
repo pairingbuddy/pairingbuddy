@@ -179,7 +179,7 @@ function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean)
 
 // A run that is over: done, waiting on the publish run, or ended without the sign-off.
 function endedStatus(inputs: Inputs, end: { doneStatus?: string }): Status {
-  if (end.doneStatus) return { state: 'done', what: end.doneStatus.replace(/^done · /, '') }
+  if (end.doneStatus) return { state: 'done', what: end.doneStatus }
   if (inputs.codeRun?.taskEndPassed === true) return { state: 'quiet', what: `between runs${STATUS_PART}${NEXT_PUBLISH}` }
   return { state: 'quiet', what: `ended${STATUS_PART}not signed off` }
 }

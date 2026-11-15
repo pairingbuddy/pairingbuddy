@@ -352,7 +352,7 @@ test('replay-end-state-after-the-publish-says-done-goal-and-pr', async ($, on) =
   expect(ended.slice(0, 6), `after the publish: ${JSON.stringify(ended)}`).toEqual([
     'GOAL     Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it',
     '         should return 90.',
-    'STATUS   done · goal met · PR #12 opened · nothing left to do',
+    'STATUS   ✓ DONE · goal met · PR #12 opened · ready for your next task',
     'PR       opened · #12 fix: apply_discount returns price after discount',
     'BUILT    README.md, discount.py, tests/test_discount.py · 1 test passing',
     expect.stringMatching(/^SPENT /),
