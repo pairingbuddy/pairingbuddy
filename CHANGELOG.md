@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `r open report` works for a run with a review round before its tests (most ended runs): the report's tries count skipped no lens spawn and threw. A report that cannot be built now says "couldn't build the report from the run's records", apart from "couldn't write the report".
 - The pane has a visual hierarchy. GOAL and STATUS are the first glance, above the rule, their labels bold; the detail rows sit under it with dim labels and full-strength values.
 - STATUS leads with a head that draws the eye by urgency: `▲ NEEDS YOU · <what>` (a yellow block), `✕ STOPPED · <why>` (a red block), `✓ DONE · … · ready for your next task` (bold, uncoloured), `● working · <step>` (the accent, calm), and a dim `○` for between runs, ended and no run. Done says "ready for your next task" in place of "nothing left to do" (`doneStatus` in `shared-node/end-state.mjs` now returns what follows "done").
 - The band's row leads with the same head and colours, then the details. The calm "needs you: no" is gone. A question or stop the narrow band cannot fit whole keeps its mark and what (`fitBand` takes a segment's own `short` form before it cuts). Between steps the quiet line leads with `●` and has no "Pairing Buddy" label; the done line is `✓ DONE · ready for your next task`. Every quiet line drops its `/pb` hint before it overflows.

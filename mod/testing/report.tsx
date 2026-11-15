@@ -30,6 +30,8 @@ export function writtenFileName(writes: { path: string }[], message: string): st
 
 // The pane's failure lines: the write failed, or the file was written but the open did not work (rejected or exited non-zero).
 export const reportWriteFailure = "couldn't write the report"
+// The pane's line when the report could not be built from the run's records, so nothing was written.
+export const reportRenderFailure = "couldn't build the report from the run's records"
 export const reportOpenFailure = (fileName: string) => `wrote ${fileName} · couldn't open it`
 
 // Mounts the terminal pane, collects its texts and unmounts.
