@@ -1,7 +1,7 @@
 // Scenario pane-wiring: the mod pane and poller wiring for the now-building block (mod tests via claude plugin test ., runner mod).
 import { expect, mock, test } from 'claude-code/testing'
 import { PANE, paneLines, replay, setupReplay } from './testing/replay'
-import { PHASE_COLOURS } from './pane'
+import { ACCENT_COLOUR, PHASE_COLOURS } from './pane'
 import calm from './fixtures/replay/g-open-1'
 import looping from './fixtures/replay/probe-2'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, engine, start } from './testing/band'
@@ -38,6 +38,13 @@ test('pane-draws-one-tests-row-with-a-line-per-test', async ($, on) => {
   expect(lines.some(line => line.startsWith('TEST ')), `there is no separate TEST row: ${shown}`).toBe(false)
   const marker = nodes.find(node => node.text === '●GREEN')
   expect(marker!.props.color, 'the lit GREEN step uses its fixed phase colour').toBe(PHASE_COLOURS.GREEN)
+  // Where the run is now: the current step and the current test, in the accent colour and bold.
+  const step = nodes.find(node => node.text === '▸ build test by test')
+  const test = nodes.find(node => node.text.startsWith('▸ zero percent keeps price'))
+  for (const [what, node] of [['the current step', step], ['the current test', test]] as const) {
+    expect(node?.props, `${what} is lit: ${JSON.stringify(node)}`).toEqual(expect.objectContaining({ color: ACCENT_COLOUR, bold: true }))
+  }
+  expect(nodes.find(node => node.text === '✓ ten percent off')?.props.color, 'a done test is not lit').toBeUndefined()
   const texts = nodes.map(node => node.text)
   for (const removed of [/now building/, /\bactive\b/, /\d+ unknown$/, /made to pass|already passed|▸ now|to do/]) {
     expect(texts.some(text => removed.test(text)), `nothing matching ${removed} is drawn: ${JSON.stringify(texts)}`).toBe(false)

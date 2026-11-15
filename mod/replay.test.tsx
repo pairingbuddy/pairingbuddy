@@ -5,7 +5,7 @@ import gOpen1 from './fixtures/replay/g-open-1'
 import probe2 from './fixtures/replay/probe-2'
 import s4Rollback from './fixtures/replay/s4-rollback'
 import { bandColumns } from './band'
-import { PHASE_COLOURS } from './pane'
+import { ACCENT_COLOUR, PHASE_COLOURS } from './pane'
 import { POLL_MS } from './poll'
 import { fitBand, glance, runStart } from '../shared-node/glance.mjs'
 import { MAX_FIX_UNDOS } from '../shared-node/limits.mjs'
@@ -200,10 +200,12 @@ test('across band and pane text for the replayed recordings, no rendered string 
   expect(strings, 'the band and pane drew text to check').toBeGreaterThan(100)
 })
 
-// Colour means one thing: the TDD phase (its fixed colour), "needs you" (warning) and a stop (error). Nothing else is coloured.
+// Colour means one thing: the TDD phase (its fixed colour), where the run is now (the accent, on the current step and test),
+// "needs you" (warning) and a stop (error). Nothing else is coloured.
 const MEANING_COLOURS = ['warning', 'error']
+const isLitNow = (node: { text: string; props: Record<string, unknown> }) => node.text.startsWith('▸ ') && node.props.color === ACCENT_COLOUR && node.props.bold === true
 
-test('colour-means-one-thing: across every drawn Text in band and pane over the replay recordings, only the lit phase, needs-you and a stop are coloured', async ($, on) => {
+test('colour-means-one-thing: across every drawn Text in band and pane over the replay recordings, only the lit phase, the current step and test, needs-you and a stop are coloured', async ($, on) => {
   const rig = setupReplay(on)
   const colours = new Set<string>()
   let nodes = 0
@@ -216,19 +218,20 @@ test('colour-means-one-thing: across every drawn Text in band and pane over the 
         colours.add(String(color))
         const phase = /^[●](RED|GREEN|REFACTOR)$/.exec(node.text)?.[1]
         if (phase) expect(color, `${name} t=${step.t}: the lit ${phase} has its fixed colour`).toBe(PHASE_COLOURS[phase])
+        else if (color === ACCENT_COLOUR) expect(isLitNow(node), `${name} t=${step.t}: only a current line is in the accent: "${node.text}"`).toBe(true)
         else expect(MEANING_COLOURS, `${name} t=${step.t}: "${node.text}" is coloured ${JSON.stringify(color)}`).toContain(color)
       }
     }
   }
 
   expect(nodes, 'the band and pane drew text to check').toBeGreaterThan(100)
-  expect([...colours], 'the recordings drew the phases').toEqual(expect.arrayContaining([PHASE_COLOURS.RED, PHASE_COLOURS.GREEN]))
+  expect([...colours], 'the recordings drew the phases and the accent').toEqual(expect.arrayContaining([PHASE_COLOURS.RED, PHASE_COLOURS.GREEN, ACCENT_COLOUR]))
 })
 
 test('colour-means-one-thing-in-a-review: over the s4-rollback replay, a lens that has finished but not yet returned is not drawn in a colour', async ($, on) => {
   const rig = setupReplay(on)
   const steps = await drawn($, rig, s4Rollback, S4_TEST_IDS, PANE)
-  const coloured = steps.flatMap(step => step.pane.filter(node => node.props.color !== undefined && !/^●(RED|GREEN|REFACTOR)$/.test(node.text)).map(node => `t=${step.t} ${node.props.color}: ${node.text}`))
+  const coloured = steps.flatMap(step => step.pane.filter(node => node.props.color !== undefined && !/^●(RED|GREEN|REFACTOR)$/.test(node.text) && !isLitNow(node)).map(node => `t=${step.t} ${node.props.color}: ${node.text}`))
   expect(coloured.filter(line => !/^t=\S+ (warning|error): (needs you|stopped)/.test(line)), 'only needs-you and a stop are coloured').toEqual([])
 })
 

@@ -3,6 +3,7 @@ import { plainName } from '../shared-node/plain-names.mjs'
 import { BAND, bandTexts, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, texts, type Served } from './testing/band'
 import { PANE, dismissPane, paneLines, paneTexts } from './testing/replay'
 import { PANE_ID } from './pane-open'
+import { ACCENT_COLOUR } from './pane'
 import { POLL_MS } from './poll'
 import { REPORT_LABEL, reportButton } from './testing/report'
 
@@ -171,7 +172,7 @@ test('details-button-opens-pane-with-focus: pressing the band details button ope
   expect(calls.opened[0].holdToasts, 'the pane holds no toasts').toBeUndefined()
 })
 
-test('pane-step-lines-use-marks-not-colours: the current step is bold, and no step line is coloured', async ($, on) => {
+test('pane-step-lines-use-marks-and-light-only-the-current-one: the current step is bold in the accent colour, no other step line is coloured', async ($, on) => {
   // code-scenarios is done, code-tdd is running, the safety-net review has not started.
   engine(on, {
     ...SNAPSHOT_RUNNING,
@@ -189,7 +190,7 @@ test('pane-step-lines-use-marks-not-colours: the current step is bold, and no st
   const current = line('▸')
   const done = line('✓')
   const todo = line('○')
-  expect(current?.props.color, 'the current step has no colour').toBeUndefined()
+  expect(current?.props.color, 'the current step is lit in the accent colour').toBe(ACCENT_COLOUR)
   expect(current?.props.bold, 'the current step is bold').toBe(true)
   expect(current?.props.dimColor, 'the current step is not dim').not.toBe(true)
   expect(done?.props.color, 'a done step has no colour').toBeUndefined()

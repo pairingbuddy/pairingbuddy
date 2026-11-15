@@ -12,6 +12,9 @@ const BLANK = label('')
 
 // Fixed colours, not theme keys, so a theme that maps "success" to blue cannot turn GREEN blue; readable on dark and light.
 export const PHASE_COLOURS: Record<string, string> = { RED: '#e5534b', GREEN: '#3fb950', REFACTOR: '#4c8dff' }
+// Where the run is now: the current step and the current test. Fixed for the same reason, and readable on dark and light.
+export const ACCENT_COLOUR = '#39c5cf'
+const LIT: Props = { color: ACCENT_COLOUR, bold: true }
 
 export type Suggestion = { state: 'pending'; nextAgent?: string } | { state: 'delivered'; to: string }
 
@@ -19,8 +22,8 @@ type Props = Record<string, unknown>
 type Part = { text: string; props?: Props }
 
 const toneProps = (tone?: string): Props => (tone === 'dim' ? { dimColor: true } : tone ? { color: tone } : {})
-// Steps read by their marks, never by colour: only the active one is bold.
-const stepProps = (line: string): Props => (line.startsWith('▸') ? { bold: true } : {})
+// Steps read by their marks; the active one is also lit, so it stands out in a glance.
+const stepProps = (line: string): Props => (line.startsWith('▸') ? LIT : {})
 const emptyLine = (): Part[] => [{ text: EMPTY, props: { dimColor: true } }]
 
 // One row: its label on the first line, a blank label column on the rest; a row with no lines reads EMPTY.
@@ -58,7 +61,7 @@ function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: 
     const cycle = test ? cycleParts(test) : []
     const rest = cycle.reduce((sum, part) => sum + cells(part.text), 0)
     const room = width > 0 ? width - rest - (cycle.length ? GAP.length : 0) : 0
-    return [{ text: `${cutName(`${MARKS.current} ${name}`, room)}${cycle.length ? GAP : ''}`, props: { bold: true } }, ...cycle]
+    return [{ text: `${cutName(`${MARKS.current} ${name}`, room)}${cycle.length ? GAP : ''}`, props: LIT }, ...cycle]
   }
   for (const entry of entries) {
     lines.push(entry.mark === 'current' ? currentLine(entry.name) : [{ text: cutName(`${MARKS[entry.mark]} ${entry.name}`, width) }])
