@@ -5,6 +5,7 @@ import { LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, bandTexts, start } from './testing
 import { plainName } from '../shared-node/plain-names.mjs'
 import { alertEngine, cleared, needingHuman, stopped } from './testing/alert'
 import { PANE_ID } from './pane-open'
+import { startOpenedKey } from './alert'
 import { POLL_MS } from './poll'
 
 test('stop-plays-one-sound', async ($, on) => {
@@ -160,7 +161,7 @@ test('seen-record-keyed-by-run-kind-seq', async ($, on) => {
   await clock.advance(POLL_MS)
 
   expect(run.calls.played.length, 'the stop alerted, so the test exercised the seen record').toBe(1)
-  expect([...run.store.keys()], 'the store holds one record for the project, under a project-scoped key').toEqual([key])
+  expect([...run.store.keys()].filter(stored => stored !== startOpenedKey(ROOT)), 'the alert holds one record for the project, under a project-scoped key').toEqual([key])
   const seen = run.store.get(key) as { run: unknown; stop: unknown; needsHuman: unknown }
   expect(seen.run, 'the record holds the run identity').toBeTruthy()
   expect(seen.stop, 'the record holds the seq of the stop').toBe(7)

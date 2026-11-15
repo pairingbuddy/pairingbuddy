@@ -45,9 +45,10 @@ test('band-keeps-a-way-into-the-pane-while-it-waits-undrawn', async ($, on) => {
   expect(run.calls.opened.length, 'the engine was asked to open the pane, so the unplaced answer was exercised').toBe(1)
   for (const bodyColumns of [50, 55]) {
     const shown = shownAt[bodyColumns]
-    const needsYou = shown.filter(text => text.includes('needs you'))
+    const needsYou = shown.filter(text => text.startsWith('▲'))
     expect(needsYou.length, `at ${bodyColumns} columns the needs-you segment is shown: ${JSON.stringify(shown)}`).toBe(1)
     expect(needsYou[0].includes('…'), `at ${bodyColumns} columns the needs-you segment is whole, not cut: ${JSON.stringify(needsYou)}`).toBe(false)
+    expect(needsYou[0].endsWith('your sign-off at the end'), `at ${bodyColumns} columns it still says what is needed: ${JSON.stringify(needsYou)}`).toBe(true)
     const hasWayIn = shown.some(text => text.includes('▸ details')) || bandSays(shown, '/pb')
     expect(hasWayIn, `at ${bodyColumns} columns, with the pane undrawn, the band keeps the details button or the /pb hint: ${JSON.stringify(shown)}`).toBe(true)
     expect(shown.join('').length, `at ${bodyColumns} columns the band stays within its width: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(bodyColumns)

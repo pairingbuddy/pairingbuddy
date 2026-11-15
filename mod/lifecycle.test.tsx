@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, start, texts } from './testing/band'
+import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, start, bandRowTexts, texts } from './testing/band'
 import { POLL_MS } from './poll'
 import { PANE, paneLines } from './testing/replay'
 import { plainName } from '../shared-node/plain-names.mjs'
@@ -41,7 +41,7 @@ test('a session.end with reason clear empties the spawn history, so the next dra
   await spawn($, label('one'))
   await spawn($, label('two'))
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect(agentsIn(await texts(band)), 'two agents are counted before the clear').toBe('2 agents')
+  expect(agentsIn(await bandRowTexts(band)), 'two agents are counted before the clear').toBe('2 agents')
 
   await $.session.end({ sessionId: 's1', reason: 'clear' })
   await spawn($, label('three'))
@@ -50,10 +50,10 @@ test('a session.end with reason clear empties the spawn history, so the next dra
   await clock.advance(POLL_MS)
 
   expect(run.ledgerReads, 'the poller read the ledger again after the clear').toBeGreaterThan(readsAfterClear)
-  expect(await texts(band), 'the poller still redraws the band: the ledger is now between steps').toEqual([expect.stringMatching(/^Pairing Buddy · between steps · next: .+ · \/pb( for details)?$/)])
+  expect(await bandRowTexts(band), 'the poller still redraws the band: the ledger is now between steps').toEqual([expect.stringMatching(/^● between steps · next: .+ · \/pb( for details)?$/)])
   run.files[LEDGER_PATH] = JSON.stringify(SNAPSHOT_RUNNING)
   await clock.advance(POLL_MS)
-  expect(agentsIn(await texts(band)), 'only the agent spawned after the clear is counted').toBe('1 agent')
+  expect(agentsIn(await bandRowTexts(band)), 'only the agent spawned after the clear is counted').toBe('1 agent')
   await band.unmount()
 })
 
@@ -94,10 +94,10 @@ test('a tests.json entry without a test_id is not counted', async ($, on) => {
   await spawn($, label('first'))
 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  const shown = await texts(band)
+  const shown = await bandRowTexts(band)
   await band.unmount()
 
-  expect(shown, 'the band reads "test 1 of 2": the entries without an id are left out').toContain('RED · test 1 of 2')
+  expect(shown, 'the band reads "test 1 of 2": the entries without an id are left out').toContain('● RED · test 1 of 2')
 })
 
 test("when a new run ledger appears the pane shows the new run and its ended snapshot replaces the old one", async ($, on) => {
@@ -139,7 +139,7 @@ test('tests-read-from-ledger-per-test: with the real seq 10 ledger and no tests.
   await spawn($, label(PER_TEST))
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
 
-  const shownBand = (await texts(band)).join(' | ')
+  const shownBand = (await bandRowTexts(band)).join(' | ')
   const shownPane = await paneLines($)
   // STATUS wraps, so its lines up to the next row's label read as one.
   const from = shownPane.findIndex(text => text.startsWith('STATUS'))

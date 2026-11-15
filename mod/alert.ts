@@ -41,6 +41,7 @@ export async function alertOn($: EngineInterface, ledger: Ledger | null, options
   // Read as the alert fires; an absent option means on.
   if (options.alertSound !== false) quietly(() => $.audio.play(SOUND))
   quietly(() => setStatus($, event))
+  if (!('ledger' in event)) quietly(() => $.ui.notify(DONE_WORDS, { title: NOTICE_TITLE }))
   quietly(() => markStatusSet($, event))
   quietly(() => $.state.set(OPENED, false).then(() => openAndRecord($)))
 }
@@ -50,6 +51,33 @@ async function openAndRecord($: EngineInterface) {
   const placed = (await openPane($)) as { isPlaced?: boolean; reason?: string } | undefined
   if (placed?.isPlaced) await $.state.set(OPENED, true)
   else quietly(() => $.ui.log(`Details pane waits: ${placed?.reason ?? 'no room for it'}. Show it with /pb or a wider terminal.`))
+}
+
+const waitsLine = (reason?: string) => `The Pairing Buddy pane is not shown yet (${reason ?? 'no room for it'}). Press ▸ details in the band, or type /pb, to open it.`
+
+// The mod-store key of the run the pane last opened by itself for, per project.
+export function startOpenedKey(root: string) {
+  return `start-opened:${root}`
+}
+
+// Opens the pane, without the keyboard, once per run when the run is first seen, so a run with no question is not watched
+// through the band alone. The run is recorded before the open, so a dismissed pane is never opened again for it (also after
+// a reload); a store that fails opens nothing, as reopening every poll would undo a dismissal. A standing stop or question is
+// left to the alert, which opens it. Never throws.
+export async function openOnRunStart($: EngineInterface, ledger: Ledger | null) {
+  if (!ledger || typeof ledger !== 'object' || Array.isArray(ledger)) return
+  try {
+    const key = startOpenedKey(await $.session.root())
+    const run = runOf(ledger)
+    if ((await $.store.get(key)) === run) return
+    await $.store.set(key, run)
+    if (ledger.stop || ledger.needsHuman) return
+    const placed = (await openPane($)) as { isPlaced?: boolean; reason?: string } | undefined
+    // Unasked, the engine places a pane only from 144 columns (110 once asked for); else it waits undrawn, so say how to open it.
+    if (!placed?.isPlaced) quietly(() => $.ui.log(waitsLine(placed?.reason)))
+  } catch {
+    // A failed open is dropped; the band's details button stays the way in.
+  }
 }
 
 // The mod-store key of the seen record for a project.
@@ -62,7 +90,7 @@ const KINDS = ['stop', 'needsHuman', 'done'] as const
 type Seen = { run: string; stop: number | null; needsHuman: number | null; done?: string | null }
 
 // The ledger's own runId; ledgers without one fall back to the plan and task.
-function runOf(ledger: NonNullable<Ledger>) {
+export function runOf(ledger: NonNullable<Ledger>) {
   return ledger.runId ?? `${ledger.plan?.path ?? ''}|${ledger.task ?? ''}`
 }
 
@@ -96,8 +124,12 @@ async function anyUnseen($: EngineInterface, event: Event) {
   }
 }
 
+// Claude Code draws every plugin status line as a warning ("⚠ pairingbuddy: …", in the warning colour), and $.ui.status takes no
+// mark or colour. That fits a question or a stop; done gets no status line and says so through a native notice instead.
+const NOTICE_TITLE = 'Pairing Buddy'
+
 function statusWords(event: Event) {
-  if (!('ledger' in event)) return DONE_WORDS
+  if (!('ledger' in event)) return null
   const { ledger } = event
   if (ledger.stop) return stopLine(ledger.stop)
   const gate = ledger.needsHuman?.gate
@@ -110,7 +142,7 @@ function setStatus($: EngineInterface, event: Event) {
   if (words) return $.ui.status(words)
 }
 
-// Clears the status line once, when it is set and its cause is gone: the ledger is gone (and no done run stands), a new run began, or nothing is pending and no stop stands. A line never set is never cleared. The run it was set for is kept in mod state, which a new session starts without.
+// Clears the status line once, when it is set and its cause is gone: the ledger is gone (a done run sets no line), a new run began, or nothing is pending and no stop stands. A line never set is never cleared. The run it was set for is kept in mod state, which a new session starts without.
 async function clearStaleStatus($: EngineInterface, event: Event | null) {
   try {
     const setFor = (await $.state.get(STATUS_SET)).value

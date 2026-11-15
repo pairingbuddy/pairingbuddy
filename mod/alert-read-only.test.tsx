@@ -4,7 +4,7 @@ import { POLL_MS } from './poll'
 import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { isDeny, outcome, recordHooks } from './testing/hooks'
 import { PANE } from './testing/replay'
-import { openedKey, seenKey } from './alert'
+import { openedKey, seenKey, startOpenedKey } from './alert'
 import { refuseWorldChanges } from './testing/refuse'
 import { alertEngine, needingHuman, stopped } from './testing/alert'
 
@@ -64,7 +64,7 @@ for (const [standing, ledger] of Object.entries(STANDING)) {
 
     expect(run.calls.played.length, `the alert fired while the ${standing} stood, so the write paths were exercised`).toBeGreaterThan(0)
     expect(touched, `alerting on a ${standing} makes no $.fs write and no $.process call`).toEqual([])
-    expect([...run.store.keys()], `the ${standing} was recorded as seen in the mod's own store`).toEqual([seenKey(ROOT)])
+    expect([...run.store.keys()].filter(key => key !== startOpenedKey(ROOT)), `the ${standing} was recorded as seen in the mod's own store`).toEqual([seenKey(ROOT)])
     expect(stateSet, `the alert's own writes went to $.state`).toContain(openedKey())
   })
 }

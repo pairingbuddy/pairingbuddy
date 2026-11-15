@@ -28,7 +28,7 @@ This agent outputs scenarios and test cases. Tests are created by later agents.
 
 The one input rule decides what you read and write:
 
-- With a `<paths>` block in the prompt: read only what the paths name, plus the `<task>` in the prompt, and return your Output as StructuredOutput. `test_config` is the test config. `human_guidance` is the human guidance, which may be missing, and any redo feedback is there. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
+- With a `<paths>` block in the prompt: read only what the paths name, plus the `<task>` in the prompt and the existing code the task builds on (Step 2), and return your Output as StructuredOutput. `test_config` is the test config. `human_guidance` is the human guidance, which may be missing, and any redo feedback is there. The prompt also gives `pb_key`, which you copy exactly into your return. Do not read the legacy files below.
 - With a `<paths>` block that names an existing scenarios file, plus `<findings>` and possibly `<what_went_wrong>` in the prompt: revise those scenarios instead of starting over. Read the file, change only what the findings name, avoid the mistakes the notes describe, and return the full revised Output.
 - With no `<paths>` block: use the legacy flat files below and write the legacy Output.
 
@@ -95,9 +95,11 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 ### Step 2: Main Work
 
 1. Analyze the task from `.pairingbuddy/task.json`
-2. Identify scenarios (distinct feature areas or behaviors)
-3. For each scenario, enumerate test cases (specific conditions to verify)
-4. Use kebab-case IDs (e.g., `user-login`, `add-positive-numbers`)
+2. Before writing any expected value, read the existing code the task builds on: the files, functions and helpers the task names or the new code will call (for example a `line_total` that adds VAT). Read it only; change nothing.
+3. Work out each expected value from the task text and that code. When the task text states a value or how it is made up (for example "returns 30.0, which is 25.0 plus 5.0"), every number in a scenario or test case must agree with it: never restate a number that contradicts the task text. When the task text and the code disagree, do not pick one: name the mismatch as an open question (in `ambiguity` with a `<paths>` block, else to the human in Step 3).
+4. Identify scenarios (distinct feature areas or behaviors)
+5. For each scenario, enumerate test cases (specific conditions to verify)
+6. Use kebab-case IDs (e.g., `user-login`, `add-positive-numbers`)
 
 ### Step 3: Human Review
 

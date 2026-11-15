@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The pane has a visual hierarchy. GOAL and STATUS are the first glance, above the rule, their labels bold; the detail rows sit under it with dim labels and full-strength values.
+- STATUS leads with a head that draws the eye by urgency: `▲ NEEDS YOU · <what>` (a yellow block), `✕ STOPPED · <why>` (a red block), `✓ DONE · … · ready for your next task` (bold, uncoloured), `● working · <step>` (the accent, calm), and a dim `○` for between runs, ended and no run. Done says "ready for your next task" in place of "nothing left to do" (`doneStatus` in `shared-node/end-state.mjs` now returns what follows "done").
+- The band's row leads with the same head and colours, then the details. The calm "needs you: no" is gone. A question or stop the narrow band cannot fit whole keeps its mark and what (`fitBand` takes a segment's own `short` form before it cuts). Between steps the quiet line leads with `●` and has no "Pairing Buddy" label; the done line is `✓ DONE · ready for your next task`. Every quiet line drops its `/pb` hint before it overflows.
+- "Colour means one thing" adds the block: only needs-you and a stop are inverse, and yellow and red appear only in STATUS and at the head of the band.
 - The pane no longer shows the "Pairing Buddy only watches" footer; it read as false and took a row.
+- The pane opens by itself, without the keyboard, when a run starts: once per run, never again for that run once dismissed (also after a reload). When the engine does not place it (under 144 columns unasked), one transcript line gives the reason and says to press ▸ details or type /pb.
+- The band uses the pane's colours: the current step in the accent `#39c5cf` with bold, the TDD phase word (RED, GREEN, REFACTOR) in its phase colour, needs-you yellow and bold, a stop red. Nothing else in it is coloured.
+- The band leads with the goal: its gist, bold as the pane's GOAL, on its own row above the step row, from the first ledger through the end of the run. The band is two rows at most. The gist is whole when it fits, else cut at a clause break, else a word, never with "…".
+- The done alert no longer sets the status line. Claude Code draws every plugin status line as `⚠ <plugin>: <text>` in the warning colour, which read as "something went wrong". Done now plays the sound, opens the pane, says it in the band and sends one native notice (`$.ui.notify`, titled Pairing Buddy). The status line stays for needs-you and a stop.
+- The scenarios agent reads the existing code the task builds on before it writes expected values, and never restates a number that contradicts the task text; a mismatch between the task and the code is an open question. The refuter gets the task (a `<task>` block) and never knocks down a factual mismatch between a scenario or test description and the task text or code as not a real problem.
 
 ### Added
 

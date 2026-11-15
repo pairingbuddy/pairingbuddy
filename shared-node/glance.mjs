@@ -178,14 +178,17 @@ function truncate(text, overflow) {
   return cut <= 0 ? text : `${text.slice(0, text.length - cut - 1)}…`;
 }
 
-// Narrowing order: drop "left:", then the "≈ %" of spent, then shorten "needs you:" to "you:".
+// needs-you's short form: the one it carries (short), else "needs you:" shortened to "you:".
+const shortNeedsYou = (segments) => segments.map((segment) => (segment.id === "needsYou" ? { ...segment, text: segment.short ?? segment.text.replace(/^needs you:/, "you:") } : segment));
+
+// Narrowing order: drop "left:", then the "≈ %" of spent, then shorten needs-you (shortNeedsYou).
 // If it still does not fit, drop whole segments, last (lowest priority) first; a segment is never cut unless it is the only one left.
 // When an event stands (its segment carries standing: true), needs-you is kept whole: it is shortened only if that alone fits,
 // the other segments give first, and it is cut only as a last resort. The band is never wider than the columns.
 export function fitBand(segments, columns) {
   const withoutLeft = segments.filter((segment) => segment.id !== "left");
   const withoutPercent = withText(withoutLeft, "spent", (text) => text.replace(PERCENT_PART, ""));
-  const shortened = withText(withoutPercent, "needsYou", (text) => text.replace(/^needs you:/, "you:"));
+  const shortened = shortNeedsYou(withoutPercent);
   const fitting = [segments, withoutLeft, withoutPercent, shortened].find((attempt) => bandWidth(attempt) <= columns);
   if (fitting) return fitting;
 
@@ -196,7 +199,7 @@ export function fitBand(segments, columns) {
     band = band.filter((_, i) => i !== last);
   }
   if (standing && bandWidth(band) > columns) {
-    const short = withText(band, "needsYou", (text) => text.replace(/^needs you:/, "you:"));
+    const short = shortNeedsYou(band);
     band = withText(short, "needsYou", (text) => truncate(text, bandWidth(short) - columns));
   }
   return bandWidth(band) > columns ? withText(band, band[0].id, (text) => text.slice(0, Math.max(columns, 0))) : band;

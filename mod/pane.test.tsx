@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { plainName } from '../shared-node/plain-names.mjs'
-import { BAND, bandTexts, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, texts, type Served } from './testing/band'
+import { BAND, bandTexts, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, bandRowTexts, texts, type Served } from './testing/band'
 import { PANE, dismissPane, paneLines, paneTexts } from './testing/replay'
 import { PANE_ID } from './pane-open'
 import { ACCENT_COLOUR } from './pane'
@@ -50,7 +50,7 @@ test('the band\'s width budget subtracts the details button', async ($, on) => {
 
   const fitted = async (bodyColumns: number) => {
     const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns }, surface: 'terminal' })
-    const segments = await texts(band)
+    const segments = await bandRowTexts(band)
     const button = (await band.find({ type: 'Button', key: 'details' }))!.text!
     await band.unmount()
     return { segments, button }
@@ -102,15 +102,15 @@ test('with the band mounted, a ledger that goes from idle to an active stage cha
 
   // The one mount: `band` is the same handle before and after, so the redraw needs no remount.
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  expect(await texts(band), 'with no active stage the band is the dim idle text').toEqual([IDLE])
+  expect(await bandRowTexts(band), 'with no active stage the band is the dim idle text').toEqual([IDLE])
 
   served.ledger = JSON.stringify(SNAPSHOT_RUNNING)
-  expect(await texts(band), 'a changed ledger is not read by the render itself').toEqual([IDLE])
+  expect(await bandRowTexts(band), 'a changed ledger is not read by the render itself').toEqual([IDLE])
   await clock.advance(POLL_MS - 1)
-  expect(await texts(band), 'one ms before the interval the band is still idle').toEqual([IDLE])
+  expect(await bandRowTexts(band), 'one ms before the interval the band is still idle').toEqual([IDLE])
 
   await clock.advance(1)
-  const after = await texts(band)
+  const after = await bandRowTexts(band)
   expect(after.some(text => text.includes(plainName('code-scenarios'))), `the poll reads the new ledger and the band redraws: ${JSON.stringify(after)}`).toBe(true)
   await band.unmount()
 })
@@ -210,16 +210,18 @@ const nowRow = (shown: string[]) => shown.find(text => text.startsWith('STATUS')
 const RETURNED_LENS = 'REVIEW   checked: the code'
 const hasReturnedLens = (lines: string[]) => lines.includes(RETURNED_LENS)
 
-test('pane-now-between-steps-has-no-band-label', async ($, on) => {
+test('between-steps-the-pane-and-the-band-lead-with-the-working-mark', async ($, on) => {
   engine(on, AFTER_SCENARIOS)
   await start($)
 
   const now = nowRow(await paneLines($))
-  const band = (await bandTexts($, { bodyColumns: 200 })).join('')
+  const mounted = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 200 }, surface: 'terminal' })
+  const [mark, rest] = (await mounted.findAll({ type: 'Text' })).filter((node: any) => node.text !== undefined && !/^─+$/.test(node.text) && !node.props.bold)
+  await mounted.unmount()
 
-  expect(now, `STATUS reads the plain state: ${now}`).toContain('working · between steps · next: build test by test')
-  expect(now, `STATUS carries no band label: ${now}`).not.toContain('Pairing Buddy ·')
-  expect(band, `the band keeps its label: ${band}`).toContain('Pairing Buddy · between steps')
+  expect(now, `STATUS reads the plain state: ${now}`).toBe('STATUS   ● working · between steps · next: build test by test')
+  expect([mark.text, mark.props.color], 'the band leads with the working mark in the accent').toEqual(['● ', ACCENT_COLOUR])
+  expect([rest.text, rest.props.dimColor], 'then the quiet line, dim, with no "Pairing Buddy" label: the goal row above names the session').toEqual(['between steps · next: build test by test · /pb for details', true])
 })
 
 test('pane-now-run-open-has-no-band-label', async ($, on) => {
@@ -247,17 +249,36 @@ test('all-steps-done-before-task-end', async ($, on) => {
   expect(now, `STATUS never says run open: ${now}`).not.toContain('run open')
 })
 
-test('pane-now-names-what-is-needed', async ($, on) => {
+// STATUS's nodes as drawn: its head, then what follows it.
+async function statusNodes($: any) {
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const drawn = await pane.findAll({ type: 'Text' })
+  await pane.unmount()
+  const at = drawn.findIndex((node: any) => node.text === 'STATUS   ')
+  return { head: drawn[at + 1], rest: drawn[at + 2] }
+}
+
+test('pane-now-names-what-is-needed-in-the-strongest-treatment', async ($, on) => {
   const waiting = { ...AFTER_SCENARIOS, needsHuman: { gate: 'G:scenarios', reason: 'the human decides', seq: 6 } }
-  const run = engine(on, waiting)
+  engine(on, waiting)
   await start($)
 
-  const now = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const node = (await now.findAll({ type: 'Text' })).find((n: any) => n.text.startsWith('needs you'))
-  await now.unmount()
+  const { head, rest } = await statusNodes($)
 
-  expect(nowRow(await paneLines($)), 'STATUS names the gate').toBe('STATUS   needs you · your OK on the scenarios')
-  expect(node?.props.color, 'STATUS is in the warning tone').toBe('warning')
+  expect(nowRow(await paneLines($)), 'STATUS names the gate').toBe('STATUS   ▲ NEEDS YOU · your OK on the scenarios')
+  expect([head.text, head.props.color, head.props.inverse, head.props.bold], 'the head is a yellow block, bold: the one thing not to miss').toEqual(['▲ NEEDS YOU', 'warning', true, true])
+  expect([rest.text, rest.props.color, rest.props.bold, rest.props.inverse], 'what it needs follows in yellow, bold, not a block').toEqual([' · your OK on the scenarios', 'warning', true, undefined])
+})
+
+test('pane-status-says-why-it-stopped-as-strongly-in-red', async ($, on) => {
+  engine(on, { ...SNAPSHOT_RUNNING, stop: { code: 'step-failed', reason: 'the stage failed three times', seq: 3 } })
+  await start($)
+
+  const { head, rest } = await statusNodes($)
+
+  expect(nowRow(await paneLines($)), 'STATUS says why').toBe(`STATUS   ✕ STOPPED · ${plainName('step-failed')}`)
+  expect([head.text, head.props.color, head.props.inverse, head.props.bold], 'the head is a red block, bold').toEqual(['✕ STOPPED', 'error', true, true])
+  expect([rest.text, rest.props.color, rest.props.inverse], 'why follows in red, not a block').toEqual([` · ${plainName('step-failed')}`, 'error', undefined])
 })
 
 const STAGE_STARTED = '2026-11-04T08:19:00.000Z'
@@ -288,7 +309,7 @@ test('pane-draws-the-review-row-and-no-test-in-the-safety-net-review', async ($,
     '         1 issue found · 1 to fix',
     '           to fix · rounds the wrong way · discount.py:3',
   ])
-  expect(lines, 'STATUS names the review, not the last test').toContain('STATUS   working · safety-net review')
+  expect(lines, 'STATUS names the review, not the last test').toContain('STATUS   ● working · safety-net review')
   expect(lines, 'no test is current outside build test by test').toContain('TESTS    —')
   expect(lines.some(line => line.startsWith('TEST ')), 'there is no TEST row').toBe(false)
   expect(lines.some(line => /agents? of \d+/.test(line)), 'no "n agents of 1000" line').toBe(false)

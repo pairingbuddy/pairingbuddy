@@ -1,11 +1,12 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { fitBand, glance } from '../shared-node/glance.mjs'
 import { bandColumns } from './band'
+import { statusFirst } from './view'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { POLL_MS } from './poll'
 import { needingHuman, stopped } from './testing/alert'
 import { PANE } from './testing/replay'
-import { BAND, bandTexts, isSeparatorRule, engine as bandEngine, LEDGER_PATH, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, SURFACES, ROOT, serveLedger, start, without, type Served } from './testing/band'
+import { BAND, bandTexts, isGoalRow, isSeparatorRule, engine as bandEngine, LEDGER_PATH, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, SURFACES, ROOT, serveLedger, start, without, type Served } from './testing/band'
 
 // The band draws what the session's poll read, so each test starts a session first; the poll runs at session start.
 function engine(on: Function, served: Served) {
@@ -22,8 +23,8 @@ async function drawnOnEverySurface($: any): Promise<Record<string, string>> {
   const drawn: Record<string, string> = {}
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    const text = (await ui.findAll({ type: 'Text' })).find((node: any) => !isSeparatorRule(node))
-    drawn[surface] = JSON.stringify(text ?? null)
+    const row = (await ui.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node))
+    drawn[surface] = JSON.stringify(row)
     await ui.unmount()
   }
   return drawn
@@ -66,7 +67,7 @@ test('band draws one dim "Pairing Buddy · idle" on every surface without throwi
     const drawn = await drawnOnEverySurface($)
 
     for (const surface of SURFACES) {
-      expect(drawn[surface], `${surface} band draws idle for a ${name} ledger`).toContain(name === 'no current stage yet' ? 'Pairing Buddy · between steps · next: ' : ['missing stage', 'missing stage and stages', 'missing owner', 'empty document'].includes(name) ? 'Pairing Buddy · run open' : 'Pairing Buddy · idle')
+      expect(drawn[surface], `${surface} band draws idle for a ${name} ledger`).toContain(name === 'no current stage yet' ? '"text":"between steps · next: ' : ['missing stage', 'missing stage and stages', 'missing owner', 'empty document'].includes(name) ? '"text":"run open' : 'Pairing Buddy · idle')
       expect(drawn[surface], `${surface} idle text is dim`).toContain('"dimColor":true')
     }
     expect(served.asked, `the band read <root>/<LEDGER> for a ${name} ledger`).toContain(LEDGER_PATH)
@@ -95,12 +96,10 @@ test("the running band puts a separator between each glance segment", async ($, 
 
   const shown = await bandTexts($, WIDE)
 
-  for (const [name, isSegment] of [['spent', (text: string) => /agents?$/.test(text)], ['needs you', (text: string) => text.startsWith('needs you:')]] as const) {
-    const at = shown.findIndex(isSegment)
-    expect(at, `the band draws a "${name}" segment: ${JSON.stringify(shown)}`).toBeGreaterThan(0)
-    expect(isSeparator(shown[at - 1]), `a separator is drawn right before "${name}": ${JSON.stringify(shown)}`).toBe(true)
-  }
-  expect(shown.join(''), `no segment runs into the next: ${JSON.stringify(shown)}`).not.toMatch(/scenarios\d|scenariostime|agentsneeds you/)
+  const at = shown.findIndex(text => /agents?$/.test(text))
+  expect(at, `the band draws a "spent" segment: ${JSON.stringify(shown)}`).toBeGreaterThan(0)
+  expect(isSeparator(shown[at - 1]), `a separator is drawn right before "spent": ${JSON.stringify(shown)}`).toBe(true)
+  expect(shown.join(''), `no segment runs into the next: ${JSON.stringify(shown)}`).not.toMatch(/scenarios\d|scenariostime/)
 })
 
 test("the details button is set off from the last segment by a space", async ($, on) => {
@@ -109,10 +108,10 @@ test("the details button is set off from the last segment by a space", async ($,
 
   const shown = await bandTexts($, WIDE)
 
-  const needsYou = shown.findIndex(text => text.startsWith('needs you:'))
-  expect(needsYou, `the band draws needs you: ${JSON.stringify(shown)}`).toBeGreaterThanOrEqual(0)
-  const beforeButton = shown.slice(needsYou).join('')
-  expect(beforeButton, `the text drawn before the details button ends with a space, so "needs you: no" and "▸ details" do not touch: ${JSON.stringify(shown)}`).toMatch(/\s$/)
+  const button = shown.indexOf('▸ details')
+  expect(button, `the band draws the details button: ${JSON.stringify(shown)}`).toBeGreaterThan(0)
+  const beforeButton = shown.slice(0, button).join('')
+  expect(beforeButton, `the text drawn before the details button ends with a space, so the last segment and "▸ details" do not touch: ${JSON.stringify(shown)}`).toMatch(/\s$/)
 })
 
 test("the running band includes a plain-words hint naming /pb for details alongside the details button", async ($, on) => {
@@ -122,13 +121,13 @@ test("the running band includes a plain-words hint naming /pb for details alongs
   const shown = await bandTexts($, WIDE)
 
   const hint = shown.findIndex(text => text.includes('/pb for details'))
-  expect(hint, `the running band ends with a plain "/pb for details" hint: ${JSON.stringify(shown)}`).toBeGreaterThan(shown.findIndex(text => text.startsWith('needs you:')))
+  expect(hint, `the running band ends with a plain "/pb for details" hint: ${JSON.stringify(shown)}`).toBeGreaterThan(shown.indexOf('▸ details'))
   expect(shown.some(text => text.includes('▸ details')), `the details button is still drawn: ${JSON.stringify(shown)}`).toBe(true)
   expect(shown.join(' '), 'the band never names ctrl+x or a key it cannot back').not.toMatch(/ctrl\+x|tab\b/i)
 })
 
 test('the pb hint is lowest priority: "/pb" shows when all content fits but the long hint does not', async ($, on) => {
-  const content = glance({ ledger: SNAPSHOT_RUNNING, spawns: [], tests: [], now: 0 }).band
+  const content = statusFirst(glance({ ledger: SNAPSHOT_RUNNING, spawns: [], tests: [], now: 0 }).band)
   const fits = (columns: number, hint?: string) => JSON.stringify(fitBand(content, bandColumns(columns, hint))) === JSON.stringify(content)
   const COLUMNS = Array.from({ length: 300 }, (_, i) => i).find(columns => fits(columns, '/pb') && !fits(columns, '/pb for details'))!
   bandEngine(on, SNAPSHOT_RUNNING)
@@ -151,8 +150,7 @@ test('at 75 columns with a standing stop needs-you is kept whole and the hint sh
 
   const joined = shown.join('')
   expect(joined.includes('/pb') ? joined.length <= COLUMNS : true, `the hint is shown only when the row still fits: ${JSON.stringify(shown)}`).toBe(true)
-  expect(shown.slice(0, 3), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['write test scenarios', ' │ ', '0 agents'])
-  expect(shown.some(text => text === 'needs you · opened details'), `the standing needs-you is kept whole: ${JSON.stringify(shown)}`).toBe(true)
+  expect(shown.slice(0, 5), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['✕ STOPPED · opened details', ' │ ', 'write test scenarios', ' │ ', '0 agents'])
   expect(joined.length, `the band is within ${COLUMNS} columns: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(COLUMNS)
 })
 
@@ -262,9 +260,9 @@ test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning
   const stopBand = await nodes(band)
   const stopPane = await nodes(PANE)
 
-  expect(starting(gateBand, 'needs you').props.color, 'a needs-you gate in the band is warning').toBe('warning')
-  expect(starting(stopBand, 'needs you').props.color, 'a stop in the band is error').toBe('error')
-  expect(starting(stopPane, 'stopped').props.color, 'a stop in the pane STATUS row is error').toBe('error')
+  expect(starting(gateBand, '▲ NEEDS YOU').props.color, 'a needs-you gate in the band is warning').toBe('warning')
+  expect(starting(stopBand, '✕ STOPPED').props.color, 'a stop in the band is error').toBe('error')
+  expect(starting(stopPane, '✕ STOPPED').props.color, 'a stop in the pane STATUS row is error').toBe('error')
   expect(gateBand.find(node => node.text.startsWith('looping:')), 'an unknown band segment is not drawn').toBeUndefined()
   expect(starting(gateBand, '0 agents').props.dimColor, 'the band spend segment is dim').toBe(true)
   expect(starting(stopPane, '0 agents').props.dimColor, 'the pane SPENT row is dim').toBe(true)
@@ -276,12 +274,12 @@ test('band-leads-with-needs-you-at-a-gate', async ($, on) => {
   await start($)
 
   const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 200 }, surface: 'terminal' })
-  const nodes = (await band.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node))
+  const nodes = (await band.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node))
   await band.unmount()
 
   const shown = nodes.map((node: any) => node.text as string)
-  const needs = nodes.find((node: any) => node.text.startsWith('needs you'))
-  expect(shown[0], `the band leads with needs you: ${JSON.stringify(shown)}`).toBe('needs you: your OK on the scenarios')
+  const needs = nodes.find((node: any) => node.text.startsWith('▲ NEEDS YOU'))
+  expect(shown.slice(0, 2).join(''), `under the goal, the band's row leads with needs you: ${JSON.stringify(shown)}`).toBe('▲ NEEDS YOU · your OK on the scenarios')
   expect(needs?.props.color, 'needs you is in the warning colour').toBe('warning')
   expect(needs?.props.bold, 'needs you is bold').toBe(true)
   expect(shown.join(''), 'no dim between-steps line').not.toContain('between steps')

@@ -2,7 +2,7 @@
 // Placeholders: each fails until implemented.
 import { expect, test } from 'claude-code/testing'
 import { DETAILS } from './band'
-import { BAND, engine, isSeparatorRule, start } from './testing/band'
+import { BAND, engine, isGoalRow, isSeparatorRule, start } from './testing/band'
 
 // The region the live band gets is narrower than bodyColumns: the pane's [-] control sits beside it.
 const CONTROL_WIDTH = 4
@@ -19,7 +19,8 @@ test('band-renders-single-row-at-55-66-columns', async ($, on) => {
     const found = await band.findAll({})
     await band.unmount()
     // A Button reports its label as its text and again through its child Text: count the button once, by its label.
-    const leaves = found.filter((node: any) => !isSeparatorRule(node) && (node.type === 'Button' || (node.type === 'Text' && node.text !== '' && node.text !== DETAILS)))
+    // The goal has its own row above (band-goal.test.tsx); this is the step row.
+    const leaves = found.filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node) && (node.type === 'Button' || (node.type === 'Text' && node.text !== '' && node.text !== DETAILS)))
     const shown = leaves.map((node: any) => (node.type === 'Button' ? DETAILS : node.text) as string)
     drawn[columns] = { widths: shown.reduce((sum: number, text: string) => sum + [...text].length, 0), shown }
   }

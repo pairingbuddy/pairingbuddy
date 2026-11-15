@@ -107,3 +107,16 @@ test("with separators and the gap counted fitBand still returns segments whose j
     assert.ok(drawnWidth(kept) <= columns, `the band plus the button is no wider than ${columns} columns, got ${drawnWidth(kept)}`);
   }
 });
+
+test("a standing needs-you that carries its own short form takes it when it alone does not fit whole, never cut with an ellipsis", () => {
+  const leading = [
+    { id: "needsYou", text: "▲ NEEDS YOU · your sign-off at the end", short: "▲ your sign-off at the end", standing: true },
+    { id: "where", text: "write test scenarios" },
+    { id: "spent", text: "0:12 · 3 agents" },
+  ];
+
+  const kept = fitBand(leading, 36);
+
+  assert.deepEqual(kept.map((segment) => segment.text), ["▲ your sign-off at the end"], "the other segments give way first, then the short form stands in");
+  assert.deepEqual(fitBand(leading, 120), leading, "with room, the whole form stays");
+});

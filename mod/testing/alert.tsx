@@ -1,6 +1,6 @@
 import { STOP_CODES } from '../../shared-node/stop-codes.mjs'
 import type { EngineInterface } from 'claude-code'
-import { alertOn } from '../alert'
+import { alertOn, runOf, startOpenedKey } from '../alert'
 import { PLACED, ROOT, SNAPSHOT_RUNNING, engine } from './band'
 import { POLL_MS } from '../poll'
 
@@ -53,7 +53,7 @@ function responder(answer: Answer, ok: (request: any) => unknown): (request: any
 
 // One answer for every store action, or an answer per action (the others succeed): { get: 'reject' } fails only reads.
 type StoreAnswers = Answer | { get?: Answer; set?: Answer }
-type AlertAnswers = { ledger?: unknown; seen?: Map<string, unknown>; play?: Answer; store?: StoreAnswers; open?: Answer }
+type AlertAnswers = { ledger?: unknown; seen?: Map<string, unknown>; play?: Answer; store?: StoreAnswers; open?: Answer; startOpened?: boolean }
 
 // A Map-backed fake of only the parts of the engine alertOn reaches for (session.root, store.get/set, state.set,
 // audio.play, ui.status, ui.open), recording what it was asked to play and show. The one cast is why this is not a
@@ -82,11 +82,14 @@ export async function seenInEarlierSession(ledger: Parameters<typeof alertOn>[1]
 
 // The engine beneath the mod (band.tsx's `engine`), plus what the alert reaches for: the sound it plays and
 // the mod's own store, kept in memory. Every answer defaults to success. Registered before `$` is first touched.
-// Every recorded request to the engine is under `calls`: opened, closed, registered, played, status and toasted.
-export function alertEngine(on: Function, { ledger = SNAPSHOT_RUNNING, seen, play = 'ok', store: storing = 'ok', open = 'ok' }: AlertAnswers = {}) {
+// Every recorded request to the engine is under `calls`: opened, closed, registered, played, status, toasted and notified.
+// The pane also opens by itself once per run when the run starts; an alert test is about the alert's own open, so the store
+// says the pane already opened for the shared ledgers' run (they name no runId) unless the test passes startOpened: false.
+export function alertEngine(on: Function, { ledger = SNAPSHOT_RUNNING, seen, play = 'ok', store: storing = 'ok', open = 'ok', startOpened = true }: AlertAnswers = {}) {
   const base = engine(on, ledger, responder(open, PLACED))
-  const calls = { ...base.calls, played: [] as any[], status: [] as any[], toasted: [] as any[] }
+  const calls = { ...base.calls, played: [] as any[], status: [] as any[], toasted: [] as any[], notified: [] as any[] }
   const store = new Map<string, unknown>(seen)
+  if (startOpened && !store.has(startOpenedKey(ROOT))) store.set(startOpenedKey(ROOT), runOf(SNAPSHOT_RUNNING as any))
   const stored = (action: 'get' | 'set' | 'delete' | 'keys', ok: (request: any) => unknown) =>
     responder(typeof storing === 'object' ? (storing as Record<string, Answer | undefined>)[action] ?? 'ok' : storing, ok)
   on('audio.play', (_: unknown, e: any) => {
@@ -100,6 +103,10 @@ export function alertEngine(on: Function, { ledger = SNAPSHOT_RUNNING, seen, pla
   on('ui.status', (_: unknown, e: any) => {
     calls.status.push(e)
     return { value: undefined }
+  })
+  on('ui.notify', (_: unknown, e: any) => {
+    calls.notified.push(e)
+    return { value: { isSent: true, channel: 'terminal_bell' } }
   })
   on('store.get', (_: unknown, e: { key: string }) => stored('get', () => ({ value: store.get(e.key) }))(e))
   on('store.set', (_: unknown, e: { key: string; value: unknown }) =>

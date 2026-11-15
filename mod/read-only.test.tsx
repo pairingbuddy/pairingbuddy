@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import { plainName } from '../shared-node/plain-names.mjs'
-import { BAND, isSeparatorRule, LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, serveLedger, start, type Served } from './testing/band'
+import { BAND, isGoalRow, isSeparatorRule, LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, serveLedger, start, type Served } from './testing/band'
 import { eventsFor, recordHooks } from './testing/hooks'
 import { recordOther, recordWrite, refuseWorldChanges } from './testing/refuse'
 
@@ -87,14 +87,14 @@ test('running hooks and band against a fixture ledger leaves .pairingbuddy/ unch
       where = `mount ${surface} hasSurvey=${hasSurvey}`
       const ui = await $.ui.mount({ ...BAND, surface, props: { ...BAND.props, hasSurvey } })
       if (!hasSurvey) {
-        drawn[surface] = (await ui.findAll({ type: 'Text' })).find((node: any) => !isSeparatorRule(node))?.text
+        drawn[surface] = (await ui.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node)).slice(0, 2).map((node: any) => node.text).join('')
       }
       await ui.unmount()
     }
   }
 
   expect(served.asked, 'the band read the ledger at <root>/<LEDGER>').toContain(LEDGER_PATH)
-  const stage = plainName('code-scenarios')
+  const stage = `● ${plainName('code-scenarios')}`
   expect(drawn, 'the band drew the where segment from the ledger on every surface').toEqual({
     terminal: stage,
     desktop: stage,
