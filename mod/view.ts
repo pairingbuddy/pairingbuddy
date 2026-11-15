@@ -1,18 +1,18 @@
 import type { ElementTable } from 'claude-code'
-import { currentStep, glance, needsYouLine, stageOf } from '../shared-node/glance.mjs'
+import { currentStep, gateLine, glance, needsYouLine, stageOf, stopName } from '../shared-node/glance.mjs'
 import { isStageActive, stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
 import { lensRound } from '../shared-node/lens-round.mjs'
 import type { LensRound } from '../shared-node/lens-round.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { cycleMarker, loopingTries, nameOf, progressRow, stepAge } from '../shared-node/now-building.mjs'
-import { endRows, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
+import { doneStatus, endRows, goalOf, isUnitDone, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
 import type { Inputs, Ledger } from './inputs'
 
 export type Tone = 'error' | 'warning' | 'dim'
 export type Segment = { id: string; text: string; standing?: boolean; tone?: Tone; bold?: boolean }
 export type Rows = Record<'now' | 'spent' | 'looping', string>
-export type RowTones = Partial<Record<keyof Rows, Tone>>
+export type RowTones = Partial<Record<keyof Rows | 'status', Tone>>
 // The kit's own types for the elements a render hook draws with.
 export type Tags = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
 // The Pane alone also draws the suggest Input.
@@ -38,13 +38,19 @@ export type View = {
   test?: TestLine
   tries?: Tries
   lensRound?: LensRound
-  // The DONE, GOAL and PR rows, each a dash until the task is done; endRound, once the work is finished, is the review the REVIEW row sums up.
+  // The GOAL row: the task's first sentence from the moment the run knows its task, else a dash.
+  goal: string
+  // The STATUS row: what state the run is in, in plain words (working, needs you, stopped, done).
+  status: string
+  // The unit's work is over with nothing left to run: the done alert fires on it.
+  done?: boolean
+  // The BUILT (done) and PR rows, each a dash until the task is done; endRound, once the work is finished, is the review the REVIEW row sums up.
   end: EndRows
   endRound?: LensRound
 }
 
-export type EndRows = Record<'done' | 'goal' | 'pr', string>
-const NO_END: EndRows = { done: '—', goal: '—', pr: '—' }
+export type EndRows = Record<'done' | 'pr', string>
+const NO_END: EndRows = { done: '—', pr: '—' }
 
 const EMPTY = '—'
 const UNKNOWN = 'unknown'
@@ -65,8 +71,8 @@ const waitingGate = (ledger: NonNullable<Ledger>) => (ledger.stop ? undefined : 
 
 function rowTones(ledger: NonNullable<Ledger>): RowTones {
   const tones: RowTones = { spent: 'dim' }
-  if (ledger.stop) tones.now = 'error'
-  else if (waitingGate(ledger)) tones.now = 'warning'
+  if (ledger.stop) tones.status = 'error'
+  else if (waitingGate(ledger)) tones.status = 'warning'
   return tones
 }
 
@@ -101,9 +107,11 @@ function unitSteps({ ledger, unit }: Inputs, ended: boolean): string[] {
     const code = unit?.taskStages?.length ? unit.taskStages.map(name => `✓ ${plainName(name) ?? name}`) : [BUILT]
     return [...code, ...own]
   }
-  const publishes = unit && !KEPT_LOCAL_TYPES.includes(ledger?.taskType ?? '')
-  return publishes ? [...own, `○ ${plainName(PUBLISH_STEP)}`] : own
+  return publishesAfter({ ledger, unit }) ? [...own, `○ ${plainName(PUBLISH_STEP)}`] : own
 }
+
+// A code run in an open unit is followed by the publish run, unless its type closes kept local.
+const publishesAfter = ({ ledger, unit }: Pick<Inputs, 'ledger' | 'unit'>) => Boolean(unit) && !KEPT_LOCAL_TYPES.includes(ledger?.taskType ?? '')
 
 // The TESTS row's progress: each test by its mark, named, or undefined when there is no test to show.
 function progressOf({ tests, perTest, spawns, testsComplete, stage, names }: { tests: string[]; perTest: unknown; spawns: Inputs['spawns']; testsComplete: boolean; stage: unknown; names: Inputs['names'] }) {
@@ -144,19 +152,52 @@ function prOf({ published, prUrl, codeRun, calls = [] }: Inputs) {
   return prUrl ? { url: prUrl, title } : undefined
 }
 
+// The goal: the code run's task (kept through the publish run), else the run's own; a dash while neither names one.
+const goalText = ({ codeRun, ledger }: Inputs) => goalOf(codeRun?.task ?? ledger?.task) || EMPTY
+
 // The end rows once the task is done; while no stage runs, the work is finished and its review is told as one summary.
-function endState(inputs: Inputs, running: boolean): Pick<View, 'end' | 'endRound'> {
+// live: a run's ledger is read now. Done, STATUS says so with the goal's verdict and the pull request.
+function endState(inputs: Inputs, running: boolean, live: boolean): Pick<View, 'end' | 'endRound' | 'done'> & { doneStatus?: string } {
   const round = safetyNetRound({ codeRun: inputs.codeRun, calls: inputs.calls, spawns: inputs.spawns })
-  const end = endRows({ codeRun: inputs.codeRun, changed: inputs.changed, round, pr: prOf(inputs) }) as EndRows
+  const pr = prOf(inputs)
+  const end = endRows({ codeRun: inputs.codeRun, changed: inputs.changed, pr }) as EndRows
   const finished = inputs.codeRun?.taskEndPassed === true && !running && round !== undefined
-  return finished ? { end, endRound: round } : { end }
+  const unitOpen = inputs.unitOpen ?? Boolean(inputs.unit)
+  const done = isUnitDone({ live, codeRun: inputs.codeRun, unitOpen, pr })
+  return { end, ...(finished ? { endRound: round } : {}), done, ...(done ? { doneStatus: doneStatus({ codeRun: inputs.codeRun, round, pr }) } : {}) }
+}
+
+const STATUS_PART = ' · '
+const WORKING = 'working'
+const NEXT_PUBLISH = `next: ${plainName(PUBLISH_STEP)}`
+
+// What state a live run is in: stopped, needs you, or working on its step (or between steps).
+function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean): string {
+  if (ledger.stop) {
+    const why = stopName(ledger.stop)
+    return why ? `stopped${STATUS_PART}${why}` : 'stopped'
+  }
+  const gate = waitingGate(ledger)
+  if (gate) return `needs you${STATUS_PART}${gateLine(gate)}`
+  if (view.between === ALL_DONE && publishes && !isPublishRun(ledger)) return `${WORKING}${STATUS_PART}${NEXT_PUBLISH}`
+  return `${WORKING}${STATUS_PART}${view.rows.now}`
+}
+
+// A run that is over: done, waiting on the publish run, or ended without the sign-off.
+function endedStatus(inputs: Inputs, end: { doneStatus?: string }): string {
+  if (end.doneStatus) return end.doneStatus
+  if (inputs.codeRun?.taskEndPassed === true) return `between runs${STATUS_PART}${NEXT_PUBLISH}`
+  return `ended${STATUS_PART}not signed off`
 }
 
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
   const view = toned(buildPlainView(inputs))
-  if (!inputs.ledger) return view
-  return { ...view, ...buildTestRows(inputs, false), steps: unitSteps(inputs, false), lensRound: lensRound({ ledger: inputs.ledger, calls: inputs.calls, spawns: inputs.spawns }), ...endState(inputs, view.running) }
+  const { ledger } = inputs
+  if (!ledger) return view
+  const { doneStatus: _done, ...end } = endState(inputs, view.running, true)
+  const status = liveStatus(view, ledger, publishesAfter(inputs))
+  return { ...view, goal: goalText(inputs), status, ...buildTestRows(inputs, false), steps: unitSteps(inputs, false), lensRound: lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns }), ...end }
 }
 
 const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since }: Inputs) => glance({ ledger, spawns, tests, now, since, testsComplete, leaveOutUnknown: true })
@@ -166,11 +207,11 @@ const looping = (text: string) => (text === UNKNOWN ? 'no' : text)
 
 function buildPlainView(inputs: Inputs): View {
   const { ledger } = inputs
-  if (!ledger) return { ledger, running: false, rows: NO_RUN_ROWS, band: [], unknownLabels: [], steps: [], end: NO_END }
+  if (!ledger) return { ledger, running: false, rows: NO_RUN_ROWS, band: [], unknownLabels: [], steps: [], goal: EMPTY, status: NO_RUN_ROWS.now, end: NO_END }
   const running = isStageActive(ledger)
   const shown = glanceOf(inputs)
   const rows = { now: shown.rows.now, spent: shown.rows.spent, looping: looping(shown.rows.looping) }
-  const base = { ledger, running, band: shown.band, unknownLabels: shown.unknownLabels, steps: [], end: NO_END }
+  const base = { ledger, running, band: shown.band, unknownLabels: shown.unknownLabels, steps: [], goal: EMPTY, status: EMPTY, end: NO_END }
   const gate = waitingGate(ledger)
   if (gate) {
     const band = running ? shown.band : shown.band.filter((segment: Segment) => segment.id === 'needsYou')
@@ -199,6 +240,7 @@ function betweenText(ledger: NonNullable<Ledger>): string {
 export function buildEndedView(inputs: Inputs): View {
   const { ledger } = inputs
   const { rows, unknownLabels } = glanceOf(inputs)
+  const { doneStatus: finished, ...end } = endState(inputs, false, false)
   const view: View = {
     ledger,
     ended: true,
@@ -207,9 +249,12 @@ export function buildEndedView(inputs: Inputs): View {
     band: [],
     unknownLabels,
     steps: unitSteps(inputs, true),
+    goal: goalText(inputs),
     ...buildTestRows(inputs, true),
     lensRound: ledger ? lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns, ended: true }) : undefined,
-    ...endState(inputs, false),
+    ...end,
+    status: endedStatus(inputs, { doneStatus: finished }),
   }
-  return toned(view)
+  // The run is gone, so a stop or a question its last snapshot held colours nothing.
+  return { ...toned(view), rowTones: { spent: 'dim' } }
 }

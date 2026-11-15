@@ -66,7 +66,7 @@ async function lensReturn($: any, lens: string, findings: unknown[]) {
   await $.tool.call({ tool: 'StructuredOutput', tool_use_id: `tu-${lens}`, pb_key: `code-safety-net.lens.${lens}.r1.a1`, ambiguity: null, findings, agentId: spawned.agentId })
 }
 
-test('end-rows-are-drawn-first-and-read-a-dash-until-the-task-is-done', async ($, on) => {
+test('goal-leads-and-the-end-rows-read-a-dash-until-the-task-is-done', async ($, on) => {
   const rig = setupReplay(on)
   serve(rig, { [LEDGER]: codeRun({}, 'active'), [UNIT]: unitFile })
   await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
@@ -75,7 +75,7 @@ test('end-rows-are-drawn-first-and-read-a-dash-until-the-task-is-done', async ($
 
   const lines = await paneLines($)
 
-  expect(lines.slice(0, 4), `the end rows lead, then NOW: ${JSON.stringify(lines)}`).toEqual(['DONE     —', 'GOAL     —', 'PR       —', 'NOW      safety-net review'])
+  expect(lines.slice(0, 4), `the goal leads, then STATUS, PR and BUILT: ${JSON.stringify(lines)}`).toEqual(['GOAL     Add order_total to cart.py.', 'STATUS   working · safety-net review', 'PR       —', 'BUILT    —'])
 })
 
 test('end-state-from-the-code-runs-end-through-the-publish', async ($, on) => {
@@ -89,10 +89,11 @@ test('end-state-from-the-code-runs-end-through-the-publish', async ($, on) => {
 
   // The code run is over and the task is signed off; nothing is published yet.
   const signedOff = await paneLines($)
-  expect(signedOff.slice(0, 3), `after the task-end gate: ${JSON.stringify(signedOff)}`).toEqual([
-    'DONE     cart.py, tests/test_cart.py · 1 test passing',
-    'GOAL     met · Add order_total to cart.py.',
+  expect(signedOff.slice(0, 4), `after the task-end gate: ${JSON.stringify(signedOff)}`).toEqual([
+    'GOAL     Add order_total to cart.py.',
+    'STATUS   working · next: write the pull request',
     'PR       —',
+    'BUILT    cart.py, tests/test_cart.py · 1 test passing',
   ])
   const review = signedOff.slice(signedOff.findIndex(line => line.startsWith('REVIEW')))
   expect(review.slice(0, 2), `the review is one summary line, then the titles: ${JSON.stringify(signedOff)}`).toEqual(['REVIEW   review: 1 issue, all left as is', '           left as is · Name says total, sums subtotals · cart.py:3'])
@@ -105,10 +106,10 @@ test('end-state-from-the-code-runs-end-through-the-publish', async ($, on) => {
   await rig.clock.advance(POLL_MS)
   const drafting = await paneLines($)
   expect(drafting.slice(0, 4), `while the pull request is drafted: ${JSON.stringify(drafting)}`).toEqual([
-    'DONE     cart.py, tests/test_cart.py · 1 test passing',
-    'GOAL     met · Add order_total to cart.py.',
+    'GOAL     Add order_total to cart.py.',
+    'STATUS   working · write the pull request',
     'PR       —',
-    'NOW      write the pull request',
+    'BUILT    cart.py, tests/test_cart.py · 1 test passing',
   ])
 
   // pb publish opens the pull request and closes the unit: the ledger and unit.json go.
@@ -117,15 +118,16 @@ test('end-state-from-the-code-runs-end-through-the-publish', async ($, on) => {
   serve(rig, { [CHANGED]: [{ path: 'cart.py', status: 'M' }, { path: 'tests/test_cart.py', status: 'A' }] })
   await rig.clock.advance(POLL_MS * 2)
   const published = await paneLines($)
-  expect(published.slice(0, 3), `after the publish: ${JSON.stringify(published)}`).toEqual([
-    'DONE     cart.py, tests/test_cart.py · 1 test passing',
-    'GOAL     met · Add order_total to cart.py.',
+  expect(published.slice(0, 4), `after the publish: ${JSON.stringify(published)}`).toEqual([
+    'GOAL     Add order_total to cart.py.',
+    'STATUS   done · goal met · PR #7 opened · nothing left to do',
     'PR       opened · #7 feat: add order_total',
+    'BUILT    cart.py, tests/test_cart.py · 1 test passing',
   ])
   expect(rowOf(published, 'REVIEW'), 'the end review is the work\'s, not the pull request draft\'s').toBe('REVIEW   review: 1 issue, all left as is')
 })
 
-test('goal-row-shows-the-gist-cut-at-a-clause-not-mid-clause', async ($, on) => {
+test('goal-row-wraps-onto-two-lines-and-only-past-them-cuts-at-a-clause', async ($, on) => {
   const rig = setupReplay(on)
   const task = 'Add order_total to cart.py so it sums price times quantity over every line, so the checkout can show one total. Then document it.'
   serve(rig, { [LEDGER]: { ...codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), task }, [UNIT]: unitFile })
@@ -134,9 +136,17 @@ test('goal-row-shows-the-gist-cut-at-a-clause-not-mid-clause', async ($, on) => 
   await lensReturn($, 'corpus-misalignment', [])
   await rig.clock.advance(POLL_MS * 2)
 
-  const lines = await paneLines($, { bodyColumns: 100 })
+  const wide = await paneLines($, { bodyColumns: 100 })
+  const narrow = await paneLines($, { bodyColumns: 60 })
 
-  expect(rowOf(lines, 'GOAL')).toBe('GOAL     met · Add order_total to cart.py so it sums price times quantity over every line')
+  expect(wide.slice(0, 2), 'two lines hold the whole first sentence').toEqual([
+    'GOAL     Add order_total to cart.py so it sums price times quantity over every line, so the checkout',
+    '         can show one total.',
+  ])
+  expect(narrow.slice(0, 2), 'past two lines, the second is cut at the clause that fits').toEqual([
+    'GOAL     Add order_total to cart.py so it sums price times',
+    '         quantity over every line',
+  ])
 })
 
 test('tests-row-keeps-the-code-runs-tests-through-the-publish', async ($, on) => {

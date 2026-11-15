@@ -118,13 +118,18 @@ test('with the pane open, every row in order, the step list in plain names with 
   const steps = await drawn($, rig, gOpen1, TESTS['g-open-1'])
 
   const all = at(steps, 148.104).lines
-  expect(all.slice(0, 3), 'the end rows lead, and read a dash before the task is done').toEqual(['DONE     —', 'GOAL     —', 'PR       —'])
-  const review = all.slice(3)
-  expect(review[0], `the NOW row names the step in ${JSON.stringify(review)}`).toBe('NOW      safety-net review')
-  expect(review[1], 'SPENT leaves out what is not measured').toMatch(/^SPENT {4}6 agents · \d+:\d\d$/)
-  expect(review[2], 'nothing is looping').toBe('LOOPING  no')
-  expect(review.filter(line => /^(LEFT|OFF TRACK)\b/.test(line)), 'LEFT and OFF TRACK are gone').toEqual([])
-  expect(review.slice(3, 7), 'steps done, then current, in plain names').toEqual(['STEPS    ○ work out the task type', '         ✓ write test scenarios', '         ✓ build test by test', '         ▸ safety-net review'])
+  expect(all.slice(0, 5), `the goal leads, then STATUS, and PR and BUILT read a dash before the task is done: ${JSON.stringify(all)}`).toEqual([
+    'GOAL     Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it',
+    '         should return 90.',
+    'STATUS   working · safety-net review',
+    'PR       —',
+    'BUILT    —',
+  ])
+  const review = all.slice(5)
+  expect(review[0], 'SPENT leaves out what is not measured').toMatch(/^SPENT {4}6 agents · \d+:\d\d$/)
+  expect(review[1], 'nothing is looping').toBe('LOOPING  no')
+  expect(review.filter(line => /^(LEFT|OFF TRACK|NOW|DONE)\b/.test(line)), 'LEFT, OFF TRACK, NOW and DONE are gone').toEqual([])
+  expect(review.slice(2, 6), 'steps done, then current, in plain names').toEqual(['STEPS    ○ work out the task type', '         ✓ write test scenarios', '         ✓ build test by test', '         ▸ safety-net review'])
   expect(review, 'the tests stay listed, and no test is current in the review').toEqual(expect.arrayContaining(['TESTS    ✓ 1 done   ◌ 3 covered']))
 
   const building = at(steps, 49.891).lines
@@ -134,7 +139,7 @@ test('with the pane open, every row in order, the step list in plain names with 
   expect(footer.props.dimColor, 'the last thing drawn is the dim footer').toBe(true)
 })
 
-test('replaying probe-2 shows LOOPING naming the step and its 3rd try, and the 3rd-try NOW sentence', async ($, on) => {
+test('replaying probe-2 shows LOOPING naming the step and its 3rd try, and the 3rd-try STATUS sentence', async ($, on) => {
   const rig = setupReplay(on)
   const steps = await drawn($, rig, probe2, TESTS['probe-2'])
 
@@ -143,7 +148,7 @@ test('replaying probe-2 shows LOOPING naming the step and its 3rd try, and the 3
   const pane = third.lines
   expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['RED · test 2 of 2', 'looping: yes']))
   expect(pane, `pane LOOPING row in ${JSON.stringify(pane)}`).toContain('LOOPING  writing a failing test · try 3 of 3')
-  expect(pane, `pane NOW row in ${JSON.stringify(pane)}`).toContain('NOW      writing a failing test for zero percent keeps full price · test 2 of 2, 3rd try')
+  expect(pane, `pane STATUS row in ${JSON.stringify(pane)}`).toEqual(expect.arrayContaining(['STATUS   working · writing a failing test for zero percent keeps full price', '         test 2 of 2, 3rd try']))
   expect(second.band, 'band at the 2nd try is not looping yet').toContain('looping: no')
   expect(second.lines, 'the 2nd try names the step and its try').toContain('LOOPING  writing a failing test · try 2 of 3')
   expect(steps.flatMap(step => step.lines).some(line => line.includes('try 1 of')), 'a first try is never spelled out').toBe(false)
@@ -286,10 +291,10 @@ test('replay-end-state-after-the-publish-says-done-goal-and-pr', async ($, on) =
   const rig = setupReplay(on)
   const steps = await drawn($, rig, s4Rollback, S4_TEST_IDS, PANE, S4_CHANGED)
   const publishing = steps.at(-1)!.lines
-  expect(publishing.slice(0, 3), `while the publish run waits on G:publish: ${JSON.stringify(publishing)}`).toEqual([
-    'DONE     README.md, discount.py, tests/test_discount.py · 1 test passing',
-    'GOAL     met · Fix this bug in discount.py',
+  expect(publishing.slice(2, 5), `while the publish run waits on G:publish: ${JSON.stringify(publishing)}`).toEqual([
+    'STATUS   working · all steps done',
     'PR       —',
+    'BUILT    README.md, discount.py, tests/test_discount.py · 1 test passing',
   ])
 
   rig.toolResults.set('Bash', { stdout: '{"ok":true,"result":"published","url":"https://github.com/o/r/pull/12","warnings":[]}\n', stderr: '' })
@@ -298,10 +303,13 @@ test('replay-end-state-after-the-publish-says-done-goal-and-pr', async ($, on) =
   await rig.clock.advance(POLL_MS * 2)
   const ended = await paneLines($)
 
-  expect(ended.slice(0, 3), `after the publish: ${JSON.stringify(ended)}`).toEqual([
-    'DONE     README.md, discount.py, tests/test_discount.py · 1 test passing',
-    'GOAL     met · Fix this bug in discount.py',
+  expect(ended.slice(0, 6), `after the publish: ${JSON.stringify(ended)}`).toEqual([
+    'GOAL     Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it',
+    '         should return 90.',
+    'STATUS   done · goal met · PR #12 opened · nothing left to do',
     'PR       opened · #12 fix: apply_discount returns price after discount',
+    'BUILT    README.md, discount.py, tests/test_discount.py · 1 test passing',
+    expect.stringMatching(/^SPENT /),
   ])
   const review = ended.slice(ended.findIndex(line => line.startsWith('REVIEW')))
   expect(review[0], 'the review is the work\'s, in one summary line').toBe('REVIEW   review: 3 issues, all fixed')

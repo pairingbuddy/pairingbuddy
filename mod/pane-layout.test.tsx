@@ -1,10 +1,10 @@
 // Scenario pane-layout: the pane keeps one layout for the whole unit (docs/design/progress-mod/DIRECTION.md, "Fixed layout").
 import { expect, test } from 'claude-code/testing'
-import { paneLines, setupReplay, type Rig } from './testing/replay'
+import { PANE, paneLines, setupReplay, type Rig } from './testing/replay'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
 
-const ROWS = ['DONE', 'GOAL', 'PR', 'NOW', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'REVIEW']
+const ROWS = ['GOAL', 'STATUS', 'PR', 'BUILT', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'REVIEW']
 const LABEL_WIDTH = 9
 
 // The rows the pane starts with a label, in order.
@@ -27,10 +27,29 @@ test('every-row-is-drawn-in-order-with-a-fixed-label-width-and-a-dash-when-empty
 
   expect(labelsOf(lines), `the rows, in order: ${JSON.stringify(lines)}`).toEqual(ROWS)
   for (const label of ROWS) expect(rowOf(lines, label), `${label} sits in a ${LABEL_WIDTH}-wide label column: ${JSON.stringify(lines)}`).toBeDefined()
-  expect(rowOf(lines, 'NOW'), 'NOW names the active step').toBe('NOW      write test scenarios')
-  for (const label of ['DONE', 'GOAL', 'PR', 'TESTS', 'REVIEW']) expect(rowOf(lines, label), `${label} has nothing to show yet, so it reads a dash`).toBe(`${label.padEnd(LABEL_WIDTH)}—`)
+  expect(rowOf(lines, 'STATUS'), 'STATUS says the run is working, on the active step').toBe('STATUS   working · write test scenarios')
+  for (const label of ['PR', 'BUILT', 'TESTS', 'REVIEW']) expect(rowOf(lines, label), `${label} has nothing to show yet, so it reads a dash`).toBe(`${label.padEnd(LABEL_WIDTH)}—`)
   expect(rowOf(lines, 'LOOPING'), 'no step is looping').toBe('LOOPING  no')
-  expect(lines.some(line => /^(LEFT|OFF TRACK)\b/.test(line)), 'LEFT and OFF TRACK are gone').toBe(false)
+  expect(lines.some(line => /^(LEFT|OFF TRACK|NOW|DONE)\b/.test(line)), 'LEFT, OFF TRACK, NOW and DONE are gone').toBe(false)
+})
+
+test('goal-leads-the-pane-from-the-task-bold-wrapped-onto-two-lines-with-a-rule-under-it', async ($, on) => {
+  const rig = setupReplay(on)
+  await serve($, rig, { [LEDGER]: SNAPSHOT_RUNNING })
+
+  const lines = await paneLines($)
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const drawn = await pane.findAll({ type: 'Text' })
+  await pane.unmount()
+
+  expect(lines.slice(0, 2), `the task's first sentence leads, wrapped, never cut: ${JSON.stringify(lines)}`).toEqual([
+    'GOAL     Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it',
+    '         should return 90.',
+  ])
+  const goal = drawn.filter((node: any) => ['Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it', 'should return 90.'].includes(node.text))
+  expect(goal.map((node: any) => node.props.bold), 'the goal is bold').toEqual([true, true])
+  const at = drawn.findIndex((node: any) => node.text === 'should return 90.')
+  expect(drawn[at + 1]?.props?.dimColor === true && /^─{3,}$/.test(drawn[at + 1]?.text ?? ''), `a dim rule sits under the goal: ${JSON.stringify(drawn.map((node: any) => node.text))}`).toBe(true)
 })
 
 const UNIT = '.pairingbuddy/run/unit.json'
@@ -70,7 +89,7 @@ test('the-publish-run-lists-the-unit-tasks-steps-as-done-before-the-publish-step
   const lines = await paneLines($)
 
   expect(stepsOf(lines), 'the code steps stay, done').toEqual(['✓ work out the task type', '✓ write test scenarios', '✓ build test by test', '✓ safety-net review', '▸ write the pull request'])
-  expect(rowOf(lines, 'NOW'), 'NOW names the publish step').toBe('NOW      write the pull request')
+  expect(rowOf(lines, 'STATUS'), 'STATUS names the publish step').toBe('STATUS   working · write the pull request')
   expect(rowOf(lines, 'TESTS'), 'with no code run seen, the publish run lists none of tests.json as to do').toBe('TESTS    —')
 })
 
@@ -108,7 +127,7 @@ test('after-the-run-looping-and-test-read-a-dash-and-the-last-review-stays', asy
   await rig.clock.advance(POLL_MS * 2)
   const lines = await paneLines($)
 
-  expect(rowOf(lines, 'NOW'), 'the run is over').toBe('NOW      last run finished')
+  expect(rowOf(lines, 'STATUS'), 'the run is over, without the sign-off').toBe('STATUS   ended · not signed off')
   expect(rowOf(lines, 'LOOPING'), 'after the run LOOPING reads a dash').toBe('LOOPING  —')
   expect(lines.some(line => /^\s+▸ .*\d:\d\d$/.test(line)), 'after the run no test is current').toBe(false)
   expect(rowOf(lines, 'REVIEW'), 'the last review round stays').toBe('REVIEW   checked: the code')

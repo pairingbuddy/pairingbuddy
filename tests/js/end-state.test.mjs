@@ -1,17 +1,17 @@
-// Scenario end-state: when the unit's work is finished, the pane's DONE, GOAL and PR rows say whether it is done, what was
+// Scenario end-state: when the unit's work is finished, the pane's STATUS, PR and BUILT rows say whether it is done, what was
 // done and whether it meets the goal, from what the run recorded only (docs/design/progress-mod/DIRECTION.md).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { codeRunOf, endRows, endReviewLines, goalGist, prTitleOf, safetyNetRound } from "../../shared-node/end-state.mjs";
+import { codeRunOf, doneStatus, endRows, endReviewLines, goalGist, goalLines, goalOf, isUnitDone, prTitleOf, safetyNetRound, wrapAtParts } from "../../shared-node/end-state.mjs";
 
 const DASH = "—";
 const TASK = "Add order_total to cart.py. It sums the line totals.";
 const finishedRun = (overrides = {}) => ({ task: TASK, taskEndPassed: true, testsPassing: 1, fullPassed: true, ...overrides });
 
 test("before the task is done every end row reads a dash", () => {
-  assert.deepEqual(endRows({}), { done: DASH, goal: DASH, pr: DASH }, "no code run recorded");
-  assert.deepEqual(endRows({ codeRun: finishedRun({ taskEndPassed: false }), changed: ["cart.py"] }), { done: DASH, goal: DASH, pr: DASH }, "the task-end gate has not passed");
+  assert.deepEqual(endRows({}), { done: DASH, pr: DASH }, "no code run recorded");
+  assert.deepEqual(endRows({ codeRun: finishedRun({ taskEndPassed: false }), changed: ["cart.py"] }), { done: DASH, pr: DASH }, "the task-end gate has not passed");
 });
 
 test("once the task-end gate passed, DONE names the changed files and the passing tests", () => {
@@ -33,19 +33,19 @@ const round = ({ state = "returned", findings = [] } = {}) => ({
   findings,
 });
 
-test("GOAL reads met only from a passed task-end gate and an alignment lens with no open finding", () => {
+test("STATUS says goal met only from a passed task-end gate and an alignment lens with no open finding", () => {
   const fixed = [{ id: "corpus-misalignment-1", title: "README says the old return", word: "fixed" }];
   const codeOnly = [{ id: "code-1", title: "Rounds half down", word: "left as is" }];
 
-  assert.equal(endRows({ codeRun: finishedRun(), round: round() }).goal, "met · Add order_total to cart.py.");
-  assert.equal(endRows({ codeRun: finishedRun(), round: round({ findings: fixed }) }).goal, "met · Add order_total to cart.py.", "a fixed alignment finding is closed");
-  assert.equal(endRows({ codeRun: finishedRun(), round: { ...round(), findings: codeOnly } }).goal, "met · Add order_total to cart.py.", "another lens's open finding says nothing about the goal");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round() }), "done · goal met · nothing left to do");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ findings: fixed }) }), "done · goal met · nothing left to do", "a fixed alignment finding is closed");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: { ...round(), findings: codeOnly } }), "done · goal met · nothing left to do", "another lens's open finding says nothing about the goal");
 });
 
-test("GOAL reads in doubt with the gist when the alignment lens has a finding still open", () => {
+test("STATUS says goal in doubt with the gist when the alignment lens has a finding still open", () => {
   const open = [{ id: "corpus-misalignment-1", claim: "The plan asks for a total with tax. The diff sums without it.", word: "left as is" }];
 
-  assert.equal(endRows({ codeRun: finishedRun(), round: round({ findings: open }) }).goal, "in doubt · The plan asks for a total with tax.");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ findings: open }) }), "done · goal in doubt: The plan asks for a total with tax.", "a doubt is the human's to look at, so nothing-left-to-do is left out");
 });
 
 test("PR reads a dash until the publish result or the unit record names it", () => {
@@ -116,17 +116,17 @@ test("the end round is the code run's safety-net round, read from the recorded r
   const round = safetyNetRound({ codeRun, calls, spawns: [] });
 
   assert.deepEqual(round.lenses.map(({ id, state }) => ({ id, state })), [{ id: "corpus-misalignment", state: "returned" }]);
-  assert.equal(endRows({ codeRun, round }).goal, "met · Add order_total to cart.py.");
+  assert.equal(doneStatus({ codeRun, round }), "done · goal met · nothing left to do");
   assert.equal(safetyNetRound({ codeRun: { ...codeRun, safetyNet: null }, calls, spawns: [] }), undefined, "no safety-net stage, no round");
 });
 
-test("GOAL reads not checked when no alignment verdict was recorded", () => {
+test("STATUS says goal not checked when no alignment verdict was recorded", () => {
   const noAlignmentLens = { lenses: [{ id: "code", name: "the code", state: "returned", found: 0 }], findings: [] };
 
-  assert.equal(endRows({ codeRun: finishedRun() }).goal, "not checked", "no review round is known (the session that saw it is gone)");
-  assert.equal(endRows({ codeRun: finishedRun(), round: round({ state: "uncovered" }) }).goal, "not checked", "the alignment lens returned nothing usable");
-  assert.equal(endRows({ codeRun: finishedRun(), round: round({ state: "running" }) }).goal, "not checked", "the alignment lens never returned");
-  assert.equal(endRows({ codeRun: finishedRun(), round: noAlignmentLens }).goal, "not checked", "no alignment lens ran");
+  assert.equal(doneStatus({ codeRun: finishedRun() }), "done · goal not checked · nothing left to do", "no review round is known (the session that saw it is gone)");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ state: "uncovered" }) }), "done · goal not checked · nothing left to do", "the alignment lens returned nothing usable");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ state: "running" }) }), "done · goal not checked · nothing left to do", "the alignment lens never returned");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: noAlignmentLens }), "done · goal not checked · nothing left to do", "no alignment lens ran");
 });
 
 test("a goal too wide for its room is cut at the last clause break that fits, else at the last word", () => {
@@ -137,4 +137,43 @@ test("a goal too wide for its room is cut at the last clause break that fits, el
   assert.equal(goalGist("met · Goal: sum the lines; keep the tax apart", 30), "met · Goal: sum the lines", "a semicolon and a colon are clause breaks too");
   assert.equal(goalGist("met · Add order_total to cart.py so it sums price", 30), "met · Add order_total to", "with no clause break that fits, cut at the last word");
   assert.equal(goalGist("met · Fix discount.py: apply_discount(100, 10) returns 10 and it should return 90", 50), "met · Fix discount.py", "a comma inside brackets or code is not a clause break");
+});
+
+test("STATUS names the pull request's fate once the unit is done", () => {
+  const codeRun = finishedRun();
+  const met = { lenses: [{ id: "corpus-misalignment", state: "returned" }], findings: [] };
+
+  assert.equal(doneStatus({ codeRun, round: met, pr: { url: "https://github.com/o/r/pull/7" } }), "done · goal met · PR #7 opened · nothing left to do");
+  assert.equal(doneStatus({ codeRun, round: met, pr: { url: "https://example.com/review" } }), "done · goal met · PR opened · nothing left to do", "a url with no number");
+  assert.equal(doneStatus({ codeRun, round: met, pr: { result: "kept-local" } }), "done · goal met · kept local · nothing left to do");
+});
+
+test("the unit is done only when no run is live, the task was signed off, and nothing is left to publish", () => {
+  const codeRun = finishedRun();
+  const pr = { url: "https://github.com/o/r/pull/7" };
+
+  assert.equal(isUnitDone({ codeRun, pr }), true, "the pull request is open");
+  assert.equal(isUnitDone({ codeRun, unitOpen: false }), true, "no unit is open that would publish");
+  assert.equal(isUnitDone({ codeRun, unitOpen: true }), false, "the open unit still publishes");
+  assert.equal(isUnitDone({ codeRun, pr: { result: "kept-local" }, unitOpen: true }), true, "kept local is a fate too");
+  assert.equal(isUnitDone({ live: true, codeRun, pr }), false, "a run is live");
+  assert.equal(isUnitDone({ codeRun: finishedRun({ taskEndPassed: false }), pr }), false, "not signed off");
+  assert.equal(isUnitDone({}), false, "nothing known");
+});
+
+test("the goal is the task's first sentence on its first line, wrapped onto two lines before any cut", () => {
+  assert.equal(goalOf("Add order_total. It sums lines."), "Add order_total.");
+  assert.equal(goalOf("Add order_total to cart.py\n\nContext: the checkout."), "Add order_total to cart.py", "the context after a blank line is not the goal");
+  assert.equal(goalOf(undefined), "");
+
+  assert.deepEqual(goalLines("Add order_total to cart.py", 0), ["Add order_total to cart.py"], "no room known, one line");
+  assert.deepEqual(goalLines("Add order_total to cart.py so it sums", 20), ["Add order_total to", "cart.py so it sums"], "wrapped, nothing cut");
+  assert.deepEqual(goalLines("Add order_total to cart.py, so it sums every line price", 20), ["Add order_total to", "cart.py"], "past two lines, cut at the clause that fits");
+  assert.deepEqual(goalLines("Fix src/shop/checkout/order_total.py", 12), ["Fix", "src/shop/che"], "a word wider than the room is split, never ended with an ellipsis");
+});
+
+test("a status wraps at its parts, then at words", () => {
+  assert.deepEqual(wrapAtParts("working · writing a failing test · test 2 of 2", 34), ["working · writing a failing test", "test 2 of 2"]);
+  assert.deepEqual(wrapAtParts("done · goal met", 0), ["done · goal met"]);
+  assert.deepEqual(wrapAtParts("stopped · a step kept failing at the same place", 20), ["stopped", "a step kept failing", "at the same place"]);
 });

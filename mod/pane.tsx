@@ -1,6 +1,6 @@
 import { plainName } from '../shared-node/plain-names.mjs'
 import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
-import { endReviewLines, goalGist } from '../shared-node/end-state.mjs'
+import { endReviewLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
 import { fitTries } from '../shared-node/now-building.mjs'
 import type { PaneTags, RowTones, View } from './view'
 
@@ -70,18 +70,31 @@ function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: 
   return lines
 }
 
+// The GOAL row leads, bold, on up to two lines; a dash until the run names its task.
+function goalRows(view: View, columns: number) {
+  const width = columns > 0 ? columns - LABEL_WIDTH : 0
+  const goal = view.goal ?? EMPTY
+  const lines = goal === EMPTY ? [emptyLine()] : goalLines(goal, width).map((text: string) => [{ text, props: { bold: true } }])
+  return rowLines('GOAL', lines)
+}
+
+// The thin rule under the goal: the pane's width, or a fixed one before the first layout.
+const RULE_FALLBACK_WIDTH = 40
+const goalRule = (columns: number) => '─'.repeat(columns > 0 ? columns : RULE_FALLBACK_WIDTH)
+
 function paneRows(view: View, columns: number) {
   const { rows, rowTones = {} as RowTones } = view
   const width = columns > 0 ? columns - LABEL_WIDTH : 0
   const one = (text: string, props: Props = {}): Part[][] => [[{ text, props: text === EMPTY ? { dimColor: true } : props }]]
-  const nowProps = { ...toneProps(rowTones.now), ...(rowTones.now === 'warning' ? { bold: true } : {}) }
+  // A row that wraps at its parts, then words, onto as many lines as it needs, never cut.
+  const wrapped = (text: string, room: number, props: Props = {}): Part[][] => (text === EMPTY ? one(text) : wrapAtParts(text, room).map((line: string) => [{ text: line, props }]))
+  const statusProps = { ...toneProps(rowTones.status), ...(rowTones.status === 'warning' ? { bold: true } : {}) }
   const tries = view.tries?.length ? [[{ text: fitTries(view.tries, width).trimStart(), props: { dimColor: true } }]] : []
   const review = view.endRound ? endReviewLines(view.endRound, width) : lensLines(view.lensRound, width)
   return [
-    ...rowLines('DONE', one(cutAtWord(view.end.done, width))),
-    ...rowLines('GOAL', one(goalGist(view.end.goal, width))),
+    ...rowLines('STATUS', wrapped(view.status ?? rows.now, width, statusProps)),
     ...rowLines('PR', one(cutAtWord(view.end.pr, width))),
-    ...rowLines('NOW', one(rows.now, nowProps)),
+    ...rowLines('BUILT', one(cutAtWord(view.end.done, width))),
     ...rowLines('SPENT', one(rows.spent, toneProps(rowTones.spent))),
     ...rowLines('LOOPING', [...one(rows.looping, toneProps(rowTones.looping)), ...tries]),
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
@@ -103,6 +116,13 @@ export function Pane({ Box, Text, Button, Input, view, columns = 0, unknownLabel
   const { ledger, ended = false } = view
   return (
     <Box flexDirection="column">
+      {goalRows(view, columns).map(({ label: name, parts }, row) => (
+        <Box key={`goal-${row}`}>
+          <Text key="label" wrap="truncate-end">{name}</Text>
+          {parts.map((part, i) => <Text key={`part-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)}
+        </Box>
+      ))}
+      <Text key="goal-rule" dimColor wrap="truncate-end">{goalRule(columns)}</Text>
       {paneRows(view, columns).map(({ label: name, parts }, row) => (
         <Box key={`row-${row}`}>
           <Text key="label" wrap="truncate-end">{name}</Text>

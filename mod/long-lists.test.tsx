@@ -131,7 +131,7 @@ for (const columns of WIDTHS) {
     expect(tests.at(-1), 'the waiting tests past the shown ones are counted').toBe(`${' '.repeat(LABEL_WIDTH)}+27 more`)
   })
 
-  test(`a-big-task-at-its-end-fits-${columns}-columns-with-one-done-line-and-review-in-five`, async ($, on) => {
+  test(`a-big-task-at-its-end-fits-${columns}-columns-with-one-built-line-and-review-in-five`, async ($, on) => {
     const rig = setupReplay(on)
     await bigEnd($, rig)
 
@@ -139,12 +139,12 @@ for (const columns of WIDTHS) {
     const review = rowLinesOf(lines, 'REVIEW')
 
     expect(tooWide(lines, columns), `every line fits ${columns} columns`).toEqual([])
-    expect(rowLinesOf(lines, 'DONE').length, `DONE is one line: ${JSON.stringify(lines)}`).toBe(1)
+    expect(rowLinesOf(lines, 'BUILT').length, `BUILT is one line: ${JSON.stringify(lines)}`).toBe(1)
     // The end review: one summary line, the first three findings, then "+ n more".
     expect(review.length, `REVIEW is at most 5 lines: ${JSON.stringify(review)}`).toBeLessThanOrEqual(5)
     expect(review.at(-1), 'the other five findings are counted').toBe(`${' '.repeat(LABEL_WIDTH)}  + 5 more`)
-    // DONE, GOAL, PR and REVIEW cut at a word, never mid-word with an ellipsis.
-    for (const name of ['DONE', 'GOAL', 'PR', 'REVIEW']) {
+    // BUILT, GOAL, PR and REVIEW cut at a word, never mid-word with an ellipsis.
+    for (const name of ['BUILT', 'GOAL', 'PR', 'REVIEW']) {
       for (const line of rowLinesOf(lines, name)) expect(line.includes('…'), `${name} is cut at a word: ${line}`).toBe(false)
     }
   })

@@ -264,7 +264,7 @@ test('needs-you-and-stop-use-warning-or-error: a needs-you gate draws in warning
 
   expect(starting(gateBand, 'needs you').props.color, 'a needs-you gate in the band is warning').toBe('warning')
   expect(starting(stopBand, 'needs you').props.color, 'a stop in the band is error').toBe('error')
-  expect(starting(stopPane, 'stopped').props.color, 'a stop in the pane NOW row is error').toBe('error')
+  expect(starting(stopPane, 'stopped').props.color, 'a stop in the pane STATUS row is error').toBe('error')
   expect(gateBand.find(node => node.text.startsWith('looping:')), 'an unknown band segment is not drawn').toBeUndefined()
   expect(starting(gateBand, '0 agents').props.dimColor, 'the band spend segment is dim').toBe(true)
   expect(starting(stopPane, '0 agents').props.dimColor, 'the pane SPENT row is dim').toBe(true)

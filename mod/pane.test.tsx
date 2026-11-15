@@ -205,7 +205,7 @@ const AFTER_SCENARIOS = {
   stages: [doneStage('intake', 0), doneStage('code-scenarios', 1)],
   gates: { ...SNAPSHOT_RUNNING.gates, 'G:type': { source: 'auto' } },
 }
-const nowRow = (shown: string[]) => shown.find(text => text.startsWith('NOW')) ?? ''
+const nowRow = (shown: string[]) => shown.find(text => text.startsWith('STATUS')) ?? ''
 const RETURNED_LENS = 'REVIEW   checked: the code'
 const hasReturnedLens = (lines: string[]) => lines.includes(RETURNED_LENS)
 
@@ -216,8 +216,8 @@ test('pane-now-between-steps-has-no-band-label', async ($, on) => {
   const now = nowRow(await paneLines($))
   const band = (await bandTexts($, { bodyColumns: 200 })).join('')
 
-  expect(now, `NOW reads the plain state: ${now}`).toContain('between steps · next: build test by test')
-  expect(now, `NOW carries no band label: ${now}`).not.toContain('Pairing Buddy ·')
+  expect(now, `STATUS reads the plain state: ${now}`).toContain('working · between steps · next: build test by test')
+  expect(now, `STATUS carries no band label: ${now}`).not.toContain('Pairing Buddy ·')
   expect(band, `the band keeps its label: ${band}`).toContain('Pairing Buddy · between steps')
 })
 
@@ -228,8 +228,8 @@ test('pane-now-run-open-has-no-band-label', async ($, on) => {
 
   const now = nowRow(await paneLines($))
 
-  expect(now, `NOW reads the plain run open: ${now}`).toContain('run open')
-  expect(now, `NOW carries no band label: ${now}`).not.toContain('Pairing Buddy ·')
+  expect(now, `STATUS reads the plain run open: ${now}`).toContain('run open')
+  expect(now, `STATUS carries no band label: ${now}`).not.toContain('Pairing Buddy ·')
 })
 
 test('all-steps-done-before-task-end', async ($, on) => {
@@ -242,8 +242,8 @@ test('all-steps-done-before-task-end', async ($, on) => {
 
   expect(band, `the band says all steps done: ${band}`).toContain('all steps done')
   expect(band, `the band never says run open: ${band}`).not.toContain('run open')
-  expect(now, `NOW says all steps done: ${now}`).toContain('all steps done')
-  expect(now, `NOW never says run open: ${now}`).not.toContain('run open')
+  expect(now, `STATUS says all steps done: ${now}`).toContain('all steps done')
+  expect(now, `STATUS never says run open: ${now}`).not.toContain('run open')
 })
 
 test('pane-now-names-what-is-needed', async ($, on) => {
@@ -255,8 +255,8 @@ test('pane-now-names-what-is-needed', async ($, on) => {
   const node = (await now.findAll({ type: 'Text' })).find((n: any) => n.text.startsWith('needs you'))
   await now.unmount()
 
-  expect(nowRow(await paneLines($)), 'NOW names the gate').toBe('NOW      needs you: your OK on the scenarios')
-  expect(node?.props.color, 'NOW is in the warning tone').toBe('warning')
+  expect(nowRow(await paneLines($)), 'STATUS names the gate').toBe('STATUS   needs you · your OK on the scenarios')
+  expect(node?.props.color, 'STATUS is in the warning tone').toBe('warning')
 })
 
 const STAGE_STARTED = '2026-11-04T08:19:00.000Z'
@@ -287,7 +287,7 @@ test('pane-draws-the-review-row-and-no-test-in-the-safety-net-review', async ($,
     '         1 issue found · 1 to fix',
     '           to fix · rounds the wrong way · discount.py:3',
   ])
-  expect(lines, 'NOW names the review, not the last test').toContain('NOW      safety-net review')
+  expect(lines, 'STATUS names the review, not the last test').toContain('STATUS   working · safety-net review')
   expect(lines, 'no test is current outside build test by test').toContain('TESTS    —')
   expect(lines.some(line => line.startsWith('TEST ')), 'there is no TEST row').toBe(false)
   expect(lines.some(line => /agents? of \d+/.test(line)), 'no "n agents of 1000" line').toBe(false)

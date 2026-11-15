@@ -130,7 +130,7 @@ function bandSpent({ ledger, spawns, now, since }) {
 const STOPPED = "stopped";
 
 // A stop reads by the plain name of its code, or undefined when the code has none.
-function stopName(stop) {
+export function stopName(stop) {
   return plainName(stop?.code);
 }
 
