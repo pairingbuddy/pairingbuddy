@@ -77,7 +77,8 @@ function triesOf(spawns, item) {
   for (const spawn of Array.isArray(spawns) ? spawns : []) {
     if (spawn?.kind !== "workflow_agent") continue;
     const label = readLabel(spawn.name);
-    if (label.unknown || label.item === null) continue;
+    // Only a test's cycle names a phase, so `written` counts exactly the spawns testLabels keeps (a review round's lens is skipped).
+    if (label.unknown || label.item === null || (label.role !== "runner" && label.phase === null)) continue;
     if (label.role === "runner") {
       const last = label.item === item ? tries.at(-1) : undefined;
       if (last && last.running === undefined) last.running = spawn.seconds;
