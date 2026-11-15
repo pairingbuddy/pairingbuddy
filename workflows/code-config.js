@@ -349,7 +349,11 @@ async function lensAttack(config) {
   const fixed = config.fix !== undefined ? await fixLoop(config, settled.survivors, budget - results.length - attacked.length) : null;
   const stopReason = fixed?.stopReason ?? roundStop;
   // review is what the session reports from: each finding's end, by the rule the gate reads too. survivors and the other lists are the round before any fix.
-  const review = { findings: findingOutcomes(settled, fixed?.keptLenses ?? []), notCovered: settled.uncovered };
+  // What a lens or refuter said it could not read or check is a gap in the review, never a doubt for the human.
+  const limits = [...results, ...verdicts]
+    .filter((said) => typeof said?.not_checked === 'string' && said.not_checked.trim() !== '')
+    .map(({ not_checked }) => `a reviewer could not check: ${not_checked.trim()}`);
+  const review = { findings: findingOutcomes(settled, fixed?.keptLenses ?? []), notCovered: [...settled.uncovered, ...limits] };
   return { review, ...settled, agentsUsed: results.length + attacked.length + (fixed?.spawned ?? 0), ...(fixed === null ? {} : { attempts: fixed.attempts, lessons: fixed.lessons, stopRecorded: fixed.stopRecorded, final: fixed.final }), stopReason };
 }
 

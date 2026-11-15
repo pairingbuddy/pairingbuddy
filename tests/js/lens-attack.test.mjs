@@ -256,6 +256,16 @@ test("The result carries every return field, with neutral values for the ones la
   assert.equal(result.stopReason, null, "stopReason is neutral");
 });
 
+test("what a lens or a refuter could not check goes to the review's notCovered, not to a doubt", async () => {
+  const respond = async (prompt, opts) => (isRefuter(opts)
+    ? { pb_key: "k", finding_id: sentIdOf(prompt), verdict: "survives", ambiguity: null, not_checked: "The plan file was not there." }
+    : { ...lensReturn([ranked(1)]), not_checked: "I did not read the full cart.py." });
+
+  const { result } = await runLensAttack(refutingConfig(1), respond);
+
+  assert.deepEqual(result.review.notCovered, ["a reviewer could not check: I did not read the full cart.py.", "a reviewer could not check: The plan file was not there."]);
+});
+
 test("merge-keeps-kind-on-survivor", async () => {
   const config = ONE_LENS;
   const findings = [{ rule: "R1", severity: "high", kind: "risk", claim: "a risk", where: "a.mjs:1" }];

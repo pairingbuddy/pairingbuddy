@@ -595,11 +595,12 @@ const LENSES = {
 const LIGHT_REVIEW_SCHEMA = {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Light Review Result",
-  "description": "Return of the lens agent in a light review: the pb key it was given, any open ambiguity, the focus changes it made and its findings, each tagged with a focus",
+  "description": "Return of the lens agent in a light review: the pb key it was given, any open question for the human, what it could not check, the focus changes it made and its findings, each tagged with a focus",
   "type": "object",
   "required": [
     "pb_key",
     "ambiguity",
+    "not_checked",
     "focus_changes",
     "findings"
   ],
@@ -613,7 +614,14 @@ const LIGHT_REVIEW_SCHEMA = {
         "string",
         "null"
       ],
-      "description": "An open question that affected the review, or null"
+      "description": "A question only the human can decide, in plain words to the human, or null"
+    },
+    "not_checked": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "What the review could not read or check, so the review does not cover it, or null. It goes to the report, never to the gate"
     },
     "focus_changes": {
       "type": "array",
@@ -1455,7 +1463,11 @@ async function lensAttack(config) {
   const fixed = config.fix !== undefined ? await fixLoop(config, settled.survivors, budget - results.length - attacked.length) : null;
   const stopReason = fixed?.stopReason ?? roundStop;
   // review is what the session reports from: each finding's end, by the rule the gate reads too. survivors and the other lists are the round before any fix.
-  const review = { findings: findingOutcomes(settled, fixed?.keptLenses ?? []), notCovered: settled.uncovered };
+  // What a lens or refuter said it could not read or check is a gap in the review, never a doubt for the human.
+  const limits = [...results, ...verdicts]
+    .filter((said) => typeof said?.not_checked === 'string' && said.not_checked.trim() !== '')
+    .map(({ not_checked }) => `a reviewer could not check: ${not_checked.trim()}`);
+  const review = { findings: findingOutcomes(settled, fixed?.keptLenses ?? []), notCovered: [...settled.uncovered, ...limits] };
   return { review, ...settled, agentsUsed: results.length + attacked.length + (fixed?.spawned ?? 0), ...(fixed === null ? {} : { attempts: fixed.attempts, lessons: fixed.lessons, stopRecorded: fixed.stopRecorded, final: fixed.final }), stopReason };
 }
 

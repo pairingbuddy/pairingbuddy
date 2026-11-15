@@ -6,13 +6,13 @@ import { violations } from "./schema-check.mjs";
 
 const schema = JSON.parse(readFileSync(new URL("../../contracts/schemas/lens-result.schema.json", import.meta.url), "utf8"));
 const finding = { rule: "no-magic-numbers", severity: "high", kind: "fix-here", title: "Unnamed literal 42", claim: "A literal 42 is used without a name.", where: "src/a.py:12" };
-const valid = () => ({ pb_key: "k", ambiguity: null, findings: [{ ...finding }] });
+const valid = () => ({ pb_key: "k", ambiguity: null, not_checked: null, findings: [{ ...finding }] });
 
 test("a valid result passes", () => {
   assert.deepEqual(violations(schema, valid()), []);
 });
 
-for (const key of ["pb_key", "findings", "ambiguity"]) {
+for (const key of ["pb_key", "findings", "ambiguity", "not_checked"]) {
   test(`a result missing ${key} fails`, () => {
     const result = valid();
     delete result[key];

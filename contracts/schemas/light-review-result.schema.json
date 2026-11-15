@@ -1,14 +1,18 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Light Review Result",
-  "description": "Return of the lens agent in a light review: the pb key it was given, any open ambiguity, the focus changes it made and its findings, each tagged with a focus",
+  "description": "Return of the lens agent in a light review: the pb key it was given, any open question for the human, what it could not check, the focus changes it made and its findings, each tagged with a focus",
   "type": "object",
-  "required": ["pb_key", "ambiguity", "focus_changes", "findings"],
+  "required": ["pb_key", "ambiguity", "not_checked", "focus_changes", "findings"],
   "properties": {
     "pb_key": { "type": "string", "description": "The key from the prompt, copied exactly" },
     "ambiguity": {
       "type": ["string", "null"],
-      "description": "An open question that affected the review, or null"
+      "description": "A question only the human can decide, in plain words to the human, or null"
+    },
+    "not_checked": {
+      "type": ["string", "null"],
+      "description": "What the review could not read or check, so the review does not cover it, or null. It goes to the report, never to the gate"
     },
     "focus_changes": {
       "type": "array",

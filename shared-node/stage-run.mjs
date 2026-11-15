@@ -5,6 +5,7 @@ import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from
 import { basename, dirname, join } from "node:path";
 
 import { parseFixNotes } from "./fix-notes.mjs";
+import { plainName } from "./plain-names.mjs";
 import { isStandingScenarios, newestKeyAmong } from "./standing-scenarios.mjs";
 import { lensSlug, parseKey } from "./keys.mjs";
 import { acceptVerdict, mergeLensReturns, wiredLensConfig } from "./lens-merge.mjs";
@@ -236,10 +237,22 @@ function coveredEvidence({ tests: { perTest = {} }, stage: { name } }) {
 export const coveredTests = ({ tests: { perTest = {} } }) =>
   Object.entries(perTest).filter(([, { covered }]) => covered?.done).map(([test_id, { covered: { after, sha } }]) => ({ test_id, after, sha }));
 
-function notCovered({ uncovered, gaps }, testRuns, returns, red, lensRan, tokensKnown) {
+// What each lens or refuter of the attempt said it could not read or check: a gap in the review, never a question for the
+// human, so the gate does not stop on it. A lens names the review it limits; a return with no not_checked adds nothing.
+function reviewLimits(current, returns) {
+  return current.flatMap(({ role, item }, i) => {
+    const said = returns[i].not_checked;
+    if (![LENS_ROLE, REFUTER_ROLE].includes(role) || typeof said !== "string" || said.trim() === "") return [];
+    const lens = role === LENS_ROLE ? plainName(item ?? "") : undefined;
+    return [`${lens === undefined ? "a reviewer" : `${lens} review`} could not check: ${said.trim()}`];
+  });
+}
+
+function notCovered({ uncovered, gaps }, testRuns, returns, red, lensRan, tokensKnown, limits) {
   const anyLensRan = lensRan || returns.some((artifact) => REPORT_LISTS.some((key) => artifact[key] !== undefined));
   return [
     ...uncovered,
+    ...limits,
     ...gaps,
     ...(testRuns.some(({ key }) => key === "full") ? [] : ["the full suite did not run in this stage"]),
     ...(anyLensRan ? [] : ["no lens round ran in this stage"]),
@@ -357,7 +370,7 @@ export function buildReport(ledger, artifactsDir, lensMap = LENS_MAP) {
     fixes: fixesOf(ledger, artifactsDir, lensMap),
     redEvidence: red,
     covered: coveredEvidence(ledger),
-    notCovered: notCovered(lists, tests, lensReturns, red, lensRan, spent.tokensKnown),
+    notCovered: notCovered(lists, tests, lensReturns, red, lensRan, spent.tokensKnown, reviewLimits(current, returns)),
     spend: { agents: current.length + (finisherUncounted ? 1 : 0), agentsSource: finisherUncounted ? "recorded returns, and the runner that ran stage finish" : "recorded returns", ...spent, tokensUnit: TOKENS_UNIT },
   };
 }

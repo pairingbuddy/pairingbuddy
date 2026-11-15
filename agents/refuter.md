@@ -30,6 +30,8 @@ The prompt contains:
 2. Look for evidence that the assumption does not hold. Read only what the finding points at. Do not change anything.
 3. Give `survives` if the attack fails and the finding stands. Give `refuted` if the assumption does not hold.
 4. Set `finding_id` to the finding's id, which is the item in the `pb_key`.
+5. `ambiguity` is a question about the finding only the human can decide. Write it to the human in plain words, with no internal terms (corpus, subject, lens, hunk, refuter). Otherwise use null.
+6. What you could not read or check goes in `not_checked`, never in `ambiguity`: a file you did not read, evidence you could not find. Say it in plain words. Otherwise use null.
 
 ## Output
 
@@ -40,7 +42,8 @@ Return the result as your StructuredOutput with exactly these fields:
   "pb_key": "string (copied exactly from the prompt)",
   "finding_id": "string (the finding attacked: the item in its pb_key)",
   "verdict": "survives | refuted",
-  "ambiguity": "string | null (what was unclear enough to affect the verdict, or null when nothing was)"
+  "ambiguity": "string | null (a question only the human can decide, in plain words, with no internal terms)",
+  "not_checked": "string | null (what you could not read or check, in plain words)"
 }
 ```
 

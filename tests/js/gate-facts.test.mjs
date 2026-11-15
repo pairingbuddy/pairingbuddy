@@ -157,6 +157,14 @@ describe("open doubts", () => {
     assert.deepEqual(gateFacts("G:task-end", root, tddDone(), CONTRACT).doubts, [{ step: "a reviewer", ambiguity: DOUBT }, { step: "a reviewer", ambiguity: "Is 0 a valid quantity?" }]);
   });
 
+  test("what a reviewer could not check is no doubt: the gate shows only its ambiguity", () => {
+    const root = makeRoot();
+    writeReturn(root, `${SAFETY_NET}.lens.code.r1.a1`, { ambiguity: null, not_checked: "I did not read the full cart.py.", findings: [] });
+    writeReturn(root, `${SAFETY_NET}.lens.tests.r1.a1`, { ambiguity: DOUBT, not_checked: "The corpus is none.", findings: [] });
+
+    assert.deepEqual(gateFacts("G:task-end", root, tddDone(), CONTRACT).doubts, [{ step: "a reviewer", ambiguity: DOUBT }]);
+  });
+
   test("a doubt a human already approved past is not shown again", () => {
     const root = makeRoot();
     writeReturn(root, "code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1", { ambiguity: DOUBT, scenarios: [] });

@@ -5,13 +5,13 @@ import { readFileSync } from "node:fs";
 import { violations } from "./schema-check.mjs";
 
 const schema = JSON.parse(readFileSync(new URL("../../contracts/schemas/refuter-verdict.schema.json", import.meta.url), "utf8"));
-const valid = () => ({ pb_key: "k", finding_id: "no-magic-numbers-1", verdict: "survives", ambiguity: null });
+const valid = () => ({ pb_key: "k", finding_id: "no-magic-numbers-1", verdict: "survives", ambiguity: null, not_checked: null });
 
 test("a valid verdict passes", () => {
   assert.deepEqual(violations(schema, valid()), []);
 });
 
-for (const key of ["pb_key", "finding_id", "verdict", "ambiguity"]) {
+for (const key of ["pb_key", "finding_id", "verdict", "ambiguity", "not_checked"]) {
   test(`a verdict missing ${key} fails`, () => {
     const verdict = valid();
     delete verdict[key];

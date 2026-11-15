@@ -3,7 +3,7 @@
   "title": "Refuter Verdict",
   "description": "Return of a refuter: the finding it attacked and whether that finding stood. The finding id is the same value as the item in its pb_key and label, so a verdict joins to its finding without reading text",
   "type": "object",
-  "required": ["pb_key", "finding_id", "verdict", "ambiguity"],
+  "required": ["pb_key", "finding_id", "verdict", "ambiguity", "not_checked"],
   "properties": {
     "pb_key": {
       "type": "string",
@@ -21,7 +21,11 @@
     },
     "ambiguity": {
       "type": ["string", "null"],
-      "description": "What in the finding or its evidence was unclear enough to affect the verdict, or null when nothing was"
+      "description": "A question about the finding only the human can decide, in plain words to the human, or null. It stops the gate"
+    },
+    "not_checked": {
+      "type": ["string", "null"],
+      "description": "What the refuter could not read or check, so its verdict does not cover it, or null. It goes to the report, never to the gate"
     }
   },
   "additionalProperties": false
