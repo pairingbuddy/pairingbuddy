@@ -29,7 +29,7 @@ test('the-band-leads-with-the-goal-gist-in-bold-at-50-80-and-139-columns', async
     expect(first.props.color, 'not coloured: colour means where the run is now, needs-you or a stop').toBeUndefined()
     expect([...first.text].length, `at ${columns} columns the goal fits its row`).toBeLessThanOrEqual(room)
     expect(first.text.endsWith('…'), 'never cut with an ellipsis').toBe(false)
-    expect(rest[0]?.text, `at ${columns} columns the step follows the goal`).toBe('write test scenarios')
+    expect(rest.slice(0, 2).map(node => node.text).join(''), `at ${columns} columns the step follows the goal, behind the working mark`).toBe('● write test scenarios')
   }
 })
 

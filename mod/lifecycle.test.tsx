@@ -97,7 +97,7 @@ test('a tests.json entry without a test_id is not counted', async ($, on) => {
   const shown = await bandRowTexts(band)
   await band.unmount()
 
-  expect(shown, 'the band reads "test 1 of 2": the entries without an id are left out').toContain('RED · test 1 of 2')
+  expect(shown, 'the band reads "test 1 of 2": the entries without an id are left out').toContain('● RED · test 1 of 2')
 })
 
 test("when a new run ledger appears the pane shows the new run and its ended snapshot replaces the old one", async ($, on) => {

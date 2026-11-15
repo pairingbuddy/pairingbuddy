@@ -2,6 +2,7 @@
 import { expect, test } from 'claude-code/testing'
 import { glance } from '../shared-node/glance.mjs'
 import { BAND, engine, isSeparatorRule, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
+import { statusFirst } from './view'
 
 test('band-draws-dim-separator-above-band-text', async ($, on) => {
   engine(on)
@@ -43,11 +44,11 @@ test('band-separator-keeps-existing-texts-and-single-content-line', async ($, on
   await $.session.start({ cwd: ROOT, surface: null, isInteractive: true })
   await draw('needs-you', 200)
 
-  const expected = (ledger: any) => glance({ ledger, spawns: [], tests: [], now: 0 }).band.map((segment: any) => segment.text as string)
+  const expected = (ledger: any) => statusFirst(glance({ ledger, spawns: [], tests: [], now: 0 }).band).map((segment: any) => segment.text as string)
   const shown = JSON.stringify(drawn)
   expect(drawn.idle.content.join(''), `idle keeps its one text: ${shown}`).toBe('Pairing Buddy \u00b7 idle \u00b7 /pb for details')
-  for (const segment of expected(SNAPSHOT_RUNNING)) expect(drawn.running.content.join(' '), `running keeps "${segment}": ${shown}`).toContain(segment)
-  for (const segment of [...expected(SNAPSHOT_RUNNING).slice(0, -1), 'needs you \u00b7 opened details']) expect(drawn['needs-you'].content.join(' '), `needs-you keeps "${segment}": ${shown}`).toContain(segment)
+  for (const segment of expected(SNAPSHOT_RUNNING)) expect(drawn.running.content.join(''), `running keeps "${segment}": ${shown}`).toContain(segment)
+  for (const segment of ['write test scenarios', '0 agents', 'needs you \u00b7 opened details']) expect(drawn['needs-you'].content.join(''), `needs-you keeps "${segment}": ${shown}`).toContain(segment)
   const widths: Record<string, number> = { 'running-narrow': 30 }
   for (const [name, one] of Object.entries(drawn)) {
     expect(one.rules.length, `${name} draws exactly one separator rule: ${shown}`).toBe(1)

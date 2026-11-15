@@ -1,10 +1,11 @@
 import { expect, test } from 'claude-code/testing'
-import { BAND, LEDGER, ROOT, isGoalRow, joinLit } from './testing/band'
+import { BAND, LEDGER, ROOT, isGoalRow, joinSegments } from './testing/band'
 import { PANE, paneLines, replay, setupReplay, type Rig, type Step } from './testing/replay'
 import gOpen1 from './fixtures/replay/g-open-1'
 import probe2 from './fixtures/replay/probe-2'
 import s4Rollback from './fixtures/replay/s4-rollback'
 import { bandColumns } from './band'
+import { statusFirst } from './view'
 import { ACCENT_COLOUR, PHASE_COLOURS } from './pane'
 import { POLL_MS } from './poll'
 import { fitBand, glance, runStart } from '../shared-node/glance.mjs'
@@ -29,7 +30,7 @@ const quietBand = (shown: string[]) => (shown.length === 1 && /^Pairing Buddy ·
 const DRAWN_AROUND_SEGMENTS = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details' || text.startsWith(' │ /pb')
 // The band's segment texts: what is drawn without the separators, the gap, the details button text and the hint.
 // The goal row above them is left out; colour-means-one-thing-in-the-band reads every node.
-const texts = (step: Step) => joinLit(step.texts.filter(node => !isGoalRow(node))).map(node => node.text).filter(text => !DRAWN_AROUND_SEGMENTS(text))
+const texts = (step: Step) => joinSegments(step.texts.filter(node => !isGoalRow(node))).map(node => node.text).filter(text => !DRAWN_AROUND_SEGMENTS(text))
 const paneTexts = (step: { pane: Step['texts'] }) => step.pane.map(node => node.text)
 // The unit's start as the poller keeps it: the earliest run start the ledgers served so far gave.
 function sinceTracker() {
@@ -73,7 +74,7 @@ test("band at each recorded step, in time order, shows the design's segments whi
     const active = (step.ledger as any)?.stage?.status === 'active'
     const since = sinceOf(step.ledger)
     const expected = active
-      ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS['g-open-1'], now: step.now, since, testsComplete: true }).band, bandColumns(80))
+      ? fitBand(statusFirst(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS['g-open-1'], now: step.now, since, testsComplete: true }).band), bandColumns(80))
           .map((segment: { text: string }) => segment.text)
       : quietBand(texts(step))
 
@@ -105,7 +106,7 @@ test('at 139, 80 and 50 columns the band draws exactly the fitted glance segment
         const active = (step.ledger as any)?.stage?.status === 'active'
         const since = sinceOf(step.ledger)
         const expected = active
-          ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now, since, testsComplete: true }).band, bandColumns(bodyColumns))
+          ? fitBand(statusFirst(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now, since, testsComplete: true }).band), bandColumns(bodyColumns))
               .map((segment: { text: string }) => segment.text)
           : quietBand(texts(step))
 
@@ -148,7 +149,7 @@ test('replaying probe-2 shows LOOPING naming the step and its 3rd try, and the 3
   const third = at(steps, 125.887)
   const second = at(steps, 121.827)
   const pane = third.lines
-  expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['RED · test 2 of 2', 'looping: yes']))
+  expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['● RED · test 2 of 2', 'looping: yes']))
   expect(pane, `pane LOOPING row in ${JSON.stringify(pane)}`).toContain('LOOPING  writing a failing test · try 3 of 3')
   expect(pane, `pane STATUS row in ${JSON.stringify(pane)}`).toEqual(expect.arrayContaining(['STATUS   ● working · writing a failing test for zero percent keeps full price', '         test 2 of 2, 3rd try']))
   expect(second.band, 'band at the 2nd try is not looping yet').toContain('looping: no')
@@ -239,7 +240,7 @@ test('colour-means-one-thing: across every drawn Text in the pane over the repla
 // phase colour, needs-you in yellow with bold, a stop in red. Nothing else in the band is coloured.
 test('colour-means-one-thing-in-the-band: the step in the accent, the phase word in its colour, needs-you and a stop, nothing else', async ($, on) => {
   const rig = setupReplay(on)
-  const seen = { phase: new Set<string>(), accent: 0 }
+  const seen = { phase: new Set<string>(), accent: 0, mark: 0 }
   for (const [name, recording] of [['g-open-1', gOpen1], ['probe-2', probe2]] as const) {
     for await (const step of replay($, rig, recording, { files: testsFile(TESTS[name]) })) {
       const active = (step.ledger as any)?.stage?.status === 'active'
@@ -248,7 +249,10 @@ test('colour-means-one-thing-in-the-band: the step in the accent, the phase word
         const { color, bold } = node.props
         if (color === undefined) continue
         const at = `${name} t=${step.t}: "${node.text}"`
-        if (PHASES.includes(node.text)) {
+        if (node.text === '● ') {
+          expect([color, bold], `${at} the working mark is in the accent, calm, as STATUS draws it`).toEqual([ACCENT_COLOUR, undefined])
+          seen.mark++
+        } else if (PHASES.includes(node.text)) {
           expect(color, `${at} is its phase's colour`).toBe(PHASE_COLOURS[node.text])
           expect(bold, `${at} is bold, as the pane's lit phase`).toBe(true)
           expect(where?.startsWith(node.text), `${at} is the phase of the step the band names`).toBe(true)
@@ -268,6 +272,7 @@ test('colour-means-one-thing-in-the-band: the step in the accent, the phase word
 
   expect([...seen.phase], 'the band drew phase words').toEqual(expect.arrayContaining(['RED', 'GREEN']))
   expect(seen.accent, 'the band drew the step in the accent').toBeGreaterThan(0)
+  expect(seen.mark, 'the band led with the working mark').toBeGreaterThan(0)
 })
 
 test('colour-means-one-thing-in-a-review: over the s4-rollback replay, a lens that has finished but not yet returned is not drawn in a colour', async ($, on) => {

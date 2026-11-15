@@ -1,5 +1,5 @@
 import { PHASES } from '../../shared-node/labels.mjs'
-import { ACCENT_COLOUR, PHASE_COLOURS } from '../pane'
+import { ACCENT_COLOUR, PHASE_COLOURS, STATUS_LOOKS } from '../pane'
 
 // Shared by the mod's tests. It lives outside the `*.test.tsx` pattern, so `claude plugin test` does
 // not run it, and outside register.tsx's imports, so it is not part of the mod itself.
@@ -140,15 +140,35 @@ export function engine(on: Function, ledger: unknown = SNAPSHOT_RUNNING, open: (
 export const isSeparatorRule = (node: { text?: string; props?: Record<string, unknown> }): boolean =>
   node.props?.dimColor === true && /^[─━═\-_—]{3,}$/.test((node.text ?? '').trim())
 
+// A status head the band leads its row with ('● ', '▲ NEEDS YOU', '✕ STOPPED', '✓ DONE'), as drawn: in its state's head props.
+export const isStatusHead = (node: { text: string; props: Record<string, unknown> }): boolean =>
+  Object.values(STATUS_LOOKS).some(look => node.text.trimEnd() === look.bandHead && node.props.color === (look.headProps as Record<string, unknown>).color && node.props.inverse === (look.headProps as Record<string, unknown>).inverse)
+// What ends a segment on the band's row: a separator, the gap before the details button, the button, the hint.
+const endsSegment = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details' || text.startsWith(' │ /pb')
+
 // The band draws its lit step in two Texts, the phase word in its colour then the rest in the accent ('RED', ' · test 1 of 2');
 // read as text, they are the one segment they are. Nodes in drawing order; anything else is left as it is.
 export function joinLit<T extends { text: string; props: Record<string, unknown> }>(nodes: T[]): T[] {
+  return join(nodes, false)
+}
+
+// The band's row draws a segment in several Texts: a status head then the rest ('● ', 'write test scenarios'), and the lit
+// phase word then the rest. Read as text, each segment is one. Only for the band's row: the pane draws a head per row too.
+export function joinSegments<T extends { text: string; props: Record<string, unknown> }>(nodes: T[]): T[] {
+  return join(nodes, true)
+}
+
+function join<T extends { text: string; props: Record<string, unknown> }>(nodes: T[], heads: boolean): T[] {
   const joined: T[] = []
+  let open = false
   for (const node of nodes) {
     const last = joined.at(-1)
     const afterPhase = last && PHASES.includes(last.text) && last.props.color === PHASE_COLOURS[last.text] && node.props.color === ACCENT_COLOUR
-    if (afterPhase) joined[joined.length - 1] = { ...last, text: `${last.text}${node.text}` }
-    else joined.push(node)
+    if (last && (afterPhase || (open && !endsSegment(node.text)))) joined[joined.length - 1] = { ...last, text: `${last.text}${node.text}` }
+    else {
+      joined.push(node)
+      open = heads && isStatusHead(node)
+    }
   }
   return joined
 }
@@ -164,7 +184,7 @@ export const texts = async (surface: any) =>
 
 // The band's step row on a mounted surface: its texts, without the rule and the goal row above it.
 export const bandRowTexts = async (surface: any) =>
-  joinLit((await surface.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node))).map((node: any) => node.text as string)
+  joinSegments((await surface.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node))).map((node: any) => node.text as string)
 
 // The terminal band's step row as drawn now: mounts it, collects its texts and unmounts it. The goal row is left out.
 // Optional props merge into the band's props, for example { bodyColumns: 200 } for a wide terminal.

@@ -8,10 +8,12 @@ import { plainName } from '../shared-node/plain-names.mjs'
 import { cycleMarker, loopingTries, nameOf, progressRow, stepAge } from '../shared-node/now-building.mjs'
 import { doneStatus, endRows, goalOf, isUnitDone, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
 import type { Inputs, Ledger } from './inputs'
+import { STATUS_LOOKS } from './pane'
 
 export type Tone = 'error' | 'warning' | 'dim'
 // lit: where the run is now, drawn as the pane draws its current step (the accent with bold, the phase word in its colour).
-export type Segment = { id: string; text: string; standing?: boolean; tone?: Tone; bold?: boolean; lit?: boolean }
+// state: the segment leads the band with the run's status; its text opens with that state's band head.
+export type Segment = { id: string; text: string; standing?: boolean; tone?: Tone; bold?: boolean; lit?: boolean; state?: StatusState }
 export type Rows = Record<'now' | 'spent' | 'looping', string>
 export type RowTones = Partial<Record<keyof Rows, Tone>>
 // What STATUS says, so the human cycling sessions sees at once whether they are needed: the run's state, then what it is about
@@ -74,10 +76,18 @@ function bandTone(segment: Segment, ledger: NonNullable<Ledger>): Pick<Segment, 
 
 const waitingGate = (ledger: NonNullable<Ledger>) => (ledger.stop ? undefined : ledger.needsHuman?.gate || undefined)
 
+// The band leads with the run's status, as STATUS does. While nothing waits on the human, the step leads behind the working
+// mark, and the calm "needs you: no" is left out: the mark already says it.
+export function statusFirst(band: Segment[]): Segment[] {
+  if (band.some(segment => segment.id === 'needsYou' && segment.standing)) return band
+  const working = STATUS_LOOKS.working.bandHead
+  return band.filter(segment => segment.id !== 'needsYou').map(segment => (segment.id === 'where' ? { ...segment, text: `${working} ${segment.text}`, state: 'working' as const } : segment))
+}
+
 function toned(view: View): View {
   const { ledger } = view
   if (!ledger) return view
-  return { ...view, band: view.band.map(segment => ({ ...segment, ...bandTone(segment, ledger) })), rowTones: { spent: 'dim' } }
+  return { ...view, band: statusFirst(view.band.map(segment => ({ ...segment, ...bandTone(segment, ledger) }))), rowTones: { spent: 'dim' } }
 }
 
 // The run's own steps for its task type, each marked done, current or to come.

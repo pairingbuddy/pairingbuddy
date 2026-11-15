@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { fitBand, glance } from '../shared-node/glance.mjs'
 import { bandColumns } from './band'
+import { statusFirst } from './view'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { POLL_MS } from './poll'
 import { needingHuman, stopped } from './testing/alert'
@@ -22,8 +23,8 @@ async function drawnOnEverySurface($: any): Promise<Record<string, string>> {
   const drawn: Record<string, string> = {}
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    const text = (await ui.findAll({ type: 'Text' })).find((node: any) => !isSeparatorRule(node) && !isGoalRow(node))
-    drawn[surface] = JSON.stringify(text ?? null)
+    const row = (await ui.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node))
+    drawn[surface] = JSON.stringify(row)
     await ui.unmount()
   }
   return drawn
@@ -95,12 +96,10 @@ test("the running band puts a separator between each glance segment", async ($, 
 
   const shown = await bandTexts($, WIDE)
 
-  for (const [name, isSegment] of [['spent', (text: string) => /agents?$/.test(text)], ['needs you', (text: string) => text.startsWith('needs you:')]] as const) {
-    const at = shown.findIndex(isSegment)
-    expect(at, `the band draws a "${name}" segment: ${JSON.stringify(shown)}`).toBeGreaterThan(0)
-    expect(isSeparator(shown[at - 1]), `a separator is drawn right before "${name}": ${JSON.stringify(shown)}`).toBe(true)
-  }
-  expect(shown.join(''), `no segment runs into the next: ${JSON.stringify(shown)}`).not.toMatch(/scenarios\d|scenariostime|agentsneeds you/)
+  const at = shown.findIndex(text => /agents?$/.test(text))
+  expect(at, `the band draws a "spent" segment: ${JSON.stringify(shown)}`).toBeGreaterThan(0)
+  expect(isSeparator(shown[at - 1]), `a separator is drawn right before "spent": ${JSON.stringify(shown)}`).toBe(true)
+  expect(shown.join(''), `no segment runs into the next: ${JSON.stringify(shown)}`).not.toMatch(/scenarios\d|scenariostime/)
 })
 
 test("the details button is set off from the last segment by a space", async ($, on) => {
@@ -109,10 +108,10 @@ test("the details button is set off from the last segment by a space", async ($,
 
   const shown = await bandTexts($, WIDE)
 
-  const needsYou = shown.findIndex(text => text.startsWith('needs you:'))
-  expect(needsYou, `the band draws needs you: ${JSON.stringify(shown)}`).toBeGreaterThanOrEqual(0)
-  const beforeButton = shown.slice(needsYou).join('')
-  expect(beforeButton, `the text drawn before the details button ends with a space, so "needs you: no" and "▸ details" do not touch: ${JSON.stringify(shown)}`).toMatch(/\s$/)
+  const button = shown.indexOf('▸ details')
+  expect(button, `the band draws the details button: ${JSON.stringify(shown)}`).toBeGreaterThan(0)
+  const beforeButton = shown.slice(0, button).join('')
+  expect(beforeButton, `the text drawn before the details button ends with a space, so the last segment and "▸ details" do not touch: ${JSON.stringify(shown)}`).toMatch(/\s$/)
 })
 
 test("the running band includes a plain-words hint naming /pb for details alongside the details button", async ($, on) => {
@@ -122,13 +121,13 @@ test("the running band includes a plain-words hint naming /pb for details alongs
   const shown = await bandTexts($, WIDE)
 
   const hint = shown.findIndex(text => text.includes('/pb for details'))
-  expect(hint, `the running band ends with a plain "/pb for details" hint: ${JSON.stringify(shown)}`).toBeGreaterThan(shown.findIndex(text => text.startsWith('needs you:')))
+  expect(hint, `the running band ends with a plain "/pb for details" hint: ${JSON.stringify(shown)}`).toBeGreaterThan(shown.indexOf('▸ details'))
   expect(shown.some(text => text.includes('▸ details')), `the details button is still drawn: ${JSON.stringify(shown)}`).toBe(true)
   expect(shown.join(' '), 'the band never names ctrl+x or a key it cannot back').not.toMatch(/ctrl\+x|tab\b/i)
 })
 
 test('the pb hint is lowest priority: "/pb" shows when all content fits but the long hint does not', async ($, on) => {
-  const content = glance({ ledger: SNAPSHOT_RUNNING, spawns: [], tests: [], now: 0 }).band
+  const content = statusFirst(glance({ ledger: SNAPSHOT_RUNNING, spawns: [], tests: [], now: 0 }).band)
   const fits = (columns: number, hint?: string) => JSON.stringify(fitBand(content, bandColumns(columns, hint))) === JSON.stringify(content)
   const COLUMNS = Array.from({ length: 300 }, (_, i) => i).find(columns => fits(columns, '/pb') && !fits(columns, '/pb for details'))!
   bandEngine(on, SNAPSHOT_RUNNING)

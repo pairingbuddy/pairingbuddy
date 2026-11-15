@@ -63,7 +63,7 @@ test('band-clears-when-event-clears', async ($, on) => {
   expect(bandSays(alerting, NEEDS_YOU_OPENED), `the band showed the alert before the event cleared: ${JSON.stringify(alerting)}`).toBe(true)
   expect(shown.some(text => text.includes('opened details')), `the band drops "opened details" once the event clears: ${JSON.stringify(shown)}`).toBe(false)
   expect(shown.some(text => text.includes('a step kept failing')), `the band drops the stop's plain name once the event clears: ${JSON.stringify(shown)}`).toBe(false)
-  expect(shown.some(text => text.includes('needs you: no')), `the band reads the calm "needs you: no": ${JSON.stringify(shown)}`).toBe(true)
+  expect(shown[0], `the band leads with the working step again: ${JSON.stringify(shown)}`).toBe('● write test scenarios')
 })
 
 test('ui-open-not-placed-band-still-alerts', async ($, on) => {

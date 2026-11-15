@@ -1,7 +1,7 @@
 import { fitBand, SEPARATOR } from '../shared-node/glance.mjs'
 import { DONE_WORDS, goalGist } from '../shared-node/end-state.mjs'
 import { PHASES } from '../shared-node/labels.mjs'
-import { ACCENT_COLOUR, PHASE_COLOURS } from './pane'
+import { ACCENT_COLOUR, PHASE_COLOURS, STATUS_LOOKS } from './pane'
 import type { Segment, Tags } from './view'
 
 const HINT = '/pb for details'
@@ -44,9 +44,20 @@ function litParts(text: string): { text: string; props: Record<string, unknown> 
   return [{ text: phase, props: { color: PHASE_COLOURS[phase], bold: true } }, ...(rest ? [{ text: rest, props: LIT }] : [])]
 }
 
-// One segment's Texts: lit, else in its tone.
+// A segment that leads with the run's status: its head as STATUS draws it, then the rest, lit or in the state's tone. A lit
+// rest keeps the space after the head in the head's Text, so its phase word stands alone.
+function statusParts(segment: Segment & { state: NonNullable<Segment['state']> }): { text: string; props: Record<string, unknown> }[] {
+  const look = STATUS_LOOKS[segment.state]
+  const rest = segment.text.slice(look.bandHead.length)
+  if (!segment.lit) return [{ text: look.bandHead, props: look.headProps }, ...(rest ? [{ text: rest, props: look.whatProps }] : [])]
+  const gap = rest.length - rest.trimStart().length
+  return [{ text: `${look.bandHead}${rest.slice(0, gap)}`, props: look.headProps }, ...litParts(rest.slice(gap))]
+}
+
+// One segment's Texts: its status head first when it leads, else lit, else in its tone.
 function segmentTexts(Text: Tags['Text'], segment: Segment) {
-  if (segment.lit) return litParts(segment.text).map((part, i) => <Text key={`${segment.id}-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)
+  const parts = segment.state ? statusParts(segment as Segment & { state: NonNullable<Segment['state']> }) : segment.lit ? litParts(segment.text) : undefined
+  if (parts) return parts.map((part, i) => <Text key={`${segment.id}-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)
   return [<Text key={segment.id} color={segment.tone === 'dim' ? undefined : segment.tone} bold={segment.bold} dimColor={segment.tone === 'dim' ? true : undefined} wrap="truncate-end">{segment.text}</Text>]
 }
 
