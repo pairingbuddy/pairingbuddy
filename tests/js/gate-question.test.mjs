@@ -4,10 +4,11 @@ import assert from "node:assert/strict";
 
 import { fileURLToPath } from "node:url";
 
-import { gateQuestion } from "../../shared-node/gates.mjs";
+import { fullQuestion, gateQuestion } from "../../shared-node/gates.mjs";
 import { loadStages } from "../../shared-node/stages.mjs";
 
 const POLICY = "the gate policy is default, not auto";
+const FULL_AT = "/repo/.pairingbuddy/run/question.md";
 
 describe("each gate asks in plain words", () => {
   test("G:scenarios shows the scenarios with their tests indented, then asks", () => {
@@ -46,20 +47,20 @@ describe("each gate asks in plain words", () => {
     ]);
   });
 
-  test("G:scenarios past 15 scenarios folds the rest, saying how many more scenarios the report holds", () => {
+  test("G:scenarios past 15 scenarios folds the rest, saying how many more scenarios the full question file holds", () => {
     const scenarios = Array.from({ length: 18 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: [`test ${i + 1}a`] }));
-    const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
+    const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios }, fullAt: FULL_AT });
     const lines = question.split("\n");
 
     assert.equal(lines[0], "Scenarios (18 scenarios, 18 tests):");
-    assert.deepEqual(lines.slice(15, 18), ["- scenario 15 (1 test)", "+ 3 more scenarios in the report", "Auto mode is off, so this asks you."]);
+    assert.deepEqual(lines.slice(15, 18), ["- scenario 15 (1 test)", `+ 3 more scenarios: ${FULL_AT}`, "Auto mode is off, so this asks you."]);
   });
 
   test("G:scenarios one past 15 says one more scenario", () => {
     const scenarios = Array.from({ length: 16 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: [`test ${i + 1}a`] }));
-    const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
+    const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios }, fullAt: FULL_AT });
 
-    assert.equal(question.split("\n")[16], "+ 1 more scenario in the report");
+    assert.equal(question.split("\n")[16], `+ 1 more scenario: ${FULL_AT}`);
   });
 
   test("G:type opens with the task type and the classifier's gist, then asks", () => {
@@ -91,21 +92,21 @@ describe("each gate asks in plain words", () => {
 
   test("G:task-end gives the goal check's gist when it had something to say", () => {
     const goalCheck = [{ gist: "The README does not name order_total", outcome: "fixed" }, { gist: "Plan says cents", outcome: "left as is" }];
-    const { question } = gateQuestion("G:task-end", { reason: POLICY, facts: { review: ["fixed", "left as is"], goalCheck } });
+    const { question } = gateQuestion("G:task-end", { reason: POLICY, facts: { review: ["fixed", "left as is"], goalCheck }, fullAt: FULL_AT });
 
     assert.equal(question, [
       "Review: 2 issues, 1 fixed, 1 left as is.",
-      "Goal check: The README does not name order_total (fixed); + 1 more in the report.",
+      `Goal check: The README does not name order_total (fixed); + 1 more: ${FULL_AT}`,
       "Auto mode is off, so this asks you.",
       "Is the task done?",
     ].join("\n"));
   });
 
-  test("G:task-end gives a long goal's gist: its first sentence cut at the last clause that fits 120 characters", () => {
+  test("G:task-end gives a long goal's first sentence whole: the question box wraps it", () => {
     const goal = "Add order_total(lines) to cart.py so that it returns the sum of price times quantity over every line in the cart, so the checkout page can show one total, rounded to cents. Then document it.";
     const [line] = gateQuestion("G:task-end", { reason: POLICY, facts: { goal } }).question.split("\n");
 
-    assert.equal(line, "Goal: Add order_total(lines) to cart.py so that it returns the sum of price times quantity over every line in the cart");
+    assert.equal(line, "Goal: Add order_total(lines) to cart.py so that it returns the sum of price times quantity over every line in the cart, so the checkout page can show one total, rounded to cents.");
   });
 
   test("G:task-end leaves out every line whose fact could not be read", () => {
@@ -130,9 +131,9 @@ describe("each gate asks in plain words", () => {
 
   test("G:publish folds a long body after 8 lines", () => {
     const body = Array.from({ length: 11 }, (_, i) => `line ${i + 1}`).join("\n");
-    const lines = gateQuestion("G:publish", { reason: POLICY, facts: { title: "T", body } }).question.split("\n");
+    const lines = gateQuestion("G:publish", { reason: POLICY, facts: { title: "T", body }, fullAt: FULL_AT }).question.split("\n");
 
-    assert.deepEqual(lines.slice(1, 10), ["line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8", "+ 3 more lines in .pairingbuddy/run/pr-body.md"]);
+    assert.deepEqual(lines.slice(1, 10), ["line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8", `+ 3 more lines: ${FULL_AT}`]);
   });
 
   test("G:publish on a pull request refresh asks to update it", () => {
@@ -217,25 +218,22 @@ describe("a gate that asks over an open doubt says what the doubt is", () => {
     assert.equal(question, ["Built: 1 test.", "Unsure (making the test pass): Should an empty cart total 0 or None?", "Is the task done despite this?"].join("\n"));
   });
 
-  test("a long doubt is kept to one line and cut at a word near 120 characters", () => {
+  test("a long doubt is shown whole on one line, its whitespace collapsed: the question box wraps it", () => {
     const ambiguity = `The task says\n  totals are rounded, ${"but it does not say whether ".repeat(6)}half cents round up.`;
     const { question } = gateQuestion("G:task-end", { reason: AMBIGUITY, facts: { doubts: [{ step: "making the test pass", ambiguity }] } });
-    const [line] = question.split("\n");
-    const said = line.replace("Unsure (making the test pass): ", "");
 
-    assert.ok(said.endsWith("…") && said.length <= 121, `cut near 120: ${said}`);
-    assert.ok(ambiguity.replace(/\s+/g, " ").startsWith(`${said.slice(0, -1)} `), `cut at a word: ${said}`);
+    assert.equal(question, [`Unsure (making the test pass): ${ambiguity.replace(/\s+/g, " ")}`, "Is the task done despite this?"].join("\n"));
   });
 
-  test("past three doubts the rest are counted as in the report", () => {
+  test("past three doubts the rest are counted, naming the file that holds the full question", () => {
     const doubts = ["a?", "b?", "c?", "d?", "e?"].map((ambiguity) => ({ step: "writing a failing test", ambiguity }));
-    const { question } = gateQuestion("G:task-end", { reason: AMBIGUITY, facts: { doubts } });
+    const { question } = gateQuestion("G:task-end", { reason: AMBIGUITY, facts: { doubts }, fullAt: FULL_AT });
 
     assert.equal(question, [
       "Unsure (writing a failing test): a?",
       "Unsure (writing a failing test): b?",
       "Unsure (writing a failing test): c?",
-      "+ 2 more in the report",
+      `+ 2 more: ${FULL_AT}`,
       "Is the task done despite these?",
     ].join("\n"));
   });
@@ -256,6 +254,45 @@ describe("a gate that asks over an open doubt says what the doubt is", () => {
 
   test("with doubts that could not be read the question still says a step was unsure", () => {
     assert.equal(gateQuestion("G:task-end", { reason: AMBIGUITY, facts: {} }).question, "A step was unsure about something.\nIs the task done?");
+  });
+});
+
+describe("the full question file holds what the question folds", () => {
+  test("it is Markdown with the whole goal, every changed file, every goal-check finding and every doubt in full", () => {
+    const facts = {
+      goal: "Add order_total(lines) to cart.py. It returns the sum of price times quantity.",
+      files: ["a.py", "b.py", "c.py", "d.py", "e.py", "f.py"],
+      tests: 2,
+      passing: true,
+      review: ["fixed", "left as is"],
+      goalCheck: [{ gist: "README misses order_total", outcome: "fixed" }, { gist: "Plan says cents", outcome: "left as is" }],
+      doubts: ["a?", "b?", "c?", "d?"].map((ambiguity) => ({ step: "writing a failing test", ambiguity })),
+    };
+
+    assert.equal(fullQuestion("G:task-end", { reason: AMBIGUITY, facts }), [
+      "# Task done",
+      "",
+      "Goal: Add order_total(lines) to cart.py. It returns the sum of price times quantity.",
+      "",
+      "Built: a.py, b.py, c.py, d.py, e.py, f.py; 2 tests, all passing.",
+      "",
+      "Review: 2 issues, 1 fixed, 1 left as is.",
+      "",
+      "Goal check:",
+      "- README misses order_total (fixed)",
+      "- Plan says cents (left as is)",
+      "",
+      "Unsure (writing a failing test): a?",
+      "",
+      "Unsure (writing a failing test): b?",
+      "",
+      "Unsure (writing a failing test): c?",
+      "",
+      "Unsure (writing a failing test): d?",
+      "",
+      "Is the task done despite these?",
+      "",
+    ].join("\n"));
   });
 });
 

@@ -59,14 +59,9 @@ const fullSuitePassed = ({ tests: { full } }) => (full?.passed === true ? true :
 
 // The lens that reads the change against the repo's docs and plan: the safety net's goal check.
 const GOAL_LENS = "corpus-misalignment";
-const MAX_GIST = 80;
 
-// A finding told short: the lens's title, or its claim's first sentence cut at a word boundary.
-function gistOf({ title, claim }) {
-  const gist = text(title) ?? firstSentence(claim);
-  if (gist === null || gist.length <= MAX_GIST) return gist;
-  return `${gist.slice(0, MAX_GIST).replace(/\s+\S*$/, "")}…`;
-}
+// A finding told short: the lens's title, or its claim's first sentence whole, since a cut sentence cannot be judged.
+const gistOf = ({ title, claim }) => text(title) ?? firstSentence(claim);
 
 // What became of each finding of the stage's lens round, by the rule the stage's return gives the session. A round
 // with no lens recorded has no review to tell.

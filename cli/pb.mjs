@@ -10,7 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
-import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
+import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
@@ -416,6 +416,13 @@ function recordAuto(ledger, gate, binding = {}) {
   return { ...ledger, gates: { ...ledger.gates, [gate]: gate === PUBLISH_GATE ? approvalRecord("auto", binding) : { source: "auto" } } };
 }
 
+// A file written whole or not at all, so a reader never sees half of it.
+function writeWhole(path, text) {
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, text);
+  renameSync(temp, path);
+}
+
 // Takes no arguments: the gate comes from the ledger, and the policy from what the gate hook recorded.
 function gateEval(args) {
   if (args.length > 0) throw new UsageError("usage: pb gate eval");
@@ -443,6 +450,8 @@ function gateEval(args) {
   let gate;
   let reason;
   let question;
+  let full;
+  const fullAt = join(ensureRunRoot(root), "question.md");
   // One transaction: the void of a stale approval, the due gate and the question, so no state sits between them.
   updateLedger(path, (ledger) => {
     const open = voided === null ? ledger : voidPublish(ledger, voided);
@@ -456,12 +465,15 @@ function gateEval(args) {
     const facts = gate === PUBLISH_GATE ? { shown: { headSha: shown.headSha, base: shown.base, target: shown.target } } : {};
     // The facts go into the stored text, so the session cannot change or misreport what the human judges by.
     const asked = gate === PUBLISH_GATE ? { title: shown.title, body: shown.body, ...gateFacts(gate, root, open, contract) } : gateFacts(gate, root, open, contract);
-    question = gateQuestion(gate, { reason, taskType: open.taskType, refresh: isRefreshRun(open), facts: asked });
-    // The question cuts the doubts it names; the ledger keeps them in full, so the report it points to holds them.
+    const shape = { reason, taskType: open.taskType, refresh: isRefreshRun(open), facts: asked };
+    question = gateQuestion(gate, { ...shape, fullAt });
+    full = fullQuestion(gate, shape);
+    // The question folds long lists into the full question file; the ledger keeps the doubts in full for the report.
     const doubts = questionDoubts(reason, asked);
     return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, question, ...facts, ...(doubts === null ? {} : { doubts }) } };
   });
   if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto" };
+  writeWhole(fullAt, full);
   const asked = { ok: true, result: "needs-human", gate, reason, question, humanCommand: approveCommand(root, gate) };
   return gate === PUBLISH_GATE ? { ...asked, shown } : asked;
 }

@@ -112,6 +112,14 @@ describe("G:task-end", () => {
     assert.deepEqual(facts.goalCheck, [{ gist: "The README does not name order_total.", outcome: "left as is" }]);
   });
 
+  test("an untitled goal-check finding with a long first sentence is told by that sentence whole, never cut", () => {
+    const root = makeRoot();
+    const sentence = "The README's API list does not name order_total, though the plan's first slice says the API list must name every public function.";
+    reviewedRound(root, finding(`${sentence} It should.`));
+
+    assert.deepEqual(gateFacts("G:task-end", root, atStage(SAFETY_NET)).goalCheck, [{ gist: sentence, outcome: "left as is" }]);
+  });
+
   test("a goal-check finding with a title is told by its title", () => {
     const root = makeRoot();
     reviewedRound(root, finding("The README does not name order_total.", { title: "README misses order_total" }));

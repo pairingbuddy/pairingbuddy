@@ -1,13 +1,12 @@
-// Scenario long-lists: a big task keeps the gate questions short, and every "+ n more in the report" a question folds into
-// names a list the report really holds (docs/design/progress-mod/DIRECTION.md, "Long lists").
+// Scenario long-lists: a big task keeps the gate questions short, and every "+ n more" a question folds into names the
+// full question file, which holds the whole list (docs/design/progress-mod/DIRECTION.md, "Long lists").
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
-import { gateQuestion } from "../../shared-node/gates.mjs";
-import { renderReport } from "../../shared-node/report.mjs";
-import { sectionOf } from "./report-fixture.mjs";
+import { fullQuestion, gateQuestion } from "../../shared-node/gates.mjs";
 
 const POLICY = "the gate policy is default, not auto";
+const AMBIGUITY = "these returns carry an open ambiguity: a.json, b.json";
 const LONG = "and keeps the order's currency, rounding and tax lines exactly as the cart recorded them at checkout time";
 
 // 15 scenarios holding 40 tests between them, every description over 100 characters.
@@ -18,12 +17,10 @@ const BIG_SCENARIOS = TEST_COUNTS.map((count, s) => ({
 }));
 const BIG_FILES = Array.from({ length: 20 }, (_, i) => `src/shop/checkout/order_total_part_${i + 1}_with_a_long_module_name.py`);
 
-const SAFETY_NET = { name: "code-safety-net", status: "done", attempt: 1, startedAt: "2026-11-14T10:00:00.000Z" };
-const LEDGER = { task: "Add order_total to cart.py.", taskType: "new_feature", stage: SAFETY_NET, stages: [SAFETY_NET], tests: { perTest: {} } };
 const GOAL_FINDINGS = ["README does not name order_total", "The plan says tax is included", "CHANGELOG has no entry"].map((title, i) => ({ title, claim: `${title}.`, where: `doc${i}.md` }));
-const GOAL_CALLS = [{ at: "2026-11-14T10:00:01.000Z", input: { pb_key: "code-safety-net.lens.corpus-misalignment.r1.a1", findings: GOAL_FINDINGS } }];
 
-const linesOf = (gate, facts) => gateQuestion(gate, { reason: POLICY, facts }).question.split("\n");
+const FULL_AT = "/repo/.pairingbuddy/run/question.md";
+const linesOf = (gate, facts) => gateQuestion(gate, { reason: POLICY, facts, fullAt: FULL_AT }).question.split("\n");
 
 describe("long lists in the gate questions", () => {
   test("15 scenarios with 40 tests show one line per scenario with its count and no test lines", () => {
@@ -40,29 +37,33 @@ describe("long lists in the gate questions", () => {
     const built = lines.filter((line) => line.startsWith("Built: "));
 
     assert.equal(built.length, 1);
-    assert.equal(built[0], `Built: ${BIG_FILES.slice(0, 5).join(", ")}, + 15 more in the report; 40 tests, all passing.`);
+    assert.equal(built[0], `Built: ${BIG_FILES.slice(0, 5).join(", ")}; 40 tests, all passing; + 15 more files: ${FULL_AT}`);
     assert.ok(!lines.some((line) => BIG_FILES.slice(5).some((file) => line.includes(file))), "the other 15 files are only in the report");
   });
 });
 
-describe("every '+ n more in the report' names a list the report holds", () => {
+describe("every '+ n more' names the full question file, and that file holds the whole list", () => {
   const scenarios = [...BIG_SCENARIOS, ...BIG_SCENARIOS.slice(0, 3).map((s, i) => ({ ...s, description: `extra scenario ${i + 1} ${LONG}` }))];
-  const html = renderReport({ ledger: LEDGER, spawns: [], calls: GOAL_CALLS, scenarios, changed: BIG_FILES });
   const goalCheck = GOAL_FINDINGS.map(({ title }) => ({ gist: title, outcome: "left as is" }));
-  // Each fold, the question it shows in, and what the report must hold for it: the report section and every item of the list.
+  const body = Array.from({ length: 11 }, (_, i) => `body line ${i + 1} ${LONG}`).join("\n");
+  const doubts = Array.from({ length: 5 }, (_, i) => ({ step: "making the test pass", ambiguity: `doubt ${i + 1} ${LONG}?` }));
+  // Each fold, the question it shows in, and every item of the list the full question file must hold.
   const FOLDS = [
-    { gate: "G:scenarios", facts: { scenarios }, section: "SCENARIOS", items: scenarios.flatMap(({ description, tests }) => [description, ...tests]) },
-    { gate: "G:task-end", facts: { files: BIG_FILES }, section: "BUILT", items: BIG_FILES },
-    { gate: "G:task-end", facts: { goalCheck }, section: "REVIEW", items: GOAL_FINDINGS.map(({ title }) => title) },
+    { gate: "G:scenarios", facts: { scenarios }, items: scenarios.flatMap(({ description, tests }) => [description, ...tests]) },
+    { gate: "G:task-end", facts: { files: BIG_FILES }, items: BIG_FILES },
+    { gate: "G:task-end", facts: { goalCheck }, items: GOAL_FINDINGS.map(({ title }) => title) },
+    { gate: "G:publish", facts: { title: "T", body }, items: body.split("\n") },
+    { gate: "G:task-end", facts: { doubts }, reason: AMBIGUITY, items: doubts.map(({ ambiguity }) => ambiguity) },
   ];
 
-  for (const { gate, facts, section, items } of FOLDS) {
-    test(`${gate} ${Object.keys(facts)[0]} folds into the report's ${section}`, () => {
-      const folds = linesOf(gate, facts).filter((line) => line.includes("in the report"));
-      const held = sectionOf(html, section);
+  for (const { gate, facts, items, reason = POLICY } of FOLDS) {
+    test(`${gate} ${Object.keys(facts).at(-1)} folds once into the full question file`, () => {
+      const folds = gateQuestion(gate, { reason, facts, fullAt: FULL_AT }).question.split("\n").filter((line) => /^\+ \d+ more|; \+ \d+ more/.test(line));
+      const full = fullQuestion(gate, { reason, facts });
 
       assert.equal(folds.length, 1, `the long list folds once: ${JSON.stringify(folds)}`);
-      for (const item of items) assert.ok(held.includes(item.replaceAll("'", "&#39;")), `the report's ${section} holds ${item}`);
+      assert.ok(folds[0].endsWith(`: ${FULL_AT}`), `the fold names the file: ${folds[0]}`);
+      for (const item of items) assert.ok(full.includes(item), `the full question holds ${item}`);
     });
   }
 });

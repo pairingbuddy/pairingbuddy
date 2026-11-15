@@ -197,3 +197,14 @@ What changed:
 - **REVIEW's first line** names what was checked, with no counts: `checked: the code, the tests, docs and plan`. A lens still running reads under `still looking at:`, one that returned nothing usable under `could not check:`. A cycle's quick review reads `quick review done`. The summary line (`1 issue found · 1 checking`) and the finding lines stay. This replaces "one line per lens with its finding count" above.
 - **TESTS through the publish.** During the publish run and after it, TESTS shows the finished code run's tests, folded as usual (`✓ 5 done`).
 - **GOAL gist.** The goal's first sentence. When it is wider than the room, it is cut at the last clause break (`: `, `; `, `, `) that fits; a comma inside brackets or backticks does not count. With none, it is cut at the last word. The task-done question's `Goal:` line follows the same rule within 120 characters. The report keeps the whole goal.
+
+## Sixth watched run (2026-11-15)
+
+The human's findings on the gate questions:
+- Doubts were still cut with "…" ("…The task text…"). A cut sentence cannot be judged. Claude Code's question box wraps a long line, as a long `Goal:` line showed.
+- The doubts were reviewer jargon: "reviewing through one lens", "corpus", "subject".
+- A reviewer's note on what it did not read ("the corpus is none", "I did not read the full cart.py") stopped the gate as if it were a question for the human.
+
+What changed in the questions:
+- **Nothing is cut.** No line of a gate question ends in "…". Each doubt is whole on one line, whitespace collapsed, at most 3. The task-done `Goal:` line is the goal's whole first sentence. A goal-check finding is its title, else its claim's whole first sentence. This replaces the 120-character doubt cut and the `Goal:` line's 120-character rule above.
+- **One file holds the full question.** `pb gate eval` writes `.pairingbuddy/run/question.md` each time it asks: the full question as Markdown, with the whole goal, every doubt, scenario, changed file, goal-check finding and the whole PR body. Every fold reads `+ n more: <absolute path of that file>` (`+ 3 more scenarios: <path>`, `+ 15 more files: <path>`, `+ 3 more lines: <path>`), with the path at the end of its line so a terminal can open it. This replaces "+ n more in the report" in the questions.

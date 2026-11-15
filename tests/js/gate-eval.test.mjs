@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { gateQuestion } from "../../shared-node/gates.mjs";
+import { fullQuestion, gateQuestion } from "../../shared-node/gates.mjs";
 import { readLedger, updateLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { COMMIT_FAILED } from "../../shared-node/verbs.mjs";
 import { fixture, recordedAnswer, sha256, SESSION } from "./tap-fixture.mjs";
@@ -1258,6 +1258,16 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
 
     assert.equal(asked.question.question, "Unsure (listing scenarios): Does the fix cover the retry path?\nStart building these despite this?");
     assert.deepEqual(repo.ledger().needsHuman.doubts, [{ step: "listing scenarios", ambiguity: "Does the fix cover the retry path?" }]);
+  });
+
+  test("the question it asks is written in full to run/question.md, and its folds name that file by its absolute path", () => {
+    const repo = scenariosRepo({ ambiguity: "Does the fix cover the retry path?" });
+    const fullAt = join(repo.dir, ".pairingbuddy", "run", "question.md");
+
+    const asked = gateEval(repo, "auto");
+
+    assert.equal(readFileSync(fullAt, "utf8"), fullQuestion(G_SCENARIOS, { reason: asked.reason, taskType: "bug_fix", facts: { doubts: repo.ledger().needsHuman.doubts } }));
+    assert.deepEqual(asked.question, gateQuestion(G_SCENARIOS, { reason: asked.reason, taskType: "bug_fix", facts: { doubts: repo.ledger().needsHuman.doubts }, fullAt }));
   });
 
   // ---------- a doubt the round knocked down ----------
