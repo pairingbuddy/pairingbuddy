@@ -129,9 +129,11 @@ for (const columns of WIDTHS) {
     expect(tests.length, `TESTS is at most 5 lines: ${JSON.stringify(tests)}`).toBeLessThanOrEqual(5)
     expect(tests[0], 'the done tests fold into one count').toBe('TESTS    ✓ 10 done')
     expect(tests.at(-1), 'the waiting tests past the shown ones are counted').toBe(`${' '.repeat(LABEL_WIDTH)}+27 more`)
+    // A test line stays one line: a long name is cut at a word, never with an ellipsis; the report's SCENARIOS holds it whole.
+    expect(lines.filter(line => line.includes('…')), 'nothing in the pane is cut with an ellipsis').toEqual([])
   })
 
-  test(`a-big-task-at-its-end-fits-${columns}-columns-with-one-built-line-and-review-in-five`, async ($, on) => {
+  test(`a-big-task-at-its-end-fits-${columns}-columns-with-built-wrapped-whole-and-review-in-five`, async ($, on) => {
     const rig = setupReplay(on)
     await bigEnd($, rig)
 
@@ -139,7 +141,12 @@ for (const columns of WIDTHS) {
     const review = rowLinesOf(lines, 'REVIEW')
 
     expect(tooWide(lines, columns), `every line fits ${columns} columns`).toEqual([])
-    expect(rowLinesOf(lines, 'BUILT').length, `BUILT is one line: ${JSON.stringify(lines)}`).toBe(1)
+    // BUILT wraps instead of being cut: every word it holds is drawn, and it ends with the tests.
+    const squash = (text: string) => text.replace(/[\s·]/g, '')
+    const built = rowLinesOf(lines, 'BUILT').map(line => line.slice(LABEL_WIDTH)).join('')
+    const whole = `${BIG_FILES.slice(0, 3).map(file => file.path).join(', ')} + 17 more files · 40 tests passing`
+    expect(squash(built), `BUILT is drawn whole, wrapped: ${JSON.stringify(lines)}`).toBe(squash(whole))
+    expect(lines.filter(line => line.includes('…')), 'nothing in the pane is cut with an ellipsis').toEqual([])
     // The end review: one summary line, the first three findings, then "+ n more".
     expect(review.length, `REVIEW is at most 5 lines: ${JSON.stringify(review)}`).toBeLessThanOrEqual(5)
     expect(review.at(-1), 'the other five findings are counted').toBe(`${' '.repeat(LABEL_WIDTH)}  + 5 more`)

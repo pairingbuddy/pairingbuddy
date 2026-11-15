@@ -68,7 +68,7 @@ export function fitProgress(progress, columns) {
 
 // The looping tries as one line that fits the width budget where it can. What gives way, in order: older tries fold into
 // "+n earlier ·", then that prefix goes, then " at STEP" leaves the latest try (the LOOPING row above names the step). The latest
-// try's result words stay whole; only if they alone overflow is the final cut left to the Text's truncate-end.
+// try's result words stay whole; if they alone overflow, the pane wraps them.
 export function fitTries(tries, columns) {
   const last = tries.length - 1;
   const text = (hidden, { prefix = true, step = true } = {}) => {

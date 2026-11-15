@@ -667,6 +667,14 @@ test("lines-word-short-lists", () => {
   assert.deepEqual(texts(emptyReturn), ["checked: the code", "no issues found"], "a lens that returned no findings reads checked, with no finding lines");
 });
 
+test("a-part-wider-than-the-columns-wraps-at-words-never-ends-in-an-ellipsis", () => {
+  const twoLenses = lensRound({ ledger: ledgerFor(), calls: [callFor({ item: "code", findings: [] }), callFor({ item: "tests", findings: [] })], spawns: [], contract });
+
+  const narrow = lensLines(twoLenses, 12).map(({ text }) => text);
+
+  assert.deepEqual(narrow, ["checked:", "  the code", "  the tests", "no issues", "  found"], "every word is drawn, each line within the columns");
+});
+
 test("lines-fit-exactly-at-the-column-edge", () => {
   const twoLenses = lensRound({ ledger: ledgerFor(), calls: [callFor({ item: "code", findings: [] }), callFor({ item: "tests", findings: [] })], spawns: [], contract });
   const findings = [{ where: "a.mjs:1", claim: "one" }, { where: "b.mjs:2", claim: "two" }];

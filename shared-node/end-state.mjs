@@ -2,7 +2,9 @@
 // the pull request. Built from what the run recorded only; what cannot be known is never inferred. Pure; no node: imports.
 import { plural } from "./glance.mjs";
 import { lensOfFinding } from "./lens-merge.mjs";
-import { FINDING_WORDS, cutAtWord, findingGist, findingLines, fit, lensRound } from "./lens-round.mjs";
+import { FINDING_WORDS, cutAtWord, findingGist, findingLines, fit, lensRound, wrapAtWords } from "./lens-round.mjs";
+
+export { wrapAtWords };
 import { isPassed } from "./gate-passed.mjs";
 
 const DASH = "—";
@@ -128,20 +130,6 @@ export function goalGist(text, room) {
 
 // The goal the pane leads with: the task's first sentence, its first line only (a task's context follows a blank line).
 export const goalOf = (task) => (typeof task === "string" ? firstSentence(task.trim().split("\n")[0]) : "");
-
-// Text wrapped at spaces into lines of at most `room` characters; a word wider than the room takes lines of its own,
-// split at the room. Nothing is cut and no ellipsis is added. No room gives one line.
-export function wrapAtWords(text, room) {
-  if (!(room > 0) || [...text].length <= room) return [text];
-  const lines = [];
-  for (const word of text.split(/\s+/).filter(Boolean)) {
-    const chars = [...word];
-    const last = lines.at(-1);
-    if (last !== undefined && [...last].length + 1 + chars.length <= room) lines[lines.length - 1] = `${last} ${word}`;
-    else for (let at = 0; at < chars.length; at += room) lines.push(chars.slice(at, at + room).join(""));
-  }
-  return lines;
-}
 
 // Text of " · " parts wrapped into lines of at most `room`: whole parts first, a part wider than the room at its words.
 export function wrapAtParts(text, room) {

@@ -221,9 +221,8 @@ test('replay-keeps-one-layout-and-fits-at-widths', async ($, on) => {
         const labels = rows.map(row => textOf(row.children[0]).trim()).filter(label => label !== '')
         // One layout: every row, in the same order, at every step.
         expect(labels, `${where}: the rows`).toEqual(LABELS)
-        // The rows the pane folds itself fit the width: TESTS and REVIEW; the one-sentence rows and the steps are cut by their Text.
-        const folded = rows.slice(rows.findIndex(row => textOf(row.children[0]).trim() === 'TESTS'))
-        for (const row of folded) expect(cells(textOf(row)), `${where}: the row "${textOf(row)}" fits the body width ${columns}`).toBeLessThanOrEqual(columns)
+        // Every line fits the width, so no Text is cut with an ellipsis: the pane wraps, or cuts a test line at a word.
+        for (const row of rows) expect(cells(textOf(row)), `${where}: the row "${textOf(row)}" fits the body width ${columns}`).toBeLessThanOrEqual(columns)
         expect(rows.length, `${where}: the pane's ${rows.length} rows fit the ${BODY_ROWS} body rows`).toBeLessThanOrEqual(BODY_ROWS)
       }
       expect(steps, `${name} at ${columns} columns: some step had a ledger`).toBeGreaterThan(0)

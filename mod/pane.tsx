@@ -33,11 +33,9 @@ function rowLines(name: string, lines: Part[][]): { label: string; parts: Part[]
 
 const cells = (text: string) => [...text].length
 
-// Text cut to fit the room, ending in an ellipsis; no room given cuts nothing.
-function cutName(name: string, room: number) {
-  if (!(room > 0) || cells(name) <= room) return name
-  return room > 1 ? `${[...name].slice(0, room - 1).join('')}…` : '…'
-}
+// A test line stays one line, so a long name is cut at the last word that fits, never with an ellipsis (the report's SCENARIOS
+// holds it whole); no room given cuts nothing.
+const cutName = (name: string, room: number) => cutAtWord(name, room)
 
 // The current test's cycle marker and step age, as parts.
 function cycleParts(test: NonNullable<View['test']>): Part[] {
@@ -92,12 +90,13 @@ function paneRows(view: View, columns: number) {
   // A row that wraps at its parts, then words, onto as many lines as it needs, never cut.
   const wrapped = (text: string, room: number, props: Props = {}): Part[][] => (text === EMPTY ? one(text) : wrapAtParts(text, room).map((line: string) => [{ text: line, props }]))
   const statusProps = { ...toneProps(rowTones.status), ...(rowTones.status === 'warning' ? { bold: true } : {}) }
-  const tries = view.tries?.length ? [[{ text: fitTries(view.tries, width).trimStart(), props: { dimColor: true } }]] : []
+  // The tries fold to fit where they can (fitTries); what still overflows wraps, never cut.
+  const tries = view.tries?.length ? wrapped(fitTries(view.tries, width).trimStart(), width, { dimColor: true }) : []
   const review = view.endRound ? endReviewLines(view.endRound, width) : lensLines(view.lensRound, width)
   return [
     ...rowLines('STATUS', wrapped(view.status ?? rows.now, width, statusProps)),
-    ...rowLines('PR', one(cutAtWord(view.end.pr, width))),
-    ...rowLines('BUILT', one(cutAtWord(view.end.done, width))),
+    ...rowLines('PR', wrapped(view.end.pr, width)),
+    ...rowLines('BUILT', wrapped(view.end.done, width)),
     ...rowLines('SPENT', one(rows.spent, toneProps(rowTones.spent))),
     ...rowLines('LOOPING', [...one(rows.looping, toneProps(rowTones.looping)), ...tries]),
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
