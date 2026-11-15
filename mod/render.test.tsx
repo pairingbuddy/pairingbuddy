@@ -142,8 +142,8 @@ test('the pb hint is lowest priority: "/pb" shows when all content fits but the 
   expect(shown.join(' '), `at ${COLUMNS} columns no content is cut: ${JSON.stringify(shown)}`).toContain(content[content.length - 1].text)
 })
 
-test('at 70 columns with a standing stop needs-you is kept whole and the hint shows only if the row still fits', async ($, on) => {
-  const COLUMNS = 70
+test('at 75 columns with a standing stop needs-you is kept whole and the hint shows only if the row still fits', async ($, on) => {
+  const COLUMNS = 75
   bandEngine(on, stopped({ code: 'step-failed' }))
   await start($)
 
@@ -151,7 +151,7 @@ test('at 70 columns with a standing stop needs-you is kept whole and the hint sh
 
   const joined = shown.join('')
   expect(joined.includes('/pb') ? joined.length <= COLUMNS : true, `the hint is shown only when the row still fits: ${JSON.stringify(shown)}`).toBe(true)
-  expect(shown.slice(0, 3), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['write scenarios', ' │ ', '0 agents'])
+  expect(shown.slice(0, 3), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['write test scenarios', ' │ ', '0 agents'])
   expect(shown.some(text => text === 'needs you · opened details'), `the standing needs-you is kept whole: ${JSON.stringify(shown)}`).toBe(true)
   expect(joined.length, `the band is within ${COLUMNS} columns: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(COLUMNS)
 })

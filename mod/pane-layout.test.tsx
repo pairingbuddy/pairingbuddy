@@ -27,7 +27,7 @@ test('every-row-is-drawn-in-order-with-a-fixed-label-width-and-a-dash-when-empty
 
   expect(labelsOf(lines), `the rows, in order: ${JSON.stringify(lines)}`).toEqual(ROWS)
   for (const label of ROWS) expect(rowOf(lines, label), `${label} sits in a ${LABEL_WIDTH}-wide label column: ${JSON.stringify(lines)}`).toBeDefined()
-  expect(rowOf(lines, 'NOW'), 'NOW names the active step').toBe('NOW      write scenarios')
+  expect(rowOf(lines, 'NOW'), 'NOW names the active step').toBe('NOW      write test scenarios')
   for (const label of ['DONE', 'GOAL', 'PR', 'TESTS', 'REVIEW']) expect(rowOf(lines, label), `${label} has nothing to show yet, so it reads a dash`).toBe(`${label.padEnd(LABEL_WIDTH)}—`)
   expect(rowOf(lines, 'LOOPING'), 'no step is looping').toBe('LOOPING  no')
   expect(lines.some(line => /^(LEFT|OFF TRACK)\b/.test(line)), 'LEFT and OFF TRACK are gone').toBe(false)
@@ -53,7 +53,7 @@ test('in-a-unit-the-code-run-lists-its-steps-then-the-publish-step', async ($, o
   const rig = setupReplay(on)
   await serve($, rig, { [LEDGER]: SNAPSHOT_RUNNING, [UNIT]: unitFile() })
 
-  expect(stepsOf(await paneLines($)), 'the whole unit: the bug fix steps, then the pull request').toEqual(['○ work out the task type', '▸ write scenarios', '○ build test by test', '○ safety-net review', '○ write the pull request'])
+  expect(stepsOf(await paneLines($)), 'the whole unit: the bug fix steps, then the pull request').toEqual(['○ work out the task type', '▸ write test scenarios', '○ build test by test', '○ safety-net review', '○ write the pull request'])
 })
 
 test('a-spike-unit-has-no-publish-step-since-it-closes-kept-local', async ($, on) => {
@@ -69,7 +69,7 @@ test('the-publish-run-lists-the-unit-tasks-steps-as-done-before-the-publish-step
   await serve($, rig, { [LEDGER]: PUBLISH_RUN, [UNIT]: unitFile([{ stages: BUG_FIX_STEPS }]), '.pairingbuddy/tests.json': { tests: [{ test_id: 'order-total' }] } }, '2026-11-14T10:03:10.000Z')
   const lines = await paneLines($)
 
-  expect(stepsOf(lines), 'the code steps stay, done').toEqual(['✓ work out the task type', '✓ write scenarios', '✓ build test by test', '✓ safety-net review', '▸ write the pull request'])
+  expect(stepsOf(lines), 'the code steps stay, done').toEqual(['✓ work out the task type', '✓ write test scenarios', '✓ build test by test', '✓ safety-net review', '▸ write the pull request'])
   expect(rowOf(lines, 'NOW'), 'NOW names the publish step').toBe('NOW      write the pull request')
   expect(rowOf(lines, 'TESTS'), 'with no code run seen, the publish run lists none of tests.json as to do').toBe('TESTS    —')
 })

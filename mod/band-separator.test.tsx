@@ -14,7 +14,7 @@ test('band-draws-dim-separator-above-band-text', async ($, on) => {
   const isRule = (node: any) => node.type === 'Text' && node.props.dimColor === true && /^[─━═\-_—]{3,}$/.test(node.text.trim())
   const isDimBorder = (node: any) => node.type === 'Box' && Boolean(node.props.borderStyle) && node.props.borderDimColor === true
   const separator = nodes.findIndex((node: any) => isRule(node) || isDimBorder(node))
-  const bandText = nodes.findIndex((node: any) => node.type === 'Text' && node.text.includes('write scenarios'))
+  const bandText = nodes.findIndex((node: any) => node.type === 'Text' && node.text.includes('write test scenarios'))
   const shown = JSON.stringify(nodes.map((node: any) => ({ type: node.type, text: node.text, props: node.props })))
   expect(separator, `a dim separator (a dim-bordered Box or a dim rule Text) is drawn: ${shown}`).toBeGreaterThanOrEqual(0)
   expect(bandText, `the band text is drawn: ${shown}`).toBeGreaterThanOrEqual(0)
