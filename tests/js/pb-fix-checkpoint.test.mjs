@@ -38,7 +38,7 @@ const git = (dir, ...args) => execFileSync("git", args, { cwd: dir, encoding: "u
 // A repo on the unprotected branch `feature` holding a seed commit and an active safety-net stage ledger. The fake
 // runner passes. `changes` maps a path to its new content: those files are left uncommitted, as a fix agent leaves them,
 // and the fix artifact lists them in files_changed.
-function makeRepo({ changes = { "src.mjs": "fixed code\n" }, ambiguity = "", runnerPasses = true } = {}) {
+function makeRepo({ changes = { "src.mjs": "fixed code\n" }, ambiguity = "", noChangeReason, runnerPasses = true } = {}) {
   const dir = makeDir("pb-fix-checkpoint-");
   git(dir, "init", "-q", "-b", "feature");
   git(dir, "config", "user.name", "Test");
@@ -65,7 +65,7 @@ function makeRepo({ changes = { "src.mjs": "fixed code\n" }, ambiguity = "", run
     stages: [], gates: {}, tests: { perTest: {} }, commits: [], retries: {}, spend: { agents: 0, tokens: 0 }, stop: null, needsHuman: null, checkpoints: [],
   });
   for (const [path, content] of Object.entries(changes)) writeFileSync(join(dir, path), content);
-  writeFileSync(join(taskDir, "artifacts", `${FIX_KEY}.json`), JSON.stringify({ pb_key: FIX_KEY, ambiguity, commit_subject: "remove the duplicated helper", files_changed: Object.keys(changes) }));
+  writeFileSync(join(taskDir, "artifacts", `${FIX_KEY}.json`), JSON.stringify({ pb_key: FIX_KEY, ambiguity, ...(noChangeReason === undefined ? {} : { no_change_reason: noChangeReason }), commit_subject: "remove the duplicated helper", files_changed: Object.keys(changes) }));
   return {
     dir, seed, ledgerPath,
     ledger: () => readLedger(ledgerPath),
@@ -155,6 +155,19 @@ test("A fix that changed nothing and gave no ambiguity stops the run", () => {
   const stop = repo.ledger().stop;
   assert.notEqual(stop, null, "the ledger records a stop");
   assert.match(JSON.stringify(stop), /changed nothing/, "the stop reason says the fix changed nothing");
+});
+
+// Test case: fix-with-no-change-and-a-reason-commits-nothing
+test("A fix that changed nothing and says why in no_change_reason commits nothing and raises no stop, with no ambiguity", () => {
+  const repo = makeRepo({ changes: {}, ambiguity: "", noChangeReason: "an earlier fix group already removed the unused import" });
+  const headBefore = repo.head();
+
+  const result = checkpointFix(repo);
+
+  assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+  assert.equal(JSON.parse(result.stdout).committed, false, "nothing is committed");
+  assert.equal(repo.head(), headBefore, "HEAD is unchanged");
+  assert.equal(repo.ledger().stop, null, "no stop is recorded");
 });
 
 // Test case: gate-allows-checkpoint-fix-runner-form

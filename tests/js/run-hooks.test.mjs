@@ -207,6 +207,17 @@ describe("Stop hook", () => {
     assert.equal(gate(dir, "Workflow", { name: `pairingbuddy:${CONFIG}`, args: argsIn(stopReason(stdout)) }), null);
   });
 
+  test("a start released by pb stage release is told at once, and the gate takes the restart it gives", () => {
+    const { dir } = openRealRun();
+    assert.equal(gate(dir, "Workflow", startCall()), null);
+    assert.equal(pb(dir, "stage", "release").status, 0);
+
+    const stdout = stop(dir);
+    assertBlocks(stdout, /pairingbuddy:code-config/);
+    assert.deepEqual(argsIn(stopReason(stdout)), startCall().args);
+    assert.equal(gate(dir, "Workflow", { name: `pairingbuddy:${CONFIG}`, args: argsIn(stopReason(stdout)) }), null);
+  });
+
   test("a stage past its lease with a recorded run stays silent", () => {
     assert.equal(stop(makeRun({ stage: { ...ACTIVE, startedAt: secondsAgo(3600) } }).dir), "");
   });
@@ -509,6 +520,12 @@ describe("SessionStart hook", () => {
     const context = sessionStart(makeRun({ stage: ACTIVE }).dir, "resume");
     assert.match(context, /code-config/);
     assert.match(context, /cli\/pb\.mjs stage fail/);
+  });
+
+  test("reports a start inside its lease, and how a declined start is released", () => {
+    const context = sessionStart(makeRun({ stage: { ...STRANDED, startedAt: secondsAgo(1) } }).dir, "resume");
+    assert.match(context, /declined or failed before it ran/);
+    assert.match(context, /cli\/pb\.mjs stage release/);
   });
 
   test("adds nothing outside a run", () => {

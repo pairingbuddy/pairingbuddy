@@ -251,13 +251,16 @@ function assertNothingElseStaged(root, listed) {
   if (stray.length > 0) throw new CheckpointRefused(`changes outside the list are staged, so the commit would carry them: ${stray.join(", ")}`);
 }
 
-// A refused edit leaves the tree as it was and the agent's return may not say so. Only an empty list with an ambiguity
-// is a no-change anyone can trust, and pb gate eval asks a human about that ambiguity.
-function assertChangeProven(step, { ambiguity }, listed, paths) {
+const isSaid = (text) => typeof text === "string" && text.trim() !== "";
+
+// A refused edit leaves the tree as it was and the agent's return may not say so. Only an empty list that says why is a
+// no-change anyone can trust: no_change_reason for nothing left to change (an earlier fix already resolved it), which no
+// human is asked about, or an ambiguity for a doubt (an edit that failed, a fix it could not make), which pb gate eval asks about.
+function assertChangeProven(step, { ambiguity, no_change_reason: noChangeReason }, listed, paths) {
   const unchanged = listed.filter((path) => !paths.includes(path));
   if (unchanged.length > 0) throw new CheckpointStopped(`step ${step} lists files that did not change: ${unchanged.join(", ")}. pb stage fail clears this`);
-  if (listed.length > 0 || (typeof ambiguity === "string" && ambiguity.trim() !== "")) return;
-  throw new CheckpointStopped(`step ${step} changed nothing and its return gives no ambiguity to say why. pb stage fail clears this`);
+  if (listed.length > 0 || isSaid(ambiguity) || isSaid(noChangeReason)) return;
+  throw new CheckpointStopped(`step ${step} changed nothing and its return gives no no_change_reason or ambiguity to say why. pb stage fail clears this`);
 }
 
 const isInside = (path, directory) => !isOutside(relative(directory, path));

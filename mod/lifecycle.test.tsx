@@ -93,11 +93,9 @@ test('a tests.json entry without a test_id is not counted', async ($, on) => {
   await start($)
   await spawn($, label('first'))
 
-  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  const shown = await bandRowTexts(band)
-  await band.unmount()
+  const status = (await paneLines($)).find(line => line.startsWith('STATUS'))
 
-  expect(shown, 'the band reads "test 1 of 2": the entries without an id are left out').toContain('● RED · test 1 of 2')
+  expect(status, 'STATUS reads "test 1 of 2": the entries without an id are left out').toContain('test 1 of 2')
 })
 
 test("when a new run ledger appears the pane shows the new run and its ended snapshot replaces the old one", async ($, on) => {
@@ -147,8 +145,8 @@ test('tests-read-from-ledger-per-test: with the real seq 10 ledger and no tests.
   const now = shownPane.slice(from, to).map(text => text.trim()).join(' ')
   const left = shownPane.find(text => text.startsWith('LEFT'))
 
-  expect(shownBand, 'the band names the test position').toMatch(/test 1\b/)
-  expect(shownBand, 'the band does not claim a total').not.toMatch(/test 1 of/)
+  expect(shownBand, 'the band names the test it is on').toMatch(/RED · apply discount 100 by 10 returns 90/)
+  expect(shownBand, 'the band does not claim a total').not.toMatch(/\bof\b/)
   expect(now, 'the pane STATUS row names the test position').toMatch(/test 1\b/)
   expect(now, 'the pane STATUS row does not claim a total').not.toMatch(/\bof\b/)
   expect(left, 'LEFT is not drawn: perTest does not give the total, so nothing is known to be left').toBeUndefined()

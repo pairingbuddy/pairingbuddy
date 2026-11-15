@@ -135,15 +135,15 @@ The band is two rows at most, under a dim rule: the goal row, then the step row,
 ```
 ────────────────────────────────────────────────────────────────────────────────
 Fix this bug in discount.py
-● RED · test 2 of 2 │ 0:50 · 10 agents │ looping: no ▸ details │ /pb
+● RED · zero percent keeps price │ 0:50 · 10 agents ▸ details │ /pb
 ```
 
 The step row in each state, at 80 columns:
 
 ```
-● GREEN · test 1 of 2 │ 0:50 · 10 agents │ looping: no ▸ details │ /pb
+● GREEN · ten percent off │ 0:50 · 10 agents │ looping: no ▸ details │ /pb
 ▲ NEEDS YOU · your sign-off at the end ▸ details │ /pb for details
-✕ STOPPED · a step kept failing │ RED · test 2 of 2 │ 1:45 · 18 agents ▸ details
+✕ STOPPED · a step kept failing │ RED · zero percent keeps price ▸ details
 ✓ DONE · ready for your next task · /pb for details ▸ details
 ● between steps · next: build test by test · /pb for details ▸ details
 ```
@@ -151,7 +151,7 @@ The step row in each state, at 80 columns:
 - **The goal row** is the goal's gist, bold as the pane's GOAL and not coloured: the whole first sentence when it fits beside the [-] control, else cut at the last clause break (`: `, `; `, `, ` outside brackets and backticks), else the last word, never with "…". It is drawn from the first ledger to the end of the run (also once the run is over, so the done band says what was done), and only while idle is there none.
 - **The goal has its own row** at every width, so the step row stays where the eye learnt to find it. At 139 columns most goals are whole; at 80 and 50 the gist is often the goal's first clause.
 - **The step row leads with the status,** in STATUS's heads and colours, so the band answers "am I needed now?" before any detail. A question leads as `▲ NEEDS YOU · <what>` and a stop as `✕ STOPPED · <why>`, each head a block; the step behind them is a plain detail, no longer lit. Once the alert opened the pane, what reads `opened details`. While nothing waits on you, the step leads behind STATUS's `●` alone (the word "working" would cost the step its room), and the calm `needs you: no` is gone: the mark already says it.
-- **Then the details:** the step (or the phase and test), spent, left and looping, dropping segments by priority, then the `▸ details` button and the `/pb` hint while they fit. A question or stop is never dropped. When it alone does not fit whole, it keeps its mark and what (`▲ your sign-off at the end`, the block on the mark); only past that is it cut.
+- **Then the details:** the step (or the phase and the current test's name, as TESTS names it), spent, left and looping, dropping segments by priority, then the `▸ details` button and the `/pb` hint while they fit. A question or stop is never dropped. When it alone does not fit whole, it keeps its mark and what (`▲ your sign-off at the end`, the block on the mark); only past that is it cut.
 - **With no stage active** the row is one quiet line. Between steps: `● between steps · next: …` (or `● run open`, `● all steps done`), the mark in the accent and the words dim, with no "Pairing Buddy" label since the goal row names the session. Done: `✓ DONE · ready for your next task`, the head bold, the words plain. Idle and last run finished: `Pairing Buddy · idle`, dim. The `/pb` hint gives way first when the width is short.
 
 ## Fourth watched run (2026-11-14): show what you ask about, gist before detail
@@ -193,8 +193,8 @@ Long lists fold as before.
 ### Colour means one thing
 
 Colour marks only, in the pane and the band alike (updated in the seventh watched run and in "Hierarchy"; this list is the single truth):
-- the TDD phase (red, green, blue, with bold), on the lit step of the cycle marker and on the band's phase word (`RED · test 2 of 2`);
-- where the run is now (the accent, cyan `#39c5cf`): with bold on the ▸ current step in STEPS, the current test's line in TESTS and the band's step (`write test scenarios`, or the `· test 2 of 2` after the phase word); calm, without bold, on STATUS's `● working` head and the band's `●`;
+- the TDD phase (red, green, blue, with bold), on the lit step of the cycle marker and on the band's phase word (`RED · zero percent keeps price`);
+- where the run is now (the accent, cyan `#39c5cf`): with bold on the ▸ current step in STEPS, the current test's line in TESTS and the band's step (`write test scenarios`, or the `· <test name>` after the phase word); calm, without bold, on STATUS's `● working` head and the band's `●`;
 - "needs you" (yellow), until you answer: STATUS's `▲ NEEDS YOU` head as a block (inverse, bold), then what in yellow and bold; the band leads with the same;
 - a stop (red): STATUS's `✕ STOPPED` head as a block (inverse, bold), then why in red; the band leads with the same.
 
@@ -329,3 +329,15 @@ Decisions:
 7. **"Opened details" stays.** Once the alert opened the pane, the band still says so after the head; the pane carries what is needed.
 8. **No border box.** A border would cost two rows and four columns at 50 columns. The rule, the bold labels and the dim detail labels group the first glance well enough.
 9. **The ○ mark for quiet states.** Between runs, ended and no run are not problems and run nothing, so they get the "to do / nothing running" mark, dim.
+
+## Eighth watched run (2026-11-15)
+
+One test, "order total sums two lines".
+
+The human's findings:
+- During REFACTOR, TESTS showed the test twice: `✓ order total sums two lines`, then `▸ order total sums two lines  ✓RED ✓GREEN ●REFACTOR`. The progress row marked a test done once its GREEN passed, while the current step was still on it.
+- The band read `● GREEN · test 1`. "Should I see the name of the test being worked on?"
+
+What changed:
+- **A test is current until the next one starts.** The test a step is on is current in TESTS, though its GREEN passed, so it shows once. An ended run has no current test.
+- **The band names the current test** after the phase, as TESTS does, in the same accent: `● GREEN · order total sums two lines`. Short of room, spent, left and looping give way first (by their usual priority), then the name is cut at a word, then it falls back to `test N`; never "…". STATUS keeps the position (`test 1 of 2`). At 80 columns a long name can take the room `looping:` had; the pane's LOOPING row still says it.

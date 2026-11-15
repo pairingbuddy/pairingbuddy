@@ -61,7 +61,7 @@ async function fromSnapshot($: EngineInterface, live: Inputs): Promise<Inputs> {
 }
 
 // A function declaration, not an arrow: the mod loader rejects an exported arrow taking $ across files.
-// Writes the run report under the reports folder. Never throws: a failed write or open is shown as the pane note, and only a failure before the write (reading inputs, session root) is dropped.
+// Writes the run report under the reports folder. Never throws: a failed build, write or open is shown as the pane note, each in its own words, and only a failure before the build (reading inputs, session root) is dropped.
 export async function openReport($: EngineInterface, spawns: Spawn[], calls: Call[] = []): Promise<void> {
   try {
     const live = await readInputs($, spawns)
@@ -75,8 +75,16 @@ export async function openReport($: EngineInterface, spawns: Spawn[], calls: Cal
     const shas = inputs.ledger.commits ?? []
     const commits = await readCommits($, shas)
     const lists = await readReportLists($, inputs.ledger)
+    // Building and writing fail apart, so the note says which one did.
+    let html: string
     try {
-      await $.fs.write(path, renderReport({ ...inputs, ...lists, calls, commits, endedAt, now: live.ledger ? inputs.now : undefined }))
+      html = renderReport({ ...inputs, ...lists, calls, commits, endedAt, now: live.ledger ? inputs.now : undefined })
+    } catch {
+      await $.state.set(PANE_NOTE, "couldn't build the report from the run's records")
+      return
+    }
+    try {
+      await $.fs.write(path, html)
     } catch {
       await $.state.set(PANE_NOTE, "couldn't write the report")
       return

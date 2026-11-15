@@ -7,6 +7,7 @@ import looping from './fixtures/replay/probe-2'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, engine, start } from './testing/band'
 import { POLL_MS } from './poll'
 import { fromPolled } from './inputs'
+import { buildEndedView } from './view'
 
 test('pane-draws-one-tests-row-with-a-line-per-test', async ($, on) => {
   const clock = mock.clock(on, { now: Date.parse('2026-11-04T08:20:00.000Z') })
@@ -236,4 +237,35 @@ test('from-polled-without-tests-complete-is-incomplete', async () => {
   const inputs = fromPolled(polled, [])
 
   expect(inputs.testsComplete).toBe(false)
+})
+
+test('a-test-in-refactor-shows-once-as-the-current-line', async ($, on) => {
+  mock.clock(on, { now: Date.parse('2026-11-04T08:20:00.000Z') })
+  const ID = 'order-total-sums-two-lines'
+  const passed = { stage: 'code-tdd', attempt: 1, done: true, passed: true, exitCodes: [0], timedOut: false, excerpt: '' }
+  engine(on, {
+    ...SNAPSHOT_RUNNING,
+    taskType: 'new_feature',
+    stage: { name: 'code-tdd', status: 'active', runId: null, attempt: 1, startedAt: '2026-11-04T08:19:00.000Z' },
+    tests: { perTest: { [ID]: { selector: { runner_id: 'pytest', test_file: 'tests/test_order.py', test_function: ID }, red: { ...passed, exitCodes: [1] }, green: passed } } },
+  })
+  await start($)
+  await $.agent.spawn({ prompt: 'p', description: 'd', name: `pb1 code-tdd REFACTOR refactor-code ${ID} r1`, subagentType: 'pairingbuddy:refactor-code' })
+
+  const lines = await paneLines($)
+
+  const row = lines.slice(lines.findIndex(line => line.startsWith('TESTS')), lines.findIndex(line => line.startsWith('REVIEW')))
+  const tests = row.filter(line => line.includes('order total sums two lines'))
+  expect(tests, `the test still in its cycle shows once, as the current line: ${JSON.stringify(lines)}`).toHaveLength(1)
+  expect(tests[0], 'that line is the current one, with its marker').toMatch(/^TESTS {4}▸ order total sums two lines {2}✓RED ✓GREEN ●REFACTOR/)
+})
+
+test('an-ended-run-shows-its-last-test-done-not-current', () => {
+  const ID = 'order-total'
+  const ledger = { taskType: 'new_feature', stage: { name: 'code-tdd', status: 'done' }, tests: { perTest: { [ID]: { green: { passed: true } } } } }
+  const spawns = [{ kind: 'workflow_agent' as const, name: `pb1 code-tdd REFACTOR refactor-code ${ID} r1` }]
+
+  const view = buildEndedView({ ledger, spawns, tests: [ID], testsComplete: true, now: undefined })
+
+  expect(view.progress?.entries.map(entry => entry.mark), 'the run is over, so its last test is done, not current').toEqual(['done'])
 })

@@ -338,6 +338,12 @@ test("the router follows the action, because a gate can fall between two stages"
   assert.doesNotMatch(section, /While `next` is not null/, "next names a stage even while a gate stands before it");
 });
 
+test("a declined or failed Workflow start is released at once, with no wait on its lease", () => {
+  const [said] = sentencesSaying("a rejected stage start is released", routerSection(), /declined|rejected/, /`pb stage release`/);
+  assert.doesNotMatch(said, /\bsleep|wait for (the|its) lease/i, "nothing waits out the lease");
+  assert.match(routerSection(), /never sleep/i, "the router says not to wait the lease out");
+});
+
 // ---------- the thin command ----------
 
 const command = () => readFileSync(join(ROOT, "commands", "code.md"), "utf8");

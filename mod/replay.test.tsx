@@ -5,7 +5,7 @@ import gOpen1 from './fixtures/replay/g-open-1'
 import probe2 from './fixtures/replay/probe-2'
 import s4Rollback from './fixtures/replay/s4-rollback'
 import { bandColumns } from './band'
-import { statusFirst } from './view'
+import { namedWhere, statusFirst } from './view'
 import { ACCENT_COLOUR, PHASE_COLOURS } from './pane'
 import { POLL_MS } from './poll'
 import { fitBand, glance, runStart } from '../shared-node/glance.mjs'
@@ -64,6 +64,12 @@ async function drawn($: any, rig: Rig, recording: any, ids: string[], mount: Rec
   return steps
 }
 
+// The band's segments for a replayed step, as the view builds and fits them: glance's, the current test named, the status first.
+function fittedBand(step: Step, tests: string[], since: string | undefined, bodyColumns: number) {
+  const { band } = glance({ ledger: step.ledger, spawns: step.fed, tests, now: step.now, since, testsComplete: true })
+  return fitBand(statusFirst(namedWhere(band, { ledger: step.ledger as any, spawns: step.fed as any, tests }), step.ledger as any), bandColumns(bodyColumns))
+}
+
 // mod/fixtures/replay/g-open-1/ is a trimmed committed copy of one bug_fix run recorded in
 // tests/smoke/recordings/g-open-1/ (gitignored, so the test never reads from it).
 
@@ -75,8 +81,7 @@ test("band at each recorded step, in time order, shows the design's segments whi
     const active = (step.ledger as any)?.stage?.status === 'active'
     const since = sinceOf(step.ledger)
     const expected = active
-      ? fitBand(statusFirst(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS['g-open-1'], now: step.now, since, testsComplete: true }).band, step.ledger as any), bandColumns(80))
-          .map((segment: { text: string }) => segment.text)
+      ? fittedBand(step, TESTS['g-open-1'], since, 80).map((segment: { text: string }) => segment.text)
       : quietBand(texts(step))
 
     shown.push([step.t, texts(step)])
@@ -109,8 +114,7 @@ test('at 139, 80 and 50 columns the band draws exactly the fitted glance segment
         const active = (step.ledger as any)?.stage?.status === 'active'
         const since = sinceOf(step.ledger)
         const expected = active
-          ? fitBand(statusFirst(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now, since, testsComplete: true }).band, step.ledger as any), bandColumns(bodyColumns))
-              .map((segment: { text: string }) => segment.text)
+          ? fittedBand(step, TESTS[name], since, bodyColumns).map((segment: { text: string }) => segment.text)
           : quietBand(texts(step))
 
         expect(texts(step), `${name} band at t=${step.t}, ${bodyColumns} columns`).toEqual(expected)
@@ -152,10 +156,11 @@ test('replaying probe-2 shows LOOPING naming the step and its 3rd try, and the 3
   const third = at(steps, 125.887)
   const second = at(steps, 121.827)
   const pane = third.lines
-  expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['● RED · test 2 of 2', 'looping: yes']))
+  // At 80 columns the test's name takes the room "looping: yes" had; the pane's LOOPING row says it.
+  expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['● RED · zero percent keeps full price']))
   expect(pane, `pane LOOPING row in ${JSON.stringify(pane)}`).toContain('LOOPING  writing a failing test · try 3 of 3')
   expect(pane, `pane STATUS row in ${JSON.stringify(pane)}`).toEqual(expect.arrayContaining(['STATUS   ● working · writing a failing test for zero percent keeps full price', '         test 2 of 2, 3rd try']))
-  expect(second.band, 'band at the 2nd try is not looping yet').toContain('looping: no')
+  expect(second.band, 'band at the 2nd try is not looping yet').not.toContain('looping: yes')
   expect(second.lines, 'the 2nd try names the step and its try').toContain('LOOPING  writing a failing test · try 2 of 3')
   expect(steps.flatMap(step => step.lines).some(line => line.includes('try 1 of')), 'a first try is never spelled out').toBe(false)
 })
@@ -292,7 +297,8 @@ test('colour-means-one-thing-in-the-band: the step in the accent, the phase word
   for (const [name, recording] of [['g-open-1', gOpen1], ['probe-2', probe2]] as const) {
     for await (const step of replay($, rig, recording, { files: testsFile(TESTS[name]) })) {
       const active = (step.ledger as any)?.stage?.status === 'active'
-      const where = active ? fitBand(glance({ ledger: step.ledger, spawns: step.fed, tests: TESTS[name], now: step.now, testsComplete: true }).band, bandColumns(80)).find((segment: { id: string }) => segment.id === 'where')?.text : undefined
+      // The step the band names, behind its working mark.
+      const where = active ? fittedBand(step, TESTS[name], undefined, 80).find((segment: { id: string }) => segment.id === 'where')?.text.replace(/^● /, '') : undefined
       for (const node of step.texts) {
         const { color, bold } = node.props
         if (color === undefined) continue

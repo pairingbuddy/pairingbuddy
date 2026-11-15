@@ -80,7 +80,7 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
-With a `<paths>` block: fix the issues in `issues` or the findings in the `<findings>` block, and keep every test's `test_file` and `test_function` exactly as they are, because the CLI selects each test by them. There is no `.pairingbuddy/files-changed.json` to write, and you may run tests to check your work. The CLI runs every test the task has closed before it commits your changes as one fix group, so list every file you changed in `files_changed`, and return in `approach` one short sentence on how the fix goes about it. With no change to make, return an empty `files_changed` list, an empty `commit_subject` and an empty `approach`, and say in `ambiguity` why nothing needed changing (for example, an earlier fix group already resolved the finding), because the CLI stops a fix that changed nothing and gives no reason. No human is reachable from a stage: where the steps below say to ask the human, do not guess, and describe the problem in `ambiguity` instead. With nothing open, return an empty string. Apart from that reason, `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
+With a `<paths>` block: fix the issues in `issues` or the findings in the `<findings>` block, and keep every test's `test_file` and `test_function` exactly as they are, because the CLI selects each test by them. There is no `.pairingbuddy/files-changed.json` to write, and you may run tests to check your work. The CLI runs every test the task has closed before it commits your changes as one fix group, so list every file you changed in `files_changed`, and return in `approach` one short sentence on how the fix goes about it. With no change to make, return an empty `files_changed` list, an empty `commit_subject` and an empty `approach`, and say in `no_change_reason` why nothing needed changing (for example, an earlier fix group already resolved the finding), because the CLI stops a fix that changed nothing and gives no reason. When you change files, return an empty `no_change_reason`. An edit that was refused or failed is not a reason for no change: say what went wrong in `ambiguity`. No human is reachable from a stage: where the steps below say to ask the human, do not guess, and describe the problem in `ambiguity` instead. With nothing open, return an empty string. Every `ambiguity` is shown to the human as a doubt. `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
 
 1. Read issues from `.pairingbuddy/code-issues.json`
 2. Read test configuration from `.pairingbuddy/test-config.json`
@@ -143,9 +143,10 @@ With a `<paths>` block, return the result as your StructuredOutput with exactly 
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
-  "ambiguity": "string (open question a human should settle, or an issue you could not fix without changing behaviour, or why a fix changed nothing, or empty string)",
+  "ambiguity": "string (open question a human should settle, or an issue you could not fix without changing behaviour, or an edit that was refused or failed, or empty string)",
   "commit_subject": "string (proposed commit subject line, or empty string when nothing changed)",
   "approach": "string (one short sentence naming how the fix goes about it, so a retry can be told which approaches were rejected, or empty string when nothing changed)",
+  "no_change_reason": "string (why nothing needed changing, such as an earlier fix group already resolved the finding, or empty string when files changed)",
   "files_changed": [
     "string (repo-relative path of each modified file, never absolute)"
   ]

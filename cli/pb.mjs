@@ -32,7 +32,7 @@ import { findRunRoot } from "../shared-node/run-root.mjs";
 import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus } from "../shared-node/next-action.mjs";
 import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, standingScenariosKey, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
-import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
+import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
@@ -1254,6 +1254,23 @@ function stageFail(args) {
   return { ok: true, ...failed };
 }
 
+// A start the gate marked but no run took up: the human declined the Workflow prompt, or the call failed before it began.
+// Its lease guards a run that may still be starting, and once the call has returned the tap would have recorded that
+// run, so a start with no run is free to go at once. The stage stays active at its attempt, so it restarts there.
+function stageRelease(args) {
+  assertNoArgs(args, "stage release");
+  const { path } = runLedgerPath();
+  let released;
+  updateLedger(path, (ledger) => {
+    assertStageActive(ledger, "release");
+    const { name, attempt, runId } = ledger.stage;
+    if (!isStageUnstarted(ledger)) throw new Refusal(`stage ${name} has the recorded run ${runId}, so its start is no longer free to release`);
+    released = { stage: name, attempt };
+    return { ...ledger, stage: { ...ledger.stage, startedAt: null } };
+  });
+  return { ok: true, ...released };
+}
+
 function stageReport(args) {
   assertNoArgs(args, "stage report");
   const { root, path } = runLedgerPath();
@@ -2353,7 +2370,7 @@ export const VERBS = {
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
-  "plan next": planNext, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "plan next": planNext, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 async function runVerb(name, args) {

@@ -540,6 +540,29 @@ describe("stage order follows finish and fail through the real gate", IN_PARALLE
 
 // ---------- stage fail ----------
 
+describe("stage release", IN_PARALLEL, () => {
+  test("frees a start the human declined, so the stage starts again at once at the same attempt", () => {
+    const plugin = makePlugin();
+    const repo = makeRepo({ stage: { ...activeStage(), status: "failed" } });
+    assert.equal(startStage(repo, plugin, CONFIG, ATTEMPT + 1).kind, "none");
+    assert.match(startStage(repo, plugin, CONFIG, ATTEMPT + 1).reason, /seconds remain on its start lease/, "a second start waits on the lease");
+
+    const result = ok(repo, "stage", "release");
+
+    assert.deepEqual([result.stage, result.attempt], [CONFIG, ATTEMPT + 1]);
+    assert.equal(startStage(repo, plugin, CONFIG, ATTEMPT + 1).kind, "none", "the start goes ahead with no lease wait");
+  });
+
+  test("refuses a stage whose run was recorded, and leaves the ledger as it was", () => {
+    const repo = makeRepo();
+    const before = repo.ledger();
+
+    assertRefused(pb(repo, "stage", "release"), /recorded run wf_1/);
+
+    assert.deepEqual(repo.ledger(), before);
+  });
+});
+
 describe("stage fail", IN_PARALLEL, () => {
   test("clears a stranded stage", () => {
     const repo = makeRepo();

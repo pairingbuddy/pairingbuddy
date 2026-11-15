@@ -12,7 +12,8 @@ export function progressRow({ tests, perTest, spawns, stage }) {
     const id = test.test_id;
     const done = Boolean(perTest?.[id]?.green?.passed);
     const covered = Boolean(perTest?.[id]?.covered?.done);
-    return { id, mark: done ? "done" : id === current ? "current" : covered ? "covered" : "waiting" };
+    // The test a step is on is current until the next test's step starts, though its GREEN passed: REFACTOR is still its cycle.
+    return { id, mark: id === current ? "current" : done ? "done" : covered ? "covered" : "waiting" };
   });
   if (entries.length <= SHOWN) return { entries };
   const waitingOrCurrent = entries.filter((entry) => entry.mark !== "done" && entry.mark !== "covered");

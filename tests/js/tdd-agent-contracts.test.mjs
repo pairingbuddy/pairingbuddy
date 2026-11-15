@@ -11,7 +11,7 @@ const schemaOf = (name) => JSON.parse(read(`contracts/schemas/${name}`));
 
 const CONFIG = read("contracts/agent-config.yaml");
 const FILE_FIELDS = ["pb_key", "ambiguity", "commit_subject", "files_changed"];
-const REFACTOR_FIELDS = [...FILE_FIELDS, "approach"];
+const REFACTOR_FIELDS = [...FILE_FIELDS, "approach", "no_change_reason"];
 const ISSUE_FIELDS = ["pb_key", "ambiguity", "issues"];
 const COVERAGE_FIELDS = ["status", "scenarios_covered", "scenarios_total", "test_cases_covered", "test_cases_total", "gaps"];
 const AGENTS = [
@@ -236,18 +236,18 @@ test("verify-test-coverage: with paths it reconciles nothing, because the CLI re
   assert.match(text, /With a `<paths>` block: skip Step 3/);
 });
 
-// `pb checkpoint --step fix` stops the run when a fix changed nothing and gives no `ambiguity` to say why, so a fix told
-// to say nothing about why it changed nothing (a finding an earlier group already fixed) stops the whole safety net.
+// `pb checkpoint --step fix` stops the run when a fix changed nothing and gives no reason, so a fix with nothing left to
+// change (a finding an earlier group already fixed) says so in `no_change_reason`. Every `ambiguity` reaches the human
+// as a doubt at the gate, so that reason never goes there: only a real doubt does, such as an edit that was refused.
 for (const name of ["refactor-tests", "refactor-code"]) {
-  test(`${name}: with paths a fix that changes nothing gives the reason in ambiguity`, () => {
+  test(`${name}: with paths a fix that changes nothing gives the reason in no_change_reason, not ambiguity`, () => {
     const paragraph = textOf({ name }).split("\n").find((line) => line.startsWith("With a `<paths>` block: fix the issues"));
     assert.ok(paragraph, "the paths-block paragraph is there");
     const sentences = paragraph.split(/(?<=\.)\s+/);
 
-    const reasonSentence = sentences.find((sentence) => /no change/i.test(sentence) && sentence.includes("`ambiguity`"));
-    const neverReport = sentences.find((sentence) => /never use it to report what you did or found/i.test(sentence));
-
-    assert.ok(reasonSentence, "a sentence tells a fix with no change to make to give the reason in `ambiguity`");
-    if (neverReport) assert.match(neverReport, /\b(except|unless|apart from|other than|but)\b/i, "the never-report rule has an exception for that reason");
+    assert.ok(sentences.some((sentence) => /no change/i.test(sentence) && sentence.includes("`no_change_reason`")), "a sentence tells a fix with no change to make to give the reason in `no_change_reason`");
+    assert.ok(!sentences.some((sentence) => /why nothing needed changing/i.test(sentence) && sentence.includes("in `ambiguity`")), "no sentence puts that reason in `ambiguity`");
+    assert.ok(sentences.some((sentence) => /refused|failed/i.test(sentence) && sentence.includes("`ambiguity`")), "an edit that was refused or failed is a doubt, in `ambiguity`");
+    assert.ok(sentences.some((sentence) => /never use it to report what you did or found/i.test(sentence) && !/\b(except|unless|apart from|other than)\b/i.test(sentence)), "the never-report rule has no exception");
   });
 }

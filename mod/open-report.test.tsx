@@ -5,7 +5,7 @@ import { engine, start, ROOT, SNAPSHOT_RUNNING } from './testing/band'
 import { commitsArgv, REPORTS_DIR } from './report'
 import { POLL_MS } from './poll'
 import { PANE } from './testing/replay'
-import { recordReportCalls, REPORT_KEY, REPORT_LABEL, REPORT_SLUG, paneTexts, pressReportButton, reportButton, reportConfirmation, reportOpenFailure, reportWriteFailure, REPORT_OPENED, writtenFileName } from './testing/report'
+import { recordReportCalls, REPORT_KEY, REPORT_LABEL, REPORT_SLUG, paneTexts, pressReportButton, reportButton, reportConfirmation, reportOpenFailure, reportRenderFailure, reportWriteFailure, REPORT_OPENED, writtenFileName } from './testing/report'
 
 test('pane-shows-open-report-button', async ($, on) => {
   engine(on)
@@ -74,6 +74,18 @@ test('open-report-failure-shown-not-thrown: the write rejects', async ($, on) =>
   expect(drawn, 'the pane names the write as what failed').toContain(reportWriteFailure)
   expect(calls.filter((c) => c.kind === 'run' && c.argv[0] === 'open'), 'no open is attempted after a failed write').toEqual([])
   expect(drawn.some((t) => t.includes(REPORT_OPENED)), 'the pane does not claim the report was opened').toBe(false)
+})
+
+test('open-report-failure-shown-not-thrown: the report cannot be built', async ($, on) => {
+  // The mod reads the ledger unchecked: a doubt that is not an object cannot be drawn.
+  const ledger = { ...SNAPSHOT_RUNNING, needsHuman: { gate: 'G:task-end', reason: 'open doubts', seq: 3, doubts: [null] } }
+
+  const { writes } = await pressReportButton($, on, { ledger })
+
+  const drawn = await paneTexts($)
+  expect(writes, 'nothing is written when the report cannot be built').toEqual([])
+  expect(drawn, 'the pane names building the report as what failed').toContain(reportRenderFailure)
+  expect(drawn, 'a build failure is not shown as a write failure').not.toContain(reportWriteFailure)
 })
 
 test('open-report-failure-shown-not-thrown: the open rejects', async ($, on) => {
