@@ -99,7 +99,6 @@ TESTS    ✓ ten percent off hundred
          ▸ zero percent keeps full price  ●RED ›GREEN ›REFACTOR  0:11
 REVIEW   —
 
-Pairing Buddy only watches; it never changes your run
 [ r open report ]
 suggest: a note for the next agent
 [ dismiss ]
@@ -250,3 +249,7 @@ What changed:
 - **No "…" in the pane.** PR, BUILT, STATUS, the LOOPING tries and long REVIEW parts wrap. A TESTS line and a REVIEW finding stay one line and are cut at a word; the report holds both whole. The band keeps its last-resort "…".
 - **"write test scenarios"** is the scenarios step's plain name in the pane, band and report.
 - **Workflow names in Claude Code's progress line are unchanged.** That line shows each workflow's `meta.name`, and the workflow tool has no separate display name (`meta` takes `name`, `description`, `whenToUse`, `phases`). The name is also how a stage is invoked (`pairingbuddy:<stage>`): the gate allows a stage's Workflow call only by that name (`shared-node/stage-calls.mjs`, `hooks/gate.mjs`), the tap ties a Workflow runId to the active stage by it (`hooks/tap.mjs`), and the ledger, stage graph, labels and contracts all key on the stage id. A rename would mean either renaming every stage id (contracts, ledger schema, labels, gate rules, tests, recordings) or a name-to-id map in the gate and the tap, plus rebuilding `workflows/` and checking that the tool resolves a plugin workflow by `meta.name` and not by its file name. Left for a decision. The cheaper lever, if wanted, is the phase titles (`phase(role)` in each stage), which show agent role ids such as `enumerate-scenarios-and-test-cases`; they are display only.
+
+### The footer
+
+The pane's footer read "Pairing Buddy only watches; it never changes your run". The human read it as false (Pairing Buddy writes code all run) and as wasted space. It meant only that the pane itself never steers the run, which the human does not need told. Removed.

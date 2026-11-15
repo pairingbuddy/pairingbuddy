@@ -114,7 +114,7 @@ test('at 139, 80 and 50 columns the band draws exactly the fitted glance segment
   }
 })
 
-test('with the pane open, every row in order, the step list in plain names with done/current/to-do marks, and the dim footer render from the same replay', async ($, on) => {
+test('with the pane open, every row in order, the step list in plain names with done/current/to-do marks, and no footer render from the same replay', async ($, on) => {
   const rig = setupReplay(on)
   const steps = await drawn($, rig, gOpen1, TESTS['g-open-1'])
 
@@ -136,8 +136,8 @@ test('with the pane open, every row in order, the step list in plain names with 
   const building = at(steps, 49.891).lines
   expect(building, 'steps at tdd: done, current, to come').toEqual(expect.arrayContaining(['         ✓ write test scenarios', '         ▸ build test by test', '         ○ safety-net review']))
 
-  const footer = at(steps, 148.104).pane.at(-1)!
-  expect(footer.props.dimColor, 'the last thing drawn is the dim footer').toBe(true)
+  const lastPane = at(steps, 148.104).pane.map(text => String(text.props.children ?? ''))
+  expect(lastPane.some(text => /only watches/.test(text)), 'no "only watches" footer').toBe(false)
 })
 
 test('replaying probe-2 shows LOOPING naming the step and its 3rd try, and the 3rd-try STATUS sentence', async ($, on) => {

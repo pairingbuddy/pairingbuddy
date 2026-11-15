@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The pane no longer shows the "Pairing Buddy only watches" footer; it read as false and took a row.
+
 ### Added
 
 - Smoke S6 (Task 103, `tests/smoke/s6.mjs`, $6 cap): a two-unit plan with a `[HUMAN]` task run across three sessions, with a kill and an adopt mid-plan, one independent and one stacked draft PR on the recording `gh`, a hand-ticked refusal and an agent ceiling. `runClaude` can now abort a run: it kills the whole process group and charges the run's cap.

@@ -78,7 +78,7 @@ test('a spawn with an unparseable label shows the raw label text in the pane and
   expect(shown.some(text => /1 label unknown/.test(text)), 'the footer counts it: "1 label unknown"').toBe(true)
 })
 
-test('in the pane the unknown-label count sits straight after the raw labels, and the "only watches" footer is last', async ($, on) => {
+test('in the pane the unknown-label count sits straight after the raw labels, and no "only watches" footer is drawn', async ($, on) => {
   engine(on)
   await start($)
   const raws = ['not a pb1 label at all', 'neither is this one']
@@ -92,7 +92,7 @@ test('in the pane the unknown-label count sits straight after the raw labels, an
 
   const lastRaw = shown.lastIndexOf(raws[1])
   expect(shown.slice(lastRaw - 1, lastRaw + 2), `the labels, then their count, in ${JSON.stringify(shown)}`).toEqual([raws[0], raws[1], '2 labels unknown'])
-  expect(shown.at(-1), 'the footer is the last text').toMatch(/only watches/)
+  expect(shown.some(text => /only watches/.test(text)), 'the footer is gone: it read as false and took a row').toBe(false)
 })
 
 test('with the band mounted, a ledger that goes from idle to an active stage changes what it draws only when the poll interval has passed, with no new mount', async ($, on) => {
