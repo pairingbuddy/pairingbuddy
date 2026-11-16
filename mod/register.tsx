@@ -63,7 +63,8 @@ function drawGlance(
     // The ended view measures to the moment the run ended, the same end time the report uses.
     const endedMs = typeof endedAt === 'string' ? Date.parse(endedAt) : NaN
     // Whether a unit is still open is read now: pb publish closes it after the snapshot was taken.
-    const ended = { ...snapshot, unitOpen: live.unit !== null, ...(Number.isNaN(endedMs) ? {} : { now: endedMs }) }
+    // Once the task has ended, what the runs pb kept say of it is read now too: the snapshot's poll may not have seen them.
+    const ended = { ...snapshot, unitOpen: live.unit !== null, task: live.task, ...(Number.isNaN(endedMs) ? {} : { now: endedMs }) }
     const view = live.ledger || !snapshot.ledger ? buildView(live) : buildEndedView(ended)
     const reportNote = typeof note === 'string' ? note : null
     return draw(tags, view, opened === true, reportNote, pending as PendingSuggestion | null)

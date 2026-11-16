@@ -37,7 +37,9 @@ export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; t
 export type Published = { url?: string; result?: string; codeRunId?: string | null }
 // changed: the paths run/changed.json lists (null when it does not read); prUrl: the unit's pull request as the poller last saw it.
 // unitOpen: whether a unit is open now, for a finished run drawn from its snapshot (whose unit is the one it last saw).
-export type Inputs = { unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
+// task: what the runs pb kept say of the whole task once it has ended (endedTaskFacts in shared-node/task-runs.mjs).
+export type TaskFacts = { spend: Spend; startedAt: string | null; endedAt: string; calls: Call[] }
+export type Inputs = { task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {
@@ -142,7 +144,7 @@ export function changedOf(file: unknown): string[] | null {
   return file.map(entry => (entry as { path?: unknown })?.path).filter((path): path is string => typeof path === 'string' && path !== '')
 }
 
-export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; unit: Unit | null; changed: string[] | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null }
+export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; unit: Unit | null; changed: string[] | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null }
 
 // The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
 export async function pollInputs($: EngineInterface): Promise<Polled> {
@@ -150,14 +152,14 @@ export async function pollInputs($: EngineInterface): Promise<Polled> {
   return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: unitOf(unitFile), changed: changedOf(changedFile) }
 }
 
-type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null } | null
+type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null } | null
 
 // The one place the atom's loosely typed ledger is narrowed; null until the first poll, which reads as idle.
 export function fromPolled(polled: PolledState, spawns: Spawn[], calls: Call[] = [], published: Published | null = null): Inputs {
   return {
     ledger: (polled?.ledger ?? undefined) as Ledger, spawns, calls, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined,
     unit: polled?.unit ?? null, since: polled?.since ?? undefined,
-    changed: polled?.changed ?? null, codeRun: polled?.codeRun ?? null, prUrl: polled?.prUrl ?? null, published,
+    changed: polled?.changed ?? null, codeRun: polled?.codeRun ?? null, prUrl: polled?.prUrl ?? null, published, task: polled?.task ?? null,
   }
 }
 
@@ -195,10 +197,19 @@ async function readKeptRun($: EngineInterface, dir: string): Promise<KeptRun | n
 }
 
 // Every run pb kept, in no order. Never throws: a folder that does not list is no runs, and a run that does not read is left out.
-export async function readKeptRuns($: EngineInterface): Promise<KeptRun[]> {
+// cache: the runs read before, by folder. pb writes a run's kept.json last and never changes it after, so a run read with its
+// end is read once; one read before its end is read again.
+export async function readKeptRuns($: EngineInterface, cache?: Map<string, KeptRun>): Promise<KeptRun[]> {
   try {
     const entries = await $.fs.list(`${await $.session.root()}/${KEPT_RUNS}`)
-    const runs = await Promise.all(entries.filter(entry => entry.kind === 'dir').map(entry => readKeptRun($, `${KEPT_RUNS}/${entry.name}`)))
+    const read = async (name: string) => {
+      const known = cache?.get(name)
+      if (known) return known
+      const run = await readKeptRun($, `${KEPT_RUNS}/${name}`)
+      if (run?.endedAt) cache?.set(name, run)
+      return run
+    }
+    const runs = await Promise.all(entries.filter(entry => entry.kind === 'dir').map(entry => read(entry.name)))
     return runs.filter((run): run is KeptRun => run !== null)
   } catch {
     return []

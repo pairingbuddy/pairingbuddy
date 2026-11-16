@@ -244,7 +244,17 @@ export function buildView(inputs: Inputs): View {
   return { ...view, goal: goalText(inputs), status, ...buildTestRows(inputs, false), steps: unitSteps(inputs, false), lensRound: lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns }), ...end }
 }
 
-const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since }: Inputs) => glance({ ledger, spawns, tests, now, since, testsComplete, leaveOutUnknown: true })
+// agents: the count the task's kept runs recorded, once it has ended; else the session's spawns are counted.
+const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since }: Inputs, agents?: number) => glance({ ledger, spawns, agents, tests, now, since, testsComplete, leaveOutUnknown: true })
+
+// An ended task as its kept runs tell it: the agents and tokens they recorded, from the first run's start to the last run's
+// end, and their returns in place of the session's, which a reload empties. Without them, the inputs as they are.
+function keptTask(inputs: Inputs): Inputs {
+  const { task } = inputs
+  if (!task) return inputs
+  const end = Date.parse(task.endedAt)
+  return { ...inputs, ledger: inputs.ledger && { ...inputs.ledger, spend: task.spend }, spawns: [], calls: task.calls, since: task.startedAt ?? inputs.since, ...(Number.isNaN(end) ? {} : { now: end }) }
+}
 
 function buildPlainView(inputs: Inputs): View {
   const { ledger } = inputs
@@ -281,7 +291,7 @@ function betweenText(ledger: NonNullable<Ledger>): string {
 // A run that is over, shown from its last snapshot: the same rows, nothing running, and the NOW row says so.
 export function buildEndedView(inputs: Inputs): View {
   const { ledger } = inputs
-  const { rows, unknownLabels } = glanceOf(inputs)
+  const { rows, unknownLabels } = glanceOf(keptTask(inputs), inputs.task?.spend.agents)
   const { doneStatus: finished, ...end } = endState(inputs, false, false)
   const view: View = {
     ledger,

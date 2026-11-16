@@ -1,5 +1,6 @@
 import type { EngineInterface, PluginOptions } from 'claude-code'
-import { pollInputs, type Polled } from './inputs'
+import { pollInputs, readKeptRuns, type KeptRun, type Polled, type TaskFacts } from './inputs'
+import { endedTaskFacts, taskRuns } from '../shared-node/task-runs.mjs'
 import { alertOn, openOnRunStart } from './alert'
 import { runStart } from '../shared-node/glance.mjs'
 import { codeRunOf, isUnitDone } from '../shared-node/end-state.mjs'
@@ -58,8 +59,18 @@ function doneRunOf(polled: Polled & { codeRun: CodeRun | null; prUrl: string | n
   return done ? (codeRun?.runId ?? codeRun?.task ?? 'done') : null
 }
 
-export type PollerState = { started: boolean; polling: boolean; unit: UnitStart; record: UnitRecord }
-export const newPollerState = (): PollerState => ({ started: false, polling: false, unit: null, record: null })
+export type PollerState = { started: boolean; polling: boolean; unit: UnitStart; record: UnitRecord; kept: Map<string, KeptRun> }
+export const newPollerState = (): PollerState => ({ started: false, polling: false, unit: null, record: null, kept: new Map() })
+
+type Snapshot = { ledger?: unknown; unit?: { key?: string } | null } | null
+
+// With no run live, what the runs pb kept say of the task the last snapshot was in, once every run of it has ended; else null.
+async function endedTask($: EngineInterface, state: PollerState, polled: Polled): Promise<TaskFacts | null> {
+  if (polled.ledger) return null
+  const snapshot = (await $.state.get(LAST_RUN)).value as Snapshot
+  const runs = taskRuns({ ledger: snapshot?.ledger ?? undefined, kept: await readKeptRuns($, state.kept), unitKey: snapshot?.unit?.key ?? null })
+  return endedTaskFacts(runs) as TaskFacts | null
+}
 
 // One poller per register: the poll exists so the band redraws and the alert fires every second, since a render may not wait on files.
 // A start while one runs only reads once, a tick is skipped while a poll is in flight, and a failed poll is dropped.
@@ -71,7 +82,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
     state.polling = true
     try {
       const read = await pollInputs($)
-      const polled = { ...read, since: unitStart(state, read), ...unitRecord(state, read) }
+      const polled = { ...read, since: unitStart(state, read), ...unitRecord(state, read), task: await endedTask($, state, read) }
       await $.state.set(INPUTS, polled)
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.
       await alertOn($, polled.ledger, options, doneRunOf(polled))
