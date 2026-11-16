@@ -1,6 +1,6 @@
 import type { AgentSpawnInput, EngineInterface } from 'claude-code'
 import { testNames } from '../shared-node/now-building.mjs'
-import { isStandingScenarios, newestKeyAmong, scenarioRows } from '../shared-node/standing-scenarios.mjs'
+import { isStandingScenarios, isStandingTests, newestKeyAmong, scenarioRows } from '../shared-node/standing-scenarios.mjs'
 
 const TESTS = '.pairingbuddy/tests.json'
 const SCENARIOS = '.pairingbuddy/scenarios.json'
@@ -51,8 +51,8 @@ async function readJson($: EngineInterface, relative: string): Promise<unknown> 
   }
 }
 
-// LEGACY fallback, only when the ledger has no perTest yet (old-path runs): the old tests.json, never the source of truth for a new-path run.
-function legacyTests(file: unknown): string[] {
+// The test ids a test list holds, in its order: the placeholders return, or the legacy tests.json (same `tests[].test_id` shape).
+function listedTests(file: unknown): string[] {
   const { tests } = (file ?? {}) as { tests?: { test_id?: unknown }[] }
   return (Array.isArray(tests) ? tests : []).map(test => test?.test_id).filter((id): id is string => typeof id === 'string' && id !== '')
 }
@@ -99,18 +99,33 @@ export async function readInputs($: EngineInterface, spawns: Spawn[]): Promise<I
   return (await readInputsAndTests($, spawns)).inputs
 }
 
-// The inputs plus the tests.json they were read with, so the poller reads that file once per tick.
+// The newest standing return of a role in the task's artifacts, or undefined when none reads. Never throws.
+async function readStandingReturn($: EngineInterface, ledger: Ledger, match: (ledger: unknown) => (key: unknown) => boolean): Promise<unknown> {
+  try {
+    const entries = await $.fs.list(`${await $.session.root()}/${ARTIFACTS}`)
+    const key = newestKeyAmong(entries.filter(entry => entry.kind === 'file').map(entry => entry.name), match(ledger))
+    if (key === null) return undefined
+    const artifact = (await readJson($, `${ARTIFACTS}/${key}.json`)) as { pb_key?: unknown } | undefined
+    return artifact?.pb_key === key ? artifact : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// The inputs plus the test list they were read with, so the poller reads it once per tick: the placeholders return a
+// stage wrote (a new-path run writes no tests.json), else the legacy tests.json.
 async function readInputsAndTests($: EngineInterface, spawns: Spawn[]): Promise<{ inputs: Inputs; testsFile: unknown }> {
-  const [ledger, testsFile, now] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($)])
+  const [ledger, legacyFile, now] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($)])
+  const testsFile = (await readStandingReturn($, ledger, isStandingTests)) ?? legacyFile
   return { inputs: inputsOf({ ledger, testsFile, now, spawns }), testsFile }
 }
 
 function inputsOf({ ledger, testsFile, now, spawns }: { ledger: Ledger; testsFile: unknown; now: number | undefined; spawns: Spawn[] }): Inputs {
-  const legacy = legacyTests(testsFile)
+  const listed = listedTests(testsFile)
   const seen = seenTests(ledger)
-  if (seen.length === 0) return { ledger, spawns, tests: legacy, testsComplete: true, now }
-  // A tests.json that lists every seen test is the whole planned list; otherwise the seen tests alone, with no invented total.
-  const planned = plannedTests(legacy, seen)
+  if (seen.length === 0) return { ledger, spawns, tests: listed, testsComplete: true, now }
+  // A test list that holds every seen test is the whole planned list; otherwise the seen tests alone, with no invented total.
+  const planned = plannedTests(listed, seen)
   return planned ? { ledger, spawns, tests: planned, testsComplete: true, now } : { ledger, spawns, tests: seen, testsComplete: false, now }
 }
 
@@ -134,7 +149,9 @@ export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: bo
 
 // The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
 export async function pollInputs($: EngineInterface): Promise<Polled> {
-  const [{ inputs: { ledger, tests, testsComplete, now }, testsFile }, scenarios, unitFile, changedFile] = await Promise.all([readInputsAndTests($, []), readJson($, SCENARIOS), readJson($, UNIT), readJson($, CHANGED)])
+  const [{ inputs: { ledger, tests, testsComplete, now }, testsFile }, legacyScenarios, unitFile, changedFile] = await Promise.all([readInputsAndTests($, []), readJson($, SCENARIOS), readJson($, UNIT), readJson($, CHANGED)])
+  // The scenarios return names each test by its test case, as scenarios.json did for the old path.
+  const scenarios = (await readStandingReturn($, ledger, isStandingScenarios)) ?? legacyScenarios
   const names = testNames({ tests: testsFile, scenarios })
   return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, names, unit: unitOf(unitFile), changed: changedOf(changedFile) }
 }
@@ -154,15 +171,8 @@ export type ScenarioRow = { description: string; tests: string[] }
 
 // The scenarios that stand, by the rule pb gate eval reads them with for the scenarios question, or undefined when they do not read.
 async function readScenarios($: EngineInterface, ledger: Ledger): Promise<ScenarioRow[] | undefined> {
-  try {
-    const entries = await $.fs.list(`${await $.session.root()}/${ARTIFACTS}`)
-    const key = newestKeyAmong(entries.filter(entry => entry.kind === 'file').map(entry => entry.name), isStandingScenarios(ledger))
-    if (key === null) return undefined
-    const artifact = (await readJson($, `${ARTIFACTS}/${key}.json`)) as { pb_key?: unknown; scenarios?: unknown } | undefined
-    return artifact?.pb_key === key ? scenarioRows(artifact.scenarios) : undefined
-  } catch {
-    return undefined
-  }
+  const artifact = (await readStandingReturn($, ledger, isStandingScenarios)) as { scenarios?: unknown } | undefined
+  return artifact ? scenarioRows(artifact.scenarios) : undefined
 }
 
 // Where pb keeps each ended run (keepRun in shared-node/unit-files.mjs): reports/runs/<runId>/ with its ledger, its returns
