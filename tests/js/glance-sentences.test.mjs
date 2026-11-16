@@ -69,18 +69,17 @@ test("one spawned agent reads '1 agent', not '1 agents'", () => {
   assert.match(result.rows.spent, /^1 agent ·/);
 });
 
-test("a calm cycle after a GREEN runner checkpoint does not read as looping, because runner rounds count per test across phases", async () => {
+test("a calm cycle after a GREEN runner checkpoint does not read as a retry, because runner rounds count per test across phases", async () => {
   const ledger = await ledgerAtSeq("probe-2", TDD_ACTIVE_SEQ);
   const tests = ["ten-percent-off-hundred", "zero-percent-keeps-full-price"];
   const spawns = probeSpawns.slice(0, THROUGH_GREEN_RUNNER_CHECKPOINT);
 
   const result = glance({ ledger, spawns, tests, now: SOME_TIME });
 
-  assert.equal(result.rows.looping, "no", "each agent ran once, so there is no loop");
-  assert.doesNotMatch(result.rows.now, /2nd try/, "a runner checkpoint is not a retry");
+  assert.doesNotMatch(result.rows.now, /try/, "each agent ran once: a runner checkpoint is not a retry");
 });
 
-test("with tokensKnown false, tokens and % of plan show 'unknown', and OFF TRACK shows 'unknown'; no number or 'no' is invented", async () => {
+test("with tokensKnown false, tokens and % of plan show 'unknown'; no number is invented", async () => {
   const ledger = await ledgerAtSeq("g-open-1", 20);
   const spawns = await recording("g-open-1", "spawns");
 
@@ -90,7 +89,6 @@ test("with tokensKnown false, tokens and % of plan show 'unknown', and OFF TRACK
   assert.match(result.rows.spent, /tokens unknown/, "SPENT shows tokens as unknown");
   assert.match(result.rows.spent, /% of plan unknown/, "SPENT shows plan share as unknown");
   assert.doesNotMatch(result.rows.spent, /\d\s*%|≈/, "no percentage of plan is invented");
-  assert.equal(result.rows.offTrack, "unknown");
 });
 
 test("a missing, empty or partial ledger and no spawns return a defined result and do not throw", async () => {
@@ -105,14 +103,13 @@ test("a missing, empty or partial ledger and no spawns return a defined result a
   const results = inputs.map((input) => glance(input));
 
   for (const result of results) {
-    assert.deepEqual(Object.keys(result.rows).sort(), ["left", "looping", "now", "offTrack", "spent"]);
+    assert.deepEqual(Object.keys(result.rows).sort(), ["left", "now", "spent"]);
     assert.ok(Object.values(result.rows).every((row) => typeof row === "string" && row.length > 0), "every row is a sentence");
     assert.ok(Array.isArray(result.band), "band segments are a list");
-    assert.equal(result.rows.offTrack, "unknown");
   }
 });
 
-// Off track has no source yet, so it is left out of the band.
+// The band says where, spent, left and whether it needs you.
 const BAND_ORDER = ["where", "spent", "left", "needsYou"];
 
 test("calm run at test 3 of 4 lists the band's known segments in the R4-1 order", async () => {

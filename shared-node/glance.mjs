@@ -1,4 +1,4 @@
-// The five "at a glance" rows, as plain sentences (docs/design/progress-mod/DIRECTION.md).
+// The "at a glance" rows (where, spent, left), as plain sentences (docs/design/progress-mod/DIRECTION.md).
 // Pure; tolerates missing or partial input. What cannot be known is never invented: the rows say "unknown" (the report
 // shows them so), the pane leaves unknown parts out with leaveOutUnknown, and the band leaves unknown segments out.
 import { plainName } from "./plain-names.mjs";
@@ -97,14 +97,6 @@ function nowRow(step, tests, ledger, complete) {
 function leftRow(step, tests, complete) {
   const remaining = remainingTests(step, tests, { more: true, complete });
   return remaining ? `${remaining}, then ${SAFETY_NET}` : UNKNOWN;
-}
-
-// Unknown with no step on a test; "no" until that step is on its second try or later, then the step and its try. A first try
-// is never spelled out.
-function loopingRow(step) {
-  if (!step) return UNKNOWN;
-  if (step.tries < 2) return "no";
-  return `${plainName(step.role) ?? UNKNOWN} · try ${step.tries} of ${MAX_TRIES}`;
 }
 
 export const SEPARATOR = " │ ";
@@ -229,8 +221,6 @@ export function glance({ ledger, spawns, tests, now, ranFor, since, testsComplet
     now: nowRow(step, names, ledger, testsComplete),
     spent: spentRow({ ledger, spawns: list, now, ranFor, since, leaveOutUnknown }),
     left: leftRow(step, names, testsComplete),
-    looping: loopingRow(step),
-    offTrack: UNKNOWN,
   };
   return { rows, band: bandSegments({ ledger, spawns: list, tests: names, now, since, complete: testsComplete }, step), unknownLabels: unknownLabels(list) };
 }
