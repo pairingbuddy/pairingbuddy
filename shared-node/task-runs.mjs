@@ -1,6 +1,6 @@
 // The runs one task's report describes: the runs pb kept under reports/runs/ when they ended (keepRun in unit-files.mjs),
 // joined by the unit they name, so a code run and the publish run after it read as one task. Pure; no node: imports.
-import { runStart } from "./glance.mjs";
+import { runStart, waitedSeconds } from "./glance.mjs";
 
 // A kept run is { ledger, unit, endedAt?, prUrl?, calls?, scenarios? }; the reported run is the live or last polled ledger.
 // unitKey: the open unit as the pane last saw it, for a live run that is not kept yet. Returns the runs oldest first.
@@ -40,11 +40,14 @@ export function taskSpend(runs) {
 // Every run of the task has ended (pb kept it, or the session saw it end), so its records are whole.
 export const taskEnded = (runs) => runs.length > 0 && runs.every((run) => Number.isFinite(Date.parse(run.endedAt)));
 
+// The seconds the task's runs waited on the human, each run's waits to its own end: no working time.
+export const taskWaited = (runs, now) => runs.reduce((total, run) => total + waitedSeconds(run.ledger, Number.isFinite(Date.parse(run.endedAt)) ? Date.parse(run.endedAt) : now), 0);
+
 // What the pane shows of a task once every run of it has ended, from the runs pb kept (taskRuns): what it spent, from its
-// first run's start to its last run's end, every return its runs kept, which the review is read from, and the pull request
-// its publish run opened. Null while a run of it has not ended, or when no run is kept.
+// first run's start to its last run's end less the time it waited on the human, every return its runs kept, which the review
+// is read from, and the pull request its publish run opened. Null while a run of it has not ended, or when no run is kept.
 export function endedTaskFacts(runs) {
   if (!Array.isArray(runs) || !taskEnded(runs)) return null;
   const prUrl = runs.findLast((run) => typeof run.prUrl === "string" && run.prUrl !== "")?.prUrl ?? null;
-  return { spend: taskSpend(runs), startedAt: runStart(runs[0].ledger) ?? null, endedAt: runs.at(-1).endedAt, calls: runs.flatMap((run) => (Array.isArray(run.calls) ? run.calls : [])), prUrl };
+  return { spend: taskSpend(runs), startedAt: runStart(runs[0].ledger) ?? null, endedAt: runs.at(-1).endedAt, waited: taskWaited(runs), calls: runs.flatMap((run) => (Array.isArray(run.calls) ? run.calls : [])), prUrl };
 }

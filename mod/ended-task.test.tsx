@@ -71,3 +71,20 @@ test('ended-task-kept-runs-are-read-once', async ($, on) => {
   expect(before, 'the kept code run was read').toBeGreaterThan(0)
   expect(rig.reads.get(ledgerPath), 'and not again on later polls').toBe(before)
 })
+
+// The publish question waited four hours on the human; that wait is no working time, so SPENT leaves it out.
+test('ended-task-spent-leaves-out-the-time-its-questions-waited', async ($, on) => {
+  const rig = setupReplay(on)
+  const publishLedger = `.pairingbuddy/reports/runs/${PUBLISH_RUN.runId}/ledger.json`
+  const waited = { ...PUBLISH_RUN, gates: { 'G:publish': { ...PUBLISH_RUN.gates['G:publish'], askedAt: '2026-11-16T15:42:30.000Z', answeredAt: '2026-11-16T19:43:50.000Z' } } }
+  serve(rig, { [LEDGER]: CODE_RUN, [UNIT]: UNIT_FILE, [CHANGED_PATH]: CHANGED })
+  await rig.clock.set(Date.parse('2026-11-16T19:43:50.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+  serve(rig, { [CHANGED_PATH]: CHANGED, ...KEPT_FILES, [publishLedger]: waited })
+  await rig.clock.advance(POLL_MS * 2)
+
+  const spent = row(await paneLines($), 'SPENT')
+
+  expect(spent, 'the task\'s 4:26:07 less the 4:01:20 the publish question waited').toMatch(/^SPENT\s+41 agents · 24:47 · 39856 output tokens$/)
+})

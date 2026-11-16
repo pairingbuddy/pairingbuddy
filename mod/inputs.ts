@@ -38,8 +38,9 @@ export type Published = { url?: string; result?: string; codeRunId?: string | nu
 // changed: the paths run/changed.json lists (null when it does not read); prUrl: the unit's pull request as the poller last saw it.
 // unitOpen: whether a unit is open now, for a finished run drawn from its snapshot (whose unit is the one it last saw).
 // task: what the runs pb kept say of the whole task once it has ended (endedTaskFacts in shared-node/task-runs.mjs).
-export type TaskFacts = { spend: Spend; startedAt: string | null; endedAt: string; calls: Call[]; prUrl: string | null }
-export type Inputs = { task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
+// waited: the seconds its runs waited on the human, which SPENT leaves out.
+export type TaskFacts = { spend: Spend; startedAt: string | null; endedAt: string; waited?: number; calls: Call[]; prUrl: string | null }
+export type Inputs = { task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {

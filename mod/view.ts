@@ -245,16 +245,17 @@ export function buildView(inputs: Inputs): View {
 }
 
 // agents: the count the task's kept runs recorded, once it has ended; else the session's spawns are counted.
-const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since }: Inputs, agents?: number) => glance({ ledger, spawns, agents, tests, now, since, testsComplete, leaveOutUnknown: true })
+// waited: what an ended task's runs waited on the human; else glance reads the live ledger's own waits.
+const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, waited }: Inputs, agents?: number) => glance({ ledger, spawns, agents, tests, now, since, waited, testsComplete, leaveOutUnknown: true })
 
 // An ended task as its kept runs tell it: the agents and tokens they recorded, from the first run's start to the last run's
-// end, their returns in place of the session's, which a reload empties, and the pull request when nothing else named it.
+// end less what they waited on the human, their returns in place of the session's, which a reload empties, and the pull request when nothing else named it.
 // Without them, the inputs as they are.
 function keptTask(inputs: Inputs): Inputs {
   const { task } = inputs
   if (!task) return inputs
   const end = Date.parse(task.endedAt)
-  return { ...inputs, ledger: inputs.ledger && { ...inputs.ledger, spend: task.spend }, spawns: [], calls: task.calls, since: task.startedAt ?? inputs.since, prUrl: inputs.prUrl ?? task.prUrl, ...(Number.isNaN(end) ? {} : { now: end }) }
+  return { ...inputs, ledger: inputs.ledger && { ...inputs.ledger, spend: task.spend }, spawns: [], calls: task.calls, since: task.startedAt ?? inputs.since, waited: task.waited, prUrl: inputs.prUrl ?? task.prUrl, ...(Number.isNaN(end) ? {} : { now: end }) }
 }
 
 function buildPlainView(inputs: Inputs): View {
