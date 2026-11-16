@@ -151,3 +151,23 @@ test('report-of-an-ended-task-describes-both-runs', async ($, on) => {
   expect(html, 'the next action is the pull request').toContain('Review pull request #7: https://github.com/o/r/pull/7')
   expect(html.includes('unknown type'), 'the type is known').toBe(false)
 })
+
+test('pb-report after the task ended writes the whole task from the kept runs and names its path', async ($, on) => {
+  const rig = setupReplay(on)
+  const recorder = recordReportCalls(on)
+  serve(rig, { [LEDGER]: doneRun, [UNIT]: unitFile, [CHANGED]: changed })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+  serve(rig, { [LEDGER]: publishRun, [UNIT]: unitFile, [CHANGED]: changed })
+  await rig.clock.advance(POLL_MS * 2)
+  serve(rig, { [CHANGED]: changed, ...keptFiles })
+  await rig.clock.advance(POLL_MS * 2)
+
+  const result: any = await $.command.run({ command: 'pb-report', args: '' })
+
+  const [written] = recorder.writes
+  expect(written?.text ?? '', 'the report holds both kept runs').toContain('write the pull request')
+  expect(written.text, 'including the code run').toContain('build test by test')
+  expect(result?.text, 'the answer names the report by its absolute path').toContain(written.path)
+})
