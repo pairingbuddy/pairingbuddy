@@ -49,6 +49,37 @@ describe("reports-survive-task-end", () => {
     assert.equal(readFileSync(reportPath, "utf8"), REPORT_TEXT, "the report content is unchanged");
   });
 
+  // The report of a whole task reads the ended runs back: pb task end keeps the run's ledger and returns under reports/runs/<runId>/.
+  test("task-end-keeps-the-run-it-ends", () => {
+    const { repo, pairing } = finishedRepo();
+    const taskDir = join(pairing, "run", "task");
+    writeLedger(join(taskDir, "ledger.json"), { ...repo.ledger(), runId: "code-run-1" });
+    const ledgerText = readFileSync(join(taskDir, "ledger.json"), "utf8");
+    const scenariosReturn = "code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1.json";
+    writeFileSync(join(taskDir, "artifacts", scenariosReturn), '{"scenarios":[]}');
+
+    const result = pb(repo, "task", "end");
+
+    assert.equal(result.code, 0, result.stderr);
+    const kept = join(pairing, "reports", "runs", "code-run-1");
+    assert.equal(readFileSync(join(kept, "ledger.json"), "utf8"), ledgerText, "the ended run's ledger is kept as it was");
+    assert.equal(readFileSync(join(kept, "artifacts", scenariosReturn), "utf8"), '{"scenarios":[]}', "its returns are kept too");
+  });
+
+  // The code run and the publish run that follows it are told to be one task by the unit both name.
+  test("task-end-names-the-unit-of-the-kept-run", () => {
+    const { repo, pairing } = finishedRepo();
+    writeLedger(join(pairing, "run", "task", "ledger.json"), { ...repo.ledger(), runId: "code-run-2" });
+    const baseSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo.dir, env: env(), encoding: "utf8" }).trim();
+    writeFileSync(join(pairing, "run", "unit.json"), JSON.stringify({ branch: "feat/order-total", base: "main", baseSha, tasks: [], commits: [] }));
+
+    const result = pb(repo, "task", "end");
+
+    assert.equal(result.code, 0, result.stderr);
+    const kept = JSON.parse(readFileSync(join(pairing, "reports", "runs", "code-run-2", "kept.json"), "utf8"));
+    assert.deepEqual(kept, { unit: `feat/order-total ${baseSha}` });
+  });
+
   test("kept-files-lists-reports-in-docs-and-skill", () => {
     const REPORTS = ".pairingbuddy/reports/";
     const KEPT_NEIGHBOURS = ["test-config.json", "doc-config.json", "human-guidance.json"];
