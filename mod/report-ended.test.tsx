@@ -82,3 +82,49 @@ test('report-of-an-ended-run-is-written-and-opened', async ($, on) => {
   const fileName = writtenFileName(recorder.writes, `the ended run's report is written; the pane drew ${JSON.stringify(drawn)}`)
   expect(drawn, 'the pane confirms the report was written and opened').toContain(reportConfirmation(fileName))
 })
+
+// What pb kept of the two runs when each ended (keepRun in shared-node/unit-files.mjs): ledger, returns and kept.json.
+const KEPT = '.pairingbuddy/reports/runs'
+const UNIT_KEY = `${unitFile.branch} ${unitFile.baseSha}`
+const SCENARIOS_KEY = 'code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1'
+const NET_KEY = 'code-safety-net.lens.code.r1.a1'
+const keptCodeRun = { ...doneRun, needsHuman: null, gates: { 'G:task-end': { source: 'human-cli', answer: 'approve', doubts: doneRun.needsHuman.doubts } } }
+const keptPublishRun = { ...publishRun, stage: { ...publishRun.stage, status: 'done' }, stages: [{ ...publishRun.stage, status: 'done' }], gates: { 'G:publish': { source: 'human', answer: 'approve' } } }
+const keptFiles = {
+  [`${KEPT}/code-run/kept.json`]: { unit: UNIT_KEY, endedAt: '2026-11-14T10:04:00.000Z' },
+  [`${KEPT}/code-run/ledger.json`]: keptCodeRun,
+  [`${KEPT}/code-run/artifacts/${SCENARIOS_KEY}.json`]: { pb_key: SCENARIOS_KEY, ambiguity: null, scenarios: [{ description: 'Two lines sum their totals', test_cases: [{ description: 'order_total of two lines is 30.0' }] }] },
+  [`${KEPT}/code-run/artifacts/${NET_KEY}.json`]: { pb_key: NET_KEY, ambiguity: null, findings: [{ rule: '', severity: 'low', kind: 'drift', title: 'Empty order sums to int', claim: 'An empty order returns 0.', where: 'cart.py:3' }] },
+  [`${KEPT}/publish-run/kept.json`]: { unit: UNIT_KEY, endedAt: '2026-11-14T10:14:00.000Z', prUrl: 'https://github.com/o/r/pull/7' },
+  [`${KEPT}/publish-run/ledger.json`]: keptPublishRun,
+}
+
+test('report-of-an-ended-task-describes-both-runs', async ($, on) => {
+  const rig = setupReplay(on)
+  const recorder = recordReportCalls(on)
+  serve(rig, { [LEDGER]: doneRun, [UNIT]: unitFile, [CHANGED]: changed })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await spawnLabelled($, 'pb1 code-tdd RED implement-tests order-total-sums-lines r1', 'pairingbuddy:implement-tests')
+  await rig.clock.advance(POLL_MS * 2)
+  serve(rig, { [LEDGER]: publishRun, [UNIT]: unitFile, [CHANGED]: changed })
+  await rig.clock.advance(POLL_MS * 2)
+  // Both runs have ended: their ledgers are gone and only what pb kept of them is left.
+  serve(rig, { [CHANGED]: changed, ...keptFiles })
+  await rig.clock.advance(POLL_MS * 2)
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await pane.press({ key: REPORT_KEY })
+  await pane.unmount()
+
+  const [written] = recorder.writes
+  const html = written?.text ?? ''
+  expect(html, 'the task type is the code run\'s').toContain('new feature')
+  expect(html, 'the code run\'s steps are there').toContain('build test by test')
+  expect(html, 'the publish run\'s step too').toContain('write the pull request')
+  expect(html, 'the code run\'s scenarios, from its kept returns').toContain('Two lines sum their totals')
+  expect(html, 'the safety-net review, from its kept returns').toContain('Empty order sums to int')
+  expect(html, 'the doubt the task was approved past').toContain('Whether a line with no quantity counts as one.')
+  expect(html, 'the next action is the pull request').toContain('Review pull request #7: https://github.com/o/r/pull/7')
+  expect(html.includes('unknown type'), 'the type is known').toBe(false)
+})
