@@ -137,9 +137,8 @@ test('with the pane open, every row in order, the step list in plain names with 
   ])
   const review = all.slice(5)
   expect(review[0], 'SPENT leaves out what is not measured').toMatch(/^SPENT {4}6 agents · \d+:\d\d$/)
-  expect(review[1], 'nothing is looping').toBe('LOOPING  no')
-  expect(review.filter(line => /^(LEFT|OFF TRACK|NOW|DONE)\b/.test(line)), 'LEFT, OFF TRACK, NOW and DONE are gone').toEqual([])
-  expect(review.slice(2, 6), 'steps done, then current, in plain names').toEqual(['STEPS    ○ work out the task type', '         ✓ write test scenarios', '         ✓ build test by test', '         ▸ safety-net review'])
+  expect(review.filter(line => /^(LEFT|OFF TRACK|NOW|DONE|LOOPING)\b/.test(line)), 'LEFT, OFF TRACK, NOW, DONE and LOOPING are gone').toEqual([])
+  expect(review.slice(1, 5), 'steps done, then current, in plain names').toEqual(['STEPS    ○ work out the task type', '         ✓ write test scenarios', '         ✓ build test by test', '         ▸ safety-net review'])
   expect(review, 'the tests stay listed, and no test is current in the review').toEqual(expect.arrayContaining(['TESTS    ✓ 4 of 4 passing · 3 covered']))
 
   const building = at(steps, 49.891).lines
@@ -149,19 +148,17 @@ test('with the pane open, every row in order, the step list in plain names with 
   expect(lastPane.some(text => /only watches/.test(text)), 'no "only watches" footer').toBe(false)
 })
 
-test('replaying probe-2 shows LOOPING naming the step and its 3rd try, and the 3rd-try STATUS sentence', async ($, on) => {
+test('replaying probe-2, STATUS tells the 2nd try and the 3rd as the last before it asks, and the band says nothing of looping', async ($, on) => {
   const rig = setupReplay(on)
   const steps = await drawn($, rig, probe2, TESTS['probe-2'])
 
   const third = at(steps, 125.887)
   const second = at(steps, 121.827)
   const pane = third.lines
-  // At 80 columns the test's name and place take the room "looping: yes" had; the pane's LOOPING row says it.
   expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['● RED · zero percent keeps full price · 2/2']))
-  expect(pane, `pane LOOPING row in ${JSON.stringify(pane)}`).toContain('LOOPING  writing a failing test · try 3 of 3')
   expect(pane, `pane STATUS row in ${JSON.stringify(pane)}`).toEqual(expect.arrayContaining(['STATUS   ● working · writing a failing test for zero percent keeps full price', '         test 2 of 2 · try 3 of 3 · last try before it asks you']))
-  expect(second.band, 'band at the 2nd try is not looping yet').not.toContain('looping: yes')
-  expect(second.lines, 'the 2nd try names the step and its try').toContain('LOOPING  writing a failing test · try 2 of 3')
+  expect(second.lines, `STATUS at the 2nd try: ${JSON.stringify(second.lines)}`).toEqual(expect.arrayContaining(['STATUS   ● working · writing a failing test for zero percent keeps full price', '         test 2 of 2 · try 2 of 3']))
+  expect(steps.flatMap(step => [...step.lines, ...step.band]).some(line => /looping|LOOPING/.test(line)), 'neither the pane nor the band speaks of looping').toBe(false)
   expect(steps.flatMap(step => step.lines).some(line => line.includes('try 1 of')), 'a first try is never spelled out').toBe(false)
 })
 

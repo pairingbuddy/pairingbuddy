@@ -159,13 +159,12 @@ function bandNeedsYou(ledger) {
 // A band segment only when its value is known; an unknown one says nothing, so it is left out.
 const known = (id, text) => (text === undefined ? [] : [{ id, text }]);
 
+// A retry is told where the step is (NOW, the pane's STATUS), so the band has no looping segment.
 function bandSegments({ ledger, spawns, tests, now, since, complete }, step) {
-  const looping = step ? `looping: ${isLooping(step.tries) ? "yes" : "no"}` : undefined;
   return [
     { id: "where", text: bandWhere(step, tests, ledger, complete) },
     { id: "spent", text: bandSpent({ ledger, spawns, now, since }) },
     ...known("left", bandLeft(step, tests, complete)),
-    ...known("looping", looping),
     bandNeedsYou(ledger),
   ];
 }

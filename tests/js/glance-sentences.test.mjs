@@ -113,7 +113,7 @@ test("a missing, empty or partial ledger and no spawns return a defined result a
 });
 
 // Off track has no source yet, so it is left out of the band.
-const BAND_ORDER = ["where", "spent", "left", "looping", "needsYou"];
+const BAND_ORDER = ["where", "spent", "left", "needsYou"];
 
 test("calm run at test 3 of 4 lists the band's known segments in the R4-1 order", async () => {
   const ledger = await ledgerAtSeq("g-open-1", TDD_ACTIVE_SEQ);

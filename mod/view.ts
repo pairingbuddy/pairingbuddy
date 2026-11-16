@@ -5,7 +5,7 @@ import contract from '../shared-node/stages-contract.mjs'
 import { lensRound } from '../shared-node/lens-round.mjs'
 import type { LensRound } from '../shared-node/lens-round.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
-import { cycleMarker, loopingTries, progressRow, shortName, stepAge, testCounts } from '../shared-node/now-building.mjs'
+import { cycleMarker, progressRow, shortName, stepAge, testCounts } from '../shared-node/now-building.mjs'
 import { doneStatus, endRows, goalOf, isUnitDone, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
 import type { Inputs, Ledger } from './inputs'
 import { STATUS_LOOKS } from './pane'
@@ -16,7 +16,7 @@ export type Tone = 'error' | 'warning' | 'dim'
 // the mark alone). short: the text fitBand takes when the room is short. shorter: the texts, longest first, a lead segment
 // left alone takes before it is cut.
 export type Segment = { id: string; text: string; short?: string; shorter?: string[]; standing?: boolean; tone?: Tone; bold?: boolean; lit?: boolean; state?: StatusState }
-export type Rows = Record<'now' | 'spent' | 'looping', string>
+export type Rows = Record<'now' | 'spent', string>
 export type RowTones = Partial<Record<keyof Rows, Tone>>
 // What STATUS says, so the human cycling sessions sees at once whether they are needed: the run's state, then what it is about
 // (the step, the question, why it stopped, the verdict). quiet: nothing runs and nothing waits on the human.
@@ -30,7 +30,6 @@ export type PaneTags = Tags & Pick<ElementTable, 'Input'>
 // count: how many of the planned tests are done (or covered), once the total is known; settled once the build step is over.
 export type Progress = { known?: boolean; count?: { total: number; done: number; covered: number; settled: boolean }; folded?: number; coveredFolded?: number; more?: number; entries: { id: string; name: string; mark: 'done' | 'current' | 'waiting' | 'covered' }[] }
 export type TestLine = { current?: string; marker: { steps: { name: string; lit: boolean; mark: string }[] }; age?: string }
-export type Tries = { step: string; number: number; result: string }[]
 
 export type View = {
   ledger: Ledger
@@ -46,7 +45,6 @@ export type View = {
   steps: string[]
   progress?: Progress
   test?: TestLine
-  tries?: Tries
   lensRound?: LensRound
   // The GOAL row: the task's first sentence from the moment the run knows its task, else a dash.
   goal: string
@@ -63,8 +61,7 @@ export type EndRows = Record<'done' | 'pr', string>
 const NO_END: EndRows = { done: '—', pr: '—' }
 
 const EMPTY = '—'
-const UNKNOWN = 'unknown'
-const NO_RUN_ROWS: Rows = { now: 'no run', spent: EMPTY, looping: EMPTY }
+const NO_RUN_ROWS: Rows = { now: 'no run', spent: EMPTY }
 
 const isUnknown = (text: string) => text === '-' || text === EMPTY || /unknown$/.test(text)
 
@@ -177,9 +174,9 @@ const BUILD_STEP = 'code-tdd'
 const isBuilding = (ledger: Ledger) => ledger?.stage?.name === BUILD_STEP && ledger.stage.status === 'active'
 const buildDone = (ledger: Ledger) => (Array.isArray(ledger?.stages) ? ledger.stages : []).some(stage => stage?.name === BUILD_STEP && stage.status === 'done')
 
-// The TESTS, TEST and LOOPING-tries parts, folded from the same inputs as the rows. Only the active stage's spawns count, so outside
-// "build test by test" no test is current and TEST reads as a dash.
-function buildTestRows(inputs: Inputs, ended: boolean): Pick<View, 'progress' | 'test' | 'tries'> {
+// The TESTS and TEST parts, folded from the same inputs as the rows. Only the active stage's spawns count, so outside
+// "build test by test" no test is current and TEST reads as a dash. A retry is STATUS's to tell.
+function buildTestRows(inputs: Inputs, ended: boolean): Pick<View, 'progress' | 'test'> {
   const { ledger, spawns, tests, testsComplete, now } = inputs
   if (isPublishRun(ledger)) return codeRunProgress(inputs)
   const stage = stageOf(ledger)
@@ -192,7 +189,7 @@ function buildTestRows(inputs: Inputs, ended: boolean): Pick<View, 'progress' | 
   const step = ended ? undefined : currentStep(spawns, stage)
   if (!step) return { progress }
   const test = { current: shortName(step.item), marker: cycleMarker({ spawns, ledger }), age: stepAge({ spawns, now, stage }) }
-  return { progress, test, tries: loopingTries({ spawns, perTest, stage }) }
+  return { progress, test }
 }
 
 // The pull request as far as it is known: what pb publish printed for this code run, else the url the unit record names.
@@ -249,15 +246,12 @@ export function buildView(inputs: Inputs): View {
 
 const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since }: Inputs) => glance({ ledger, spawns, tests, now, since, testsComplete, leaveOutUnknown: true })
 
-// LOOPING reads "no" while no step on a test is on a later try.
-const looping = (text: string) => (text === UNKNOWN ? 'no' : text)
-
 function buildPlainView(inputs: Inputs): View {
   const { ledger } = inputs
   if (!ledger) return { ledger, running: false, rows: NO_RUN_ROWS, band: [], unknownLabels: [], steps: [], goal: EMPTY, status: { state: 'quiet', what: NO_RUN_ROWS.now }, end: NO_END }
   const running = isStageActive(ledger)
   const shown = glanceOf(inputs)
-  const rows = { now: shown.rows.now, spent: shown.rows.spent, looping: looping(shown.rows.looping) }
+  const rows = { now: shown.rows.now, spent: shown.rows.spent }
   const named = namedWhere(shown.band, inputs)
   const base = { ledger, running, band: named, unknownLabels: shown.unknownLabels, steps: [], goal: EMPTY, status: { state: 'quiet' as const, what: EMPTY }, end: NO_END }
   const gate = waitingGate(ledger)
@@ -284,7 +278,7 @@ function betweenText(ledger: NonNullable<Ledger>): string {
   return name ? `between steps · next: ${name}` : RUN_OPEN
 }
 
-// A run that is over, shown from its last snapshot: the same rows, nothing running, the NOW row says so and LOOPING reads a dash.
+// A run that is over, shown from its last snapshot: the same rows, nothing running, and the NOW row says so.
 export function buildEndedView(inputs: Inputs): View {
   const { ledger } = inputs
   const { rows, unknownLabels } = glanceOf(inputs)
@@ -293,7 +287,7 @@ export function buildEndedView(inputs: Inputs): View {
     ledger,
     ended: true,
     running: false,
-    rows: { now: 'last run finished', spent: rows.spent, looping: EMPTY },
+    rows: { now: 'last run finished', spent: rows.spent },
     band: [],
     unknownLabels,
     steps: unitSteps(inputs, true),

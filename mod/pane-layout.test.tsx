@@ -5,7 +5,7 @@ import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
 import { ACCENT_COLOUR } from './pane'
 
-const ROWS = ['GOAL', 'STATUS', 'PR', 'BUILT', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'REVIEW']
+const ROWS = ['GOAL', 'STATUS', 'PR', 'BUILT', 'SPENT', 'STEPS', 'TESTS', 'REVIEW']
 const LABEL_WIDTH = 9
 
 // The rows the pane starts with a label, in order.
@@ -30,8 +30,7 @@ test('every-row-is-drawn-in-order-with-a-fixed-label-width-and-a-dash-when-empty
   for (const label of ROWS) expect(rowOf(lines, label), `${label} sits in a ${LABEL_WIDTH}-wide label column: ${JSON.stringify(lines)}`).toBeDefined()
   expect(rowOf(lines, 'STATUS'), 'STATUS says the run is working, on the active step').toBe('STATUS   ● working · write test scenarios')
   for (const label of ['PR', 'BUILT', 'TESTS', 'REVIEW']) expect(rowOf(lines, label), `${label} has nothing to show yet, so it reads a dash`).toBe(`${label.padEnd(LABEL_WIDTH)}—`)
-  expect(rowOf(lines, 'LOOPING'), 'no step is looping').toBe('LOOPING  no')
-  expect(lines.some(line => /^(LEFT|OFF TRACK|NOW|DONE)\b/.test(line)), 'LEFT, OFF TRACK, NOW and DONE are gone').toBe(false)
+  expect(lines.some(line => /^(LEFT|OFF TRACK|NOW|DONE|LOOPING)\b/.test(line)), 'LEFT, OFF TRACK, NOW, DONE and LOOPING are gone (STATUS tells a retry)').toBe(false)
 })
 
 test('goal-leads-the-pane-from-the-task-bold-wrapped-onto-two-lines', async ($, on) => {
@@ -86,8 +85,8 @@ test('the-first-glance-labels-are-bold-and-the-detail-labels-dim-with-their-valu
     expect(labelOf(name).props.dimColor, `${name} is not dim`).toBeUndefined()
   }
   for (const name of ROWS.slice(2)) expect(labelOf(name).props.dimColor, `${name} is a detail: its label is dim`).toBe(true)
-  const looping = drawn[drawn.indexOf(labelOf('LOOPING')) + 1]
-  expect([looping.text, looping.props.dimColor], 'a detail value stays readable, not dim').toEqual(['no', undefined])
+  const steps = drawn[drawn.indexOf(labelOf('STEPS')) + 1]
+  expect([steps.text, steps.props.dimColor], 'a detail value stays readable, not dim').toEqual(['○ work out the task type', undefined])
 })
 
 // STATUS's head (its mark and state word) as drawn, and what follows it on the row.
@@ -170,7 +169,7 @@ test('spent-counts-the-whole-unit-when-the-publish-run-starts', async ($, on) =>
   expect(rowOf(await paneLines($), 'SPENT'), 'agents and time both count from the code run on').toBe('SPENT    2 agents · 3:35')
 })
 
-test('after-the-run-looping-and-test-read-a-dash-and-the-last-review-stays', async ($, on) => {
+test('after-the-run-no-test-is-current-and-the-last-review-stays', async ($, on) => {
   const rig = setupReplay(on)
   const REVIEW = { ...SNAPSHOT_RUNNING, stage: { name: 'code-safety-net', status: 'active', runId: null, attempt: 1, startedAt: '2026-11-14T09:59:00.000Z' } }
   await serve($, rig, { [LEDGER]: REVIEW })
@@ -186,7 +185,6 @@ test('after-the-run-looping-and-test-read-a-dash-and-the-last-review-stays', asy
   expect(rowOf(lines, 'STATUS'), 'the run is over, without the sign-off').toBe('STATUS   ○ ended · not signed off')
   const { head, rest } = statusOf(await paneNodes($))
   expect([head.text, head.props.dimColor, head.props.color, rest.text, rest.props.color], 'a quiet state: a dim open mark, the words plain').toEqual(['○', true, undefined, ' ended · not signed off', undefined])
-  expect(rowOf(lines, 'LOOPING'), 'after the run LOOPING reads a dash').toBe('LOOPING  —')
   expect(lines.some(line => /^\s+▸ .*\d:\d\d$/.test(line)), 'after the run no test is current').toBe(false)
   expect(rowOf(lines, 'REVIEW'), 'the last review round stays').toBe('REVIEW   checked: the code')
   expect(lines, 'its open finding was left as is').toContain('           left as is · one · a.py:1')

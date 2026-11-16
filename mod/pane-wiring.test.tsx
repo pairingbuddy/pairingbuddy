@@ -190,11 +190,9 @@ test('replay-matches-recorded-run', async ($, on) => {
   expect(green, 'RED is no longer lit, and shows as passed').toContain('✓RED')
   const thirdTry = at(loopingSteps, 'spawn', 'pb1 code-tdd RED implement-tests zero-percent-keeps-full-price r3')
   expect(thirdTry, 'the RED step is the lit one').toContain('●RED')
-  expect(thirdTry, 'the looping row names the step and its try').toContain('writing a failing test · try 3 of 3')
-  expect(thirdTry, 'the tries line lists the three tries at RED').toContain('try 1 at RED: unknown · try 2 at RED: unknown · try 3 at RED: unknown')
-  // The ledger records the latest RED try only: at the 139.689 snapshot the third try's runner has run and the record
-  // (passed false, exit 0) reads "passed straight away, refused"; the earlier tries keep no record of their own.
-  expect(ledgerAt(loopingSteps, 139.689), 'the tries line shows the third try\'s real result and the earlier two stay unknown').toContain('try 1 at RED: unknown · try 2 at RED: unknown · try 3 at RED: passed straight away, refused (exit 0)')
+  expect(thirdTry.some(text => text.includes('try 3 of 3 · last try before it asks you')), `STATUS tells the last try before it asks: ${JSON.stringify(thirdTry)}`).toBe(true)
+  // Each try's result is the report's to tell; the pane has no tries line.
+  expect(ledgerAt(loopingSteps, 139.689).some(text => text.includes('try 1 at RED')), 'no tries line in the pane').toBe(false)
   expect(loopingSteps.flatMap(step => step.shown).some(text => text.includes('REFACTOR')), 'a bug_fix run has no REFACTOR step').toBe(false)
 })
 
@@ -205,7 +203,7 @@ test('replay-keeps-one-layout-and-fits-at-widths', async ($, on) => {
   const cells = (text: string) => [...text].length
   const textOf = (node: any): string => (node.children ?? []).map((child: any) => (typeof child === 'string' ? child : textOf(child))).join('')
   const isRow = (node: any) => node?.type === 'Box' && (node.children ?? []).length > 0 && node.children.every((child: any) => child?.type === 'Text')
-  const LABELS = ['GOAL', 'STATUS', 'PR', 'BUILT', 'SPENT', 'LOOPING', 'STEPS', 'TESTS', 'REVIEW']
+  const LABELS = ['GOAL', 'STATUS', 'PR', 'BUILT', 'SPENT', 'STEPS', 'TESTS', 'REVIEW']
 
   for (const [name, recording] of [['g-open-1', calm], ['probe-2', looping]] as const) {
     for (const columns of WIDTHS) {

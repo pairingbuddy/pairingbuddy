@@ -40,10 +40,13 @@ test("for-the-pane-unknown-tokens-and-plan-share-are-left-out-of-spent", () => {
   assert.equal(rows.spent, "0 agents · 0:05");
 });
 
-test("with-no-step-the-band-leaves-out-looping", () => {
-  const { band } = glance({ ledger: {}, spawns: [] });
+test("the-band-has-no-looping-segment-even-on-a-retry", () => {
+  for (const spawns of [[], tries(2), tries(3)]) {
+    const { band } = glance({ ledger: {}, spawns, tests: ["t1"] });
 
-  assert.equal(band.find(({ id }) => id === "looping"), undefined);
+    assert.equal(band.find(({ id }) => id === "looping"), undefined, `${spawns.length} tries`);
+    assert.ok(band.every(({ text }) => !text.includes("looping")), `${spawns.length} tries: no band text speaks of looping`);
+  }
 });
 
 test("gate-with-no-plain-name-reads-as-its-id", () => {
