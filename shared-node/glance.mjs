@@ -48,6 +48,8 @@ export const isLooping = (tries) => tries >= MAX_TRIES;
 
 const testPosition = (step, tests) => tests.indexOf(step?.item) + 1;
 const agentCount = (spawns) => spawns.filter((spawn) => spawn && AGENT_KINDS.includes(spawn.kind)).length;
+// The agents the runs recorded when given (an ended task's), else the session's spawns.
+const agentsOf = (spawns, recorded) => (Number.isInteger(recorded) && recorded >= 0 ? recorded : agentCount(spawns));
 export const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 // What is left after the current test: "N more tests" / "this test". `more` says whether to word it "N more tests" or "N tests".
@@ -70,8 +72,8 @@ export function elapsed(startedAt, now, ranFor) {
 export const runStart = (ledger) => (ledger?.stages?.length > 0 ? ledger.stages[0].startedAt : ledger?.stage?.startedAt);
 
 // leaveOutUnknown drops the parts that are not measured (the pane's choice); the report keeps them, saying "unknown".
-function spentRow({ ledger, spawns, now, ranFor, since, leaveOutUnknown }) {
-  const agents = agentCount(spawns);
+function spentRow({ ledger, spawns, agents: recorded, now, ranFor, since, leaveOutUnknown }) {
+  const agents = agentsOf(spawns, recorded);
   const known = ledger?.spend?.tokensKnown === true;
   const tokens = known ? `${ledger.spend.tokens} ${TOKENS_UNIT}` : "tokens unknown";
   const parts = [plural(agents, "agent"), elapsed(since ?? runStart(ledger), now, ranFor), tokens, "% of plan unknown"];
@@ -116,8 +118,8 @@ function bandLeft(step, tests, complete) {
 }
 
 // The run time is left out when it is unknown; the agent count always stands.
-function bandSpent({ ledger, spawns, now, since }) {
-  const agents = agentCount(spawns);
+function bandSpent({ ledger, spawns, agents: recorded, now, since }) {
+  const agents = agentsOf(spawns, recorded);
   return [elapsed(since ?? runStart(ledger), now), plural(agents, "agent")].filter((part) => !part.endsWith(UNKNOWN)).join(" · ");
 }
 
@@ -152,10 +154,10 @@ function bandNeedsYou(ledger) {
 const known = (id, text) => (text === undefined ? [] : [{ id, text }]);
 
 // A retry is told where the step is (NOW, the pane's STATUS), so the band has no looping segment.
-function bandSegments({ ledger, spawns, tests, now, since, complete }, step) {
+function bandSegments({ ledger, spawns, agents, tests, now, since, complete }, step) {
   return [
     { id: "where", text: bandWhere(step, tests, ledger, complete) },
-    { id: "spent", text: bandSpent({ ledger, spawns, now, since }) },
+    { id: "spent", text: bandSpent({ ledger, spawns, agents, now, since }) },
     ...known("left", bandLeft(step, tests, complete)),
     bandNeedsYou(ledger),
   ];
@@ -213,14 +215,15 @@ function unknownLabels(spawns) {
 // testsComplete: false says the list is only the tests seen so far, so no total ("of M") and no count left is claimed.
 // leaveOutUnknown: true leaves the unknown parts out of SPENT, for the pane.
 // since: the unit's start, when known, so the time spent counts the whole unit and not only this run.
-export function glance({ ledger, spawns, tests, now, ranFor, since, testsComplete = false, leaveOutUnknown = false } = {}) {
+// agents: the agents the task's runs recorded, once they have ended; otherwise the session's spawns are counted.
+export function glance({ ledger, spawns, agents, tests, now, ranFor, since, testsComplete = false, leaveOutUnknown = false } = {}) {
   const list = Array.isArray(spawns) ? spawns : [];
   const names = Array.isArray(tests) ? tests : [];
   const step = currentStep(list, stageOf(ledger));
   const rows = {
     now: nowRow(step, names, ledger, testsComplete),
-    spent: spentRow({ ledger, spawns: list, now, ranFor, since, leaveOutUnknown }),
+    spent: spentRow({ ledger, spawns: list, agents, now, ranFor, since, leaveOutUnknown }),
     left: leftRow(step, names, testsComplete),
   };
-  return { rows, band: bandSegments({ ledger, spawns: list, tests: names, now, since, complete: testsComplete }, step), unknownLabels: unknownLabels(list) };
+  return { rows, band: bandSegments({ ledger, spawns: list, agents, tests: names, now, since, complete: testsComplete }, step), unknownLabels: unknownLabels(list) };
 }

@@ -28,3 +28,14 @@ const endOf = (run) => {
 
 // The commits of the whole task, in run order, each once.
 export const taskCommitShas = (runs) => [...new Set(runs.flatMap((run) => (Array.isArray(run.ledger?.commits) ? run.ledger.commits : [])))];
+
+// What the whole task spent, from each run's own record: the agents and tokens summed, the tokens known only when each run
+// knew its own. A reload empties the session's spawns; these records outlive it.
+export function taskSpend(runs) {
+  const spends = runs.map((run) => run.ledger?.spend);
+  const sum = (field) => spends.reduce((total, spend) => total + (Number(spend?.[field]) || 0), 0);
+  return { ...spends.at(-1), agents: sum("agents"), tokens: sum("tokens"), tokensKnown: spends.every((spend) => spend?.tokensKnown === true) };
+}
+
+// Every run of the task has ended (pb kept it, or the session saw it end), so its records are whole.
+export const taskEnded = (runs) => runs.length > 0 && runs.every((run) => Number.isFinite(Date.parse(run.endedAt)));

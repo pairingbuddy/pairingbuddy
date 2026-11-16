@@ -171,9 +171,16 @@ describe("report-of-the-whole-task", () => {
     const section = sectionOf(report(), "AT A GLANCE");
 
     assert.match(section, /<strong>Where it is<\/strong> finished/);
-    assert.match(section, /<strong>Spent<\/strong> 9 agents · 14:00 · 16248 output tokens/, "both runs' tokens over the whole task's time");
+    assert.match(section, /<strong>Spent<\/strong> 43 agents · 14:00 · 16248 output tokens/, "both runs' tokens over the whole task's time");
     assert.doesNotMatch(section, /Left|Looping|Off track/);
     assert.doesNotMatch(section, /<\/strong> unknown<\/p>/, "no row is unknown as a whole");
+  });
+
+  // A reload empties the session's spawns; the runs pb kept still record how many agents each ran.
+  test("Spent of a finished task counts the agents its runs recorded, not the session's spawns", () => {
+    const section = sectionOf(report({ spawns: [] }), "AT A GLANCE");
+
+    assert.match(section, /<strong>Spent<\/strong> 43 agents · /, "the code run's 30 and the publish run's 13");
   });
 });
 

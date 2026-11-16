@@ -10,6 +10,7 @@ import contract from "./stages-contract.mjs";
 import { findingGist, lensRound } from "./lens-round.mjs";
 import { parseKey } from "./keys.mjs";
 import { lensOfFinding } from "./lens-merge.mjs";
+import { taskEnded, taskSpend } from "./task-runs.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
@@ -37,18 +38,14 @@ function runSeconds(ledger, endedAt, now, first = ledger) {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : NaN;
 }
 
-// The tokens every run of the task spent; known only when each run knew its own.
-function taskSpend(task) {
-  const spends = task.map(({ ledger }) => ledger?.spend);
-  const tokensKnown = spends.every((spend) => spend?.tokensKnown === true);
-  return { ...spends.at(-1), tokens: spends.reduce((sum, spend) => sum + (Number(spend?.tokens) || 0), 0), tokensKnown };
-}
-
 // Left only means something while the run goes, so a finished run has no such row.
 const LIVE_ROWS = ["left"];
 
 function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task }) {
-  const { rows: all } = glance({ ledger: { ...ledger, spend: taskSpend(task) }, spawns, tests, ranFor, testsComplete });
+  const spend = taskSpend(task);
+  // Once every run has ended, the agents are the ones the runs recorded; the session's spawns may be gone.
+  const agents = taskEnded(task) ? spend.agents : undefined;
+  const { rows: all } = glance({ ledger: { ...ledger, spend }, spawns, tests, ranFor, testsComplete, agents });
   const done = outcome(ledger) === "DONE";
   const rows = done ? Object.fromEntries(Object.entries(all).filter(([key]) => !LIVE_ROWS.includes(key))) : all;
   if (done) rows.now = "finished";
