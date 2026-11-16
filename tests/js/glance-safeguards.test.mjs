@@ -1,4 +1,4 @@
-// Safeguards for shared-node/glance.mjs: ordinal suffixes past "rd", a current test outside the list, tokens that are not
+// Safeguards for shared-node/glance.mjs: a try past the limit, a current test outside the list, tokens that are not
 // known, a gate with no plain name, and the last-resort cut of a standing needs-you segment.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -8,9 +8,10 @@ const redSpawn = (item) => ({ kind: "workflow_agent", name: `pb1 code-tdd RED im
 const tries = (count, item = "t1") => Array.from({ length: count }, () => redSpawn(item));
 const nowOf = (spawns) => glance({ ledger: {}, spawns, tests: ["t1"] }).rows.now;
 
-for (const [count, word] of [[4, "4th"], [11, "11th"], [12, "12th"], [13, "13th"], [21, "21st"], [22, "22nd"], [23, "23rd"]]) {
-  test(`try-${count}-reads-${word}`, () => {
-    assert.match(nowOf(tries(count)), new RegExp(`, ${word} try$`));
+// Past the limit (the human let the step go on) a try is only counted: no "of 3", and no word that it is the last.
+for (const count of [4, 11]) {
+  test(`try-${count}-past-the-limit-reads-try-${count}`, () => {
+    assert.match(nowOf(tries(count)), new RegExp(` · try ${count}$`));
   });
 }
 

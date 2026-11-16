@@ -44,7 +44,8 @@ test("live agent count equals the number of agent.spawn events, not ledger spend
   assert.match(result.rows.spent, new RegExp(`^${LIVE_AGENT_SPAWNS_THROUGH_THIRD_ZERO_PERCENT_TRY} agents`), "SPENT starts with the spawn count");
 });
 
-test("try 1 reads 'no', never 'try 1 of 3'; a 2nd and 3rd try name the step and the try, with the NOW sentence ending '3rd try'", async () => {
+// Tenth watched run: a retry is told in NOW (the pane's STATUS) in plain words, and the last try before the run asks says so.
+test("NOW tells a retry as 'try N of 3', never 'try 1 of 3', and the last allowed try says it is the last before it asks you", async () => {
   const ledger = await ledgerAtSeq("probe-2", TDD_ACTIVE_SEQ);
   const tests = ["ten-percent-off-hundred", "zero-percent-keeps-full-price"];
   const calmSpawns = probeSpawns.slice(0, THROUGH_FIRST_RED_TRY);
@@ -53,13 +54,11 @@ test("try 1 reads 'no', never 'try 1 of 3'; a 2nd and 3rd try name the step and 
 
   const calm = glance({ ledger, spawns: calmSpawns, tests, now: SOME_TIME });
   const second = glance({ ledger, spawns: secondTrySpawns, tests, now: SOME_TIME });
-  const looping = glance({ ledger, spawns: thirdTrySpawns, tests, now: SOME_TIME });
+  const last = glance({ ledger, spawns: thirdTrySpawns, tests, now: SOME_TIME, testsComplete: true });
 
-  assert.equal(calm.rows.looping, "no");
-  assert.equal(second.rows.looping, `writing a failing test · try 2 of ${MAX_TRIES}`);
-  assert.equal(looping.rows.looping, `writing a failing test · try 3 of ${MAX_TRIES}`);
-  assert.match(looping.rows.now, /writing a failing test/, "NOW still names the step");
-  assert.match(looping.rows.now, /3rd try$/, "NOW ends with the try count");
+  assert.doesNotMatch(calm.rows.now, /try/, "a first try is never spelled out");
+  assert.equal(second.rows.now, `writing a failing test for zero percent keeps full price · test 2 · try 2 of ${MAX_TRIES}`);
+  assert.equal(last.rows.now, `writing a failing test for zero percent keeps full price · test 2 of 2 · try 3 of ${MAX_TRIES} · last try before it asks you`);
 });
 
 test("one spawned agent reads '1 agent', not '1 agents'", () => {

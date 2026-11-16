@@ -12,11 +12,6 @@ const AGENT_KINDS = ["Agent", "workflow_agent"];
 const RUNNER_ROLE = "runner";
 const SAFETY_NET = "the safety-net review and your sign-off";
 
-function ordinal(n) {
-  const suffix = { 1: "st", 2: "nd", 3: "rd" }[n % 100 >= 11 && n % 100 <= 13 ? 0 : n % 10] ?? "th";
-  return `${n}${suffix}`;
-}
-
 // The labels of the agent spawns that sit on a test, in order, runner checkpoints aside. One rule for the pane and the report.
 // Only a test's cycle names a phase: a review round's items (a finding, a fix group, a lens) are no tests. Given a stage,
 // only that stage's spawns count, so a step of an earlier stage is never the current one.
@@ -83,13 +78,20 @@ function spentRow({ ledger, spawns, now, ranFor, since, leaveOutUnknown }) {
   return (leaveOutUnknown ? parts.filter((part) => !part.endsWith(UNKNOWN)) : parts).join(" · ");
 }
 
+// A retry in plain words: nothing on a first try, "try N of 3" on a later one, and on the last allowed try a word that the
+// human may be needed soon. A try past the limit (the human let it go on) is only counted.
+function retryPart(tries) {
+  if (tries < 2) return "";
+  if (tries > MAX_TRIES) return ` · try ${tries}`;
+  return ` · try ${tries} of ${MAX_TRIES}${tries === MAX_TRIES ? " · last try before it asks you" : ""}`;
+}
+
 function nowRow(step, tests, ledger, complete) {
   if (ledger?.stop) return stopLine(ledger.stop);
   if (!step) return plainName(ledger?.stage?.name) ?? UNKNOWN;
   const position = testPosition(step, tests);
   const where = position > 0 ? ` · test ${position}${complete ? ` of ${tests.length}` : ""}` : "";
-  const retry = step.tries > 1 ? `, ${ordinal(step.tries)} try` : "";
-  return `${plainName(step.role) ?? UNKNOWN} for ${step.item.replace(/[-_]/g, " ")}${where}${retry}`;
+  return `${plainName(step.role) ?? UNKNOWN} for ${step.item.replace(/[-_]/g, " ")}${where}${retryPart(step.tries)}`;
 }
 
 function leftRow(step, tests, complete) {
