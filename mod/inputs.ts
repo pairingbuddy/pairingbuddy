@@ -9,7 +9,8 @@ const UNIT = '.pairingbuddy/run/unit.json'
 const CHANGED = '.pairingbuddy/run/changed.json'
 const ARTIFACTS = '.pairingbuddy/run/task/artifacts'
 
-export type Spawn = { kind: 'Agent' | 'workflow_agent'; name: string; subagentType?: string; startedAt?: string; agentId?: string; finished?: boolean }
+// seconds: how long the agent's turn took, from its turn.complete; absent until it finishes.
+export type Spawn = { kind: 'Agent' | 'workflow_agent'; name: string; subagentType?: string; startedAt?: string; agentId?: string; finished?: boolean; seconds?: number }
 type Spend = { agents: number; tokens: number; tokensKnown: boolean }
 type StageEntry = { name: string; status?: string; attempt?: number; startedAt?: string; spend?: Spend }
 // The ledger as the mod reads it: every field is optional, since the file may be partial.

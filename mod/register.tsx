@@ -142,10 +142,14 @@ export const register: Register = (on, options) => {
     return result
   })
 
-  // An agent's turn ended: mark its latest spawn finished (a resume adds a new, unfinished spawn); never held or changed.
+  // An agent's turn ended: mark its latest spawn finished (a resume adds a new, unfinished spawn) with how long the turn
+  // took, which the report times each try by; never held or changed.
   on('turn.complete', ($, e, next) => {
     const latest = spawns.findLast(spawn => spawn.agentId !== undefined && spawn.agentId === e.agentId)
-    if (latest) latest.finished = true
+    if (latest) {
+      latest.finished = true
+      if (Number.isFinite(e.durationMs) && e.durationMs >= 0) latest.seconds = e.durationMs / 1000
+    }
     return next(e)
   })
 

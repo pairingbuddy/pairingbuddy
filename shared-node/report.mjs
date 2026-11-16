@@ -95,12 +95,13 @@ function triesOf(spawns, item) {
     // Only a test's cycle names a phase, so `written` counts exactly the spawns testLabels keeps (a review round's lens is skipped).
     if (label.unknown || label.item === null || (label.role !== "runner" && label.phase === null)) continue;
     if (label.role === "runner") {
+      // The runner ran whether or not its time is known, so `ran` and `running` are apart.
       const last = label.item === item ? tries.at(-1) : undefined;
-      if (last && last.running === undefined) last.running = spawn.seconds;
+      if (last && !last.ran) Object.assign(last, { ran: true, running: spawn.seconds });
     } else {
       // A cycle's quick review runs no checks after it, so its running time is none rather than unknown.
       const running = label.role === REVIEW_ROLE ? 0 : undefined;
-      if (label.item === item) tries.push({ step: label.phase, stage: label.stage, role: label.role, round: label.round, number: triesAtStep(labels, written), writing: spawn.seconds, running });
+      if (label.item === item) tries.push({ step: label.phase, stage: label.stage, role: label.role, round: label.round, number: triesAtStep(labels, written), writing: spawn.seconds, running, ran: label.role === REVIEW_ROLE });
       written++;
     }
   }
@@ -117,7 +118,7 @@ const RESULT_WORDS = {
 // (Spawns carry no stage attempt, so the record's own attempt cannot be matched to a try.)
 function resultOf(attempt, tries, record, covered) {
   const latest = tries.filter((t) => t.step === attempt.step).at(-1);
-  if (latest !== attempt || attempt.running === undefined) return UNKNOWN;
+  if (latest !== attempt || !attempt.ran) return UNKNOWN;
   return resultWords(attempt.step, record, covered);
 }
 
@@ -206,7 +207,7 @@ function loopNote(tries, stop) {
 function withLedgerTries(tries, record) {
   const out = [...tries];
   for (const [step, key] of [["RED", "red"], ["GREEN", "green"]]) {
-    if (record?.[key] && !out.some((t) => t.step === step)) out.push({ step, number: 1, writing: NaN, running: NaN });
+    if (record?.[key] && !out.some((t) => t.step === step)) out.push({ step, number: 1, writing: NaN, running: NaN, ran: true });
   }
   return out;
 }
