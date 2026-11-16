@@ -52,9 +52,20 @@ describe("every '+ n more' names the full question file, and that file holds the
     { gate: "G:scenarios", facts: { scenarios }, items: scenarios.flatMap(({ description, tests }) => [description, ...tests]) },
     { gate: "G:task-end", facts: { files: BIG_FILES }, items: BIG_FILES },
     { gate: "G:task-end", facts: { goalCheck }, items: GOAL_FINDINGS.map(({ title }) => title) },
-    { gate: "G:publish", facts: { title: "T", body }, items: body.split("\n") },
     { gate: "G:task-end", facts: { doubts }, reason: AMBIGUITY, items: doubts.map(({ ambiguity }) => ambiguity) },
   ];
+
+  // A pull request body does not fold: the question names the body file in its place, and nothing else of the body shows.
+  test("G:publish names the body file for a long body, and the full question holds the whole body", () => {
+    const bodyAt = "/repo/.pairingbuddy/run/pr-body.md";
+    const lines = gateQuestion("G:publish", { reason: POLICY, facts: { title: "T", body, bodyAt }, fullAt: FULL_AT }).question.split("\n");
+    const full = fullQuestion("G:publish", { reason: POLICY, facts: { title: "T", body, bodyAt } });
+
+    assert.equal(lines.filter((line) => line.startsWith("Full description: ")).length, 1);
+    assert.ok(lines.includes(`Full description: ${bodyAt}`), lines.join("\n"));
+    assert.ok(!lines.some((line) => /\+ \d+ more/.test(line)), "nothing of the body folds");
+    for (const item of body.split("\n")) assert.ok(full.includes(item), `the full question holds ${item}`);
+  });
 
   for (const { gate, facts, items, reason = POLICY } of FOLDS) {
     test(`${gate} ${Object.keys(facts).at(-1)} folds once into the full question file`, () => {

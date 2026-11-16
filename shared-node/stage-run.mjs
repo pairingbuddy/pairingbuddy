@@ -144,10 +144,19 @@ function computedLines(content) {
   return text.slice(at + TASK_FRAME_END.length).split("\n").filter((line) => line.startsWith("  ")).map((line) => line.slice(2));
 }
 
+// The harness's own opening turns: the user lines before the agent's first reply. A workflow the user's command started
+// relays that request first, so the computed task is the first of them that carries its frame. A later user line (a tool
+// result) is the agent's doing, never read.
 function runnerLines(dir, metaFile) {
   if (JSON.parse(readFileSync(join(dir, metaFile), "utf8")).agentType !== RUNNER_AGENT) return null;
   const transcript = readFileSync(join(dir, metaFile.replace(/\.meta\.json$/, ".jsonl")), "utf8");
-  return computedLines(JSON.parse(transcript.split("\n")[0]).message.content);
+  for (const line of transcript.split("\n")) {
+    const entry = JSON.parse(line);
+    if (entry.type !== "user") return [];
+    const lines = computedLines(entry.message.content);
+    if (lines.length > 0) return lines;
+  }
+  return [];
 }
 
 // A file or line that cannot be read or parsed is skipped alone, so it never hides the figure of the others.

@@ -464,7 +464,8 @@ function gateEval(args) {
     if (reason === null) return repeatedAfter(contract, recordAuto(open, gate, autoBinding), gate, root);
     const facts = gate === PUBLISH_GATE ? { shown: { headSha: shown.headSha, base: shown.base, target: shown.target } } : {};
     // The facts go into the stored text, so the session cannot change or misreport what the human judges by.
-    const asked = gate === PUBLISH_GATE ? { title: shown.title, body: shown.body, ...gateFacts(gate, root, open, contract) } : gateFacts(gate, root, open, contract);
+    // The body is named by its file, the exact bytes that go out, since a real body does not fit the question box.
+    const asked = gate === PUBLISH_GATE ? { title: shown.title, body: shown.body, bodyAt: resolve(prBodyPath(root)), ...gateFacts(gate, root, open, contract) } : gateFacts(gate, root, open, contract);
     const shape = { reason, taskType: open.taskType, refresh: isRefreshRun(open), facts: asked };
     question = gateQuestion(gate, { ...shape, fullAt });
     full = fullQuestion(gate, shape);

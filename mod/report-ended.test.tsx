@@ -83,6 +83,29 @@ test('report-of-an-ended-run-is-written-and-opened', async ($, on) => {
   expect(drawn, 'the pane confirms the report was written and opened').toContain(reportConfirmation(fileName))
 })
 
+// An agent's turn ends as the engine raises it, with how long the turn took.
+const finish = ($: any, agentId: string, seconds: number) => $.turn.complete({ answer: '', durationMs: seconds * 1000, isAborted: false, turnId: `turn-${agentId}`, agentId, reason: 'answer' })
+
+test('report-times-each-try-from-its-agents-turns', async ($, on) => {
+  const rig = setupReplay(on)
+  const recorder = recordReportCalls(on)
+  serve(rig, { [LEDGER]: doneRun, [UNIT]: unitFile, [CHANGED]: changed })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  const writer = await spawnLabelled($, 'pb1 code-tdd RED implement-tests order-total-sums-lines r1', 'pairingbuddy:implement-tests')
+  await finish($, writer.agentId, 41)
+  const runner = await spawnLabelled($, 'pb1 code-tdd RED runner order-total-sums-lines r1', 'pairingbuddy:runner')
+  await finish($, runner.agentId, 7)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await pane.press({ key: REPORT_KEY })
+  await pane.unmount()
+
+  const html = recorder.writes[0]?.text ?? ''
+  expect(html, 'the RED try is timed from its writer and runner turns, with its result').toContain('<td>RED</td><td>1</td><td>0:48</td><td>0:41</td><td>0:07</td><td>failed, as it should (exit 1)</td>')
+})
+
 // What pb kept of the two runs when each ended (keepRun in shared-node/unit-files.mjs): ledger, returns and kept.json.
 const KEPT = '.pairingbuddy/reports/runs'
 const UNIT_KEY = `${unitFile.branch} ${unitFile.baseSha}`

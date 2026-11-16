@@ -6,7 +6,9 @@ import { PHASES, readLabel, refactorsPerCycle } from "./labels.mjs";
 
 const SHOWN = 3;
 
-export function progressRow({ tests, perTest, spawns, stage }) {
+// settled: the build is over, so the list is no longer folded around a current test: the tests that did not pass lead, then
+// the rest, the first few shown and the others counted.
+export function progressRow({ tests, perTest, spawns, stage, settled = false }) {
   const current = currentStep(spawns, stage)?.item ?? null;
   const entries = (Array.isArray(tests) ? tests : []).map((test) => {
     const id = test.test_id;
@@ -16,6 +18,11 @@ export function progressRow({ tests, perTest, spawns, stage }) {
     return { id, mark: id === current ? "current" : done ? "done" : covered ? "covered" : "waiting" };
   });
   if (entries.length <= SHOWN) return { entries };
+  if (settled) {
+    const finished = (entry) => entry.mark === "done" || entry.mark === "covered";
+    const ordered = [...entries.filter((entry) => !finished(entry)), ...entries.filter(finished)];
+    return { entries: ordered.slice(0, SHOWN), more: ordered.length - SHOWN };
+  }
   const waitingOrCurrent = entries.filter((entry) => entry.mark !== "done" && entry.mark !== "covered");
   const folded = entries.filter((entry) => entry.mark === "done").length;
   const coveredFolded = entries.filter((entry) => entry.mark === "covered").length;
@@ -25,6 +32,16 @@ export function progressRow({ tests, perTest, spawns, stage }) {
     ...(coveredFolded > 0 && { coveredFolded }),
     entries: waitingOrCurrent.slice(0, SHOWN),
     ...(more > 0 && { more }),
+  };
+}
+
+// How many of the planned tests passed their GREEN (done) or were already covered: the TESTS row's count.
+export function testCounts({ tests, perTest }) {
+  const ids = (Array.isArray(tests) ? tests : []).map((test) => test.test_id);
+  return {
+    total: ids.length,
+    done: ids.filter((id) => perTest?.[id]?.green?.passed).length,
+    covered: ids.filter((id) => !perTest?.[id]?.green?.passed && perTest?.[id]?.covered?.done).length,
   };
 }
 

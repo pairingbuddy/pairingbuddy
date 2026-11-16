@@ -176,3 +176,72 @@ describe("report-of-the-whole-task", () => {
     assert.doesNotMatch(section, /<\/strong> unknown<\/p>/, "no row is unknown as a whole");
   });
 });
+
+// The task-type review's "fix" is the classifier asked again: the report says what that changed, not "fixed".
+describe("report-of-a-classification-review", () => {
+  const intake = (role, item, round, input) => ({ input: { pb_key: `intake.${role}.${item}.r${round}.a1`, ...input } });
+  const classified = (task_type, confidence) => ({ ambiguity: "", task_type, confidence, rationale: "Adds a function." });
+  const INTAKE_CALLS = (again) => [
+    intake("classify-task", "-", 1, classified("new_feature", "certain")),
+    intake("lens", "classification", 1, { ambiguity: null, findings: [finding("Certain confidence rests on an unverified line_total", undefined)] }),
+    intake("fix", "g1", 2, again),
+    intake("course-checker", "g1", 2, { finding_id: "classification-1", verdict: "better", mistake: "none", what_went_wrong: "" }),
+  ];
+  const reviewOf = (again) => sectionOf(report({ runs: [{ ...RUNS[0], calls: [...INTAKE_CALLS(again), ...CODE_CALLS] }, RUNS[1]] }), "REVIEW");
+
+  test("a re-classification that kept the type and changed the confidence says so", () => {
+    const section = reviewOf(classified("new_feature", "likely"));
+
+    assert.ok(section.includes("Certain confidence rests on an unverified line_total</strong> · classified again: still new feature, confidence likely (was certain)"), `got ${section}`);
+  });
+
+  test("a re-classification that changed the type names the new type and the old", () => {
+    const section = reviewOf(classified("bug_fix", "certain"));
+
+    assert.ok(section.includes("· classified again: now bug fix (was new feature), same confidence"), `got ${section}`);
+  });
+});
+
+// A doubt a reviewer raised on a finding, which a later fix in the same review settled before the human signed off: the
+// report says how it was settled and does not ask the human to decide it again.
+describe("report-of-a-doubt-a-later-fix-settled", () => {
+  const AMBIGUITY = "Should order_total([]) return a float 0.0, or is the int 0 acceptable?";
+  const SHA_FIX = "4".repeat(40);
+  const net = (role, item, round, input) => ({ input: { pb_key: `code-safety-net.${role}.${item}.r${round}.a1`, ...input } });
+  // The order the kept returns record: the lens finds it (r1), its refuter upholds it with the doubt (r1), then the fix
+  // (g1, r2) changes the code and the check says it is better.
+  const SETTLING_CALLS = [
+    net("lens", "code", 1, { ambiguity: null, findings: [finding("order_total returns int 0 for an empty list", undefined)] }),
+    net("refuter", "code-1", 1, { finding_id: "code-1", verdict: "survives", ambiguity: AMBIGUITY }),
+    net("fix", "g1", 2, { ambiguity: "", commit_subject: "fix: order_total returns float for empty list", no_change_reason: "", files_changed: ["cart.py"] }),
+    net("course-checker", "g1", 2, { finding_id: "code-1", verdict: "better", mistake: "none", what_went_wrong: "" }),
+  ];
+  const settledRun = {
+    ...CODE_RUN,
+    gates: { ...CODE_RUN.gates, "G:task-end": { source: "human", answer: "approve", doubts: [{ step: "a reviewer", ambiguity: AMBIGUITY }] } },
+    checkpoints: [...CODE_RUN.checkpoints, { step: "fix", key: "code-safety-net.fix.g1.r2.a1", committed: true, sha: SHA_FIX, stage: "code-safety-net", attempt: 1 }],
+  };
+  const settledReport = (calls = SETTLING_CALLS) => report({ runs: [{ ...RUNS[0], ledger: settledRun, calls }, RUNS[1]] });
+
+  test("the doubt is no longer open, and the report says the later fix settled it", () => {
+    const html = settledReport();
+
+    assert.throws(() => sectionOf(html, "OPEN DOUBTS"), /no OPEN DOUBTS section/, "no doubt is open");
+    const section = sectionOf(html, "SETTLED DOUBTS");
+    assert.ok(section.includes(`a reviewer: ${AMBIGUITY}`), `the doubt is listed in full, got ${section}`);
+    assert.ok(section.includes(`settled by a later fix in the safety-net review: order_total returns int 0 for an empty list · ${SHA_FIX.slice(0, 7)}`), `with how it was settled, got ${section}`);
+  });
+
+  test("WHAT YOU CAN DO does not ask the human to decide it again", () => {
+    const section = sectionOf(settledReport(), "WHAT YOU CAN DO");
+
+    assert.ok(!section.includes("Decide the open doubt"), `got ${section}`);
+  });
+
+  test("a doubt whose finding no fix settled stays open", () => {
+    const html = settledReport(SETTLING_CALLS.slice(0, 2));
+
+    assert.ok(sectionOf(html, "OPEN DOUBTS").includes(AMBIGUITY), "the doubt is still open");
+    assert.ok(sectionOf(html, "WHAT YOU CAN DO").includes(`Decide the open doubt: ${AMBIGUITY}`));
+  });
+});

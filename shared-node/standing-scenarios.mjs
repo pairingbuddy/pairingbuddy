@@ -16,6 +16,10 @@ export function newestKeyAmong(files, match) {
 export const isStandingScenarios = (ledger) => ({ role, item, stage, attempt }) =>
   ((role === "enumerate-scenarios-and-test-cases" && item === null) || (role === "fix" && stage === "code-scenarios")) && !isVoidedAttempt(ledger, stage, attempt);
 
+// A key that can hold the tests that stand: a placeholders return whose attempt is not void. The newest lists every test of
+// the task, the rows of earlier rounds included.
+export const isStandingTests = (ledger) => ({ role, stage, attempt }) => role === "create-test-placeholders" && !isVoidedAttempt(ledger, stage, attempt);
+
 const text = (value) => (typeof value === "string" && value.trim() !== "" ? value : undefined);
 
 // A row of a list: its text on one line, so a model's line break cannot break the layout.

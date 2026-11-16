@@ -162,7 +162,7 @@ test('tests-row-keeps-the-code-runs-tests-through-the-publish', async ($, on) =>
   await start($)
   await rig.clock.advance(POLL_MS * 2)
   const atCodeEnd = rowOf(await paneLines($), 'TESTS')
-  expect(atCodeEnd, 'the finished code run folds its passing tests').toBe('TESTS    ✓ 5 done')
+  expect(atCodeEnd, 'the build is over, so every test it ran is the total: a settled count').toBe('TESTS    ✓ 5 of 5 passing')
 
   serve(rig, { [LEDGER]: publishRun, [UNIT]: unitFile })
   await rig.clock.advance(POLL_MS * 2)

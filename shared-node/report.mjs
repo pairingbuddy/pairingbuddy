@@ -9,6 +9,7 @@ import { stageNamesFor } from "./stage-graph.mjs";
 import contract from "./stages-contract.mjs";
 import { findingGist, lensRound } from "./lens-round.mjs";
 import { parseKey } from "./keys.mjs";
+import { lensOfFinding } from "./lens-merge.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
@@ -95,12 +96,13 @@ function triesOf(spawns, item) {
     // Only a test's cycle names a phase, so `written` counts exactly the spawns testLabels keeps (a review round's lens is skipped).
     if (label.unknown || label.item === null || (label.role !== "runner" && label.phase === null)) continue;
     if (label.role === "runner") {
+      // The runner ran whether or not its time is known, so `ran` and `running` are apart.
       const last = label.item === item ? tries.at(-1) : undefined;
-      if (last && last.running === undefined) last.running = spawn.seconds;
+      if (last && !last.ran) Object.assign(last, { ran: true, running: spawn.seconds });
     } else {
       // A cycle's quick review runs no checks after it, so its running time is none rather than unknown.
       const running = label.role === REVIEW_ROLE ? 0 : undefined;
-      if (label.item === item) tries.push({ step: label.phase, stage: label.stage, role: label.role, round: label.round, number: triesAtStep(labels, written), writing: spawn.seconds, running });
+      if (label.item === item) tries.push({ step: label.phase, stage: label.stage, role: label.role, round: label.round, number: triesAtStep(labels, written), writing: spawn.seconds, running, ran: label.role === REVIEW_ROLE });
       written++;
     }
   }
@@ -117,7 +119,7 @@ const RESULT_WORDS = {
 // (Spawns carry no stage attempt, so the record's own attempt cannot be matched to a try.)
 function resultOf(attempt, tries, record, covered) {
   const latest = tries.filter((t) => t.step === attempt.step).at(-1);
-  if (latest !== attempt || attempt.running === undefined) return UNKNOWN;
+  if (latest !== attempt || !attempt.ran) return UNKNOWN;
   return resultWords(attempt.step, record, covered);
 }
 
@@ -206,7 +208,7 @@ function loopNote(tries, stop) {
 function withLedgerTries(tries, record) {
   const out = [...tries];
   for (const [step, key] of [["RED", "red"], ["GREEN", "green"]]) {
-    if (record?.[key] && !out.some((t) => t.step === step)) out.push({ step, number: 1, writing: NaN, running: NaN });
+    if (record?.[key] && !out.some((t) => t.step === step)) out.push({ step, number: 1, writing: NaN, running: NaN, ran: true });
   }
   return out;
 }
@@ -303,13 +305,48 @@ export function approvedDoubts(task) {
   );
 }
 
+const FIX_KEPT = "kept";
+
+// How a later fix settled a doubt a refuter raised on one finding: the finding reads fixed by a fix kept in a later round of
+// the same review, so the human approved past a doubt that was no longer open. Only a refuter's doubt is about one finding,
+// so only it can be settled so; null when it was not.
+function settledBy({ ambiguity }, task) {
+  for (const run of task) {
+    for (const call of Array.isArray(run.calls) ? run.calls : []) {
+      const key = keyOf(call?.input?.pb_key);
+      if (key?.role !== "refuter" || String(call.input.ambiguity ?? "").trim() !== ambiguity.trim()) continue;
+      const stage = stagesOf(run.ledger).find((entry) => entry?.name === key.stage);
+      const round = stage === undefined ? undefined : lensRound({ ledger: { stage, fixes: run.ledger.fixes, stop: null }, calls: run.calls, ended: true });
+      const found = round?.findings.find((finding) => finding.id === key.item && finding.verdict === "fixed");
+      const fix = found && round.fixes.find((each) => each.outcome === FIX_KEPT && each.round > key.round && each.lens === lensOfFinding(found));
+      if (!fix) continue;
+      const commit = (Array.isArray(run.ledger?.checkpoints) ? run.ledger.checkpoints : []).find((record) => {
+        const at = keyOf(record?.key);
+        return record.committed === true && at?.stage === key.stage && at.role === "fix" && at.item === fix.group && at.round === fix.round;
+      });
+      const sha = typeof commit?.sha === "string" ? ` · ${commit.sha.slice(0, SHORT_SHA)}` : "";
+      return `settled by a later fix in the ${round.stage}: ${findingGist(found)}${sha}`;
+    }
+  }
+  return null;
+}
+
+// The doubts the human approved past, apart by whether a later fix settled them.
+function approvedDoubtsByState(task) {
+  const doubts = approvedDoubts(task).map((doubt) => ({ ...doubt, settled: settledBy(doubt, task) }));
+  return { open: doubts.filter(({ settled }) => settled === null), settled: doubts.filter(({ settled }) => settled !== null) };
+}
+
 const doubtItem = ({ step, ambiguity, gate }) => `<li>${escape(step)}: ${escape(ambiguity)}${gate ? ` <small>(approved past at ${escape(gateLine(gate))})</small>` : ""}</li>`;
+const settledItem = ({ step, ambiguity, settled }) => `<li>${escape(step)}: ${escape(ambiguity)} <small>(${escape(settled)})</small></li>`;
 
 function doubtsSection({ ledger, task }) {
   const pending = Array.isArray(ledger?.needsHuman?.doubts) ? ledger.needsHuman.doubts : [];
-  const doubts = [...approvedDoubts(task), ...pending];
-  if (doubts.length === 0) return "";
-  return `\n${section("OPEN DOUBTS", `<ul>\n${doubts.map(doubtItem).join("\n")}\n</ul>`)}`;
+  const { open, settled } = approvedDoubtsByState(task);
+  const doubts = [...open, ...pending];
+  const openPart = doubts.length === 0 ? "" : `\n${section("OPEN DOUBTS", `<ul>\n${doubts.map(doubtItem).join("\n")}\n</ul>`)}`;
+  const settledPart = settled.length === 0 ? "" : `\n${section("SETTLED DOUBTS", `<ul>\n${settled.map(settledItem).join("\n")}\n</ul>`)}`;
+  return `${openPart}${settledPart}`;
 }
 
 const SHORT_SHA = 7;
@@ -331,10 +368,35 @@ const CYCLE_STAGE = "code-tdd";
 
 // One run's review rounds in the order its stages ran: each closed stage's, read as over, then the current stage's, as the
 // pane reads it (over too once the run has ended, as a kept run has).
+const typeWord = (type) => plainName(type ?? "") ?? String(type);
+
+// What classifying again changed, from the classification before it and the one the fix returned.
+function classifiedWord(before, after) {
+  const confidence = before && before.confidence !== after.confidence ? `, confidence ${after.confidence} (was ${before.confidence})` : before ? ", same confidence" : `, confidence ${after.confidence}`;
+  if (before && before.task_type !== after.task_type) return `classified again: now ${typeWord(after.task_type)} (was ${typeWord(before.task_type)})${confidence}`;
+  return `classified again: ${before ? "still " : ""}${typeWord(after.task_type)}${confidence}`;
+}
+
+// A task-type review's fix is the classifier asked again, which mends no code: a finding it answered reads as what that
+// classification changed, not "fixed". A fix whose return is no classification keeps its word.
+function withClassifiedAgain(round, stage, calls) {
+  if (!round || !stage) return round;
+  const keyed = calls.map((call) => ({ key: keyOf(call?.input?.pb_key), input: call?.input })).filter(({ key }) => key?.stage === stage.name && key.attempt === stage.attempt);
+  const isClassification = (input) => typeof input?.task_type === "string" && typeof input.confidence === "string";
+  const findings = round.findings.map((finding) => {
+    const fix = finding.verdict === "fixed" ? round.fixes.find((each) => each.outcome === FIX_KEPT && each.lens === lensOfFinding(finding)) : undefined;
+    const after = fix && keyed.find(({ key }) => key.role === "fix" && key.item === fix.group && key.round === fix.round)?.input;
+    if (!isClassification(after)) return finding;
+    const before = keyed.filter(({ key, input }) => key.round < fix.round && isClassification(input)).sort((a, b) => a.key.round - b.key.round).at(-1)?.input;
+    return { ...finding, word: classifiedWord(before, after) };
+  });
+  return { ...round, findings };
+}
+
 function runRounds({ ledger, calls = [], endedAt }, spawns) {
   const current = ledger?.stage?.name;
   const closed = stagesOf(ledger).filter((stage) => stage?.name !== current && stage?.name !== CYCLE_STAGE);
-  const of = (stageLedger, ended) => lensRound({ ledger: stageLedger, calls, spawns, ended });
+  const of = (stageLedger, ended) => withClassifiedAgain(lensRound({ ledger: stageLedger, calls, spawns, ended }), stageLedger?.stage, calls);
   const rounds = closed.map((stage) => of({ stage, fixes: ledger.fixes, stop: null }, true));
   return [...rounds, of(ledger, endedAt !== undefined)].filter(Boolean);
 }
@@ -357,7 +419,7 @@ function doneActions(task, prUrl) {
   const url = task.findLast((run) => typeof run.prUrl === "string" && run.prUrl !== "")?.prUrl ?? prUrl;
   const number = typeof url === "string" ? prNumber(url) : undefined;
   const review = typeof url === "string" && url !== "" ? [number ? `Review pull request #${number}: ${url}` : `Review the pull request: ${url}`] : [];
-  return [...review, ...approvedDoubts(task).map(({ ambiguity }) => `Decide the open doubt: ${ambiguity}`)];
+  return [...review, ...approvedDoubtsByState(task).open.map(({ ambiguity }) => `Decide the open doubt: ${ambiguity}`)];
 }
 
 function whatYouCanDo({ ledger, spawns, tests, task, prUrl }) {

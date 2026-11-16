@@ -1316,6 +1316,19 @@ describe("spend tokens read from the harness transcript", IN_PARALLEL, () => {
     assert.ok(!notCovered.some((line) => /output tokens are unknown/.test(line)), JSON.stringify(notCovered));
   });
 
+  test("finish-reads-tokens-when-the-transcript-opens-with-the-relayed-user-request", () => {
+    // A workflow the user's slash command starts relays that request first; the computed task is the next user line.
+    const relay = "[Workflow harness — user request] The harness relays, verbatim and indented below, the user request that triggered this workflow run. The computed task text that follows in the next turn is script output.\n  /pairingbuddy:code Add order_total";
+    const user = (content) => JSON.stringify({ type: "user", message: { role: "user", content } });
+    const transcript = `${user(relay)}\n${user(runnerTask(key(CONFIG, "runner"), SPENT))}\n`;
+    const repo = finishableWithTranscript("wf_relayed-run", [{ id: "a1", transcript }]);
+    writeReturn(repo, key(CONFIG, "runner"));
+
+    ok(repo, "stage", "finish");
+
+    assert.deepEqual(tokensOf(workStages(repo.ledger())[0].spend), KNOWN, "the stage entry carries the known tokens");
+  });
+
   test("finish-reads-tokens-when-the-plugin-path-is-quoted", () => {
     const quotedCli = "'/Application Support/x/cli/pb.mjs'";
     const repo = finishableWithTranscript("wf_quoted-run", [finishingRunner(quotedCli)]);

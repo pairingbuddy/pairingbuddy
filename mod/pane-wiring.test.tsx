@@ -179,8 +179,8 @@ test('replay-matches-recorded-run', async ($, on) => {
     shownOf(steps.find(step => step.kind === 'ledger' && step.t === t), `a ledger step at t=${t}`)
 
   // Calm run, g-open-1: after the last RED/GREEN cycle the ledger has one test with a passing GREEN and three covered (RED passed straight away).
-  const calmCycleDone = shownOf(calmSteps.find(step => step.shown.some(text => text.startsWith('✓ 1 done'))), 'a step showing \'✓ 1 done\'')
-  expect(calmCycleDone, 'the progress row folds the one finished test and the three covered tests into separate counts').toContain('✓ 1 done   ◌ 3 covered')
+  const calmCycleDone = shownOf(calmSteps.find(step => step.shown.some(text => text.startsWith('✓ 4 of 4 passing'))), 'a step showing \'✓ 4 of 4 passing\'')
+  expect(calmCycleDone, 'once the build is over, the count says all four pass and three were already covered').toContain('✓ 4 of 4 passing · 3 covered')
   expect(calmSteps.flatMap(step => step.shown).some(text => text.includes('REFACTOR')), 'a bug_fix run has no REFACTOR step').toBe(false)
   // In the safety-net review no test is current: TEST reads a dash and no phase is lit.
   const review = at(calmSteps, 'spawn', 'pb1 code-safety-net - update-documentation - r1')

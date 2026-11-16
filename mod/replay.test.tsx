@@ -23,12 +23,12 @@ const testsFile = (ids: string[]) => ({
   '.pairingbuddy/tests.json': JSON.stringify({ tests: ids.map(test_id => ({ test_id })) }),
 })
 
-const IDLE_TEXT = 'Pairing Buddy · idle · /pb for details'
+const IDLE_TEXT = 'Pairing Buddy · idle'
 // Without an active stage the band is one text: idle, or "last run finished" once a run has ended ("✓ DONE · ready for your next
 // task" when it left nothing to do).
 // Between steps the run is at work, so its quiet line leads with the working mark.
-const quietBand = (shown: string[]) => (shown.length === 1 && /^(Pairing Buddy · (idle|last run finished)|● (run open|all steps done|between steps · next: [^·]+)|✓ DONE · ready for your next task) ?(· \/pb( for details)?)?$/.test(shown[0]) ? shown : [IDLE_TEXT])
-const DRAWN_AROUND_SEGMENTS = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details' || text.startsWith(' │ /pb')
+const quietBand = (shown: string[]) => (shown.length === 1 && /^(Pairing Buddy · (idle|last run finished)|● (run open|all steps done|between steps · next: [^·]+)|✓ DONE · ready for your next task)$/.test(shown[0]) ? shown : [IDLE_TEXT])
+const DRAWN_AROUND_SEGMENTS = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details'
 // The band's segment texts: what is drawn without the separators, the gap, the details button text and the hint.
 // The goal row above them is left out; colour-means-one-thing-in-the-band reads every node.
 const texts = (step: Step) => joinSegments(step.texts.filter(node => !isGoalRow(node))).map(node => node.text).filter(text => !DRAWN_AROUND_SEGMENTS(text))
@@ -67,7 +67,7 @@ async function drawn($: any, rig: Rig, recording: any, ids: string[], mount: Rec
 // The band's segments for a replayed step, as the view builds and fits them: glance's, the current test named, the status first.
 function fittedBand(step: Step, tests: string[], since: string | undefined, bodyColumns: number) {
   const { band } = glance({ ledger: step.ledger, spawns: step.fed, tests, now: step.now, since, testsComplete: true })
-  return fitBand(statusFirst(namedWhere(band, { ledger: step.ledger as any, spawns: step.fed as any, tests }), step.ledger as any), bandColumns(bodyColumns))
+  return fitBand(statusFirst(namedWhere(band, { ledger: step.ledger as any, spawns: step.fed as any, tests, testsComplete: true }), step.ledger as any), bandColumns(bodyColumns))
 }
 
 // mod/fixtures/replay/g-open-1/ is a trimmed committed copy of one bug_fix run recorded in
@@ -140,7 +140,7 @@ test('with the pane open, every row in order, the step list in plain names with 
   expect(review[1], 'nothing is looping').toBe('LOOPING  no')
   expect(review.filter(line => /^(LEFT|OFF TRACK|NOW|DONE)\b/.test(line)), 'LEFT, OFF TRACK, NOW and DONE are gone').toEqual([])
   expect(review.slice(2, 6), 'steps done, then current, in plain names').toEqual(['STEPS    ○ work out the task type', '         ✓ write test scenarios', '         ✓ build test by test', '         ▸ safety-net review'])
-  expect(review, 'the tests stay listed, and no test is current in the review').toEqual(expect.arrayContaining(['TESTS    ✓ 1 done   ◌ 3 covered']))
+  expect(review, 'the tests stay listed, and no test is current in the review').toEqual(expect.arrayContaining(['TESTS    ✓ 4 of 4 passing · 3 covered']))
 
   const building = at(steps, 49.891).lines
   expect(building, 'steps at tdd: done, current, to come').toEqual(expect.arrayContaining(['         ✓ write test scenarios', '         ▸ build test by test', '         ○ safety-net review']))
@@ -156,8 +156,8 @@ test('replaying probe-2 shows LOOPING naming the step and its 3rd try, and the 3
   const third = at(steps, 125.887)
   const second = at(steps, 121.827)
   const pane = third.lines
-  // At 80 columns the test's name takes the room "looping: yes" had; the pane's LOOPING row says it.
-  expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['● RED · zero percent keeps full price']))
+  // At 80 columns the test's name and place take the room "looping: yes" had; the pane's LOOPING row says it.
+  expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['● RED · zero percent keeps full price · 2/2']))
   expect(pane, `pane LOOPING row in ${JSON.stringify(pane)}`).toContain('LOOPING  writing a failing test · try 3 of 3')
   expect(pane, `pane STATUS row in ${JSON.stringify(pane)}`).toEqual(expect.arrayContaining(['STATUS   ● working · writing a failing test for zero percent keeps full price', '         test 2 of 2, 3rd try']))
   expect(second.band, 'band at the 2nd try is not looping yet').not.toContain('looping: yes')

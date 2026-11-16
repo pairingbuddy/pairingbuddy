@@ -108,6 +108,17 @@ describe("report-content", () => {
     assert.equal(red[RESULT_COLUMN], "failed, as it should (exit 1)");
   });
 
+  test(`${WORDING}: a try whose runner ran with no known time still reads its result`, async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "stopped" });
+    const untimed = input.spawns.map(({ seconds, ...spawn }) => spawn);
+    const perTest = { "ten-percent-off-hundred": { selector: { ...SELECTOR, test_function: "ten-percent-off-hundred" }, red: record({ passed: true, done: true, exitCodes: [1] }) } };
+
+    const html = renderReport({ ...input, spawns: untimed, ledger: { ...input.ledger, tests: { ...input.ledger.tests, perTest } } });
+
+    const [red] = rowsOf(cardsOf(html)[0]);
+    assert.deepEqual(red, ["RED", "1", "failed, as it should (exit 1)"], "the times are unknown and dropped; the result is the record's");
+  });
+
   test(`${WORDING}: a GREEN that passed reads 'passed'`, async () => {
     const html = await withPerTest({
       "ten-percent-off-hundred": {
