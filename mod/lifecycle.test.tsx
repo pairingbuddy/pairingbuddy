@@ -50,7 +50,7 @@ test('a session.end with reason clear empties the spawn history, so the next dra
   await clock.advance(POLL_MS)
 
   expect(run.ledgerReads, 'the poller read the ledger again after the clear').toBeGreaterThan(readsAfterClear)
-  expect(await bandRowTexts(band), 'the poller still redraws the band: the ledger is now between steps').toEqual([expect.stringMatching(/^● between steps · next: .+ · \/pb( for details)?$/)])
+  expect(await bandRowTexts(band), 'the poller still redraws the band: the ledger is now between steps').toEqual([expect.stringMatching(/^● between steps · next: .+$/)])
   run.files[LEDGER_PATH] = JSON.stringify(SNAPSHOT_RUNNING)
   await clock.advance(POLL_MS)
   expect(agentsIn(await bandRowTexts(band)), 'only the agent spawned after the clear is counted').toBe('1 agent')

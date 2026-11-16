@@ -147,8 +147,9 @@ test("the idle band draws without error and names no focus key it cannot back", 
 
   const ended = await bandTexts($, WIDE)
 
-  expect(idle.join(''), `with no ledger the band reads idle with the hint: ${JSON.stringify(idle)}`).toBe('Pairing Buddy · idle · /pb for details')
-  expect(ended.join(''), `after a run ended the band reads last run finished with the hint, never empty: ${JSON.stringify(ended)}`).toContain('Pairing Buddy · last run finished · /pb for details')
+  // The quiet line draws the details button too, so it needs no "/pb" text either.
+  expect(idle.join(''), `with no ledger the band reads idle: ${JSON.stringify(idle)}`).toBe('Pairing Buddy · idle')
+  expect(ended.join(''), `after a run ended the band reads last run finished, never empty: ${JSON.stringify(ended)}`).toBe('Pairing Buddy · last run finished')
   expect((idle.concat(ended)).join(' '), 'neither band names ctrl+x or a key it cannot back').not.toMatch(/ctrl\+x|\btab\b/i)
 })
 
@@ -218,7 +219,7 @@ test('no-ledger-no-snapshot-stays-idle: with no ledger and no snapshot the band 
 
   const ended = await bandTexts($, WIDE)
 
-  expect(idle.join(''), `no ledger, no snapshot: idle with the hint: ${JSON.stringify(idle)}`).toBe('Pairing Buddy · idle · /pb for details')
+  expect(idle.join(''), `no ledger, no snapshot: idle: ${JSON.stringify(idle)}`).toBe('Pairing Buddy · idle')
   expect(dim, 'the idle text is dim').toContain('"dimColor":true')
   expect(ended.join(''), `no ledger but a snapshot: last run finished: ${JSON.stringify(ended)}`).toContain('Pairing Buddy · last run finished')
 })

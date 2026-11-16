@@ -1,10 +1,10 @@
 // Scenario alert-unplaced-pane-stays-honest-and-reachable (Finding 25): an unasked pane open that is not placed
-// (isPlaced:false) is recorded as not shown, the band keeps the /pb hint, and the alert still beeps and sets the status.
+// (isPlaced:false) is recorded as not shown, the band keeps its details button, and the alert still beeps and sets the status.
 // Placeholders: each fails until implemented.
 import { expect, mock, test } from 'claude-code/testing'
 import { start } from './testing/band'
 import { alertEngine, needingHuman } from './testing/alert'
-import { bandSays, bandTexts } from './testing/band'
+import { bandTexts } from './testing/band'
 import { openedKey } from './alert'
 import { POLL_MS } from './poll'
 
@@ -49,8 +49,7 @@ test('band-keeps-a-way-into-the-pane-while-it-waits-undrawn', async ($, on) => {
     expect(needsYou.length, `at ${bodyColumns} columns the needs-you segment is shown: ${JSON.stringify(shown)}`).toBe(1)
     expect(needsYou[0].includes('…'), `at ${bodyColumns} columns the needs-you segment is whole, not cut: ${JSON.stringify(needsYou)}`).toBe(false)
     expect(needsYou[0].endsWith('your sign-off at the end'), `at ${bodyColumns} columns it still says what is needed: ${JSON.stringify(needsYou)}`).toBe(true)
-    const hasWayIn = shown.some(text => text.includes('▸ details')) || bandSays(shown, '/pb')
-    expect(hasWayIn, `at ${bodyColumns} columns, with the pane undrawn, the band keeps the details button or the /pb hint: ${JSON.stringify(shown)}`).toBe(true)
+    expect(shown.some(text => text.includes('▸ details')), `at ${bodyColumns} columns, with the pane undrawn, the band keeps the details button: ${JSON.stringify(shown)}`).toBe(true)
     expect(shown.join('').length, `at ${bodyColumns} columns the band stays within its width: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(bodyColumns)
   }
 })
