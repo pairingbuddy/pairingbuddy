@@ -7,7 +7,7 @@ import { ACCENT_COLOUR } from './pane'
 import { POLL_MS } from './poll'
 import { REPORT_LABEL, reportButton } from './testing/report'
 
-const IDLE = 'Pairing Buddy · idle'
+const IDLE = 'Pairing Buddy · idle · /pb for details'
 
 test('pressing the band\'s details button opens the pane, closeable by esc', async ($, on) => {
   const { calls } = engine(on)
@@ -221,7 +221,7 @@ test('between-steps-the-pane-and-the-band-lead-with-the-working-mark', async ($,
 
   expect(now, `STATUS reads the plain state: ${now}`).toBe('STATUS   ● working · between steps · next: build test by test')
   expect([mark.text, mark.props.color], 'the band leads with the working mark in the accent').toEqual(['● ', ACCENT_COLOUR])
-  expect([rest.text, rest.props.dimColor], 'then the quiet line, dim, with no "Pairing Buddy" label: the goal row above names the session').toEqual(['between steps · next: build test by test', true])
+  expect([rest.text, rest.props.dimColor], 'then the quiet line, dim, with no "Pairing Buddy" label: the goal row above names the session').toEqual(['between steps · next: build test by test · /pb for details', true])
 })
 
 test('pane-now-run-open-has-no-band-label', async ($, on) => {

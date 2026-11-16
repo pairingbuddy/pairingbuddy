@@ -1,4 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
+import { fitBand, glance } from '../shared-node/glance.mjs'
+import { bandColumns } from './band'
+import { statusFirst } from './view'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { POLL_MS } from './poll'
 import { needingHuman, stopped } from './testing/alert'
@@ -111,19 +114,34 @@ test("the details button is set off from the last segment by a space", async ($,
   expect(beforeButton, `the text drawn before the details button ends with a space, so the last segment and "▸ details" do not touch: ${JSON.stringify(shown)}`).toMatch(/\s$/)
 })
 
-// Ninth watched run: "[ ▸ details ] │ /pb for details" said the same thing twice. The button is the way in wherever it is drawn.
-test("the running band draws the details button and no /pb hint beside it", async ($, on) => {
+test("the running band includes a plain-words hint naming /pb for details alongside the details button", async ($, on) => {
   bandEngine(on)
   await start($)
 
   const shown = await bandTexts($, WIDE)
 
-  expect(shown.some(text => text.includes('▸ details')), `the details button is drawn: ${JSON.stringify(shown)}`).toBe(true)
-  expect(shown.some(text => text.includes('/pb')), `no "/pb" text repeats what the button does: ${JSON.stringify(shown)}`).toBe(false)
+  const hint = shown.findIndex(text => text.includes('/pb for details'))
+  expect(hint, `the running band ends with a plain "/pb for details" hint: ${JSON.stringify(shown)}`).toBeGreaterThan(shown.indexOf('▸ details'))
+  expect(shown.some(text => text.includes('▸ details')), `the details button is still drawn: ${JSON.stringify(shown)}`).toBe(true)
   expect(shown.join(' '), 'the band never names ctrl+x or a key it cannot back').not.toMatch(/ctrl\+x|tab\b/i)
 })
 
-test('at 75 columns with a standing stop needs-you is kept whole and every segment fits', async ($, on) => {
+test('the pb hint is lowest priority: "/pb" shows when all content fits but the long hint does not', async ($, on) => {
+  const content = statusFirst(glance({ ledger: SNAPSHOT_RUNNING, spawns: [], tests: [], now: 0 }).band)
+  const fits = (columns: number, hint?: string) => JSON.stringify(fitBand(content, bandColumns(columns, hint))) === JSON.stringify(content)
+  const COLUMNS = Array.from({ length: 300 }, (_, i) => i).find(columns => fits(columns, '/pb') && !fits(columns, '/pb for details'))!
+  bandEngine(on, SNAPSHOT_RUNNING)
+  await start($)
+
+  const shown = await bandTexts($, { bodyColumns: COLUMNS })
+
+  expect(COLUMNS, 'a width exists where "/pb" fits and "/pb for details" does not').toBeDefined()
+  expect(shown.join(''), `at ${COLUMNS} columns the short hint shows: ${JSON.stringify(shown)}`).toContain('/pb')
+  expect(shown.join(''), `at ${COLUMNS} columns the long hint is gone: ${JSON.stringify(shown)}`).not.toContain('for details')
+  expect(shown.join(' '), `at ${COLUMNS} columns no content is cut: ${JSON.stringify(shown)}`).toContain(content[content.length - 1].text)
+})
+
+test('at 75 columns with a standing stop needs-you is kept whole and the hint shows only if the row still fits', async ($, on) => {
   const COLUMNS = 75
   bandEngine(on, stopped({ code: 'step-failed' }))
   await start($)
@@ -131,7 +149,8 @@ test('at 75 columns with a standing stop needs-you is kept whole and every segme
   const shown = await bandTexts($, { bodyColumns: COLUMNS })
 
   const joined = shown.join('')
-  expect(shown.slice(0, 5), `every segment fits: ${JSON.stringify(shown)}`).toEqual(['✕ STOPPED · opened details', ' │ ', 'write test scenarios', ' │ ', '0 agents'])
+  expect(joined.includes('/pb') ? joined.length <= COLUMNS : true, `the hint is shown only when the row still fits: ${JSON.stringify(shown)}`).toBe(true)
+  expect(shown.slice(0, 5), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['✕ STOPPED · opened details', ' │ ', 'write test scenarios', ' │ ', '0 agents'])
   expect(joined.length, `the band is within ${COLUMNS} columns: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(COLUMNS)
 })
 
@@ -147,9 +166,8 @@ test("the idle band draws without error and names no focus key it cannot back", 
 
   const ended = await bandTexts($, WIDE)
 
-  // The quiet line draws the details button too, so it needs no "/pb" text either.
-  expect(idle.join(''), `with no ledger the band reads idle: ${JSON.stringify(idle)}`).toBe('Pairing Buddy · idle')
-  expect(ended.join(''), `after a run ended the band reads last run finished, never empty: ${JSON.stringify(ended)}`).toBe('Pairing Buddy · last run finished')
+  expect(idle.join(''), `with no ledger the band reads idle with the hint: ${JSON.stringify(idle)}`).toBe('Pairing Buddy · idle · /pb for details')
+  expect(ended.join(''), `after a run ended the band reads last run finished with the hint, never empty: ${JSON.stringify(ended)}`).toContain('Pairing Buddy · last run finished · /pb for details')
   expect((idle.concat(ended)).join(' '), 'neither band names ctrl+x or a key it cannot back').not.toMatch(/ctrl\+x|\btab\b/i)
 })
 
@@ -219,7 +237,7 @@ test('no-ledger-no-snapshot-stays-idle: with no ledger and no snapshot the band 
 
   const ended = await bandTexts($, WIDE)
 
-  expect(idle.join(''), `no ledger, no snapshot: idle: ${JSON.stringify(idle)}`).toBe('Pairing Buddy · idle')
+  expect(idle.join(''), `no ledger, no snapshot: idle with the hint: ${JSON.stringify(idle)}`).toBe('Pairing Buddy · idle · /pb for details')
   expect(dim, 'the idle text is dim').toContain('"dimColor":true')
   expect(ended.join(''), `no ledger but a snapshot: last run finished: ${JSON.stringify(ended)}`).toContain('Pairing Buddy · last run finished')
 })
