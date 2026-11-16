@@ -58,3 +58,16 @@ test('ended-task-status-reads-the-goal-verdict-its-runs-kept', async ($, on) => 
 
   expect(status, 'the goal lens (docs and plan) returned with nothing open').toBe('STATUS   ✓ DONE · goal met · PR #7 opened · ready for your next task')
 })
+
+// The poll runs every second; a run pb kept never changes once its kept.json is written, so it is read once.
+test('ended-task-kept-runs-are-read-once', async ($, on) => {
+  const rig = setupReplay(on)
+  await endTheTask($, rig)
+  const ledgerPath = [...rig.served.keys()].find(path => path.endsWith(`${CODE_RUN.runId}/ledger.json`))!
+  const before = rig.reads.get(ledgerPath)
+
+  await rig.clock.advance(POLL_MS * 5)
+
+  expect(before, 'the kept code run was read').toBeGreaterThan(0)
+  expect(rig.reads.get(ledgerPath), 'and not again on later polls').toBe(before)
+})
