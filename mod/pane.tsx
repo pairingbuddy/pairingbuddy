@@ -16,6 +16,9 @@ export const PHASE_COLOURS: Record<string, string> = { RED: '#e5534b', GREEN: '#
 export const ACCENT_COLOUR = '#39c5cf'
 const LIT: Props = { color: ACCENT_COLOUR, bold: true }
 
+// Beside the report button: the command that needs no pane focus (the classic renderer has no mouse).
+const REPORT_COMMAND = 'or /pb-report, no focus needed'
+
 export type Suggestion = { state: 'pending'; nextAgent?: string } | { state: 'delivered'; to: string }
 
 type Props = Record<string, unknown>
@@ -183,7 +186,12 @@ export function Pane({ Box, Text, Button, Input, view, columns = 0, unknownLabel
       {suggestion?.state === 'delivered' && <Text>{`delivered to ${plainName(suggestion.to) ?? suggestion.to}`}</Text>}
       {ledger && (
         <>
-          <Button key="report" label="r open report" hotkey="r" onPress={onReport} />
+          {/* r works while the pane has focus; /pb-report writes the same report from the prompt, also mid-turn. */}
+          <Box key="report-row">
+            <Button key="report" label="r open report" hotkey="r" onPress={onReport} />
+            <Text key="report-gap">  </Text>
+            <Text key="report-command" dimColor wrap="truncate-end">{REPORT_COMMAND}</Text>
+          </Box>
           {!ended && <Input key="suggest" label="suggest" placeholder="a note for the next agent" onSubmit={onSuggest} />}
         </>
       )}
