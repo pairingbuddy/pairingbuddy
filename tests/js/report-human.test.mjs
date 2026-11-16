@@ -86,5 +86,13 @@ describe("report-leads-with-what-you-need", () => {
 
     assert.ok(section.includes("Look over the result and give your sign-off."), `got ${section}`);
   });
+
+  test("WHAT WAS DONE says in plain words which files changed, which tests were added and pass, and the pull request", () => {
+    const section = sectionOf(report(), "WHAT WAS DONE");
+
+    assert.ok(section.includes("Changed 2 files: cart.py, tests/test_cart.py"), `got ${section}`);
+    assert.ok(section.includes("Added 1 test, passing: order total sums two lines"), "the test added");
+    assert.ok(section.includes('Opened pull request #7: <a href="https://github.com/example/repo/pull/7">https://github.com/example/repo/pull/7</a>'), "the pull request");
+  });
 });
 

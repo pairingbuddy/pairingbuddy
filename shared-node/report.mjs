@@ -521,6 +521,37 @@ function needsYouSection(context) {
   return section("NEEDS YOU", body);
 }
 
+// ---------- WHAT WAS DONE: the files, the tests and the pull request, in plain words ----------
+
+// The task's pull request: the last its runs opened, else the one the caller knows of.
+const taskPrUrl = (task, prUrl) => {
+  const url = task.findLast((run) => typeof run.prUrl === "string" && run.prUrl !== "")?.prUrl ?? prUrl;
+  return typeof url === "string" && url !== "" ? url : undefined;
+};
+
+const prLink = (url) => {
+  const number = prNumber(url);
+  return `${number ? `pull request #${number}` : "a pull request"}: <a href="${escape(url)}">${escape(url)}</a>`;
+};
+
+const passes = (record) => record?.green?.passed === true || record?.covered?.done === true;
+
+function doneSection({ task, changed, prUrl }) {
+  const perTest = taskLedgerOf(task).tests.perTest;
+  const ids = Object.keys(perTest);
+  const passing = ids.filter((id) => passes(perTest[id]));
+  const failing = ids.filter((id) => !passes(perTest[id]));
+  const names = (list) => list.map((id) => escape(shortName(id))).join(", ");
+  const url = taskPrUrl(task, prUrl);
+  const lines = [
+    ...(Array.isArray(changed) && changed.length > 0 ? [`Changed ${plural(changed.length, "file")}: ${changed.map(escape).join(", ")}`] : []),
+    ...(passing.length > 0 ? [`Added ${plural(passing.length, "test")}, passing: ${names(passing)}`] : []),
+    ...(failing.length > 0 ? [`${plural(failing.length, "test")} not passing yet: ${names(failing)}`] : []),
+    ...(url ? [`Opened ${prLink(url)}`] : []),
+  ];
+  return section("WHAT WAS DONE", lines.length > 0 ? lines.map((line) => `<p>${line}</p>`).join("\n") : "<p>Nothing yet.</p>");
+}
+
 const prNumber = (url) => /\/pull\/(\d+)\/?$/.exec(url)?.[1];
 
 // A finished task's own next actions: review the pull request it opened, then decide each doubt it was approved past.
@@ -606,6 +637,7 @@ ${STYLE}
 <p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(Number.isFinite(ranFor) ? ranFor : timing?.seconds)}</p>
 </header>
 ${needsYouSection({ ledger, task, spawns, tests })}
+${doneSection({ task, changed, prUrl })}
 ${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task })}${doubtsSection({ ledger, task })}
 ${stepsSection({ task })}
 ${scenariosSection({ scenarios: task.find((run) => Array.isArray(run.scenarios))?.scenarios })}
