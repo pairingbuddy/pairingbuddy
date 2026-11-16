@@ -1,7 +1,7 @@
 // Ninth watched run: how many tests the run is working on, once the placeholders return lists them (no tests.json in a new-path run).
 import { expect, test } from 'claude-code/testing'
 import { paneLines, setupReplay } from './testing/replay'
-import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
+import { LEDGER, ROOT, SNAPSHOT_RUNNING, bandTexts, start } from './testing/band'
 import { POLL_MS } from './poll'
 
 const ARTIFACTS = `${ROOT}/.pairingbuddy/run/task/artifacts`
@@ -47,4 +47,20 @@ test('tests-are-named-by-the-scenarios-return', async ($, on) => {
   const lines = await paneLines($)
 
   expect(lines.some(line => line.includes('▸ Two lines add up to 30.0')), `the current test reads by its test case's description: ${JSON.stringify(lines)}`).toBe(true)
+})
+
+test('the-band-gives-the-position-after-the-test-name-while-it-fits', async ($, on) => {
+  await serve($, on, building, { [`${ARTIFACTS}/${PLACEHOLDERS_KEY}.json`]: placeholders }, `pb1 code-tdd GREEN implement-code ${FIRST} r1`)
+
+  const row = (await bandTexts($, { bodyColumns: 120 })).join('')
+
+  expect(row, 'the band reads the position against the total after the name').toContain('● GREEN · order total sums two lines · 1/2 │ ')
+})
+
+test('the-place-gives-way-before-the-test-name-is-cut', async ($, on) => {
+  await serve($, on, building, { [`${ARTIFACTS}/${PLACEHOLDERS_KEY}.json`]: placeholders }, `pb1 code-tdd GREEN implement-code ${FIRST} r1`)
+
+  const row = (await bandTexts($, { bodyColumns: 54 })).join('')
+
+  expect(row, 'short of room, the place goes and the name stays whole').toMatch(/^● GREEN · order total sums two lines ▸ details/)
 })

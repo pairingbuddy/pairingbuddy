@@ -96,15 +96,22 @@ export function statusFirst(band: Segment[], ledger?: Ledger): Segment[] {
     .map(segment => (segment.id === 'where' ? { ...segment, text: led(segment.text), ...(segment.shorter && { shorter: segment.shorter.map(led) }), state: 'working' as const } : segment))
 }
 
-// The band names the test the run is on after its phase, as TESTS does: `GREEN · <name>`. Short of room it gives way to the name
-// cut at a word, then to the test's number (glance's `GREEN · test 1`).
-export function namedWhere(band: Segment[], { ledger, spawns, tests, names }: Pick<Inputs, 'ledger' | 'spawns' | 'tests' | 'names'>): Segment[] {
+// The band names the test the run is on after its phase, as TESTS does, then its place once the total is known:
+// `GREEN · <name> · 3/12`. Short of room the place gives way first, then the name is cut at a word, then the test's number
+// stands in (glance's `GREEN · test 3 of 12`).
+export function namedWhere(band: Segment[], { ledger, spawns, tests, testsComplete, names }: Pick<Inputs, 'ledger' | 'spawns' | 'tests' | 'testsComplete' | 'names'>): Segment[] {
   const step = currentStep(spawns, stageOf(ledger))
   if (!step || !tests.includes(step.item)) return band
   const words = nameOf(names, step.item).split(' ')
   const as = (count: number) => `${step.phase} · ${words.slice(0, count).join(' ')}`
   const cuts = Array.from({ length: words.length - 1 }, (_, i) => as(words.length - 1 - i))
-  return band.map(segment => (segment.id === 'where' ? { ...segment, text: as(words.length), shorter: [...cuts, segment.text] } : segment))
+  const whole = as(words.length)
+  const placed = testsComplete ? [`${whole} · ${tests.indexOf(step.item) + 1}/${tests.length}`] : []
+  return band.map(segment => {
+    if (segment.id !== 'where') return segment
+    const [text, ...shorter] = [...placed, whole, ...cuts, segment.text]
+    return { ...segment, text, shorter }
+  })
 }
 
 function toned(view: View): View {

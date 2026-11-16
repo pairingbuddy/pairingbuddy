@@ -67,7 +67,7 @@ async function drawn($: any, rig: Rig, recording: any, ids: string[], mount: Rec
 // The band's segments for a replayed step, as the view builds and fits them: glance's, the current test named, the status first.
 function fittedBand(step: Step, tests: string[], since: string | undefined, bodyColumns: number) {
   const { band } = glance({ ledger: step.ledger, spawns: step.fed, tests, now: step.now, since, testsComplete: true })
-  return fitBand(statusFirst(namedWhere(band, { ledger: step.ledger as any, spawns: step.fed as any, tests }), step.ledger as any), bandColumns(bodyColumns))
+  return fitBand(statusFirst(namedWhere(band, { ledger: step.ledger as any, spawns: step.fed as any, tests, testsComplete: true }), step.ledger as any), bandColumns(bodyColumns))
 }
 
 // mod/fixtures/replay/g-open-1/ is a trimmed committed copy of one bug_fix run recorded in
@@ -156,8 +156,8 @@ test('replaying probe-2 shows LOOPING naming the step and its 3rd try, and the 3
   const third = at(steps, 125.887)
   const second = at(steps, 121.827)
   const pane = third.lines
-  // At 80 columns the test's name takes the room "looping: yes" had; the pane's LOOPING row says it.
-  expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['● RED · zero percent keeps full price']))
+  // At 80 columns the test's name and place take the room "looping: yes" had; the pane's LOOPING row says it.
+  expect(third.band, 'band at the 3rd RED try').toEqual(expect.arrayContaining(['● RED · zero percent keeps full price · 2/2']))
   expect(pane, `pane LOOPING row in ${JSON.stringify(pane)}`).toContain('LOOPING  writing a failing test · try 3 of 3')
   expect(pane, `pane STATUS row in ${JSON.stringify(pane)}`).toEqual(expect.arrayContaining(['STATUS   ● working · writing a failing test for zero percent keeps full price', '         test 2 of 2, 3rd try']))
   expect(second.band, 'band at the 2nd try is not looping yet').not.toContain('looping: yes')
