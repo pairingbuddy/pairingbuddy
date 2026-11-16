@@ -3,14 +3,15 @@
 import { isPassed } from "./gate-passed.mjs";
 import { plainName } from "./plain-names.mjs";
 import { clock } from "./duration.mjs";
-import { gateLine, glance, plural, runStart, testLabels, currentStep, triesAtStep, isLooping } from "./glance.mjs";
+import { gateLine, glance, plural, runStart, stopName, testLabels, currentStep, triesAtStep, isLooping } from "./glance.mjs";
 import { readLabel } from "./labels.mjs";
 import { stageNamesFor } from "./stage-graph.mjs";
 import contract from "./stages-contract.mjs";
-import { findingGist, lensRound } from "./lens-round.mjs";
+import { FINDING_WORDS, findingGist, lensRound } from "./lens-round.mjs";
 import { parseKey } from "./keys.mjs";
 import { lensOfFinding } from "./lens-merge.mjs";
 import { taskEnded, taskSpend } from "./task-runs.mjs";
+import { shortName } from "./now-building.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
@@ -390,12 +391,18 @@ function withClassifiedAgain(round, stage, calls) {
   return { ...round, findings };
 }
 
-function runRounds({ ledger, calls = [], endedAt }, spawns) {
+function runRounds(run, spawns) {
+  return reviewRounds(run, spawns).map(({ round }) => round);
+}
+
+// Each review round of one run with the stage it reviewed, the run it is of and whether it is over (its stage closed, or the run ended).
+function reviewRounds(run, spawns) {
+  const { ledger, calls = [], endedAt } = run;
   const current = ledger?.stage?.name;
   const closed = stagesOf(ledger).filter((stage) => stage?.name !== current && stage?.name !== CYCLE_STAGE);
-  const of = (stageLedger, ended) => withClassifiedAgain(lensRound({ ledger: stageLedger, calls, spawns, ended }), stageLedger?.stage, calls);
+  const of = (stageLedger, ended) => ({ round: withClassifiedAgain(lensRound({ ledger: stageLedger, calls, spawns, ended }), stageLedger?.stage, calls), stage: stageLedger?.stage, run, over: ended });
   const rounds = closed.map((stage) => of({ stage, fixes: ledger.fixes, stop: null }, true));
-  return [...rounds, of(ledger, endedAt !== undefined)].filter(Boolean);
+  return [...rounds, of(ledger, endedAt !== undefined)].filter(({ round }) => Boolean(round));
 }
 
 const roundBlock = (round) => {
@@ -407,6 +414,111 @@ function reviewSection({ task, spawns }) {
   const rounds = task.flatMap((run) => runRounds(run, spawns ?? []));
   if (!rounds.length) return section("REVIEW", "<p>no review round yet</p>");
   return section("REVIEW", rounds.map(roundBlock).join("\n"));
+}
+
+// ---------- NEEDS YOU: only what the human must act on or decide ----------
+
+// A finding the review left with the human once its round is over: one still to fix, or one left as is.
+const LEFT_WORDS = [FINDING_WORDS.toFix, FINDING_WORDS.leftAsIs];
+
+// The findings a return's key is about: a refuter's one finding, a lens's own findings, a fix group's lens (the fix loop
+// groups the upheld findings by lens, in finding order, as g1, g2, ...).
+function findingsOfKey(key, findings) {
+  if (key.role === "refuter") return findings.filter((finding) => finding.id === key.item);
+  if (key.role === "lens") return findings.filter((finding) => lensOfFinding(finding) === key.item);
+  if (key.role !== "fix") return [];
+  const lenses = [...new Set(findings.filter((finding) => finding.verdict !== "knocked-down").map(lensOfFinding))];
+  const lens = lenses[Number(/^g(\d+)$/.exec(key.item)?.[1]) - 1];
+  return lens === undefined ? [] : findings.filter((finding) => lensOfFinding(finding) === lens);
+}
+
+// The finding a doubt is about: one left open in a round over whose reviewer, refuter or fix raised that same question.
+function findingOfDoubt({ ambiguity }, left) {
+  for (const { finding, round } of left) {
+    for (const call of Array.isArray(round.run.calls) ? round.run.calls : []) {
+      const key = keyOf(call?.input?.pb_key);
+      if (key?.stage !== round.stage?.name || String(call.input.ambiguity ?? "").trim() !== ambiguity.trim()) continue;
+      if (findingsOfKey(key, round.round.findings).includes(finding)) return finding;
+    }
+  }
+  return undefined;
+}
+
+// The review findings left open, each with the questions it left for the human, then the doubts no finding holds.
+function leftWithHuman({ ledger, task, spawns }) {
+  const left = task.flatMap((run) => reviewRounds(run, spawns ?? []))
+    .filter(({ over }) => over)
+    .flatMap((round) => round.round.findings.filter((finding) => LEFT_WORDS.includes(finding.word)).map((finding) => ({ finding, round, questions: [] })));
+  const pending = Array.isArray(ledger?.needsHuman?.doubts) ? ledger.needsHuman.doubts : [];
+  const loose = [];
+  for (const doubt of [...approvedDoubtsByState(task).open, ...pending]) {
+    const finding = findingOfDoubt(doubt, left);
+    const held = left.find((entry) => entry.finding === finding);
+    if (held) held.questions.push(doubt.ambiguity);
+    else loose.push(doubt);
+  }
+  return { findings: left, doubts: loose };
+}
+
+const leftItem = ({ finding, questions }) => {
+  const where = finding.where ? ` · ${escape(finding.where)}` : "";
+  const body = questions.length > 0 ? questions.map((question) => `Decide: ${escape(question)}`).join("<br>") : escape(finding.claim);
+  return `<li><strong>${escape(findingGist(finding))}</strong>${where}<br>${body}</li>`;
+};
+
+const looseItem = ({ step, ambiguity }) => `<li>Decide: ${escape(ambiguity)} <small>(raised while ${escape(step)})</small></li>`;
+
+// A stop, in plain words: the step it stopped at, why, and how to go on from it.
+function stopItem({ ledger, spawns, tests }) {
+  const stop = ledger?.stop;
+  if (!stop) return [];
+  const step = plainName(ledger.stage?.name);
+  const why = stopName(stop);
+  return [`<li>It stopped${step ? ` at ${escape(step)}` : ""}${why ? `: ${escape(why)}` : ""}. ${escape(rerunStep(spawns, tests))}</li>`];
+}
+
+// A question pb asked and the human has not answered yet.
+// A finished code run that was not signed off asks for the sign-off, whether or not its question is asked yet.
+function questionItem({ ledger, task }) {
+  const gate = ledger?.needsHuman?.gate;
+  if (gate) return [`<li>Answer the question waiting for you: ${escape(gateLine(gate))}.</li>`];
+  const code = codeRunIn(task).ledger;
+  const unsigned = outcome(code) === "DONE" && code?.kind !== PUBLISH_KIND && !(code?.gates && isPassed(code, "G:task-end"));
+  return unsigned ? ["<li>Look over the result and give your sign-off.</li>"] : [];
+}
+
+// A test kept though it passed at once, before its code was written (an earlier test's code covered it): it never failed first.
+function coveredItems({ task }) {
+  const perTest = taskLedgerOf(task).tests.perTest;
+  return Object.entries(perTest)
+    .filter(([, record]) => record?.covered?.done === true)
+    .map(([id]) => `<li>Check by hand: the test ${escape(shortName(id))} passed before any new code was written, so it never failed first.</li>`);
+}
+
+const COVERAGE_ROLE = "verify-test-coverage";
+
+// Every coverage check of the task, in the order they ran, each with the gaps it found (a gap sends the build back to add tests).
+function coverageChecks(task) {
+  return task.flatMap((run) =>
+    (Array.isArray(run.calls) ? run.calls : [])
+      .map((call) => ({ key: keyOf(call?.input?.pb_key), gaps: Array.isArray(call?.input?.gaps) ? call.input.gaps : [] }))
+      .filter(({ key }) => key?.role === COVERAGE_ROLE)
+      .sort((a, b) => a.key.attempt - b.key.attempt || a.key.round - b.key.round),
+  );
+}
+
+// The gaps the last coverage check still found: no more tests were added for them.
+function uncoveredItems({ task }) {
+  const gaps = coverageChecks(task).at(-1)?.gaps ?? [];
+  return gaps.map((gap) => `<li>Check by hand: a scenario has no test: ${escape(gap?.description)}.</li>`);
+}
+
+function needsYouSection(context) {
+  const { findings, doubts } = leftWithHuman(context);
+  const items = [...questionItem(context), ...stopItem(context), ...findings.map(leftItem), ...doubts.map(looseItem), ...coveredItems(context), ...uncoveredItems(context)];
+  const nothing = outcome(context.ledger) === "RUNNING" ? "Nothing needs you right now: the run is still going." : "Nothing needs you.";
+  const body = items.length > 0 ? `<ul>\n${items.join("\n")}\n</ul>` : `<p>${nothing}</p>`;
+  return section("NEEDS YOU", body);
 }
 
 const prNumber = (url) => /\/pull\/(\d+)\/?$/.exec(url)?.[1];
@@ -493,6 +605,7 @@ ${STYLE}
 <h1>${title(code?.task ?? ledger?.task)}</h1>
 <p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(Number.isFinite(ranFor) ? ranFor : timing?.seconds)}</p>
 </header>
+${needsYouSection({ ledger, task, spawns, tests })}
 ${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task })}${doubtsSection({ ledger, task })}
 ${stepsSection({ task })}
 ${scenariosSection({ scenarios: task.find((run) => Array.isArray(run.scenarios))?.scenarios })}
