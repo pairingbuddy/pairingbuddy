@@ -94,5 +94,58 @@ describe("report-leads-with-what-you-need", () => {
     assert.ok(section.includes("Added 1 test, passing: order total sums two lines"), "the test added");
     assert.ok(section.includes('Opened pull request #7: <a href="https://github.com/example/repo/pull/7">https://github.com/example/repo/pull/7</a>'), "the pull request");
   });
+
+  test("CHANGES OF PLAN OR SCOPE is left out when nothing material changed", () => {
+    assert.throws(() => sectionOf(report(), "CHANGES OF PLAN OR SCOPE"), /no CHANGES OF PLAN OR SCOPE section/);
+  });
+
+  // The task-type review's fix is the classifier asked again; only a new type changes the plan, a new confidence does not.
+  const classified = (task_type, confidence) => ({ ambiguity: "", task_type, confidence, rationale: "Adds a function." });
+  const intake = (role, item, round, input) => ({ input: { pb_key: `intake.${role}.${item}.r${round}.a1`, ...input } });
+  const reclassified = (again) => [
+    intake("classify-task", "-", 1, classified("new_feature", "certain")),
+    intake("lens", "classification", 1, { ambiguity: null, findings: [{ rule: "", severity: "low", kind: "drift", title: "Certain rests on an unread line_total", claim: "x.", where: "", focus: undefined }] }),
+    intake("fix", "g1", 2, again),
+    intake("course-checker", "g1", 2, { finding_id: "classification-1", verdict: "better", mistake: "none", what_went_wrong: "" }),
+  ];
+  const withCodeCalls = (calls, taskType = "new_feature") => report({ runs: [{ ...RUNS[0], ledger: { ...RUNS[0].ledger, taskType }, calls: [...calls, ...RUNS[0].calls] }, RUNS[1]] });
+
+  test("CHANGES OF PLAN OR SCOPE names a new task type the review led to", () => {
+    const section = sectionOf(withCodeCalls(reclassified(classified("bug_fix", "certain")), "bug_fix"), "CHANGES OF PLAN OR SCOPE");
+
+    assert.ok(section.includes("The task type changed after a review: now bug fix, was new feature."), `got ${section}`);
+  });
+
+  test("CHANGES OF PLAN OR SCOPE leaves out a new confidence in the same task type", () => {
+    assert.throws(() => sectionOf(withCodeCalls(reclassified(classified("new_feature", "likely"))), "CHANGES OF PLAN OR SCOPE"), /no CHANGES/);
+  });
+
+  test("CHANGES OF PLAN OR SCOPE names the tests added for a scenario the coverage check found untested", () => {
+    const coverage = (round, gaps) => ({ input: { pb_key: `code-tdd.verify-test-coverage.-.r${round}.a1`, ambiguity: "", status: gaps.length ? "incomplete" : "complete", gaps } });
+    const section = sectionOf(withCodeCalls([coverage(1, [{ scenario_id: "s2", description: "an empty order has no test" }]), coverage(2, [])]), "CHANGES OF PLAN OR SCOPE");
+
+    assert.ok(section.includes("Tests were added because a scenario had none: an empty order has no test."), `got ${section}`);
+  });
+
+  // A review that found a real problem and had it fixed changed the work; the pull request's wording fixed is no change of plan.
+  test("CHANGES OF PLAN OR SCOPE names each fix a review forced on the work, and not the pull request's wording", () => {
+    const net = (role, item, round, input) => ({ input: { pb_key: `code-safety-net.${role}.${item}.r${round}.a1`, ...input } });
+    const fixing = [
+      net("lens", "code", 1, { ambiguity: null, findings: [{ rule: "", severity: "low", kind: "drift", title: "Empty order returns int 0", claim: "x.", where: "cart.py:3" }] }),
+      net("fix", "g1", 2, { ambiguity: "", commit_subject: "fix: float for empty", no_change_reason: "", files_changed: ["cart.py"] }),
+      net("course-checker", "g1", 2, { finding_id: "code-1", verdict: "better", mistake: "none", what_went_wrong: "" }),
+    ];
+    const pr = (role, item, round, input) => ({ input: { pb_key: `pr-draft.${role}.${item}.r${round}.a1`, ...input } });
+    const wording = [
+      pr("lens", "claims", 1, { ambiguity: null, findings: [{ rule: "", severity: "low", kind: "drift", title: "Changes section restates the diff", claim: "x.", where: "pr-body.md:9" }] }),
+      pr("fix", "g1", 2, { ambiguity: "" }),
+      pr("course-checker", "g1", 2, { finding_id: "claims-1", verdict: "better", mistake: "none", what_went_wrong: "" }),
+    ];
+    const html = report({ runs: [{ ...RUNS[0], calls: fixing }, { ...RUNS[1], calls: wording }] });
+    const section = sectionOf(html, "CHANGES OF PLAN OR SCOPE");
+
+    assert.ok(section.includes("The safety-net review had this fixed: Empty order returns int 0 · cart.py:3"), `got ${section}`);
+    assert.ok(!section.includes("restates the diff"), "the pull request's wording is not a change of plan");
+  });
 });
 

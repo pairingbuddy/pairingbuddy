@@ -447,7 +447,7 @@ function findingOfDoubt({ ambiguity }, left) {
 // The review findings left open, each with the questions it left for the human, then the doubts no finding holds.
 function leftWithHuman({ ledger, task, spawns }) {
   const left = task.flatMap((run) => reviewRounds(run, spawns ?? []))
-    .filter(({ over }) => over)
+    .filter(({ over, stage }) => over && stage?.name !== CYCLE_STAGE)
     .flatMap((round) => round.round.findings.filter((finding) => LEFT_WORDS.includes(finding.word)).map((finding) => ({ finding, round, questions: [] })));
   const pending = Array.isArray(ledger?.needsHuman?.doubts) ? ledger.needsHuman.doubts : [];
   const loose = [];
@@ -552,6 +552,45 @@ function doneSection({ task, changed, prUrl }) {
   return section("WHAT WAS DONE", lines.length > 0 ? lines.map((line) => `<p>${line}</p>`).join("\n") : "<p>Nothing yet.</p>");
 }
 
+// ---------- CHANGES OF PLAN OR SCOPE: only what changed the task materially ----------
+
+const isClassification = (input) => typeof input?.task_type === "string" && typeof input.confidence === "string";
+
+// The task type the first classification gave, when the run the type is recorded on went on with another.
+function typeChange(task) {
+  const code = codeRunIn(task);
+  const first = (Array.isArray(code.calls) ? code.calls : [])
+    .map((call) => ({ key: keyOf(call?.input?.pb_key), input: call?.input }))
+    .filter(({ key, input }) => key?.stage === "intake" && isClassification(input))
+    .sort((a, b) => a.key.attempt - b.key.attempt || a.key.round - b.key.round)[0]?.input;
+  const now = code.ledger?.taskType;
+  if (!first || typeof now !== "string" || first.task_type === now) return [];
+  return [`The task type changed after a review: now ${escape(typeWord(now))}, was ${escape(typeWord(first.task_type))}.`];
+}
+
+// The gaps a coverage check found that a later check was run after: the build went back and added tests for them.
+function testsAdded(task) {
+  const checks = coverageChecks(task);
+  return checks.slice(0, -1).flatMap(({ gaps }) => gaps.map((gap) => `Tests were added because a scenario had none: ${escape(gap?.description)}.`));
+}
+
+// The reviews whose fixes change no plan: the task type's (its fix is a new classification, told apart), a cycle's quick
+// review (tidying is part of every test) and the pull request text's.
+const NOT_THE_WORK = ["intake", CYCLE_STAGE, "pr-draft"];
+const reviewName = (stage) => (/review$/.test(stage) ? `The ${stage}` : `The review in ${stage}`);
+
+// Each finding a review had fixed in the work itself.
+function forcedFixes(task, spawns) {
+  return task.flatMap((run) => reviewRounds(run, spawns ?? []))
+    .filter(({ stage }) => !NOT_THE_WORK.includes(stage?.name))
+    .flatMap(({ round }) => round.findings.filter((finding) => finding.word === FINDING_WORDS.fixed).map((finding) => `${escape(reviewName(round.stage))} had this fixed: ${escape(findingGist(finding))}${finding.where ? ` · ${escape(finding.where)}` : ""}`));
+}
+
+function changesSection({ task, spawns }) {
+  const items = [...typeChange(task), ...testsAdded(task), ...forcedFixes(task, spawns)];
+  return items.length === 0 ? "" : `\n${section("CHANGES OF PLAN OR SCOPE", `<ul>\n${items.map((item) => `<li>${item}</li>`).join("\n")}\n</ul>`)}`;
+}
+
 const prNumber = (url) => /\/pull\/(\d+)\/?$/.exec(url)?.[1];
 
 // A finished task's own next actions: review the pull request it opened, then decide each doubt it was approved past.
@@ -637,7 +676,7 @@ ${STYLE}
 <p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(Number.isFinite(ranFor) ? ranFor : timing?.seconds)}</p>
 </header>
 ${needsYouSection({ ledger, task, spawns, tests })}
-${doneSection({ task, changed, prUrl })}
+${doneSection({ task, changed, prUrl })}${changesSection({ task, spawns })}
 ${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task })}${doubtsSection({ ledger, task })}
 ${stepsSection({ task })}
 ${scenariosSection({ scenarios: task.find((run) => Array.isArray(run.scenarios))?.scenarios })}
