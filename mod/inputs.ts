@@ -164,6 +164,42 @@ async function readScenarios($: EngineInterface, ledger: Ledger): Promise<Scenar
   }
 }
 
+// Where pb keeps each ended run (keepRun in shared-node/unit-files.mjs): reports/runs/<runId>/ with its ledger, its returns
+// and kept.json, which names its unit, when it ended and the pull request a publish opened.
+const KEPT_RUNS = '.pairingbuddy/reports/runs'
+
+// A kept run as the report reads it: its returns stand in for the session's calls, so a review outlives the session.
+export type KeptRun = { ledger: Ledger; unit: string | null; endedAt?: string; prUrl?: string; calls: Call[]; scenarios?: ScenarioRow[] }
+
+// One kept run, or null when its ledger does not read. A return whose pb_key is not its file's name is left out.
+async function readKeptRun($: EngineInterface, dir: string): Promise<KeptRun | null> {
+  const [kept, ledger] = await Promise.all([readJson($, `${dir}/kept.json`), readJson($, `${dir}/ledger.json`)]) as [{ unit?: unknown; endedAt?: unknown; prUrl?: unknown } | undefined, Ledger]
+  if (!ledger || typeof ledger !== 'object') return null
+  let names: string[] = []
+  try {
+    names = (await $.fs.list(`${await $.session.root()}/${dir}/artifacts`)).filter(entry => entry.kind === 'file').map(entry => entry.name)
+  } catch {
+    // A run with no returns kept still reports its ledger.
+  }
+  const returns = await Promise.all(names.filter(name => name.endsWith('.json') && !name.startsWith('.')).map(async name => ({ key: name.slice(0, -'.json'.length), input: await readJson($, `${dir}/artifacts/${name}`) as Record<string, unknown> | undefined })))
+  const calls = returns.filter(({ key, input }) => input?.pb_key === key).map(({ input }) => ({ input: input as Record<string, unknown> }))
+  const scenariosKey = newestKeyAmong(names, isStandingScenarios(ledger))
+  const scenarios = scenariosKey === null ? undefined : scenarioRows(calls.find(call => call.input.pb_key === scenariosKey)?.input.scenarios)
+  const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : undefined)
+  return { ledger, unit: text(kept?.unit) ?? null, endedAt: text(kept?.endedAt), prUrl: text(kept?.prUrl), calls, scenarios }
+}
+
+// Every run pb kept, in no order. Never throws: a folder that does not list is no runs, and a run that does not read is left out.
+export async function readKeptRuns($: EngineInterface): Promise<KeptRun[]> {
+  try {
+    const entries = await $.fs.list(`${await $.session.root()}/${KEPT_RUNS}`)
+    const runs = await Promise.all(entries.filter(entry => entry.kind === 'dir').map(entry => readKeptRun($, `${KEPT_RUNS}/${entry.name}`)))
+    return runs.filter((run): run is KeptRun => run !== null)
+  } catch {
+    return []
+  }
+}
+
 // What the report lists in full where a gate question folds: the standing scenarios and every changed file. Never throws.
 export async function readReportLists($: EngineInterface, ledger: Ledger): Promise<{ scenarios?: ScenarioRow[]; changed: string[] | null }> {
   const [scenarios, changedFile] = await Promise.all([readScenarios($, ledger), readJson($, CHANGED)])

@@ -374,6 +374,18 @@ describe("keep-local-ends-publish-run", () => {
     assert.deepEqual(gh.calls(), [], "gh was not called");
   });
 
+  test("keep-local-keeps-the-publish-run-for-the-report", () => {
+    const unit = publishRun({ approve: false });
+    const { runId } = JSON.parse(readText(ledgerFile(unit.repo)));
+    const { branch, baseSha } = readUnitRecord(unit.repo);
+
+    keepLocalThroughTap(unit.repo);
+
+    const kept = join(unit.repo.dir, ".pairingbuddy", "reports", "runs", runId);
+    assert.equal(JSON.parse(readText(join(kept, "ledger.json"))).kind, "publish", "the ended publish run's ledger is kept");
+    assert.equal(JSON.parse(readText(join(kept, "kept.json"))).unit, `${branch} ${baseSha}`, "it names its unit");
+  });
+
   test("next-code-not-blocked-after-keep-local", () => {
     const { repo } = publishRun({ approve: false });
 

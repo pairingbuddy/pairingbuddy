@@ -161,6 +161,8 @@ function closeKeptLocal(modules, root, ledger) {
       failures.push(`${what}: ${e.message}`);
     }
   };
+  // Kept first, while unit.json still names the unit; keeping never throws.
+  if (modules.isPublishRun(ledger)) modules.keepRun(runDir);
   attempt("the unit files were not removed", () => modules.closeUnit(runDir));
   if (modules.isPublishRun(ledger)) attempt("the publish run was not ended", () => modules.endRun(runDir));
   if (failures.length > 0) say(`Pairing Buddy recorded keep local at G:publish but could not finish closing (${failures.join("; ")}). Run ${modules.pbCommand("publish")} to finish; it closes the unit and ends the run without pushing.`);
@@ -185,12 +187,12 @@ try {
   const { parseKey } = await import("../shared-node/keys.mjs");
   const { isPublishRun, readLedger, updateLedger } = await import("../shared-node/ledger.mjs");
   const { pbCommand } = await import("../shared-node/verbs.mjs");
-  const { closeUnit, endRun } = await import("../shared-node/unit-files.mjs");
+  const { closeUnit, endRun, keepRun } = await import("../shared-node/unit-files.mjs");
   const { findSessionRoot } = await import("../shared-node/run-root.mjs");
   const { loadStages, migratedType } = await import("../shared-node/stages.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
   const root = findSessionRoot(input.cwd, input.session_id);
-  if (root !== null) tapRun({ KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, updateLedger, migratedType }, root, input);
+  if (root !== null) tapRun({ KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, keepRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, updateLedger, migratedType }, root, input);
 } catch {
   // not a run situation
 }

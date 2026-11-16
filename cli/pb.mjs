@@ -20,7 +20,7 @@ import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, forei
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
-import { SPIKE_SETUP_FILE, abandonRun, closeUnit, endRun } from "../shared-node/unit-files.mjs";
+import { SPIKE_SETUP_FILE, abandonRun, closeUnit, endRun, keepRun } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
@@ -1517,6 +1517,7 @@ function taskEnd(args) {
   const branch = opened?.unit.branch ?? branchOf(root);
   appendTaskRecord(opened);
   const dir = taskDirOf(root);
+  keepRun(join(root, ".pairingbuddy", "run"));
   rmSync(dir, { recursive: true });
   if (ledger.taskType === "spike") {
     closeUnit(join(root, ".pairingbuddy", "run"));
@@ -1600,6 +1601,7 @@ function publish(args) {
 function finishKeptLocal(root, ledger) {
   if (ledger.stop !== null) throw new Refusal(`not published: the run stopped: ${ledger.stop.reason}`);
   const runDir = join(root, ".pairingbuddy", "run");
+  if (isPublishRun(ledger)) keepRun(runDir);
   closeUnit(runDir);
   if (isPublishRun(ledger)) endRun(runDir);
   return { ok: true, result: "kept-local", reason: KEPT_LOCAL_REASON };
@@ -1635,6 +1637,7 @@ function executePublish(steps, ctx) {
     } else if (step.do === "delete-refs") {
       deleteUnitRefs(root, step.prefix, url);
     } else {
+      if (isPublishRun(ctx.ledger)) keepRun(runDir, url === null ? {} : { prUrl: url });
       closeUnit(runDir);
       if (isPublishRun(ctx.ledger)) endRun(runDir);
       return step.result === "published" ? { ok: true, result: "published", url, warnings, ...(pendingComment === undefined ? {} : { pendingComment }) } : { ok: true, result: step.result, reason: step.reason };

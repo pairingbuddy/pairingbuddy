@@ -1,6 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 import { renderReport } from '../shared-node/report.mjs'
-import { readInputs, readReportLists, type Call, type Inputs, type Spawn } from './inputs'
+import { taskCommitShas, taskRuns } from '../shared-node/task-runs.mjs'
+import { readInputs, readKeptRuns, readReportLists, type Call, type Inputs, type Spawn } from './inputs'
 
 
 // The pane's one note line, as mod state: the report press and the suggest submit (./suggest) both write it, so the latest action wins.
@@ -54,8 +55,9 @@ async function readCommits($: EngineInterface, shas: string[]): Promise<{ sha: s
   }
 }
 
-async function fromSnapshot($: EngineInterface, live: Inputs): Promise<Inputs> {
-  const snapshot = (await $.state.get(LAST_RUN)).value as { ledger?: unknown; tests?: string[]; now?: number | null } | null | undefined
+type Snapshot = { ledger?: unknown; tests?: string[]; now?: number | null; unit?: { key?: string } | null; prUrl?: string | null } | null | undefined
+
+function fromSnapshot(snapshot: Snapshot, live: Inputs): Inputs {
   if (!snapshot?.ledger) return live
   return { ...live, ledger: snapshot.ledger as Inputs['ledger'], tests: snapshot.tests ?? [] }
 }
@@ -65,20 +67,23 @@ async function fromSnapshot($: EngineInterface, live: Inputs): Promise<Inputs> {
 export async function openReport($: EngineInterface, spawns: Spawn[], calls: Call[] = []): Promise<void> {
   try {
     const live = await readInputs($, spawns)
-    // With no live ledger the report is built from the last polled one.
-    const inputs = live.ledger ? live : await fromSnapshot($, live)
+    // The last poll's snapshot: with no live ledger the report is built from its ledger, and it names the unit the run was in.
+    const snapshot = (await $.state.get(LAST_RUN)).value as Snapshot
+    const inputs = live.ledger ? live : fromSnapshot(snapshot, live)
     // A report built from the last polled ledger is of a run that is gone: it is never measured to now.
     const endedAt = live.ledger ? undefined : ((await $.state.get(ENDED_AT)).value as string | null | undefined) ?? undefined
-    // The button showed on a ledger that is gone or half-written now: write nothing rather than an empty report.
-    if (!inputs.ledger) return
-    const path = `${await $.session.root()}/${REPORTS_DIR}/${stampOf(inputs.now ?? Date.now())}-${slugOf(inputs.ledger.task)}.html`
-    const shas = inputs.ledger.commits ?? []
-    const commits = await readCommits($, shas)
     const lists = await readReportLists($, inputs.ledger)
+    // The task's runs: the reported one and the runs pb kept of the same unit, so the report describes the whole task.
+    const runs = taskRuns({ ledger: inputs.ledger, kept: await readKeptRuns($), unitKey: snapshot?.unit?.key ?? null, calls, scenarios: lists.scenarios, endedAt, prUrl: snapshot?.prUrl ?? undefined })
+    // The button showed on a ledger that is gone or half-written now: write nothing rather than an empty report.
+    const first = runs.find((run: { ledger?: Inputs['ledger'] }) => run.ledger?.kind !== 'publish')?.ledger ?? runs[0]?.ledger
+    if (!first) return
+    const path = `${await $.session.root()}/${REPORTS_DIR}/${stampOf(inputs.now ?? Date.now())}-${slugOf(first.task)}.html`
+    const commits = await readCommits($, taskCommitShas(runs))
     // Building and writing fail apart, so the note says which one did.
     let html: string
     try {
-      html = renderReport({ ...inputs, ...lists, calls, commits, endedAt, now: live.ledger ? inputs.now : undefined })
+      html = renderReport({ ...inputs, ...lists, calls, commits, endedAt, now: live.ledger ? inputs.now : undefined, runs })
     } catch {
       await $.state.set(PANE_NOTE, "couldn't build the report from the run's records")
       return
