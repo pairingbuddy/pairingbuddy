@@ -75,3 +75,20 @@ test('tests-leads-with-how-many-are-done-of-the-total', async ($, on) => {
   expect(row[0], `the count leads TESTS, then the list: ${JSON.stringify(row)}`).toBe('TESTS    0 of 2 done')
   expect(row.slice(1).map(line => line.trim().slice(0, 2)), 'then one line per test').toEqual(['▸ ', '· '])
 })
+
+const passedRecord = { ...record, exitCodes: [0] }
+const selectorOf = (id: string) => ({ runner_id: 'pytest', test_file: 'tests/test_cart.py', test_function: id })
+const built = {
+  ...building,
+  stage: { name: 'code-safety-net', status: 'active', runId: null, attempt: 1, startedAt: '2026-11-04T08:19:50.000Z' },
+  stages: [...building.stages, { name: 'code-tdd', status: 'done', attempt: 1, startedAt: '2026-11-04T08:19:00.000Z' }],
+  tests: { perTest: Object.fromEntries([FIRST, SECOND].map(id => [id, { selector: selectorOf(id), red: record, green: passedRecord }])) },
+}
+
+test('after-the-build-tests-reads-as-a-settled-summary', async ($, on) => {
+  await serve($, on, built, { [`${ARTIFACTS}/${PLACEHOLDERS_KEY}.json`]: placeholders }, 'pb1 code-safety-net - corpus-misalignment - r1')
+
+  const row = testsRow(await paneLines($))
+
+  expect(row, 'the build is over: how many pass of the total, then the list').toEqual(['TESTS    ✓ 2 of 2 passing', '         ✓ order total sums two lines', '         ✓ order total of no lines is zero'])
+})

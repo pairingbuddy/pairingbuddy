@@ -27,8 +27,8 @@ export type Tags = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
 // The Pane alone also draws the suggest Input.
 export type PaneTags = Tags & Pick<ElementTable, 'Input'>
 
-// count: how many of the planned tests are done (or covered), once the total is known.
-export type Progress = { known?: boolean; count?: { total: number; done: number; covered: number }; folded?: number; coveredFolded?: number; more?: number; entries: { id: string; name: string; mark: 'done' | 'current' | 'waiting' | 'covered' }[] }
+// count: how many of the planned tests are done (or covered), once the total is known; settled once the build step is over.
+export type Progress = { known?: boolean; count?: { total: number; done: number; covered: number; settled: boolean }; folded?: number; coveredFolded?: number; more?: number; entries: { id: string; name: string; mark: 'done' | 'current' | 'waiting' | 'covered' }[] }
 export type TestLine = { current?: string; marker: { steps: { name: string; lit: boolean; mark: string }[] }; age?: string }
 export type Tries = { step: string; number: number; result: string }[]
 
@@ -153,23 +153,29 @@ function unitSteps({ ledger, unit }: Inputs, ended: boolean): string[] {
 const publishesAfter = ({ ledger, unit }: Pick<Inputs, 'ledger' | 'unit'>) => Boolean(unit) && !KEPT_LOCAL_TYPES.includes(ledger?.taskType ?? '')
 
 // The TESTS row's progress: each test by its mark, named, or undefined when there is no test to show.
-function progressOf({ tests, perTest, spawns, testsComplete, stage, names }: { tests: string[]; perTest: unknown; spawns: Inputs['spawns']; testsComplete: boolean; stage: unknown; names: Inputs['names'] }) {
+function progressOf({ tests, perTest, spawns, testsComplete, stage, names, settled }: { tests: string[]; perTest: unknown; spawns: Inputs['spawns']; testsComplete: boolean; stage: unknown; names: Inputs['names']; settled: boolean }) {
   const rows = tests.map(id => ({ test_id: id }))
-  const row = progressRow({ tests: rows, perTest, spawns, testsComplete, stage })
+  const row = progressRow({ tests: rows, perTest, spawns, testsComplete, stage, settled: settled && testsComplete })
   const named = row.entries.map((entry: { id: string; mark: Progress['entries'][number]['mark'] }) => ({ ...entry, name: nameOf(names, entry.id) }))
-  const count = testsComplete && rows.length > 0 ? { count: testCounts({ tests: rows, perTest }) } : {}
+  const count = testsComplete && rows.length > 0 ? { count: { ...testCounts({ tests: rows, perTest }), settled } } : {}
   return named.length > 0 || row.folded || row.coveredFolded ? { ...row, known: testsComplete, ...count, entries: named } : undefined
 }
 
-// A publish run has no tests of its own, so TESTS keeps the finished code run's: tests.json's order when it lists every one the
-// code run recorded, else the recorded ones. No test is current. With no code run seen, tests.json alone shows nothing.
+// A publish run has no tests of its own, so TESTS keeps the finished code run's: the test list's order when it holds every one
+// the code run recorded, else the recorded ones, which are the whole list once the code run was signed off. No test is current.
+// With no code run seen, the test list alone shows nothing.
 function codeRunProgress({ codeRun, tests, names }: Inputs): Pick<View, 'progress'> {
   const perTest = codeRun?.perTest ?? {}
   const recorded = Object.keys(perTest)
   if (recorded.length === 0) return {}
   const planned = tests.length > 0 && recorded.every(id => tests.includes(id))
-  return { progress: progressOf({ tests: planned ? tests : recorded, perTest, spawns: [], testsComplete: planned, stage: undefined, names }) }
+  return { progress: progressOf({ tests: planned ? tests : recorded, perTest, spawns: [], testsComplete: planned || codeRun?.taskEndPassed === true, stage: undefined, names, settled: true }) }
 }
+
+const BUILD_STEP = 'code-tdd'
+// The build step is running: tests are still being written and made to pass.
+const isBuilding = (ledger: Ledger) => ledger?.stage?.name === BUILD_STEP && ledger.stage.status === 'active'
+const buildDone = (ledger: Ledger) => (Array.isArray(ledger?.stages) ? ledger.stages : []).some(stage => stage?.name === BUILD_STEP && stage.status === 'done')
 
 // The TESTS, TEST and LOOPING-tries parts, folded from the same inputs as the rows. Only the active stage's spawns count, so outside
 // "build test by test" no test is current and TEST reads as a dash.
@@ -179,7 +185,10 @@ function buildTestRows(inputs: Inputs, ended: boolean): Pick<View, 'progress' | 
   const stage = stageOf(ledger)
   const perTest = ledger?.tests?.perTest
   // An ended run has no current step, so its last test reads done, not current.
-  const progress = progressOf({ tests, perTest, spawns: ended ? [] : spawns, testsComplete, stage, names })
+  const settled = ended || !isBuilding(ledger)
+  // Once the build step is done, every test it ran is in the ledger: the seen tests are the whole list.
+  const complete = testsComplete || (settled && buildDone(ledger))
+  const progress = progressOf({ tests, perTest, spawns: ended ? [] : spawns, testsComplete: complete, stage, names, settled })
   const step = ended ? undefined : currentStep(spawns, stage)
   if (!step) return { progress }
   const test = { current: nameOf(names, step.item), marker: cycleMarker({ spawns, ledger }), age: stepAge({ spawns, now, stage }) }

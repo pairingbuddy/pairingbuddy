@@ -53,8 +53,14 @@ function cycleParts(test: NonNullable<View['test']>): Part[] {
 const MARKS = { done: '✓', current: '▸', waiting: '·', covered: '◌' } as const
 const GAP = '  '
 
-// The TESTS row's first line once the total is known: `3 of 12 done`, and how many were already covered.
-const countLine = ({ total, done, covered }: NonNullable<NonNullable<View['progress']>['count']>) => `${done} of ${total} done${covered ? ` · ${covered} covered` : ''}`
+// The TESTS row's first line once the total is known: `3 of 12 done` while the build runs, then a settled `✓ 12 of 12 passing`
+// (a covered test passes too), with how many were already covered.
+function countLine({ total, done, covered, settled }: NonNullable<NonNullable<View['progress']>['count']>) {
+  const coveredPart = covered ? ` · ${covered} covered` : ''
+  if (!settled) return `${done} of ${total} done${coveredPart}`
+  const passing = done + covered
+  return `${passing === total ? `${MARKS.done} ` : ''}${passing} of ${total} passing${coveredPart}`
+}
 
 // One TESTS row, a line per test: the folded counts first, then each test by its mark, the current one with its cycle marker and
 // step age, then "+n more" ("+n more so far" while the total is unknown). The current test's name gives way first, so its marker and age always fit the width.
