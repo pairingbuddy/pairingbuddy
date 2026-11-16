@@ -43,7 +43,7 @@ export function currentStep(spawns, stage) {
   return { ...last, tries: triesAtStep(labels, labels.length - 1) };
 }
 
-// The one rule for "looping", from a count of tries at the same step. Shared by the pane and the report.
+// The one rule for "looping", from a count of tries at the same step: the report's "Why it looped" note reads it.
 export const isLooping = (tries) => tries >= MAX_TRIES;
 
 const testPosition = (step, tests) => tests.indexOf(step?.item) + 1;

@@ -16,7 +16,7 @@ Remaining step: a quick narrow re-look by the human before Task 60 is ticked.
 
 ## Chosen direction
 
-- **The band is the default.** Always visible above the prompt: the goal's gist on its first row (seventh watched run), then one row that leads with the run's status as the pane's STATUS draws it (hierarchy), then answers where, spent, left and looping. See [R4-1](round-4/R4-1-band-tdd-calm.png) and "The band" under "Fixed layout".
+- **The band is the default.** Always visible above the prompt: the goal's gist on its first row (seventh watched run), then one row that leads with the run's status as the pane's STATUS draws it (hierarchy), then answers where, spent and left. See [R4-1](round-4/R4-1-band-tdd-calm.png) and "The band" under "Fixed layout".
 - **The pane holds the details.** `/pb` opens the pane, which the band names in its hint (see "Commands, not band buttons"), and esc or × closes it. The pane also opens by itself, without the keyboard, when a run starts (seventh watched run), when the run stops or needs you, and when the unit is done with nothing left to do (sixth watched run); for a question the band then reads "▲ NEEDS YOU · opened details". See [R4-7](round-4/R4-7-switching-storyboard.png).
 - **The HTML report gives depth.** The pane's `open report` writes a self-contained page and opens it in the browser. There is one report for a TDD run and one for a planning run. See [R5-3](round-5/R5-3-report-tdd.png) and [R5-4](round-5/R5-4-report-plan.png).
 
@@ -26,11 +26,11 @@ The pane opens with "at a glance". Each row is a plain sentence.
 
 | Row | Calm example | In trouble |
 |---|---|---|
-| NOW | writing a failing test for the 0% discount · test 3 of 4 | writing a failing test …, 3rd try |
+| NOW | writing a failing test for the 0% discount · test 3 of 4 | … · test 3 of 4 · try 3 of 3 · last try before it asks you |
 | SPENT | 12 agents · 1:55 · ≈0.4% of plan | same form |
 | LEFT | 1 more test, then the safety-net review and your sign-off | this test, then … |
-| LOOPING | no · this step: try 1 of 3 | yes: 3 tries at the same step, with each try and the reason |
-| OFF TRACK | no | yes: what went off track |
+
+LOOPING and OFF TRACK were rows here; both are gone (see "Tenth watched run"). NOW is the pane's STATUS, and it tells a retry.
 
 Planning uses the same rows. Its pane adds the aim, decisions, open questions (the one being asked is lit) and what is still to come. See [R4-4](round-4/R4-4-pane-planning-brainstorm.png) and [R4-5](round-4/R4-5-pane-planning-slices.png).
 
@@ -44,7 +44,7 @@ Planning uses the same rows. Its pane adds the aim, decisions, open questions (t
 
 ## Rejected, and why
 
-- **B's timeline (flight recorder).** It told the user nothing important. Its one strength, showing repeats, survives as the LOOPING row.
+- **B's timeline (flight recorder).** It told the user nothing important. Its one strength, showing repeats, survives as STATUS's `try 2 of 3` (until the tenth watched run, the LOOPING row).
 - **The per-test RED/GREEN/REFACTOR grid.** A large table with little information in it. A focus on the current test replaced it.
 - **The commit, lens and recent-events boxes.** Noise in the main view. The last commit is one dim footer line, lenses appear only while a review round runs, and recent events went away.
 - **The spelled-out cycle** ("write a failing test", "make it pass") and the three cycle boxes. "We know what red means."
@@ -59,12 +59,12 @@ Planning uses the same rows. Its pane adds the aim, decisions, open questions (t
 | Live agent count | count of `agent.spawn` events (the ledger's `spend.agents` only updates at stage end) | Task 57 |
 | Per-test outcome and exit codes | `ledger.tests.perTest` (red, green, covered) | exists (T2); Task 61 |
 | Test order, "test 3 of 4" | the standing placeholders return in `run/task/artifacts/` (old path: `.pairingbuddy/tests.json`) | read since the ninth watched run |
-| Test descriptions and short names | the scenarios return's test-case descriptions, joined through the placeholders return (old path: `scenarios.json`, `tests.json`) | fallback is the id with spaces |
+| Short test names (TESTS, STATUS, band) | the test id spaced out, as the placeholders return and the ledger's `perTest` key it | since the tenth watched run; the scenario's sentence is the report's SCENARIOS |
 | Plain names for ids | a mapping table next to the label contract | new; belongs with Task 57 |
 | Retry limit per step (3) | stop behaviour seen in probe-2; `retries{}` stays empty | needs a ledger field |
 | Rollbacks, attempts against the cap of 5, course-checker verdicts | `fixes` in the ledger, `course-checker` labels | T5: Task 83a, 83b, 84, 84a; shown in Task 86 |
 | Lens progress and finding counts | `tool.call` StructuredOutput, refuters joined by finding id | T5: Task 76, 77; Task 86 |
-| Off track: files outside scope, a test edited after GREEN | changed files per checkpoint | **no source yet**; the CLI should record them at checkpoint |
+| Off track: files outside scope, a test edited after GREEN | changed files per checkpoint | **no source yet**; not shown anywhere until one exists |
 | Plan position and task list | plan MD checkboxes, `unit.json` | T7; Task 107 |
 | Planning stages and gates | plan-kind ledger | T8: Task 116, 117, 118, 119; view in Task 125 |
 | Planning aim, decisions, questions | an append-only log written during brainstorm | **no source yet**; plan JSON is written only at each agent's end |
@@ -91,7 +91,6 @@ STATUS   ● working · writing a failing test for zero percent keeps full price
 PR       —
 BUILT    —
 SPENT    27 agents · 3:35
-LOOPING  no
 STEPS    ✓ work out the task type
          ✓ write test scenarios
          ▸ build test by test
@@ -116,18 +115,19 @@ Rules:
   - `✓ DONE · goal met · PR #7 opened · ready for your next task` once the unit is done: no run live, the task signed off, and the pull request opened (or kept local), or no unit left that would publish. The head bold and uncoloured, the rest plain: a call to action, not an alarm. The goal part reads `goal met`, `goal not checked`, or `goal in doubt: <gist>`, which leaves out "ready for your next task" since the doubt comes first;
   - `● working · <the active step or test sentence>`, `● working · between steps · next: …`, `● working · next: write the pull request` (all code steps done in a unit that publishes): the head in the accent, not bold, the rest plain. Calm;
   - `○ between runs · next: write the pull request` after the code run's end and before the publish run, `○ ended · not signed off` for a run that ended without its sign-off, `○ no run` before any run: quiet, the ○ dim.
-- **Detail labels are dim.** PR, BUILT, SPENT, LOOPING, STEPS, TESTS and REVIEW have dim labels; their values keep full strength so they stay readable.
+- **Detail labels are dim.** PR, BUILT, SPENT, STEPS, TESTS and REVIEW have dim labels; their values keep full strength so they stay readable.
 - **PR** reads `—` until `pb publish` printed its result, then `opened · #7 <title>` or `not opened · kept local`. It wraps.
 - **BUILT** (the old DONE) reads `—` until the task-end gate passed, then the changed files and the passing tests. It wraps.
 - **STEPS is the whole unit.** The code steps for the task type, then the publish step, in one list. In the publish run the code steps show as done.
 - **STATUS, TESTS and the band follow the active step.** Outside "build test by test" no test is current, and STATUS and the band name the active step, never the last test.
 - **SPENT counts the whole unit.** Agents and time both, so neither resets when the publish run starts.
-- **LOOPING** reads `no`, or names the step and its try when a step is on its second try or later. "try 1 of 3" is never shown. After the run it reads `—`. The tries line under it folds older tries, then wraps.
+- **A retry is told in STATUS.** On a step's second try or later STATUS adds `· try 2 of 3`; on the last allowed try `· try 3 of 3 · last try before it asks you`. "try 1 of 3" is never shown. A try past the limit reads `· try 4`. Each try's result is in the report's test card.
+- **A test reads by its short name** (its id spaced out) in TESTS, STATUS and the band. The whole scenario sentence is the report's SCENARIOS'.
 - **REVIEW** shows the latest review round of the active step (or the last one, after it ends): what was checked, one summary line, then one line per finding.
 - **Finding words.** `checking` (a refuter is on it), `to fix` (upheld, fix not tried yet), `fixing`, `fixed`, `not a real problem` (knocked down), `left as is` (still open when the round ended). The summary counts the same words: `3 issues found · 1 fixed · 1 left as is · 1 not a real problem`.
 - **Colours are fixed hex values, not theme keys,** readable on dark and light, so a theme that maps "success" to blue cannot turn GREEN blue: RED `#e5534b`, GREEN `#3fb950`, REFACTOR `#4c8dff`, and the accent `#39c5cf` for where the run is now. See "Colour means one thing" below.
 - **Nothing is cut with "…".** Rows wrap. Two places keep a cut, each at a word and never with an ellipsis: a TESTS line stays one line (the current test's name gives way so its marker and age fit; the report's SCENARIOS holds every name whole), and a REVIEW finding stays one line (its where gives way, then its gist; the report's REVIEW keeps the full claim). The band's goal row is cut at a clause break, else a word, never with "…". The band's step row is one row by design: it drops segments first and may end in "…" only as a last resort.
-- **Removed:** "n active", "n unknown" and the legend under the test line, the "▸ now" and "✓ made to pass" sub-step lines, the "n agents of 1000" line, the LEFT and OFF TRACK rows (never measured live), and since the sixth watched run NOW (now STATUS) and DONE (now BUILT). The progress row of earlier tests is the TESTS row.
+- **Removed:** "n active", "n unknown" and the legend under the test line, the "▸ now" and "✓ made to pass" sub-step lines, the "n agents of 1000" line, the LEFT and OFF TRACK rows (never measured live), since the sixth watched run NOW (now STATUS) and DONE (now BUILT), and since the tenth LOOPING (STATUS tells a retry). The progress row of earlier tests is the TESTS row.
 
 ### The band (seventh watched run, hierarchy)
 
@@ -142,7 +142,7 @@ Fix this bug in discount.py
 The step row in each state, at 80 columns (the hint gives way first, so a long step row has none):
 
 ```
-● GREEN · ten percent off · 1/2 │ 0:50 · 10 agents │ looping: no
+● GREEN · ten percent off · 1/2 │ 0:50 · 10 agents │ /pb details · /pb-report report
 ▲ NEEDS YOU · your sign-off at the end │ /pb details · /pb-report report
 ✕ STOPPED · a step kept failing │ RED · zero percent keeps price
 ✓ DONE · ready for your next task · /pb details · /pb-report report
@@ -152,7 +152,7 @@ The step row in each state, at 80 columns (the hint gives way first, so a long s
 - **The goal row** is the goal's gist, bold as the pane's GOAL and not coloured: the whole first sentence when it fits beside the [-] control, else cut at the last clause break (`: `, `; `, `, ` outside brackets and backticks), else the last word, never with "…". It is drawn from the first ledger to the end of the run (also once the run is over, so the done band says what was done), and only while idle is there none.
 - **The goal has its own row** at every width, so the step row stays where the eye learnt to find it. At 139 columns most goals are whole; at 80 and 50 the gist is often the goal's first clause.
 - **The step row leads with the status,** in STATUS's heads and colours, so the band answers "am I needed now?" before any detail. A question leads as `▲ NEEDS YOU · <what>` and a stop as `✕ STOPPED · <why>`, each head a block; the step behind them is a plain detail, no longer lit. Once the alert opened the pane, what reads `opened details`. While nothing waits on you, the step leads behind STATUS's `●` alone (the word "working" would cost the step its room), and the calm `needs you: no` is gone: the mark already says it.
-- **Then the details:** the step (or the phase, the current test's name as TESTS names it, and its place `3/12` once the total is known), spent, left and looping, dropping segments by priority, then the commands hint `/pb details · /pb-report report`, which shortens to `/pb · /pb-report` and is the first thing dropped. A question or stop is never dropped. When it alone does not fit whole, it keeps its mark and what (`▲ your sign-off at the end`, the block on the mark); only past that is it cut.
+- **Then the details:** the step (or the phase, the current test's name as TESTS names it, and its place `3/12` once the total is known), spent and left, dropping segments by priority, then the commands hint `/pb details · /pb-report report`, which shortens to `/pb · /pb-report` and is the first thing dropped. A question or stop is never dropped. When it alone does not fit whole, it keeps its mark and what (`▲ your sign-off at the end`, the block on the mark); only past that is it cut.
 - **With no stage active** the row is one quiet line. Between steps: `● between steps · next: …` (or `● run open`, `● all steps done`), the mark in the accent and the words dim, with no "Pairing Buddy" label since the goal row names the session. Done: `✓ DONE · ready for your next task`, the head bold, the words plain. Idle and last run finished: `Pairing Buddy · idle`, dim. The commands hint follows the quiet line too, while it fits.
 
 ## Fourth watched run (2026-11-14): show what you ask about, gist before detail
@@ -360,6 +360,17 @@ What changed:
 - **TESTS settles once the build step is over.** Through the review, the pull request and the end it reads `✓ 12 of 12 passing` (no ✓ when some did not pass), then the list: the tests that did not pass first, the first three, then `+n more`. Once the build step is done, the tests the ledger saw are the whole list.
 - **The band gives the place** after the test's name: `● GREEN · order total sums two lines · 1/2`. Short of room the place goes first, then the name is cut at a word, then `GREEN · test 1 of 2` stands in.
 - **No `/pb` text in the band.** The `▸ details` button is drawn in every band state and at every width, so `/pb for details` repeated it. `/pb` stays in the transcript lines that say the pane is waiting, where no button is drawn. Reverted the same day; see "Commands, not band buttons".
+
+## Tenth watched run (2026-11-16)
+
+The human's findings:
+- "What was the LOOPING thing, and what should the human running this care? Also cryptic." LOOPING read `no` almost always, or `making the test pass · try 2 of 3`; the band said `looping: no`. STATUS already said the try.
+- TESTS showed a test as its whole scenario sentence: `✓ order_total([(10, 2), (4, 1)]) returns 30.0, which is …`. Since the ninth run's fix the mod named tests by the scenarios return; before, it showed `order total sums two lines`.
+
+What changed:
+- **No LOOPING.** The pane has no LOOPING row or tries line, and the band no `looping:` segment. STATUS tells a retry: `● working · making the test pass for <name> · test 1 of 2 · try 2 of 3`, and on the last allowed try `… · try 3 of 3 · last try before it asks you`, so the human knows they may be needed soon.
+- **The report's AT A GLANCE** has no Looping row (a live signal; each try's result is in the test's card, with "Why it looped") and no Off track row (it never had a source and always read unknown). Where it is, Spent and Left stay.
+- **Short test names.** TESTS, STATUS and the band name a test by its id spaced out (the placeholders return's `test_id`, the ledger's `perTest` key). The mod no longer reads the scenarios return for names; the report's SCENARIOS keeps each sentence.
 
 ## Commands, not band buttons (2026-11-16)
 
