@@ -17,8 +17,8 @@ const CONTROL_WIDTH = 4
 // A dim rule above the band text; columns is 0 before the first layout, so a fixed width stands in, never wider than the region.
 const rule = (columns: number) => '─'.repeat(columns > 0 ? columns : RULE_FALLBACK_WIDTH)
 
-// The button and the space before it are always reserved; a hint (its separator and a trailing space) only when one is given.
-export const bandColumns = (columns: number, hint: string = '') => columns - CONTROL_WIDTH - DETAILS.length - 1 - (hint ? SEPARATOR.length + hint.length + 1 : 0)
+// The button and the space before it are always reserved.
+export const bandColumns = (columns: number) => columns - CONTROL_WIDTH - DETAILS.length - 1
 
 // The goal's gist for the band's first row: the whole goal when it fits beside the [-] control, else cut at the last clause
 // break, else the last word, that fits (never with "…"); undefined while no run names its goal. No room known cuts nothing.
@@ -90,10 +90,8 @@ export function Band({ Box, Text, Button, band, goal, columns, running, waiting,
   onDetails: () => void
 }) {
   const source = opened && running ? asOpened(band) : band
-  // The hint is the lowest priority: "/pb for details" gives way to "/pb", then to nothing, before any segment is cut.
-  const content = running || waiting ? fitBand(source, bandColumns(columns)) : undefined
-  const hint = [HINT, SHORT_HINT].find(candidate => JSON.stringify(fitBand(source, bandColumns(columns, candidate))) === JSON.stringify(content))
-  const shown = content
+  // The details button is the way in, so no "/pb" text repeats it.
+  const shown = running || waiting ? fitBand(source, bandColumns(columns)) : undefined
   const quiet = quietLine({ between, ended, done })
   // The hint gives way first when the width is short; with no width known yet it stays.
   const room = columns > 0 ? columns - CONTROL_WIDTH - DETAILS.length - 1 - (quiet.head?.length ?? 0) : Infinity
@@ -114,7 +112,6 @@ export function Band({ Box, Text, Button, band, goal, columns, running, waiting,
         : <Box marginRight={1}>{quiet.head && <Text key="head" wrap="truncate-end" {...quiet.headProps}>{quiet.head}</Text>}<Text key="quiet" dimColor={quiet.dim || undefined} wrap="truncate-end">{quietText}</Text></Box>}
       {shown && <Text key="gap"> </Text>}
       <Button key="details" label={DETAILS} onPress={onDetails}>{shown && <Text>{DETAILS}</Text>}</Button>
-      {shown && hint && <Text key="hint" wrap="truncate-end">{`${SEPARATOR}${hint} `}</Text>}
     </Box>
     </Box>
   )
