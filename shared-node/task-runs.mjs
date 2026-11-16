@@ -41,9 +41,10 @@ export function taskSpend(runs) {
 export const taskEnded = (runs) => runs.length > 0 && runs.every((run) => Number.isFinite(Date.parse(run.endedAt)));
 
 // What the pane shows of a task once every run of it has ended, from the runs pb kept (taskRuns): what it spent, from its
-// first run's start to its last run's end, and every return its runs kept, which the review is read from. Null while a run
-// of it has not ended, or when no run is kept.
+// first run's start to its last run's end, every return its runs kept, which the review is read from, and the pull request
+// its publish run opened. Null while a run of it has not ended, or when no run is kept.
 export function endedTaskFacts(runs) {
   if (!Array.isArray(runs) || !taskEnded(runs)) return null;
-  return { spend: taskSpend(runs), startedAt: runStart(runs[0].ledger) ?? null, endedAt: runs.at(-1).endedAt, calls: runs.flatMap((run) => (Array.isArray(run.calls) ? run.calls : [])) };
+  const prUrl = runs.findLast((run) => typeof run.prUrl === "string" && run.prUrl !== "")?.prUrl ?? null;
+  return { spend: taskSpend(runs), startedAt: runStart(runs[0].ledger) ?? null, endedAt: runs.at(-1).endedAt, calls: runs.flatMap((run) => (Array.isArray(run.calls) ? run.calls : [])), prUrl };
 }

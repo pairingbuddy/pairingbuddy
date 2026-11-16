@@ -49,3 +49,12 @@ test('ended-task-review-is-the-safety-net-round-its-runs-kept', async ($, on) =>
   expect(review[0], 'the safety-net review found one issue, left as is').toBe('REVIEW   review: 1 issue, all left as is')
   expect(review[1], 'named by its gist').toContain('left as is · Float sum of cent-rounded totals may drift')
 })
+
+test('ended-task-status-reads-the-goal-verdict-its-runs-kept', async ($, on) => {
+  const rig = setupReplay(on)
+  await endTheTask($, rig)
+
+  const status = row(await paneLines($), 'STATUS')
+
+  expect(status, 'the goal lens (docs and plan) returned with nothing open').toBe('STATUS   ✓ DONE · goal met · PR #7 opened · ready for your next task')
+})

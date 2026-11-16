@@ -248,12 +248,13 @@ export function buildView(inputs: Inputs): View {
 const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since }: Inputs, agents?: number) => glance({ ledger, spawns, agents, tests, now, since, testsComplete, leaveOutUnknown: true })
 
 // An ended task as its kept runs tell it: the agents and tokens they recorded, from the first run's start to the last run's
-// end, and their returns in place of the session's, which a reload empties. Without them, the inputs as they are.
+// end, their returns in place of the session's, which a reload empties, and the pull request when nothing else named it.
+// Without them, the inputs as they are.
 function keptTask(inputs: Inputs): Inputs {
   const { task } = inputs
   if (!task) return inputs
   const end = Date.parse(task.endedAt)
-  return { ...inputs, ledger: inputs.ledger && { ...inputs.ledger, spend: task.spend }, spawns: [], calls: task.calls, since: task.startedAt ?? inputs.since, ...(Number.isNaN(end) ? {} : { now: end }) }
+  return { ...inputs, ledger: inputs.ledger && { ...inputs.ledger, spend: task.spend }, spawns: [], calls: task.calls, since: task.startedAt ?? inputs.since, prUrl: inputs.prUrl ?? task.prUrl, ...(Number.isNaN(end) ? {} : { now: end }) }
 }
 
 function buildPlainView(inputs: Inputs): View {
