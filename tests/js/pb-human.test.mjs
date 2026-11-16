@@ -181,7 +181,9 @@ describe("pb human approve passes a gate", () => {
     const output = succeeded(approve(repo, G_FIRST));
 
     assert.deepEqual(output, { ok: true, gate: G_FIRST, source: "human-cli" });
-    assert.deepEqual(repo.ledger().gates[G_FIRST], { source: "human-cli", answer: "approve" });
+    const { askedAt, answeredAt, ...record } = repo.ledger().gates[G_FIRST];
+    assert.deepEqual(record, { source: "human-cli", answer: "approve" });
+    assert.ok(Date.parse(askedAt) <= Date.parse(answeredAt), "the approval keeps how long the question waited");
     assert.equal(repo.ledger().needsHuman, null);
   });
 

@@ -51,3 +51,10 @@ export function noteOf(card) {
   if (!match) throw new Error("the card has no 'Why it looped' note");
   return match[0];
 }
+
+// The Spent row of AT A GLANCE (in How it ran): what the task spent, its working time among it.
+export function spentOf(html) {
+  const match = sectionOf(html, "AT A GLANCE").match(/<strong>Spent<\/strong>([^<]*)<\/p>/);
+  if (!match) throw new Error("AT A GLANCE has no Spent row");
+  return match[1].trim();
+}

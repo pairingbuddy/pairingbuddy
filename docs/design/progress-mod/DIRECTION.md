@@ -112,7 +112,7 @@ Rules:
 - **STATUS answers "am I needed now?".** It leads with a head, a mark and the state's word, drawn to pull the eye in proportion to urgency, then says what it is about, wrapping at its ` · ` parts, then words:
   - `▲ NEEDS YOU · <what>`: the head a yellow block (inverse, bold), what follows in yellow and bold, until you answer. The strongest;
   - `✕ STOPPED · <why>`: the head a red block (inverse, bold), why in red. As strong. A stop with no plain name reads `✕ STOPPED`;
-  - `✓ DONE · goal met · PR #7 opened · ready for your next task` once the unit is done: no run live, the task signed off, and the pull request opened (or kept local), or no unit left that would publish. The head bold and uncoloured, the rest plain: a call to action, not an alarm. The goal part reads `goal met`, `goal not checked`, or `goal in doubt: <gist>`, which leaves out "ready for your next task" since the doubt comes first;
+  - `✓ DONE · goal met · PR #7 opened · ready for your next task` once the unit is done: no run live, the task signed off, and the pull request opened (or kept local), or no unit left that would publish. The head bold and uncoloured, the rest plain: a call to action, not an alarm. The goal part reads `goal met`, or `goal in doubt: <gist>`, which leaves out "ready for your next task" since the doubt comes first; with no goal verdict known (no goal lens, or it did not return) the goal part is left out, as an unknown is;
   - `● working · <the active step or test sentence>`, `● working · between steps · next: …`, `● working · next: write the pull request` (all code steps done in a unit that publishes): the head in the accent, not bold, the rest plain. Calm;
   - `○ between runs · next: write the pull request` after the code run's end and before the publish run, `○ ended · not signed off` for a run that ended without its sign-off, `○ no run` before any run: quiet, the ○ dim.
 - **Detail labels are dim.** PR, BUILT, SPENT, STEPS, TESTS and REVIEW have dim labels; their values keep full strength so they stay readable.
@@ -239,7 +239,7 @@ The human's findings:
 
 What changed:
 - **PR.** The pane reads the last JSON object `pb publish` printed, one line or pretty-printed, also when another command follows it (`pb publish; echo "exit=$?"`).
-- **Doubts in questions.** A gate that asks over an open doubt shows one line per doubt, `Unsure (<step>): <doubt>`, cut at a word near 120 characters, at most 3, then `+ n more in the report`. It then asks over the doubt: "Is the task done despite this?", "Start building these despite this?", "Is that the right type despite this?". The ledger keeps every doubt in full (`needsHuman.doubts`); the report lists them under OPEN DOUBTS. With no doubt, the why line stays ("Auto mode is off, so this asks you.").
+- **Doubts in questions.** A gate that asks over an open doubt shows one line per doubt, `Unsure (<step>): <doubt>`, cut at a word near 120 characters, at most 3, then `+ n more in the report`. It then asks over the doubt: "Is the task done despite this?", "Start building these despite this?", "Is that the right type despite this?". The ledger keeps every doubt in full (`needsHuman.doubts`); the report lists them under NEEDS YOU. With no doubt, the why line stays ("Auto mode is off, so this asks you.").
 - **REVIEW's first line** names what was checked, with no counts: `checked: the code, the tests, docs and plan`. A lens still running reads under `still looking at:`, one that returned nothing usable under `could not check:`. A cycle's quick review reads `quick review done`. The summary line (`1 issue found · 1 checking`) and the finding lines stay. This replaces "one line per lens with its finding count" above.
 - **TESTS through the publish.** During the publish run and after it, TESTS shows the finished code run's tests, folded as usual (`✓ 5 done`).
 - **GOAL gist.** The goal's first sentence. When it is wider than the room, it is cut at the last clause break (`: `, `; `, `, `) that fits; a comma inside brackets or backticks does not count. With none, it is cut at the last word. The task-done question's `Goal:` line follows the same rule within 120 characters. The report keeps the whole goal.
@@ -369,7 +369,7 @@ The human's findings:
 
 What changed:
 - **No LOOPING.** The pane has no LOOPING row or tries line, and the band no `looping:` segment. STATUS tells a retry: `● working · making the test pass for <name> · test 1 of 2 · try 2 of 3`, and on the last allowed try `… · try 3 of 3 · last try before it asks you`, so the human knows they may be needed soon.
-- **The report's AT A GLANCE** has no Looping row (a live signal; each try's result is in the test's card, with "Why it looped") and no Off track row (it never had a source and always read unknown). Where it is, Spent and Left stay.
+- **The report's AT A GLANCE** (now in How it ran) has no Looping row (a live signal; each try's result is in the test's card, with "Why it looped") and no Off track row (it never had a source and always read unknown). Where it is, Spent and Left stay.
 - **Short test names.** TESTS, STATUS and the band name a test by its id spaced out (the placeholders return's `test_id`, the ledger's `perTest` key). The mod no longer reads the scenarios return for names; the report's SCENARIOS keeps each sentence.
 
 ## Commands, not band buttons (2026-11-16)
@@ -381,3 +381,17 @@ In a watched run the human could not use the band's `[ ▸ details ]` button. Th
 - **The band's hint** reads `/pb details · /pb-report report`, shortens to `/pb · /pb-report`, and is the first thing dropped at narrow widths. With the button gone the step gets its room.
 - **The pane keeps `r open report`** (it works while the pane has focus) and shows `or /pb-report, no focus needed` beside it.
 - **Why bare names.** From the mod docs (code.claude.com/docs/en/plugins/mods: api.md, interface.md, reference.md): a mod-registered command is a bare name of letters, digits, `_` and `-`, so `/pb:report` is not possible; a `command.run` hook runs mod code with no model turn and returns `{}` or `{ text }`; `$.ui.open({ id, focus: true })` from a command gets focus; `immediate: true` lets it run mid-turn.
+
+## The report leads with what you need (2026-11-16)
+
+The human read the report of a finished toy task: "not sure why knowing how it decided task type is that important. That's a lot of text for nothing really... What would be useful for the human to know/needs to take action on, that's what you want on the report really, apart from a summary of what was done/accomplished and changes in plan or scope if there is any material impact for the task."
+
+The report's shape, top to bottom:
+- **Header.** The whole goal, where the task is (`DONE`, `WAITING ON YOU`, `STOPPED`, `RUNNING`) and the pull request's link. No task type, no time.
+- **NEEDS YOU.** Only what the human must act on or decide: a question not answered yet or a sign-off not given, a stop with its plain reason and how to go on, each review finding left open (to fix, or left as is) with its gist, where it is and the question it left (a doubt raised on that finding reads once, under it), any other open doubt, and checks by hand (a test that passed before its code, a scenario the last coverage check still found untested). With none: "Nothing needs you." (or "Nothing needs you right now: the run is still going."). The pull request is in the header, not here.
+- **WHAT WAS DONE.** The files changed, the tests added and passing (by short name), the tests not passing yet, the pull request opened.
+- **CHANGES OF PLAN OR SCOPE.** Only when material: a new task type after a review, tests added because a coverage check found a scenario with none, and each finding a review had fixed in the work. A new confidence in the same type, a cycle's quick review and the pull request's wording are left out. With none, the section is not drawn.
+- **How it ran,** a closed `<details>` at the bottom, for debugging: AT A GLANCE (task type, where it is, spent, waited, left), SETTLED DOUBTS, STEPS, SCENARIOS, TESTS, BUILT, REVIEW and COMMITS, as before.
+
+Time waiting on the human is no working time. `pb gate eval` stamps `needsHuman.askedAt`; an answer keeps `askedAt` and `answeredAt` on its gate's record. SPENT (pane, band, an ended task's) and the report's Spent leave the waits out; the report's Waited row says them apart (`4h 1m waiting for you`). A ledger without the stamps waited 0.
+

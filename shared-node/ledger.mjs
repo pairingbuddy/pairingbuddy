@@ -87,6 +87,7 @@ const isString = (v) => typeof v === "string";
 const isSha = (v) => isString(v) && HEX64.test(v);
 const isNullableString = (v) => v === null || typeof v === "string";
 const isNonEmptyString = (v) => typeof v === "string" && v !== "";
+const isTimestamp = (v) => typeof v === "string" && ISO_TIMESTAMP.test(v);
 const isNullableTimestamp = (v) => v === null || (typeof v === "string" && ISO_TIMESTAMP.test(v));
 const isDoubt = (v) => isObject(v) && Object.keys(v).sort().join() === "ambiguity,step" && isNonEmptyString(v.step) && isNonEmptyString(v.ambiguity);
 const isDoubts = (v) => Array.isArray(v) && v.length > 0 && v.every(isDoubt);
@@ -177,7 +178,7 @@ export function validateLedger(ledger) {
         checkNullableObject(ledger.stop, "stop", { reason: [isNonEmptyString, "a non-empty string"], seq: [isCount, "a non-negative integer"], code: [isNonEmptyString, "a non-empty string"] }, errors);
         break;
       case "needsHuman":
-        checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"], shown: [isObject, "an object"], question: [isObject, "an object"], doubts: [isDoubts, "a non-empty array of { step, ambiguity } non-empty strings"] }, errors, { optional: ["shown", "question", "doubts"] });
+        checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"], askedAt: [isTimestamp, "an ISO 8601 timestamp"], shown: [isObject, "an object"], question: [isObject, "an object"], doubts: [isDoubts, "a non-empty array of { step, ambiguity } non-empty strings"] }, errors, { optional: ["askedAt", "shown", "question", "doubts"] });
         break;
       case "fixes":
         checkObject(ledger.fixes, "fixes", { rollbacks: [Array.isArray, "an array"] }, errors);

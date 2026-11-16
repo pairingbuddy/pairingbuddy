@@ -3,7 +3,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
-import { taskCommitShas, taskRuns } from "../../shared-node/task-runs.mjs";
+import { endedTaskFacts, taskCommitShas, taskRuns } from "../../shared-node/task-runs.mjs";
 
 const UNIT = "feat/order-total abc";
 const ledgerOf = (runId, kind, startedAt, commits = []) => ({ runId, kind, stage: { name: "s", status: "done", startedAt }, stages: [{ name: "s", status: "done", startedAt }], commits });
@@ -47,5 +47,20 @@ describe("report-joins-the-runs-of-a-task", () => {
     const runs = [{ ledger: ledgerOf("a", "code", "2026-11-16T10:00:00.000Z", ["s1", "s2"]) }, { ledger: ledgerOf("b", "code", "2026-11-16T10:05:00.000Z", ["s2", "s3"]) }];
 
     assert.deepEqual(taskCommitShas(runs), ["s1", "s2", "s3"]);
+  });
+});
+
+// Time a question waited on the human is no working time: an ended task's facts carry its runs' waits, so SPENT leaves them out.
+describe("an ended task's waits on the human", () => {
+  const waitedRun = (run, askedAt, answeredAt) => ({ ...run, ledger: { ...run.ledger, gates: { "G:x": { source: "human", answer: "approve", askedAt, answeredAt } } } });
+
+  test("sum every run's answered waits", () => {
+    const runs = [waitedRun(CODE, "2026-11-16T10:00:10.000Z", "2026-11-16T10:00:40.000Z"), waitedRun(PUBLISH, "2026-11-16T10:09:00.000Z", "2026-11-16T14:09:00.000Z")];
+
+    assert.equal(endedTaskFacts(runs).waited, 30 + 4 * 3600);
+  });
+
+  test("are none for runs kept before the stamps", () => {
+    assert.equal(endedTaskFacts([CODE, PUBLISH]).waited, 0);
   });
 });

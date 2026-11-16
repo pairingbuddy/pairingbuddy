@@ -10,18 +10,18 @@ import { cardsOf, noteOf, rowsOf, sectionOf } from "./report-fixture.mjs";
 const STOP = { reason: "a step kept failing", seq: 3, code: "step-failed" };
 const stoppedLedger = (perTest = {}, stop = STOP) => ({ taskType: "bug_fix", task: "T", stage: { name: "code-tdd", status: "active" }, stages: [], tests: { perTest }, stop });
 const red = (item) => ({ kind: "workflow_agent", name: `pb1 code-tdd RED implement-tests ${item} r1`, seconds: 10 });
-const nextStep = (html) => sectionOf(html, "WHAT YOU CAN DO");
+const nextStep = (html) => sectionOf(html, "NEEDS YOU");
 
 test("stopped-run-with-no-current-test-says-what-it-keeps-is-unknown", () => {
   const html = renderReport({ ledger: stoppedLedger(), spawns: [] });
 
-  assert.match(nextStep(html), /<p>1\. Re-run \/pairingbuddy:code\. The recorded run does not say which test it stopped on, so what it keeps is unknown\.<\/p>/);
+  assert.match(nextStep(html), /Re-run \/pairingbuddy:code\. The recorded run does not say which test it stopped on, so what it keeps is unknown\.<\/li>/);
 });
 
 test("stopped-run-on-test-1-continues-from-test-1", () => {
   const html = renderReport({ ledger: stoppedLedger(), spawns: [red("t1")] });
 
-  assert.match(nextStep(html), /<p>1\. Re-run \/pairingbuddy:code\. It continues from test 1\.<\/p>/);
+  assert.match(nextStep(html), /Re-run \/pairingbuddy:code\. It continues from test 1\.<\/li>/);
 });
 
 test("spawns-that-are-no-list-still-draw-the-ledger-tries", () => {

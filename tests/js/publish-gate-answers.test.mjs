@@ -31,7 +31,9 @@ describe("publish-gate-choices", () => {
     runTap(repo, recordedAnswer(repo, question, "publish"));
 
     const ledger = repo.ledger();
-    assert.deepEqual(ledger.gates[GATE], {
+    const { askedAt, answeredAt, ...record } = ledger.gates[GATE];
+    assert.ok(Date.parse(askedAt) <= Date.parse(answeredAt), `the record keeps how long the question waited, got ${askedAt} to ${answeredAt}`);
+    assert.deepEqual(record, {
       source: "human", answer: "approve", headSha: git(repo, "rev-parse", "HEAD"), bodyHash: sha256(CLEAN_BODY), titleHash: sha256(CLEAN_TITLE), labels: [], coordinationHash: sha256(COORDINATION), base: "main", target: "main",
     });
     assert.equal(isPassed(ledger, GATE), true);
@@ -106,7 +108,9 @@ describe("publish-binding", () => {
     const approved = pb(repo, "human", "approve", GATE);
 
     assert.equal(approved.code, 0, approved.stderr);
-    assert.deepEqual(repo.ledger().gates[GATE], {
+    const { askedAt, answeredAt, ...record } = repo.ledger().gates[GATE];
+    assert.ok(Date.parse(askedAt) <= Date.parse(answeredAt), `the record keeps how long the question waited, got ${askedAt} to ${answeredAt}`);
+    assert.deepEqual(record, {
       source: "human-cli", answer: "approve", headSha: git(repo, "rev-parse", "HEAD"), bodyHash: sha256(CLEAN_BODY), titleHash: sha256(CLEAN_TITLE), labels: [], coordinationHash: sha256(COORDINATION), base: "main", target: "main",
     });
   });

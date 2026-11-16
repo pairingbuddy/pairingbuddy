@@ -120,13 +120,14 @@ test("the end round is the code run's safety-net round, read from the recorded r
   assert.equal(safetyNetRound({ codeRun: { ...codeRun, safetyNet: null }, calls, spawns: [] }), undefined, "no safety-net stage, no round");
 });
 
-test("STATUS says goal not checked when no alignment verdict was recorded", () => {
+// With no verdict there is nothing about the goal to tell, so STATUS leaves the goal out rather than say it was "not checked".
+test("STATUS says nothing of the goal when no alignment verdict was recorded", () => {
   const noAlignmentLens = { lenses: [{ id: "code", name: "the code", state: "returned", found: 0 }], findings: [] };
 
-  assert.equal(doneStatus({ codeRun: finishedRun() }), "goal not checked · ready for your next task", "no review round is known (the session that saw it is gone)");
-  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ state: "uncovered" }) }), "goal not checked · ready for your next task", "the alignment lens returned nothing usable");
-  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ state: "running" }) }), "goal not checked · ready for your next task", "the alignment lens never returned");
-  assert.equal(doneStatus({ codeRun: finishedRun(), round: noAlignmentLens }), "goal not checked · ready for your next task", "no alignment lens ran");
+  assert.equal(doneStatus({ codeRun: finishedRun() }), "ready for your next task", "no review round is known (the session that saw it is gone)");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ state: "uncovered" }) }), "ready for your next task", "the alignment lens returned nothing usable");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ state: "running" }) }), "ready for your next task", "the alignment lens never returned");
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: noAlignmentLens, pr: { url: "https://github.com/o/r/pull/7" } }), "PR #7 opened · ready for your next task", "no alignment lens ran");
 });
 
 test("a goal too wide for its room is cut at the last clause break that fits, else at the last word", () => {

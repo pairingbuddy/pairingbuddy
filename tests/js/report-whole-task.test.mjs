@@ -4,7 +4,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { renderReport } from "../../shared-node/report.mjs";
-import { cardsOf, headerOf, rowsOf, sectionOf } from "./report-fixture.mjs";
+import { cardsOf, headerOf, rowsOf, sectionOf, spentOf } from "./report-fixture.mjs";
 
 const TASK = "Add order_total(lines) to cart.py: it sums line_total over the lines.";
 const TEST_ID = "order-total-example-two-lines";
@@ -94,12 +94,12 @@ const COMMITS = [
 const report = (overrides = {}) => renderReport({ runs: RUNS, spawns: SPAWNS, commits: COMMITS, changed: ["cart.py", "tests/test_cart.py"], ...overrides });
 
 describe("report-of-the-whole-task", () => {
-  test("the header names the code run's task type and the whole task's time", () => {
-    const header = headerOf(report());
+  test("how it ran names the code run's task type and the whole task's time", () => {
+    const html = report();
 
-    assert.ok(header.includes("DONE"), "the task is done");
-    assert.ok(header.includes("new feature"), `the task type is the code run's, got ${header}`);
-    assert.ok(header.includes("14:00"), `the time runs from the code run's start to the publish run's end, got ${header}`);
+    assert.ok(headerOf(html).includes("DONE"), "the task is done");
+    assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Task type<\/strong> new feature/, "the task type is the code run's");
+    assert.ok(spentOf(html).includes("14:00"), `the time runs from the code run's start to the publish run's end, got ${spentOf(html)}`);
   });
 
   test("STEPS lists every step of both runs, timed from the task's start", () => {
@@ -151,19 +151,17 @@ describe("report-of-the-whole-task", () => {
     assert.ok(!section.includes("Test name says example"), "a cycle's quick review is in TESTS, not here");
   });
 
-  test("OPEN DOUBTS lists the doubt the human approved the task past", () => {
-    const section = sectionOf(report(), "OPEN DOUBTS");
+  test("NEEDS YOU lists the doubt the human approved the task past", () => {
+    const section = sectionOf(report(), "NEEDS YOU");
 
-    assert.ok(section.includes("listing scenarios: An empty order returns int 0, not 0.0."), `the doubt is listed in full, got ${section}`);
-    assert.ok(section.includes("your sign-off at the end"), "with the gate it was approved past");
+    assert.ok(section.includes("Decide: An empty order returns int 0, not 0.0. <small>(raised while listing scenarios)</small>"), `the doubt is listed in full, got ${section}`);
   });
 
-  test("WHAT YOU CAN DO names the pull request to review and the doubt to decide", () => {
-    const section = sectionOf(report(), "WHAT YOU CAN DO");
+  test("the header names the pull request; NEEDS YOU does not ask to review it", () => {
+    const html = report();
 
-    assert.ok(section.includes(`1. Review pull request #7: ${PR_URL}`), `the first action is the PR, got ${section}`);
-    assert.ok(section.includes("2. Decide the open doubt: An empty order returns int 0, not 0.0."), "then the doubt approved past");
-    assert.ok(!section.includes("sign-off"), "the task was signed off already");
+    assert.ok(headerOf(html).includes(`pull request #7: <a href="${PR_URL}">`), "the header links the pull request");
+    assert.ok(!sectionOf(html, "NEEDS YOU").includes("sign-off"), "the task was signed off already");
   });
 
   // Left only means something while the task runs: a finished one says what it spent and that it is done.
@@ -171,9 +169,16 @@ describe("report-of-the-whole-task", () => {
     const section = sectionOf(report(), "AT A GLANCE");
 
     assert.match(section, /<strong>Where it is<\/strong> finished/);
-    assert.match(section, /<strong>Spent<\/strong> 9 agents · 14:00 · 16248 output tokens/, "both runs' tokens over the whole task's time");
+    assert.match(section, /<strong>Spent<\/strong> 43 agents · 14:00 · 16248 output tokens/, "both runs' tokens over the whole task's time");
     assert.doesNotMatch(section, /Left|Looping|Off track/);
     assert.doesNotMatch(section, /<\/strong> unknown<\/p>/, "no row is unknown as a whole");
+  });
+
+  // A reload empties the session's spawns; the runs pb kept still record how many agents each ran.
+  test("Spent of a finished task counts the agents its runs recorded, not the session's spawns", () => {
+    const section = sectionOf(report({ spawns: [] }), "AT A GLANCE");
+
+    assert.match(section, /<strong>Spent<\/strong> 43 agents · /, "the code run's 30 and the publish run's 13");
   });
 });
 
@@ -226,22 +231,15 @@ describe("report-of-a-doubt-a-later-fix-settled", () => {
   test("the doubt is no longer open, and the report says the later fix settled it", () => {
     const html = settledReport();
 
-    assert.throws(() => sectionOf(html, "OPEN DOUBTS"), /no OPEN DOUBTS section/, "no doubt is open");
+    assert.ok(!sectionOf(html, "NEEDS YOU").includes(AMBIGUITY), "no doubt is open");
     const section = sectionOf(html, "SETTLED DOUBTS");
     assert.ok(section.includes(`a reviewer: ${AMBIGUITY}`), `the doubt is listed in full, got ${section}`);
     assert.ok(section.includes(`settled by a later fix in the safety-net review: order_total returns int 0 for an empty list · ${SHA_FIX.slice(0, 7)}`), `with how it was settled, got ${section}`);
   });
 
-  test("WHAT YOU CAN DO does not ask the human to decide it again", () => {
-    const section = sectionOf(settledReport(), "WHAT YOU CAN DO");
-
-    assert.ok(!section.includes("Decide the open doubt"), `got ${section}`);
-  });
-
   test("a doubt whose finding no fix settled stays open", () => {
     const html = settledReport(SETTLING_CALLS.slice(0, 2));
 
-    assert.ok(sectionOf(html, "OPEN DOUBTS").includes(AMBIGUITY), "the doubt is still open");
-    assert.ok(sectionOf(html, "WHAT YOU CAN DO").includes(`Decide the open doubt: ${AMBIGUITY}`));
+    assert.ok(sectionOf(html, "NEEDS YOU").includes(`Decide: ${AMBIGUITY}`), "the doubt is still open");
   });
 });

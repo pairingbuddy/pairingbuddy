@@ -114,6 +114,7 @@
             "gate": { "type": "string", "minLength": 1 },
             "reason": { "type": "string" },
             "seq": { "type": "integer", "minimum": 0 },
+            "askedAt": { "description": "When gate eval asked the question: the wait on the human starts here and is no working time. May be absent (ledgers written before it).", "type": "string", "format": "date-time" },
             "shown": {
               "description": "What gate eval showed the human at G:publish: the HEAD sha, the unit base and the PR target. May be absent. A publish answer is refused if HEAD is no longer headSha.",
               "type": "object",

@@ -471,7 +471,8 @@ function gateEval(args) {
     full = fullQuestion(gate, shape);
     // The question folds long lists into the full question file; the ledger keeps the doubts in full for the report.
     const doubts = questionDoubts(reason, asked);
-    return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, question, ...facts, ...(doubts === null ? {} : { doubts }) } };
+    // askedAt: the wait on the human starts here, and is no working time (the answer records when it ended).
+    return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, askedAt: new Date().toISOString(), question, ...facts, ...(doubts === null ? {} : { doubts }) } };
   });
   if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto" };
   writeWhole(fullAt, full);

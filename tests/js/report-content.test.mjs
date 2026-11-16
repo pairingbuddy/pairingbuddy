@@ -13,19 +13,21 @@ import { graphFor } from "../../shared-node/stage-graph.mjs";
 import { plainName } from "../../shared-node/plain-names.mjs";
 import { renderReport } from "../../shared-node/report.mjs";
 import { glance } from "../../shared-node/glance.mjs";
-import { RECORDED_STOP, recordedReportInput, headerOf, sectionOf, cardsOf, rowsOf, noteOf } from "./report-fixture.mjs";
+import { RECORDED_STOP, recordedReportInput, headerOf, sectionOf, spentOf, cardsOf, rowsOf, noteOf } from "./report-fixture.mjs";
 
 describe("report-content", () => {
+  // The task type and the time are how it ran: AT A GLANCE holds them, the header only the task and where it is.
   test("report-header-states-task-outcome-and-time", async () => {
-    const stopped = headerOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })));
+    const stoppedHtml = renderReport(await recordedReportInput("probe-2", { outcome: "stopped" }));
+    const stopped = headerOf(stoppedHtml);
     const done = headerOf(renderReport(await recordedReportInput("probe-2", { outcome: "done" })));
 
     assert.ok(stopped.includes("Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it should return 90"), "the header shows the task text");
     assert.ok(stopped.includes("STOPPED"), "a stopped run carries the STOPPED badge");
     assert.ok(!stopped.includes("DONE"), "a stopped run does not say DONE");
-    assert.ok(stopped.includes("bug fix"), "the header names the task type in plain words");
-    assert.ok(stopped.includes("2:36"), "the header shows the elapsed time from the recording (156s)");
-    assert.ok(done.includes("DONE"), "a finished run carries the DONE badge");
+    assert.match(sectionOf(stoppedHtml, "AT A GLANCE"), /<strong>Task type<\/strong> bug fix/, "how it ran names the task type in plain words");
+    assert.ok(spentOf(stoppedHtml).includes("2:36"), "how it ran shows the elapsed time from the recording (156s)");
+    assert.ok(done.includes("WAITING ON YOU"), "a finished run not signed off waits on the human");
     assert.ok(!done.includes("STOPPED"), "a finished run does not say STOPPED");
   });
 
@@ -41,19 +43,19 @@ describe("report-content", () => {
 
   const readStagesContract = async () => JSON.parse(await readFile(new URL("../../contracts/stages.json", import.meta.url), "utf8"));
 
-  const WHAT_YOU_CAN_DO = "report-what-you-can-do-follows-the-run-state";
+  const WHAT_YOU_CAN_DO = "report-needs-you-follows-the-run-state";
 
   test(`${WHAT_YOU_CAN_DO}: stopped lists the re-run step`, async () => {
-    const section = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })), "WHAT YOU CAN DO");
+    const section = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })), "NEEDS YOU");
 
-    assert.ok(section.includes("1. Re-run /pairingbuddy:code. It continues from test 2 and keeps test 1 and its commits."), "a stopped run offers the re-run step from R5-3");
+    assert.ok(section.includes("Re-run /pairingbuddy:code. It continues from test 2 and keeps test 1 and its commits."), "a stopped run offers the re-run step from R5-3");
     assert.ok(!section.includes("sign-off"), "a stopped run does not ask for a sign-off");
   });
 
   test(`${WHAT_YOU_CAN_DO}: done lists the sign-off step`, async () => {
-    const section = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "done" })), "WHAT YOU CAN DO");
+    const section = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "done" })), "NEEDS YOU");
 
-    assert.ok(section.includes("1. Review the result and give your sign-off."), "a finished run lists the sign-off step");
+    assert.ok(section.includes("Review the result and give your sign-off."), "a finished run lists the sign-off step");
     assert.doesNotMatch(section, /re-run/i, "a finished run does not offer a re-run");
   });
 
@@ -267,9 +269,10 @@ describe("report-content", () => {
     const doubts = [{ step: "making the test pass", ambiguity: long }, ...["b?", "c?", "d?"].map((ambiguity) => ({ step: "listing scenarios", ambiguity }))];
     const ledger = { ...input.ledger, needsHuman: { gate: "G:task-end", reason: "these returns carry an open ambiguity: a, b", seq: 1, doubts } };
 
-    const section = sectionOf(renderReport({ ...input, ledger }), "OPEN DOUBTS");
+    const section = sectionOf(renderReport({ ...input, ledger }), "NEEDS YOU");
+    const decide = (step, ambiguity) => `Decide: ${ambiguity} <small>(raised while ${step})</small>`;
 
-    assert.deepEqual(itemsOf(section), [`making the test pass: ${long}`, "listing scenarios: b?", "listing scenarios: c?", "listing scenarios: d?"]);
+    assert.deepEqual(itemsOf(section).slice(1), [decide("making the test pass", long), decide("listing scenarios", "b?"), decide("listing scenarios", "c?"), decide("listing scenarios", "d?")]);
   });
 
   // Every recorded string the report prints: the task text, a test id and a commit subject. (A stop prints the plain name of its
@@ -311,7 +314,7 @@ describe("report-content", () => {
   }
 
   // An empty or partial recording must still give a whole page: every section present, every missing value worded as unknown.
-  const SECTIONS = ["AT A GLANCE", "STEPS", "TESTS", "COMMITS", "WHAT YOU CAN DO"];
+  const SECTIONS = ["NEEDS YOU", "WHAT WAS DONE", "AT A GLANCE", "STEPS", "TESTS", "COMMITS"];
   const PARTIAL_RUNS = {
     "an empty object": {},
     "a null ledger": { ledger: null },
@@ -333,7 +336,6 @@ describe("report-content", () => {
       const glance = sectionOf(html, "AT A GLANCE");
       assert.match(glance, /<strong>Where it is<\/strong>\s*unknown/, "where the run is reads unknown");
       assert.match(glance, /<strong>Spent<\/strong>[^<]*time unknown · tokens unknown · % of plan unknown/, "the spend reads unknown for time, tokens and plan");
-      assert.match(headerOf(html), /time unknown/, "the header says the time is unknown");
       assert.match(sectionOf(html, "COMMITS"), /<p>unknown<\/p>/, "the commits section says unknown when no commits were passed");
       assert.ok(!/undefined|NaN|\[object Object\]/.test(html), "no raw undefined, NaN or object leaks into the page");
     });
@@ -420,7 +422,7 @@ describe("report-content", () => {
 
     const html = renderReport({ ...input, tests, testsComplete: true });
     const glance = sectionOf(renderReport({ ...running, tests, testsComplete: true }), "AT A GLANCE");
-    const rerun = sectionOf(html, "WHAT YOU CAN DO");
+    const rerun = sectionOf(html, "NEEDS YOU");
     const card = cardsOf(html).find((candidate) => candidate.includes(CURRENT));
 
     assert.ok(card, "the current test has a card");
@@ -484,15 +486,12 @@ test('run-time-derived-from-stage-times', async () => {
   const html = renderReport({ ledger, spawns: [] });
   const noTimes = renderReport({ ledger: { ...bare, stages: [] }, spawns: [] });
 
-  assert.ok(headerOf(html).includes("1:40"), "the header shows the first start to the last end");
-  assert.ok(!headerOf(html).includes("time unknown"), "the header does not say time unknown");
   assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Spent<\/strong>\s*\d+ agents? · 1:40 ·/);
   const real = renderReport({ ledger: bare, spawns: [], endedAt: "2026-11-04T08:15:06.472Z" });
   const realNoEnd = renderReport({ ledger: bare, spawns: [] });
-  assert.ok(headerOf(real).includes("1:40"), "real shape: the run time is endedAt minus the first startedAt");
+  assert.ok(spentOf(real).includes("1:40"), "real shape: the run time is endedAt minus the first startedAt");
   assert.match(sectionOf(real, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]* · 1:40 ·/);
-  assert.ok(headerOf(realNoEnd).includes("time unknown"), "real shape without endedAt stays unknown");
-  assert.ok(headerOf(noTimes).includes("unknown"), "with no stage times and no timing the header stays unknown");
+  assert.ok(spentOf(realNoEnd).includes("time unknown"), "real shape without endedAt stays unknown");
   assert.match(sectionOf(noTimes, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]*unknown/);
 });
 
@@ -537,7 +536,7 @@ test("done-run-does-not-ask-for-sign-off", async () => {
     gates: { ...recorded.gates, "G:task-end": { source: "human-cli", answer: "approve" } },
   };
 
-  const section = sectionOf(renderReport({ ledger: signedOff, spawns: [] }), "WHAT YOU CAN DO");
+  const section = sectionOf(renderReport({ ledger: signedOff, spawns: [] }), "NEEDS YOU");
 
   assert.ok(!section.includes("Review the result and give your sign-off."), "a signed-off run does not tell the human to review and sign off");
   assert.ok(!/sign-?off/i.test(section), "a signed-off run does not ask for a sign-off in any words");
@@ -553,9 +552,9 @@ test("done-run-says-nothing-is-needed", async () => {
     gates: { ...recorded.gates, "G:task-end": { source: "human-cli", answer: "approve" } },
   };
 
-  const section = sectionOf(renderReport({ ledger: signedOff, spawns: [] }), "WHAT YOU CAN DO");
+  const section = sectionOf(renderReport({ ledger: signedOff, spawns: [] }), "NEEDS YOU");
 
-  assert.match(section, /Nothing to do: the run is done\./, "a signed-off run says plainly that nothing is left to do");
+  assert.match(section, /Nothing needs you\./, "a signed-off run says plainly that nothing is left to do");
 });
 
 test("done-run-still-awaiting-sign-off-asks-for-it", async () => {
@@ -568,18 +567,18 @@ test("done-run-still-awaiting-sign-off-asks-for-it", async () => {
     gates: {},
   };
 
-  const section = sectionOf(renderReport({ ledger: awaiting, spawns: [] }), "WHAT YOU CAN DO");
+  const section = sectionOf(renderReport({ ledger: awaiting, spawns: [] }), "NEEDS YOU");
 
   assert.match(section, /Review the result and give your sign-off\./, "a run still waiting on the task-end gate asks for the sign-off");
-  assert.ok(!section.includes("Nothing to do: the run is done."), "a run that is not signed off never says nothing is left to do");
+  assert.ok(!section.includes("Nothing needs you."), "a run that is not signed off never says nothing is left to do");
 });
 
 test("stopped-and-running-next-steps-unchanged", async () => {
-  const stopped = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })), "WHAT YOU CAN DO");
-  const running = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "running" })), "WHAT YOU CAN DO");
+  const stopped = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })), "NEEDS YOU");
+  const running = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "running" })), "NEEDS YOU");
 
-  assert.ok(stopped.includes("1. Re-run /pairingbuddy:code. It continues from test 2 and keeps test 1 and its commits."), "a stopped run still shows the re-run guidance");
-  assert.ok(running.includes("Nothing to do yet: the run is still going."), "a running run still says nothing is to be done yet");
+  assert.ok(stopped.includes("Re-run /pairingbuddy:code. It continues from test 2 and keeps test 1 and its commits."), "a stopped run still shows the re-run guidance");
+  assert.ok(running.includes("Nothing needs you right now: the run is still going."), "a running run still says nothing is to be done yet");
   assert.ok(!running.includes("sign-off"), "a running run does not ask for a sign-off");
 });
 
@@ -738,9 +737,9 @@ test("done-auto-passed-task-end-gate-says-nothing-to-do", async () => {
     gates: { ...recorded.gates, "G:task-end": { source: "auto" } },
   };
 
-  const section = sectionOf(renderReport({ ledger: autoPassed, spawns: [] }), "WHAT YOU CAN DO");
+  const section = sectionOf(renderReport({ ledger: autoPassed, spawns: [] }), "NEEDS YOU");
 
-  assert.match(section, /Nothing to do: the run is done\./, "an auto-passed run says plainly that nothing is left to do");
+  assert.match(section, /Nothing needs you\./, "an auto-passed run says plainly that nothing is left to do");
   assert.ok(!section.includes("Review the result and give your sign-off."), "an auto-passed run does not ask for a sign-off");
 });
 
@@ -754,9 +753,9 @@ test("done-human-approved-task-end-gate-says-nothing-to-do", async () => {
     gates: { ...recorded.gates, "G:task-end": { source: "human", answer: "approve" } },
   };
 
-  const section = sectionOf(renderReport({ ledger: humanApproved, spawns: [] }), "WHAT YOU CAN DO");
+  const section = sectionOf(renderReport({ ledger: humanApproved, spawns: [] }), "NEEDS YOU");
 
-  assert.match(section, /Nothing to do: the run is done\./, "a human-approved run says plainly that nothing is left to do");
+  assert.match(section, /Nothing needs you\./, "a human-approved run says plainly that nothing is left to do");
   assert.ok(!section.includes("Review the result and give your sign-off."), "a human-approved run does not ask for a sign-off");
 });
 
@@ -766,12 +765,12 @@ test("done-pending-task-end-gate-still-asks-for-signoff", async () => {
   const noGateRecorded = { ...finished, needsHuman: null, gates: {} };
   const gateStillPending = { ...finished, needsHuman: { gate: "G:task-end" }, gates: { "G:task-end": { source: "auto" } } };
 
-  const withoutGate = sectionOf(renderReport({ ledger: noGateRecorded, spawns: [] }), "WHAT YOU CAN DO");
-  const withPendingGate = sectionOf(renderReport({ ledger: gateStillPending, spawns: [] }), "WHAT YOU CAN DO");
+  const withoutGate = sectionOf(renderReport({ ledger: noGateRecorded, spawns: [] }), "NEEDS YOU");
+  const withPendingGate = sectionOf(renderReport({ ledger: gateStillPending, spawns: [] }), "NEEDS YOU");
 
   assert.match(withoutGate, /Review the result and give your sign-off\./, "a finished run with no recorded task-end gate asks for the sign-off");
   assert.match(withPendingGate, /Review the result and give your sign-off\./, "a finished run whose task-end gate is still pending asks for the sign-off");
-  assert.ok(!withoutGate.includes("Nothing to do: the run is done.") && !withPendingGate.includes("Nothing to do: the run is done."), "neither run says nothing is left to do");
+  assert.ok(!withoutGate.includes("Nothing needs you.") && !withPendingGate.includes("Nothing needs you."), "neither run says nothing is left to do");
 });
 
 test("live-report-header-and-spent-show-elapsed-to-now", () => {
@@ -782,8 +781,6 @@ test("live-report-header-and-spent-show-elapsed-to-now", () => {
 
   const html = renderReport(input);
 
-  assert.ok(headerOf(html).includes("0:51"), "the header shows the elapsed time from the first start to now");
-  assert.ok(!headerOf(html).includes("time unknown"), "the header does not say time unknown");
   assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]* · 0:51 ·/, "SPENT shows the same elapsed time");
   assert.ok(!sectionOf(html, "AT A GLANCE").includes("time unknown"), "SPENT does not say time unknown");
   assert.ok(glance({ ledger, spawns: [], now }).rows.spent.includes(" · 0:51 · "), "the pane shows the same elapsed text for the same ledger and now");
@@ -795,7 +792,6 @@ test("live-report-with-no-start-stays-unknown", () => {
 
   const html = renderReport({ ledger, spawns: [], now });
 
-  assert.ok(headerOf(html).includes("time unknown"), "the header says time unknown when the run has no recorded start");
   assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]* · (time )?unknown ·/, "SPENT says unknown for the time");
   assert.ok(!html.includes("NaN"), "no NaN leaks into the report");
 });
@@ -811,10 +807,10 @@ test("finished-report-still-measures-to-end-not-now", () => {
   const byEndedAt = renderReport({ ledger: withEndedAt, spawns: [], endedAt: new Date(Date.parse(START) + 51_000).toISOString(), now: laterNow });
   const byStageEnd = renderReport({ ledger: withStageEnd, spawns: [], now: laterNow });
 
-  assert.ok(headerOf(byEndedAt).includes("0:51"), "a run with endedAt shows its recorded length");
-  assert.ok(!headerOf(byEndedAt).includes("1:00:00"), "a run with endedAt is not stretched to the later now");
-  assert.ok(headerOf(byStageEnd).includes("0:51"), "a run with a stage end shows the length to the last stage end");
-  assert.ok(!headerOf(byStageEnd).includes("1:00:00"), "a run with a stage end is not stretched to the later now");
+  assert.ok(spentOf(byEndedAt).includes("0:51"), "a run with endedAt shows its recorded length");
+  assert.ok(!spentOf(byEndedAt).includes("1:00:00"), "a run with endedAt is not stretched to the later now");
+  assert.ok(spentOf(byStageEnd).includes("0:51"), "a run with a stage end shows the length to the last stage end");
+  assert.ok(!spentOf(byStageEnd).includes("1:00:00"), "a run with a stage end is not stretched to the later now");
 });
 
 // Scenario report-in-progress-step-start-time (Finding 26). Placeholders: fail until implemented.

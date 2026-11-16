@@ -379,7 +379,10 @@ class TestKilledAtGate:
 
         ledger = ledger_of(clone)
         assert ledger["needsHuman"] is None
-        assert ledger["gates"]["G:task-end"] == {"source": "human-cli", "answer": "approve"}
+        record = dict(ledger["gates"]["G:task-end"])
+        # The approval keeps how long the question waited on the human, which is no working time.
+        assert record.pop("askedAt") <= record.pop("answeredAt")
+        assert record == {"source": "human-cli", "answer": "approve"}
 
 
 class TestShaMismatch:

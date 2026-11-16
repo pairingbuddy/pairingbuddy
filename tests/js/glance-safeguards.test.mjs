@@ -104,3 +104,22 @@ test("now-and-the-band-follow-the-active-stage-never-the-last-test", () => {
   assert.equal(rows.now, "safety-net review", "a test step of an earlier stage is not the current step");
   assert.equal(band.find(({ id }) => id === "where").text, "safety-net review", "the band names the active stage, not the last test's phase");
 });
+
+// Time a question waited on the human is no working time: SPENT leaves out each answered wait and the one still open.
+test("spent-time-leaves-out-the-time-questions-waited-on-the-human", () => {
+  const at = (clock) => `2026-11-16T${clock}.000Z`;
+  const ledger = {
+    stage: { name: "pr-draft", status: "done", startedAt: at("10:00:00") },
+    stages: [{ name: "pr-draft", status: "done", startedAt: at("10:00:00") }],
+    gates: { "G:publish": { source: "human", answer: "approve", askedAt: at("10:05:00"), answeredAt: at("14:05:00") } },
+    needsHuman: null,
+  };
+  const now = Date.parse(at("14:10:00"));
+  const shown = glance({ ledger, spawns: [], now, leaveOutUnknown: true });
+
+  assert.equal(shown.rows.spent, "0 agents · 10:00", "four hours of waiting are left out of 4:10:00");
+  assert.equal(shown.band.find(({ id }) => id === "spent").text, "10:00 · 0 agents", "the band's time too");
+
+  const waiting = { ...ledger, gates: {}, needsHuman: { gate: "G:publish", reason: "r", seq: 1, askedAt: at("10:05:00") } };
+  assert.equal(glance({ ledger: waiting, spawns: [], now, leaveOutUnknown: true }).rows.spent, "0 agents · 5:00", "a question still open waits to now");
+});

@@ -3,13 +3,17 @@
 import { isPassed } from "./gate-passed.mjs";
 import { plainName } from "./plain-names.mjs";
 import { clock } from "./duration.mjs";
-import { gateLine, glance, plural, runStart, testLabels, currentStep, triesAtStep, isLooping } from "./glance.mjs";
+import { gateLine, glance, plural, runStart, stopName, testLabels, currentStep, triesAtStep, isLooping } from "./glance.mjs";
 import { readLabel } from "./labels.mjs";
 import { stageNamesFor } from "./stage-graph.mjs";
 import contract from "./stages-contract.mjs";
-import { findingGist, lensRound } from "./lens-round.mjs";
+import { FINDING_WORDS, findingGist, lensRound } from "./lens-round.mjs";
 import { parseKey } from "./keys.mjs";
 import { lensOfFinding } from "./lens-merge.mjs";
+import { taskEnded, taskSpend, taskWaited } from "./task-runs.mjs";
+import { shortName } from "./now-building.mjs";
+
+const TASK_END = "G:task-end";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
@@ -21,8 +25,21 @@ function outcome(ledger) {
   return ledger?.stage?.status === "done" ? "DONE" : "RUNNING";
 }
 
+// Where the task is, for the header: waiting on you while a question is asked or the sign-off is not given yet.
+function whereItIs(ledger, task) {
+  const state = outcome(ledger);
+  if (state === "STOPPED") return state;
+  return ledger?.needsHuman?.gate || awaitsSignOff(task) ? "WAITING ON YOU" : state;
+}
+
+// The task's code run finished and was not signed off.
+function awaitsSignOff(task) {
+  const code = codeRunIn(task).ledger;
+  return outcome(code) === "DONE" && code?.kind !== PUBLISH_KIND && !(code?.gates && isPassed(code, TASK_END));
+}
+
 function glanceLabels(ledger) {
-  return { now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", left: "Left" };
+  return { type: "Task type", now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", waited: "Waited", left: "Left" };
 }
 
 // The run's length: endedAt (or the last stage end) minus the first start; NaN when either is missing.
@@ -37,23 +54,30 @@ function runSeconds(ledger, endedAt, now, first = ledger) {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : NaN;
 }
 
-// The tokens every run of the task spent; known only when each run knew its own.
-function taskSpend(task) {
-  const spends = task.map(({ ledger }) => ledger?.spend);
-  const tokensKnown = spends.every((spend) => spend?.tokensKnown === true);
-  return { ...spends.at(-1), tokens: spends.reduce((sum, spend) => sum + (Number(spend?.tokens) || 0), 0), tokensKnown };
-}
-
 // Left only means something while the run goes, so a finished run has no such row.
 const LIVE_ROWS = ["left"];
 
-function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task }) {
-  const { rows: all } = glance({ ledger: { ...ledger, spend: taskSpend(task) }, spawns, tests, ranFor, testsComplete });
+// A wait on the human in hours and minutes ("4h 1m"), minutes, or seconds when under one.
+function waitWords(seconds) {
+  const [h, m] = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60];
+  if (h > 0) return `${h}h ${m}m`;
+  return m > 0 ? `${m}m` : `${Math.floor(seconds)}s`;
+}
+
+function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskType, now }) {
+  const spend = taskSpend(task);
+  // Once every run has ended, the agents are the ones the runs recorded; the session's spawns may be gone.
+  const agents = taskEnded(task) ? spend.agents : undefined;
+  // Time spent waiting on the human is no working time: Spent leaves it out, and Waited says it apart.
+  const waited = taskWaited(task, now);
+  const { rows: all } = glance({ ledger: { ...ledger, spend }, spawns, tests, ranFor, testsComplete, agents, waited });
   const done = outcome(ledger) === "DONE";
   const rows = done ? Object.fromEntries(Object.entries(all).filter(([key]) => !LIVE_ROWS.includes(key))) : all;
   if (done) rows.now = "finished";
+  if (waited >= 1) rows.waited = `${waitWords(waited)} waiting for you`;
   const labels = glanceLabels(ledger);
-  const lines = Object.entries(rows).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
+  const typed = { type: plainName(taskType) ?? UNKNOWN, ...rows };
+  const lines = Object.entries(typed).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
   return section("AT A GLANCE", lines.join("\n"));
 }
 
@@ -75,11 +99,6 @@ function rerunStep(spawns, tests) {
   return `${rerun} It continues from test ${current} and keeps ${kept} and ${pronoun} commits.`;
 }
 
-const NEXT_STEP = {
-  STOPPED: ({ spawns, tests }) => rerunStep(spawns, tests),
-  DONE: ({ ledger }) => (ledger?.gates && isPassed(ledger, "G:task-end") ? "Nothing to do: the run is done." : "Review the result and give your sign-off."),
-  RUNNING: () => "Nothing to do yet: the run is still going.",
-};
 
 const UNKNOWN = "unknown";
 const REVIEW_ROLE = "lens";
@@ -337,16 +356,12 @@ function approvedDoubtsByState(task) {
   return { open: doubts.filter(({ settled }) => settled === null), settled: doubts.filter(({ settled }) => settled !== null) };
 }
 
-const doubtItem = ({ step, ambiguity, gate }) => `<li>${escape(step)}: ${escape(ambiguity)}${gate ? ` <small>(approved past at ${escape(gateLine(gate))})</small>` : ""}</li>`;
 const settledItem = ({ step, ambiguity, settled }) => `<li>${escape(step)}: ${escape(ambiguity)} <small>(${escape(settled)})</small></li>`;
 
-function doubtsSection({ ledger, task }) {
-  const pending = Array.isArray(ledger?.needsHuman?.doubts) ? ledger.needsHuman.doubts : [];
-  const { open, settled } = approvedDoubtsByState(task);
-  const doubts = [...open, ...pending];
-  const openPart = doubts.length === 0 ? "" : `\n${section("OPEN DOUBTS", `<ul>\n${doubts.map(doubtItem).join("\n")}\n</ul>`)}`;
-  const settledPart = settled.length === 0 ? "" : `\n${section("SETTLED DOUBTS", `<ul>\n${settled.map(settledItem).join("\n")}\n</ul>`)}`;
-  return `${openPart}${settledPart}`;
+// The doubts a later fix settled before the human signed off; the open ones are NEEDS YOU's.
+function settledSection({ task }) {
+  const { settled } = approvedDoubtsByState(task);
+  return settled.length === 0 ? "" : `\n${section("SETTLED DOUBTS", `<ul>\n${settled.map(settledItem).join("\n")}\n</ul>`)}`;
 }
 
 const SHORT_SHA = 7;
@@ -393,12 +408,18 @@ function withClassifiedAgain(round, stage, calls) {
   return { ...round, findings };
 }
 
-function runRounds({ ledger, calls = [], endedAt }, spawns) {
+function runRounds(run, spawns) {
+  return reviewRounds(run, spawns).map(({ round }) => round);
+}
+
+// Each review round of one run with the stage it reviewed, the run it is of and whether it is over (its stage closed, or the run ended).
+function reviewRounds(run, spawns) {
+  const { ledger, calls = [], endedAt } = run;
   const current = ledger?.stage?.name;
   const closed = stagesOf(ledger).filter((stage) => stage?.name !== current && stage?.name !== CYCLE_STAGE);
-  const of = (stageLedger, ended) => withClassifiedAgain(lensRound({ ledger: stageLedger, calls, spawns, ended }), stageLedger?.stage, calls);
+  const of = (stageLedger, ended) => ({ round: withClassifiedAgain(lensRound({ ledger: stageLedger, calls, spawns, ended }), stageLedger?.stage, calls), stage: stageLedger?.stage, run, over: ended });
   const rounds = closed.map((stage) => of({ stage, fixes: ledger.fixes, stop: null }, true));
-  return [...rounds, of(ledger, endedAt !== undefined)].filter(Boolean);
+  return [...rounds, of(ledger, endedAt !== undefined)].filter(({ round }) => Boolean(round));
 }
 
 const roundBlock = (round) => {
@@ -412,22 +433,179 @@ function reviewSection({ task, spawns }) {
   return section("REVIEW", rounds.map(roundBlock).join("\n"));
 }
 
-const prNumber = (url) => /\/pull\/(\d+)\/?$/.exec(url)?.[1];
+// ---------- NEEDS YOU: only what the human must act on or decide ----------
 
-// A finished task's own next actions: review the pull request it opened, then decide each doubt it was approved past.
-function doneActions(task, prUrl) {
+// A finding the review left with the human once its round is over: one still to fix, or one left as is.
+const LEFT_WORDS = [FINDING_WORDS.toFix, FINDING_WORDS.leftAsIs];
+
+// The findings a return's key is about: a refuter's one finding, a lens's own findings, a fix group's lens (the fix loop
+// groups the upheld findings by lens, in finding order, as g1, g2, ...).
+function findingsOfKey(key, findings) {
+  if (key.role === "refuter") return findings.filter((finding) => finding.id === key.item);
+  if (key.role === "lens") return findings.filter((finding) => lensOfFinding(finding) === key.item);
+  if (key.role !== "fix") return [];
+  const lenses = [...new Set(findings.filter((finding) => finding.verdict !== "knocked-down").map(lensOfFinding))];
+  const lens = lenses[Number(/^g(\d+)$/.exec(key.item)?.[1]) - 1];
+  return lens === undefined ? [] : findings.filter((finding) => lensOfFinding(finding) === lens);
+}
+
+// The finding a doubt is about: one left open in a round over whose reviewer, refuter or fix raised that same question.
+function findingOfDoubt({ ambiguity }, left) {
+  for (const { finding, round } of left) {
+    for (const call of Array.isArray(round.run.calls) ? round.run.calls : []) {
+      const key = keyOf(call?.input?.pb_key);
+      if (key?.stage !== round.stage?.name || String(call.input.ambiguity ?? "").trim() !== ambiguity.trim()) continue;
+      if (findingsOfKey(key, round.round.findings).includes(finding)) return finding;
+    }
+  }
+  return undefined;
+}
+
+// The review findings left open, each with the questions it left for the human, then the doubts no finding holds.
+function leftWithHuman({ ledger, task, spawns }) {
+  const left = task.flatMap((run) => reviewRounds(run, spawns ?? []))
+    .filter(({ over, stage }) => over && stage?.name !== CYCLE_STAGE)
+    .flatMap((round) => round.round.findings.filter((finding) => LEFT_WORDS.includes(finding.word)).map((finding) => ({ finding, round, questions: [] })));
+  const pending = Array.isArray(ledger?.needsHuman?.doubts) ? ledger.needsHuman.doubts : [];
+  const loose = [];
+  for (const doubt of [...approvedDoubtsByState(task).open, ...pending]) {
+    const finding = findingOfDoubt(doubt, left);
+    const held = left.find((entry) => entry.finding === finding);
+    if (held) held.questions.push(doubt.ambiguity);
+    else loose.push(doubt);
+  }
+  return { findings: left, doubts: loose };
+}
+
+const leftItem = ({ finding, questions }) => {
+  const where = finding.where ? ` · ${escape(finding.where)}` : "";
+  const body = questions.length > 0 ? questions.map((question) => `Decide: ${escape(question)}`).join("<br>") : escape(finding.claim);
+  return `<li><strong>${escape(findingGist(finding))}</strong>${where}<br>${body}</li>`;
+};
+
+const looseItem = ({ step, ambiguity }) => `<li>Decide: ${escape(ambiguity)} <small>(raised while ${escape(step)})</small></li>`;
+
+// A stop, in plain words: the step it stopped at, why, and how to go on from it.
+function stopItem({ ledger, spawns, tests }) {
+  if (!ledger?.stop) return [];
+  const step = plainName(ledger.stage?.name);
+  const why = stopName(ledger.stop);
+  return [`<li>It stopped${step ? ` at ${escape(step)}` : ""}${why ? `: ${escape(why)}` : ""}. ${escape(rerunStep(spawns, tests))}</li>`];
+}
+
+// A question pb asked and the human has not answered yet. A finished code run that was not signed off asks for the
+// sign-off, whether or not its question is asked yet.
+function questionItem({ ledger, task }) {
+  const gate = ledger?.needsHuman?.gate;
+  if (gate && gate !== TASK_END) return [`<li>Answer the question waiting for you: ${escape(gateLine(gate))}.</li>`];
+  return gate || awaitsSignOff(task) ? ["<li>Review the result and give your sign-off.</li>"] : [];
+}
+
+// A test kept though it passed at once, before its code was written (an earlier test's code covered it): it never failed first.
+function coveredItems({ task }) {
+  const perTest = taskLedgerOf(task).tests.perTest;
+  return Object.entries(perTest)
+    .filter(([, record]) => record?.covered?.done === true)
+    .map(([id]) => `<li>Check by hand: the test ${escape(shortName(id))} passed before any new code was written, so it never failed first.</li>`);
+}
+
+const COVERAGE_ROLE = "verify-test-coverage";
+
+// Every coverage check of the task, in the order they ran, each with the gaps it found (a gap sends the build back to add tests).
+function coverageChecks(task) {
+  return task.flatMap((run) =>
+    (Array.isArray(run.calls) ? run.calls : [])
+      .map((call) => ({ key: keyOf(call?.input?.pb_key), gaps: Array.isArray(call?.input?.gaps) ? call.input.gaps : [] }))
+      .filter(({ key }) => key?.role === COVERAGE_ROLE)
+      .sort((a, b) => a.key.attempt - b.key.attempt || a.key.round - b.key.round),
+  );
+}
+
+// The gaps the last coverage check still found: no more tests were added for them.
+function uncoveredItems({ task }) {
+  const gaps = coverageChecks(task).at(-1)?.gaps ?? [];
+  return gaps.map((gap) => `<li>Check by hand: a scenario has no test: ${escape(gap?.description)}.</li>`);
+}
+
+function needsYouSection(context) {
+  const { findings, doubts } = leftWithHuman(context);
+  const items = [...questionItem(context), ...stopItem(context), ...findings.map(leftItem), ...doubts.map(looseItem), ...coveredItems(context), ...uncoveredItems(context)];
+  const nothing = outcome(context.ledger) === "RUNNING" ? "Nothing needs you right now: the run is still going." : "Nothing needs you.";
+  const body = items.length > 0 ? `<ul>\n${items.join("\n")}\n</ul>` : `<p>${nothing}</p>`;
+  return section("NEEDS YOU", body);
+}
+
+// ---------- WHAT WAS DONE: the files, the tests and the pull request, in plain words ----------
+
+// The task's pull request: the last its runs opened, else the one the caller knows of.
+const taskPrUrl = (task, prUrl) => {
   const url = task.findLast((run) => typeof run.prUrl === "string" && run.prUrl !== "")?.prUrl ?? prUrl;
-  const number = typeof url === "string" ? prNumber(url) : undefined;
-  const review = typeof url === "string" && url !== "" ? [number ? `Review pull request #${number}: ${url}` : `Review the pull request: ${url}`] : [];
-  return [...review, ...approvedDoubtsByState(task).open.map(({ ambiguity }) => `Decide the open doubt: ${ambiguity}`)];
+  return typeof url === "string" && url !== "" ? url : undefined;
+};
+
+const prLink = (url) => {
+  const number = prNumber(url);
+  return `${number ? `pull request #${number}` : "a pull request"}: <a href="${escape(url)}">${escape(url)}</a>`;
+};
+
+const passes = (record) => record?.green?.passed === true || record?.covered?.done === true;
+
+function doneSection({ task, changed, prUrl }) {
+  const perTest = taskLedgerOf(task).tests.perTest;
+  const ids = Object.keys(perTest);
+  const passing = ids.filter((id) => passes(perTest[id]));
+  const failing = ids.filter((id) => !passes(perTest[id]));
+  const names = (list) => list.map((id) => escape(shortName(id))).join(", ");
+  const url = taskPrUrl(task, prUrl);
+  const lines = [
+    ...(Array.isArray(changed) && changed.length > 0 ? [`Changed ${plural(changed.length, "file")}: ${changed.map(escape).join(", ")}`] : []),
+    ...(passing.length > 0 ? [`Added ${plural(passing.length, "test")}, passing: ${names(passing)}`] : []),
+    ...(failing.length > 0 ? [`${plural(failing.length, "test")} not passing yet: ${names(failing)}`] : []),
+    ...(url ? [`Opened ${prLink(url)}`] : []),
+  ];
+  return section("WHAT WAS DONE", lines.length > 0 ? lines.map((line) => `<p>${line}</p>`).join("\n") : "<p>Nothing yet.</p>");
 }
 
-function whatYouCanDo({ ledger, spawns, tests, task, prUrl }) {
-  const own = outcome(ledger) === "DONE" ? doneActions(task, prUrl) : [];
-  // The sign-off is the code run's task-end gate, wherever the task now stands.
-  const steps = own.length > 0 ? own : [NEXT_STEP[outcome(ledger)]({ ledger: codeRunIn(task).ledger, spawns, tests })];
-  return section("WHAT YOU CAN DO", steps.map((step, i) => `<p>${i + 1}. ${escape(step)}</p>`).join("\n"));
+// ---------- CHANGES OF PLAN OR SCOPE: only what changed the task materially ----------
+
+const isClassification = (input) => typeof input?.task_type === "string" && typeof input.confidence === "string";
+
+// The task type the first classification gave, when the run the type is recorded on went on with another.
+function typeChange(task) {
+  const code = codeRunIn(task);
+  const first = (Array.isArray(code.calls) ? code.calls : [])
+    .map((call) => ({ key: keyOf(call?.input?.pb_key), input: call?.input }))
+    .filter(({ key, input }) => key?.stage === "intake" && isClassification(input))
+    .sort((a, b) => a.key.attempt - b.key.attempt || a.key.round - b.key.round)[0]?.input;
+  const now = code.ledger?.taskType;
+  if (!first || typeof now !== "string" || first.task_type === now) return [];
+  return [`The task type changed after a review: now ${escape(typeWord(now))}, was ${escape(typeWord(first.task_type))}.`];
 }
+
+// The gaps a coverage check found that a later check was run after: the build went back and added tests for them.
+function testsAdded(task) {
+  const checks = coverageChecks(task);
+  return checks.slice(0, -1).flatMap(({ gaps }) => gaps.map((gap) => `Tests were added because a scenario had none: ${escape(gap?.description)}.`));
+}
+
+// The reviews whose fixes change no plan: the task type's (its fix is a new classification, told apart), a cycle's quick
+// review (tidying is part of every test) and the pull request text's.
+const NOT_THE_WORK = ["intake", CYCLE_STAGE, "pr-draft"];
+const reviewName = (stage) => (/review$/.test(stage) ? `The ${stage}` : `The review in ${stage}`);
+
+// Each finding a review had fixed in the work itself.
+function forcedFixes(task, spawns) {
+  return task.flatMap((run) => reviewRounds(run, spawns ?? []))
+    .filter(({ stage }) => !NOT_THE_WORK.includes(stage?.name))
+    .flatMap(({ round }) => round.findings.filter((finding) => finding.word === FINDING_WORDS.fixed).map((finding) => `${escape(reviewName(round.stage))} had this fixed: ${escape(findingGist(finding))}${finding.where ? ` · ${escape(finding.where)}` : ""}`));
+}
+
+function changesSection({ task, spawns }) {
+  const items = [...typeChange(task), ...testsAdded(task), ...forcedFixes(task, spawns)];
+  return items.length === 0 ? "" : `\n${section("CHANGES OF PLAN OR SCOPE", `<ul>\n${items.map((item) => `<li>${item}</li>`).join("\n")}\n</ul>`)}`;
+}
+
+const prNumber = (url) => /\/pull\/(\d+)\/?$/.exec(url)?.[1];
 
 // R5-3's dark design: one inline stylesheet, monospace; the outcome badge is red, green or amber by outcome, and a looped test's "Why it looped" label is amber.
 const STYLE = `:root{color-scheme:light dark;--bg:#1c1d21;--fg:#e6e6e6;--muted:#9a9ca3;--rule:#3a3c44;--faint:#6b6d75;--amber:#ffc933;--badge-ink:#1c1d21;--stopped:#ff6b81;--done:#5fd38d;--running:#ffc933}
@@ -437,7 +615,7 @@ header p{color:var(--muted);margin:6px 0}
 .badge{color:var(--badge-ink);padding:2px 10px;border-radius:4px}
 .badge.stopped{background:var(--stopped)}
 .badge.done{background:var(--done)}
-.badge.running{background:var(--running)}
+.badge.running,.badge.waiting-on-you{background:var(--running)}
 h1{font:700 22px/1.3 system-ui,sans-serif;margin:0}
 h2{color:var(--muted);font-size:12px;letter-spacing:.12em;border-bottom:1px solid var(--rule);padding-bottom:6px;margin:32px 0 12px}
 h3{font-size:14px;margin:0 0 8px}
@@ -451,6 +629,8 @@ ul{list-style:none;padding:0}
 li{margin:2px 0}
 ul ul{padding-left:2ch}
 .looped p strong{color:var(--amber);min-width:0;text-transform:none;font-size:inherit}
+details{margin-top:40px}
+summary{color:var(--muted);cursor:pointer;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
 footer{color:var(--faint);margin-top:40px;font-size:12px}`;
 
 // The task's paragraphs (split on blank lines) stay visibly apart inside the title.
@@ -484,8 +664,9 @@ export function renderReport({ ledger: given, spawns, calls, timing, commits, te
   const ledger = last.ledger;
   const code = codeRunIn(task).ledger;
   const ranFor = runSeconds(ledger, last.endedAt ?? endedAt, now, task[0].ledger);
-  const state = outcome(ledger);
-  const taskType = plainName(code?.taskType) ?? "unknown type";
+  const state = whereItIs(ledger, task);
+  const url = taskPrUrl(task, prUrl);
+  const prPart = url ? ` · ${prLink(url)}` : "";
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Run report</title>
 <style>
@@ -494,16 +675,20 @@ ${STYLE}
 <body>
 <header>
 <h1>${title(code?.task ?? ledger?.task)}</h1>
-<p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(Number.isFinite(ranFor) ? ranFor : timing?.seconds)}</p>
+<p><strong class="badge ${state.toLowerCase().replace(/ /g, "-")}">${state}</strong>${prPart}</p>
 </header>
-${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task })}${doubtsSection({ ledger, task })}
+${needsYouSection({ ledger, task, spawns, tests })}
+${doneSection({ task, changed, prUrl })}${changesSection({ task, spawns })}
+<details>
+<summary>How it ran</summary>
+${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${settledSection({ task })}
 ${stepsSection({ task })}
 ${scenariosSection({ scenarios: task.find((run) => Array.isArray(run.scenarios))?.scenarios })}
 ${testsSection({ ledger: taskLedgerOf(task), spawns, tests, calls: task.flatMap((run) => run.calls ?? []) })}
 ${builtSection({ changed })}
 ${reviewSection({ task: runs ? task : [{ ...task[0], endedAt: undefined }], spawns })}
 ${commitsSection({ commits })}
-${whatYouCanDo({ ledger, spawns, tests, task, prUrl })}
+</details>
 <footer>Written by Pairing Buddy from the run's ledger and agent labels. One self-contained file, nothing loaded from the network.</footer>
 </body></html>`;
 }
