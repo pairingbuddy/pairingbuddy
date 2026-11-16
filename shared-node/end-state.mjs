@@ -156,17 +156,17 @@ export function goalLines(goal, room, most = 2) {
 }
 
 // Met only on a recorded verdict: the task-end gate passed (checked by the caller) and the goal lens returned with no finding
-// still open. A goal lens that did not return, or a round that is not known, is not checked.
+// still open. A goal lens that did not return, or a round that is not known, gives no verdict: undefined, so STATUS says
+// nothing of the goal (the human saw the goal check at the sign-off).
 function goalText(codeRun, round) {
   const lens = round?.lenses?.find(({ id }) => isGoalLens(id));
-  if (lens?.state !== "returned") return NOT_CHECKED;
+  if (lens?.state !== "returned") return undefined;
   const open = round.findings.find((finding) => isGoalLens(lensOfFinding(finding)) && OPEN_WORDS.includes(finding.word));
   return open ? `${IN_DOUBT}: ${findingGist(open)}` : MET;
 }
 
 const MET = "met";
 const IN_DOUBT = "in doubt";
-const NOT_CHECKED = "not checked";
 
 // The pull request's fate in a few words for the STATUS row, or undefined while it is not known.
 function prOutcome(pr) {
@@ -192,6 +192,6 @@ export function isUnitDone({ live = false, codeRun, unitOpen = false, pr } = {})
 // task. A goal in doubt leaves the call to action out: the doubt is the human's to look at first.
 export function doneStatus({ codeRun, round, pr } = {}) {
   const goal = goalText(codeRun, round);
-  const doubt = goal.startsWith(IN_DOUBT);
-  return [`goal ${goal}`, prOutcome(pr), doubt ? undefined : READY].filter(Boolean).join(PART_BREAK);
+  const doubt = goal?.startsWith(IN_DOUBT);
+  return [goal && `goal ${goal}`, prOutcome(pr), doubt ? undefined : READY].filter(Boolean).join(PART_BREAK);
 }
