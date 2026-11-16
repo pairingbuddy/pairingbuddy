@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { baseLedger } from "./ledger-fixture.mjs";
-import { PublishRefused, askReason, fileHash, gatesFor, publishFacts, recordApproval, reopenedGate } from "../../shared-node/gates.mjs";
+import { PublishRefused, askReason, fileHash, gatesFor, publishFacts, recordAnswer, recordApproval, reopenedGate } from "../../shared-node/gates.mjs";
 import { loadStages } from "../../shared-node/stages.mjs";
 
 const contract = loadStages(fileURLToPath(new URL("../..", import.meta.url)));
@@ -52,6 +52,25 @@ test("approval-of-another-gate-keeps-the-stop", () => {
   const stopped = ledgerWith({ gates: { "G:scenarios": { source: "human", answer: "stop" } }, stop: STOP });
 
   assert.deepEqual(recordApproval(stopped, "G:task-end", GATES).stop, STOP);
+});
+
+const DOUBTS = [{ step: "listing scenarios", ambiguity: "An empty order returns int 0, not 0.0." }];
+
+test("approval-keeps-the-doubts-it-was-given-past", () => {
+  const asked = ledgerWith({ needsHuman: { gate: "G:task-end", reason: "open doubts", seq: 3, doubts: DOUBTS } });
+
+  const approved = recordApproval(asked, "G:task-end", GATES);
+
+  assert.equal(approved.needsHuman, null, "the question is answered");
+  assert.deepEqual(approved.gates["G:task-end"].doubts, DOUBTS, "the gate record keeps the doubts the human approved past, for the report");
+});
+
+test("an approve answered in the question keeps its doubts too", () => {
+  const asked = ledgerWith({ needsHuman: { gate: "G:task-end", reason: "open doubts", seq: 3, doubts: DOUBTS } });
+
+  const answered = recordAnswer(asked, "G:task-end", "approve", GATES);
+
+  assert.deepEqual(answered.gates["G:task-end"], { source: "human", answer: "approve", doubts: DOUBTS });
 });
 
 function runRoot(report) {

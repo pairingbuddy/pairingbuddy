@@ -690,13 +690,16 @@ export function publishBinding(root, ledger, shown = null) {
 // The gate record of an approval, from a human or the auto policy. A publish approval carries its binding.
 export const approvalRecord = (source, binding = {}) => ({ source, answer: "approve", ...binding });
 
+// The open doubts the question at this gate named, kept on the answer's record so the report can show what was approved past.
+const askedDoubts = ({ needsHuman }, name) => (needsHuman?.gate === name && Array.isArray(needsHuman.doubts) && needsHuman.doubts.length > 0 ? { doubts: needsHuman.doubts } : {});
+
 // What a human's answer to the asking gate does to the ledger. A publish answer is an approval that carries its binding.
 export function recordAnswer(ledger, name, answer, gates, binding = {}) {
   const asked = { ...ledger, needsHuman: null };
   if (answer === "redo") return reopenStage(asked, name, gates);
-  if (answer === PUBLISH_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: approvalRecord("human", binding) } };
+  if (answer === PUBLISH_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: { ...approvalRecord("human", binding), ...askedDoubts(ledger, name) } } };
   if (answer === KEEP_LOCAL_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer: KEEP_LOCAL } } };
-  const recorded = { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer } } };
+  const recorded = { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer, ...(answer === "approve" ? askedDoubts(ledger, name) : {}) } } };
   return answer === "stop" ? { ...recorded, stop: { code: HUMAN_STOPPED, reason: `the human answered stop at ${name}`, seq: ledger.seq + 1 } } : recorded;
 }
 
@@ -734,5 +737,5 @@ export function recordApproval(ledger, name, gates, binding = {}) {
   const reopened = reopenedGate(gates, ledger);
   const restored = reopened?.name === name ? withStageStatus(ledger, reopened.stage, "done") : ledger;
   const stoppedHere = Object.hasOwn(ledger.gates, name) && ledger.gates[name].answer === "stop";
-  return { ...restored, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: approvalRecord("human-cli", binding) } };
+  return { ...restored, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: { ...approvalRecord("human-cli", binding), ...askedDoubts(ledger, name) } } };
 }
