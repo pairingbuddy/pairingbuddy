@@ -98,31 +98,10 @@ export function fitTries(tries, columns) {
   return candidates.find((line) => fitsWidth(line, columns)) ?? candidates.at(-1);
 }
 
-const spaced = (id) => String(id).replaceAll("-", " ");
+// A test's short name: its id spaced out ("order-total-sums-two-lines" reads "order total sums two lines"). The pane and the
+// band name a test so; its whole scenario sentence is the report's SCENARIOS'.
+export const shortName = (testId) => String(testId).replace(/[-_]/g, " ");
 
-const list = (value) => (Array.isArray(value) ? value : []);
-const isText = (value) => typeof value === "string" && value !== "";
-
-// Narrows the parsed tests.json and scenarios.json to { test id: description }; anything malformed reads as no name.
-export function testNames({ tests, scenarios } = {}) {
-  const descriptions = {};
-  for (const scenario of list(scenarios?.scenarios)) {
-    for (const testCase of list(scenario?.test_cases)) {
-      if (isText(testCase?.test_case_id) && isText(testCase?.description)) descriptions[testCase.test_case_id] ??= testCase.description;
-    }
-  }
-  const names = {};
-  for (const entry of list(tests?.tests)) {
-    const description = descriptions[entry?.test_case_id];
-    if (isText(entry?.test_id) && description !== undefined) names[entry.test_id] ??= description;
-  }
-  return names;
-}
-
-// The description for a test id from a names map, else the id spaced out.
-export const nameOf = (names, testId) => (isText(testId) && Object.hasOwn(names ?? {}, testId) ? names[testId] : spaced(testId));
-
-export const testName = ({ testId, tests, scenarios }) => nameOf(testNames({ tests, scenarios }), testId);
 
 // The RED/GREEN/REFACTOR marker as data the pane colours: a tick before the steps this test passed, a bullet before the
 // current step, a chevron before the steps to come. No steps at all when the current step names no phase of the cycle.

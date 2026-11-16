@@ -1,9 +1,7 @@
 import type { AgentSpawnInput, EngineInterface } from 'claude-code'
-import { testNames } from '../shared-node/now-building.mjs'
 import { isStandingScenarios, isStandingTests, newestKeyAmong, scenarioRows } from '../shared-node/standing-scenarios.mjs'
 
 const TESTS = '.pairingbuddy/tests.json'
-const SCENARIOS = '.pairingbuddy/scenarios.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
 const UNIT = '.pairingbuddy/run/unit.json'
 const CHANGED = '.pairingbuddy/run/changed.json'
@@ -29,7 +27,6 @@ export type Ledger = {
   needsHuman?: { gate?: string | null; seq?: number }
 } | undefined
 
-// names: test id to description, narrowed from tests.json and scenarios.json by the poller; absent means no names known.
 export type Call = { agentId?: unknown; at?: string; input: Record<string, unknown> }
 // unit: the open unit, by its identity (branch and base) and its last ended task's steps; since: when the unit's first run began.
 // prUrl: the pull request the unit record names, once pb publish has opened it.
@@ -40,7 +37,7 @@ export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; t
 export type Published = { url?: string; result?: string; codeRunId?: string | null }
 // changed: the paths run/changed.json lists (null when it does not read); prUrl: the unit's pull request as the poller last saw it.
 // unitOpen: whether a unit is open now, for a finished run drawn from its snapshot (whose unit is the one it last saw).
-export type Inputs = { unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; names?: Record<string, string>; unit?: Unit | null; since?: string; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
+export type Inputs = { unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {
@@ -96,7 +93,7 @@ export function spawnOf(e: Partial<Pick<AgentSpawnInput, 'name' | 'subagentType'
 }
 
 export async function readInputs($: EngineInterface, spawns: Spawn[]): Promise<Inputs> {
-  return (await readInputsAndTests($, spawns)).inputs
+  return readInputsAndTests($, spawns)
 }
 
 // The newest standing return of a role in the task's artifacts, or undefined when none reads. Never throws.
@@ -112,12 +109,12 @@ async function readStandingReturn($: EngineInterface, ledger: Ledger, match: (le
   }
 }
 
-// The inputs plus the test list they were read with, so the poller reads it once per tick: the placeholders return a
-// stage wrote (a new-path run writes no tests.json), else the legacy tests.json.
-async function readInputsAndTests($: EngineInterface, spawns: Spawn[]): Promise<{ inputs: Inputs; testsFile: unknown }> {
+// The inputs, with the test list from the placeholders return a stage wrote (a new-path run writes no tests.json), else
+// the legacy tests.json.
+async function readInputsAndTests($: EngineInterface, spawns: Spawn[]): Promise<Inputs> {
   const [ledger, legacyFile, now] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($)])
   const testsFile = (await readStandingReturn($, ledger, isStandingTests)) ?? legacyFile
-  return { inputs: inputsOf({ ledger, testsFile, now, spawns }), testsFile }
+  return inputsOf({ ledger, testsFile, now, spawns })
 }
 
 function inputsOf({ ledger, testsFile, now, spawns }: { ledger: Ledger; testsFile: unknown; now: number | undefined; spawns: Spawn[] }): Inputs {
@@ -145,24 +142,21 @@ export function changedOf(file: unknown): string[] | null {
   return file.map(entry => (entry as { path?: unknown })?.path).filter((path): path is string => typeof path === 'string' && path !== '')
 }
 
-export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; names: Record<string, string>; unit: Unit | null; changed: string[] | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null }
+export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; unit: Unit | null; changed: string[] | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null }
 
 // The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
 export async function pollInputs($: EngineInterface): Promise<Polled> {
-  const [{ inputs: { ledger, tests, testsComplete, now }, testsFile }, legacyScenarios, unitFile, changedFile] = await Promise.all([readInputsAndTests($, []), readJson($, SCENARIOS), readJson($, UNIT), readJson($, CHANGED)])
-  // The scenarios return names each test by its test case, as scenarios.json did for the old path.
-  const scenarios = (await readStandingReturn($, ledger, isStandingScenarios)) ?? legacyScenarios
-  const names = testNames({ tests: testsFile, scenarios })
-  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, names, unit: unitOf(unitFile), changed: changedOf(changedFile) }
+  const [{ ledger, tests, testsComplete, now }, unitFile, changedFile] = await Promise.all([readInputsAndTests($, []), readJson($, UNIT), readJson($, CHANGED)])
+  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: unitOf(unitFile), changed: changedOf(changedFile) }
 }
 
-type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; names?: Record<string, string>; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null } | null
+type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null } | null
 
 // The one place the atom's loosely typed ledger is narrowed; null until the first poll, which reads as idle.
 export function fromPolled(polled: PolledState, spawns: Spawn[], calls: Call[] = [], published: Published | null = null): Inputs {
   return {
     ledger: (polled?.ledger ?? undefined) as Ledger, spawns, calls, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined,
-    names: polled?.names ?? undefined, unit: polled?.unit ?? null, since: polled?.since ?? undefined,
+    unit: polled?.unit ?? null, since: polled?.since ?? undefined,
     changed: polled?.changed ?? null, codeRun: polled?.codeRun ?? null, prUrl: polled?.prUrl ?? null, published,
   }
 }

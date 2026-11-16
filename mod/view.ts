@@ -5,7 +5,7 @@ import contract from '../shared-node/stages-contract.mjs'
 import { lensRound } from '../shared-node/lens-round.mjs'
 import type { LensRound } from '../shared-node/lens-round.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
-import { cycleMarker, loopingTries, nameOf, progressRow, stepAge, testCounts } from '../shared-node/now-building.mjs'
+import { cycleMarker, loopingTries, progressRow, shortName, stepAge, testCounts } from '../shared-node/now-building.mjs'
 import { doneStatus, endRows, goalOf, isUnitDone, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
 import type { Inputs, Ledger } from './inputs'
 import { STATUS_LOOKS } from './pane'
@@ -100,10 +100,10 @@ export function statusFirst(band: Segment[], ledger?: Ledger): Segment[] {
 // The band names the test the run is on after its phase, as TESTS does, then its place once the total is known:
 // `GREEN · <name> · 3/12`. Short of room the place gives way first, then the name is cut at a word, then the test's number
 // stands in (glance's `GREEN · test 3 of 12`).
-export function namedWhere(band: Segment[], { ledger, spawns, tests, testsComplete, names }: Pick<Inputs, 'ledger' | 'spawns' | 'tests' | 'testsComplete' | 'names'>): Segment[] {
+export function namedWhere(band: Segment[], { ledger, spawns, tests, testsComplete }: Pick<Inputs, 'ledger' | 'spawns' | 'tests' | 'testsComplete'>): Segment[] {
   const step = currentStep(spawns, stageOf(ledger))
   if (!step || !tests.includes(step.item)) return band
-  const words = nameOf(names, step.item).split(' ')
+  const words = shortName(step.item).split(' ')
   const as = (count: number) => `${step.phase} · ${words.slice(0, count).join(' ')}`
   const cuts = Array.from({ length: words.length - 1 }, (_, i) => as(words.length - 1 - i))
   const whole = as(words.length)
@@ -152,11 +152,11 @@ function unitSteps({ ledger, unit }: Inputs, ended: boolean): string[] {
 // A code run in an open unit is followed by the publish run, unless its type closes kept local.
 const publishesAfter = ({ ledger, unit }: Pick<Inputs, 'ledger' | 'unit'>) => Boolean(unit) && !KEPT_LOCAL_TYPES.includes(ledger?.taskType ?? '')
 
-// The TESTS row's progress: each test by its mark, named, or undefined when there is no test to show.
-function progressOf({ tests, perTest, spawns, testsComplete, stage, names, settled }: { tests: string[]; perTest: unknown; spawns: Inputs['spawns']; testsComplete: boolean; stage: unknown; names: Inputs['names']; settled: boolean }) {
+// The TESTS row's progress: each test by its mark and short name, or undefined when there is no test to show.
+function progressOf({ tests, perTest, spawns, testsComplete, stage, settled }: { tests: string[]; perTest: unknown; spawns: Inputs['spawns']; testsComplete: boolean; stage: unknown; settled: boolean }) {
   const rows = tests.map(id => ({ test_id: id }))
   const row = progressRow({ tests: rows, perTest, spawns, testsComplete, stage, settled: settled && testsComplete })
-  const named = row.entries.map((entry: { id: string; mark: Progress['entries'][number]['mark'] }) => ({ ...entry, name: nameOf(names, entry.id) }))
+  const named = row.entries.map((entry: { id: string; mark: Progress['entries'][number]['mark'] }) => ({ ...entry, name: shortName(entry.id) }))
   const count = testsComplete && rows.length > 0 ? { count: { ...testCounts({ tests: rows, perTest }), settled } } : {}
   return named.length > 0 || row.folded || row.coveredFolded ? { ...row, known: testsComplete, ...count, entries: named } : undefined
 }
@@ -164,12 +164,12 @@ function progressOf({ tests, perTest, spawns, testsComplete, stage, names, settl
 // A publish run has no tests of its own, so TESTS keeps the finished code run's: the test list's order when it holds every one
 // the code run recorded, else the recorded ones, which are the whole list once the code run was signed off. No test is current.
 // With no code run seen, the test list alone shows nothing.
-function codeRunProgress({ codeRun, tests, names }: Inputs): Pick<View, 'progress'> {
+function codeRunProgress({ codeRun, tests }: Inputs): Pick<View, 'progress'> {
   const perTest = codeRun?.perTest ?? {}
   const recorded = Object.keys(perTest)
   if (recorded.length === 0) return {}
   const planned = tests.length > 0 && recorded.every(id => tests.includes(id))
-  return { progress: progressOf({ tests: planned ? tests : recorded, perTest, spawns: [], testsComplete: planned || codeRun?.taskEndPassed === true, stage: undefined, names, settled: true }) }
+  return { progress: progressOf({ tests: planned ? tests : recorded, perTest, spawns: [], testsComplete: planned || codeRun?.taskEndPassed === true, stage: undefined, settled: true }) }
 }
 
 const BUILD_STEP = 'code-tdd'
@@ -180,7 +180,7 @@ const buildDone = (ledger: Ledger) => (Array.isArray(ledger?.stages) ? ledger.st
 // The TESTS, TEST and LOOPING-tries parts, folded from the same inputs as the rows. Only the active stage's spawns count, so outside
 // "build test by test" no test is current and TEST reads as a dash.
 function buildTestRows(inputs: Inputs, ended: boolean): Pick<View, 'progress' | 'test' | 'tries'> {
-  const { ledger, spawns, tests, testsComplete, now, names } = inputs
+  const { ledger, spawns, tests, testsComplete, now } = inputs
   if (isPublishRun(ledger)) return codeRunProgress(inputs)
   const stage = stageOf(ledger)
   const perTest = ledger?.tests?.perTest
@@ -188,10 +188,10 @@ function buildTestRows(inputs: Inputs, ended: boolean): Pick<View, 'progress' | 
   const settled = ended || !isBuilding(ledger)
   // Once the build step is done, every test it ran is in the ledger: the seen tests are the whole list.
   const complete = testsComplete || (settled && buildDone(ledger))
-  const progress = progressOf({ tests, perTest, spawns: ended ? [] : spawns, testsComplete: complete, stage, names, settled })
+  const progress = progressOf({ tests, perTest, spawns: ended ? [] : spawns, testsComplete: complete, stage, settled })
   const step = ended ? undefined : currentStep(spawns, stage)
   if (!step) return { progress }
-  const test = { current: nameOf(names, step.item), marker: cycleMarker({ spawns, ledger }), age: stepAge({ spawns, now, stage }) }
+  const test = { current: shortName(step.item), marker: cycleMarker({ spawns, ledger }), age: stepAge({ spawns, now, stage }) }
   return { progress, test, tries: loopingTries({ spawns, perTest, stage }) }
 }
 

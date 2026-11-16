@@ -1,26 +1,8 @@
-// Scenario current-test: pure rendering of the current test's description, cycle marker and step age (node:test on shared-node).
+// Scenario current-test: pure rendering of the current test's cycle marker and step age (node:test on shared-node).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildLabel } from "../../shared-node/labels.mjs";
-import { testName, cycleMarker, stepAge } from "../../shared-node/now-building.mjs";
-
-test("name-from-scenarios-through-tests", () => {
-  const tests = { tests: [{ test_id: "login-works", test_case_id: "valid-credentials", scenario_id: "login" }] };
-  const scenarios = {
-    scenarios: [
-      {
-        scenario_id: "login",
-        description: "User can log in",
-        test_cases: [{ test_case_id: "valid-credentials", description: "Login with valid credentials succeeds" }],
-      },
-    ],
-  };
-
-  assert.equal(testName({ testId: "login-works", tests, scenarios }), "Login with valid credentials succeeds", "found through tests.json then scenarios.json");
-  assert.equal(testName({ testId: "login-works", tests: null, scenarios }), "login works", "tests.json missing falls back to the id with spaces");
-  assert.equal(testName({ testId: "login-works", tests, scenarios: null }), "login works", "scenarios.json missing falls back to the id with spaces");
-  assert.equal(testName({ testId: "no-such-test", tests, scenarios }), "no such test", "an id with no match falls back to the id with spaces");
-});
+import { cycleMarker, stepAge } from "../../shared-node/now-building.mjs";
 
 test("marker-lights-only-current-step", async (t) => {
   const spawn = (phase) => ({ kind: "workflow_agent", name: buildLabel({ stage: "tdd", phase, role: "implementer", item: "login-works", round: 1 }) });

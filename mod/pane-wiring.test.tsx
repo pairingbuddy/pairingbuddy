@@ -95,23 +95,24 @@ test('marker-is-hidden-when-no-phase-is-known', async ($, on) => {
   expect(lines.some(text => /RED|GREEN|REFACTOR/.test(text)), `no phase marker is drawn with no live phase: ${JSON.stringify(lines)}`).toBe(false)
 })
 
-test('poller-reads-tests-and-scenarios', async ($, on) => {
+// Whatever tests.json and scenarios.json hold, TESTS names the test by its short name: the scenario's sentence is the report's.
+test('poller-names-the-test-by-its-short-name-whatever-the-files-hold', async ($, on) => {
   const rig = setupReplay(on)
   const ID = 'ten-percent-off-100-returns-90'
   const DESCRIPTION = 'Ten percent off 100 gives 90'
-  const FALLBACK = 'ten percent off 100 returns 90'
+  const SHORT = 'ten percent off 100 returns 90'
   const TESTS_PATH = `${ROOT}/.pairingbuddy/tests.json`
   const SCENARIOS_PATH = `${ROOT}/.pairingbuddy/scenarios.json`
   const tests = JSON.stringify({ tests: [{ test_id: ID, test_case_id: 'ten-percent', scenario_id: 'discount' }] })
   const scenarios = JSON.stringify({ scenarios: [{ scenario_id: 'discount', description: 'Discounts', test_cases: [{ test_case_id: 'ten-percent', description: DESCRIPTION }] }] })
-  const variants: { name: string; files: Record<string, string>; unreadable?: string[]; described: boolean }[] = [
-    { name: 'both files served', files: { '.pairingbuddy/tests.json': tests, '.pairingbuddy/scenarios.json': scenarios }, described: true },
-    { name: 'scenarios.json missing', files: { '.pairingbuddy/tests.json': tests }, described: false },
-    { name: 'tests.json missing', files: { '.pairingbuddy/scenarios.json': scenarios }, described: false },
-    { name: 'scenarios.json unreadable', files: { '.pairingbuddy/tests.json': tests, '.pairingbuddy/scenarios.json': scenarios }, unreadable: [SCENARIOS_PATH], described: false },
-    { name: 'tests.json unreadable', files: { '.pairingbuddy/tests.json': tests, '.pairingbuddy/scenarios.json': scenarios }, unreadable: [TESTS_PATH], described: false },
-    { name: 'scenarios.json truncated', files: { '.pairingbuddy/tests.json': tests, '.pairingbuddy/scenarios.json': scenarios.slice(0, 60) }, described: false },
-    { name: 'tests.json truncated', files: { '.pairingbuddy/tests.json': tests.slice(0, 30), '.pairingbuddy/scenarios.json': scenarios }, described: false },
+  const variants: { name: string; files: Record<string, string>; unreadable?: string[] }[] = [
+    { name: 'both files served', files: { '.pairingbuddy/tests.json': tests, '.pairingbuddy/scenarios.json': scenarios } },
+    { name: 'scenarios.json missing', files: { '.pairingbuddy/tests.json': tests } },
+    { name: 'tests.json missing', files: { '.pairingbuddy/scenarios.json': scenarios } },
+    { name: 'scenarios.json unreadable', files: { '.pairingbuddy/tests.json': tests, '.pairingbuddy/scenarios.json': scenarios }, unreadable: [SCENARIOS_PATH] },
+    { name: 'tests.json unreadable', files: { '.pairingbuddy/tests.json': tests, '.pairingbuddy/scenarios.json': scenarios }, unreadable: [TESTS_PATH] },
+    { name: 'scenarios.json truncated', files: { '.pairingbuddy/tests.json': tests, '.pairingbuddy/scenarios.json': scenarios.slice(0, 60) } },
+    { name: 'tests.json truncated', files: { '.pairingbuddy/tests.json': tests.slice(0, 30), '.pairingbuddy/scenarios.json': scenarios } },
   ]
 
   // The target test is the CURRENT test: its RED is done, a labelled spawn is on it, and the ledger is in code-tdd and not yet green.
@@ -146,12 +147,8 @@ test('poller-reads-tests-and-scenarios', async ($, on) => {
     expect(threw, `${variant.name}: drawing the pane does not throw`).toBeUndefined()
     const shown = JSON.stringify(everyText)
     expect(everyText.some(text => text === 'TESTS    '), `${variant.name}: the TESTS row is drawn: ${shown}`).toBe(true)
-    if (variant.described) {
-      expect(everyText.some(text => text.includes(DESCRIPTION)), `${variant.name}: the pane shows the scenario description: ${shown}`).toBe(true)
-    } else {
-      expect(everyText.some(text => text.includes(DESCRIPTION)), `${variant.name}: the description cannot be known, so it is not shown: ${shown}`).toBe(false)
-      expect(everyText.some(text => text.includes(FALLBACK)), `${variant.name}: the pane falls back to the id with spaces: ${shown}`).toBe(true)
-    }
+    expect(everyText.some(text => text.includes(DESCRIPTION)), `${variant.name}: the scenario's sentence is not shown: ${shown}`).toBe(false)
+    expect(everyText.some(text => text.includes(SHORT)), `${variant.name}: the pane names the test by its id, spaced out: ${shown}`).toBe(true)
   }
 })
 

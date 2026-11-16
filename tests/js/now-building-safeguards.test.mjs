@@ -1,9 +1,9 @@
 // Safeguards for shared-node/now-building.mjs: the current test follows the ledger stage, the progress row folds waiting then
-// finished items at narrow widths, the looping tries line picks its fallbacks, nameOf spaces out an unnamed id, and the
+// finished items at narrow widths, the looping tries line picks its fallbacks, shortName spaces out a test id, and the
 // latest try's result waits for its runner when earlier tries had one.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cycleMarker, fitProgress, fitTries, loopingTries, nameOf, progressRow, stepAge } from "../../shared-node/now-building.mjs";
+import { cycleMarker, fitProgress, fitTries, loopingTries, progressRow, shortName, stepAge } from "../../shared-node/now-building.mjs";
 
 const entry = (name, mark) => ({ id: name, name, mark });
 const PROGRESS = { entries: [entry("a", "done"), entry("b", "covered"), entry("c", "current"), entry("d", "waiting"), entry("e", "waiting")] };
@@ -51,12 +51,9 @@ test("tries-line-falls-back-to-the-latest-try-without-its-step", () => {
   assert.equal(fitTries(TRIES, 5), "  try 3: passed straight away, refused (exit 0)");
 });
 
-test("name-of-an-unnamed-id-is-the-id-spaced-out", () => {
-  assert.equal(nameOf({}, "adds-a-button"), "adds a button");
-});
-
-test("name-of-a-named-id-is-its-description", () => {
-  assert.equal(nameOf({ "adds-a-button": "Adds a button" }, "adds-a-button"), "Adds a button");
+test("short-name-is-the-id-spaced-out", () => {
+  assert.equal(shortName("adds-a-button"), "adds a button");
+  assert.equal(shortName("adds_a_button"), "adds a button", "underscores read as spaces too");
 });
 
 const red = (item) => ({ kind: "workflow_agent", name: `pb1 code-tdd RED implement-tests ${item} r1` });
