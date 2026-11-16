@@ -7,21 +7,24 @@ import { ACCENT_COLOUR } from './pane'
 import { POLL_MS } from './poll'
 import { REPORT_LABEL, reportButton } from './testing/report'
 
-const IDLE = 'Pairing Buddy · idle · /pb for details'
+const IDLE = 'Pairing Buddy · idle · /pb details · /pb-report report'
 
-test('pressing the band\'s details button opens the pane, closeable by esc', async ($, on) => {
-  const { calls } = engine(on)
+// The classic renderer has no mouse, and reaching a band button takes ctrl+x tab, tab, enter: the band names commands instead.
+test('the band draws no button, in any state', async ($, on) => {
+  const { serve } = engine(on)
+  const clock = mock.clock(on, { now: 0 })
   await start($)
+  const buttons: Record<string, unknown[]> = {}
 
-  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  const details = await band.find({ type: 'Button', key: 'details' })
-  expect(details?.text, 'the band holds a details button').toBe('▸ details')
-  await band.press({ key: 'details' })
-  await band.unmount()
+  for (const [state, ledger] of [['running', SNAPSHOT_RUNNING], ['between steps', SNAPSHOT_NO_STAGE], ['idle', null]] as const) {
+    serve(ledger)
+    await clock.advance(POLL_MS)
+    const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    buttons[state] = await band.findAll({ type: 'Button' })
+    await band.unmount()
+  }
 
-  expect(calls.opened.map(open => open.id), 'the button opens the pane under its id').toEqual([PANE_ID])
-  // Esc itself belongs to the engine; the mod's part is to ask for it.
-  expect(calls.opened[0].closeOnEscape, 'the pane is opened closeable by esc').toBe(true)
+  expect(buttons, 'no state of the band draws a button').toEqual({ running: [], 'between steps': [], idle: [] })
 })
 
 test('the mod registers /pb at session start, and running it opens the same pane closeable by esc', async ($, on) => {
@@ -44,16 +47,15 @@ test('the dismiss button closes the pane by its id', async ($, on) => {
   expect(calls.closed.map(close => close.id), 'the dismiss button closes the pane').toEqual([PANE_ID])
 })
 
-test('the band\'s width budget subtracts the details button', async ($, on) => {
+test('the band\'s width budget fits its segments beside the [-] control', async ($, on) => {
   engine(on)
   await start($)
 
   const fitted = async (bodyColumns: number) => {
     const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns }, surface: 'terminal' })
     const segments = await bandRowTexts(band)
-    const button = (await band.find({ type: 'Button', key: 'details' }))!.text!
     await band.unmount()
-    return { segments, button }
+    return { segments }
   }
   const narrow = await fitted(40)
   const wide = await fitted(200)
@@ -61,7 +63,7 @@ test('the band\'s width budget subtracts the details button', async ($, on) => {
   const drawn = narrow.segments.join('').length
   expect(narrow.segments.length, 'the narrow band still draws segments').toBeGreaterThan(0)
   expect(narrow.segments.length, 'the 40 columns force segments to be cut').toBeLessThan(wide.segments.length)
-  expect(drawn, `the segments and the button (${drawn}) fit the 40 columns`).toBeLessThanOrEqual(40)
+  expect(drawn, `the segments (${drawn}) fit the 40 columns`).toBeLessThanOrEqual(40)
 })
 
 test('a spawn with an unparseable label shows the raw label text in the pane and is counted as unknown, without throwing', async ($, on) => {
@@ -157,21 +159,6 @@ test("before any ledger was polled and with no live ledger the pane shows no ste
   expect(button, 'no report button before the first poll').toBeUndefined()
 })
 
-test('details-button-opens-pane-with-focus: pressing the band details button opens the same pane with focus true', async ($, on) => {
-  const { calls } = engine(on)
-  await start($)
-
-  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-  await band.press({ key: 'details' })
-  await band.unmount()
-
-  expect(calls.opened.length, 'the details button calls ui.open once').toBe(1)
-  expect(calls.opened[0].id, 'it opens the pairingbuddy pane').toBe(PANE_ID)
-  expect(calls.opened[0].focus, 'the person asked for the pane, so it takes focus').toBe(true)
-  expect(calls.opened[0].closeOnEscape, 'esc returns to the prompt').toBe(true)
-  expect(calls.opened[0].holdToasts, 'the pane holds no toasts').toBeUndefined()
-})
-
 test('pane-step-lines-use-marks-and-light-only-the-current-one: the current step is bold in the accent colour, no other step line is coloured', async ($, on) => {
   // code-scenarios is done, code-tdd is running, the safety-net review has not started.
   engine(on, {
@@ -221,7 +208,7 @@ test('between-steps-the-pane-and-the-band-lead-with-the-working-mark', async ($,
 
   expect(now, `STATUS reads the plain state: ${now}`).toBe('STATUS   ● working · between steps · next: build test by test')
   expect([mark.text, mark.props.color], 'the band leads with the working mark in the accent').toEqual(['● ', ACCENT_COLOUR])
-  expect([rest.text, rest.props.dimColor], 'then the quiet line, dim, with no "Pairing Buddy" label: the goal row above names the session').toEqual(['between steps · next: build test by test · /pb for details', true])
+  expect([rest.text, rest.props.dimColor], 'then the quiet line, dim, with no "Pairing Buddy" label: the goal row above names the session').toEqual(['between steps · next: build test by test · /pb details · /pb-report report', true])
 })
 
 test('pane-now-run-open-has-no-band-label', async ($, on) => {

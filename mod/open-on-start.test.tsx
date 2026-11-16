@@ -1,8 +1,7 @@
 // Scenario open-on-run-start (seventh watched run): a run with no question showed only the band until the done alert, so the
 // pane opens by itself when a run starts, once per run, without the keyboard, and never again for that run once dismissed.
 import { expect, mock, test } from 'claude-code/testing'
-import { SNAPSHOT_RUNNING, bandTexts, start } from './testing/band'
-import { DETAILS } from './band'
+import { SNAPSHOT_RUNNING, start } from './testing/band'
 import { alertEngine, needingHuman } from './testing/alert'
 import { dismissPane } from './testing/replay'
 import { PANE_ID } from './pane-open'
@@ -62,10 +61,8 @@ test('a-start-open-that-is-not-placed-says-once-how-to-open-the-pane', async ($,
   expect(run.calls.opened.length, 'the pane was asked for once').toBe(1)
   expect(logged.length, `one line says the pane waits: ${JSON.stringify(logged)}`).toBe(1)
   expect(logged[0], 'it gives the reason').toContain(reason)
-  expect(logged[0], 'and the way in: the band button and /pb').toContain('▸ details')
-  expect(logged[0]).toContain('/pb')
-  const band = await bandTexts($)
-  expect(band, 'the band keeps its details button').toContain(DETAILS)
+  expect(logged[0], 'and the way in: /pb, a command, not a band button').toContain('/pb')
+  expect(logged[0], 'it names no band button').not.toContain('▸ details')
 })
 
 test('a-run-first-seen-with-a-question-opens-the-pane-once-for-the-alert', async ($, on) => {

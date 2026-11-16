@@ -53,7 +53,7 @@ async function openAndRecord($: EngineInterface) {
   else quietly(() => $.ui.log(`Details pane waits: ${placed?.reason ?? 'no room for it'}. Show it with /pb or a wider terminal.`))
 }
 
-const waitsLine = (reason?: string) => `The Pairing Buddy pane is not shown yet (${reason ?? 'no room for it'}). Press ▸ details in the band, or type /pb, to open it.`
+const waitsLine = (reason?: string) => `The Pairing Buddy pane is not shown yet (${reason ?? 'no room for it'}). Type /pb to open it, or /pb-report for the run report.`
 
 // The mod-store key of the run the pane last opened by itself for, per project.
 export function startOpenedKey(root: string) {
@@ -76,7 +76,7 @@ export async function openOnRunStart($: EngineInterface, ledger: Ledger | null) 
     // Unasked, the engine places a pane only from 144 columns (110 once asked for); else it waits undrawn, so say how to open it.
     if (!placed?.isPlaced) quietly(() => $.ui.log(waitsLine(placed?.reason)))
   } catch {
-    // A failed open is dropped; the band's details button stays the way in.
+    // A failed open is dropped; /pb stays the way in.
   }
 }
 

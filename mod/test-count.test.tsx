@@ -60,9 +60,9 @@ test('the-band-gives-the-position-after-the-test-name-while-it-fits', async ($, 
 test('the-place-gives-way-before-the-test-name-is-cut', async ($, on) => {
   await serve($, on, building, { [`${ARTIFACTS}/${PLACEHOLDERS_KEY}.json`]: placeholders }, `pb1 code-tdd GREEN implement-code ${FIRST} r1`)
 
-  const row = (await bandTexts($, { bodyColumns: 54 })).join('')
+  const row = (await bandTexts($, { bodyColumns: 44 })).join('')
 
-  expect(row, 'short of room, the place goes and the name stays whole').toMatch(/^● GREEN · order total sums two lines ▸ details/)
+  expect(row, 'short of room, the place goes and the name stays whole').toMatch(/^● GREEN · order total sums two lines$/)
 })
 
 const testsRow = (lines: string[]) => lines.slice(lines.findIndex(line => line.startsWith('TESTS')), lines.findIndex(line => line.startsWith('REVIEW')))

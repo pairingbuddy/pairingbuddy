@@ -1,14 +1,13 @@
 // Scenario band-one-line-narrow (Finding 24): the band stays one line when its region is narrower than the fitted budget.
 // Placeholders: each fails until implemented.
 import { expect, test } from 'claude-code/testing'
-import { DETAILS } from './band'
 import { BAND, engine, isGoalRow, isSeparatorRule, start } from './testing/band'
 
 // The region the live band gets is narrower than bodyColumns: the pane's [-] control sits beside it.
 const CONTROL_WIDTH = 4
 
 // The kit never paints, so wrapping is read from what the engine would lay out: the width of every
-// non-rule Text and Button in the band's row. A row wider than its region is what splits 'write / scenarios'.
+// non-rule Text in the band's row. A row wider than its region is what splits 'write / scenarios'.
 test('band-renders-single-row-at-55-66-columns', async ($, on) => {
   engine(on)
   await start($)
@@ -18,10 +17,9 @@ test('band-renders-single-row-at-55-66-columns', async ($, on) => {
     const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: columns }, surface: 'terminal' })
     const found = await band.findAll({})
     await band.unmount()
-    // A Button reports its label as its text and again through its child Text: count the button once, by its label.
     // The goal has its own row above (band-goal.test.tsx); this is the step row.
-    const leaves = found.filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node) && (node.type === 'Button' || (node.type === 'Text' && node.text !== '' && node.text !== DETAILS)))
-    const shown = leaves.map((node: any) => (node.type === 'Button' ? DETAILS : node.text) as string)
+    const leaves = found.filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node) && node.type === 'Text' && node.text !== '')
+    const shown = leaves.map((node: any) => node.text as string)
     drawn[columns] = { widths: shown.reduce((sum: number, text: string) => sum + [...text].length, 0), shown }
   }
 
@@ -40,9 +38,9 @@ test('band-drops-whole-segments-not-truncates', async ($, on) => {
     const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: columns }, surface: 'terminal' })
     const found = await band.findAll({})
     await band.unmount()
-    // The segments are the band's Text leaves; the rule, the separators, the gap and the details button are not segments.
+    // The segments are the band's Text leaves; the rule, the separators and the commands hint are not segments.
     const segments = found
-      .filter((node: any) => node.type === 'Text' && !isSeparatorRule(node) && node.text !== DETAILS)
+      .filter((node: any) => node.type === 'Text' && !isSeparatorRule(node))
       .map((node: any) => node.text as string)
       .filter((text: string) => text.trim() !== '' && text.trim() !== '·' && !text.trim().startsWith('/pb'))
     fragments[columns] = segments.filter((text: string) => text.includes('…'))
@@ -65,7 +63,7 @@ test('band-segments-never-wrap-onto-a-second-row', async ($, on) => {
     // fitBand drops whole segments by priority; wrap="truncate-end" is the safety net so a misjudged width
     // can never split a segment across rows ('write / scenarios'). The kit's default 'wrap' would do exactly that.
     // The ' │ ' separators and the '/pb' hint are Texts too and can wrap onto a second row, so they are asserted as well.
-    const segments = found.filter((node: any) => !isSeparatorRule(node) && node.text.trim() !== '' && node.text !== DETAILS)
+    const segments = found.filter((node: any) => !isSeparatorRule(node) && node.text.trim() !== '')
     wrapping[columns] = segments.filter((node: any) => !String(node.props.wrap ?? 'wrap').startsWith('truncate')).map((node: any) => `${node.text} (wrap=${node.props.wrap ?? 'default'})`)
   }
 

@@ -157,8 +157,8 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button }, { band, goal, running, waiting, ended, done, between }, opened) => (
-    <Band Box={Box} Text={Text} Button={Button} band={band} goal={goal} running={running} waiting={waiting} ended={ended} done={done} between={between} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($, true).catch(() => {}) }} />
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text }, { band, goal, running, waiting, ended, done, between }, opened) => (
+    <Band Box={Box} Text={Text} band={band} goal={goal} running={running} waiting={waiting} ended={ended} done={done} between={between} opened={opened} columns={e.props.bodyColumns} />
   )))
 
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button, Input }, view, _opened, note, pending) => (

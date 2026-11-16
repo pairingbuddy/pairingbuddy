@@ -144,8 +144,8 @@ export const isSeparatorRule = (node: { text?: string; props?: Record<string, un
 // drawn: in its state's head props.
 export const isStatusHead = (node: { text: string; props: Record<string, unknown> }): boolean =>
   Object.values(STATUS_LOOKS).some(look => [look.bandHead, look.mark].includes(node.text.trimEnd()) && node.props.color === (look.headProps as Record<string, unknown>).color && node.props.inverse === (look.headProps as Record<string, unknown>).inverse)
-// What ends a segment on the band's row: a separator, the gap before the details button, the button, the hint.
-const endsSegment = (text: string) => text === ' │ ' || text === ' ' || text === '▸ details' || text.startsWith(' │ /pb')
+// What ends a segment on the band's row: a separator, or the commands hint.
+const endsSegment = (text: string) => text === ' │ ' || text.startsWith(' │ /pb')
 
 // The band draws its lit step in two Texts, the phase word in its colour then the rest in the accent ('RED', ' · test 1 of 2');
 // read as text, they are the one segment they are. Nodes in drawing order; anything else is left as it is.
