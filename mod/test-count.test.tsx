@@ -39,14 +39,20 @@ test('status-counts-the-tests-the-placeholders-return-lists', async ($, on) => {
   expect(status, `STATUS gives the position against the planned total: ${JSON.stringify(lines)}`).toContain('test 1 of 2')
 })
 
-test('tests-are-named-by-the-scenarios-return', async ($, on) => {
+// Tenth watched run: a test reads by its short name (its id, spaced out), never its whole scenario sentence, which the report's SCENARIOS keeps.
+test('tests-status-and-the-band-name-a-test-by-its-short-name-not-its-scenario-sentence', async ($, on) => {
   const key = 'code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1'
-  const scenarios = { pb_key: key, scenarios: [{ scenario_id: 'order-total', description: 'Order total', test_cases: [{ test_case_id: 'two-lines', description: 'Two lines add up to 30.0' }, { test_case_id: 'no-lines', description: 'No lines total zero' }] }] }
+  const sentence = 'order_total([(10, 2), (4, 1)]) returns 30.0, which is line_total(10, 2) = 25.0 plus line_total(4, 1) = 5.0.'
+  const scenarios = { pb_key: key, scenarios: [{ scenario_id: 'order-total', description: 'Order total', test_cases: [{ test_case_id: 'two-lines', description: sentence }, { test_case_id: 'no-lines', description: 'No lines total zero' }] }] }
   await serve($, on, building, { [`${ARTIFACTS}/${PLACEHOLDERS_KEY}.json`]: placeholders, [`${ARTIFACTS}/${key}.json`]: scenarios }, `pb1 code-tdd GREEN implement-code ${FIRST} r1`)
 
   const lines = await paneLines($)
+  const band = (await bandTexts($, { bodyColumns: 120 })).join('')
 
-  expect(lines.some(line => line.includes('▸ Two lines add up to 30.0')), `the current test reads by its test case's description: ${JSON.stringify(lines)}`).toBe(true)
+  expect(lines.some(line => line.includes('▸ order total sums two lines')), `TESTS names the current test by its short name: ${JSON.stringify(lines)}`).toBe(true)
+  expect(lines.some(line => line.startsWith('STATUS') && line.includes('order total sums two lines')), 'STATUS names it the same way').toBe(true)
+  expect(band, 'the band names it the same way').toContain('● GREEN · order total sums two lines · 1/2')
+  expect([...lines, band].join(' '), 'the scenario sentence is not in the pane or the band').not.toContain('returns 30.0')
 })
 
 test('the-band-gives-the-position-after-the-test-name-while-it-fits', async ($, on) => {
@@ -60,9 +66,9 @@ test('the-band-gives-the-position-after-the-test-name-while-it-fits', async ($, 
 test('the-place-gives-way-before-the-test-name-is-cut', async ($, on) => {
   await serve($, on, building, { [`${ARTIFACTS}/${PLACEHOLDERS_KEY}.json`]: placeholders }, `pb1 code-tdd GREEN implement-code ${FIRST} r1`)
 
-  const row = (await bandTexts($, { bodyColumns: 54 })).join('')
+  const row = (await bandTexts($, { bodyColumns: 44 })).join('')
 
-  expect(row, 'short of room, the place goes and the name stays whole').toMatch(/^● GREEN · order total sums two lines ▸ details/)
+  expect(row, 'short of room, the place goes and the name stays whole').toMatch(/^● GREEN · order total sums two lines$/)
 })
 
 const testsRow = (lines: string[]) => lines.slice(lines.findIndex(line => line.startsWith('TESTS')), lines.findIndex(line => line.startsWith('REVIEW')))

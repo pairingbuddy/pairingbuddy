@@ -44,7 +44,8 @@ test("live agent count equals the number of agent.spawn events, not ledger spend
   assert.match(result.rows.spent, new RegExp(`^${LIVE_AGENT_SPAWNS_THROUGH_THIRD_ZERO_PERCENT_TRY} agents`), "SPENT starts with the spawn count");
 });
 
-test("try 1 reads 'no', never 'try 1 of 3'; a 2nd and 3rd try name the step and the try, with the NOW sentence ending '3rd try'", async () => {
+// Tenth watched run: a retry is told in NOW (the pane's STATUS) in plain words, and the last try before the run asks says so.
+test("NOW tells a retry as 'try N of 3', never 'try 1 of 3', and the last allowed try says it is the last before it asks you", async () => {
   const ledger = await ledgerAtSeq("probe-2", TDD_ACTIVE_SEQ);
   const tests = ["ten-percent-off-hundred", "zero-percent-keeps-full-price"];
   const calmSpawns = probeSpawns.slice(0, THROUGH_FIRST_RED_TRY);
@@ -53,13 +54,11 @@ test("try 1 reads 'no', never 'try 1 of 3'; a 2nd and 3rd try name the step and 
 
   const calm = glance({ ledger, spawns: calmSpawns, tests, now: SOME_TIME });
   const second = glance({ ledger, spawns: secondTrySpawns, tests, now: SOME_TIME });
-  const looping = glance({ ledger, spawns: thirdTrySpawns, tests, now: SOME_TIME });
+  const last = glance({ ledger, spawns: thirdTrySpawns, tests, now: SOME_TIME, testsComplete: true });
 
-  assert.equal(calm.rows.looping, "no");
-  assert.equal(second.rows.looping, `writing a failing test · try 2 of ${MAX_TRIES}`);
-  assert.equal(looping.rows.looping, `writing a failing test · try 3 of ${MAX_TRIES}`);
-  assert.match(looping.rows.now, /writing a failing test/, "NOW still names the step");
-  assert.match(looping.rows.now, /3rd try$/, "NOW ends with the try count");
+  assert.doesNotMatch(calm.rows.now, /try/, "a first try is never spelled out");
+  assert.equal(second.rows.now, `writing a failing test for zero percent keeps full price · test 2 · try 2 of ${MAX_TRIES}`);
+  assert.equal(last.rows.now, `writing a failing test for zero percent keeps full price · test 2 of 2 · try 3 of ${MAX_TRIES} · last try before it asks you`);
 });
 
 test("one spawned agent reads '1 agent', not '1 agents'", () => {
@@ -70,18 +69,17 @@ test("one spawned agent reads '1 agent', not '1 agents'", () => {
   assert.match(result.rows.spent, /^1 agent ·/);
 });
 
-test("a calm cycle after a GREEN runner checkpoint does not read as looping, because runner rounds count per test across phases", async () => {
+test("a calm cycle after a GREEN runner checkpoint does not read as a retry, because runner rounds count per test across phases", async () => {
   const ledger = await ledgerAtSeq("probe-2", TDD_ACTIVE_SEQ);
   const tests = ["ten-percent-off-hundred", "zero-percent-keeps-full-price"];
   const spawns = probeSpawns.slice(0, THROUGH_GREEN_RUNNER_CHECKPOINT);
 
   const result = glance({ ledger, spawns, tests, now: SOME_TIME });
 
-  assert.equal(result.rows.looping, "no", "each agent ran once, so there is no loop");
-  assert.doesNotMatch(result.rows.now, /2nd try/, "a runner checkpoint is not a retry");
+  assert.doesNotMatch(result.rows.now, /try/, "each agent ran once: a runner checkpoint is not a retry");
 });
 
-test("with tokensKnown false, tokens and % of plan show 'unknown', and OFF TRACK shows 'unknown'; no number or 'no' is invented", async () => {
+test("with tokensKnown false, tokens and % of plan show 'unknown'; no number is invented", async () => {
   const ledger = await ledgerAtSeq("g-open-1", 20);
   const spawns = await recording("g-open-1", "spawns");
 
@@ -91,7 +89,6 @@ test("with tokensKnown false, tokens and % of plan show 'unknown', and OFF TRACK
   assert.match(result.rows.spent, /tokens unknown/, "SPENT shows tokens as unknown");
   assert.match(result.rows.spent, /% of plan unknown/, "SPENT shows plan share as unknown");
   assert.doesNotMatch(result.rows.spent, /\d\s*%|≈/, "no percentage of plan is invented");
-  assert.equal(result.rows.offTrack, "unknown");
 });
 
 test("a missing, empty or partial ledger and no spawns return a defined result and do not throw", async () => {
@@ -106,15 +103,14 @@ test("a missing, empty or partial ledger and no spawns return a defined result a
   const results = inputs.map((input) => glance(input));
 
   for (const result of results) {
-    assert.deepEqual(Object.keys(result.rows).sort(), ["left", "looping", "now", "offTrack", "spent"]);
+    assert.deepEqual(Object.keys(result.rows).sort(), ["left", "now", "spent"]);
     assert.ok(Object.values(result.rows).every((row) => typeof row === "string" && row.length > 0), "every row is a sentence");
     assert.ok(Array.isArray(result.band), "band segments are a list");
-    assert.equal(result.rows.offTrack, "unknown");
   }
 });
 
-// Off track has no source yet, so it is left out of the band.
-const BAND_ORDER = ["where", "spent", "left", "looping", "needsYou"];
+// The band says where, spent, left and whether it needs you.
+const BAND_ORDER = ["where", "spent", "left", "needsYou"];
 
 test("calm run at test 3 of 4 lists the band's known segments in the R4-1 order", async () => {
   const ledger = await ledgerAtSeq("g-open-1", TDD_ACTIVE_SEQ);

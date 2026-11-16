@@ -5,7 +5,7 @@ import { engine, start, ROOT, SNAPSHOT_RUNNING } from './testing/band'
 import { commitsArgv, REPORTS_DIR } from './report'
 import { POLL_MS } from './poll'
 import { PANE } from './testing/replay'
-import { recordReportCalls, REPORT_KEY, REPORT_LABEL, REPORT_SLUG, paneTexts, pressReportButton, reportButton, reportConfirmation, reportOpenFailure, reportRenderFailure, reportWriteFailure, REPORT_OPENED, writtenFileName } from './testing/report'
+import { recordReportCalls, REPORT_COMMAND_HINT, REPORT_KEY, REPORT_LABEL, REPORT_SLUG, paneTexts, pressReportButton, reportButton, reportConfirmation, reportOpenFailure, reportRenderFailure, reportWriteFailure, REPORT_OPENED, writtenFileName } from './testing/report'
 
 test('pane-shows-open-report-button', async ($, on) => {
   engine(on)
@@ -15,6 +15,16 @@ test('pane-shows-open-report-button', async ($, on) => {
   const withLedger = await reportButton($)
 
   expect(withLedger?.text, 'while a ledger is live the pane holds the open-report button').toBe(REPORT_LABEL)
+})
+
+test('pane-names-pb-report-beside-the-button-as-the-way-without-focus', async ($, on) => {
+  engine(on)
+  mock.clock(on, { now: 0 })
+  await start($)
+
+  const drawn = await paneTexts($)
+
+  expect(drawn, 'beside the button, the pane names the command that works without its focus').toContain(REPORT_COMMAND_HINT)
 })
 
 test('pane-has-no-open-report-button-before-any-ledger-is-polled', async ($, on) => {

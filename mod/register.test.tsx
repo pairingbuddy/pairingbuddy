@@ -64,3 +64,12 @@ test('tool-call-hook-records-calls-and-passes-through', () => {
 
   expect(registered.map(hook => hook.matcher), 'the mod registers two tool.call hooks: StructuredOutput calls, and Bash calls for what pb publish opened').toEqual([{ tool: 'StructuredOutput' }, { tool: 'Bash' }])
 })
+
+test('pb is registered as a command that runs while Claude is working', async ($, on) => {
+  const { calls } = engine(on)
+
+  await start($)
+
+  const spec = calls.registered.find(command => command.name === 'pb')
+  expect(spec?.immediate, 'the pb command runs at once, also mid-turn').toBe(true)
+})

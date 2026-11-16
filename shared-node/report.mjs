@@ -22,7 +22,7 @@ function outcome(ledger) {
 }
 
 function glanceLabels(ledger) {
-  return { now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", left: "Left", looping: "Looping", offTrack: "Off track" };
+  return { now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", left: "Left" };
 }
 
 // The run's length: endedAt (or the last stage end) minus the first start; NaN when either is missing.
@@ -44,8 +44,8 @@ function taskSpend(task) {
   return { ...spends.at(-1), tokens: spends.reduce((sum, spend) => sum + (Number(spend?.tokens) || 0), 0), tokensKnown };
 }
 
-// Left, looping and off track only mean something while the run goes, so a finished run has no such rows.
-const LIVE_ROWS = ["left", "looping", "offTrack"];
+// Left only means something while the run goes, so a finished run has no such row.
+const LIVE_ROWS = ["left"];
 
 function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task }) {
   const { rows: all } = glance({ ledger: { ...ledger, spend: taskSpend(task) }, spawns, tests, ranFor, testsComplete });
@@ -123,7 +123,7 @@ function resultOf(attempt, tries, record, covered) {
   return resultWords(attempt.step, record, covered);
 }
 
-// The wording for a step's record, shared with the pane's looping row (which has no runner timing to wait for).
+// The wording for a step's record.
 export function resultWords(step, record, covered) {
   const words = RESULT_WORDS[step];
   if (!words || !record || typeof record.passed !== "boolean") return UNKNOWN;

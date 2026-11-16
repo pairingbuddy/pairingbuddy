@@ -29,14 +29,14 @@ describe("report-content", () => {
     assert.ok(!done.includes("STOPPED"), "a finished run does not say STOPPED");
   });
 
-  test("report-at-a-glance-has-five-answers", async () => {
+  // Looping was only a live signal (each try's result is in the test's card) and off track never had a source: neither is a row.
+  test("report-at-a-glance-answers-where-spent-and-left", async () => {
     const section = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })), "AT A GLANCE");
 
     assert.match(section, /<strong>Where it stopped<\/strong>\s*stopped: a step kept failing/);
     assert.match(section, /<strong>Spent<\/strong>\s*18 agents · 2:36 · tokens unknown · % of plan unknown/);
     assert.match(section, /<strong>Left<\/strong>\s*unknown/);
-    assert.match(section, /<strong>Looping<\/strong>\s*writing a failing test · try 3 of 3/);
-    assert.match(section, /<strong>Off track<\/strong>\s*unknown/);
+    assert.doesNotMatch(section, /Looping|Off track/);
   });
 
   const readStagesContract = async () => JSON.parse(await readFile(new URL("../../contracts/stages.json", import.meta.url), "utf8"));
@@ -333,7 +333,6 @@ describe("report-content", () => {
       const glance = sectionOf(html, "AT A GLANCE");
       assert.match(glance, /<strong>Where it is<\/strong>\s*unknown/, "where the run is reads unknown");
       assert.match(glance, /<strong>Spent<\/strong>[^<]*time unknown · tokens unknown · % of plan unknown/, "the spend reads unknown for time, tokens and plan");
-      assert.match(glance, /<strong>Looping<\/strong>\s*unknown/, "looping reads unknown");
       assert.match(headerOf(html), /time unknown/, "the header says the time is unknown");
       assert.match(sectionOf(html, "COMMITS"), /<p>unknown<\/p>/, "the commits section says unknown when no commits were passed");
       assert.ok(!/undefined|NaN|\[object Object\]/.test(html), "no raw undefined, NaN or object leaks into the page");

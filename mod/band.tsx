@@ -4,12 +4,12 @@ import { PHASES } from '../shared-node/labels.mjs'
 import { ACCENT_COLOUR, PHASE_COLOURS, STATUS_LOOKS } from './pane'
 import type { Segment, Tags } from './view'
 
-const HINT = '/pb for details'
-const SHORT_HINT = '/pb'
+// The band names commands, not a button: the classic renderer has no mouse, and a band button is reached only by ctrl+x tab.
+export const HINT = '/pb details · /pb-report report'
+export const SHORT_HINT = '/pb · /pb-report'
 const IDLE_SEPARATOR = ' · '
 const IDLE = 'Pairing Buddy · idle'
 const ENDED = 'Pairing Buddy · last run finished'
-export const DETAILS = '▸ details'
 const RULE_FALLBACK_WIDTH = 40
 // The pane's [-] control sits beside the band row, so the row gets this many fewer cells than bodyColumns.
 const CONTROL_WIDTH = 4
@@ -17,8 +17,8 @@ const CONTROL_WIDTH = 4
 // A dim rule above the band text; columns is 0 before the first layout, so a fixed width stands in, never wider than the region.
 const rule = (columns: number) => '─'.repeat(columns > 0 ? columns : RULE_FALLBACK_WIDTH)
 
-// The button and the space before it are always reserved; a hint (its separator and a trailing space) only when one is given.
-export const bandColumns = (columns: number, hint: string = '') => columns - CONTROL_WIDTH - DETAILS.length - 1 - (hint ? SEPARATOR.length + hint.length + 1 : 0)
+// A hint (its separator and a trailing space) is reserved only when one is given.
+export const bandColumns = (columns: number, hint: string = '') => columns - CONTROL_WIDTH - (hint ? SEPARATOR.length + hint.length + 1 : 0)
 
 // The goal's gist for the band's first row: the whole goal when it fits beside the [-] control, else cut at the last clause
 // break, else the last word, that fits (never with "…"); undefined while no run names its goal. No room known cuts nothing.
@@ -76,8 +76,8 @@ function quietLine({ between, ended, done }: { between?: string; ended?: boolean
   return { words: ended ? ENDED : IDLE, dim: true }
 }
 
-// While a stage is active or a question waits, only the segments that fit beside the details button; otherwise the quiet line.
-export function Band({ Box, Text, Button, band, goal, columns, running, waiting, opened, ended, done, between, onDetails }: Tags & {
+// While a stage is active or a question waits, only the segments that fit; otherwise the quiet line. The commands hint follows.
+export function Band({ Box, Text, band, goal, columns, running, waiting, opened, ended, done, between }: Pick<Tags, 'Box' | 'Text'> & {
   band: Segment[]
   goal?: string
   columns: number
@@ -87,16 +87,15 @@ export function Band({ Box, Text, Button, band, goal, columns, running, waiting,
   ended?: boolean
   done?: boolean
   between?: string
-  onDetails: () => void
 }) {
   const source = opened && running ? asOpened(band) : band
-  // The hint is the lowest priority: "/pb for details" gives way to "/pb", then to nothing, before any segment is cut.
+  // The hint is the lowest priority: it gives way to its short form, then to nothing, before any segment is cut.
   const content = running || waiting ? fitBand(source, bandColumns(columns)) : undefined
   const hint = [HINT, SHORT_HINT].find(candidate => JSON.stringify(fitBand(source, bandColumns(columns, candidate))) === JSON.stringify(content))
   const shown = content
   const quiet = quietLine({ between, ended, done })
   // The hint gives way first when the width is short; with no width known yet it stays.
-  const room = columns > 0 ? columns - CONTROL_WIDTH - DETAILS.length - 1 - (quiet.head?.length ?? 0) : Infinity
+  const room = columns > 0 ? columns - CONTROL_WIDTH - (quiet.head?.length ?? 0) : Infinity
   const quietText = [`${quiet.words}${IDLE_SEPARATOR}${HINT}`, `${quiet.words}${IDLE_SEPARATOR}${SHORT_HINT}`, quiet.words].find(text => text.length <= room) ?? quiet.words
   // The goal leads on its own row, so the step below it stays where the eye learnt to find it: two rows at most.
   const gist = bandGoal(goal, columns)
@@ -111,9 +110,7 @@ export function Band({ Box, Text, Button, band, goal, columns, running, waiting,
             ...(i > 0 ? [<Text key={`sep-${segment.id}`} wrap="truncate-end">{SEPARATOR}</Text>] : []),
             ...segmentTexts(Text, segment),
           ])
-        : <Box marginRight={1}>{quiet.head && <Text key="head" wrap="truncate-end" {...quiet.headProps}>{quiet.head}</Text>}<Text key="quiet" dimColor={quiet.dim || undefined} wrap="truncate-end">{quietText}</Text></Box>}
-      {shown && <Text key="gap"> </Text>}
-      <Button key="details" label={DETAILS} onPress={onDetails}>{shown && <Text>{DETAILS}</Text>}</Button>
+        : <Box>{quiet.head && <Text key="head" wrap="truncate-end" {...quiet.headProps}>{quiet.head}</Text>}<Text key="quiet" dimColor={quiet.dim || undefined} wrap="truncate-end">{quietText}</Text></Box>}
       {shown && hint && <Text key="hint" wrap="truncate-end">{`${SEPARATOR}${hint} `}</Text>}
     </Box>
     </Box>

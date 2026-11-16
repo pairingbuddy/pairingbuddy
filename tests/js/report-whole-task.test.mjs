@@ -166,7 +166,7 @@ describe("report-of-the-whole-task", () => {
     assert.ok(!section.includes("sign-off"), "the task was signed off already");
   });
 
-  // Left, looping and off track only mean something while the task runs: a finished one says what it spent and that it is done.
+  // Left only means something while the task runs: a finished one says what it spent and that it is done.
   test("AT A GLANCE of a finished task leaves out the rows that only mean something live", () => {
     const section = sectionOf(report(), "AT A GLANCE");
 

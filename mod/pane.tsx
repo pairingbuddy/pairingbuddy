@@ -1,7 +1,6 @@
 import { plainName } from '../shared-node/plain-names.mjs'
 import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
 import { endReviewLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
-import { fitTries } from '../shared-node/now-building.mjs'
 import type { PaneTags, RowTones, Status, StatusState, View } from './view'
 
 // Every row is always drawn, in this order, its label in a column this wide; a row with nothing to show reads EMPTY.
@@ -15,6 +14,9 @@ export const PHASE_COLOURS: Record<string, string> = { RED: '#e5534b', GREEN: '#
 // Where the run is now: the current step and the current test. Fixed for the same reason, and readable on dark and light.
 export const ACCENT_COLOUR = '#39c5cf'
 const LIT: Props = { color: ACCENT_COLOUR, bold: true }
+
+// Beside the report button: the command that needs no pane focus (the classic renderer has no mouse).
+const REPORT_COMMAND = 'or /pb-report, no focus needed'
 
 export type Suggestion = { state: 'pending'; nextAgent?: string } | { state: 'delivered'; to: string }
 
@@ -135,14 +137,11 @@ function topRows(view: View, columns: number) {
 function paneRows(view: View, columns: number) {
   const { rows, rowTones = {} as RowTones } = view
   const width = columns > 0 ? columns - LABEL_WIDTH : 0
-  // The tries fold to fit where they can (fitTries); what still overflows wraps, never cut.
-  const tries = view.tries?.length ? wrapped(fitTries(view.tries, width).trimStart(), width, { dimColor: true }) : []
   const review = view.endRound ? endReviewLines(view.endRound, width) : lensLines(view.lensRound, width)
   return [
     ...rowLines('PR', wrapped(view.end.pr, width)),
     ...rowLines('BUILT', wrapped(view.end.done, width)),
     ...rowLines('SPENT', one(rows.spent, toneProps(rowTones.spent))),
-    ...rowLines('LOOPING', [...one(rows.looping, toneProps(rowTones.looping)), ...tries]),
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
     ...rowLines('TESTS', testsParts(view, width)),
     ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
@@ -183,7 +182,12 @@ export function Pane({ Box, Text, Button, Input, view, columns = 0, unknownLabel
       {suggestion?.state === 'delivered' && <Text>{`delivered to ${plainName(suggestion.to) ?? suggestion.to}`}</Text>}
       {ledger && (
         <>
-          <Button key="report" label="r open report" hotkey="r" onPress={onReport} />
+          {/* r works while the pane has focus; /pb-report writes the same report from the prompt, also mid-turn. */}
+          <Box key="report-row">
+            <Button key="report" label="r open report" hotkey="r" onPress={onReport} />
+            <Text key="report-gap">  </Text>
+            <Text key="report-command" dimColor wrap="truncate-end">{REPORT_COMMAND}</Text>
+          </Box>
           {!ended && <Input key="suggest" label="suggest" placeholder="a note for the next agent" onSubmit={onSuggest} />}
         </>
       )}

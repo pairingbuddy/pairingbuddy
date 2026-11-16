@@ -12,6 +12,9 @@ export const REPORT_KEY = 'report'
 // The label the button reads: the key hint, then the action (R5-5).
 export const REPORT_LABEL = 'r open report'
 
+// The Text beside the button: the command that writes the report without the pane's focus.
+export const REPORT_COMMAND_HINT = 'or /pb-report, no focus needed'
+
 // Looks up the open-report button on the terminal pane. The text is undefined when the pane draws none.
 export async function reportButton($: any): Promise<{ text: string | undefined } | undefined> {
   const button = await findOnPane($, { type: 'Button', key: REPORT_KEY })

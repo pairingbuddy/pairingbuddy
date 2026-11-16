@@ -1,4 +1,4 @@
-// The five "at a glance" rows, as plain sentences (docs/design/progress-mod/DIRECTION.md).
+// The "at a glance" rows (where, spent, left), as plain sentences (docs/design/progress-mod/DIRECTION.md).
 // Pure; tolerates missing or partial input. What cannot be known is never invented: the rows say "unknown" (the report
 // shows them so), the pane leaves unknown parts out with leaveOutUnknown, and the band leaves unknown segments out.
 import { plainName } from "./plain-names.mjs";
@@ -11,11 +11,6 @@ const UNKNOWN = "unknown";
 const AGENT_KINDS = ["Agent", "workflow_agent"];
 const RUNNER_ROLE = "runner";
 const SAFETY_NET = "the safety-net review and your sign-off";
-
-function ordinal(n) {
-  const suffix = { 1: "st", 2: "nd", 3: "rd" }[n % 100 >= 11 && n % 100 <= 13 ? 0 : n % 10] ?? "th";
-  return `${n}${suffix}`;
-}
 
 // The labels of the agent spawns that sit on a test, in order, runner checkpoints aside. One rule for the pane and the report.
 // Only a test's cycle names a phase: a review round's items (a finding, a fix group, a lens) are no tests. Given a stage,
@@ -48,7 +43,7 @@ export function currentStep(spawns, stage) {
   return { ...last, tries: triesAtStep(labels, labels.length - 1) };
 }
 
-// The one rule for "looping", from a count of tries at the same step. Shared by the pane and the report.
+// The one rule for "looping", from a count of tries at the same step: the report's "Why it looped" note reads it.
 export const isLooping = (tries) => tries >= MAX_TRIES;
 
 const testPosition = (step, tests) => tests.indexOf(step?.item) + 1;
@@ -83,26 +78,25 @@ function spentRow({ ledger, spawns, now, ranFor, since, leaveOutUnknown }) {
   return (leaveOutUnknown ? parts.filter((part) => !part.endsWith(UNKNOWN)) : parts).join(" · ");
 }
 
+// A retry in plain words: nothing on a first try, "try N of 3" on a later one, and on the last allowed try a word that the
+// human may be needed soon. A try past the limit (the human let it go on) is only counted.
+function retryPart(tries) {
+  if (tries < 2) return "";
+  if (tries > MAX_TRIES) return ` · try ${tries}`;
+  return ` · try ${tries} of ${MAX_TRIES}${tries === MAX_TRIES ? " · last try before it asks you" : ""}`;
+}
+
 function nowRow(step, tests, ledger, complete) {
   if (ledger?.stop) return stopLine(ledger.stop);
   if (!step) return plainName(ledger?.stage?.name) ?? UNKNOWN;
   const position = testPosition(step, tests);
   const where = position > 0 ? ` · test ${position}${complete ? ` of ${tests.length}` : ""}` : "";
-  const retry = step.tries > 1 ? `, ${ordinal(step.tries)} try` : "";
-  return `${plainName(step.role) ?? UNKNOWN} for ${step.item.replace(/[-_]/g, " ")}${where}${retry}`;
+  return `${plainName(step.role) ?? UNKNOWN} for ${step.item.replace(/[-_]/g, " ")}${where}${retryPart(step.tries)}`;
 }
 
 function leftRow(step, tests, complete) {
   const remaining = remainingTests(step, tests, { more: true, complete });
   return remaining ? `${remaining}, then ${SAFETY_NET}` : UNKNOWN;
-}
-
-// Unknown with no step on a test; "no" until that step is on its second try or later, then the step and its try. A first try
-// is never spelled out.
-function loopingRow(step) {
-  if (!step) return UNKNOWN;
-  if (step.tries < 2) return "no";
-  return `${plainName(step.role) ?? UNKNOWN} · try ${step.tries} of ${MAX_TRIES}`;
 }
 
 export const SEPARATOR = " │ ";
@@ -157,13 +151,12 @@ function bandNeedsYou(ledger) {
 // A band segment only when its value is known; an unknown one says nothing, so it is left out.
 const known = (id, text) => (text === undefined ? [] : [{ id, text }]);
 
+// A retry is told where the step is (NOW, the pane's STATUS), so the band has no looping segment.
 function bandSegments({ ledger, spawns, tests, now, since, complete }, step) {
-  const looping = step ? `looping: ${isLooping(step.tries) ? "yes" : "no"}` : undefined;
   return [
     { id: "where", text: bandWhere(step, tests, ledger, complete) },
     { id: "spent", text: bandSpent({ ledger, spawns, now, since }) },
     ...known("left", bandLeft(step, tests, complete)),
-    ...known("looping", looping),
     bandNeedsYou(ledger),
   ];
 }
@@ -228,8 +221,6 @@ export function glance({ ledger, spawns, tests, now, ranFor, since, testsComplet
     now: nowRow(step, names, ledger, testsComplete),
     spent: spentRow({ ledger, spawns: list, now, ranFor, since, leaveOutUnknown }),
     left: leftRow(step, names, testsComplete),
-    looping: loopingRow(step),
-    offTrack: UNKNOWN,
   };
   return { rows, band: bandSegments({ ledger, spawns: list, tests: names, now, since, complete: testsComplete }, step), unknownLabels: unknownLabels(list) };
 }

@@ -6,7 +6,7 @@ import { nextAgent } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
 import { Band } from './band'
 import { Pane, type Suggestion } from './pane'
-import { openReport } from './report'
+import { openReport, reportLine } from './report'
 import { recordDelivery, submitSuggestion, type PendingSuggestion } from './suggest'
 import { PANE_ID, openPane } from './pane-open'
 import { buildEndedView, buildView, type PaneTags, type View } from './view'
@@ -35,7 +35,8 @@ const pendingAtom = atom({ plugin: 'pairingbuddy', key: 'pending-suggestion' }, 
 const publishedAtom = atom({ plugin: 'pairingbuddy', key: 'published' }, null)
 
 async function startWatching($: EngineInterface, poller: PollerState, options: PluginOptions) {
-  await $.command.register({ name: 'pb', description: 'Open the Pairing Buddy pane' })
+  await $.command.register({ name: 'pb', description: 'Open the Pairing Buddy pane', immediate: true })
+  await $.command.register({ name: 'pb-report', description: 'Write the Pairing Buddy run report and open it', immediate: true })
   await startPoller($, poller, options)
 }
 
@@ -126,7 +127,10 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', ($, e, next) => {
-    return e.command === 'pb' ? openPane($, true).then(() => ({ text: 'Pairing Buddy pane opened' })) : next(e)
+    if (e.command === 'pb') return openPane($, true).then(() => ({ text: 'Pairing Buddy pane opened' }))
+    // The same report path as the pane's 'r open report', without needing the pane's focus.
+    if (e.command === 'pb-report') return openReport($, spawns, calls).then(outcome => ({ text: reportLine(outcome) }))
+    return next(e)
   })
 
   on('agent.spawn', ($, e, next) => {
@@ -153,8 +157,8 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button }, { band, goal, running, waiting, ended, done, between }, opened) => (
-    <Band Box={Box} Text={Text} Button={Button} band={band} goal={goal} running={running} waiting={waiting} ended={ended} done={done} between={between} opened={opened} columns={e.props.bodyColumns} onDetails={() => { openPane($, true).catch(() => {}) }} />
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text }, { band, goal, running, waiting, ended, done, between }, opened) => (
+    <Band Box={Box} Text={Text} band={band} goal={goal} running={running} waiting={waiting} ended={ended} done={done} between={between} opened={opened} columns={e.props.bodyColumns} />
   )))
 
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button, Input }, view, _opened, note, pending) => (

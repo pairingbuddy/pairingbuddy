@@ -1,8 +1,7 @@
-// The TESTS and TEST rows' data: folds per-test progress into marks (done, covered, current, waiting) and fits the progress row and
-// the looping tries to a width budget. Pure; no node: imports.
-import { currentStep, elapsed, isLooping, stageOf } from "./glance.mjs";
-import { resultWords } from "./report.mjs";
-import { PHASES, readLabel, refactorsPerCycle } from "./labels.mjs";
+// The TESTS and TEST rows' data: folds per-test progress into marks (done, covered, current, waiting) and fits the progress row
+// to a width budget. Pure; no node: imports.
+import { currentStep, elapsed, stageOf } from "./glance.mjs";
+import { PHASES, refactorsPerCycle } from "./labels.mjs";
 
 const SHOWN = 3;
 
@@ -84,45 +83,9 @@ export function fitProgress(progress, columns) {
   return rowText(row);
 }
 
-// The looping tries as one line that fits the width budget where it can. What gives way, in order: older tries fold into
-// "+n earlier ·", then that prefix goes, then " at STEP" leaves the latest try (the LOOPING row above names the step). The latest
-// try's result words stay whole; if they alone overflow, the pane wraps them.
-export function fitTries(tries, columns) {
-  const last = tries.length - 1;
-  const text = (hidden, { prefix = true, step = true } = {}) => {
-    const shown = tries.slice(hidden).map((t, at) => `try ${t.number}${step || hidden + at < last ? ` at ${t.step}` : ""}: ${t.result}`);
-    return `  ${hidden && prefix ? `+${hidden} earlier · ` : ""}${shown.join(" · ")}`;
-  };
-  const folds = Array.from({ length: tries.length }, (_, hidden) => text(hidden));
-  const candidates = [...folds, text(last, { prefix: false }), text(last, { prefix: false, step: false })];
-  return candidates.find((line) => fitsWidth(line, columns)) ?? candidates.at(-1);
-}
-
-const spaced = (id) => String(id).replaceAll("-", " ");
-
-const list = (value) => (Array.isArray(value) ? value : []);
-const isText = (value) => typeof value === "string" && value !== "";
-
-// Narrows the parsed tests.json and scenarios.json to { test id: description }; anything malformed reads as no name.
-export function testNames({ tests, scenarios } = {}) {
-  const descriptions = {};
-  for (const scenario of list(scenarios?.scenarios)) {
-    for (const testCase of list(scenario?.test_cases)) {
-      if (isText(testCase?.test_case_id) && isText(testCase?.description)) descriptions[testCase.test_case_id] ??= testCase.description;
-    }
-  }
-  const names = {};
-  for (const entry of list(tests?.tests)) {
-    const description = descriptions[entry?.test_case_id];
-    if (isText(entry?.test_id) && description !== undefined) names[entry.test_id] ??= description;
-  }
-  return names;
-}
-
-// The description for a test id from a names map, else the id spaced out.
-export const nameOf = (names, testId) => (isText(testId) && Object.hasOwn(names ?? {}, testId) ? names[testId] : spaced(testId));
-
-export const testName = ({ testId, tests, scenarios }) => nameOf(testNames({ tests, scenarios }), testId);
+// A test's short name: its id spaced out ("order-total-sums-two-lines" reads "order total sums two lines"). The pane and the
+// band name a test so; its whole scenario sentence is the report's SCENARIOS'.
+export const shortName = (testId) => String(testId).replace(/[-_]/g, " ");
 
 // The RED/GREEN/REFACTOR marker as data the pane colours: a tick before the steps this test passed, a bullet before the
 // current step, a chevron before the steps to come. No steps at all when the current step names no phase of the cycle.
@@ -137,26 +100,3 @@ export function cycleMarker({ spawns, ledger }) {
 
 // How long the current step has run, as a run-time clock; unknown when the spawn or the clock carries no time.
 export const stepAge = ({ spawns, now, stage }) => elapsed(currentStep(spawns, stage)?.startedAt, now);
-
-// The ledger's record is the latest try's only once that try's runner has spawned. Where earlier tries had runners, the latest
-// try has one too before its result counts; where no runner is labelled at all, the record is taken as the latest try's.
-function latestHasRun(spawns, current) {
-  const runners = (Array.isArray(spawns) ? spawns : [])
-    .map((spawn) => readLabel(spawn?.name))
-    .filter((label) => !label.unknown && label.role === "runner" && label.item === current.item && label.phase === current.phase).length;
-  return runners === 0 || runners >= current.tries;
-}
-
-// Once the current step has looped, every try at it with its result; the ledger's record describes the latest try only.
-export function loopingTries({ spawns, perTest, stage }) {
-  const current = currentStep(spawns, stage);
-  if (!current || !isLooping(current.tries)) return undefined;
-  const step = current.phase;
-  const record = perTest?.[current.item];
-  return Array.from({ length: current.tries }, (_, index) => {
-    const number = index + 1;
-    const latest = number === current.tries && latestHasRun(spawns, current);
-    const result = latest ? resultWords(step, record?.[step?.toLowerCase()], record?.covered) : resultWords(step, undefined);
-    return { step, number, result };
-  });
-}

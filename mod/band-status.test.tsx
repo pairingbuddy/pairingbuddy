@@ -46,9 +46,9 @@ test('a-working-band-names-the-current-test-after-its-phase-in-the-accent', asyn
 test('a-narrow-band-cuts-the-test-name-at-a-word-never-with-an-ellipsis', async ($, on) => {
   await atGreen($, on)
 
-  const row = (await rowNodes($, 40)).map(node => node.text).join('')
+  const row = (await rowNodes($, 30)).map(node => node.text).join('')
 
-  expect(row, 'the details give way first, then the name is cut at a word').toMatch(/^● GREEN · order total sums ▸ details/)
+  expect(row, 'the details give way first, then the name is cut at a word').toMatch(/^● GREEN · order total sums$/)
   expect(row, 'nothing is cut with "…"').not.toContain('…')
 })
 
