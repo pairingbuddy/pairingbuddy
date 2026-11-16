@@ -53,11 +53,16 @@ function cycleParts(test: NonNullable<View['test']>): Part[] {
 const MARKS = { done: '✓', current: '▸', waiting: '·', covered: '◌' } as const
 const GAP = '  '
 
+// The TESTS row's first line once the total is known: `3 of 12 done`, and how many were already covered.
+const countLine = ({ total, done, covered }: NonNullable<NonNullable<View['progress']>['count']>) => `${done} of ${total} done${covered ? ` · ${covered} covered` : ''}`
+
 // One TESTS row, a line per test: the folded counts first, then each test by its mark, the current one with its cycle marker and
 // step age, then "+n more" ("+n more so far" while the total is unknown). The current test's name gives way first, so its marker and age always fit the width.
 function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: number): Part[][] {
   const folded = [progress?.folded ? `${MARKS.done} ${progress.folded} done` : '', progress?.coveredFolded ? `${MARKS.covered} ${progress.coveredFolded} covered` : ''].filter(Boolean)
-  const lines: Part[][] = folded.length ? [[{ text: folded.join('   ') }]] : []
+  // Once the total is known its count leads, always on the first line, and stands for the folded tests too.
+  const head = progress?.count ? [countLine(progress.count)] : folded.length ? [folded.join('   ')] : []
+  const lines: Part[][] = head.map(text => [{ text }])
   const entries = progress?.entries ?? []
   const currentLine = (name: string): Part[] => {
     const cycle = test ? cycleParts(test) : []

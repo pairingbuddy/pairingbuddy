@@ -28,6 +28,16 @@ export function progressRow({ tests, perTest, spawns, stage }) {
   };
 }
 
+// How many of the planned tests passed their GREEN (done) or were already covered: the TESTS row's count.
+export function testCounts({ tests, perTest }) {
+  const ids = (Array.isArray(tests) ? tests : []).map((test) => test.test_id);
+  return {
+    total: ids.length,
+    done: ids.filter((id) => perTest?.[id]?.green?.passed).length,
+    covered: ids.filter((id) => !perTest?.[id]?.green?.passed && perTest?.[id]?.covered?.done).length,
+  };
+}
+
 const MARKS = { done: "✓", current: "▸", waiting: "·", covered: "◌" };
 const GAP = "   ";
 

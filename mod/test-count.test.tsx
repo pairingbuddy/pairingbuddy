@@ -64,3 +64,14 @@ test('the-place-gives-way-before-the-test-name-is-cut', async ($, on) => {
 
   expect(row, 'short of room, the place goes and the name stays whole').toMatch(/^● GREEN · order total sums two lines ▸ details/)
 })
+
+const testsRow = (lines: string[]) => lines.slice(lines.findIndex(line => line.startsWith('TESTS')), lines.findIndex(line => line.startsWith('REVIEW')))
+
+test('tests-leads-with-how-many-are-done-of-the-total', async ($, on) => {
+  await serve($, on, building, { [`${ARTIFACTS}/${PLACEHOLDERS_KEY}.json`]: placeholders }, `pb1 code-tdd GREEN implement-code ${FIRST} r1`)
+
+  const row = testsRow(await paneLines($))
+
+  expect(row[0], `the count leads TESTS, then the list: ${JSON.stringify(row)}`).toBe('TESTS    0 of 2 done')
+  expect(row.slice(1).map(line => line.trim().slice(0, 2)), 'then one line per test').toEqual(['▸ ', '· '])
+})

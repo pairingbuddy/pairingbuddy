@@ -127,7 +127,7 @@ for (const columns of WIDTHS) {
 
     expect(tooWide(lines, columns), `every line fits ${columns} columns`).toEqual([])
     expect(tests.length, `TESTS is at most 5 lines: ${JSON.stringify(tests)}`).toBeLessThanOrEqual(5)
-    expect(tests[0], 'the done tests fold into one count').toBe('TESTS    ✓ 10 done')
+    expect(tests[0], 'the done tests fold into the count of the total').toBe('TESTS    10 of 40 done')
     expect(tests.at(-1), 'the waiting tests past the shown ones are counted').toBe(`${' '.repeat(LABEL_WIDTH)}+27 more`)
     // A test line stays one line: a long name is cut at a word, never with an ellipsis; the report's SCENARIOS holds it whole.
     expect(lines.filter(line => line.includes('…')), 'nothing in the pane is cut with an ellipsis').toEqual([])

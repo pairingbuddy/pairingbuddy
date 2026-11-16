@@ -5,7 +5,7 @@ import contract from '../shared-node/stages-contract.mjs'
 import { lensRound } from '../shared-node/lens-round.mjs'
 import type { LensRound } from '../shared-node/lens-round.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
-import { cycleMarker, loopingTries, nameOf, progressRow, stepAge } from '../shared-node/now-building.mjs'
+import { cycleMarker, loopingTries, nameOf, progressRow, stepAge, testCounts } from '../shared-node/now-building.mjs'
 import { doneStatus, endRows, goalOf, isUnitDone, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
 import type { Inputs, Ledger } from './inputs'
 import { STATUS_LOOKS } from './pane'
@@ -27,7 +27,8 @@ export type Tags = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
 // The Pane alone also draws the suggest Input.
 export type PaneTags = Tags & Pick<ElementTable, 'Input'>
 
-export type Progress = { known?: boolean; folded?: number; coveredFolded?: number; more?: number; entries: { id: string; name: string; mark: 'done' | 'current' | 'waiting' | 'covered' }[] }
+// count: how many of the planned tests are done (or covered), once the total is known.
+export type Progress = { known?: boolean; count?: { total: number; done: number; covered: number }; folded?: number; coveredFolded?: number; more?: number; entries: { id: string; name: string; mark: 'done' | 'current' | 'waiting' | 'covered' }[] }
 export type TestLine = { current?: string; marker: { steps: { name: string; lit: boolean; mark: string }[] }; age?: string }
 export type Tries = { step: string; number: number; result: string }[]
 
@@ -153,9 +154,11 @@ const publishesAfter = ({ ledger, unit }: Pick<Inputs, 'ledger' | 'unit'>) => Bo
 
 // The TESTS row's progress: each test by its mark, named, or undefined when there is no test to show.
 function progressOf({ tests, perTest, spawns, testsComplete, stage, names }: { tests: string[]; perTest: unknown; spawns: Inputs['spawns']; testsComplete: boolean; stage: unknown; names: Inputs['names'] }) {
-  const row = progressRow({ tests: tests.map(id => ({ test_id: id })), perTest, spawns, testsComplete, stage })
+  const rows = tests.map(id => ({ test_id: id }))
+  const row = progressRow({ tests: rows, perTest, spawns, testsComplete, stage })
   const named = row.entries.map((entry: { id: string; mark: Progress['entries'][number]['mark'] }) => ({ ...entry, name: nameOf(names, entry.id) }))
-  return named.length > 0 || row.folded || row.coveredFolded ? { ...row, known: testsComplete, entries: named } : undefined
+  const count = testsComplete && rows.length > 0 ? { count: testCounts({ tests: rows, perTest }) } : {}
+  return named.length > 0 || row.folded || row.coveredFolded ? { ...row, known: testsComplete, ...count, entries: named } : undefined
 }
 
 // A publish run has no tests of its own, so TESTS keeps the finished code run's: tests.json's order when it lists every one the
