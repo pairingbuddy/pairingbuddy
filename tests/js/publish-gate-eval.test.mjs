@@ -6,7 +6,7 @@ import "./isolated-tmpdir.mjs";
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { isGateQuestionCall } from "../../shared-node/gates.mjs";
 import { loadStages } from "../../shared-node/stages.mjs";
@@ -129,14 +129,23 @@ describe("publish-gate-shown", () => {
     assert.equal(isGateQuestionCall(repo.ledger().needsHuman.question, [question]), true);
   });
 
-  test("the question opens with the title and body it shows, and asks to open it", () => {
+  test("the question opens with the title it shows, and asks to open it", () => {
     const { repo } = publishRepo();
 
     const { question, shown } = evalGate(repo);
 
     assert.match(question.question, new RegExp(`^Pull request: ${shown.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n`));
-    assert.ok(question.question.includes(shown.body.trim().split("\n")[0]), question.question);
     assert.match(question.question, /\nOpen it\?$/);
+  });
+
+  test("the question names the absolute pr-body.md that holds the exact body it shows", () => {
+    const { repo } = publishRepo();
+
+    const { question, shown } = evalGate(repo);
+
+    const named = question.question.match(/^Full description: (.+)$/m)?.[1];
+    assert.ok(named !== undefined && isAbsolute(named), question.question);
+    assert.equal(readFileSync(named, "utf8"), shown.body);
   });
 
   test("the question offers exactly publish, keep local and redo", () => {

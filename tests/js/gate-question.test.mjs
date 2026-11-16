@@ -115,25 +115,41 @@ describe("each gate asks in plain words", () => {
     assert.equal(question, "Built: 2 tests.\nAuto mode is off, so this asks you.\nIs the task done?");
   });
 
-  test("G:publish gives the title and the body's first text lines, then asks to open it", () => {
-    const body = "\nAdds order_total(lines) to cart.py.\n\nWhy: the checkout needs a total.\n";
-    const { header, question } = gateQuestion("G:publish", { reason: POLICY, facts: { title: "Add order_total to the cart", body } });
+  test("G:publish gives the title, the Summary's first paragraph and the body file, not the whole body", () => {
+    const changes = Array.from({ length: 40 }, (_, i) => `- cart.py: change ${i + 1}`).join("\n");
+    const body = `## Summary\n\nAdds order_total(lines) to cart.py,\nso checkout shows one total.\n\nA second paragraph of summary.\n\n## Impact\n\nCheckout only.\n\n## Changes\n\n${changes}\n\n## Verification\n\nuv run pytest\n`;
+    const bodyAt = "/repo/.pairingbuddy/run/pr-body.md";
+    const { question } = gateQuestion("G:publish", { reason: POLICY, facts: { title: "Add order_total to the cart", body, bodyAt }, fullAt: FULL_AT });
 
-    assert.equal(header, "Publish");
     assert.equal(question, [
       "Pull request: Add order_total to the cart",
-      "Adds order_total(lines) to cart.py.",
-      "Why: the checkout needs a total.",
+      "Adds order_total(lines) to cart.py, so checkout shows one total.",
+      `Full description: ${bodyAt}`,
       "Auto mode is off, so this asks you.",
       "Open it?",
     ].join("\n"));
   });
 
-  test("G:publish folds a long body after 8 lines", () => {
-    const body = Array.from({ length: 11 }, (_, i) => `line ${i + 1}`).join("\n");
-    const lines = gateQuestion("G:publish", { reason: POLICY, facts: { title: "T", body }, fullAt: FULL_AT }).question.split("\n");
+  test("G:publish with no Summary section gives the body's first paragraph, and names the full question file without a body file", () => {
+    const body = "\nAdds order_total(lines) to cart.py.\n\nWhy: the checkout needs a total.\n";
+    const { header, question } = gateQuestion("G:publish", { reason: POLICY, facts: { title: "Add order_total to the cart", body }, fullAt: FULL_AT });
 
-    assert.deepEqual(lines.slice(1, 10), ["line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8", `+ 3 more lines: ${FULL_AT}`]);
+    assert.equal(header, "Publish");
+    assert.equal(question, [
+      "Pull request: Add order_total to the cart",
+      "Adds order_total(lines) to cart.py.",
+      `Full description: ${FULL_AT}`,
+      "Auto mode is off, so this asks you.",
+      "Open it?",
+    ].join("\n"));
+  });
+
+  test("the full question file of G:publish holds the whole body", () => {
+    const body = "## Summary\n\nAdds order_total.\n\n## Changes\n\n- cart.py\n";
+
+    const full = fullQuestion("G:publish", { reason: POLICY, facts: { title: "T", body, bodyAt: "/repo/.pairingbuddy/run/pr-body.md" } });
+
+    assert.ok(full.includes(body.trim()), full);
   });
 
   test("G:publish on a pull request refresh asks to update it", () => {

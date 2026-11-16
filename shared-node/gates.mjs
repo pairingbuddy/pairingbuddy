@@ -118,18 +118,32 @@ function taskEndLines({ facts, fullAt }) {
   return [...(goal === null ? [] : [`Goal: ${goal}`]), ...builtLine(facts, fullAt), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck, fullAt)];
 }
 
-const MAX_BODY_LINES = 8;
+const isHeading = (line) => /^#{1,6}\s/.test(line.trim());
+const SUMMARY_HEADING = /^#{1,6}\s+summary\s*$/i;
 
-// The body's text lines, with no blank ones, so the few lines a terminal shows are all text. The full question file
-// holds the body as written.
-function bodyRows(body, fullAt) {
-  if (typeof body !== "string") return [];
-  if (fullAt === null) return trimmed(body) === null ? [] : [trimmed(body)];
-  const rows = body.split(/\r?\n/).filter((row) => row.trim() !== "");
-  return folded(rows, MAX_BODY_LINES, fullAt, (n) => (n === 1 ? " line" : " lines"));
+// The rows' paragraphs, each on one line with its heading lines dropped, so a heading is never the paragraph shown.
+const paragraphsOf = (rows) => rows.join("\n").split(/\n\s*\n/).map((part) => part.split("\n").filter((line) => line.trim() !== "" && !isHeading(line)).join(" ").replace(/\s+/g, " ").trim()).filter(Boolean);
+
+// The Summary section's first paragraph, whole, or the body's first paragraph when it has no Summary to read.
+function summaryOf(body) {
+  const rows = body.split(/\r?\n/);
+  const at = rows.findIndex((row) => SUMMARY_HEADING.test(row.trim()));
+  const end = at === -1 ? -1 : rows.findIndex((row, i) => i > at && isHeading(row));
+  const section = at === -1 ? [] : rows.slice(at + 1, end === -1 ? undefined : end);
+  return paragraphsOf(section)[0] ?? paragraphsOf(rows)[0] ?? null;
 }
 
-const publishLines = ({ facts: { title, body }, fullAt }) => (typeof title === "string" ? [`Pull request: ${title}`, ...bodyRows(body, fullAt)] : bodyRows(body, fullAt));
+// A pull request body does not fit a question box: the question gives its summary and the file that holds it whole, the
+// exact body that goes out. With no body file to name, the full question file holds the body. The full question file
+// (fullAt null) holds the body as written.
+function bodyRows(body, fullAt, bodyAt) {
+  if (typeof body !== "string") return [];
+  if (fullAt === null) return trimmed(body) === null ? [] : [trimmed(body)];
+  const summary = summaryOf(body);
+  return summary === null ? [] : [summary, `Full description: ${bodyAt ?? fullAt}`];
+}
+
+const publishLines = ({ facts: { title, body, bodyAt }, fullAt }) => [...(typeof title === "string" ? [`Pull request: ${title}`] : []), ...bodyRows(body, fullAt, bodyAt)];
 
 // "it" needs the title line before it to name the pull request.
 function publishAsk(refresh, titled) {
