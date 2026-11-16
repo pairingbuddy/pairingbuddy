@@ -289,9 +289,11 @@ function betweenText(ledger: NonNullable<Ledger>): string {
 }
 
 // A run that is over, shown from its last snapshot: the same rows, nothing running, and the NOW row says so.
-export function buildEndedView(inputs: Inputs): View {
-  const { ledger } = inputs
-  const { rows, unknownLabels } = glanceOf(keptTask(inputs), inputs.task?.spend.agents)
+export function buildEndedView(given: Inputs): View {
+  // Once the task has ended, its kept runs say what it spent and what its review found.
+  const inputs = keptTask(given)
+  const { ledger } = given
+  const { rows, unknownLabels } = glanceOf(inputs, given.task?.spend.agents)
   const { doneStatus: finished, ...end } = endState(inputs, false, false)
   const view: View = {
     ledger,

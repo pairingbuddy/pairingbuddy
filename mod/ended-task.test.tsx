@@ -38,3 +38,14 @@ test('ended-task-spent-counts-the-agents-its-runs-recorded', async ($, on) => {
 
   expect(spent, 'the build\'s 32 agents and the publish run\'s 9, and both runs\' tokens').toMatch(/^SPENT\s+41 agents · \S+ · 39856 output tokens$/)
 })
+
+test('ended-task-review-is-the-safety-net-round-its-runs-kept', async ($, on) => {
+  const rig = setupReplay(on)
+  await endTheTask($, rig)
+
+  const lines = await paneLines($)
+  const review = lines.slice(lines.findIndex(line => line.startsWith('REVIEW')))
+
+  expect(review[0], 'the safety-net review found one issue, left as is').toBe('REVIEW   review: 1 issue, all left as is')
+  expect(review[1], 'named by its gist').toContain('left as is · Float sum of cent-rounded totals may drift')
+})
