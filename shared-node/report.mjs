@@ -396,7 +396,7 @@ function withClassifiedAgain(round, stage, calls) {
 function runRounds({ ledger, calls = [], endedAt }, spawns) {
   const current = ledger?.stage?.name;
   const closed = stagesOf(ledger).filter((stage) => stage?.name !== current && stage?.name !== CYCLE_STAGE);
-  const of = (stageLedger, ended) => withClassifiedAgain(lensRound({ ledger: stageLedger, calls, spawns, ended }), stageLedger.stage, calls);
+  const of = (stageLedger, ended) => withClassifiedAgain(lensRound({ ledger: stageLedger, calls, spawns, ended }), stageLedger?.stage, calls);
   const rounds = closed.map((stage) => of({ stage, fixes: ledger.fixes, stop: null }, true));
   return [...rounds, of(ledger, endedAt !== undefined)].filter(Boolean);
 }
