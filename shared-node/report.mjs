@@ -10,7 +10,7 @@ import contract from "./stages-contract.mjs";
 import { FINDING_WORDS, findingGist, lensRound } from "./lens-round.mjs";
 import { parseKey } from "./keys.mjs";
 import { lensOfFinding } from "./lens-merge.mjs";
-import { taskEnded, taskSpend } from "./task-runs.mjs";
+import { taskEnded, taskSpend, taskWaited } from "./task-runs.mjs";
 import { shortName } from "./now-building.mjs";
 
 const TASK_END = "G:task-end";
@@ -39,7 +39,7 @@ function awaitsSignOff(task) {
 }
 
 function glanceLabels(ledger) {
-  return { type: "Task type", now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", left: "Left" };
+  return { type: "Task type", now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", waited: "Waited", left: "Left" };
 }
 
 // The run's length: endedAt (or the last stage end) minus the first start; NaN when either is missing.
@@ -57,14 +57,24 @@ function runSeconds(ledger, endedAt, now, first = ledger) {
 // Left only means something while the run goes, so a finished run has no such row.
 const LIVE_ROWS = ["left"];
 
-function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskType }) {
+// A wait on the human in hours and minutes ("4h 1m"), minutes, or seconds when under one.
+function waitWords(seconds) {
+  const [h, m] = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60];
+  if (h > 0) return `${h}h ${m}m`;
+  return m > 0 ? `${m}m` : `${Math.floor(seconds)}s`;
+}
+
+function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskType, now }) {
   const spend = taskSpend(task);
   // Once every run has ended, the agents are the ones the runs recorded; the session's spawns may be gone.
   const agents = taskEnded(task) ? spend.agents : undefined;
-  const { rows: all } = glance({ ledger: { ...ledger, spend }, spawns, tests, ranFor, testsComplete, agents });
+  // Time spent waiting on the human is no working time: Spent leaves it out, and Waited says it apart.
+  const waited = taskWaited(task, now);
+  const { rows: all } = glance({ ledger: { ...ledger, spend }, spawns, tests, ranFor, testsComplete, agents, waited });
   const done = outcome(ledger) === "DONE";
   const rows = done ? Object.fromEntries(Object.entries(all).filter(([key]) => !LIVE_ROWS.includes(key))) : all;
   if (done) rows.now = "finished";
+  if (waited >= 1) rows.waited = `${waitWords(waited)} waiting for you`;
   const labels = glanceLabels(ledger);
   const typed = { type: plainName(taskType) ?? UNKNOWN, ...rows };
   const lines = Object.entries(typed).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
@@ -672,7 +682,7 @@ ${needsYouSection({ ledger, task, spawns, tests })}
 ${doneSection({ task, changed, prUrl })}${changesSection({ task, spawns })}
 <details>
 <summary>How it ran</summary>
-${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType })}${settledSection({ task })}
+${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${settledSection({ task })}
 ${stepsSection({ task })}
 ${scenariosSection({ scenarios: task.find((run) => Array.isArray(run.scenarios))?.scenarios })}
 ${testsSection({ ledger: taskLedgerOf(task), spawns, tests, calls: task.flatMap((run) => run.calls ?? []) })}

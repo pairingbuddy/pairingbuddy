@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { renderReport } from "../../shared-node/report.mjs";
 import { taskRuns } from "../../shared-node/task-runs.mjs";
 import { CHANGED, CODE_RUN, KEPT_FILES } from "../../mod/fixtures/ended-task/index.ts";
-import { headerOf, sectionOf } from "./report-fixture.mjs";
+import { headerOf, sectionOf, spentOf } from "./report-fixture.mjs";
 
 // The kept runs as the mod reads them (readKeptRun in mod/inputs.ts): one per folder, its returns as calls.
 function keptRuns(files) {
@@ -172,6 +172,20 @@ describe("report-leads-with-what-you-need", () => {
     assert.ok(details.includes("new feature"), "the task type is told there");
     assert.ok(html.indexOf("WHAT WAS DONE") < html.indexOf("<details>"), "after the sections for the human");
     assert.ok(!html.includes("WHAT YOU CAN DO") && !html.includes("OPEN DOUBTS"), "what the human must do is NEEDS YOU's alone");
+  });
+
+  // The publish question waited four hours on the human: that is no working time, and How it ran says it apart.
+  test("How it ran leaves the time spent waiting on you out of Spent and tells it apart", () => {
+    const publish = RUNS[1];
+    const waited = { ...publish, ledger: { ...publish.ledger, gates: { "G:publish": { ...publish.ledger.gates["G:publish"], askedAt: "2026-11-16T15:42:30.000Z", answeredAt: "2026-11-16T19:43:50.000Z" } } } };
+    const html = report({ runs: [RUNS[0], waited] });
+
+    assert.ok(spentOf(html).includes(" · 24:47 · "), `the task's 4:26:07 less the 4:01:20 wait, got ${spentOf(html)}`);
+    assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Waited<\/strong> 4h 1m waiting for you/);
+  });
+
+  test("How it ran says nothing of waiting when no wait was recorded", () => {
+    assert.doesNotMatch(sectionOf(report(), "AT A GLANCE"), /Waited/);
   });
 });
 
