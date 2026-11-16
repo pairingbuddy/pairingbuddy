@@ -487,10 +487,9 @@ const looseItem = ({ step, ambiguity }) => `<li>Decide: ${escape(ambiguity)} <sm
 
 // A stop, in plain words: the step it stopped at, why, and how to go on from it.
 function stopItem({ ledger, spawns, tests }) {
-  const stop = ledger?.stop;
-  if (!stop) return [];
+  if (!ledger?.stop) return [];
   const step = plainName(ledger.stage?.name);
-  const why = stopName(stop);
+  const why = stopName(ledger.stop);
   return [`<li>It stopped${step ? ` at ${escape(step)}` : ""}${why ? `: ${escape(why)}` : ""}. ${escape(rerunStep(spawns, tests))}</li>`];
 }
 
