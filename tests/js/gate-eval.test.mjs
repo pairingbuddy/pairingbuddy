@@ -665,6 +665,17 @@ describe("needs-human output", () => {
     assert.ok(ledger.needsHuman.seq >= seq && ledger.needsHuman.seq <= ledger.seq, `seq ${ledger.needsHuman.seq} is between ${seq} and ${ledger.seq}`);
   });
 
+  // Time spent waiting on the human is no working time: the question records when it was asked.
+  test("writes needsHuman with when the question was asked", () => {
+    const repo = makeRepo();
+    const before = Date.now();
+
+    gateEval(repo);
+
+    const askedAt = Date.parse(repo.ledger().needsHuman?.askedAt);
+    assert.ok(askedAt >= before - 1000 && askedAt <= Date.now(), `askedAt is the time of the eval, got ${repo.ledger().needsHuman?.askedAt}`);
+  });
+
   test("an auto-pass writes no needsHuman", () => {
     const repo = makeRepo();
 
@@ -866,7 +877,9 @@ describe("a human's stop sets ledger.stop", () => {
     const ledger = repo.ledger();
     assert.match(ledger.stop?.reason, new RegExp(G_FIRST));
     assert.equal(ledger.stop.seq, ledger.seq);
-    assert.deepEqual(ledger.gates[G_FIRST], { source: "human", answer: "stop" });
+    const { askedAt, answeredAt, ...record } = ledger.gates[G_FIRST];
+    assert.deepEqual(record, { source: "human", answer: "stop" });
+    assert.ok(Date.parse(askedAt) <= Date.parse(answeredAt), "the stop keeps how long the question waited");
   });
 
   test("gate eval reports the answer and the way on, rather than refusing", () => {

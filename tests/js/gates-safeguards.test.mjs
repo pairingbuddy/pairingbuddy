@@ -103,3 +103,21 @@ test("publish-facts-refuse-when-git-has-no-head", () => {
 
   assert.throws(() => publishFacts(root), (error) => error instanceof PublishRefused && error.message === "git has no HEAD here, so the publish binding cannot be read");
 });
+
+// The wait on the human is no working time: an answer to an asked question records when it was asked and when answered.
+const ASKED_AT = "2026-11-16T15:42:30.000Z";
+const ANSWERED_AT = "2026-11-16T19:43:50.000Z";
+const askedAtPublish = () => ledgerWith({ needsHuman: { gate: "G:task-end", reason: "auto mode is off", seq: 3, askedAt: ASKED_AT } });
+
+test("an-answer-records-when-its-question-was-asked-and-answered", () => {
+  const answered = recordAnswer(askedAtPublish(), "G:task-end", "approve", GATES, {}, ANSWERED_AT);
+
+  assert.equal(answered.gates["G:task-end"].askedAt, ASKED_AT);
+  assert.equal(answered.gates["G:task-end"].answeredAt, ANSWERED_AT);
+});
+
+test("an-approval-from-the-cli-records-when-its-question-was-asked-and-answered", () => {
+  const approved = recordApproval(askedAtPublish(), "G:task-end", GATES, {}, ANSWERED_AT);
+
+  assert.deepEqual(approved.gates["G:task-end"], { source: "human-cli", answer: "approve", askedAt: ASKED_AT, answeredAt: ANSWERED_AT });
+});

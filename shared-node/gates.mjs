@@ -707,13 +707,19 @@ export const approvalRecord = (source, binding = {}) => ({ source, answer: "appr
 // The open doubts the question at this gate named, kept on the answer's record so the report can show what was approved past.
 const askedDoubts = ({ needsHuman }, name) => (needsHuman?.gate === name && Array.isArray(needsHuman.doubts) && needsHuman.doubts.length > 0 ? { doubts: needsHuman.doubts } : {});
 
+// How long the question at this gate waited on the human, kept on the answer's record: that time is no working time. Only a
+// question that recorded when it was asked (needsHuman.askedAt) has a wait; an older ledger's records stay as they were.
+const waitedFor = ({ needsHuman }, name, answeredAt) => (needsHuman?.gate === name && typeof needsHuman.askedAt === "string" ? { askedAt: needsHuman.askedAt, answeredAt } : {});
+
 // What a human's answer to the asking gate does to the ledger. A publish answer is an approval that carries its binding.
-export function recordAnswer(ledger, name, answer, gates, binding = {}) {
+// A redo clears the gate's record, and with it the wait.
+export function recordAnswer(ledger, name, answer, gates, binding = {}, answeredAt = new Date().toISOString()) {
   const asked = { ...ledger, needsHuman: null };
+  const waited = waitedFor(ledger, name, answeredAt);
   if (answer === "redo") return reopenStage(asked, name, gates);
-  if (answer === PUBLISH_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: { ...approvalRecord("human", binding), ...askedDoubts(ledger, name) } } };
-  if (answer === KEEP_LOCAL_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer: KEEP_LOCAL } } };
-  const recorded = { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer, ...(answer === "approve" ? askedDoubts(ledger, name) : {}) } } };
+  if (answer === PUBLISH_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: { ...approvalRecord("human", binding), ...askedDoubts(ledger, name), ...waited } } };
+  if (answer === KEEP_LOCAL_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer: KEEP_LOCAL, ...waited } } };
+  const recorded = { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer, ...(answer === "approve" ? askedDoubts(ledger, name) : {}), ...waited } } };
   return answer === "stop" ? { ...recorded, stop: { code: HUMAN_STOPPED, reason: `the human answered stop at ${name}`, seq: ledger.seq + 1 } } : recorded;
 }
 
@@ -747,9 +753,9 @@ export function appendRedoFeedback(root, ledger, gates, toolResponse) {
 }
 
 // A human's way past any answer: it undoes a redo that has not restarted, and the stop this gate's answer set.
-export function recordApproval(ledger, name, gates, binding = {}) {
+export function recordApproval(ledger, name, gates, binding = {}, answeredAt = new Date().toISOString()) {
   const reopened = reopenedGate(gates, ledger);
   const restored = reopened?.name === name ? withStageStatus(ledger, reopened.stage, "done") : ledger;
   const stoppedHere = Object.hasOwn(ledger.gates, name) && ledger.gates[name].answer === "stop";
-  return { ...restored, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: { ...approvalRecord("human-cli", binding), ...askedDoubts(ledger, name) } } };
+  return { ...restored, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: { ...approvalRecord("human-cli", binding), ...askedDoubts(ledger, name), ...waitedFor(ledger, name, answeredAt) } } };
 }
