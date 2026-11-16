@@ -177,6 +177,31 @@ describe("report-of-the-whole-task", () => {
   });
 });
 
+// The task-type review's "fix" is the classifier asked again: the report says what that changed, not "fixed".
+describe("report-of-a-classification-review", () => {
+  const intake = (role, item, round, input) => ({ input: { pb_key: `intake.${role}.${item}.r${round}.a1`, ...input } });
+  const classified = (task_type, confidence) => ({ ambiguity: "", task_type, confidence, rationale: "Adds a function." });
+  const INTAKE_CALLS = (again) => [
+    intake("classify-task", "-", 1, classified("new_feature", "certain")),
+    intake("lens", "classification", 1, { ambiguity: null, findings: [finding("Certain confidence rests on an unverified line_total", undefined)] }),
+    intake("fix", "g1", 2, again),
+    intake("course-checker", "g1", 2, { finding_id: "classification-1", verdict: "better", mistake: "none", what_went_wrong: "" }),
+  ];
+  const reviewOf = (again) => sectionOf(report({ runs: [{ ...RUNS[0], calls: [...INTAKE_CALLS(again), ...CODE_CALLS] }, RUNS[1]] }), "REVIEW");
+
+  test("a re-classification that kept the type and changed the confidence says so", () => {
+    const section = reviewOf(classified("new_feature", "likely"));
+
+    assert.ok(section.includes("Certain confidence rests on an unverified line_total</strong> · classified again: still new feature, confidence likely (was certain)"), `got ${section}`);
+  });
+
+  test("a re-classification that changed the type names the new type and the old", () => {
+    const section = reviewOf(classified("bug_fix", "certain"));
+
+    assert.ok(section.includes("· classified again: now bug fix (was new feature), same confidence"), `got ${section}`);
+  });
+});
+
 // A doubt a reviewer raised on a finding, which a later fix in the same review settled before the human signed off: the
 // report says how it was settled and does not ask the human to decide it again.
 describe("report-of-a-doubt-a-later-fix-settled", () => {

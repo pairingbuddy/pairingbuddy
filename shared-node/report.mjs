@@ -368,10 +368,35 @@ const CYCLE_STAGE = "code-tdd";
 
 // One run's review rounds in the order its stages ran: each closed stage's, read as over, then the current stage's, as the
 // pane reads it (over too once the run has ended, as a kept run has).
+const typeWord = (type) => plainName(type ?? "") ?? String(type);
+
+// What classifying again changed, from the classification before it and the one the fix returned.
+function classifiedWord(before, after) {
+  const confidence = before && before.confidence !== after.confidence ? `, confidence ${after.confidence} (was ${before.confidence})` : before ? ", same confidence" : `, confidence ${after.confidence}`;
+  if (before && before.task_type !== after.task_type) return `classified again: now ${typeWord(after.task_type)} (was ${typeWord(before.task_type)})${confidence}`;
+  return `classified again: ${before ? "still " : ""}${typeWord(after.task_type)}${confidence}`;
+}
+
+// A task-type review's fix is the classifier asked again, which mends no code: a finding it answered reads as what that
+// classification changed, not "fixed". A fix whose return is no classification keeps its word.
+function withClassifiedAgain(round, stage, calls) {
+  if (!round || !stage) return round;
+  const keyed = calls.map((call) => ({ key: keyOf(call?.input?.pb_key), input: call?.input })).filter(({ key }) => key?.stage === stage.name && key.attempt === stage.attempt);
+  const isClassification = (input) => typeof input?.task_type === "string" && typeof input.confidence === "string";
+  const findings = round.findings.map((finding) => {
+    const fix = finding.verdict === "fixed" ? round.fixes.find((each) => each.outcome === FIX_KEPT && each.lens === lensOfFinding(finding)) : undefined;
+    const after = fix && keyed.find(({ key }) => key.role === "fix" && key.item === fix.group && key.round === fix.round)?.input;
+    if (!isClassification(after)) return finding;
+    const before = keyed.filter(({ key, input }) => key.round < fix.round && isClassification(input)).sort((a, b) => a.key.round - b.key.round).at(-1)?.input;
+    return { ...finding, word: classifiedWord(before, after) };
+  });
+  return { ...round, findings };
+}
+
 function runRounds({ ledger, calls = [], endedAt }, spawns) {
   const current = ledger?.stage?.name;
   const closed = stagesOf(ledger).filter((stage) => stage?.name !== current && stage?.name !== CYCLE_STAGE);
-  const of = (stageLedger, ended) => lensRound({ ledger: stageLedger, calls, spawns, ended });
+  const of = (stageLedger, ended) => withClassifiedAgain(lensRound({ ledger: stageLedger, calls, spawns, ended }), stageLedger.stage, calls);
   const rounds = closed.map((stage) => of({ stage, fixes: ledger.fixes, stop: null }, true));
   return [...rounds, of(ledger, endedAt !== undefined)].filter(Boolean);
 }
