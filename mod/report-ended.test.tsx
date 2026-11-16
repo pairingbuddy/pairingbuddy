@@ -148,7 +148,7 @@ test('report-of-an-ended-task-describes-both-runs', async ($, on) => {
   expect(html, 'the code run\'s scenarios, from its kept returns').toContain('Two lines sum their totals')
   expect(html, 'the safety-net review, from its kept returns').toContain('Empty order sums to int')
   expect(html, 'the doubt the task was approved past').toContain('Whether a line with no quantity counts as one.')
-  expect(html, 'the next action is the pull request').toContain('Review pull request #7: https://github.com/o/r/pull/7')
+  expect(html, 'the header links the pull request').toContain('pull request #7: <a href="https://github.com/o/r/pull/7">')
   expect(html.includes('unknown type'), 'the type is known').toBe(false)
 })
 

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { renderReport } from "../../shared-node/report.mjs";
 import { taskRuns } from "../../shared-node/task-runs.mjs";
 import { CHANGED, CODE_RUN, KEPT_FILES } from "../../mod/fixtures/ended-task/index.ts";
-import { sectionOf } from "./report-fixture.mjs";
+import { headerOf, sectionOf } from "./report-fixture.mjs";
 
 // The kept runs as the mod reads them (readKeptRun in mod/inputs.ts): one per folder, its returns as calls.
 function keptRuns(files) {
@@ -47,10 +47,10 @@ describe("report-leads-with-what-you-need", () => {
 
   test("NEEDS YOU of a run waiting on a question names the question, and the doubts it asks over", () => {
     const doubt = { step: "write test scenarios", ambiguity: "Does an empty order total 0.0?" };
-    const waiting = { ...CODE_RUN, gates: { "G:type": CODE_RUN.gates["G:type"], "G:scenarios": CODE_RUN.gates["G:scenarios"] }, needsHuman: { gate: "G:task-end", reason: "open doubts", seq: 9, doubts: [doubt] } };
+    const waiting = { ...CODE_RUN, stage: { ...CODE_RUN.stage, name: "code-scenarios", status: "done" }, stages: CODE_RUN.stages.slice(0, 2), gates: { "G:type": CODE_RUN.gates["G:type"] }, needsHuman: { gate: "G:scenarios", reason: "open doubts", seq: 9, doubts: [doubt] } };
     const section = sectionOf(renderReport({ ledger: waiting, spawns: [] }), "NEEDS YOU");
 
-    assert.ok(section.includes("Answer the question waiting for you: your sign-off at the end."), `the question, got ${section}`);
+    assert.ok(section.includes("Answer the question waiting for you: your OK on the scenarios."), `the question, got ${section}`);
     assert.ok(section.includes("Decide: Does an empty order total 0.0?"), "the doubt it asks over");
   });
 
@@ -84,7 +84,7 @@ describe("report-leads-with-what-you-need", () => {
     const unsigned = { ...CODE_RUN, gates: EARLY_GATES };
     const section = sectionOf(renderReport({ ledger: unsigned, spawns: [] }), "NEEDS YOU");
 
-    assert.ok(section.includes("Look over the result and give your sign-off."), `got ${section}`);
+    assert.ok(section.includes("Review the result and give your sign-off."), `got ${section}`);
   });
 
   test("WHAT WAS DONE says in plain words which files changed, which tests were added and pass, and the pull request", () => {
@@ -146,6 +146,32 @@ describe("report-leads-with-what-you-need", () => {
 
     assert.ok(section.includes("The safety-net review had this fixed: Empty order returns int 0 · cart.py:3"), `got ${section}`);
     assert.ok(!section.includes("restates the diff"), "the pull request's wording is not a change of plan");
+  });
+
+  test("the header holds the goal, where the task is and its pull request, and nothing of how it ran", () => {
+    const header = headerOf(report());
+
+    assert.ok(header.includes("Add order_total(lines) to cart.py"), "the goal");
+    assert.ok(header.includes(">DONE<"), "where it is");
+    assert.ok(header.includes('pull request #7: <a href="https://github.com/example/repo/pull/7">'), `the pull request, got ${header}`);
+    assert.ok(!header.includes("new feature"), "the task type is for how it ran");
+  });
+
+  test("the header of a run waiting on a question says it is waiting on you", () => {
+    const waiting = { ...CODE_RUN, stage: { ...CODE_RUN.stage, status: "active" }, needsHuman: { gate: "G:task-end", reason: "auto mode is off", seq: 9 } };
+
+    assert.ok(headerOf(renderReport({ ledger: waiting, spawns: [] })).includes(">WAITING ON YOU<"));
+  });
+
+  test("How it ran holds the rest, closed, at the bottom", () => {
+    const html = report();
+    const details = /<details>\s*<summary>How it ran<\/summary>([\s\S]*)<\/details>/.exec(html)?.[1];
+
+    assert.ok(details, "a closed How it ran section");
+    for (const title of ["AT A GLANCE", "STEPS", "SCENARIOS", "TESTS", "BUILT", "REVIEW", "COMMITS"]) assert.doesNotThrow(() => sectionOf(details, title), `How it ran holds ${title}`);
+    assert.ok(details.includes("new feature"), "the task type is told there");
+    assert.ok(html.indexOf("WHAT WAS DONE") < html.indexOf("<details>"), "after the sections for the human");
+    assert.ok(!html.includes("WHAT YOU CAN DO") && !html.includes("OPEN DOUBTS"), "what the human must do is NEEDS YOU's alone");
   });
 });
 

@@ -13,6 +13,8 @@ import { lensOfFinding } from "./lens-merge.mjs";
 import { taskEnded, taskSpend } from "./task-runs.mjs";
 import { shortName } from "./now-building.mjs";
 
+const TASK_END = "G:task-end";
+
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
 
@@ -23,8 +25,21 @@ function outcome(ledger) {
   return ledger?.stage?.status === "done" ? "DONE" : "RUNNING";
 }
 
+// Where the task is, for the header: waiting on you while a question is asked or the sign-off is not given yet.
+function whereItIs(ledger, task) {
+  const state = outcome(ledger);
+  if (state === "STOPPED") return state;
+  return ledger?.needsHuman?.gate || awaitsSignOff(task) ? "WAITING ON YOU" : state;
+}
+
+// The task's code run finished and was not signed off.
+function awaitsSignOff(task) {
+  const code = codeRunIn(task).ledger;
+  return outcome(code) === "DONE" && code?.kind !== PUBLISH_KIND && !(code?.gates && isPassed(code, TASK_END));
+}
+
 function glanceLabels(ledger) {
-  return { now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", left: "Left" };
+  return { type: "Task type", now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", left: "Left" };
 }
 
 // The run's length: endedAt (or the last stage end) minus the first start; NaN when either is missing.
@@ -42,7 +57,7 @@ function runSeconds(ledger, endedAt, now, first = ledger) {
 // Left only means something while the run goes, so a finished run has no such row.
 const LIVE_ROWS = ["left"];
 
-function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task }) {
+function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskType }) {
   const spend = taskSpend(task);
   // Once every run has ended, the agents are the ones the runs recorded; the session's spawns may be gone.
   const agents = taskEnded(task) ? spend.agents : undefined;
@@ -51,7 +66,8 @@ function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task }) {
   const rows = done ? Object.fromEntries(Object.entries(all).filter(([key]) => !LIVE_ROWS.includes(key))) : all;
   if (done) rows.now = "finished";
   const labels = glanceLabels(ledger);
-  const lines = Object.entries(rows).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
+  const typed = { type: plainName(taskType) ?? UNKNOWN, ...rows };
+  const lines = Object.entries(typed).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
   return section("AT A GLANCE", lines.join("\n"));
 }
 
@@ -73,11 +89,6 @@ function rerunStep(spawns, tests) {
   return `${rerun} It continues from test ${current} and keeps ${kept} and ${pronoun} commits.`;
 }
 
-const NEXT_STEP = {
-  STOPPED: ({ spawns, tests }) => rerunStep(spawns, tests),
-  DONE: ({ ledger }) => (ledger?.gates && isPassed(ledger, "G:task-end") ? "Nothing to do: the run is done." : "Review the result and give your sign-off."),
-  RUNNING: () => "Nothing to do yet: the run is still going.",
-};
 
 const UNKNOWN = "unknown";
 const REVIEW_ROLE = "lens";
@@ -335,16 +346,12 @@ function approvedDoubtsByState(task) {
   return { open: doubts.filter(({ settled }) => settled === null), settled: doubts.filter(({ settled }) => settled !== null) };
 }
 
-const doubtItem = ({ step, ambiguity, gate }) => `<li>${escape(step)}: ${escape(ambiguity)}${gate ? ` <small>(approved past at ${escape(gateLine(gate))})</small>` : ""}</li>`;
 const settledItem = ({ step, ambiguity, settled }) => `<li>${escape(step)}: ${escape(ambiguity)} <small>(${escape(settled)})</small></li>`;
 
-function doubtsSection({ ledger, task }) {
-  const pending = Array.isArray(ledger?.needsHuman?.doubts) ? ledger.needsHuman.doubts : [];
-  const { open, settled } = approvedDoubtsByState(task);
-  const doubts = [...open, ...pending];
-  const openPart = doubts.length === 0 ? "" : `\n${section("OPEN DOUBTS", `<ul>\n${doubts.map(doubtItem).join("\n")}\n</ul>`)}`;
-  const settledPart = settled.length === 0 ? "" : `\n${section("SETTLED DOUBTS", `<ul>\n${settled.map(settledItem).join("\n")}\n</ul>`)}`;
-  return `${openPart}${settledPart}`;
+// The doubts a later fix settled before the human signed off; the open ones are NEEDS YOU's.
+function settledSection({ task }) {
+  const { settled } = approvedDoubtsByState(task);
+  return settled.length === 0 ? "" : `\n${section("SETTLED DOUBTS", `<ul>\n${settled.map(settledItem).join("\n")}\n</ul>`)}`;
 }
 
 const SHORT_SHA = 7;
@@ -477,14 +484,12 @@ function stopItem({ ledger, spawns, tests }) {
   return [`<li>It stopped${step ? ` at ${escape(step)}` : ""}${why ? `: ${escape(why)}` : ""}. ${escape(rerunStep(spawns, tests))}</li>`];
 }
 
-// A question pb asked and the human has not answered yet.
-// A finished code run that was not signed off asks for the sign-off, whether or not its question is asked yet.
+// A question pb asked and the human has not answered yet. A finished code run that was not signed off asks for the
+// sign-off, whether or not its question is asked yet.
 function questionItem({ ledger, task }) {
   const gate = ledger?.needsHuman?.gate;
-  if (gate) return [`<li>Answer the question waiting for you: ${escape(gateLine(gate))}.</li>`];
-  const code = codeRunIn(task).ledger;
-  const unsigned = outcome(code) === "DONE" && code?.kind !== PUBLISH_KIND && !(code?.gates && isPassed(code, "G:task-end"));
-  return unsigned ? ["<li>Look over the result and give your sign-off.</li>"] : [];
+  if (gate && gate !== TASK_END) return [`<li>Answer the question waiting for you: ${escape(gateLine(gate))}.</li>`];
+  return gate || awaitsSignOff(task) ? ["<li>Review the result and give your sign-off.</li>"] : [];
 }
 
 // A test kept though it passed at once, before its code was written (an earlier test's code covered it): it never failed first.
@@ -593,21 +598,6 @@ function changesSection({ task, spawns }) {
 
 const prNumber = (url) => /\/pull\/(\d+)\/?$/.exec(url)?.[1];
 
-// A finished task's own next actions: review the pull request it opened, then decide each doubt it was approved past.
-function doneActions(task, prUrl) {
-  const url = task.findLast((run) => typeof run.prUrl === "string" && run.prUrl !== "")?.prUrl ?? prUrl;
-  const number = typeof url === "string" ? prNumber(url) : undefined;
-  const review = typeof url === "string" && url !== "" ? [number ? `Review pull request #${number}: ${url}` : `Review the pull request: ${url}`] : [];
-  return [...review, ...approvedDoubtsByState(task).open.map(({ ambiguity }) => `Decide the open doubt: ${ambiguity}`)];
-}
-
-function whatYouCanDo({ ledger, spawns, tests, task, prUrl }) {
-  const own = outcome(ledger) === "DONE" ? doneActions(task, prUrl) : [];
-  // The sign-off is the code run's task-end gate, wherever the task now stands.
-  const steps = own.length > 0 ? own : [NEXT_STEP[outcome(ledger)]({ ledger: codeRunIn(task).ledger, spawns, tests })];
-  return section("WHAT YOU CAN DO", steps.map((step, i) => `<p>${i + 1}. ${escape(step)}</p>`).join("\n"));
-}
-
 // R5-3's dark design: one inline stylesheet, monospace; the outcome badge is red, green or amber by outcome, and a looped test's "Why it looped" label is amber.
 const STYLE = `:root{color-scheme:light dark;--bg:#1c1d21;--fg:#e6e6e6;--muted:#9a9ca3;--rule:#3a3c44;--faint:#6b6d75;--amber:#ffc933;--badge-ink:#1c1d21;--stopped:#ff6b81;--done:#5fd38d;--running:#ffc933}
 @media (prefers-color-scheme:light){:root{--bg:#fafafa;--fg:#1c1d21;--muted:#5c5f66;--rule:#c9cbd1;--faint:#62646b;--amber:#8a5a00;--badge-ink:#ffffff;--stopped:#c62828;--done:#1a7f37;--running:#8a5a00}}
@@ -616,7 +606,7 @@ header p{color:var(--muted);margin:6px 0}
 .badge{color:var(--badge-ink);padding:2px 10px;border-radius:4px}
 .badge.stopped{background:var(--stopped)}
 .badge.done{background:var(--done)}
-.badge.running{background:var(--running)}
+.badge.running,.badge.waiting-on-you{background:var(--running)}
 h1{font:700 22px/1.3 system-ui,sans-serif;margin:0}
 h2{color:var(--muted);font-size:12px;letter-spacing:.12em;border-bottom:1px solid var(--rule);padding-bottom:6px;margin:32px 0 12px}
 h3{font-size:14px;margin:0 0 8px}
@@ -630,6 +620,8 @@ ul{list-style:none;padding:0}
 li{margin:2px 0}
 ul ul{padding-left:2ch}
 .looped p strong{color:var(--amber);min-width:0;text-transform:none;font-size:inherit}
+details{margin-top:40px}
+summary{color:var(--muted);cursor:pointer;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
 footer{color:var(--faint);margin-top:40px;font-size:12px}`;
 
 // The task's paragraphs (split on blank lines) stay visibly apart inside the title.
@@ -663,8 +655,9 @@ export function renderReport({ ledger: given, spawns, calls, timing, commits, te
   const ledger = last.ledger;
   const code = codeRunIn(task).ledger;
   const ranFor = runSeconds(ledger, last.endedAt ?? endedAt, now, task[0].ledger);
-  const state = outcome(ledger);
-  const taskType = plainName(code?.taskType) ?? "unknown type";
+  const state = whereItIs(ledger, task);
+  const url = taskPrUrl(task, prUrl);
+  const prPart = url ? ` · ${prLink(url)}` : "";
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Run report</title>
 <style>
@@ -673,18 +666,20 @@ ${STYLE}
 <body>
 <header>
 <h1>${title(code?.task ?? ledger?.task)}</h1>
-<p><strong class="badge ${state.toLowerCase()}">${state}</strong> · ${escape(taskType)} · ${clock(Number.isFinite(ranFor) ? ranFor : timing?.seconds)}</p>
+<p><strong class="badge ${state.toLowerCase().replace(/ /g, "-")}">${state}</strong>${prPart}</p>
 </header>
 ${needsYouSection({ ledger, task, spawns, tests })}
 ${doneSection({ task, changed, prUrl })}${changesSection({ task, spawns })}
-${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task })}${doubtsSection({ ledger, task })}
+<details>
+<summary>How it ran</summary>
+${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType })}${settledSection({ task })}
 ${stepsSection({ task })}
 ${scenariosSection({ scenarios: task.find((run) => Array.isArray(run.scenarios))?.scenarios })}
 ${testsSection({ ledger: taskLedgerOf(task), spawns, tests, calls: task.flatMap((run) => run.calls ?? []) })}
 ${builtSection({ changed })}
 ${reviewSection({ task: runs ? task : [{ ...task[0], endedAt: undefined }], spawns })}
 ${commitsSection({ commits })}
-${whatYouCanDo({ ledger, spawns, tests, task, prUrl })}
+</details>
 <footer>Written by Pairing Buddy from the run's ledger and agent labels. One self-contained file, nothing loaded from the network.</footer>
 </body></html>`;
 }

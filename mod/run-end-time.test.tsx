@@ -55,12 +55,10 @@ test('report-after-run-end-shows-same-run-time-as-pane', async ($, on) => {
   expect(writes.length, 'pressing the report button after the run ended writes one report').toBe(1)
   const html = writes[0].text
   const time = /\d+:\d{2}(?::\d{2})?/
-  const header = html.match(/<header>[\s\S]*?<\/header>/)?.[0] ?? ''
   const glanceSpent = html.match(/Spent[\s\S]*?<\/(?:li|tr|p|div)>/)?.[0] ?? ''
   const paneTime = spentLine?.match(time)?.[0]
   expect(paneTime, `the ended pane shows a run time in SPENT: ${spentLine}`).toBeDefined()
   expect(html, 'the report never says the time is unknown').not.toContain('time unknown')
-  expect(header.match(time)?.[0], 'the report header shows the same run time as the ended pane').toBe(paneTime)
   expect(glanceSpent.match(time)?.[0], `the AT A GLANCE Spent shows the same run time as the ended pane: ${glanceSpent}`).toBe(paneTime)
 })
 
