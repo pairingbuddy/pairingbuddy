@@ -64,7 +64,7 @@ test('stop-opens-pane', async ($, on) => {
   await clock.advance(POLL_MS)
 
   expect(run.calls.opened.map(open => open.id), 'the first poll that shows the stop opens the pairingbuddy pane once').toEqual([PANE_ID])
-  expect(run.calls.opened[0].closeOnEscape, 'the pane is opened closeable by esc, as the details button opens it').toBe(true)
+  expect(run.calls.opened[0].closeOnEscape, 'the pane is opened closeable by esc, as /pb opens it').toBe(true)
 })
 
 test('needs-human-opens-pane', async ($, on) => {
