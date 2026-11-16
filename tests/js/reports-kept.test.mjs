@@ -77,7 +77,8 @@ describe("reports-survive-task-end", () => {
 
     assert.equal(result.code, 0, result.stderr);
     const kept = JSON.parse(readFileSync(join(pairing, "reports", "runs", "code-run-2", "kept.json"), "utf8"));
-    assert.deepEqual(kept, { unit: `feat/order-total ${baseSha}` });
+    assert.deepEqual({ ...kept, endedAt: undefined }, { unit: `feat/order-total ${baseSha}`, endedAt: undefined });
+    assert.ok(Number.isFinite(Date.parse(kept.endedAt)), `it says when the run ended, got ${kept.endedAt}`);
   });
 
   test("kept-files-lists-reports-in-docs-and-skill", () => {

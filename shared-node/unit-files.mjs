@@ -49,7 +49,7 @@ export function keepRun(runDir, extra = {}) {
   const kept = join(runDir, "..", ...KEPT_RUNS, runId);
   try {
     cpSync(taskDir, kept, { recursive: true });
-    writeFileSync(join(kept, "kept.json"), JSON.stringify({ unit: unitKeyOf(runDir), ...extra }));
+    writeFileSync(join(kept, "kept.json"), JSON.stringify({ unit: unitKeyOf(runDir), endedAt: new Date().toISOString(), ...extra }));
   } catch {
     // The run still ends; its report shows less.
   }

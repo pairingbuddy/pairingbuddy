@@ -373,7 +373,9 @@ describe("publish-records-and-closes-unit", () => {
     assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
     const kept = join(unit.repo.dir, ".pairingbuddy", "reports", "runs", runId);
     assert.equal(JSON.parse(readFileSync(join(kept, "ledger.json"), "utf8")).kind, "publish", "the publish run's ledger is kept");
-    assert.deepEqual(JSON.parse(readFileSync(join(kept, "kept.json"), "utf8")), { unit: `${branch} ${baseSha}`, prUrl: FAKE_PR_URL }, "it names its unit and the pull request");
+    const { endedAt, ...named } = JSON.parse(readFileSync(join(kept, "kept.json"), "utf8"));
+    assert.deepEqual(named, { unit: `${branch} ${baseSha}`, prUrl: FAKE_PR_URL }, "it names its unit and the pull request");
+    assert.ok(Number.isFinite(Date.parse(endedAt)), `it says when the run ended, got ${endedAt}`);
   });
 
   test("writes-pr-line-under-unit-heading", () => {

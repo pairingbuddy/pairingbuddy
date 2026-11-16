@@ -383,7 +383,7 @@ describe("keep-local-ends-publish-run", () => {
 
     const kept = join(unit.repo.dir, ".pairingbuddy", "reports", "runs", runId);
     assert.equal(JSON.parse(readText(join(kept, "ledger.json"))).kind, "publish", "the ended publish run's ledger is kept");
-    assert.deepEqual(JSON.parse(readText(join(kept, "kept.json"))), { unit: `${branch} ${baseSha}` }, "it names its unit");
+    assert.equal(JSON.parse(readText(join(kept, "kept.json"))).unit, `${branch} ${baseSha}`, "it names its unit");
   });
 
   test("next-code-not-blocked-after-keep-local", () => {
