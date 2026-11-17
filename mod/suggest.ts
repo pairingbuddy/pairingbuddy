@@ -1,12 +1,14 @@
 import type { EngineInterface } from 'claude-code'
 import { readInputs, type Spawn } from './inputs'
-import { suggestionEntry } from '../shared-node/suggestion.mjs'
+import { readsNotes, suggestionEntry } from '../shared-node/suggestion.mjs'
 import { readLabel } from '../shared-node/labels.mjs'
 
 // The pending suggestion, as mod state: when it was saved, until an agent spawns and reads it.
 const PENDING = { plugin: 'pairingbuddy', key: 'pending-suggestion' }
 
-export type PendingSuggestion = { savedAt: string; deliveredTo?: string }
+// deliveredFor: the test a TDD cycle's agent worked on, when it was one.
+// task: the task the note was left in, so the next task does not show it.
+export type PendingSuggestion = { savedAt: string; text?: string; task?: string; deliveredTo?: string; deliveredFor?: string }
 
 export const GUIDANCE = '.pairingbuddy/human-guidance.json'
 
@@ -14,7 +16,7 @@ export const GUIDANCE = '.pairingbuddy/human-guidance.json'
 export const NOTE_SAVED = `Note saved to ${GUIDANCE}. The next agent will read it.`
 export const NOTE_NOT_SAVED = `Note not saved: ${GUIDANCE} could not be read or written, so it was left as it was.`
 export const NOTE_BLANK = 'Nothing saved: type the note after the command, as in /pb-note keep the signature.'
-export const NOTE_NO_RUN = 'Note not saved: no Pairing Buddy task is running, so no agent would read it.'
+export const NOTE_NO_RUN = `Note not saved: no Pairing Buddy task is running, so no agent would read it. Start a task first, or add it to ${GUIDANCE} to keep it for every task.`
 
 // A function declaration, not an arrow: the mod loader rejects an exported arrow taking $ across files.
 // /pb-note: appends the typed note to human-guidance.json as a task-scoped entry, which curate-guidance drops at the next task,
@@ -33,7 +35,7 @@ export async function saveNote($: EngineInterface, spawns: Spawn[], text: string
     const existing = await readGuidance($, path)
     if (existing === null) return NOTE_NOT_SAVED
     await $.fs.write(path, JSON.stringify({ guidance: [...existing, entry] }, null, 2) + '\n')
-    await $.state.set(PENDING, { savedAt: timestamp })
+    await $.state.set(PENDING, { savedAt: timestamp, text: text.trim(), ...(typeof ledger.task === 'string' ? { task: ledger.task } : {}) })
     return NOTE_SAVED
   } catch {
     // A failed write leaves the note not pending.
@@ -63,9 +65,10 @@ function isMissing(error: unknown): boolean {
 }
 
 // A function declaration, not an arrow: the mod loader rejects an exported arrow taking $ across files.
-// A pending suggestion that has not been delivered yet reaches the agent that spawns now; mod state only.
+// A pending suggestion that has not been delivered yet reaches the agent that spawns now, when it is one that reads the
+// guidance file; a runner, a lens or a refuter leaves it pending. Mod state only.
 export async function recordDelivery($: EngineInterface, pending: PendingSuggestion | null, name: string | undefined): Promise<void> {
   const label = readLabel(name ?? '')
-  if (pending == null || pending.deliveredTo != null || label.unknown) return
-  await $.state.set(PENDING, { ...pending, deliveredTo: label.role })
+  if (pending == null || pending.deliveredTo != null || label.unknown || !readsNotes(label.role)) return
+  await $.state.set(PENDING, { ...pending, deliveredTo: label.role, ...(label.phase && label.item ? { deliveredFor: label.item } : {}) })
 }

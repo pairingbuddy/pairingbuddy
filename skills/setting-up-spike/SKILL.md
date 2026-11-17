@@ -11,10 +11,12 @@ Clarify the spike goal, split it into exploration units, and write the two setup
 
 Read `.pairingbuddy/task.json` (description, context) and `.pairingbuddy/human-guidance.json` if it exists, and apply that guidance.
 
+Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+
 ## Conversation
 
 1. Check whether a human can answer.
-   - There is no human when AskUserQuestion is not available, or when you run under `claude -p`, in auto permission mode, or with PAIRINGBUDDY_SOLO=true.
+   - There is no human when AskUserQuestion is not available, or when you run under `claude -p`, in auto permission mode, or with PAIRINGBUDDY_SOLO=true. Under the auto policy or `claude -p` your session context holds a `<pairingbuddy-no-human>` block from SessionStart: run no Bash to find out.
    - With no human, skip the rest of the conversation. Never ask in chat instead. Write the default setup files (see When No Human Can Answer) and return, so the coding workflow goes on to `pb spike setup`.
 2. Work out the goal: what the spike should learn or answer.
 3. Pick the exploration mode:

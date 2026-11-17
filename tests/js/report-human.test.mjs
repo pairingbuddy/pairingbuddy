@@ -191,3 +191,20 @@ describe("report-leads-with-what-you-need", () => {
   });
 });
 
+
+// The lab run: a /pb-note left mid-task. Once the task is DONE the pane drops the note's line; the report keeps it.
+describe("report-keeps-the-notes", () => {
+  const NOTE = { agent: "orchestrator", timestamp: "2026-11-17T15:32:09.796Z", context: "Add order_total", feedback: "to try later.", task_scoped: true };
+
+  test("How it ran has a NOTES row with each note the human left for the task", () => {
+    const html = report({ notes: [NOTE] });
+    const section = sectionOf(html, "NOTES");
+
+    assert.ok(section.includes("to try later."), `the note as typed, got ${section}`);
+    assert.ok(html.indexOf("<summary>HOW IT RAN</summary>") < html.indexOf("<h2>NOTES</h2>"), "under How it ran");
+  });
+
+  test("no NOTES row when no note was left", () => {
+    assert.ok(!report().includes("<h2>NOTES</h2>"));
+  });
+});

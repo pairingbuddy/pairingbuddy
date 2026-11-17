@@ -670,7 +670,7 @@ async function courseCheck(config) {
     asPromptData(config.diff),
     '</diff>',
   ].join('\n');
-  const verdict = await agent(prompt, {
+  const verdict = await pbAgent(prompt, {
     agentType: 'pairingbuddy:course-checker',
     model: courseCheckerModel({ stage, rollbacks: config.rollbacks }),
     label: buildLabel({ stage, phase: null, role: 'course-checker', item: config.group.id, round }),
@@ -753,7 +753,7 @@ async function fixGroup(config, attempt, spent) {
     ...(retry ? ['When mustChangeApproach is true, the fix must take an approach different from every entry in rejected_approaches.', '<retry>', asPromptData({ mustChangeApproach, rejected_approaches: rejectedApproaches }), '</retry>'] : []),
   ].join('\n');
   spent.count += 1;
-  const fixed = await agent(prompt, {
+  const fixed = await pbAgent(prompt, {
     agentType,
     model: 'sonnet',
     label: buildLabel({ stage: config.stage, phase: null, role: 'fix', item: group.id, round }),
@@ -879,7 +879,7 @@ async function lensAttack(config) {
     corpusBlock(config.corpus),
     '</corpus>',
   ].join('\n');
-  const results = await Promise.all(config.lenses.map((lens) => agent(promptOf(lens), {
+  const results = await Promise.all(config.lenses.map((lens) => pbAgent(promptOf(lens), {
     agentType: 'pairingbuddy:lens',
     model: lens.model,
     label: buildLabel({ stage: config.stage, phase: null, role: 'lens', item: lens.name, round: 1 }),
@@ -913,7 +913,7 @@ async function lensAttack(config) {
     '',
     ...taskBlock(),
   ].join('\n');
-  const verdicts = await Promise.all(attacked.map((finding) => agent(refuterPromptOf(finding), {
+  const verdicts = await Promise.all(attacked.map((finding) => pbAgent(refuterPromptOf(finding), {
     agentType: 'pairingbuddy:refuter',
     model: finding.severity === 'high' ? 'opus' : 'sonnet',
     label: buildLabel({ stage: config.stage, phase: null, role: 'refuter', item: finding.id, round: 1 }),
@@ -974,7 +974,7 @@ async function lightReview(config) {
     corpusBlock(config.corpus),
     '</corpus>',
   ].join('\n');
-  const result = await (config.spawn ?? agent)(prompt, {
+  const result = await (config.spawn ?? pbAgent)(prompt, {
     agentType: 'pairingbuddy:lens',
     model: config.lightReview.model,
     label: buildLabel({ stage, phase: config.phase, role: 'lens', item: config.item, round: config.round ?? 1 }),
@@ -1000,6 +1000,18 @@ function asPromptData(value) {
 function corpusBlock(corpus) {
   return Array.isArray(corpus) && corpus.length > 0 ? corpus.map(asPromptData).join('\n') : 'none';
 }
+
+// The tool rule every agent's definition carries (contracts/agent-config.yaml, focus_warning), said again in each prompt: an
+// agent that inspected files with a compound Bash call waited on a permission prompt mid-stage.
+const TOOL_RULE = 'Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.';
+
+// Where a prompt's paths are: a redraft that loaded a skill read its inputs under the skill's plugin folder, found nothing
+// there, and its reads outside the project asked for permission.
+const PATH_RULE = 'Every path in this prompt that does not start with / is relative to the project root, your working directory: read and write it there, never under a skill\'s base directory or the plugin folder.';
+
+// Every agent a stage spawns goes through here, so each prompt opens with the tool rule and the path rule. They go first, so
+// a data block stays the prompt's last lines.
+const pbAgent = (prompt, options) => agent(`${TOOL_RULE}\n${PATH_RULE}\n\n${prompt}`, options);
 
 // The JSON object a relayed CLI printed, or null when there is none. The relay may carry text around the JSON, so this slices from the first '{' to the last '}'. A missing output (undefined) yields null too.
 function relayedJson(text) {
@@ -1067,7 +1079,7 @@ const pbCommand = (words) => `node ${shellWord(`${args.pluginRoot}/cli/pb.mjs`)}
 
 // The CLI commits and proves the evidence, so the runner only runs the words it is given. A stage that runs it more than
 // once gives each run its own round, since a key is one return. spawn counts it, for a stage that keeps a count.
-async function runCommands(stage, commands, { tddPhase = null, item = null, round = 1, spawn = agent } = {}) {
+async function runCommands(stage, commands, { tddPhase = null, item = null, round = 1, spawn = pbAgent } = {}) {
   phase('runner');
   const role = 'runner';
   const pbKey = buildKey({ stage, role, item, round, attempt: args.attempt });
@@ -1484,7 +1496,7 @@ const prompt = [
   ...taskBlock(),
 ].join('\n');
 
-const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
+const result = await pbAgent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
 // No budget, corpus or fix: this stage's row refutes nothing and fixes nothing.
 const lensResult = await lensAttack({

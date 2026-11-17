@@ -197,7 +197,8 @@ test("The fix agent gets the fix key, label, model sonnet, agent type from the c
   assert.equal(opts.label, buildLabel({ stage: config.stage, phase: null, role: "fix", item: "g1", round: fixAttemptRound(1) }), "label names the fix round");
   assert.deepEqual(pinned.enum, [key], "pb_key is pinned to the fix key");
   assert.deepEqual(otherProps, expectedOtherProps, "the rest of the schema is the agent type's schema");
-  assert.ok(prompt.startsWith(config.fix.instruction), "prompt opens with the fix instruction");
+  assert.ok(prompt.startsWith("Look at files with Read"), "prompt opens with the tool rule");
+  assert.ok(prompt.slice(prompt.indexOf("\n\n") + 2).startsWith(config.fix.instruction), "then the fix instruction");
   assert.ok(prompt.includes(`Return pb_key exactly as: ${key}`), "prompt carries the pinned key");
   const group = dataBlock(prompt, "findings");
   assert.ok(prompt.includes(`<findings>\n${escaped(group)}\n</findings>`), "findings block is escaped JSON");

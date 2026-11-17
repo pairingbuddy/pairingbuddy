@@ -71,7 +71,7 @@ const prompt = [
   ...taskBlock(),
 ].join('\n');
 
-const result = await agent(prompt, { agentType: 'pairingbuddy:update-documentation', label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
+const result = await pbAgent(prompt, { agentType: 'pairingbuddy:update-documentation', label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
 const runner = await runCommands(stage, [`checkpoint --step docs --from ${pbKey}`, 'test --full', 'stage finish'], { round: 2 });
 

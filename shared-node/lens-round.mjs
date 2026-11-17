@@ -258,24 +258,46 @@ const placeOf = (finding) => {
 const OPENNESS = ["to fix", "left as is", "fixed", "not a real problem"];
 const openness = (word) => (OPENNESS.includes(word) ? OPENNESS.indexOf(word) : -1);
 
-// Two lenses of a task review may point at the same lines: those findings show once, under the gist said first. Its outcome is
-// the most open one once the review is over, the one said last while it runs; `ids` names every finding it stands for.
-export function samePlaceFindings(findings, ended) {
-  const shown = [];
+// The most open of the outcomes findings shown once were given.
+export const mostOpen = (words) => words.reduce((shown, word) => (openness(word) < openness(shown) ? word : shown));
+
+// Which findings of one lens round are one finding, as groups in the order each was first said. A finding joins an earlier
+// one at the same file and lines when they share a gist, or when it is another lens's: two lenses that point at the same
+// lines are telling one thing. One lens that says two gists for one place has told two things, so they stay two.
+// A finding with no lines of its own (a file alone, or no place) is never merged.
+export function samePlaceGroups(findings) {
+  const groups = [];
   const byPlace = new Map();
   for (const finding of findings) {
     const place = placeOf(finding);
-    const first = place === null ? undefined : byPlace.get(place);
-    if (first === undefined) {
-      const one = { ...finding, ids: [finding.id] };
-      if (place !== null) byPlace.set(place, one);
-      shown.push(one);
+    const gist = sameness(findingGist(finding));
+    const lens = lensOfFinding(finding);
+    const there = place === null ? [] : byPlace.get(place) ?? [];
+    const group = there.find((one) => one.gists.has(gist) || !one.lenses.has(lens));
+    if (group === undefined) {
+      const one = { members: [finding], gists: new Set([gist]), lenses: new Set([lens]) };
+      if (place !== null) byPlace.set(place, [...there, one]);
+      groups.push(one);
       continue;
     }
-    first.ids.push(finding.id);
-    if (!ended || openness(finding.word) < openness(first.word)) Object.assign(first, { verdict: finding.verdict, word: finding.word });
+    group.members.push(finding);
+    group.gists.add(gist);
+    group.lenses.add(lens);
   }
-  return shown;
+  return groups.map(({ members }) => members);
+}
+
+// The groups shown once each, under the gist said first. Its outcome is the most open one once the review is over, the one
+// said last while it runs; `ids` names every finding it stands for.
+export function samePlaceFindings(findings, ended) {
+  return samePlaceGroups(findings).map(([first, ...rest]) => {
+    const one = { ...first, ids: [first.id] };
+    for (const finding of rest) {
+      one.ids.push(finding.id);
+      if (!ended || openness(finding.word) < openness(one.word)) Object.assign(one, { verdict: finding.verdict, word: finding.word });
+    }
+    return one;
+  });
 }
 
 // A light review has ended once a later agent in the stage works on another test.

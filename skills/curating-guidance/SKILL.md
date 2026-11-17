@@ -20,15 +20,11 @@ Read `.pairingbuddy/human-guidance.json` (optional, it may not exist on first ru
 
 Read `.pairingbuddy/task.json` (optional) for context on the just-completed task: `description` and `context`.
 
+Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+
 ## Conversation
 
-First, check whether a human can answer. If `PAIRINGBUDDY_SOLO` is `true`, there is no human: skip the Bash check and follow "When No Human Can Answer" below. Otherwise run this with Bash:
-
-```bash
-echo "$PAIRINGBUDDY_GATE_POLICY/$CLAUDE_CODE_ENTRYPOINT"
-```
-
-If there is no human, follow "When No Human Can Answer" below and skip the rest of this section.
+First, check whether a human can answer. Look in your session context for a `<pairingbuddy-no-human>` block: the SessionStart hook adds it under the auto policy or `claude -p`, since only a hook sees the environment. Run no Bash for this check. If that block is there, or `PAIRINGBUDDY_SOLO` is `true`, follow "When No Human Can Answer" below and skip the rest of this section.
 
 Next, classify each entry:
 
@@ -56,7 +52,7 @@ Never go on to the output after feedback: always redo the analysis and ask again
 
 ## When No Human Can Answer
 
-With no human, carry the guidance over silently. There is no human if the Bash output starts with `auto/`, which is the auto policy, or ends with `/sdk-cli`, which is `claude -p`. The same holds if `PAIRINGBUDDY_SOLO` is `true`, or if AskUserQuestion is ever denied with "No human answers". Then:
+With no human, carry the guidance over silently. There is no human under the auto policy or `claude -p`, which the `<pairingbuddy-no-human>` block from SessionStart says. The same holds if `PAIRINGBUDDY_SOLO` is `true`, or if AskUserQuestion is ever denied with "No human answers". Then:
 
 1. Ask nothing and offer nothing: never ask in chat, and do not offer to bootstrap.
 2. Keep every persistent entry unchanged, field for field. Drop every entry with `task_scoped: true`, and rewrite `.pairingbuddy/human-guidance.json` with the Write tool, never bash, only when something is dropped. If the file is missing, write `{"guidance": []}`.

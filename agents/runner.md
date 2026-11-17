@@ -24,6 +24,8 @@ The prompt contains:
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
+Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+
 1. Run each command in `<commands>` exactly as given, once, through Bash, one Bash call per command, with the Bash timeout set to 600000 milliseconds. Add no selectors, flags, pipes or prefixes.
 2. Go in order, and stop at the first one that exits non-zero. Do not run the commands after it.
 3. Do not fix, retry or investigate anything, whatever a command prints. A failing test is a normal result.

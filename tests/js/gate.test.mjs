@@ -37,7 +37,7 @@ const MESSAGES = {
   noRun: (stage) => `Stage ${stage} cannot start with no run open. Use /pairingbuddy:code, which opens the run.`,
   noRunAgent: (agent) => `Agent ${workflowName(agent)} runs only inside a stage, and no run is open. Use /pairingbuddy:code, which opens the run.`,
   solo: (workflow) => `Solo stays on the old path until T10, so ${workflow} cannot start. The run stays as it is: report pb status.`,
-  noHumanHere: "No human answers under the auto policy, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.",
+  noHumanHere: "No human answers under the auto policy or claude -p, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.",
 };
 
 const secondsAgo = (seconds) => new Date(Date.now() - seconds * 1000).toISOString();
@@ -288,6 +288,13 @@ test("curate-guidance asks nobody under the auto permission mode", () =>
 test("curate-guidance asks nobody under PAIRINGBUDDY_GATE_POLICY=auto", () =>
   withRepo({ ledger: null }, async (repo) => {
     assertDenied(await runGate(question(repo.dir, { permission_mode: "default" }), { env: { PAIRINGBUDDY_GATE_POLICY: "auto" } }), MESSAGES.noHumanHere);
+  }));
+
+// A subagent does not get the SessionStart context, and printing the environment with Bash cost a permission prompt, so the
+// gate tells curate-guidance under `claude -p` too.
+test("curate-guidance asks nobody under claude -p", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    assertDenied(await runGate(question(repo.dir, { permission_mode: "default" }), { env: { CLAUDE_CODE_ENTRYPOINT: "sdk-cli" } }), MESSAGES.noHumanHere);
   }));
 
 test("curate-guidance still asks a human outside the auto policy", () =>

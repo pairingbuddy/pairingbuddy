@@ -28,7 +28,7 @@ async function courseCheck(config) {
     asPromptData(config.diff),
     '</diff>',
   ].join('\n');
-  const verdict = await agent(prompt, {
+  const verdict = await pbAgent(prompt, {
     agentType: 'pairingbuddy:course-checker',
     model: courseCheckerModel({ stage, rollbacks: config.rollbacks }),
     label: buildLabel({ stage, phase: null, role: 'course-checker', item: config.group.id, round }),

@@ -39,7 +39,7 @@ export function recordWrites(on: Function, { unwritable = false }: { unwritable?
 }
 
 // Serves a running ledger (or the given one; null serves none) and the given guidance file (guidance: null serves none, so fs.read gets ENOENT; guidanceText serves that raw text; unreadable makes the read throw EACCES; unwritable makes the write throw EACCES), starts the engine and lets it poll once.
-// Returns the write recorder ({ writes, touched }), so a test keeps only its own assertions.
+// Returns the write recorder ({ writes, touched }) and the replay rig, so a test keeps only its own assertions.
 export async function startRunningPane($: any, on: Function, { guidance = EXISTING_GUIDANCE, guidanceText, unreadable = false, unwritable = false, ledger = SNAPSHOT_RUNNING }: { guidance?: unknown | null; guidanceText?: string; unreadable?: boolean; unwritable?: boolean; ledger?: unknown }) {
   const rig = setupReplay(on)
   if (ledger !== null) rig.served.set(`${ROOT}/${LEDGER}`, JSON.stringify(ledger))
@@ -49,7 +49,7 @@ export async function startRunningPane($: any, on: Function, { guidance = EXISTI
   const recorder = recordWrites(on, { unwritable })
   await start($)
   await rig.clock.advance(POLL_MS)
-  return recorder
+  return { ...recorder, rig }
 }
 
 // Runs /pb-note with the text and returns its one-line answer.
@@ -74,8 +74,11 @@ export function writtenGuidance(writes: { path: string; text: string }[]) {
 // The note text the delivery tests leave with /pb-note.
 export const SUGGESTION_TEXT = 'Keep the signature, fix the formula'
 
-// The pane line shown while a suggestion waits for the next agent spawn.
-export const PENDING_PHRASE = 'applies at the next agent spawn'
+// The pane line's head: the note as typed, quoted.
+export const NOTE_HEAD = `your note "${SUGGESTION_TEXT}"`
+
+// The pane line shown while a note waits for an agent that reads it.
+export const WAITING_LINE = `${NOTE_HEAD} · waiting for the next agent`
 
 // Spawns an agent the way a workflow does: the name is a real label and the subagent type follows the role.
 export async function spawnStageAgent($: any, { stage, role }: { stage: string; role: string }) {

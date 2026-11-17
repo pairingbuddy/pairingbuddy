@@ -704,6 +704,14 @@ function taskSection(task) {
   return `${section("TASK", task.split(/\n\s*\n/).map((paragraph) => `<p>${escape(paragraph.trim())}</p>`).join("\n"), "task")}\n`;
 }
 
+// The NOTES row: each /pb-note the human left for the task (the guidance file's task-scoped entries), as typed. No row when
+// none was left.
+function notesSection(notes) {
+  const typed = (Array.isArray(notes) ? notes : []).filter((note) => note?.task_scoped === true && typeof note.feedback === "string" && note.feedback.trim() !== "");
+  if (typed.length === 0) return "";
+  return `${section("NOTES", typed.map((note) => `<p>${escape(note.feedback.trim())}</p>`).join("\n"))}\n`;
+}
+
 const PUBLISH_KIND = "publish";
 
 // The task's runs, oldest first: `runs` when given ({ ledger, endedAt?, calls?, scenarios?, prUrl? } each, as pb kept them
@@ -723,7 +731,7 @@ function taskLedgerOf(task) {
 // The run that says what the task was: its code run, the first that is no publish run.
 const codeRunIn = (task) => task.find((run) => run.ledger?.kind !== PUBLISH_KIND) ?? task[0];
 
-export function renderReport({ ledger: given, spawns, calls, timing, commits, tests, testsComplete, endedAt, now, scenarios, changed, runs, prUrl } = {}) {
+export function renderReport({ ledger: given, spawns, calls, timing, commits, tests, testsComplete, endedAt, now, scenarios, changed, runs, prUrl, notes } = {}) {
   const task = taskRunsOf({ runs, ledger: given, calls, scenarios, endedAt });
   const last = task.at(-1);
   const ledger = last.ledger;
@@ -744,7 +752,7 @@ ${needsYouSection({ ledger, task, spawns, tests })}
 ${doneSection({ task, changed })}${changesSection({ task, spawns })}
 <details>
 <summary>HOW IT RAN</summary>
-${taskSection(code?.task ?? ledger?.task)}${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${settledSection({ task })}
+${taskSection(code?.task ?? ledger?.task)}${notesSection(notes)}${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${settledSection({ task })}
 ${stepsSection({ task })}
 ${scenariosSection({ scenarios: task.find((run) => Array.isArray(run.scenarios))?.scenarios })}
 ${testsSection({ ledger: taskLedgerOf(task), spawns, tests, calls: task.flatMap((run) => run.calls ?? []) })}

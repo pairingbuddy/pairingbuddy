@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { REVIEWER, firstSentence, keptFixLenses, openDoubts } from "./gates.mjs";
 import { findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
+import { mostOpen, samePlaceGroups } from "./lens-round.mjs";
 import { plainName } from "./plain-names.mjs";
 import { returnFileKey } from "./stages.mjs";
 import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt, standingScenariosKey } from "./stage-run.mjs";
@@ -75,7 +76,9 @@ function reviewOf(root, ledger) {
     .filter(({ id, outcome }) => lensOfFinding({ id }) === GOAL_LENS && outcome !== "not a real problem")
     .map(({ id, outcome }) => ({ gist: gistOf(byId.get(id)), outcome }))
     .filter(({ gist }) => gist !== null);
-  return { review: outcomes.map(({ outcome }) => outcome), ...(goalCheck.length > 0 && { goalCheck }) };
+  // Counted as the pane and the report show them: findings told once for the same lines are one issue, at its most open outcome.
+  const review = samePlaceGroups(outcomes).map((group) => mostOpen(group.map(({ outcome }) => outcome)));
+  return { review, ...(goalCheck.length > 0 && { goalCheck }) };
 }
 
 function taskEndFacts(root, ledger) {

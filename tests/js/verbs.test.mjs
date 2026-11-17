@@ -68,6 +68,16 @@ const MAIN_AUTO_ALLOW = {
   },
 };
 
+// Before a run exists the coding skill's first call is `pb status --action`, and a lab run's human met its prompt before any
+// question. With no run the gate lets through the exact command of the verbs that start or inspect a run.
+const NO_RUN_AUTO_ALLOW = {
+  hookSpecificOutput: {
+    hookEventName: "PreToolUse",
+    permissionDecision: "allow",
+    permissionDecisionReason: "Main-context CLI command, auto-allowed by the Pairing Buddy gate with no run open.",
+  },
+};
+
 const makeLedger = () => ({
   v: 1, seq: 0, sha: "0".repeat(64), kind: "code", taskType: "config_change",
   owner: { sessionId: null, lastSeen: null }, task: "Task 25",
@@ -176,6 +186,11 @@ const REACHES_GITHUB = ["publish", "pr refresh"];
 function assertMainAutoAllowed(result) {
   assert.equal(result.code, 0, `stderr: ${result.stderr}`);
   assert.deepEqual(result.stdout === "" ? null : JSON.parse(result.stdout), MAIN_AUTO_ALLOW, "the main context's exact command is auto-allowed during a run");
+}
+
+function assertNoRunAutoAllowed(result) {
+  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+  assert.deepEqual(result.stdout === "" ? null : JSON.parse(result.stdout), NO_RUN_AUTO_ALLOW, "the main context's exact command is auto-allowed with no run");
 }
 
 function assertOutcome(result, { caller, agentType }, { verb, verbClass }) {
@@ -808,10 +823,44 @@ describe("what counts as a run", IN_PARALLEL, () => {
     assertSilent(result);
   });
 
-  test("outside a run the main context's exact command gets no decision", async () => {
+  test("outside a run the main context's exact pb status --action is auto-allowed", async () => {
     const result = await runGate(bashCall(`${PB} status --action`, { cwd: makeRepo(), session: NEVER_IN_A_RUN }));
 
-    assertSilent(result);
+    assertNoRunAutoAllowed(result);
+  });
+
+  for (const args of ["unit open --type feat --slug order-total", "unit status", "run open --kind code --plan docs/plans/cart.md", "plan next docs/plans/cart.md"]) {
+    test(`outside a run the main context's exact pb ${args} is auto-allowed`, async () => {
+      assertNoRunAutoAllowed(await runGate(bashCall(`${PB} ${args}`, { cwd: makeRepo(), session: NEVER_IN_A_RUN })));
+    });
+  }
+
+  // publish and pr refresh reach GitHub, and the rest need a run to act on, so with no run they keep their prompt.
+  for (const args of ["publish", "pr refresh", "gate eval", "task end", "stage release", "git doctor"]) {
+    test(`outside a run the main context's pb ${args} gets no decision`, async () => {
+      assertSilent(await runGate(bashCall(`${PB} ${args}`, { cwd: makeRepo(), session: NEVER_IN_A_RUN })));
+    });
+  }
+
+  const NO_RUN_NEAR_MISSES = [
+    ["the lab run's shape", `cd "$(git rev-parse --show-toplevel)" && ${PB} status --action 2>&1; echo "exit=$?"`],
+    ["a redirect", `${PB} status --action 2>&1`],
+    ["a command after &&", `${PB} status --action && rm -rf src`],
+    ["a pipe", `${PB} status --action | tee out.txt`],
+    ["a quoted argument", `${PB} plan next 'docs/my plan.md'`],
+    ["a glob in an argument", `${PB} unit open --type feat --slug *`],
+    ["another plugin's CLI", "node /tmp/evil/cli/pb.mjs status --action"],
+    ["a node flag", `node --require /tmp/evil.js ${CLI} status --action`],
+  ];
+
+  for (const [shape, command] of NO_RUN_NEAR_MISSES) {
+    test(`outside a run ${shape} gets no decision`, async () => {
+      assertSilent(await runGate(bashCall(command, { cwd: makeRepo(), session: NEVER_IN_A_RUN })));
+    });
+  }
+
+  test("outside a run a subagent's exact pb status --action gets no decision", async () => {
+    assertSilent(await runGate(bashCall(`${PB} status --action`, { agentType: RUNNER_AGENT, cwd: makeRepo(), session: NEVER_IN_A_RUN })));
   });
 
   test("a unit run between its code run and its publish run auto-allows pb run open --kind publish", async () => {

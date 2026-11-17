@@ -36,6 +36,8 @@ One read beyond the entries is allowed: read-only git, to get the diff of the un
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
+Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+
 1. Read the inputs above. Read only; change no files.
 2. Follow the creating-pull-requests skill for the title, the body sections, the labels and the banned content.
 3. Keep the body short and plain: lead with what changed, then why, how it was verified and what a reviewer must know. Cut any sentence a reader of main's log a year from now would not need, and do not restate the diff. Describe changes by behaviour, read from the diff. Take Findings from `lessons` and `blocking`, and Verification from `reportSummary` and `gateSources`. When a record has no value for a section, leave that section out. Never invent one.

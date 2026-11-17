@@ -904,3 +904,26 @@ test("a-finding-shown-once-for-its-lines-reads-the-outcome-said-last-while-the-r
 
   assert.deepEqual(lines.slice(1), ["1 issue found · 1 fixing", "  fixing · First gist · tests/test_cart.py:1-5"], `one line, the latest outcome under the first gist: ${JSON.stringify(lines)}`);
 });
+
+// The lab run's safety net: the code lens said two things about cart.py:10, and the gate asked about both.
+test("two-findings-one-lens-said-for-the-same-lines-show-as-two", () => {
+  const spawns = [spawnFor({ item: "code" })];
+  const calls = [
+    callFor({ item: "code", findings: [{ where: "cart.py:10", title: "order_total does not round the sum to cents", claim: "one" }, { where: "cart.py:10", title: "Empty order returns int 0, not float", claim: "two" }] }),
+  ];
+
+  const round = lensRound({ ledger: ledgerFor({ status: "done" }), calls, spawns, contract });
+
+  assert.deepEqual(round.findings.map(({ title }) => title), ["order_total does not round the sum to cents", "Empty order returns int 0, not float"], "one lens's two gists for one place are two findings");
+  assert.equal(round.counts.found, 2);
+});
+
+test("one-lens-saying-one-gist-twice-for-the-same-lines-shows-once", () => {
+  const spawns = [spawnFor({ item: "code" })];
+  const said = { where: "cart.py:10", title: "Empty order returns int 0", claim: "one" };
+  const calls = [callFor({ item: "code", findings: [said, { ...said, claim: "two" }] })];
+
+  const round = lensRound({ ledger: ledgerFor({ status: "done" }), calls, spawns, contract });
+
+  assert.deepEqual(round.findings.map(({ ids }) => ids), [["code-1", "code-2"]]);
+});

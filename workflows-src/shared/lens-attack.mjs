@@ -25,7 +25,7 @@ async function lensAttack(config) {
     corpusBlock(config.corpus),
     '</corpus>',
   ].join('\n');
-  const results = await Promise.all(config.lenses.map((lens) => agent(promptOf(lens), {
+  const results = await Promise.all(config.lenses.map((lens) => pbAgent(promptOf(lens), {
     agentType: 'pairingbuddy:lens',
     model: lens.model,
     label: buildLabel({ stage: config.stage, phase: null, role: 'lens', item: lens.name, round: 1 }),
@@ -59,7 +59,7 @@ async function lensAttack(config) {
     '',
     ...taskBlock(),
   ].join('\n');
-  const verdicts = await Promise.all(attacked.map((finding) => agent(refuterPromptOf(finding), {
+  const verdicts = await Promise.all(attacked.map((finding) => pbAgent(refuterPromptOf(finding), {
     agentType: 'pairingbuddy:refuter',
     model: finding.severity === 'high' ? 'opus' : 'sonnet',
     label: buildLabel({ stage: config.stage, phase: null, role: 'refuter', item: finding.id, round: 1 }),

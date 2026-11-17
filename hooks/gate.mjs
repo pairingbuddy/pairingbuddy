@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 // Gate: PreToolUse enforcement during a run, loaded by gate-boot.mjs. With no run state it allows everything silently,
 // except a call that would start a stage of this plugin or reach an agent only a stage spawns: those have only ever run
-// inside a run. It also spares curate-guidance a question nobody would answer, since only a hook sees the policy.
-// An allow prints nothing, unless it is the runner's exact command or, during a run, the main context's own exact pb command
-// (bar publish and pr refresh); a decision exits 0 with the JSON form on stdout.
+// inside a run. It also spares curate-guidance a question nobody would answer, since only a hook sees the policy, and, run
+// or not, lets this plugin's stage skills load without a prompt, since the Skill tool only loads their instructions.
+// An allow prints nothing, unless it is the runner's exact command or the main context's own exact pb command: during a run
+// any main verb bar publish and pr refresh, with no run the verbs that start or inspect one. A decision exits 0 with the
+// JSON form on stdout.
 // Any error with run state denies.
 // This wrapper imports only built-ins and loads everything else dynamically, so that a failed import can
 // still deny, and so that a call outside a run costs little more than Node's startup.
 import { existsSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const TARGET_KEYS = { Write: "file_path", Edit: "file_path", NotebookEdit: "notebook_path" };
 const MAX_SYMLINKS = 40;
@@ -17,6 +20,7 @@ const PLUGIN_PREFIX = "pairingbuddy:";
 const CURATOR = `${PLUGIN_PREFIX}curate-guidance`;
 const POLICY_ENV = "PAIRINGBUDDY_GATE_POLICY";
 const ABSENT_CODES = ["ENOENT", "ENOTDIR"];
+const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)));
 
 function readlinkOrNull(path) {
   try {
@@ -249,6 +253,22 @@ async function denyD17WithNoRun(payload, cwd) {
   }
 }
 
+// The main context's exact pb command for a verb that starts or inspects a run. Only a command that names a pb.mjs pays for
+// the import, so a plain main-context call outside a run still loads nothing new.
+async function allowPbCommandWithNoRun(payload) {
+  const command = payload.tool_input?.command;
+  if (isSubagent(payload) || typeof command !== "string" || !command.startsWith("node ") || !command.includes("/cli/pb.mjs ")) return false;
+  try {
+    const { noRunAllowReason } = await import("../shared-node/gate-rules.mjs");
+    const reason = noRunAllowReason(payload);
+    if (reason === null) return false;
+    decide("allow", reason);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // A confined agent stays confined with no run. The roster mirrors CONFINED_AGENTS in gate-rules.mjs, kept apart so the main
 // context never pays for that import: only a confined payload loads it, and if the load fails the call is denied.
 const CONFINED_AGENT = /^pairingbuddy:(?:lens|refuter|synthesizer|course-checker)$/;
@@ -263,8 +283,26 @@ async function denyConfinedCallWithNoRun(payload, cwd, reads) {
 }
 
 function denyQuestionWithNoHuman({ agent_type: agentType, permission_mode: mode }) {
-  if (agentType !== CURATOR || (mode !== "auto" && process.env[POLICY_ENV] !== "auto")) return;
-  decide("deny", "No human answers under the auto policy, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.");
+  if (agentType !== CURATOR || (mode !== "auto" && process.env[POLICY_ENV] !== "auto" && process.env.CLAUDE_CODE_ENTRYPOINT !== "sdk-cli")) return;
+  decide("deny", "No human answers under the auto policy or claude -p, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.");
+}
+
+// The Skill tool only loads instructions, so this plugin's stage skills need no prompt: each workflow whose description says
+// it is an internal stage, and the stage skills the main context runs. Built-ins only, so no run pays for an import.
+const MAIN_CONTEXT_STAGE_SKILLS = ["curating-guidance", "setting-up-spike"];
+const STAGE_SKILL_REASON = "Pairing Buddy stage skill, auto-allowed by the Pairing Buddy gate: it only loads instructions.";
+
+function isStageSkill(payload) {
+  const skill = payload?.tool_name === "Skill" ? payload.tool_input?.skill : undefined;
+  if (typeof skill !== "string" || !skill.startsWith(PLUGIN_PREFIX)) return false;
+  const name = skill.slice(PLUGIN_PREFIX.length);
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) return false;
+  if (MAIN_CONTEXT_STAGE_SKILLS.includes(name)) return true;
+  try {
+    return readFileSync(join(PLUGIN, "workflows", `${name}.js`), "utf8").split("\n", 1)[0].includes("description: 'Internal stage");
+  } catch {
+    return false;
+  }
 }
 
 // A failed import is held back, not thrown here: only the walk can say whether this call is inside a run.
@@ -297,14 +335,16 @@ try {
   } else if (runRoots.size > 0) {
     if (importFailure !== null) throw importFailure;
     const { checkCall } = await import("../shared-node/gate-rules.mjs");
-    const allowReason = checkCall({ runRoots: [...runRoots], sessionRoot, payload, targets, reads, canonicalPath });
+    const allowReason = checkCall({ runRoots: [...runRoots], sessionRoot, payload, targets, reads, canonicalPath }) ?? (isStageSkill(payload) ? STAGE_SKILL_REASON : null);
     if (allowReason !== null) decide("allow", allowReason);
+  } else if (isStageSkill(payload)) {
+    decide("allow", STAGE_SKILL_REASON);
   } else if (payload?.tool_name === "Workflow") {
     await denyStageWithNoRun(payload.tool_input ?? {}, cwd);
   } else if (payload?.tool_name === "Agent") {
     await denyAgentWithNoRun(payload.tool_input ?? {});
   } else if (payload?.tool_name === "Bash") {
-    await denyD17WithNoRun(payload, cwd);
+    if (!(await allowPbCommandWithNoRun(payload))) await denyD17WithNoRun(payload, cwd);
   } else if (payload?.tool_name === "AskUserQuestion") {
     denyQuestionWithNoHuman(payload);
   }

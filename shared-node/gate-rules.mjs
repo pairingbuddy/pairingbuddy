@@ -35,6 +35,7 @@ const ROLLBACK_START = `${PB_COMMAND} rollback `;
 const ARTIFACT_CHECK_START = `${PB_COMMAND} artifact check `;
 const AUTO_ALLOW_REASON = "Runner CLI command, auto-allowed by the Pairing Buddy gate.";
 const MAIN_AUTO_ALLOW_REASON = "Main-context CLI command, auto-allowed by the Pairing Buddy gate during a run.";
+const NO_RUN_AUTO_ALLOW_REASON = "Main-context CLI command, auto-allowed by the Pairing Buddy gate with no run open.";
 const PB_CALL = /(?<![\w.-])pb(?:\.mjs)?(?=\s+([\w.-]+)(?:\s+([\w.-]+))?)/g;
 const POLICY_ENV = "PAIRINGBUDDY_GATE_POLICY";
 const VERB_OWNERS = { runner: "the runner agent", main: "the main context" };
@@ -479,12 +480,18 @@ const PB_START = `${PB_COMMAND} `;
 // A word a shell reads as itself: no quoting, redirect, operator, expansion or whitespace.
 const PLAIN_WORD = /^[A-Za-z0-9_][A-Za-z0-9_.\/:=@+,-]*$|^--?[A-Za-z0-9][A-Za-z0-9_.\/:=@+,-]*$/;
 
-// The main context's own pb command, by itself: this plugin's CLI, a main verb, plain words one space apart.
-function isMainCommand({ tool_name: tool, tool_input: toolInput, ...payload }) {
-  if (tool !== "Bash" || isSubagentCall(payload) || !toolInput.command.startsWith(PB_START)) return false;
+// The main context's own pb command, by itself: this plugin's CLI, one of the verbs, plain words one space apart.
+function isMainCommand({ tool_name: tool, tool_input: toolInput, ...payload }, verbs = MAIN_AUTO_VERBS) {
+  if (tool !== "Bash" || isSubagentCall(payload) || typeof toolInput?.command !== "string" || !toolInput.command.startsWith(PB_START)) return false;
   const words = toolInput.command.slice(PB_START.length).split(" ");
-  return words.every((word) => PLAIN_WORD.test(word)) && MAIN_AUTO_VERBS.includes(matchVerb(words));
+  return words.every((word) => PLAIN_WORD.test(word)) && verbs.includes(matchVerb(words));
 }
+
+// Before a run exists the main context starts or inspects one with these, so they need no prompt either.
+const NO_RUN_VERBS = ["status", "unit open", "unit status", "run open", "plan next"];
+
+// With no run open, the reason to allow the main context's exact pb command, or null.
+export const noRunAllowReason = (payload) => (isMainCommand(payload, NO_RUN_VERBS) ? NO_RUN_AUTO_ALLOW_REASON : null);
 
 // ---------- entry ----------
 

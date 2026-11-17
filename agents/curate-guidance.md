@@ -48,15 +48,11 @@ Reads from `.pairingbuddy/task.json` (optional - provides context on just-comple
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
+Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+
 ### When No Human Is Here
 
-Check this first. If `PAIRINGBUDDY_SOLO` is `true`, skip this check: Solo Mode below applies. Otherwise run this with Bash:
-
-```bash
-echo "$PAIRINGBUDDY_GATE_POLICY/$CLAUDE_CODE_ENTRYPOINT"
-```
-
-No human is here if the output starts with `auto/`, which is the auto policy, or ends with `/sdk-cli`, which is `claude -p`. The same holds if AskUserQuestion is ever denied with "No human answers". Then carry the guidance over silently:
+Check this first. If `PAIRINGBUDDY_SOLO` is `true`, skip this check: Solo Mode below applies. Run no Bash for this check: the gate sees the environment for you. Under the auto policy (`PAIRINGBUDDY_GATE_POLICY` is `auto`) or `claude -p` (`CLAUDE_CODE_ENTRYPOINT` is `sdk-cli`) it denies AskUserQuestion with "No human answers", and that denial means no human is here. Then carry the guidance over silently:
 
 1. Ask nothing and offer nothing: skip every step below, and do not offer to bootstrap.
 2. If `.pairingbuddy/human-guidance.json` has no entry with `task_scoped: true`, leave the file untouched. Otherwise drop every entry with `task_scoped: true` and rewrite the file with the Write tool, never bash, jq or a heredoc. Copy every other entry unchanged, field for field, so it is kept exactly as it stands. If the file is missing, write `{"guidance": []}` to it with the Write tool.
