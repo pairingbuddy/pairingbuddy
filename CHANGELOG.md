@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The report's TESTS cards sit under their label and take the row's whole width, so a step name such as `REFACTOR: tidying the tests` stays on one line and Result has room (watched run: both wrapped in squeezed columns at 1280px).
 - Spent no longer ends with `· % of plan unknown`, in the report or anywhere else. pb has no source for a plan share, so it was always unknown.
 - The report's TESTS cards name each test by its short name, as the pane does (`test 1 order total example two lines`), not its id (`order-total-example-two-lines`).
 - The task-type review says what classifying again changed in plain words: `task type kept: new feature; less sure than first thought` (or `surer than first thought`, or `task type changed: bug fix (was new feature)`), not `classified again: still new feature, confidence likely (was certain)`. A finding on the task's wording no longer shows its `subject: task_type/confidence (intake.classify-task.-.r1.a1)` place, in the pane or the report.

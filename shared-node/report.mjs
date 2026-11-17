@@ -262,7 +262,7 @@ function testsSection({ ledger, spawns, tests, calls }) {
   const items = order;
   const last = currentStep(spawns)?.item;
   const cards = items.map((item) => testCard(spawns, item, order.indexOf(item) + 1, perTest, item === last ? ledger?.stop : null, { checkpoints: ledger?.checkpoints, calls }));
-  return section("TESTS", cards.join("\n"));
+  return section("TESTS", cards.join("\n"), "tests");
 }
 
 const NOT_REACHED = "not reached";
@@ -685,6 +685,11 @@ h3 small{font-weight:400;margin-right:1ch}
 table{border-collapse:collapse;margin-top:4px}
 th{text-align:left;color:var(--muted);font-weight:400;padding:0 3ch 0 0;white-space:nowrap}
 td{padding:0 3ch 0 0;vertical-align:top}
+.tests{grid-template-columns:minmax(0,1fr)}
+.tests h2{margin-bottom:2px}
+.tests th,.tests td{padding-right:1.5ch}
+.tests th:last-child,.tests td:last-child{padding-right:0}
+.tests td:first-child{white-space:nowrap}
 .looped p{margin-top:6px}
 .looped p strong{color:var(--amber);margin-right:1ch}
 @media (max-width:600px){body{padding:28px 16px 48px}section{grid-template-columns:minmax(0,1fr)}h2{margin-bottom:2px}.glance p{grid-template-columns:17ch minmax(0,1fr);column-gap:1ch}td,th{padding-right:2ch}}`;

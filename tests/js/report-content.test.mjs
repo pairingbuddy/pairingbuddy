@@ -967,3 +967,14 @@ test("report-review-round-with-no-findings-reads-on-one-line", () => {
 
   assert.match(review, /<p>safety-net review · no issues found<\/p>/, `the round and its verdict share a line: ${review}`);
 });
+
+// The TESTS cards take the row's whole width under their label, and a step name never wraps (watched run: "REFACTOR: tidying
+// the tests" broke over three lines in a squeezed column at 1280px).
+test("tests-cards-give-the-step-and-result-columns-room", async () => {
+  const html = renderReport(await recordedReportInput("probe-2", { outcome: "stopped" }));
+  const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+
+  assert.match(html, /<section class="tests">\n<h2>TESTS<\/h2>/, "the TESTS section is marked so its cards can be laid out");
+  assert.match(css, /\.tests\{grid-template-columns:minmax\(0,1fr\)\}/, "its cards sit under the label, not beside it");
+  assert.match(css, /\.tests td:first-child\{white-space:nowrap\}/, "a step name stays on one line");
+});
