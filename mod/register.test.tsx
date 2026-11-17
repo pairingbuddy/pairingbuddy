@@ -46,17 +46,18 @@ test('pb-command-opens-pane-with-focus: running the pb command calls ui.open onc
   expect(calls.opened[0].holdToasts, 'the pane holds no toasts').toBeUndefined()
 })
 
-test('pb-reopens-pane-with-focus', async ($, on) => {
+test('a second /pb closes the open pane, and a third opens it again', async ($, on) => {
   const { calls } = engine(on)
   await start($)
   await $.command.run({ command: 'pb', args: '' })
 
-  const result: any = await $.command.run({ command: 'pb', args: '' })
+  const closed: any = await $.command.run({ command: 'pb', args: '' })
+  const reopened: any = await $.command.run({ command: 'pb', args: '' })
 
-  expect(calls.opened.length, 'the second pb opens the pane again').toBe(2)
-  expect(calls.opened[1].id, 'it opens the pairingbuddy pane').toBe(PANE_ID)
-  expect(calls.opened[1].focus, 'the pane takes the keys again, the documented recovery').toBe(true)
-  expect(result.text.trim().length, 'the answer text is still given').toBeGreaterThan(0)
+  expect(calls.closed.map(close => close.id), 'the second /pb closes the pane it opened').toEqual([PANE_ID])
+  expect(closed.text, 'and says so').toBe('Pairing Buddy pane closed')
+  expect(calls.opened.length, 'the third /pb opens it again').toBe(2)
+  expect(reopened.text, 'and says so').toBe('Pairing Buddy pane opened')
 })
 
 test('tool-call-hook-records-calls-and-passes-through', () => {

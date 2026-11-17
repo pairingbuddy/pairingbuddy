@@ -1,48 +1,15 @@
-// Scenario open-report-button: the pane's 'r open report' button writes the report and opens it.
+// Scenario open-report: /pb-report writes the report and opens it.
 // Runs under `claude plugin test .` with recorded fs.write and process.run.
 import { expect, mock, test } from 'claude-code/testing'
 import { engine, start, ROOT, SNAPSHOT_RUNNING } from './testing/band'
 import { commitsArgv, REPORTS_DIR } from './report'
 import { POLL_MS } from './poll'
-import { PANE } from './testing/replay'
-import { recordReportCalls, REPORT_COMMAND_HINT, REPORT_KEY, REPORT_LABEL, REPORT_SLUG, paneTexts, pressReportButton, reportButton, reportConfirmation, reportOpenFailure, reportRenderFailure, reportWriteFailure, REPORT_OPENED, writtenFileName } from './testing/report'
-
-test('pane-shows-open-report-button', async ($, on) => {
-  engine(on)
-  mock.clock(on, { now: 0 })
-  await start($)
-
-  const withLedger = await reportButton($)
-
-  expect(withLedger?.text, 'while a ledger is live the pane holds the open-report button').toBe(REPORT_LABEL)
-})
-
-test('pane-names-pb-report-beside-the-button-as-the-way-without-focus', async ($, on) => {
-  engine(on)
-  mock.clock(on, { now: 0 })
-  await start($)
-
-  const drawn = await paneTexts($)
-
-  expect(drawn, 'beside the button, the pane names the command that works without its focus').toContain(REPORT_COMMAND_HINT)
-})
-
-test('pane-has-no-open-report-button-before-any-ledger-is-polled', async ($, on) => {
-  const { serve } = engine(on)
-  serve(null)
-  const clock = mock.clock(on, { now: 0 })
-  await start($)
-  await clock.advance(POLL_MS)
-
-  const noLedgerYet = await reportButton($)
-
-  expect(noLedgerYet, 'with no ledger polled in the session the pane holds no open-report button').toBeUndefined()
-})
+import { recordReportCalls, runPbReport, REPORT_SLUG, paneTexts, runReportCommand, reportConfirmation, reportOpenFailure, reportRenderFailure, reportWriteFailure, REPORT_OPENED, writtenFileName } from './testing/report'
 
 test('open-report-writes-html-under-reports-dir', async ($, on) => {
   const day = '2026-11-03'
 
-  const { writes } = await pressReportButton($, on, { now: Date.parse(`${day}T06:40:00Z`) })
+  const { writes } = await runReportCommand($, on, { now: Date.parse(`${day}T06:40:00Z`) })
 
   const [written] = writes
   expect(writes.length, 'pressing the button writes exactly one file').toBe(1)
@@ -55,7 +22,7 @@ test('open-report-writes-html-under-reports-dir', async ($, on) => {
 })
 
 test('open-report-opens-written-file', async ($, on) => {
-  const { writes, calls } = await pressReportButton($, on)
+  const { writes, calls } = await runReportCommand($, on)
 
   expect(writes.length, 'the report was written before it can be opened').toBe(1)
   const [{ path }] = writes
@@ -68,7 +35,7 @@ test('open-report-opens-written-file', async ($, on) => {
 })
 
 test('open-report-confirms-in-pane', async ($, on) => {
-  const { writes } = await pressReportButton($, on)
+  const { writes } = await runReportCommand($, on)
   const fileName = writtenFileName(writes, 'the press wrote no report, so there is no file name to confirm')
 
   const drawn = await paneTexts($)
@@ -77,7 +44,7 @@ test('open-report-confirms-in-pane', async ($, on) => {
 })
 
 test('open-report-failure-shown-not-thrown: the write rejects', async ($, on) => {
-  const { calls } = await pressReportButton($, on, { failWrite: true })
+  const { calls } = await runReportCommand($, on, { failWrite: true })
 
   const drawn = await paneTexts($)
 
@@ -90,7 +57,7 @@ test('open-report-failure-shown-not-thrown: the report cannot be built', async (
   // The mod reads the ledger unchecked: a doubt that is not an object cannot be drawn.
   const ledger = { ...SNAPSHOT_RUNNING, needsHuman: { gate: 'G:task-end', reason: 'open doubts', seq: 3, doubts: [null] } }
 
-  const { writes } = await pressReportButton($, on, { ledger })
+  const { writes } = await runReportCommand($, on, { ledger })
 
   const drawn = await paneTexts($)
   expect(writes, 'nothing is written when the report cannot be built').toEqual([])
@@ -99,7 +66,7 @@ test('open-report-failure-shown-not-thrown: the report cannot be built', async (
 })
 
 test('open-report-failure-shown-not-thrown: the open rejects', async ($, on) => {
-  const { writes, calls } = await pressReportButton($, on, { failRun: true })
+  const { writes, calls } = await runReportCommand($, on, { failRun: true })
   const fileName = writtenFileName(writes, 'the report was written before the open failed')
 
   const drawn = await paneTexts($)
@@ -110,7 +77,7 @@ test('open-report-failure-shown-not-thrown: the open rejects', async ($, on) => 
 })
 
 test('open-report-failure-shown-not-thrown: the open exits non-zero', async ($, on) => {
-  const { writes } = await pressReportButton($, on, { exitCode: 1 })
+  const { writes } = await runReportCommand($, on, { exitCode: 1 })
   const fileName = writtenFileName(writes, 'the report was written before the open failed')
 
   const drawn = await paneTexts($)
@@ -123,7 +90,7 @@ test('open-report-writes-only-the-report', async ($, on) => {
   const shas = ['a1b2c3d', 'e4f5a6b']
   const ledger = { ...SNAPSHOT_RUNNING, commits: shas }
 
-  const { writes, touched, files } = await pressReportButton($, on, { ledger })
+  const { writes, touched, files } = await runReportCommand($, on, { ledger })
 
   const [{ path }] = writes
   expect([...files.keys()], 'the one write is applied, to a file in the reports folder').toEqual([path])
@@ -134,7 +101,7 @@ test('open-report-writes-only-the-report', async ($, on) => {
 // Chosen rule: the note is shown only while a ledger exists. The other rule (a new run, a different runId) needs two runIds,
 // and no fixture or snapshot carries a top-level runId, so it would mean inventing values.
 test('report-note-shown-only-while-ledger-exists', async ($, on) => {
-  const { writes, serve, clock } = await pressReportButton($, on)
+  const { writes, serve, clock } = await runReportCommand($, on)
   const fileName = writtenFileName(writes, 'the press wrote the report, so a note is shown')
   const whileLedger = await paneTexts($)
   serve(null)
@@ -159,9 +126,7 @@ test('pressing the report button after the live ledger is gone writes a report n
   serve(null)
   await clock.advance(POLL_MS)
 
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: REPORT_KEY })
-  await pane.unmount()
+  await runPbReport($)
 
   const fileName = writtenFileName(recorder.writes, 'the press writes one report although the live ledger is gone')
   expect(fileName, 'the file name carries the last run slug').toContain(REPORT_SLUG)
@@ -183,9 +148,7 @@ test('report-from-snapshot-ignores-stale-legacy-tests', async ($, on) => {
   serve(null)
   await clock.advance(POLL_MS)
 
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: REPORT_KEY })
-  await pane.unmount()
+  await runPbReport($)
 
   writtenFileName(recorder.writes, 'the press writes one report')
   const html = recorder.writes[0].text.match(/<h2>TESTS<\/h2>[\s\S]*?<\/section>/)?.[0] ?? ''
@@ -207,9 +170,7 @@ test('report-keeps-the-full-claim-the-pane-shows-the-title-of', async ($, on) =>
   await $.tool.call({ tool: 'StructuredOutput', tool_use_id: 'tu1', pb_key: 'code-safety-net.lens.code.r1.a1', findings: [{ title: 'Rounds half down', claim, where: 'discount.py:3' }], agentId: lens.agentId })
   await clock.advance(POLL_MS)
 
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: REPORT_KEY })
-  await pane.unmount()
+  await runPbReport($)
 
   writtenFileName(recorder.writes, 'the press writes one report')
   const html = recorder.writes[0].text.match(/<h2>REVIEW<\/h2>[\s\S]*?<\/section>/)?.[0] ?? ''

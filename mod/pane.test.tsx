@@ -1,11 +1,10 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { BAND, bandTexts, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, bandRowTexts, texts, type Served } from './testing/band'
-import { PANE, dismissPane, paneLines, paneTexts } from './testing/replay'
+import { PANE, paneLines, paneTexts } from './testing/replay'
 import { PANE_ID } from './pane-open'
 import { ACCENT_COLOUR } from './pane'
 import { POLL_MS } from './poll'
-import { REPORT_LABEL, reportButton } from './testing/report'
 
 const IDLE = 'Pairing Buddy · idle · /pb details · /pb-report report'
 
@@ -38,13 +37,22 @@ test('the mod registers /pb at session start, and running it opens the same pane
   expect(calls.opened[0].closeOnEscape, '/pb opens it closeable by esc too').toBe(true)
 })
 
-test('the dismiss button closes the pane by its id', async ($, on) => {
-  const { calls } = engine(on)
+// Nobody reaches a pane button (ctrl+x tab, then tab and enter): /pb closes the pane and /pb-report writes the report.
+test('the pane draws no button, in any state', async ($, on) => {
+  const { serve } = engine(on)
+  const clock = mock.clock(on, { now: 0 })
   await start($)
+  const buttons: Record<string, unknown[]> = {}
 
-  await dismissPane($)
+  for (const [state, ledger] of [['running', SNAPSHOT_RUNNING], ['between steps', SNAPSHOT_NO_STAGE], ['ended', null]] as const) {
+    serve(ledger)
+    await clock.advance(POLL_MS)
+    const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+    buttons[state] = await pane.findAll({ type: 'Button' })
+    await pane.unmount()
+  }
 
-  expect(calls.closed.map(close => close.id), 'the dismiss button closes the pane').toEqual([PANE_ID])
+  expect(buttons, 'no state of the pane draws a button').toEqual({ running: [], 'between steps': [], ended: [] })
 })
 
 test('the band\'s width budget fits its segments beside the [-] control', async ($, on) => {
@@ -134,7 +142,7 @@ test("with no ledger the pane lists no step lines, neither the config change ste
   }
   expect(shown.some(text => /^[▸✓○] /.test(text)), `no step marker line in ${JSON.stringify(shown)}`).toBe(false)
 })
-test("after a poll saw a ledger and then the task file is gone, the pane shows the last run as finished with the open report button", async ($, on) => {
+test("after a poll saw a ledger and then the task file is gone, the pane shows the last run as finished", async ($, on) => {
   const clock = mock.clock(on, { now: 0 })
   const { serve } = engine(on)
   await start($)
@@ -142,21 +150,17 @@ test("after a poll saw a ledger and then the task file is gone, the pane shows t
   await clock.advance(POLL_MS)
 
   const shown = await paneTexts($)
-  const button = await reportButton($)
 
   expect(shown.some(text => /^[✓○] /.test(text) && text.includes(plainName('code-scenarios'))), `the last run's steps stay: ${JSON.stringify(shown)}`).toBe(true)
   expect(shown.some(text => text.startsWith('▸ ')), `no step is marked as running in ${JSON.stringify(shown)}`).toBe(false)
-  expect(button?.text, 'the report button is still on the pane').toBe(REPORT_LABEL)
 })
-test("before any ledger was polled and with no live ledger the pane shows no steps and no report button", async ($, on) => {
+test("before any ledger was polled and with no live ledger the pane shows no steps", async ($, on) => {
   // A ledger is on disk, but no poll has read it: the render must not read it, nor invent a snapshot.
   engine(on)
 
   const shown = await paneTexts($)
-  const button = await reportButton($)
 
   expect(shown.some(text => /^[▸✓○] /.test(text)), `no step line in ${JSON.stringify(shown)}`).toBe(false)
-  expect(button, 'no report button before the first poll').toBeUndefined()
 })
 
 test('pane-step-lines-use-marks-and-light-only-the-current-one: the current step is bold in the accent colour, no other step line is coloured', async ($, on) => {

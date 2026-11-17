@@ -1,9 +1,9 @@
 // Scenario open-on-run-start (seventh watched run): a run with no question showed only the band until the done alert, so the
-// pane opens by itself when a run starts, once per run, without the keyboard, and never again for that run once dismissed.
+// pane opens by itself when a run starts, once per run, without the keyboard, and never again for that run once closed.
 import { expect, mock, test } from 'claude-code/testing'
 import { SNAPSHOT_RUNNING, start } from './testing/band'
 import { alertEngine, needingHuman } from './testing/alert'
-import { dismissPane } from './testing/replay'
+import { closeWithPb } from './testing/replay'
 import { PANE_ID } from './pane-open'
 import { POLL_MS } from './poll'
 
@@ -31,18 +31,18 @@ test('it-opens-once-per-run-and-again-for-the-next-run', async ($, on) => {
   expect(run.calls.opened.length, 'the next run opens the pane once more').toBe(2)
 })
 
-test('a-pane-dismissed-for-a-run-never-opens-again-for-it-also-after-a-reload', async ($, on) => {
+test('a-pane-closed-for-a-run-never-opens-again-for-it-also-after-a-reload', async ($, on) => {
   const clock = mock.clock(on, { now: 0 })
   const run = alertEngine(on, { ledger: SNAPSHOT_RUNNING, startOpened: false })
   await start($)
 
-  await dismissPane($)
+  await closeWithPb($)
   for (let poll = 0; poll < 3; poll++) await clock.advance(POLL_MS)
   // A new session (or a reload of the mod) sees the same run.
   await start($)
   for (let poll = 0; poll < 3; poll++) await clock.advance(POLL_MS)
 
-  expect(run.calls.closed.map(close => close.id), 'the human dismissed the pane').toEqual([PANE_ID])
+  expect(run.calls.closed.map(close => close.id), 'the human closed the pane with /pb').toEqual([PANE_ID])
   expect(run.calls.opened.length, 'the run start opened it once, and nothing opened it again').toBe(1)
 })
 
@@ -75,7 +75,7 @@ test('a-run-first-seen-with-a-question-opens-the-pane-once-for-the-alert', async
   expect(run.calls.opened.length, 'one open, not one for the start and one for the alert').toBe(1)
 })
 
-test('a-store-that-fails-opens-nothing-so-a-dismissal-is-never-undone', async ($, on) => {
+test('a-store-that-fails-opens-nothing-so-a-close-is-never-undone', async ($, on) => {
   const clock = mock.clock(on, { now: 0 })
   const run = alertEngine(on, { ledger: SNAPSHOT_RUNNING, startOpened: false, store: { get: 'reject' } })
   await start($)

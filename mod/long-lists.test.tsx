@@ -1,7 +1,7 @@
 // Scenario long-lists: a big task keeps the pane readable (docs/design/progress-mod/DIRECTION.md, "Long lists").
 import { expect, test } from 'claude-code/testing'
-import { PANE, paneLines, setupReplay, type Rig } from './testing/replay'
-import { recordReportCalls, REPORT_KEY } from './testing/report'
+import { paneLines, setupReplay, type Rig } from './testing/replay'
+import { recordReportCalls, runPbReport } from './testing/report'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
 
@@ -45,9 +45,7 @@ const scenarioReturn = (scenarios: { description: string; tests: string[] }[], p
 })
 
 async function pressReport($: any) {
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: REPORT_KEY })
-  await pane.unmount()
+  await runPbReport($)
 }
 
 const sectionOf = (html: string, name: string) => html.match(new RegExp(`<h2>${name}</h2>[\\s\\S]*?</section>`))?.[0] ?? ''

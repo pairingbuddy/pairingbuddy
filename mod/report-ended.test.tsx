@@ -1,10 +1,10 @@
-// Scenario report-of-an-ended-run: once the run's ledger is gone, 'r open report' still writes the report from the last polled ledger and opens it.
+// Scenario report-of-an-ended-run: once the run's ledger is gone, /pb-report still writes the report from the last polled ledger and opens it.
 // Runs under `claude plugin test .` with recorded fs.write and process.run.
 import { expect, test } from 'claude-code/testing'
 import { PANE, setupReplay, type Rig } from './testing/replay'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
-import { recordReportCalls, REPORT_KEY, reportConfirmation, writtenFileName } from './testing/report'
+import { recordReportCalls, runPbReport, reportConfirmation, writtenFileName } from './testing/report'
 
 const UNIT = '.pairingbuddy/run/unit.json'
 const CHANGED = '.pairingbuddy/run/changed.json'
@@ -74,8 +74,8 @@ test('report-of-an-ended-run-is-written-and-opened', async ($, on) => {
   serve(rig, { [CHANGED]: changed, '.pairingbuddy/run/corpus.json': '{}', '.pairingbuddy/run/subject.diff': '' })
   await rig.clock.advance(POLL_MS * 2)
 
+  await runPbReport($)
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: REPORT_KEY })
   const drawn = (await pane.findAll({ type: 'Text' })).map((node: any) => node.text as string)
   await pane.unmount()
 
@@ -98,9 +98,7 @@ test('report-times-each-try-from-its-agents-turns', async ($, on) => {
   await finish($, runner.agentId, 7)
   await rig.clock.advance(POLL_MS * 2)
 
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: REPORT_KEY })
-  await pane.unmount()
+  await runPbReport($)
 
   const html = recorder.writes[0]?.text ?? ''
   expect(html, 'the RED try is timed from its writer and runner turns, with its result').toContain('<td>RED</td><td>1</td><td>0:48</td><td>0:41</td><td>0:07</td><td>failed, as it should (exit 1)</td>')
@@ -136,9 +134,7 @@ test('report-of-an-ended-task-describes-both-runs', async ($, on) => {
   serve(rig, { [CHANGED]: changed, ...keptFiles })
   await rig.clock.advance(POLL_MS * 2)
 
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: REPORT_KEY })
-  await pane.unmount()
+  await runPbReport($)
 
   const [written] = recorder.writes
   const html = written?.text ?? ''

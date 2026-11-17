@@ -15,9 +15,6 @@ export const PHASE_COLOURS: Record<string, string> = { RED: '#e5534b', GREEN: '#
 export const ACCENT_COLOUR = '#39c5cf'
 const LIT: Props = { color: ACCENT_COLOUR, bold: true }
 
-// Beside the report button: the command that needs no pane focus (the classic renderer has no mouse).
-const REPORT_COMMAND = 'or /pb-report, no focus needed'
-
 export type Suggestion = { state: 'pending'; nextAgent?: string } | { state: 'delivered'; to: string }
 
 type Props = Record<string, unknown>
@@ -148,14 +145,12 @@ function paneRows(view: View, columns: number) {
   ]
 }
 
-export function Pane({ Box, Text, Button, Input, view, columns = 0, unknownLabels, note = null, suggestion, onDismiss, onReport = () => {}, onSuggest = () => {} }: PaneTags & {
+export function Pane({ Box, Text, Input, view, columns = 0, unknownLabels, note = null, suggestion, onSuggest = () => {} }: PaneTags & {
   view: View
   columns?: number
   unknownLabels: string[]
   note?: string | null
   suggestion?: Suggestion
-  onDismiss: () => unknown
-  onReport?: () => unknown
   onSuggest?: (text: string) => unknown
 }) {
   const { ledger, ended = false } = view
@@ -180,18 +175,7 @@ export function Pane({ Box, Text, Button, Input, view, columns = 0, unknownLabel
       {note && <Text>{note}</Text>}
       {suggestion?.state === 'pending' && <Text>{`applies at the next agent spawn: ${suggestion.nextAgent ? (plainName(suggestion.nextAgent) ?? suggestion.nextAgent) : 'the next agent'}`}</Text>}
       {suggestion?.state === 'delivered' && <Text>{`delivered to ${plainName(suggestion.to) ?? suggestion.to}`}</Text>}
-      {ledger && (
-        <>
-          {/* r works while the pane has focus; /pb-report writes the same report from the prompt, also mid-turn. */}
-          <Box key="report-row">
-            <Button key="report" label="r open report" hotkey="r" onPress={onReport} />
-            <Text key="report-gap">  </Text>
-            <Text key="report-command" dimColor wrap="truncate-end">{REPORT_COMMAND}</Text>
-          </Box>
-          {!ended && <Input key="suggest" label="suggest" placeholder="a note for the next agent" onSubmit={onSuggest} />}
-        </>
-      )}
-      <Button key="dismiss" label="dismiss" role="dismiss" onPress={onDismiss} />
+      {ledger && !ended && <Input key="suggest" label="suggest" placeholder="a note for the next agent" onSubmit={onSuggest} />}
     </Box>
   )
 }

@@ -137,22 +137,6 @@ test('suggest-input-claims-no-hotkey', async ($, on) => {
   expect(input.props?.label, 'the label names no key, as nothing binds one').toMatch(/^suggest\b/)
 })
 
-test('button-key-letter-labels-carry-that-hotkey', async ($, on) => {
-  const { serve } = engine(on)
-  const clock = mock.clock(on, { now: 0 })
-  await start($)
-  serve(SNAPSHOT_RUNNING)
-  await clock.advance(POLL_MS)
-
-  const buttons = [await findOnPane($, { type: 'Button', key: 'report' }), await findOnPane($, { type: 'Button', key: 'dismiss' })]
-
-  const keyed = buttons.filter(button => /^\S\s/.test(button?.props?.label ?? ''))
-  expect(keyed.length, 'at least the report button leads with a key letter').toBeGreaterThan(0)
-  for (const button of keyed) {
-    expect(button.props.hotkey, `the button "${button.props.label}" carries its leading letter as hotkey`).toBe(button.props.label[0])
-  }
-})
-
 test('empty-suggest-input-says-what-it-is-for', async ($, on) => {
   engine(on)
   await start($)

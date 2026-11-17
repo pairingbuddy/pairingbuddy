@@ -277,9 +277,7 @@ export async function paneLines($: any, props: Record<string, unknown> = {}): Pr
   return boxes.filter(box => (box.children ?? []).length > 0 && box.children.every((child: any) => child?.type === 'Text')).map(textOf)
 }
 
-// The human closes the pane: mount it on the terminal surface, press its dismiss button, unmount.
-export async function dismissPane($: any) {
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: 'dismiss' })
-  await pane.unmount()
+// The human closes the pane the way they can: /pb while it is shown.
+export async function closeWithPb($: any) {
+  await $.command.run({ command: 'pb', args: '' })
 }

@@ -61,8 +61,8 @@ export function startOpenedKey(root: string) {
 }
 
 // Opens the pane, without the keyboard, once per run when the run is first seen, so a run with no question is not watched
-// through the band alone. The run is recorded before the open, so a dismissed pane is never opened again for it (also after
-// a reload); a store that fails opens nothing, as reopening every poll would undo a dismissal. A standing stop or question is
+// through the band alone. The run is recorded before the open, so a pane closed (with /pb or esc) is never opened again for it (also after
+// a reload); a store that fails opens nothing, as reopening every poll would undo that close. A standing stop or question is
 // left to the alert, which opens it. Never throws.
 export async function openOnRunStart($: EngineInterface, ledger: Ledger | null) {
   if (!ledger || typeof ledger !== 'object' || Array.isArray(ledger)) return
