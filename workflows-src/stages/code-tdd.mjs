@@ -207,10 +207,13 @@ const TEST_FOCUSES = ['test-quality', 'test-level'];
 
 // Each fixer's change is one fix group, and the CLI commits it only while every test the task has closed still passes.
 // A side with no findings spawns no fixer.
+// The tidy is the cycle's: an older test or line is the task's history, and only a finding that points at it opens it.
+const CYCLE_SCOPE = 'Change only what this cycle wrote: the test named in <test_id> and the lines its RED and GREEN steps added or changed, which subject_diff shows. Leave every other test and every older line as it is, even in the same file, unless a finding\'s where points at that very test or line. When a finding is about the new lines not fitting older ones, change the new lines to match the older ones.';
+
 async function fixFindings({ role, schema, instruction }, findings, id, testsPath) {
   if (findings.length === 0) return;
   const cycle = { tddPhase: 'REFACTOR', item: id };
-  await untilAccepted({ ...cycle, role, schema, instruction: `${instruction}\n<findings>\n${asPromptData(findings)}\n</findings>`, paths: { tests: testsPath, ...SHARED_PATHS }, step: 'refactor' });
+  await untilAccepted({ ...cycle, role, schema, instruction: `${instruction} ${CYCLE_SCOPE}\n<findings>\n${asPromptData(findings)}\n</findings>`, paths: { tests: testsPath, subject_diff: `${RUN_DIR}/${SUBJECT_DIFF_FILE}`, ...SHARED_PATHS }, step: 'refactor' });
 }
 
 // A review with no findings array covers nothing, so it runs again at the next round, as a lost agent does.
