@@ -39,6 +39,43 @@ const unitKeyOf = (runDir) => {
   return typeof unit?.branch === "string" ? `${unit.branch} ${unit.baseSha}` : null;
 };
 
+// How many ended tasks keep their runs under reports/runs/: older tasks' runs are removed when a run is kept.
+export const MAX_KEPT_TASKS = 20;
+
+const keptRecords = (runsDir) =>
+  readdirSync(runsDir)
+    .map((runId) => ({ runId, kept: jsonOf(join(runsDir, runId, "kept.json")) }))
+    .filter(({ kept }) => kept !== null);
+
+const endedAtOf = ({ kept }) => {
+  const at = Date.parse(kept.endedAt);
+  return Number.isFinite(at) ? at : -Infinity;
+};
+
+// A run with no unit is a task of its own.
+const taskOf = ({ runId, kept }) => kept.unit ?? `run ${runId}`;
+
+// The kept runs as tasks: the runs that name one unit are one task, dated by its last run; newest first.
+function keptTasks(runsDir) {
+  const tasks = new Map();
+  for (const record of keptRecords(runsDir)) {
+    const task = taskOf(record);
+    const seen = tasks.get(task) ?? { task, runIds: [], endedAt: -Infinity };
+    tasks.set(task, { task, runIds: [...seen.runIds, record.runId], endedAt: Math.max(seen.endedAt, endedAtOf(record)) });
+  }
+  return [...tasks.values()].sort((a, b) => b.endedAt - a.endedAt);
+}
+
+// The task of the run just kept counts first, so it is never the one removed.
+function pruneKeptRuns(runsDir, keptRunId) {
+  const own = taskOf({ runId: keptRunId, kept: jsonOf(join(runsDir, keptRunId, "kept.json")) });
+  const tasks = keptTasks(runsDir);
+  const ordered = [...tasks.filter(({ task }) => task === own), ...tasks.filter(({ task }) => task !== own)];
+  for (const { runIds } of ordered.slice(MAX_KEPT_TASKS)) {
+    for (const runId of runIds) rmSync(join(runsDir, runId), { recursive: true, force: true });
+  }
+}
+
 // Copies run/task (its ledger and returns) to reports/runs/<runId>/ before the run goes, with kept.json naming its unit and
 // what `extra` adds (the pull request a publish opened). Called while unit.json is still there. Best effort: the copy is
 // only for the report, so a failed one never stops a run from ending.
@@ -50,6 +87,7 @@ export function keepRun(runDir, extra = {}) {
   try {
     cpSync(taskDir, kept, { recursive: true });
     writeFileSync(join(kept, "kept.json"), JSON.stringify({ unit: unitKeyOf(runDir), endedAt: new Date().toISOString(), ...extra }));
+    pruneKeptRuns(join(kept, ".."), runId);
   } catch {
     // The run still ends; its report shows less.
   }
