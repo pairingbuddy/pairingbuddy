@@ -7,7 +7,7 @@ import { gateLine, glance, plural, runStart, stopName, testLabels, currentStep, 
 import { readLabel } from "./labels.mjs";
 import { stageNamesFor } from "./stage-graph.mjs";
 import contract from "./stages-contract.mjs";
-import { FINDING_WORDS, findingGist, lensRound } from "./lens-round.mjs";
+import { FINDING_WORDS, distinctFindings, findingGist, lensRound } from "./lens-round.mjs";
 import { parseKey } from "./keys.mjs";
 import { lensOfFinding } from "./lens-merge.mjs";
 import { taskEnded, taskSpend, taskWaited } from "./task-runs.mjs";
@@ -183,7 +183,7 @@ function stepCell({ step, role }) {
   return `${REFACTOR}: ${plainName(role === REVIEW_ROLE ? "light-review" : role) ?? role}`;
 }
 
-// What a REFACTOR try did: the quick review's count of findings from its return, a tidy's checkpoint (it commits only while
+// What a REFACTOR try did: the quick review's count of distinct findings from its return, a tidy's checkpoint (it commits only while
 // every closed test still passes); unknown without the record.
 function refactorResult(attempt, checkpoint, calls) {
   if (attempt.role === REVIEW_ROLE) {
@@ -193,7 +193,8 @@ function refactorResult(attempt, checkpoint, calls) {
     });
     const findings = own.at(-1)?.input?.findings;
     if (!Array.isArray(findings)) return UNKNOWN;
-    return findings.length === 0 ? "no findings" : plural(findings.length, "finding");
+    const distinct = distinctFindings(findings.filter((finding) => finding !== null && typeof finding === "object"));
+    return distinct.length === 0 ? "no findings" : plural(distinct.length, "finding");
   }
   if (!checkpoint) return UNKNOWN;
   return checkpoint.committed === true ? "tidied, the tests still pass" : "nothing to change";

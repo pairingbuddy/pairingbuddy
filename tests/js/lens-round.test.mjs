@@ -816,6 +816,18 @@ test("a-quick-review-finding-reads-fixing-then-fixed-by-its-sides-fixer-and-left
   assert.deepEqual(wordsOf(movedOn), ["fixed · weak assert", "left as is · long function", "left as is · odd name"], "once the next test starts, the cycle's review has ended");
 });
 
+test("a-quick-review-finding-said-twice-for-the-same-place-shows-once", () => {
+  const stage = "code-tdd";
+  const spawns = [{ kind: "workflow_agent", name: buildLabel({ stage, phase: "REFACTOR", role: "lens", item: "t1", round: 1 }) }];
+  const unused = { where: "a.test.mjs:3", title: "Unused import" };
+  const calls = [callFor({ stage, item: "t1", findings: [{ ...unused, claim: "json is imported and never used.", focus: "test-quality" }, { ...unused, claim: "The json import is unused.", focus: "code-smell" }, { where: "a.test.mjs:9", title: "Unused import", claim: "os is unused.", focus: "code-smell" }] })];
+
+  const round = lensRound({ ledger: ledgerFor({ stage }), calls, spawns, contract });
+
+  assert.deepEqual(round.findings.map(({ where, title }) => `${title} · ${where}`), ["Unused import · a.test.mjs:3", "Unused import · a.test.mjs:9"], "the same gist at the same place shows once; another place is another finding");
+  assert.equal(round.counts.found, 2, "the count is of distinct findings");
+});
+
 // scenario review-row: the REVIEW row is one line of lenses with their counts, one summary line, then one line per finding
 test("review-lines-are-the-lenses-the-summary-and-the-findings-only", () => {
   const rollbacks = [rollbackAt({ item: "g1", round: 2, kind: "red" })];

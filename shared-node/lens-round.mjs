@@ -228,6 +228,22 @@ function answeredByFixers(findings, labels, item) {
   });
 }
 
+// What makes two findings the same: where they are and their gist, with case and spacing ignored.
+const sameness = (text) => String(text ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+const findingIdentity = (finding) => `${sameness(finding.where)}\u0000${sameness(findingGist(finding))}`;
+
+// A quick review may say one finding twice (once as a test issue, once as a code issue, or in two rounds of one test):
+// it shows once, as it was first said.
+export function distinctFindings(findings) {
+  const seen = new Set();
+  return findings.filter((finding) => {
+    const identity = findingIdentity(finding);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
+
 // A light review has ended once a later agent in the stage works on another test.
 function movedOn(labels, item) {
   const last = labels.findLastIndex((label) => label.role === "lens" && label.item === item);
@@ -280,7 +296,8 @@ export function lensRound({ ledger, calls: allCalls = [], spawns: allSpawns = []
   const labels = stageLabels(spawns, stage);
   const ended = runEnded || current.status !== "active" || (light !== null && movedOn(labels, light.item));
   const answered = answeredByFixes(lensFindings(returned, refuterVerdicts(sources)), fixes);
-  const findings = (light ? answeredByFixers(answered, labels, light.item) : answered).map((finding) => ({ ...finding, word: findingWord(finding.verdict, ended) }));
+  const shown = light ? distinctFindings(answeredByFixers(answered, labels, light.item)) : answered;
+  const findings = shown.map((finding) => ({ ...finding, word: findingWord(finding.verdict, ended) }));
   return {
     stage: shownName(stage),
     lenses: lensStates(spawned, returned, nameOf),
