@@ -619,7 +619,7 @@ describe("needs-human output", () => {
 
     const { question } = gateEval(repo);
 
-    assert.equal(question.question, "Auto mode is off, so this asks you.\nIs the task done?");
+    assert.equal(question.question, "Is the task done?");
     assert.equal(question.header, "Task done");
     assert.deepEqual(question.options.map(({ label }) => label), ANSWERS);
     assert.equal(question.multiSelect, false);
@@ -632,7 +632,7 @@ describe("needs-human output", () => {
 
     const { question } = gateEval(repo);
 
-    assert.equal(question.question, "Goal: Set x to 2.\nBuilt: config.toml.\nAuto mode is off, so this asks you.\nIs the task done?");
+    assert.equal(question.question, "Goal: Set x to 2.\nBuilt: config.toml.\nIs the task done?");
     assert.deepEqual(repo.ledger().needsHuman.question, question);
   });
 

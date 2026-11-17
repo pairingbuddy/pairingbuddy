@@ -8,7 +8,7 @@ import type { CodeRun } from './inputs'
 
 export const POLL_MS = 1000
 const INPUTS = { plugin: 'pairingbuddy', key: 'inputs' } as const
-// Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The same key is written in four copies, PANE_NOTE in ./poll, ./report and ./suggest and noteAtom in register.tsx; keep all four in step.
+// Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The same key is written in three copies, PANE_NOTE in ./poll and ./report and noteAtom in register.tsx; keep all three in step.
 const PANE_NOTE = { plugin: 'pairingbuddy', key: 'pane-note' } as const
 
 // Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The last-run snapshot key is written in two copies, LAST_RUN in ./poll and lastRunAtom in register.tsx, and read from a third, LAST_RUN in ./report; keep all three in step.

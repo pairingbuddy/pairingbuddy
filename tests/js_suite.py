@@ -122,6 +122,7 @@ JS_TEST_FILES = [
     "tests/js/report-whole-task.test.mjs",
     "tests/js/report-human.test.mjs",
     "tests/js/reports-kept.test.mjs",
+    "tests/js/kept-runs-prune.test.mjs",
     "tests/js/task-runs.test.mjs",
     "tests/js/run-hooks.test.mjs",
     "tests/js/run-recorder.test.mjs",

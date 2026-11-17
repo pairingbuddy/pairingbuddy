@@ -13,7 +13,7 @@ import { graphFor } from "../../shared-node/stage-graph.mjs";
 import { plainName } from "../../shared-node/plain-names.mjs";
 import { renderReport } from "../../shared-node/report.mjs";
 import { glance } from "../../shared-node/glance.mjs";
-import { RECORDED_STOP, recordedReportInput, headerOf, sectionOf, spentOf, cardsOf, rowsOf, noteOf } from "./report-fixture.mjs";
+import { RECORDED_STOP, recordedReportInput, headerOf, sectionOf, spentOf, cardsOf, rowsOf, noteOf, textOf } from "./report-fixture.mjs";
 
 describe("report-content", () => {
   // The task type and the time are how it ran: AT A GLANCE holds them, the header only the task and where it is.
@@ -23,12 +23,18 @@ describe("report-content", () => {
     const done = headerOf(renderReport(await recordedReportInput("probe-2", { outcome: "done" })));
 
     assert.ok(stopped.includes("Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it should return 90"), "the header shows the task text");
-    assert.ok(stopped.includes("STOPPED"), "a stopped run carries the STOPPED badge");
+    assert.equal(textOf(sectionOf(stopped, "STATUS")), "STATUS ✕ STOPPED · a step kept failing", "a stopped run says so and why, as the pane does");
     assert.ok(!stopped.includes("DONE"), "a stopped run does not say DONE");
     assert.match(sectionOf(stoppedHtml, "AT A GLANCE"), /<strong>Task type<\/strong> bug fix/, "how it ran names the task type in plain words");
     assert.ok(spentOf(stoppedHtml).includes("2:36"), "how it ran shows the elapsed time from the recording (156s)");
-    assert.ok(done.includes("WAITING ON YOU"), "a finished run not signed off waits on the human");
+    assert.equal(textOf(sectionOf(done, "STATUS")), "STATUS ▲ NEEDS YOU · your sign-off at the end", "a finished run not signed off waits on the human");
     assert.ok(!done.includes("STOPPED"), "a finished run does not say STOPPED");
+  });
+
+  test("report-status-of-a-running-run-names-its-step", async () => {
+    const running = headerOf(renderReport(await recordedReportInput("probe-2", { outcome: "running" })));
+
+    assert.equal(textOf(sectionOf(running, "STATUS")), "STATUS ● working · build test by test", "a running run says what step it is on, as the pane does");
   });
 
   // Looping was only a live signal (each try's result is in the test's card) and off track never had a source: neither is a row.
@@ -314,7 +320,7 @@ describe("report-content", () => {
   }
 
   // An empty or partial recording must still give a whole page: every section present, every missing value worded as unknown.
-  const SECTIONS = ["NEEDS YOU", "WHAT WAS DONE", "AT A GLANCE", "STEPS", "TESTS", "COMMITS"];
+  const SECTIONS = ["NEEDS YOU", "DONE", "AT A GLANCE", "STEPS", "TESTS", "COMMITS"];
   const PARTIAL_RUNS = {
     "an empty object": {},
     "a null ledger": { ledger: null },
@@ -355,7 +361,7 @@ describe("report-content", () => {
     assert.doesNotMatch(html, /@import/i, "the page imports no stylesheet");
     assert.doesNotMatch(html, /url\s*\(/i, "the CSS loads no url() resource");
     assert.match(html, /<style[^>]*>[\s\S]*?<\/style>/i, "the CSS is inline, in a style block");
-    assert.ok(html.includes("nothing loaded from the network"), "the footer says nothing is loaded from the network");
+    assert.doesNotMatch(html, /<footer/i, "no footer tells the reader how the page was made");
   });
 
   const EXTRA = "report-test-result-wording-extra";
@@ -675,52 +681,47 @@ test("test-card-headings-escape-and-not-reached-card", async () => {
   assert.ok(!html.includes("<script>"), "the raw script tag from a test id is absent from the whole report");
 });
 
-// Scenario report-title-keeps-description-context-break (placeholders)
-test("title-shows-break-between-description-and-context", () => {
-  const task = ["Add a discount rule", "Context: orders over 100 get 10 percent off"].join("\n\n");
+// The GOAL row is the pane's: the task's goal sentence alone, at the body's size. The whole task, context and all, is in How it ran.
+const howItRan = (html) => /<details>[\s\S]*<\/details>/.exec(html)?.[0] ?? "";
+
+test("goal-row-holds-the-goal-sentence-only", () => {
+  const task = ["Add a discount rule. Orders over 100 qualify", "Context: orders over 100 get 10 percent off"].join("\n\n");
 
   const html = renderReport({ ledger: { task, stage: { name: "code-tdd", status: "done" } }, spawns: [] });
 
-  const title = headerOf(html).match(/<h1>([\s\S]*?)<\/h1>/)[1];
-  assert.ok(title.includes("Add a discount rule"), "precondition: the title holds the description");
-  assert.ok(title.includes("Context: orders over 100 get 10 percent off"), "precondition: the title holds the context");
-  assert.ok(/<br\s*\/?>|<\/(p|div|span)>\s*<(p|div|span)/.test(title), "the description and the context are separated by a break or by separate blocks inside the title");
-  assert.ok(!title.includes("Add a discount rule Context"), "the description and the context are not run together");
+  const goal = sectionOf(headerOf(html), "GOAL");
+  assert.ok(goal.includes("Add a discount rule."), "the GOAL row holds the goal sentence");
+  assert.ok(!goal.includes("Orders over 100") && !goal.includes("Context:"), "the GOAL row leaves out the rest of the task");
+  assert.doesNotMatch(html, /<h1/, "no heading sets the goal apart by size");
 });
 
-test("title-single-paragraph-has-no-break", () => {
-  const task = "Add a discount rule for orders over 100";
-
-  const html = renderReport({ ledger: { task, stage: { name: "code-tdd", status: "done" } }, spawns: [] });
-
-  const title = headerOf(html).match(/<h1>([\s\S]*?)<\/h1>/)[1];
-  assert.ok(title.includes(task), "precondition: the title holds the whole task on one line");
-  assert.ok(!/<br\s*\/?>/.test(title), "a task with no blank line has no break element in the title");
-});
-
-test("title-break-escapes-text", () => {
+test("how-it-ran-holds-the-whole-task-each-paragraph-its-own", () => {
   const task = ["Fix <b>bold</b> & \"quoted\" rule", "Context: it's <script>alert(1)</script> & more"].join("\n\n");
 
   const html = renderReport({ ledger: { task, stage: { name: "code-tdd", status: "done" } }, spawns: [] });
 
-  const title = headerOf(html).match(/<h1>([\s\S]*?)<\/h1>/)[1];
-  assert.equal(
-    title,
-    "Fix &lt;b&gt;bold&lt;/b&gt; &amp; &quot;quoted&quot; rule<br>Context: it&#39;s &lt;script&gt;alert(1)&lt;/script&gt; &amp; more",
-    "both paragraphs are escaped and the break is the only markup in the title",
+  const whole = sectionOf(howItRan(html), "TASK");
+  assert.ok(
+    whole.includes("<p>Fix &lt;b&gt;bold&lt;/b&gt; &amp; &quot;quoted&quot; rule</p>\n<p>Context: it&#39;s &lt;script&gt;alert(1)&lt;/script&gt; &amp; more</p>"),
+    `both paragraphs are escaped and kept apart, each its own paragraph, got ${whole}`,
   );
   assert.ok(!html.includes("<script>"), "the raw script tag from the task is absent from the whole report");
 });
 
-test("title-missing-task-unchanged", () => {
+test("how-it-ran-has-no-task-row-when-the-task-is-its-goal-alone", () => {
+  const html = renderReport({ ledger: { task: "Add a discount rule.", stage: { name: "code-tdd", status: "done" } }, spawns: [] });
+
+  assert.throws(() => sectionOf(howItRan(html), "TASK"), /no TASK section/, "the task is not said twice");
+});
+
+test("goal-row-reads-a-dash-with-no-task", () => {
   const withoutTask = { stage: { name: "code-tdd", status: "done" } };
 
-  const html = renderReport({ ledger: withoutTask, spawns: [] });
-  const htmlNullTask = renderReport({ ledger: { ...withoutTask, task: null }, spawns: [] });
-
-  assert.match(html, /<h1><\/h1>/, "a ledger with no task renders an empty title");
-  assert.ok(!html.includes("undefined") && !html.includes("<br>"), "the empty title shows no 'undefined' and no break");
-  assert.match(htmlNullTask, /<h1><\/h1>/, "a null task renders an empty title too");
+  for (const ledger of [withoutTask, { ...withoutTask, task: null }]) {
+    const html = renderReport({ ledger, spawns: [] });
+    assert.match(sectionOf(headerOf(html), "GOAL"), /<p>—<\/p>/, "the GOAL row reads a dash, as the pane's does");
+    assert.ok(!html.includes("undefined") && !html.includes("<br>"), "no 'undefined' and no break");
+  }
 });
 
 // Placeholders for scenario report-done-signoff-text (Finding 18b) and scenario live-report-measures-to-now (Finding 23).
@@ -887,11 +888,12 @@ test("report-stays-self-contained-with-light-palette", async () => {
   assert.doesNotMatch(html, /\b(src|href)\s*=/i, "the page has no src or href attribute");
   assert.doesNotMatch(html, /<script|<link/i, "the page has no script or link tag");
   assert.doesNotMatch(html, /@import|url\s*\(/i, "the CSS imports nothing and loads no url() resource");
-  for (const name of ["--stopped", "--done", "--running", "--badge-ink", "--amber"]) {
+  for (const name of ["--stopped", "--done", "--working", "--needs-you", "--amber"]) {
     assert.ok(definedInLight(name), `${name} is defined as a colour in the light palette`);
   }
-  assert.ok(usedBy(".badge.stopped", "--stopped"), "the STOPPED badge background uses the --stopped colour");
-  assert.ok(usedBy(".badge.done", "--done"), "the DONE badge background uses the --done colour");
+  for (const [tone, name] of [["stopped", "--stopped"], ["done", "--done"], ["working", "--working"], ["needs-you", "--needs-you"]]) {
+    assert.ok(usedBy(`.${tone}`, name), `STATUS's ${tone} head uses the ${name} colour`);
+  }
   assert.ok(usedBy(".looped p strong", "--amber"), "the amber looping label uses the --amber colour");
 });
 
@@ -953,4 +955,14 @@ test("report-review-section-says-when-no-review-ran", () => {
   const ledger = { task: "t", stage: { name: "code-tdd", status: "active", attempt: 1, startedAt: null }, stages: [], tests: {} };
 
   assert.match(sectionOf(renderReport({ ledger, spawns: [], calls: [], tests: [] }), "REVIEW"), /no review round yet/);
+});
+
+test("report-review-round-with-no-findings-reads-on-one-line", () => {
+  const stage = { name: "code-safety-net", status: "active", runId: "wf_1", attempt: 1, startedAt: null };
+  const ledger = { task: "Fix the discount", stage, stages: [], tests: {}, fixes: { rollbacks: [] } };
+  const calls = [{ input: { pb_key: "code-safety-net.lens.code.r1.a1", findings: [] } }];
+
+  const review = sectionOf(renderReport({ ledger, spawns: [], calls, tests: [] }), "REVIEW");
+
+  assert.match(review, /<p>safety-net review · no issues found<\/p>/, `the round and its verdict share a line: ${review}`);
 });

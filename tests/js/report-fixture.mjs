@@ -58,3 +58,7 @@ export function spentOf(html) {
   if (!match) throw new Error("AT A GLANCE has no Spent row");
   return match[1].trim();
 }
+
+// A rendered piece as the reader sees it: tags dropped, entities read, white space run together.
+export const textOf = (html) =>
+  html.replace(/<[^>]+>/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();

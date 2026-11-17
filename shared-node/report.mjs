@@ -7,18 +7,20 @@ import { gateLine, glance, plural, runStart, stopName, testLabels, currentStep, 
 import { readLabel } from "./labels.mjs";
 import { stageNamesFor } from "./stage-graph.mjs";
 import contract from "./stages-contract.mjs";
-import { FINDING_WORDS, findingGist, lensRound } from "./lens-round.mjs";
+import { FINDING_WORDS, distinctFindings, findingGist, lensRound } from "./lens-round.mjs";
 import { parseKey } from "./keys.mjs";
 import { lensOfFinding } from "./lens-merge.mjs";
 import { taskEnded, taskSpend, taskWaited } from "./task-runs.mjs";
 import { shortName } from "./now-building.mjs";
+import { goalOf } from "./end-state.mjs";
 
 const TASK_END = "G:task-end";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
 
-const section = (title, body) => `<section>\n<h2>${title}</h2>\n${body}\n</section>`;
+// One row, as the pane draws it: its label in the left column, what it holds to the right.
+const section = (title, body, kind) => `<section${kind ? ` class="${kind}"` : ""}>\n<h2>${title}</h2>\n<div>\n${body}\n</div>\n</section>`;
 
 function outcome(ledger) {
   if (ledger?.stop) return "STOPPED";
@@ -78,7 +80,7 @@ function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskTyp
   const labels = glanceLabels(ledger);
   const typed = { type: plainName(taskType) ?? UNKNOWN, ...rows };
   const lines = Object.entries(typed).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
-  return section("AT A GLANCE", lines.join("\n"));
+  return section("AT A GLANCE", lines.join("\n"), "glance");
 }
 
 // The tests the run touched, in order of first appearance, by the same label rule as the pane.
@@ -183,7 +185,7 @@ function stepCell({ step, role }) {
   return `${REFACTOR}: ${plainName(role === REVIEW_ROLE ? "light-review" : role) ?? role}`;
 }
 
-// What a REFACTOR try did: the quick review's count of findings from its return, a tidy's checkpoint (it commits only while
+// What a REFACTOR try did: the quick review's count of distinct findings from its return, a tidy's checkpoint (it commits only while
 // every closed test still passes); unknown without the record.
 function refactorResult(attempt, checkpoint, calls) {
   if (attempt.role === REVIEW_ROLE) {
@@ -193,7 +195,8 @@ function refactorResult(attempt, checkpoint, calls) {
     });
     const findings = own.at(-1)?.input?.findings;
     if (!Array.isArray(findings)) return UNKNOWN;
-    return findings.length === 0 ? "no findings" : plural(findings.length, "finding");
+    const distinct = distinctFindings(findings.filter((finding) => finding !== null && typeof finding === "object"));
+    return distinct.length === 0 ? "no findings" : plural(distinct.length, "finding");
   }
   if (!checkpoint) return UNKNOWN;
   return checkpoint.committed === true ? "tidied, the tests still pass" : "nothing to change";
@@ -422,9 +425,10 @@ function reviewRounds(run, spawns) {
   return [...rounds, of(ledger, endedAt !== undefined)].filter(({ round }) => Boolean(round));
 }
 
+// A round with no finding is one line; one with findings lists them under its stage.
 const roundBlock = (round) => {
-  const body = round.findings.length ? `<ul>\n${round.findings.map(findingItem).join("\n")}\n</ul>` : "<p>no issues found</p>";
-  return `<p>${escape(round.stage)}</p>\n${body}`;
+  if (!round.findings.length) return `<p>${escape(round.stage)} · no issues found</p>`;
+  return `<p>${escape(round.stage)}</p>\n<ul class="findings">\n${round.findings.map(findingItem).join("\n")}\n</ul>`;
 };
 
 function reviewSection({ task, spawns }) {
@@ -532,10 +536,10 @@ function needsYouSection(context) {
   const items = [...questionItem(context), ...stopItem(context), ...findings.map(leftItem), ...doubts.map(looseItem), ...coveredItems(context), ...uncoveredItems(context)];
   const nothing = outcome(context.ledger) === "RUNNING" ? "Nothing needs you right now: the run is still going." : "Nothing needs you.";
   const body = items.length > 0 ? `<ul>\n${items.join("\n")}\n</ul>` : `<p>${nothing}</p>`;
-  return section("NEEDS YOU", body);
+  return section("NEEDS YOU", body, "needs");
 }
 
-// ---------- WHAT WAS DONE: the files, the tests and the pull request, in plain words ----------
+// ---------- DONE: the files and the tests, in plain words (the pull request is STATUS's) ----------
 
 // The task's pull request: the last its runs opened, else the one the caller knows of.
 const taskPrUrl = (task, prUrl) => {
@@ -543,30 +547,23 @@ const taskPrUrl = (task, prUrl) => {
   return typeof url === "string" && url !== "" ? url : undefined;
 };
 
-const prLink = (url) => {
-  const number = prNumber(url);
-  return `${number ? `pull request #${number}` : "a pull request"}: <a href="${escape(url)}">${escape(url)}</a>`;
-};
-
 const passes = (record) => record?.green?.passed === true || record?.covered?.done === true;
 
-function doneSection({ task, changed, prUrl }) {
+function doneSection({ task, changed }) {
   const perTest = taskLedgerOf(task).tests.perTest;
   const ids = Object.keys(perTest);
   const passing = ids.filter((id) => passes(perTest[id]));
   const failing = ids.filter((id) => !passes(perTest[id]));
   const names = (list) => list.map((id) => escape(shortName(id))).join(", ");
-  const url = taskPrUrl(task, prUrl);
   const lines = [
     ...(Array.isArray(changed) && changed.length > 0 ? [`Changed ${plural(changed.length, "file")}: ${changed.map(escape).join(", ")}`] : []),
     ...(passing.length > 0 ? [`Added ${plural(passing.length, "test")}, passing: ${names(passing)}`] : []),
     ...(failing.length > 0 ? [`${plural(failing.length, "test")} not passing yet: ${names(failing)}`] : []),
-    ...(url ? [`Opened ${prLink(url)}`] : []),
   ];
-  return section("WHAT WAS DONE", lines.length > 0 ? lines.map((line) => `<p>${line}</p>`).join("\n") : "<p>Nothing yet.</p>");
+  return section("DONE", lines.length > 0 ? lines.map((line) => `<p>${line}</p>`).join("\n") : "<p>Nothing yet.</p>");
 }
 
-// ---------- CHANGES OF PLAN OR SCOPE: only what changed the task materially ----------
+// ---------- CHANGES: only what changed the task materially ----------
 
 const isClassification = (input) => typeof input?.task_type === "string" && typeof input.confidence === "string";
 
@@ -602,41 +599,91 @@ function forcedFixes(task, spawns) {
 
 function changesSection({ task, spawns }) {
   const items = [...typeChange(task), ...testsAdded(task), ...forcedFixes(task, spawns)];
-  return items.length === 0 ? "" : `\n${section("CHANGES OF PLAN OR SCOPE", `<ul>\n${items.map((item) => `<li>${item}</li>`).join("\n")}\n</ul>`)}`;
+  return items.length === 0 ? "" : `\n${section("CHANGES", `<ul>\n${items.map((item) => `<li>${item}</li>`).join("\n")}\n</ul>`)}`;
+}
+
+// STATUS as the pane's STATUS row reads it: the state's mark and word, in its colour, then what about; the pull request linked once.
+const STATUS_LOOKS = {
+  DONE: { head: "✓ DONE", tone: "done" },
+  STOPPED: { head: "✕ STOPPED", tone: "stopped" },
+  "WAITING ON YOU": { head: "▲ NEEDS YOU", tone: "needs-you" },
+  RUNNING: { head: "● working", tone: "working" },
+};
+
+function statusWhat(state, ledger, task) {
+  if (state === "STOPPED") return stopName(ledger.stop);
+  if (state === "WAITING ON YOU") return gateLine(ledger?.needsHuman?.gate ?? (awaitsSignOff(task) ? TASK_END : undefined));
+  if (state === "RUNNING") return plainName(ledger?.stage?.name);
+  return undefined;
+}
+
+function statusSection({ ledger, task, url }) {
+  const state = whereItIs(ledger, task);
+  const look = STATUS_LOOKS[state];
+  const number = url ? prNumber(url) : undefined;
+  const pr = url ? `<a href="${escape(url)}">${number ? `PR #${number}` : "PR"}</a> opened` : undefined;
+  const what = statusWhat(state, ledger, task);
+  const parts = [`<strong class="${look.tone}">${look.head}</strong>`, what ? escape(what) : undefined, pr].filter(Boolean);
+  return section("STATUS", `<p>${parts.join(" · ")}</p>`);
 }
 
 const prNumber = (url) => /\/pull\/(\d+)\/?$/.exec(url)?.[1];
 
-// R5-3's dark design: one inline stylesheet, monospace; the outcome badge is red, green or amber by outcome, and a looped test's "Why it looped" label is amber.
-const STYLE = `:root{color-scheme:light dark;--bg:#1c1d21;--fg:#e6e6e6;--muted:#9a9ca3;--rule:#3a3c44;--faint:#6b6d75;--amber:#ffc933;--badge-ink:#1c1d21;--stopped:#ff6b81;--done:#5fd38d;--running:#ffc933}
-@media (prefers-color-scheme:light){:root{--bg:#fafafa;--fg:#1c1d21;--muted:#5c5f66;--rule:#c9cbd1;--faint:#62646b;--amber:#8a5a00;--badge-ink:#ffffff;--stopped:#c62828;--done:#1a7f37;--running:#8a5a00}}
-body{background:var(--bg);color:var(--fg);font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0;padding:40px 56px;max-width:1100px}
-header p{color:var(--muted);margin:6px 0}
-.badge{color:var(--badge-ink);padding:2px 10px;border-radius:4px}
-.badge.stopped{background:var(--stopped)}
-.badge.done{background:var(--done)}
-.badge.running,.badge.waiting-on-you{background:var(--running)}
-h1{font:700 22px/1.3 system-ui,sans-serif;margin:0}
-h2{color:var(--muted);font-size:12px;letter-spacing:.12em;border-bottom:1px solid var(--rule);padding-bottom:6px;margin:32px 0 12px}
-h3{font-size:14px;margin:0 0 8px}
-p{margin:4px 0}
-section p strong{color:var(--muted);display:inline-block;min-width:150px;text-transform:uppercase;font-size:12px}
-article{border:1px solid var(--rule);border-radius:8px;padding:12px 16px;margin:12px 0}
-table{border-collapse:collapse;width:100%}
-th{text-align:left;color:var(--muted);font-weight:400;padding:4px 12px 4px 0}
-td{padding:4px 12px 4px 0;vertical-align:top}
+// The pane's look, in the browser: one monospace face at one size, each row a label column and what it holds. GOAL and STATUS
+// lead with bold labels as the pane's first glance does; every other label is dim. STATUS takes the pane's colour for its state.
+const STYLE = `:root{color-scheme:light dark;--bg:#15161a;--fg:#e3e4e8;--muted:#8a8d96;--rule:#2b2d34;--link:#39c5cf;--done:#e3e4e8;--working:#39c5cf;--needs-you:#e3b341;--stopped:#f0605a;--amber:#e3b341}
+@media (prefers-color-scheme:light){:root{--bg:#fbfbf9;--fg:#1c1d21;--muted:#696c74;--rule:#e1e2e5;--link:#0a6f78;--done:#1c1d21;--working:#0a6f78;--needs-you:#8a5a00;--stopped:#c2322c;--amber:#8a5a00}}
+*{font-size:inherit}
+body{background:var(--bg);color:var(--fg);font:14px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0 auto;padding:48px 32px 64px;max-width:96ch}
+h2,h3,p,ul{margin:0}
+section{display:grid;grid-template-columns:12ch minmax(0,1fr);column-gap:2ch;margin:0 0 18px}
+section>div{min-width:0;overflow-x:auto}
+h2{font-weight:400;color:var(--muted)}
+header{border-bottom:1px solid var(--rule);padding-bottom:6px;margin-bottom:24px}
+header section{margin-bottom:12px}
+header h2{font-weight:700;color:var(--fg)}
+strong{font-weight:700}
+small{color:var(--muted)}
+a{color:var(--link);text-underline-offset:3px}
+.done{color:var(--done)}
+.working{color:var(--working)}
+.needs-you{color:var(--needs-you)}
+.stopped{color:var(--stopped)}
 ul{list-style:none;padding:0}
-li{margin:2px 0}
-ul ul{padding-left:2ch}
-.looped p strong{color:var(--amber);min-width:0;text-transform:none;font-size:inherit}
-details{margin-top:40px}
-summary{color:var(--muted);cursor:pointer;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
-footer{color:var(--faint);margin-top:40px;font-size:12px}`;
+li+li{margin-top:2px}
+.findings{margin:2px 0 8px 2ch}
+.findings li+li,.needs li+li{margin-top:8px}
+ul ul{padding-left:2ch;margin-top:2px}
+ul ul li+li{margin-top:2px}
+details{margin-top:32px}
+summary{cursor:pointer;color:var(--muted);list-style:none;margin-bottom:18px}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"\\25B8\\00A0"}
+details[open]>summary::before{content:"\\25BE\\00A0"}
+summary:hover{color:var(--fg)}
+details:not([open])>summary{margin-bottom:0}
+section>div>p+p{margin-top:2px}
+.task p+p{margin-top:10px}
+.glance p{display:grid;grid-template-columns:18ch minmax(0,1fr);column-gap:2ch}
+.glance strong{font-weight:400;color:var(--muted)}
+article+article{margin-top:16px}
+h3{font-weight:700}
+h3 small{font-weight:400;margin-right:1ch}
+table{border-collapse:collapse;margin-top:4px}
+th{text-align:left;color:var(--muted);font-weight:400;padding:0 3ch 0 0;white-space:nowrap}
+td{padding:0 3ch 0 0;vertical-align:top}
+.looped p{margin-top:6px}
+.looped p strong{color:var(--amber);margin-right:1ch}
+@media (max-width:600px){body{padding:28px 16px 48px}section{grid-template-columns:minmax(0,1fr)}h2{margin-bottom:2px}.glance p{grid-template-columns:17ch minmax(0,1fr);column-gap:1ch}td,th{padding-right:2ch}}`;
 
-// The task's paragraphs (split on blank lines) stay visibly apart inside the title.
-function title(task) {
-  if (typeof task !== "string") return escape(task);
-  return task.split(/\n\s*\n/).map((paragraph) => escape(paragraph.trim())).join("<br>");
+// The GOAL row: the task's goal sentence alone, as the pane's GOAL row reads it; a dash with no task.
+const goalSection = (task) => section("GOAL", `<p>${escape(goalOf(task) || "—")}</p>`);
+
+// The whole task, each paragraph (split on blank lines) its own: How it ran keeps the context the GOAL row leaves out,
+// and has no such row when the task is its goal alone.
+function taskSection(task) {
+  if (typeof task !== "string" || task.trim() === "" || task.trim() === goalOf(task)) return "";
+  return `${section("TASK", task.split(/\n\s*\n/).map((paragraph) => `<p>${escape(paragraph.trim())}</p>`).join("\n"), "task")}\n`;
 }
 
 const PUBLISH_KIND = "publish";
@@ -664,9 +711,7 @@ export function renderReport({ ledger: given, spawns, calls, timing, commits, te
   const ledger = last.ledger;
   const code = codeRunIn(task).ledger;
   const ranFor = runSeconds(ledger, last.endedAt ?? endedAt, now, task[0].ledger);
-  const state = whereItIs(ledger, task);
   const url = taskPrUrl(task, prUrl);
-  const prPart = url ? ` · ${prLink(url)}` : "";
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Run report</title>
 <style>
@@ -674,14 +719,14 @@ ${STYLE}
 </style></head>
 <body>
 <header>
-<h1>${title(code?.task ?? ledger?.task)}</h1>
-<p><strong class="badge ${state.toLowerCase().replace(/ /g, "-")}">${state}</strong>${prPart}</p>
+${goalSection(code?.task ?? ledger?.task)}
+${statusSection({ ledger, task, url })}
 </header>
 ${needsYouSection({ ledger, task, spawns, tests })}
-${doneSection({ task, changed, prUrl })}${changesSection({ task, spawns })}
+${doneSection({ task, changed })}${changesSection({ task, spawns })}
 <details>
-<summary>How it ran</summary>
-${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${settledSection({ task })}
+<summary>HOW IT RAN</summary>
+${taskSection(code?.task ?? ledger?.task)}${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${settledSection({ task })}
 ${stepsSection({ task })}
 ${scenariosSection({ scenarios: task.find((run) => Array.isArray(run.scenarios))?.scenarios })}
 ${testsSection({ ledger: taskLedgerOf(task), spawns, tests, calls: task.flatMap((run) => run.calls ?? []) })}
@@ -689,6 +734,5 @@ ${builtSection({ changed })}
 ${reviewSection({ task: runs ? task : [{ ...task[0], endedAt: undefined }], spawns })}
 ${commitsSection({ commits })}
 </details>
-<footer>Written by Pairing Buddy from the run's ledger and agent labels. One self-contained file, nothing loaded from the network.</footer>
 </body></html>`;
 }

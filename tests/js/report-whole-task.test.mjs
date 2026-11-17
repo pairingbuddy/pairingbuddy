@@ -140,6 +140,14 @@ describe("report-of-the-whole-task", () => {
     ]);
   });
 
+  test("the quick review's row counts a finding said twice, as a test issue and a code issue, once", () => {
+    const twice = [finding("Test name says example", "test-quality"), finding("Test name says example", "code-smell")];
+    const calls = [call(`code-tdd.lens.${TEST_ID}.r1.a1`, twice), ...CODE_CALLS.slice(1)];
+    const [card] = cardsOf(report({ runs: [{ ...RUNS[0], calls }, RUNS[1]] }));
+
+    assert.equal(rowsOf(card)[2][5], "1 finding");
+  });
+
   test("REVIEW shows the safety-net review and the review of the pull request", () => {
     const section = sectionOf(report(), "REVIEW");
 
@@ -160,7 +168,7 @@ describe("report-of-the-whole-task", () => {
   test("the header names the pull request; NEEDS YOU does not ask to review it", () => {
     const html = report();
 
-    assert.ok(headerOf(html).includes(`pull request #7: <a href="${PR_URL}">`), "the header links the pull request");
+    assert.ok(headerOf(html).includes(`<a href="${PR_URL}">PR #7</a>`), "the header links the pull request");
     assert.ok(!sectionOf(html, "NEEDS YOU").includes("sign-off"), "the task was signed off already");
   });
 

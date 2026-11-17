@@ -1,24 +1,14 @@
 import { expect, mock } from 'claude-code/testing'
 import { POLL_MS } from '../poll'
 import { engine, SNAPSHOT_RUNNING, start, texts } from './band'
-import { findOnPane, PANE } from './replay'
+import { PANE } from './replay'
 import { recordOther, recordWrite } from './refuse'
 
 // Shared by the open-report tests. It lives outside the `*.test.tsx` pattern, so `claude plugin test` does not run it.
 
-// The pane's report button is found by this key, as the dismiss button is found by 'dismiss'.
-export const REPORT_KEY = 'report'
-
-// The label the button reads: the key hint, then the action (R5-5).
-export const REPORT_LABEL = 'r open report'
-
-// The Text beside the button: the command that writes the report without the pane's focus.
-export const REPORT_COMMAND_HINT = 'or /pb-report, no focus needed'
-
-// Looks up the open-report button on the terminal pane. The text is undefined when the pane draws none.
-export async function reportButton($: any): Promise<{ text: string | undefined } | undefined> {
-  const button = await findOnPane($, { type: 'Button', key: REPORT_KEY })
-  return button === undefined ? undefined : { text: button.text as string | undefined }
+// What /pb-report answers, as the engine hands it back.
+export async function runPbReport($: any): Promise<{ text: string }> {
+  return $.command.run({ command: 'pb-report', args: '' })
 }
 
 // The pane's confirmation after the report is written and opened: the file name, not the full path.
@@ -48,7 +38,7 @@ export async function paneTexts($: any): Promise<string[]> {
 // The slug the report file name carries for SNAPSHOT_RUNNING.task ('Fix this bug in discount.py: ...').
 export const REPORT_SLUG = 'fix-this-bug'
 
-// Registers fs.write, process.run and process.spawn for a press of the report button and records what they were asked.
+// Registers fs.write, process.run and process.spawn for a /pb-report and records what they were asked.
 // An allowed write lands in `files`, a refused one in `touched` and throws; every other world-changing call lands in `touched`; a failing write or run answers an error.
 export function recordReportCalls(on: Function, { failWrite = false, failRun = false, exitCode = 0 } = {}) {
   const writes: { path: string; text: string }[] = []
@@ -78,16 +68,14 @@ export function recordReportCalls(on: Function, { failWrite = false, failRun = f
   return { writes, touched, calls, files }
 }
 
-// Starts the engine on a mock clock, mounts the terminal pane, presses the report button and unmounts.
+// Starts the engine on a mock clock, lets it poll once and runs /pb-report.
 // Returns the recorder plus the engine's serve and the mock clock, so a test keeps only its own assertions.
-export async function pressReportButton($: any, on: Function, { now = Date.parse('2026-11-03T06:40:00Z'), ledger = SNAPSHOT_RUNNING as unknown, ...failure } = {}) {
+export async function runReportCommand($: any, on: Function, { now = Date.parse('2026-11-03T06:40:00Z'), ledger = SNAPSHOT_RUNNING as unknown, ...failure } = {}) {
   const { serve } = engine(on, ledger)
   const clock = mock.clock(on, { now })
   const recorder = recordReportCalls(on, failure)
   await start($)
   await clock.advance(POLL_MS)
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: REPORT_KEY })
-  await pane.unmount()
+  await runPbReport($)
   return { ...recorder, serve, clock }
 }

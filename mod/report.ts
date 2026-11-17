@@ -4,8 +4,8 @@ import { taskCommitShas, taskRuns } from '../shared-node/task-runs.mjs'
 import { readInputs, readKeptRuns, readReportLists, type Call, type Inputs, type Spawn } from './inputs'
 
 
-// The pane's one note line, as mod state: the report press and the suggest submit (./suggest) both write it, so the latest action wins.
-// Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The same key is written in four copies, PANE_NOTE in ./poll, ./report and ./suggest and noteAtom in register.tsx; keep all four in step.
+// The pane's one note line, as mod state: /pb-report writes what it came to, and the poller clears it.
+// Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The same key is written in three copies, PANE_NOTE in ./poll and ./report and noteAtom in register.tsx; keep all three in step.
 const PANE_NOTE = { plugin: 'pairingbuddy', key: 'pane-note' }
 
 // Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The last-run snapshot key is written in two copies, LAST_RUN in ./poll and lastRunAtom in register.tsx, and read from a third, LAST_RUN in ./report; keep all three in step.
@@ -25,7 +25,7 @@ function slugOf(task: string | undefined): string {
   return dashed.slice(0, 40).replace(/-+$/, '') || 'run'
 }
 
-// The user's local date and time of day (YYYY-MM-DD-HHMMSS), so each press gets its own file and names sort by time.
+// The user's local date and time of day (YYYY-MM-DD-HHMMSS), so each /pb-report gets its own file and names sort by time.
 function stampOf(ms: number): string {
   const d = new Date(ms)
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
@@ -62,7 +62,7 @@ function fromSnapshot(snapshot: Snapshot, live: Inputs): Inputs {
   return { ...live, ledger: snapshot.ledger as Inputs['ledger'], tests: snapshot.tests ?? [] }
 }
 
-// What a report press came to: written (and whether it opened), failed in its own words, or no run to report.
+// What a /pb-report came to: written (and whether it opened), failed in its own words, or no run to report.
 export type ReportOutcome = { path: string; opened: boolean } | { failed: string } | { none: true }
 
 const NO_RUN = 'no run to report yet'
@@ -78,7 +78,7 @@ export function reportLine(outcome: ReportOutcome): string {
 
 // A function declaration, not an arrow: the mod loader rejects an exported arrow taking $ across files.
 // Writes the run report under the reports folder. Never throws: a failed build, write or open is shown as the pane note, each in its own words, and only a failure before the build (reading inputs, session root) is dropped.
-// The pane's button and /pb-report both run it; the command answers with what it returns.
+// /pb-report runs it and answers with what it returns.
 export async function openReport($: EngineInterface, spawns: Spawn[], calls: Call[] = []): Promise<ReportOutcome> {
   try {
     const live = await readInputs($, spawns)
@@ -90,7 +90,7 @@ export async function openReport($: EngineInterface, spawns: Spawn[], calls: Cal
     const lists = await readReportLists($, inputs.ledger)
     // The task's runs: the reported one and the runs pb kept of the same unit, so the report describes the whole task.
     const runs = taskRuns({ ledger: inputs.ledger, kept: await readKeptRuns($), unitKey: snapshot?.unit?.key ?? null, calls, scenarios: lists.scenarios, endedAt, prUrl: snapshot?.prUrl ?? undefined })
-    // The button showed on a ledger that is gone or half-written now: write nothing rather than an empty report.
+    // The ledger is gone or half-written now: write nothing rather than an empty report.
     const first = runs.find((run: { ledger?: Inputs['ledger'] }) => run.ledger?.kind !== 'publish')?.ledger ?? runs[0]?.ledger
     if (!first) return { none: true }
     const path = `${await $.session.root()}/${REPORTS_DIR}/${stampOf(inputs.now ?? Date.now())}-${slugOf(first.task)}.html`
@@ -108,7 +108,7 @@ export async function openReport($: EngineInterface, spawns: Spawn[], calls: Cal
       return failed($, "couldn't write the report")
     }
     const name = path.split('/').pop()
-    // `open` is the macOS opener and the mod API exposes no platform to pick another, so elsewhere the press writes the report but opens nothing.
+    // `open` is the macOS opener and the mod API exposes no platform to pick another, so elsewhere /pb-report writes the report but opens nothing.
     let opened = false
     try {
       opened = (await $.process.run(['open', path])).exitCode === 0
@@ -118,7 +118,7 @@ export async function openReport($: EngineInterface, spawns: Spawn[], calls: Cal
     await $.state.set(PANE_NOTE, `wrote ${name} \u00b7 ${opened ? OPENED : NOT_OPENED}`)
     return { path, opened }
   } catch {
-    // The press never throws.
+    // It never throws.
     return { failed: "couldn't read the run to report" }
   }
 }

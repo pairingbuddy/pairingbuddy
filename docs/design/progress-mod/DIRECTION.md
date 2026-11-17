@@ -18,7 +18,7 @@ Remaining step: a quick narrow re-look by the human before Task 60 is ticked.
 
 - **The band is the default.** Always visible above the prompt: the goal's gist on its first row (seventh watched run), then one row that leads with the run's status as the pane's STATUS draws it (hierarchy), then answers where, spent and left. See [R4-1](round-4/R4-1-band-tdd-calm.png) and "The band" under "Fixed layout".
 - **The pane holds the details.** `/pb` opens the pane, which the band names in its hint (see "Commands, not band buttons"), and esc or × closes it. The pane also opens by itself, without the keyboard, when a run starts (seventh watched run), when the run stops or needs you, and when the unit is done with nothing left to do (sixth watched run); for a question the band then reads "▲ NEEDS YOU · opened details". See [R4-7](round-4/R4-7-switching-storyboard.png).
-- **The HTML report gives depth.** The pane's `open report` writes a self-contained page and opens it in the browser. There is one report for a TDD run and one for a planning run. See [R5-3](round-5/R5-3-report-tdd.png) and [R5-4](round-5/R5-4-report-plan.png).
+- **The HTML report gives depth.** `/pb-report` writes a self-contained page and opens it in the browser. There is one report for a TDD run and one for a planning run. See [R5-3](round-5/R5-3-report-tdd.png) and [R5-4](round-5/R5-4-report-plan.png).
 
 ## The five rows
 
@@ -101,14 +101,13 @@ TESTS    1 of 2 done
          ▸ zero percent keeps full price  ●RED ›GREEN ›REFACTOR  0:11
 REVIEW   —
 
-[ r open report ]
-suggest: a note for the next agent
-[ dismiss ]
 ```
+
+The pane draws no control: see "No buttons in the pane" below.
 
 Rules:
 
-- **GOAL leads,** bold, and STATUS follows it; the thin dim rule sits under the two. GOAL is the task's first sentence (its first line, before any blank-line context) from the first ledger on, so it is there for anyone cycling between sessions, and it never goes back to `—` during the unit (the code run's task is kept through the publish run). It wraps onto two lines; only past two is the second line cut at a clause break, else a word. The report's title holds the whole task.
+- **GOAL leads,** bold, and STATUS follows it; the thin dim rule sits under the two. GOAL is the task's first sentence (its first line, before any blank-line context) from the first ledger on, so it is there for anyone cycling between sessions, and it never goes back to `—` during the unit (the code run's task is kept through the publish run). It wraps onto two lines; only past two is the second line cut at a clause break, else a word. The report's GOAL row is the same sentence; its How it ran TASK row holds the whole task.
 - **STATUS answers "am I needed now?".** It leads with a head, a mark and the state's word, drawn to pull the eye in proportion to urgency, then says what it is about, wrapping at its ` · ` parts, then words:
   - `▲ NEEDS YOU · <what>`: the head a yellow block (inverse, bold), what follows in yellow and bold, until you answer. The strongest;
   - `✕ STOPPED · <why>`: the head a red block (inverse, bold), why in red. As strong. A stop with no plain name reads `✕ STOPPED`;
@@ -239,8 +238,8 @@ The human's findings:
 
 What changed:
 - **PR.** The pane reads the last JSON object `pb publish` printed, one line or pretty-printed, also when another command follows it (`pb publish; echo "exit=$?"`).
-- **Doubts in questions.** A gate that asks over an open doubt shows one line per doubt, `Unsure (<step>): <doubt>`, cut at a word near 120 characters, at most 3, then `+ n more in the report`. It then asks over the doubt: "Is the task done despite this?", "Start building these despite this?", "Is that the right type despite this?". The ledger keeps every doubt in full (`needsHuman.doubts`); the report lists them under NEEDS YOU. With no doubt, the why line stays ("Auto mode is off, so this asks you.").
-- **REVIEW's first line** names what was checked, with no counts: `checked: the code, the tests, docs and plan`. A lens still running reads under `still looking at:`, one that returned nothing usable under `could not check:`. A cycle's quick review reads `quick review done`. The summary line (`1 issue found · 1 checking`) and the finding lines stay. This replaces "one line per lens with its finding count" above.
+- **Doubts in questions.** A gate that asks over an open doubt shows one line per doubt, `Unsure (<step>): <doubt>`, cut at a word near 120 characters, at most 3, then `+ n more in the report`. It then asks over the doubt: "Is the task done despite this?", "Start building these despite this?", "Is that the right type despite this?". The ledger keeps every doubt in full (`needsHuman.doubts`); the report lists them under NEEDS YOU. With no doubt, the why line stays ("A step ran out of retries."); a gate that asks only because auto mode is off has no why line, as that is the usual case and says nothing new.
+- **REVIEW's first line** names what was checked, with no counts: `checked: the code, the tests, docs and plan`. A lens still running reads `checking <lens>` (`checking the task type`), one that returned nothing usable under `could not check:`. A cycle's quick review reads `quick review done`. The summary line (`1 issue found · 1 checking`) and the finding lines stay; `no issues found` waits until no lens is still running, so a review under way never reads as clean. This replaces "one line per lens with its finding count" above.
 - **TESTS through the publish.** During the publish run and after it, TESTS shows the finished code run's tests, folded as usual (`✓ 5 done`).
 - **GOAL gist.** The goal's first sentence. When it is wider than the room, it is cut at the last clause break (`: `, `; `, `, `) that fits; a comma inside brackets or backticks does not count. With none, it is cut at the last word. The task-done question's `Goal:` line follows the same rule within 120 characters. The report keeps the whole goal.
 
@@ -297,7 +296,7 @@ The human's findings:
 - A scenario said the line totals of `order_total([(10, 2), (4, 1)])` are 20 and 4, where the task said 30.0 "which is 25.0 plus 5.0" (`line_total` in cart.py adds 25% VAT). A reviewer flagged it, and the refuter called it "not a real problem".
 
 What changed:
-- **The pane opens when a run starts.** Once per run, without the keyboard, the first poll that sees a run opens the pane. The run is kept in the mod's store before the open, so a pane the human dismissed is never opened again for that run, also after a reload; a store that fails opens nothing, since opening every poll would undo a dismissal. A run first seen with a question or a stop is opened by its alert alone. Unasked, Claude Code places a pane only from 144 columns (110 once the human asked for it); below that it waits undrawn, and one transcript line gives the reason and says to type `/pb` (or `/pb-report` for the report). `/pb` stays the way in; the band itself is unchanged, its room going to the goal and the step.
+- **The pane opens when a run starts.** Once per run, without the keyboard, the first poll that sees a run opens the pane. The run is kept in the mod's store before the open, so a pane the human closed (`/pb` or esc) is never opened again for that run, also after a reload; a store that fails opens nothing, since opening every poll would undo that close. A run first seen with a question or a stop is opened by its alert alone. Unasked, Claude Code places a pane only from 144 columns (110 once the human asked for it); below that it waits undrawn, and one transcript line gives the reason and says to type `/pb` (or `/pb-report` for the report). `/pb` stays the way in; the band itself is unchanged, its room going to the goal and the step.
 - **The band uses the pane's colours.** See "Colour means one thing", now the single truth for both.
 - **The goal leads the band** on its own row. See "The band" under "Fixed layout".
 - **Done leaves the status line alone.** Claude Code draws every plugin status line as a pinned notice `⚠ <plugin>: <text>` in the warning colour (`$.ui.status` adds the notice with no colour, and the notice row always draws the ⚠ figure); a plugin cannot change the mark or the colour. So done plays the sound, opens the pane, says it in the band (bold) and sends one native notice through the human's notification channel (`$.ui.notify`, titled "Pairing Buddy"), which carries no warning mark. The status line stays for needs-you and a stop, where a warning mark fits.
@@ -376,11 +375,21 @@ What changed:
 
 In a watched run the human could not use the band's `[ ▸ details ]` button. The classic renderer has no mouse, and the only way to the button is ctrl+x tab, tab, enter, which nobody finds. So the band draws no button and names commands instead.
 
-- **`/pb`** opens the pane with focus. **`/pb-report`** writes the run report (the same path as the pane's `r open report`) and answers with one transcript line: the report's absolute path and whether it opened (`Pairing Buddy report: <path> · opened in your browser`, or `· couldn't open it`), so the path can be opened by hand. It works for a live run and for an ended one (from the last polled ledger and the kept runs), and says `Pairing Buddy: no run to report yet` when there is none.
+- **`/pb`** opens the pane with focus (since 2026-11-17 it toggles: see below). **`/pb-report`** writes the run report and answers with one transcript line: the report's absolute path and whether it opened (`Pairing Buddy report: <path> · opened in your browser`, or `· couldn't open it`), so the path can be opened by hand. It works for a live run and for an ended one (from the last polled ledger and the kept runs), and says `Pairing Buddy: no run to report yet` when there is none.
 - **Both are immediate,** so they run while Claude is working, with no model turn.
 - **The band's hint** reads `/pb details · /pb-report report`, shortens to `/pb · /pb-report`, and is the first thing dropped at narrow widths. With the button gone the step gets its room.
-- **The pane keeps `r open report`** (it works while the pane has focus) and shows `or /pb-report, no focus needed` beside it.
+- **The pane kept `r open report`** at first, with `or /pb-report, no focus needed` beside it; it has gone since (see below).
 - **Why bare names.** From the mod docs (code.claude.com/docs/en/plugins/mods: api.md, interface.md, reference.md): a mod-registered command is a bare name of letters, digits, `_` and `-`, so `/pb:report` is not possible; a `command.run` hook runs mod code with no model turn and returns `{}` or `{ text }`; `$.ui.open({ id, focus: true })` from a command gets focus; `immediate: true` lets it run mid-turn.
+
+## No buttons in the pane (2026-11-17)
+
+Looking at the pane, the human called its last three lines useless: `[ r open report ]  or /pb-report, no focus needed`, `suggest: a note for the next agent` and `[ dismiss ]`. Like the band's old button, each needed the pane's focus (ctrl+x tab, then tab and enter), which nobody does. So the pane draws no control at all, only text, and every action is a typed command that runs at once, with no model turn:
+
+- **`/pb` toggles the pane.** Shown, it closes it; closed, waiting undrawn or behind another tab, it opens it with the keyboard (`$.ui.panes()` says which). It answers `Pairing Buddy pane opened` or `Pairing Buddy pane closed`. This replaces `[ dismiss ]`, which only closed the pane (`$.ui.close`) and cleared nothing; esc still closes it too. A pane closed either way is not opened again by the run start for the same run, as before.
+- **`/pb-report`** replaces `r open report`; the pane's note line still says what the last report came to.
+- **`/pb-note <text>`** replaces the suggest input. It appends the same task-scoped entry to `.pairingbuddy/human-guidance.json` (the agents read it when they start; curate-guidance drops it at the next task) and answers in one line: `Note saved to .pairingbuddy/human-guidance.json. The next agent will read it.` With no text, no running task, or a guidance file it cannot read or write, it saves nothing and says so in that line. The pane still says which agent reads the note next and, once it spawned, that it reached it.
+
+The pane's bottom is now only text: the unknown-label lines (if any), the note line from the last `/pb-report`, and the note's delivery line.
 
 ## The report leads with what you need (2026-11-16)
 
@@ -392,6 +401,17 @@ The report's shape, top to bottom:
 - **WHAT WAS DONE.** The files changed, the tests added and passing (by short name), the tests not passing yet, the pull request opened.
 - **CHANGES OF PLAN OR SCOPE.** Only when material: a new task type after a review, tests added because a coverage check found a scenario with none, and each finding a review had fixed in the work. A new confidence in the same type, a cycle's quick review and the pull request's wording are left out. With none, the section is not drawn.
 - **How it ran,** a closed `<details>` at the bottom, for debugging: AT A GLANCE (task type, where it is, spent, waited, left), SETTLED DOUBTS, STEPS, SCENARIOS, TESTS, BUILT, REVIEW and COMMITS, as before.
+
+### The report looks like the pane (2026-11-17)
+
+The human on that report: "using a header type for the goal or something? Really ugly. How it ran expand is useful. TBH, the whole report design is horrible, very AI generated crap." Decided: the report looks like the pane in the terminal, which the human likes.
+
+- **Rows, as the pane draws them.** Every part is a row: a narrow label column (GOAL, STATUS, NEEDS YOU, DONE, CHANGES, then HOW IT RAN) and what it holds to the right. One monospace face at one size; labels stand apart by weight and colour only. GOAL and STATUS have bold labels and a thin rule under them, as the pane's first glance; every other label is dim. Below 600px a label sits above its content.
+- **GOAL** is the goal sentence alone (the pane's GOAL), at the body's size. The whole task, context included, is How it ran's TASK row, left out when the task is the goal alone.
+- **STATUS** reads as the pane's: `✓ DONE · PR #7 opened`, `▲ NEEDS YOU · your sign-off at the end`, `✕ STOPPED · a step kept failing`, `● working · build test by test`, the head in the pane's colour (done plain bold, needs you amber, stopped red, working cyan). No badges. It holds the page's only pull request link; DONE no longer names it.
+- **WHAT WAS DONE and CHANGES OF PLAN OR SCOPE** are labelled DONE and CHANGES.
+- **HOW IT RAN** stays a closed `<details>` with a plain `▸`/`▾` marker; its rows are label and content too. A review round with no finding is one line (`safety-net review · no issues found`).
+- **No footer, no heading sizes, no pills, cards, shadows, gradients or letter-spaced titles with rules.** Light and dark follow `prefers-color-scheme`; the width is capped at 96 characters.
 
 Time waiting on the human is no working time. `pb gate eval` stamps `needsHuman.askedAt`; an answer keeps `askedAt` and `answeredAt` on its gate's record. SPENT (pane, band, an ended task's) and the report's Spent leave the waits out; the report's Waited row says them apart (`4h 1m waiting for you`). A ledger without the stamps waited 0.
 

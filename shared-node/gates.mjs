@@ -165,11 +165,11 @@ const GATE_ASKS = {
 // A gate the table does not know, such as one a test contract adds.
 const OTHER_ASK = { header: "Your OK", ask: () => "Can the run go on?" };
 
-// Why the gate asks, in plain words, from the reason askReason gave.
+// Why the gate asks, in plain words, from the reason askReason gave. Auto mode being off is the usual case, not news, so it says nothing.
 const PLAIN_WHYS = [
   [/^it is a decide gate/, "This step always asks you."],
   [/^no classifier reports certain/, "The check was not sure, so it asks you."],
-  [/^(no gate policy is recorded|the gate policy is )/, "Auto mode is off, so this asks you."],
+  [/^(no gate policy is recorded|the gate policy is )/, ""],
   [/^the classifier does not report certain/, "The classifier was not sure of the type."],
   [/^the classification lens has an open finding/, "A reviewer doubts the task type."],
   [/no selector_template/, "A test runner can't run one test on its own."],

@@ -816,6 +816,18 @@ test("a-quick-review-finding-reads-fixing-then-fixed-by-its-sides-fixer-and-left
   assert.deepEqual(wordsOf(movedOn), ["fixed · weak assert", "left as is · long function", "left as is · odd name"], "once the next test starts, the cycle's review has ended");
 });
 
+test("a-quick-review-finding-said-twice-for-the-same-place-shows-once", () => {
+  const stage = "code-tdd";
+  const spawns = [{ kind: "workflow_agent", name: buildLabel({ stage, phase: "REFACTOR", role: "lens", item: "t1", round: 1 }) }];
+  const unused = { where: "a.test.mjs:3", title: "Unused import" };
+  const calls = [callFor({ stage, item: "t1", findings: [{ ...unused, claim: "json is imported and never used.", focus: "test-quality" }, { ...unused, claim: "The json import is unused.", focus: "code-smell" }, { where: "a.test.mjs:9", title: "Unused import", claim: "os is unused.", focus: "code-smell" }] })];
+
+  const round = lensRound({ ledger: ledgerFor({ stage }), calls, spawns, contract });
+
+  assert.deepEqual(round.findings.map(({ where, title }) => `${title} · ${where}`), ["Unused import · a.test.mjs:3", "Unused import · a.test.mjs:9"], "the same gist at the same place shows once; another place is another finding");
+  assert.equal(round.counts.found, 2, "the count is of distinct findings");
+});
+
 // scenario review-row: the REVIEW row is one line of lenses with their counts, one summary line, then one line per finding
 test("review-lines-are-the-lenses-the-summary-and-the-findings-only", () => {
   const rollbacks = [rollbackAt({ item: "g1", round: 2, kind: "red" })];
@@ -830,11 +842,18 @@ test("review-lines-are-the-lenses-the-summary-and-the-findings-only", () => {
   assert.deepEqual(
     lensLines(round, 200),
     [
-      { text: "checked: the code, the tests · still looking at: needed or not · could not check: docs and plan" },
+      { text: "checked: the code, the tests · checking needed or not · could not check: docs and plan" },
       { text: "1 issue found · 1 fixing" },
       { text: "  fixing · one · a.mjs:1", whole: true },
     ].map(({ whole, ...line }) => line),
     "no header, fixes block, stopped line or agent count: the lenses read in plain words by what became of them, with no counts and no tone: colour marks only a phase, needs-you or a stop",
   );
   assert.deepEqual(lensLines(quiet, 200), [{ text: "checked: the code" }, { text: "no issues found" }], "a round with no findings says so");
+});
+
+// While the task type is still being reviewed the row reads one plain line: no "no issues found" before the review is over.
+test("a-task-type-review-still-running-reads-one-plain-line", () => {
+  const round = lensRound({ ledger: ledgerFor({ stage: "intake" }), calls: [], spawns: [spawnFor({ stage: "intake", item: "classification" })], contract });
+
+  assert.deepEqual(lensLines(round, 200).map(({ text }) => text), ["checking the task type"]);
 });

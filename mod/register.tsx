@@ -7,9 +7,9 @@ import contract from '../shared-node/stages-contract.mjs'
 import { Band } from './band'
 import { Pane, type Suggestion } from './pane'
 import { openReport, reportLine } from './report'
-import { recordDelivery, submitSuggestion, type PendingSuggestion } from './suggest'
-import { PANE_ID, openPane } from './pane-open'
-import { buildEndedView, buildView, type PaneTags, type View } from './view'
+import { recordDelivery, saveNote, type PendingSuggestion } from './suggest'
+import { PANE_ID, togglePane } from './pane-open'
+import { buildEndedView, buildView, type Tags, type View } from './view'
 
 // The same key the poller writes (INPUTS in ./poll); the kit's scan reads the atom's literals from this file.
 const inputsAtom = atom({ plugin: 'pairingbuddy', key: 'inputs' }, null)
@@ -25,18 +25,19 @@ const openedAtom = atom({ plugin: 'pairingbuddy', key: 'opened' }, null)
 // The same key the alert writes (STATUS_SET in ./alert); the kit's scan reads the atom's literals from this file.
 const statusSetAtom = atom({ plugin: 'pairingbuddy', key: 'status-set' }, null)
 
-// Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The same key is written in four copies, PANE_NOTE in ./poll, ./report and ./suggest and noteAtom in register.tsx; keep all four in step. The report press, the suggest submit and the poller all write it.
+// Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The same key is written in three copies, PANE_NOTE in ./poll and ./report and noteAtom in register.tsx; keep all three in step. /pb-report and the poller write it.
 const noteAtom = atom({ plugin: 'pairingbuddy', key: 'pane-note' }, null)
 
-// The same key the suggest submit writes (PENDING in ./suggest); the kit's scan reads the atom's literals from this file.
+// The same key /pb-note writes (PENDING in ./suggest); the kit's scan reads the atom's literals from this file.
 const pendingAtom = atom({ plugin: 'pairingbuddy', key: 'pending-suggestion' }, null)
 
 // What the last pb publish printed, written by the Bash hook below.
 const publishedAtom = atom({ plugin: 'pairingbuddy', key: 'published' }, null)
 
 async function startWatching($: EngineInterface, poller: PollerState, options: PluginOptions) {
-  await $.command.register({ name: 'pb', description: 'Open the Pairing Buddy pane', immediate: true })
+  await $.command.register({ name: 'pb', description: 'Open or close the Pairing Buddy pane', immediate: true })
   await $.command.register({ name: 'pb-report', description: 'Write the Pairing Buddy run report and open it', immediate: true })
+  await $.command.register({ name: 'pb-note', description: 'Leave a note for the next Pairing Buddy agent: /pb-note <text>', immediate: true })
   await startPoller($, poller, options)
 }
 
@@ -47,7 +48,7 @@ function drawGlance(
   next: (e: RenderInput) => Promise<RenderElement>,
   spawns: Spawn[],
   calls: Call[],
-  draw: (tags: PaneTags, view: View, opened: boolean, note: string | null, pending: PendingSuggestion | null) => RenderElement,
+  draw: (tags: Tags, view: View, opened: boolean, note: string | null, pending: PendingSuggestion | null) => RenderElement,
 ) {
   if ((e.props as { hasSurvey?: boolean }).hasSurvey) {
     return next(e)
@@ -77,10 +78,6 @@ function suggestionView(pending: PendingSuggestion | null, upcoming: () => strin
   }
 
   return pending.deliveredTo ? { state: 'delivered', to: pending.deliveredTo } : { state: 'pending', nextAgent: upcoming() }
-}
-
-async function closePane($: EngineInterface) {
-  try { await $.ui.close({ id: PANE_ID }) } catch {}
 }
 
 export const register: Register = (on, options) => {
@@ -128,9 +125,9 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', ($, e, next) => {
-    if (e.command === 'pb') return openPane($, true).then(() => ({ text: 'Pairing Buddy pane opened' }))
-    // The same report path as the pane's 'r open report', without needing the pane's focus.
+    if (e.command === 'pb') return togglePane($).then(done => ({ text: `Pairing Buddy pane ${done}` }))
     if (e.command === 'pb-report') return openReport($, spawns, calls).then(outcome => ({ text: reportLine(outcome) }))
+    if (e.command === 'pb-note') return saveNote($, spawns, e.args).then(text => ({ text }))
     return next(e)
   })
 
@@ -162,20 +159,15 @@ export const register: Register = (on, options) => {
     <Band Box={Box} Text={Text} band={band} goal={goal} running={running} waiting={waiting} ended={ended} done={done} between={between} opened={opened} columns={e.props.bodyColumns} />
   )))
 
-  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text, Button, Input }, view, _opened, note, pending) => (
+  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text }, view, _opened, note, pending) => (
     <Pane
       Box={Box}
       Text={Text}
-      Button={Button}
-      Input={Input}
       view={view}
       columns={e.props.bodyColumns}
       unknownLabels={view.unknownLabels}
       note={note}
       suggestion={suggestionView(pending, () => nextAgent(contract, view.ledger, spawns))}
-      onReport={() => openReport($, spawns, calls)}
-      onSuggest={(text) => submitSuggestion($, spawns, text)}
-      onDismiss={() => closePane($)}
     />
   )))
 }

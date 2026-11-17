@@ -1,4 +1,4 @@
-// Scenario pb-report-command: /pb-report writes the run report as the pane's 'r open report' does, and says where it is.
+// Scenario pb-report-command: /pb-report writes the run report and says where it is.
 // Runs under `claude plugin test .` with recorded fs.write and process.run.
 import { expect, mock, test } from 'claude-code/testing'
 import { engine, ROOT, start } from './testing/band'

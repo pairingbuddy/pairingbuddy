@@ -125,14 +125,20 @@ export function engine(on: Function, ledger: unknown = SNAPSHOT_RUNNING, open: (
     calls.registered.push(e)
     return { value: { command: e.name } }
   })
+  // The panes the engine shows: a placed open adds one, a close removes it, as $.ui.panes() lists them.
+  const shown = new Set<string>()
   on('ui.open', (_: unknown, e: any) => {
     calls.opened.push(e)
-    return open(e)
+    const answer = open(e) as { value?: { isPlaced?: boolean } } | undefined
+    if (answer?.value?.isPlaced) shown.add(e.id)
+    return answer
   })
   on('ui.close', (_: unknown, e: any) => {
     calls.closed.push(e)
+    shown.delete(e.id)
     return { value: undefined }
   })
+  on('ui.panes', () => ({ value: [...shown].map(id => ({ id, title: id, isShown: true, isFocused: false, isPlaced: true })) }))
   return { served, serve, serveRaw, calls }
 }
 

@@ -2,7 +2,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { LEDGER_PATH, start } from './testing/band'
 import { alertEngine, cleared, needingHuman, seenInEarlierSession, stopped } from './testing/alert'
-import { dismissPane } from './testing/replay'
+import { closeWithPb } from './testing/replay'
 import { PANE_ID } from './pane-open'
 import { POLL_MS } from './poll'
 
@@ -94,7 +94,7 @@ test('pane-reopens-for-new-event', async ($, on) => {
 
   run.serve(stopped({ seq: 3 }))
   await clock.advance(POLL_MS)
-  await dismissPane($)
+  await closeWithPb($)
   run.serve(stopped({ seq: 5 }))
   await clock.advance(POLL_MS)
 

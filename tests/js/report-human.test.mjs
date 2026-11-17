@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { renderReport } from "../../shared-node/report.mjs";
 import { taskRuns } from "../../shared-node/task-runs.mjs";
 import { CHANGED, CODE_RUN, KEPT_FILES } from "../../mod/fixtures/ended-task/index.ts";
-import { headerOf, sectionOf, spentOf } from "./report-fixture.mjs";
+import { headerOf, sectionOf, spentOf, textOf } from "./report-fixture.mjs";
 
 // The kept runs as the mod reads them (readKeptRun in mod/inputs.ts): one per folder, its returns as calls.
 function keptRuns(files) {
@@ -87,16 +87,17 @@ describe("report-leads-with-what-you-need", () => {
     assert.ok(section.includes("Review the result and give your sign-off."), `got ${section}`);
   });
 
-  test("WHAT WAS DONE says in plain words which files changed, which tests were added and pass, and the pull request", () => {
-    const section = sectionOf(report(), "WHAT WAS DONE");
+  test("DONE says in plain words which files changed and which tests were added and pass; the pull request is STATUS's alone", () => {
+    const section = sectionOf(report(), "DONE");
 
     assert.ok(section.includes("Changed 2 files: cart.py, tests/test_cart.py"), `got ${section}`);
     assert.ok(section.includes("Added 1 test, passing: order total sums two lines"), "the test added");
-    assert.ok(section.includes('Opened pull request #7: <a href="https://github.com/example/repo/pull/7">https://github.com/example/repo/pull/7</a>'), "the pull request");
+    assert.ok(!section.includes("pull/7") && !section.includes("pull request"), `the pull request is not said twice, got ${section}`);
+    assert.equal(report().split('href="https://github.com/example/repo/pull/7"').length, 2, "the page links the pull request once");
   });
 
-  test("CHANGES OF PLAN OR SCOPE is left out when nothing material changed", () => {
-    assert.throws(() => sectionOf(report(), "CHANGES OF PLAN OR SCOPE"), /no CHANGES OF PLAN OR SCOPE section/);
+  test("CHANGES is left out when nothing material changed", () => {
+    assert.throws(() => sectionOf(report(), "CHANGES"), /no CHANGES section/);
   });
 
   // The task-type review's fix is the classifier asked again; only a new type changes the plan, a new confidence does not.
@@ -110,25 +111,25 @@ describe("report-leads-with-what-you-need", () => {
   ];
   const withCodeCalls = (calls, taskType = "new_feature") => report({ runs: [{ ...RUNS[0], ledger: { ...RUNS[0].ledger, taskType }, calls: [...calls, ...RUNS[0].calls] }, RUNS[1]] });
 
-  test("CHANGES OF PLAN OR SCOPE names a new task type the review led to", () => {
-    const section = sectionOf(withCodeCalls(reclassified(classified("bug_fix", "certain")), "bug_fix"), "CHANGES OF PLAN OR SCOPE");
+  test("CHANGES names a new task type the review led to", () => {
+    const section = sectionOf(withCodeCalls(reclassified(classified("bug_fix", "certain")), "bug_fix"), "CHANGES");
 
     assert.ok(section.includes("The task type changed after a review: now bug fix, was new feature."), `got ${section}`);
   });
 
-  test("CHANGES OF PLAN OR SCOPE leaves out a new confidence in the same task type", () => {
-    assert.throws(() => sectionOf(withCodeCalls(reclassified(classified("new_feature", "likely"))), "CHANGES OF PLAN OR SCOPE"), /no CHANGES/);
+  test("CHANGES leaves out a new confidence in the same task type", () => {
+    assert.throws(() => sectionOf(withCodeCalls(reclassified(classified("new_feature", "likely"))), "CHANGES"), /no CHANGES/);
   });
 
-  test("CHANGES OF PLAN OR SCOPE names the tests added for a scenario the coverage check found untested", () => {
+  test("CHANGES names the tests added for a scenario the coverage check found untested", () => {
     const coverage = (round, gaps) => ({ input: { pb_key: `code-tdd.verify-test-coverage.-.r${round}.a1`, ambiguity: "", status: gaps.length ? "incomplete" : "complete", gaps } });
-    const section = sectionOf(withCodeCalls([coverage(1, [{ scenario_id: "s2", description: "an empty order has no test" }]), coverage(2, [])]), "CHANGES OF PLAN OR SCOPE");
+    const section = sectionOf(withCodeCalls([coverage(1, [{ scenario_id: "s2", description: "an empty order has no test" }]), coverage(2, [])]), "CHANGES");
 
     assert.ok(section.includes("Tests were added because a scenario had none: an empty order has no test."), `got ${section}`);
   });
 
   // A review that found a real problem and had it fixed changed the work; the pull request's wording fixed is no change of plan.
-  test("CHANGES OF PLAN OR SCOPE names each fix a review forced on the work, and not the pull request's wording", () => {
+  test("CHANGES names each fix a review forced on the work, and not the pull request's wording", () => {
     const net = (role, item, round, input) => ({ input: { pb_key: `code-safety-net.${role}.${item}.r${round}.a1`, ...input } });
     const fixing = [
       net("lens", "code", 1, { ambiguity: null, findings: [{ rule: "", severity: "low", kind: "drift", title: "Empty order returns int 0", claim: "x.", where: "cart.py:3" }] }),
@@ -142,35 +143,36 @@ describe("report-leads-with-what-you-need", () => {
       pr("course-checker", "g1", 2, { finding_id: "claims-1", verdict: "better", mistake: "none", what_went_wrong: "" }),
     ];
     const html = report({ runs: [{ ...RUNS[0], calls: fixing }, { ...RUNS[1], calls: wording }] });
-    const section = sectionOf(html, "CHANGES OF PLAN OR SCOPE");
+    const section = sectionOf(html, "CHANGES");
 
     assert.ok(section.includes("The safety-net review had this fixed: Empty order returns int 0 · cart.py:3"), `got ${section}`);
     assert.ok(!section.includes("restates the diff"), "the pull request's wording is not a change of plan");
   });
 
-  test("the header holds the goal, where the task is and its pull request, and nothing of how it ran", () => {
+  test("the header holds the goal and STATUS, which reads as the pane's and links the pull request, and nothing of how it ran", () => {
     const header = headerOf(report());
+    const status = sectionOf(header, "STATUS");
 
-    assert.ok(header.includes("Add order_total(lines) to cart.py"), "the goal");
-    assert.ok(header.includes(">DONE<"), "where it is");
-    assert.ok(header.includes('pull request #7: <a href="https://github.com/example/repo/pull/7">'), `the pull request, got ${header}`);
+    assert.ok(sectionOf(header, "GOAL").includes("Add order_total(lines) to cart.py"), "the goal");
+    assert.equal(textOf(status), "STATUS ✓ DONE · PR #7 opened", "where it is, in the pane's words");
+    assert.ok(status.includes('<a href="https://github.com/example/repo/pull/7">PR #7</a>'), `the pull request is linked, got ${status}`);
     assert.ok(!header.includes("new feature"), "the task type is for how it ran");
   });
 
   test("the header of a run waiting on a question says it is waiting on you", () => {
     const waiting = { ...CODE_RUN, stage: { ...CODE_RUN.stage, status: "active" }, needsHuman: { gate: "G:task-end", reason: "auto mode is off", seq: 9 } };
 
-    assert.ok(headerOf(renderReport({ ledger: waiting, spawns: [] })).includes(">WAITING ON YOU<"));
+    assert.equal(textOf(sectionOf(headerOf(renderReport({ ledger: waiting, spawns: [] })), "STATUS")), "STATUS ▲ NEEDS YOU · your sign-off at the end");
   });
 
   test("How it ran holds the rest, closed, at the bottom", () => {
     const html = report();
-    const details = /<details>\s*<summary>How it ran<\/summary>([\s\S]*)<\/details>/.exec(html)?.[1];
+    const details = /<details>\s*<summary>HOW IT RAN<\/summary>([\s\S]*)<\/details>/.exec(html)?.[1];
 
     assert.ok(details, "a closed How it ran section");
     for (const title of ["AT A GLANCE", "STEPS", "SCENARIOS", "TESTS", "BUILT", "REVIEW", "COMMITS"]) assert.doesNotThrow(() => sectionOf(details, title), `How it ran holds ${title}`);
     assert.ok(details.includes("new feature"), "the task type is told there");
-    assert.ok(html.indexOf("WHAT WAS DONE") < html.indexOf("<details>"), "after the sections for the human");
+    assert.ok(html.indexOf("<h2>DONE</h2>") < html.indexOf("<details>"), "after the sections for the human");
     assert.ok(!html.includes("WHAT YOU CAN DO") && !html.includes("OPEN DOUBTS"), "what the human must do is NEEDS YOU's alone");
   });
 

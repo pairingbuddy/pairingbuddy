@@ -3,8 +3,8 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { POLL_MS } from './poll'
 import { engine, SNAPSHOT_RUNNING, start } from './testing/band'
-import { PANE, paneLines } from './testing/replay'
-import { recordReportCalls, REPORT_KEY } from './testing/report'
+import { paneLines } from './testing/replay'
+import { recordReportCalls, runPbReport } from './testing/report'
 
 test('poller-records-ended-at-when-ledger-disappears', async ($, on) => {
   const clock = mock.clock(on, { now: Date.parse('2026-11-04T10:00:00.000Z') })
@@ -48,9 +48,7 @@ test('report-after-run-end-shows-same-run-time-as-pane', async ($, on) => {
   run.serve(null)
   await clock.advance(POLL_MS)
   const spentLine = (await paneLines($)).find((text) => text.startsWith('SPENT'))
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: REPORT_KEY })
-  await pane.unmount()
+  await runPbReport($)
 
   expect(writes.length, 'pressing the report button after the run ended writes one report').toBe(1)
   const html = writes[0].text
@@ -116,16 +114,14 @@ test('new-run-clears-ended-at', async ($, on) => {
   run.serve(secondRun)
 
   await clock.advance(POLL_MS)
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: REPORT_KEY })
-  await pane.unmount()
+  await runPbReport($)
 
   expect(typeof oldEndedAt, 'the first run recorded an end time').toBe('string')
   expect(kept.get('ended-at'), 'a new ledger clears ended-at').toBeNull()
   expect(writes.length, 'pressing the report button during the live run writes one report').toBe(1)
   const html = writes[0].text
   expect(html, 'the live report does not use the old end time').not.toContain(oldEndedAt as string)
-  expect(html, 'the live report is of the running run').toContain('RUNNING')
+  expect(html, 'the live report is of the running run').toContain('● working')
 })
 
 test('report-without-recorded-end-stays-unknown', async ($, on) => {
@@ -151,9 +147,7 @@ test('report-without-recorded-end-stays-unknown', async ($, on) => {
   run.serve(null)
   await clock.advance(POLL_MS)
 
-  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await pane.press({ key: REPORT_KEY })
-  await pane.unmount()
+  await runPbReport($)
 
   expect(kept.get('ended-at') ?? null, 'no end time was recorded').toBeNull()
   expect(writes.length, 'pressing the report button writes one report').toBe(1)
