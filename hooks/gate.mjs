@@ -2,8 +2,9 @@
 // Gate: PreToolUse enforcement during a run, loaded by gate-boot.mjs. With no run state it allows everything silently,
 // except a call that would start a stage of this plugin or reach an agent only a stage spawns: those have only ever run
 // inside a run. It also spares curate-guidance a question nobody would answer, since only a hook sees the policy.
-// An allow prints nothing, unless it is the runner's exact command or, during a run, the main context's own exact pb command
-// (bar publish and pr refresh); a decision exits 0 with the JSON form on stdout.
+// An allow prints nothing, unless it is the runner's exact command or the main context's own exact pb command: during a run
+// any main verb bar publish and pr refresh, with no run the verbs that start or inspect one. A decision exits 0 with the
+// JSON form on stdout.
 // Any error with run state denies.
 // This wrapper imports only built-ins and loads everything else dynamically, so that a failed import can
 // still deny, and so that a call outside a run costs little more than Node's startup.
@@ -249,6 +250,22 @@ async function denyD17WithNoRun(payload, cwd) {
   }
 }
 
+// The main context's exact pb command for a verb that starts or inspects a run. Only a command that names a pb.mjs pays for
+// the import, so a plain main-context call outside a run still loads nothing new.
+async function allowPbCommandWithNoRun(payload) {
+  const command = payload.tool_input?.command;
+  if (isSubagent(payload) || typeof command !== "string" || !command.startsWith("node ") || !command.includes("/cli/pb.mjs ")) return false;
+  try {
+    const { noRunAllowReason } = await import("../shared-node/gate-rules.mjs");
+    const reason = noRunAllowReason(payload);
+    if (reason === null) return false;
+    decide("allow", reason);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // A confined agent stays confined with no run. The roster mirrors CONFINED_AGENTS in gate-rules.mjs, kept apart so the main
 // context never pays for that import: only a confined payload loads it, and if the load fails the call is denied.
 const CONFINED_AGENT = /^pairingbuddy:(?:lens|refuter|synthesizer|course-checker)$/;
@@ -304,7 +321,7 @@ try {
   } else if (payload?.tool_name === "Agent") {
     await denyAgentWithNoRun(payload.tool_input ?? {});
   } else if (payload?.tool_name === "Bash") {
-    await denyD17WithNoRun(payload, cwd);
+    if (!(await allowPbCommandWithNoRun(payload))) await denyD17WithNoRun(payload, cwd);
   } else if (payload?.tool_name === "AskUserQuestion") {
     denyQuestionWithNoHuman(payload);
   }
