@@ -24,6 +24,8 @@ The prompt contains:
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
+Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+
 1. Read the `<task>` data and identify the single configuration value to change.
 2. If the task leaves the target file, key or value unresolved, do not guess. Make no change, return an empty `files_changed` and describe the open question in `ambiguity`.
 3. Otherwise change only that value, keeping the file's existing format. If the edit is refused or fails, return an empty `files_changed` and say what happened in `ambiguity`. A return listing a file that did not change stops the run.

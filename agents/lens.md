@@ -32,6 +32,8 @@ The prompt contains:
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
+Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+
 1. Read the `<lens>` (or, in a light review, each focus in `<focuses>`) and the `<subject>`. When a `<task>` is given, use it as context for what the subject is meant to achieve; it does not widen the lens. Read the files listed in `<corpus>` as the evidence to check the subject against, and read only what else the subject points at. When the subject is a change (a diff and the files it changed), read each changed file in full, not only the diff: a diff shows only the lines around each change. If `<corpus>` is `none`, there is no corpus to read.
 2. Look for what the lens (or each focus) covers and nothing outside it. Do not change anything.
 3. For each finding, give the rule it breaks (an empty string if no rule applies), its severity (`high`, `medium` or `low`), a title (the gist in at most 60 characters, like the first line of a commit message: the reader sees it first and reads the claim only for detail), the claim (what is wrong, in one or two sentences, grounded in evidence you read) and where it is (a file path with an optional line, or the subject item).

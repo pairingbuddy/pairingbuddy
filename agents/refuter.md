@@ -28,6 +28,8 @@ The prompt contains:
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
+Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+
 1. Read the `<finding>` and name the assumption its claim stands on.
 2. Look for evidence that the assumption does not hold. Read only what the finding and the `<subject>` point at. When the subject is a change (a diff and the files it changed), read each changed file in full, not only the diff: a diff shows only the lines around each change. Do not change anything.
 3. Give `survives` if the attack fails and the finding stands. Give `refuted` if the assumption does not hold.

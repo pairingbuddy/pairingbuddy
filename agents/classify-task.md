@@ -50,6 +50,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
+Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+
 With a `<paths>` block: where the steps below say to ask the human, do not guess and do not ask. No human is reachable from a stage. Report any doubt in `ambiguity` and lower `confidence`: `certain` only when the task leaves no reasonable doubt between types. `ambiguity` is only for a question a human must settle; with nothing open, return an empty string.
 
 With a `<paths>` block that includes `classification` (an earlier classification) and a prompt that lists findings, classify again taking the findings into account, and still return the same shape.
