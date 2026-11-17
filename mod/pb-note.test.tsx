@@ -95,5 +95,5 @@ test('pb-note with no task running writes nothing and says no agent would read i
   const { writes, answer } = await leaveNote($, on, { text: TYPED, ledger: null })
 
   expect(writes, 'no note is saved with no run to read it').toEqual([])
-  expect(answer).toBe(NOTE_NO_RUN)
+  expect(answer).toBe('Note not saved: no Pairing Buddy task is running, so no agent would read it. Start a task first, or add it to .pairingbuddy/human-guidance.json to keep it for every task.')
 })

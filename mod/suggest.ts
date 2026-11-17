@@ -16,7 +16,7 @@ export const GUIDANCE = '.pairingbuddy/human-guidance.json'
 export const NOTE_SAVED = `Note saved to ${GUIDANCE}. The next agent will read it.`
 export const NOTE_NOT_SAVED = `Note not saved: ${GUIDANCE} could not be read or written, so it was left as it was.`
 export const NOTE_BLANK = 'Nothing saved: type the note after the command, as in /pb-note keep the signature.'
-export const NOTE_NO_RUN = 'Note not saved: no Pairing Buddy task is running, so no agent would read it.'
+export const NOTE_NO_RUN = `Note not saved: no Pairing Buddy task is running, so no agent would read it. Start a task first, or add it to ${GUIDANCE} to keep it for every task.`
 
 // A function declaration, not an arrow: the mod loader rejects an exported arrow taking $ across files.
 // /pb-note: appends the typed note to human-guidance.json as a task-scoped entry, which curate-guidance drops at the next task,
