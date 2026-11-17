@@ -81,3 +81,12 @@ test('next-agent-judges-only-active-stage-spawns', async ($, on) => {
   const drawn = await paneTexts($)
   expect(drawn, 'a spawn from an earlier stage does not count: the pane names the active stage\'s first agent (code-tdd runs create-test-placeholders first)').toContain(`${PENDING_PHRASE}: sketching the tests`)
 })
+
+// The lab run: the note was saved mid-TDD and the next spawn was a runner, which does nothing with a note.
+test('a-runner-spawn-is-not-delivery', async ($, on) => {
+  await leaveNote($, on, { text: SUGGESTION_TEXT })
+  await spawnStageAgent($, { stage: 'code-tdd', role: 'runner' })
+
+  const drawn = await paneTexts($)
+  expect(drawn.some((text) => text.includes('running the checks')), 'a runner never reads the note').toBe(false)
+})

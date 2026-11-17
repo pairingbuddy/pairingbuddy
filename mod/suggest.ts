@@ -1,6 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 import { readInputs, type Spawn } from './inputs'
-import { suggestionEntry } from '../shared-node/suggestion.mjs'
+import { readsNotes, suggestionEntry } from '../shared-node/suggestion.mjs'
 import { readLabel } from '../shared-node/labels.mjs'
 
 // The pending suggestion, as mod state: when it was saved, until an agent spawns and reads it.
@@ -63,9 +63,10 @@ function isMissing(error: unknown): boolean {
 }
 
 // A function declaration, not an arrow: the mod loader rejects an exported arrow taking $ across files.
-// A pending suggestion that has not been delivered yet reaches the agent that spawns now; mod state only.
+// A pending suggestion that has not been delivered yet reaches the agent that spawns now, when it is one that reads the
+// guidance file; a runner, a lens or a refuter leaves it pending. Mod state only.
 export async function recordDelivery($: EngineInterface, pending: PendingSuggestion | null, name: string | undefined): Promise<void> {
   const label = readLabel(name ?? '')
-  if (pending == null || pending.deliveredTo != null || label.unknown) return
+  if (pending == null || pending.deliveredTo != null || label.unknown || !readsNotes(label.role)) return
   await $.state.set(PENDING, { ...pending, deliveredTo: label.role })
 }
