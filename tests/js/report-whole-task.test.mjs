@@ -202,16 +202,31 @@ describe("report-of-a-classification-review", () => {
   ];
   const reviewOf = (again) => sectionOf(report({ runs: [{ ...RUNS[0], calls: [...INTAKE_CALLS(again), ...CODE_CALLS] }, RUNS[1]] }), "REVIEW");
 
-  test("a re-classification that kept the type and changed the confidence says so", () => {
+  test("a re-classification that kept the type and lowered the confidence says so plainly", () => {
     const section = reviewOf(classified("new_feature", "likely"));
 
-    assert.ok(section.includes("Certain confidence rests on an unverified line_total</strong> · classified again: still new feature, confidence likely (was certain)"), `got ${section}`);
+    assert.ok(section.includes("Certain confidence rests on an unverified line_total</strong> · task type kept: new feature; less sure than first thought"), `got ${section}`);
+  });
+
+  test("a re-classification that raised the confidence says it is surer", () => {
+    const section = sectionOf(report({ runs: [{ ...RUNS[0], calls: [intake("classify-task", "-", 1, classified("new_feature", "likely")), ...INTAKE_CALLS(classified("new_feature", "certain")).slice(1), ...CODE_CALLS] }, RUNS[1]] }), "REVIEW");
+
+    assert.ok(section.includes("· task type kept: new feature; surer than first thought"), `got ${section}`);
   });
 
   test("a re-classification that changed the type names the new type and the old", () => {
     const section = reviewOf(classified("bug_fix", "certain"));
 
-    assert.ok(section.includes("· classified again: now bug fix (was new feature), same confidence"), `got ${section}`);
+    assert.ok(section.includes("· task type changed: bug fix (was new feature) · cart.py:3"), `got ${section}`);
+  });
+
+  test("a finding on the task's wording names no place: its subject and return key are not shown", () => {
+    const onSubject = { ...finding("Certain confidence rests on an unverified line_total", undefined), where: "subject: task_type/confidence (intake.classify-task.-.r1.a1)" };
+    const calls = [...INTAKE_CALLS(classified("new_feature", "likely")).map((call) => (call.input.pb_key === "intake.lens.classification.r1.a1" ? intake("lens", "classification", 1, { ambiguity: null, findings: [onSubject] }) : call)), ...CODE_CALLS];
+    const section = sectionOf(report({ runs: [{ ...RUNS[0], calls }, RUNS[1]] }), "REVIEW");
+
+    assert.ok(section.includes("· task type kept: new feature; less sure than first thought<br>"), `got ${section}`);
+    assert.doesNotMatch(section, /subject:|intake\.classify-task/);
   });
 });
 

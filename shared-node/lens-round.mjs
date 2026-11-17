@@ -83,12 +83,16 @@ function returnState(one) {
   return one.findings ? { state: LENS_STATES.returned, found: findingEntries(one).length } : { state: LENS_STATES.uncovered };
 }
 
+// A finding on the task's wording names the subject and the return it read ("subject: task_type/confidence (intake...)"): no place
+// the human can open, so none is shown.
+const placeShown = (where) => (typeof where === "string" && /^subject:/i.test(where.trim()) ? undefined : where);
+
 // One lens return's findings, ids by position in its array.
 function returnFindings(one, verdicts) {
   return findingEntries(one).map(({ finding, index }) => {
     const id = buildFindingId({ lens: one.key.item, index });
     const title = typeof finding.title === "string" && finding.title.trim() !== "" ? { title: finding.title.trim() } : {};
-    return { id, lens: shownName(one.key.item), where: finding.where, ...title, claim: finding.claim, focus: finding.focus, verdict: verdicts.get(id) ?? VERDICTS.unchallenged };
+    return { id, lens: shownName(one.key.item), where: placeShown(finding.where), ...title, claim: finding.claim, focus: finding.focus, verdict: verdicts.get(id) ?? VERDICTS.unchallenged };
   });
 }
 

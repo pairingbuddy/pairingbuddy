@@ -392,11 +392,20 @@ const CYCLE_STAGE = "code-tdd";
 // pane reads it (over too once the run has ended, as a kept run has).
 const typeWord = (type) => plainName(type ?? "") ?? String(type);
 
+// How sure each confidence is, surest first.
+const CONFIDENCES = ["certain", "likely", "unsure"];
+
+// How the confidence moved, in plain words; nothing when it did not move or is not known.
+function sureWord(before, after) {
+  const [was, now] = [CONFIDENCES.indexOf(before?.confidence), CONFIDENCES.indexOf(after.confidence)];
+  if (was < 0 || now < 0 || was === now) return "";
+  return now > was ? "; less sure than first thought" : "; surer than first thought";
+}
+
 // What classifying again changed, from the classification before it and the one the fix returned.
 function classifiedWord(before, after) {
-  const confidence = before && before.confidence !== after.confidence ? `, confidence ${after.confidence} (was ${before.confidence})` : before ? ", same confidence" : `, confidence ${after.confidence}`;
-  if (before && before.task_type !== after.task_type) return `classified again: now ${typeWord(after.task_type)} (was ${typeWord(before.task_type)})${confidence}`;
-  return `classified again: ${before ? "still " : ""}${typeWord(after.task_type)}${confidence}`;
+  if (before && before.task_type !== after.task_type) return `task type changed: ${typeWord(after.task_type)} (was ${typeWord(before.task_type)})${sureWord(before, after)}`;
+  return `task type ${before ? "kept" : "set"}: ${typeWord(after.task_type)}${sureWord(before, after)}`;
 }
 
 // A task-type review's fix is the classifier asked again, which mends no code: a finding it answered reads as what that
