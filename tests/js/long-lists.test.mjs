@@ -28,7 +28,7 @@ describe("long lists in the gate questions", () => {
 
     assert.equal(lines[0], "Scenarios (15 scenarios, 40 tests):");
     assert.deepEqual(lines.slice(1, 16), BIG_SCENARIOS.map(({ description, tests }) => `- ${description} (${tests.length} ${tests.length === 1 ? "test" : "tests"})`));
-    assert.equal(lines[16], "Auto mode is off, so this asks you.", "all 15 fit, so nothing folds");
+    assert.equal(lines[16], "Start building these?", "all 15 fit, so nothing folds");
     assert.ok(!lines.some((line) => line.startsWith("    - ")), "no test line is shown");
   });
 

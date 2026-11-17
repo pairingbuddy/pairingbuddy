@@ -11,6 +11,12 @@ const POLICY = "the gate policy is default, not auto";
 const FULL_AT = "/repo/.pairingbuddy/run/question.md";
 
 describe("each gate asks in plain words", () => {
+  test("a gate asked only because auto mode is off adds no why line: the publish question ends with its facts and its ask", () => {
+    const { question } = gateQuestion("G:publish", { reason: POLICY, facts: { title: "Add order_total to the cart", body: "Adds order_total.\n" }, fullAt: FULL_AT });
+
+    assert.equal(question, ["Pull request: Add order_total to the cart", "Adds order_total.", `Full description: ${FULL_AT}`, "Open it?"].join("\n"));
+  });
+
   test("G:scenarios shows the scenarios with their tests indented, then asks", () => {
     const scenarios = [
       { description: "order total sums the lines", tests: ["two lines add up", "no lines give zero"] },
@@ -26,7 +32,6 @@ describe("each gate asks in plain words", () => {
       "    - no lines give zero",
       "- a bad line is refused",
       "    - a negative quantity raises",
-      "Auto mode is off, so this asks you.",
       "Start building these?",
     ].join("\n"));
   });
@@ -36,14 +41,14 @@ describe("each gate asks in plain words", () => {
     const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
     const lines = question.split("\n");
 
-    assert.deepEqual(lines.slice(0, 7), [
+    assert.deepEqual(lines, [
       "Scenarios (5 scenarios, 9 tests):",
       "- scenario 1 (1 test)",
       "- scenario 2 (2 tests)",
       "- scenario 3 (2 tests)",
       "- scenario 4 (2 tests)",
       "- scenario 5 (2 tests)",
-      "Auto mode is off, so this asks you.",
+      "Start building these?",
     ]);
   });
 
@@ -53,7 +58,7 @@ describe("each gate asks in plain words", () => {
     const lines = question.split("\n");
 
     assert.equal(lines[0], "Scenarios (18 scenarios, 18 tests):");
-    assert.deepEqual(lines.slice(15, 18), ["- scenario 15 (1 test)", `+ 3 more scenarios: ${FULL_AT}`, "Auto mode is off, so this asks you."]);
+    assert.deepEqual(lines.slice(15, 18), ["- scenario 15 (1 test)", `+ 3 more scenarios: ${FULL_AT}`, "Start building these?"]);
   });
 
   test("G:scenarios one past 15 says one more scenario", () => {
@@ -67,7 +72,7 @@ describe("each gate asks in plain words", () => {
     const { header, question } = gateQuestion("G:type", { reason: POLICY, taskType: "new_feature", facts: { rationale: "Adds order_total to cart.py. Nothing existing changes." } });
 
     assert.equal(header, "Task type");
-    assert.equal(question, "Task type: new feature. Adds order_total to cart.py.\nAuto mode is off, so this asks you.\nIs that the right type?");
+    assert.equal(question, "Task type: new feature. Adds order_total to cart.py.\nIs that the right type?");
   });
 
   test("G:task-end gives the goal, what was built and what the review did, then asks", () => {
@@ -85,7 +90,6 @@ describe("each gate asks in plain words", () => {
       "Goal: Add order_total(lines) to cart.py.",
       "Built: cart.py, tests/test_cart.py; 1 test, all passing.",
       "Review: 1 issue, 1 fixed, 0 left as is.",
-      "Auto mode is off, so this asks you.",
       "Is the task done?",
     ].join("\n"));
   });
@@ -97,7 +101,6 @@ describe("each gate asks in plain words", () => {
     assert.equal(question, [
       "Review: 2 issues, 1 fixed, 1 left as is.",
       `Goal check: The README does not name order_total (fixed); + 1 more: ${FULL_AT}`,
-      "Auto mode is off, so this asks you.",
       "Is the task done?",
     ].join("\n"));
   });
@@ -112,7 +115,7 @@ describe("each gate asks in plain words", () => {
   test("G:task-end leaves out every line whose fact could not be read", () => {
     const { question } = gateQuestion("G:task-end", { reason: POLICY, facts: { tests: 2 } });
 
-    assert.equal(question, "Built: 2 tests.\nAuto mode is off, so this asks you.\nIs the task done?");
+    assert.equal(question, "Built: 2 tests.\nIs the task done?");
   });
 
   test("G:publish gives the title, the Summary's first paragraph and the body file, not the whole body", () => {
@@ -125,7 +128,6 @@ describe("each gate asks in plain words", () => {
       "Pull request: Add order_total to the cart",
       "Adds order_total(lines) to cart.py, so checkout shows one total.",
       `Full description: ${bodyAt}`,
-      "Auto mode is off, so this asks you.",
       "Open it?",
     ].join("\n"));
   });
@@ -139,7 +141,6 @@ describe("each gate asks in plain words", () => {
       "Pull request: Add order_total to the cart",
       "Adds order_total(lines) to cart.py.",
       `Full description: ${FULL_AT}`,
-      "Auto mode is off, so this asks you.",
       "Open it?",
     ].join("\n"));
   });
@@ -163,14 +164,14 @@ describe("each gate asks in plain words", () => {
     const { header, question } = gateQuestion("G:scope", { reason: POLICY });
 
     assert.equal(header, "Tidy-up");
-    assert.equal(question, "Is this the right list to tidy up? Auto mode is off, so this asks you.");
+    assert.equal(question, "Is this the right list to tidy up?");
   });
 
   test("G:unit asks whether this experiment is done", () => {
     const { header, question } = gateQuestion("G:unit", { reason: POLICY });
 
     assert.equal(header, "Experiment");
-    assert.equal(question, "Is this experiment done? Auto mode is off, so this asks you.");
+    assert.equal(question, "Is this experiment done?");
   });
 
   test("every gate of the real contract has its own short header and names no gate id", () => {
@@ -190,8 +191,6 @@ describe("each gate asks in plain words", () => {
 const WHYS = [
   ["it is a decide gate, which always asks", "This step always asks you."],
   ["no classifier reports certain", "The check was not sure, so it asks you."],
-  ["no gate policy is recorded", "Auto mode is off, so this asks you."],
-  ["the gate policy is default, not auto", "Auto mode is off, so this asks you."],
   ["the classifier does not report certain", "The classifier was not sure of the type."],
   ["the classification lens has an open finding", "A reviewer doubts the task type."],
   ["runner unit has no selector_template, so RED and GREEN cannot speak for one test. Ask the human to add it", "A test runner can't run one test on its own."],
@@ -220,6 +219,12 @@ describe("the question says why it asks, in plain words", () => {
   test("each reason gives its plain line before the ask", () => {
     for (const [reason, why] of WHYS) {
       assert.equal(gateQuestion("G:task-end", { reason }).question, `${why}\nIs the task done?`, reason);
+    }
+  });
+
+  test("auto mode being off is no reason worth a line", () => {
+    for (const reason of ["no gate policy is recorded", "the gate policy is default, not auto"]) {
+      assert.equal(gateQuestion("G:task-end", { reason }).question, "Is the task done?", reason);
     }
   });
 });
