@@ -842,11 +842,18 @@ test("review-lines-are-the-lenses-the-summary-and-the-findings-only", () => {
   assert.deepEqual(
     lensLines(round, 200),
     [
-      { text: "checked: the code, the tests · still looking at: needed or not · could not check: docs and plan" },
+      { text: "checked: the code, the tests · checking needed or not · could not check: docs and plan" },
       { text: "1 issue found · 1 fixing" },
       { text: "  fixing · one · a.mjs:1", whole: true },
     ].map(({ whole, ...line }) => line),
     "no header, fixes block, stopped line or agent count: the lenses read in plain words by what became of them, with no counts and no tone: colour marks only a phase, needs-you or a stop",
   );
   assert.deepEqual(lensLines(quiet, 200), [{ text: "checked: the code" }, { text: "no issues found" }], "a round with no findings says so");
+});
+
+// While the task type is still being reviewed the row reads one plain line: no "no issues found" before the review is over.
+test("a-task-type-review-still-running-reads-one-plain-line", () => {
+  const round = lensRound({ ledger: ledgerFor({ stage: "intake" }), calls: [], spawns: [spawnFor({ stage: "intake", item: "classification" })], contract });
+
+  assert.deepEqual(lensLines(round, 200).map(({ text }) => text), ["checking the task type"]);
 });

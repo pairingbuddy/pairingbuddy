@@ -78,6 +78,7 @@ const PLAIN_NAMES = {
   "course-checker": "checking the course",
   "fix": "fixing a finding",
   // lenses
+  "classification": "the task type",
   "code": "the code",
   "tests": "the tests",
   "corpus-misalignment": "docs and plan",

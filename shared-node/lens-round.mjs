@@ -311,10 +311,11 @@ export function lensRound({ ledger, calls: allCalls = [], spawns: allSpawns = []
 }
 
 // What the lens line says of the lenses in each state, in this order, so it needs no legend: the finding lines say what each found.
+// Each part reads "<words> <names>": "checked: the code", "checking the tests".
 const LENS_WORDS = [
-  [LENS_STATES.returned, "checked"],
-  [LENS_STATES.running, "still looking at"],
-  [LENS_STATES.uncovered, "could not check"],
+  [LENS_STATES.returned, "checked:"],
+  [LENS_STATES.running, "checking"],
+  [LENS_STATES.uncovered, "could not check:"],
 ];
 
 // A cycle's quick review is one lens, so its line says how it went: "quick review done".
@@ -326,7 +327,7 @@ function lensParts(lenses) {
   if (lenses.length === 1 && lenses[0].name === quick) return [`${quick} ${LIGHT_WORDS[lenses[0].state]}`];
   return LENS_WORDS.map(([state, words]) => [words, lenses.filter((lens) => lens.state === state).map(({ name }) => name)])
     .filter(([, names]) => names.length > 0)
-    .map(([words, names]) => `${words}: ${names.join(", ")}`);
+    .map(([words, names]) => `${words} ${names.join(", ")}`);
 }
 
 // The issues count line: how many were found, then how many read each word, each part left out when 0.
@@ -422,10 +423,13 @@ export function fit({ text, whole = false, at = PART_FOLDS, ...rest }, columns) 
 }
 
 // The plain lines of the REVIEW row for a round (the object lensRound returns), in order: the lenses with their finding
-// counts, the summary, then one line per finding. No line carries a colour: colour marks only a phase, needs-you or a stop.
+// counts, the summary (left out while a lens still runs and nothing is found yet), then one line per finding. No line carries a colour: colour marks only a phase, needs-you or a stop.
 export function lensLines(round, columns = 0) {
   if (!round) return [];
   const lenses = round.lenses.length ? [{ text: lensParts(round.lenses).join(PART_BREAK), at: LENS_FOLDS }] : [];
-  const lines = [...lenses, { text: findingsSummary(round.findings) }, ...findingLines(round.findings, columns)];
+  // A review still running has not found nothing yet, so "no issues found" waits for its end; issues it found already show.
+  const running = round.lenses.some((lens) => lens.state === LENS_STATES.running);
+  const summary = running && !round.findings.length ? [] : [{ text: findingsSummary(round.findings) }];
+  const lines = [...lenses, ...summary, ...findingLines(round.findings, columns)];
   return lines.flatMap((line) => fit(line, columns));
 }
