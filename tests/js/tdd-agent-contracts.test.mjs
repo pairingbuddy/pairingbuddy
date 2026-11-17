@@ -218,6 +218,16 @@ for (const name of ["refactor-tests", "refactor-code"]) {
   });
 }
 
+for (const name of ["refactor-tests", "refactor-code"]) {
+  test(`${name}: with paths it changes only what the cycle wrote, which subject_diff shows`, () => {
+    const text = textOf({ name });
+
+    assert.match(text, /`subject_diff` is the diff of this cycle's RED and GREEN steps/);
+    assert.match(text, /Leave every other test and every older line as it is, even in the same file, unless a finding's `where` points at that very test or line/);
+    assert.match(text, /change the new lines to match the older ones/);
+  });
+}
+
 test("refactor-tests: with paths it changes tests alone", () => {
   assert.match(textOf({ name: "refactor-tests" }), /With a `<paths>` block: change only test files/);
 });

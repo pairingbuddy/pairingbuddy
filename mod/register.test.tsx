@@ -60,6 +60,22 @@ test('a second /pb closes the open pane, and a third opens it again', async ($, 
   expect(reopened.text, 'and says so').toBe('Pairing Buddy pane opened')
 })
 
+test('a /pb right after the one that closed the pane opens it, though the engine still lists the pane as shown', async ($, on) => {
+  const { calls, shown } = engine(on)
+  await start($)
+  await $.command.run({ command: 'pb', args: '' })
+  const closed: any = await $.command.run({ command: 'pb', args: '' })
+  // The engine's list lags the close: the pane is still listed shown and placed after it.
+  shown.add(PANE_ID)
+
+  const opened: any = await $.command.run({ command: 'pb', args: '' })
+  const closedAgain: any = await $.command.run({ command: 'pb', args: '' })
+
+  expect([closed.text, opened.text, closedAgain.text], 'consecutive /pb answers alternate').toEqual(['Pairing Buddy pane closed', 'Pairing Buddy pane opened', 'Pairing Buddy pane closed'])
+  expect(calls.opened.length, 'the /pb after a close opens the pane again').toBe(2)
+  expect(calls.closed.length, 'and the one after that closes it').toBe(2)
+})
+
 test('tool-call-hook-records-calls-and-passes-through', () => {
   const registered = recordHooks().filter(hook => hook.event === 'tool.call')
 

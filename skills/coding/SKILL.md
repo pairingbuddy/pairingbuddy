@@ -9,7 +9,7 @@ Orchestrates the TDD workflow by invoking specialized agents via the Task tool. 
 
 ## An Open Run Comes First
 
-Before anything else, run `pb status --action`. `<root>` is the plugin root the command passed. With none, it is two levels above this skill's base directory. `pb` here and below means `node <root>/cli/pb.mjs`.
+Before anything else, run `pb status --action`. `<root>` is the plugin root the command passed. With none, it is two levels above this skill's base directory. `pb` here and below means `node <root>/cli/pb.mjs`. Run each pb call as its own Bash command, exactly `node <root>/cli/pb.mjs` and its words, from the project root where the session started. Put nothing around it: no `cd`, no `2>&1`, no `echo` of the exit code, no `;`, `&&` or pipe, since pb prints its result as JSON and Bash already reports the exit code. During a run the gate lets that bare form through without a permission prompt, and a prompt nobody sees holds the whole run.
 
 - If it refuses with `no run here`, no run is open: go on to the workflow.
 - If it prints a status, a run is open. Do not clean state or classify, do not curate guidance, and do not start the new task. Cleanup would delete what the run still needs. Finish that run first: follow `pb status --action` as Plan Loop step 1 says (a stranded stage: `pb stage fail`, then restart it at `nextAttempt`). For a plan, then go on with the Plan Loop. Otherwise report the finished run and the new task you did not start.

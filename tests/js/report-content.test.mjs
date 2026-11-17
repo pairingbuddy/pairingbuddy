@@ -13,6 +13,7 @@ import { graphFor } from "../../shared-node/stage-graph.mjs";
 import { plainName } from "../../shared-node/plain-names.mjs";
 import { renderReport } from "../../shared-node/report.mjs";
 import { glance } from "../../shared-node/glance.mjs";
+import { shortName } from "../../shared-node/now-building.mjs";
 import { RECORDED_STOP, recordedReportInput, headerOf, sectionOf, spentOf, cardsOf, rowsOf, noteOf, textOf } from "./report-fixture.mjs";
 
 describe("report-content", () => {
@@ -42,7 +43,7 @@ describe("report-content", () => {
     const section = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })), "AT A GLANCE");
 
     assert.match(section, /<strong>Where it stopped<\/strong>\s*stopped: a step kept failing/);
-    assert.match(section, /<strong>Spent<\/strong>\s*18 agents · 2:36 · tokens unknown · % of plan unknown/);
+    assert.match(section, /<strong>Spent<\/strong>\s*18 agents · 2:36 · tokens unknown<\/p>/);
     assert.match(section, /<strong>Left<\/strong>\s*unknown/);
     assert.doesNotMatch(section, /Looping|Off track/);
   });
@@ -73,8 +74,8 @@ describe("report-content", () => {
 
     assert.equal(cards.length, 2, "the run touched 2 tests, so 2 cards");
     const [first, second] = cards;
-    assert.ok(first.includes("ten-percent-off-hundred"), "the first card names the first test by its id");
-    assert.ok(second.includes("zero-percent-keeps-full-price"), "the second card names the second test by its id");
+    assert.ok(first.includes("ten percent off hundred"), "the first card names the first test by its short name");
+    assert.ok(second.includes("zero percent keeps full price"), "the second card names the second test by its short name");
     // step, try, time, writing time, running time, result with exit code (the cells match the card's headings; no Commit)
     assert.deepEqual(rowsOf(first), [
       ["RED", "1", "0:11", "0:07", "0:03", "unknown"],
@@ -162,7 +163,7 @@ describe("report-content", () => {
       "never-ran-test": { selector: { ...SELECTOR, test_function: "never-ran-test" } },
     });
 
-    const card = cardsOf(html).find((candidate) => candidate.includes("never-ran-test"));
+    const card = cardsOf(html).find((candidate) => candidate.includes("never ran test"));
 
     assert.ok(card, "a test that is in the ledger but never ran still gets a card");
     assert.ok(card.includes("not reached"), "its card says not reached");
@@ -172,8 +173,8 @@ describe("report-content", () => {
   // R5-3: the looping test's card ends with a 'Why it looped' note that says why RED was refused, how many tries it took, and the stop.
   test("report-explains-why-a-test-looped", async () => {
     const cards = cardsOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })));
-    const calm = cards.find((card) => card.includes("ten-percent-off-hundred"));
-    const looping = cards.find((card) => card.includes("zero-percent-keeps-full-price"));
+    const calm = cards.find((card) => card.includes("ten percent off hundred"));
+    const looping = cards.find((card) => card.includes("zero percent keeps full price"));
 
     assert.ok(calm, "the calm test has a card");
     assert.ok(looping, "the looping test has a card");
@@ -341,7 +342,7 @@ describe("report-content", () => {
       }
       const glance = sectionOf(html, "AT A GLANCE");
       assert.match(glance, /<strong>Where it is<\/strong>\s*unknown/, "where the run is reads unknown");
-      assert.match(glance, /<strong>Spent<\/strong>[^<]*time unknown · tokens unknown · % of plan unknown/, "the spend reads unknown for time, tokens and plan");
+      assert.match(glance, /<strong>Spent<\/strong>[^<]*time unknown · tokens unknown<\/p>/, "the spend reads unknown for time and tokens, and says nothing of a plan share");
       assert.match(sectionOf(html, "COMMITS"), /<p>unknown<\/p>/, "the commits section says unknown when no commits were passed");
       assert.ok(!/undefined|NaN|\[object Object\]/.test(html), "no raw undefined, NaN or object leaks into the page");
     });
@@ -368,7 +369,7 @@ describe("report-content", () => {
   const ZERO = "zero-percent-keeps-full-price";
   const latestResult = async (entry) => {
     const html = await withPerTest({ [ZERO]: { selector: { ...SELECTOR, test_function: ZERO }, ...entry } });
-    const zeroCard = cardsOf(html).find((card) => card.includes(ZERO));
+    const zeroCard = cardsOf(html).find((card) => card.includes(shortName(ZERO)));
     return resultsOf(zeroCard).at(-1);
   };
 
@@ -429,7 +430,7 @@ describe("report-content", () => {
     const html = renderReport({ ...input, tests, testsComplete: true });
     const glance = sectionOf(renderReport({ ...running, tests, testsComplete: true }), "AT A GLANCE");
     const rerun = sectionOf(html, "NEEDS YOU");
-    const card = cardsOf(html).find((candidate) => candidate.includes(CURRENT));
+    const card = cardsOf(html).find((candidate) => candidate.includes(shortName(CURRENT)));
 
     assert.ok(card, "the current test has a card");
     assert.match(glance, /test 3 of 3/, "AT A GLANCE numbers the current test 3 by the plan's list");
@@ -450,7 +451,7 @@ const healthyPerTest = {
   },
 };
 const healthyReport = (tests) => renderReport({ ledger: { stage: { name: "code-tdd", status: "done" }, tests: { perTest: healthyPerTest } }, spawns: [], tests });
-const cardFor = (html, id) => cardsOf(html).find((card) => card.includes(id));
+const cardFor = (html, id) => cardsOf(html).find((card) => card.includes(shortName(id)));
 
 test('ledger-result-shown-without-spawn-labels', async () => {
   const html = healthyReport([]);
@@ -672,7 +673,7 @@ test("test-card-headings-escape-and-not-reached-card", async () => {
   const notReached = cardsOf(html).filter((card) => card.includes("not reached"));
 
   assert.ok(notReached.length >= 2, "precondition: the tests that never ran each get a card saying not reached");
-  assert.ok(notReached.some((card) => card.includes("never-ran-test")), "precondition: the plain never-ran test has its card");
+  assert.ok(notReached.some((card) => card.includes("never ran test")), "precondition: the plain never-ran test has its card");
   for (const card of notReached) {
     assert.deepEqual(rowsOf(card), [], "a not reached card has no try rows");
     assert.ok(!/<th[\s>]/.test(card), "a not reached card draws no column headings");
@@ -965,4 +966,15 @@ test("report-review-round-with-no-findings-reads-on-one-line", () => {
   const review = sectionOf(renderReport({ ledger, spawns: [], calls, tests: [] }), "REVIEW");
 
   assert.match(review, /<p>safety-net review · no issues found<\/p>/, `the round and its verdict share a line: ${review}`);
+});
+
+// The TESTS cards take the row's whole width under their label, and a step name never wraps (watched run: "REFACTOR: tidying
+// the tests" broke over three lines in a squeezed column at 1280px).
+test("tests-cards-give-the-step-and-result-columns-room", async () => {
+  const html = renderReport(await recordedReportInput("probe-2", { outcome: "stopped" }));
+  const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
+
+  assert.match(html, /<section class="tests">\n<h2>TESTS<\/h2>/, "the TESTS section is marked so its cards can be laid out");
+  assert.match(css, /\.tests\{grid-template-columns:minmax\(0,1fr\)\}/, "its cards sit under the label, not beside it");
+  assert.match(css, /\.tests td:first-child\{white-space:nowrap\}/, "a step name stays on one line");
 });

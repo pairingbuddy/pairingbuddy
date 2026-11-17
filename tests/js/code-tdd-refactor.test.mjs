@@ -144,9 +144,22 @@ test("code-tdd-each-refactor-fixer-gets-its-paths-and-a-findings-block", async (
 
   for (const agentType of [FIX_TESTS, FIX_CODE]) {
     const { prompt } = callsOf(calls, agentType)[0];
-    assert.deepEqual(JSON.parse(blockOf(prompt, "paths")), { tests, ...shared }, agentType);
+    assert.deepEqual(JSON.parse(blockOf(prompt, "paths")), { tests, subject_diff: ".pairingbuddy/run/subject.diff", ...shared }, agentType);
     assert.equal(blockOf(prompt, "test_id"), "t1", agentType);
     assert.equal(JSON.parse(blockOf(prompt, "findings")).length, 1, agentType);
+  }
+});
+
+// A lab run's refactor-tests fixed "the file mixes two import styles" by rewriting the older test, not the new line it
+// was about, and the safety net then spent two fixes putting the older test back.
+test("code-tdd-each-refactor-fixer-is-held-to-the-cycle-s-own-lines", async () => {
+  const { calls } = await runStage();
+
+  for (const agentType of [FIX_TESTS, FIX_CODE]) {
+    const { prompt } = callsOf(calls, agentType)[0];
+    assert.match(prompt, /Change only what this cycle wrote/, agentType);
+    assert.match(prompt, /Leave every other test and every older line as it is, even in the same file, unless a finding's where points at that very test or line/, agentType);
+    assert.match(prompt, /change the new lines to match the older ones/, agentType);
   }
 });
 

@@ -79,7 +79,7 @@ test("a calm cycle after a GREEN runner checkpoint does not read as a retry, bec
   assert.doesNotMatch(result.rows.now, /try/, "each agent ran once: a runner checkpoint is not a retry");
 });
 
-test("with tokensKnown false, tokens and % of plan show 'unknown'; no number is invented", async () => {
+test("with tokensKnown false, tokens show 'unknown' and no share of a plan is said; no number is invented", async () => {
   const ledger = await ledgerAtSeq("g-open-1", 20);
   const spawns = await recording("g-open-1", "spawns");
 
@@ -87,7 +87,7 @@ test("with tokensKnown false, tokens and % of plan show 'unknown'; no number is 
 
   assert.equal(ledger.spend.tokensKnown, false, "precondition: the recording has no token data");
   assert.match(result.rows.spent, /tokens unknown/, "SPENT shows tokens as unknown");
-  assert.match(result.rows.spent, /% of plan unknown/, "SPENT shows plan share as unknown");
+  assert.doesNotMatch(result.rows.spent, /of plan/, "SPENT says nothing of a plan share it never knows");
   assert.doesNotMatch(result.rows.spent, /\d\s*%|≈/, "no percentage of plan is invented");
 });
 

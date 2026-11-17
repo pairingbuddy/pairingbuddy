@@ -139,7 +139,7 @@ export function engine(on: Function, ledger: unknown = SNAPSHOT_RUNNING, open: (
     return { value: undefined }
   })
   on('ui.panes', () => ({ value: [...shown].map(id => ({ id, title: id, isShown: true, isFocused: false, isPlaced: true })) }))
-  return { served, serve, serveRaw, calls }
+  return { served, serve, serveRaw, calls, shown }
 }
 
 // The dim rule the band draws above its content line. It is chrome, not band content, so the helpers below leave it out.

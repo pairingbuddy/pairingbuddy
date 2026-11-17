@@ -724,3 +724,13 @@ describe("router-asks-gates-with-the-question-box", () => {
     sentencesSaying("that the session never claims it approved a gate", section, /never say you approved/, /on the human's behalf/);
   });
 });
+
+// A lab run's model wrapped each pb call in `cd "$(git rev-parse --show-toplevel)" && ... 2>&1; echo "exit=$?"`, a shape no
+// allow rule can match, so every call asked the human, and two unseen asks held the run for hours.
+test("the skill runs each pb call as a command of its own, with nothing around it", () => {
+  const opening = /## An Open Run Comes First\n([\s\S]*?)\n- /.exec(skill())[1];
+
+  sentencesSaying("each pb call is its own Bash command", opening, /\bpb\b/, /own Bash (?:command|call)/);
+  sentencesSaying("no cd, redirect or echo around it", opening, /`cd`/, /`2>&1`/, /`echo/);
+  sentencesSaying("why: the gate lets only the bare form through", opening, /gate/, /permission prompt/);
+});

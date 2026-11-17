@@ -152,10 +152,10 @@ test('report-from-snapshot-ignores-stale-legacy-tests', async ($, on) => {
 
   writtenFileName(recorder.writes, 'the press writes one report')
   const html = recorder.writes[0].text.match(/<h2>TESTS<\/h2>[\s\S]*?<\/section>/)?.[0] ?? ''
-  expect(html, 'the ledger key is in the report').toContain(healthyId)
+  expect(html, 'the ledger test is in the report, by its short name').toContain(healthyId.replaceAll('-', ' '))
   expect(html, 'the ledger result is shown').toContain('passed (exit 0)')
   expect(html.includes('not reached'), 'no test card says not reached').toBe(false)
-  expect(html.includes(legacyId), 'the legacy-only id is not shown').toBe(false)
+  expect(html.includes(legacyId.replaceAll('-', ' ')), 'the legacy-only test is not shown').toBe(false)
 })
 
 test('report-keeps-the-full-claim-the-pane-shows-the-title-of', async ($, on) => {

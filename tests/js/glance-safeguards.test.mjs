@@ -25,13 +25,13 @@ test("current-test-outside-a-complete-list-leaves-what-is-left-unknown", () => {
 test("tokens-not-known-read-tokens-unknown", () => {
   const { rows } = glance({ ledger: { spend: { tokens: 0 } }, spawns: [], ranFor: 5 });
 
-  assert.equal(rows.spent, "0 agents · 0:05 · tokens unknown · % of plan unknown");
+  assert.equal(rows.spent, "0 agents · 0:05 · tokens unknown");
 });
 
 test("tokens-known-read-their-count", () => {
   const { rows } = glance({ ledger: { spend: { tokens: 120, tokensKnown: true } }, spawns: [], ranFor: 5 });
 
-  assert.equal(rows.spent, "0 agents · 0:05 · 120 output tokens · % of plan unknown");
+  assert.equal(rows.spent, "0 agents · 0:05 · 120 output tokens");
 });
 
 test("for-the-pane-unknown-tokens-and-plan-share-are-left-out-of-spent", () => {

@@ -121,6 +121,13 @@ describe("report-of-the-whole-task", () => {
     assert.ok(section.includes("returns 30.0"), "with its test");
   });
 
+  test("a TESTS card names its test by its short name, as the pane does, not its id", () => {
+    const [card] = cardsOf(report());
+
+    assert.match(card, /<h3><small>test 1<\/small> order total example two lines<\/h3>/);
+    assert.doesNotMatch(card, new RegExp(TEST_ID));
+  });
+
   test("TESTS give each step's result from the code run, and its commit", () => {
     const [card] = cardsOf(report());
 
@@ -202,16 +209,31 @@ describe("report-of-a-classification-review", () => {
   ];
   const reviewOf = (again) => sectionOf(report({ runs: [{ ...RUNS[0], calls: [...INTAKE_CALLS(again), ...CODE_CALLS] }, RUNS[1]] }), "REVIEW");
 
-  test("a re-classification that kept the type and changed the confidence says so", () => {
+  test("a re-classification that kept the type and lowered the confidence says so plainly", () => {
     const section = reviewOf(classified("new_feature", "likely"));
 
-    assert.ok(section.includes("Certain confidence rests on an unverified line_total</strong> · classified again: still new feature, confidence likely (was certain)"), `got ${section}`);
+    assert.ok(section.includes("Certain confidence rests on an unverified line_total</strong> · task type kept: new feature; less sure than first thought"), `got ${section}`);
+  });
+
+  test("a re-classification that raised the confidence says it is surer", () => {
+    const section = sectionOf(report({ runs: [{ ...RUNS[0], calls: [intake("classify-task", "-", 1, classified("new_feature", "likely")), ...INTAKE_CALLS(classified("new_feature", "certain")).slice(1), ...CODE_CALLS] }, RUNS[1]] }), "REVIEW");
+
+    assert.ok(section.includes("· task type kept: new feature; surer than first thought"), `got ${section}`);
   });
 
   test("a re-classification that changed the type names the new type and the old", () => {
     const section = reviewOf(classified("bug_fix", "certain"));
 
-    assert.ok(section.includes("· classified again: now bug fix (was new feature), same confidence"), `got ${section}`);
+    assert.ok(section.includes("· task type changed: bug fix (was new feature) · cart.py:3"), `got ${section}`);
+  });
+
+  test("a finding on the task's wording names no place: its subject and return key are not shown", () => {
+    const onSubject = { ...finding("Certain confidence rests on an unverified line_total", undefined), where: "subject: task_type/confidence (intake.classify-task.-.r1.a1)" };
+    const calls = [...INTAKE_CALLS(classified("new_feature", "likely")).map((call) => (call.input.pb_key === "intake.lens.classification.r1.a1" ? intake("lens", "classification", 1, { ambiguity: null, findings: [onSubject] }) : call)), ...CODE_CALLS];
+    const section = sectionOf(report({ runs: [{ ...RUNS[0], calls }, RUNS[1]] }), "REVIEW");
+
+    assert.ok(section.includes("· task type kept: new feature; less sure than first thought<br>"), `got ${section}`);
+    assert.doesNotMatch(section, /subject:|intake\.classify-task/);
   });
 });
 
@@ -243,6 +265,37 @@ describe("report-of-a-doubt-a-later-fix-settled", () => {
     const section = sectionOf(html, "SETTLED DOUBTS");
     assert.ok(section.includes(`a reviewer: ${AMBIGUITY}`), `the doubt is listed in full, got ${section}`);
     assert.ok(section.includes(`settled by a later fix in the safety-net review: order_total returns int 0 for an empty list · ${SHA_FIX.slice(0, 7)}`), `with how it was settled, got ${section}`);
+  });
+
+  test("a doubt on a finding another lens said first for the same lines is settled by its own lens's later fix", () => {
+    const same = { ...finding("order_total returns int 0 for an empty list", undefined), where: "cart.py:11" };
+    const calls = [
+      net("lens", "code", 1, { ambiguity: null, findings: [{ ...same, title: "Empty order gives an int" }] }),
+      net("lens", "tests", 1, { ambiguity: null, findings: [same] }),
+      net("refuter", "tests-1", 1, { finding_id: "tests-1", verdict: "survives", ambiguity: AMBIGUITY }),
+      net("fix", "g1", 2, { ambiguity: "", commit_subject: "fix: the code", no_change_reason: "", files_changed: ["cart.py"] }),
+      net("course-checker", "g1", 2, { finding_id: "code-1", verdict: "better", mistake: "none", what_went_wrong: "" }),
+      net("fix", "g2", 3, { ambiguity: "", commit_subject: "fix: the tests", no_change_reason: "", files_changed: ["tests/test_cart.py"] }),
+      net("course-checker", "g2", 3, { finding_id: "tests-1", verdict: "better", mistake: "none", what_went_wrong: "" }),
+    ];
+    const ledger = { ...settledRun, checkpoints: [...CODE_RUN.checkpoints, { step: "fix", key: "code-safety-net.fix.g2.r3.a1", committed: true, sha: SHA_FIX, stage: "code-safety-net", attempt: 1 }] };
+    const html = report({ runs: [{ ...RUNS[0], ledger, calls }, RUNS[1]] });
+
+    assert.ok(!sectionOf(html, "NEEDS YOU").includes(AMBIGUITY), "no doubt is open");
+    const section = sectionOf(html, "SETTLED DOUBTS");
+    assert.ok(section.includes(`settled by a later fix in the safety-net review: Empty order gives an int · ${SHA_FIX.slice(0, 7)}`), `under the gist shown, got ${section}`);
+  });
+
+  test("a doubt on a finding another lens said first for the same lines is asked under the finding shown", () => {
+    const same = { ...finding("order_total returns int 0 for an empty list", undefined), where: "cart.py:11" };
+    const calls = [
+      net("lens", "code", 1, { ambiguity: null, findings: [{ ...same, title: "Empty order gives an int" }] }),
+      net("lens", "tests", 1, { ambiguity: null, findings: [same] }),
+      net("refuter", "tests-1", 1, { finding_id: "tests-1", verdict: "survives", ambiguity: AMBIGUITY }),
+    ];
+    const section = sectionOf(report({ runs: [{ ...RUNS[0], ledger: settledRun, calls }, RUNS[1]] }), "NEEDS YOU");
+
+    assert.ok(section.includes(`<strong>Empty order gives an int</strong> · cart.py:11<br>Decide: ${AMBIGUITY}`), `the doubt is asked under the one finding, got ${section}`);
   });
 
   test("a doubt whose finding no fix settled stays open", () => {

@@ -161,7 +161,7 @@ export function goalLines(goal, room, most = 2) {
 function goalText(codeRun, round) {
   const lens = round?.lenses?.find(({ id }) => isGoalLens(id));
   if (lens?.state !== "returned") return undefined;
-  const open = round.findings.find((finding) => isGoalLens(lensOfFinding(finding)) && OPEN_WORDS.includes(finding.word));
+  const open = round.findings.find((finding) => (Array.isArray(finding.ids) ? finding.ids : [finding.id]).some((id) => isGoalLens(lensOfFinding({ id }))) && OPEN_WORDS.includes(finding.word));
   return open ? `${IN_DOUBT}: ${findingGist(open)}` : MET;
 }
 

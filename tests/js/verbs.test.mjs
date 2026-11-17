@@ -58,6 +58,16 @@ const AUTO_ALLOW = {
   },
 };
 
+// A main-context pb call that waits on a permission prompt holds the whole run: a lab run sat an hour, then two more, on the
+// prompt for `pb status --action` after a stage's notification. During a run the gate lets the exact command through.
+const MAIN_AUTO_ALLOW = {
+  hookSpecificOutput: {
+    hookEventName: "PreToolUse",
+    permissionDecision: "allow",
+    permissionDecisionReason: "Main-context CLI command, auto-allowed by the Pairing Buddy gate during a run.",
+  },
+};
+
 const makeLedger = () => ({
   v: 1, seq: 0, sha: "0".repeat(64), kind: "code", taskType: "config_change",
   owner: { sessionId: null, lastSeen: null }, task: "Task 25",
@@ -160,10 +170,18 @@ function assertWrongCallerDenied(result, verb, owner) {
 
 const OWNER = { runner: /runner/i, main: /main context/i };
 
+// The main verbs that push or edit a pull request keep their permission prompt: the human sees the one call that reaches out.
+const REACHES_GITHUB = ["publish", "pr refresh"];
+
+function assertMainAutoAllowed(result) {
+  assert.equal(result.code, 0, `stderr: ${result.stderr}`);
+  assert.deepEqual(result.stdout === "" ? null : JSON.parse(result.stdout), MAIN_AUTO_ALLOW, "the main context's exact command is auto-allowed during a run");
+}
+
 function assertOutcome(result, { caller, agentType }, { verb, verbClass }) {
   if (verbClass === "human") assertHumanDenied(result);
   else if (verbClass === "runner" && agentType === RUNNER_AGENT) assertAutoAllowed(result);
-  else if (verbClass === "main" && caller === "main context") assertSilent(result);
+  else if (verbClass === "main" && caller === "main context") (REACHES_GITHUB.includes(verb) ? assertSilent : assertMainAutoAllowed)(result);
   else assertWrongCallerDenied(result, verb, OWNER[verbClass]);
 }
 
@@ -473,8 +491,8 @@ describe("pb takes literal words", IN_PARALLEL, () => {
   }
 });
 
+// The bare `${PB} gate eval` is auto-allowed during a run: see the main-context auto-allow tests.
 const LITERAL_COMMANDS = [
-  `${PB} gate eval`,
   `${PB} gate eval | jq '{gate: .gate}'`,
   `${PB} gate eval | jq '.x'`,
   `${PB} gate eval | jq '.[0]?'`,
@@ -699,6 +717,43 @@ describe("runner auto-allow is for the exact command only", IN_PARALLEL, () => {
   }
 });
 
+describe("main-context auto-allow during a run is for the exact command only", IN_PARALLEL, () => {
+  test("the main context's pb status --action is auto-allowed", async () => {
+    assertMainAutoAllowed(await runGate(bashCall(`${PB} status --action`)));
+  });
+
+  for (const args of ["unit open --type feat --slug order-total", "run open --kind code", "run open --kind code --plan docs/plans/cart.md", "plan next docs/plans/cart.md", "gate eval", "task end", "stage release"]) {
+    test(`the main context's pb ${args} is auto-allowed`, async () => {
+      assertMainAutoAllowed(await runGate(bashCall(`${PB} ${args}`)));
+    });
+  }
+
+  const MAIN_NEAR_MISSES = [
+    ["the lab run's shape", `cd "$(git rev-parse --show-toplevel)" && ${PB} status --action 2>&1; echo "exit=$?"`],
+    ["cd first", `cd /tmp && ${PB} status --action`],
+    ["a redirect", `${PB} status --action 2>&1`],
+    ["an echo after ;", `${PB} gate eval; echo "exit=$?"`],
+    ["a command after &&", `${PB} task end && rm -rf src`],
+    ["|| true", `${PB} gate eval || true`],
+    ["a pipe", `${PB} status --action | tee out.txt`],
+    ["a background &", `${PB} status --action &`],
+    ["a newline", `${PB} status --action\nrm -rf src`],
+    ["a glob in an argument", `${PB} unit open --type feat --slug *`],
+    ["a quoted argument", `${PB} plan next 'docs/my plan.md'`],
+    ["a tilde in an argument", `${PB} plan next ~/plan.md`],
+    ["doubled spaces", `${PB} gate  eval`],
+    ["another plugin's CLI", "node /tmp/evil/cli/pb.mjs status --action"],
+    ["a node flag", `node --require /tmp/evil.js ${CLI} status --action`],
+    ["an unknown verb", `${PB} statusx`],
+  ];
+
+  for (const [shape, command] of MAIN_NEAR_MISSES) {
+    test(`${shape} loses the main-context auto-allow`, async () => {
+      assertNotAutoAllowed(await runGate(bashCall(command)));
+    });
+  }
+});
+
 // Every call runs in RUN_REPO, which holds a run ledger, so the git and gh rows are denied by D17 and the row names the rule it expects.
 describe("deny messages do not advertise pb human abandon", IN_PARALLEL, () => {
   const DENIALS = [
@@ -751,6 +806,20 @@ describe("what counts as a run", IN_PARALLEL, () => {
     const result = await runGate(bashCall(`${PB} test`, { agentType: RUNNER_AGENT, cwd: makeRepo() }));
 
     assertSilent(result);
+  });
+
+  test("outside a run the main context's exact command gets no decision", async () => {
+    const result = await runGate(bashCall(`${PB} status --action`, { cwd: makeRepo(), session: NEVER_IN_A_RUN }));
+
+    assertSilent(result);
+  });
+
+  test("a unit run between its code run and its publish run auto-allows pb run open --kind publish", async () => {
+    const dir = makeRepo();
+    mkdirSync(join(dir, ".pairingbuddy", "run"), { recursive: true });
+    writeFileSync(join(dir, ".pairingbuddy", "run", "unit.json"), "{}");
+
+    assertMainAutoAllowed(await runGate(bashCall(`${PB} run open --kind publish`, { cwd: dir })));
   });
 
   test("outside a run Bash loads nothing beyond the wrapper, which keeps latency near 50 ms", async () => {

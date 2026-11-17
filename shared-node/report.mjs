@@ -249,7 +249,7 @@ function testCard(spawns, item, number, perTest, stop, { checkpoints, calls } = 
   const note = !perTest?.[item]?.red && tries.length === 0 ? "\n<p>not reached</p>" : "";
   const looped = loopNote(tries, stop);
   const table = cells.length === 0 ? "" : `\n<table>\n${head}\n${rows.join("\n")}\n</table>`;
-  return `<article${looped ? ' class="looped"' : ""}>\n<h3><small>test ${number}</small> ${escape(item)}</h3>${note}${table}${looped}\n</article>`;
+  return `<article${looped ? ' class="looped"' : ""}>\n<h3><small>test ${number}</small> ${escape(shortName(item))}</h3>${note}${table}${looped}\n</article>`;
 }
 
 function testsSection({ ledger, spawns, tests, calls }) {
@@ -262,7 +262,7 @@ function testsSection({ ledger, spawns, tests, calls }) {
   const items = order;
   const last = currentStep(spawns)?.item;
   const cards = items.map((item) => testCard(spawns, item, order.indexOf(item) + 1, perTest, item === last ? ledger?.stop : null, { checkpoints: ledger?.checkpoints, calls }));
-  return section("TESTS", cards.join("\n"));
+  return section("TESTS", cards.join("\n"), "tests");
 }
 
 const NOT_REACHED = "not reached";
@@ -329,6 +329,10 @@ export function approvedDoubts(task) {
 
 const FIX_KEPT = "kept";
 
+// The ids a shown finding stands for: one finding, or every finding said for its lines (samePlaceFindings).
+const idsOf = (finding) => (Array.isArray(finding.ids) ? finding.ids : [finding.id]);
+const lensesOf = (finding) => idsOf(finding).map((id) => lensOfFinding({ id }));
+
 // How a later fix settled a doubt a refuter raised on one finding: the finding reads fixed by a fix kept in a later round of
 // the same review, so the human approved past a doubt that was no longer open. Only a refuter's doubt is about one finding,
 // so only it can be settled so; null when it was not.
@@ -339,8 +343,8 @@ function settledBy({ ambiguity }, task) {
       if (key?.role !== "refuter" || String(call.input.ambiguity ?? "").trim() !== ambiguity.trim()) continue;
       const stage = stagesOf(run.ledger).find((entry) => entry?.name === key.stage);
       const round = stage === undefined ? undefined : lensRound({ ledger: { stage, fixes: run.ledger.fixes, stop: null }, calls: run.calls, ended: true });
-      const found = round?.findings.find((finding) => finding.id === key.item && finding.verdict === "fixed");
-      const fix = found && round.fixes.find((each) => each.outcome === FIX_KEPT && each.round > key.round && each.lens === lensOfFinding(found));
+      const found = round?.findings.find((finding) => idsOf(finding).includes(key.item) && finding.verdict === "fixed");
+      const fix = found && round.fixes.find((each) => each.outcome === FIX_KEPT && each.round > key.round && each.lens === lensOfFinding({ id: key.item }));
       if (!fix) continue;
       const commit = (Array.isArray(run.ledger?.checkpoints) ? run.ledger.checkpoints : []).find((record) => {
         const at = keyOf(record?.key);
@@ -388,11 +392,20 @@ const CYCLE_STAGE = "code-tdd";
 // pane reads it (over too once the run has ended, as a kept run has).
 const typeWord = (type) => plainName(type ?? "") ?? String(type);
 
+// How sure each confidence is, surest first.
+const CONFIDENCES = ["certain", "likely", "unsure"];
+
+// How the confidence moved, in plain words; nothing when it did not move or is not known.
+function sureWord(before, after) {
+  const [was, now] = [CONFIDENCES.indexOf(before?.confidence), CONFIDENCES.indexOf(after.confidence)];
+  if (was < 0 || now < 0 || was === now) return "";
+  return now > was ? "; less sure than first thought" : "; surer than first thought";
+}
+
 // What classifying again changed, from the classification before it and the one the fix returned.
 function classifiedWord(before, after) {
-  const confidence = before && before.confidence !== after.confidence ? `, confidence ${after.confidence} (was ${before.confidence})` : before ? ", same confidence" : `, confidence ${after.confidence}`;
-  if (before && before.task_type !== after.task_type) return `classified again: now ${typeWord(after.task_type)} (was ${typeWord(before.task_type)})${confidence}`;
-  return `classified again: ${before ? "still " : ""}${typeWord(after.task_type)}${confidence}`;
+  if (before && before.task_type !== after.task_type) return `task type changed: ${typeWord(after.task_type)} (was ${typeWord(before.task_type)})${sureWord(before, after)}`;
+  return `task type ${before ? "kept" : "set"}: ${typeWord(after.task_type)}${sureWord(before, after)}`;
 }
 
 // A task-type review's fix is the classifier asked again, which mends no code: a finding it answered reads as what that
@@ -445,12 +458,12 @@ const LEFT_WORDS = [FINDING_WORDS.toFix, FINDING_WORDS.leftAsIs];
 // The findings a return's key is about: a refuter's one finding, a lens's own findings, a fix group's lens (the fix loop
 // groups the upheld findings by lens, in finding order, as g1, g2, ...).
 function findingsOfKey(key, findings) {
-  if (key.role === "refuter") return findings.filter((finding) => finding.id === key.item);
-  if (key.role === "lens") return findings.filter((finding) => lensOfFinding(finding) === key.item);
+  if (key.role === "refuter") return findings.filter((finding) => idsOf(finding).includes(key.item));
+  if (key.role === "lens") return findings.filter((finding) => lensesOf(finding).includes(key.item));
   if (key.role !== "fix") return [];
-  const lenses = [...new Set(findings.filter((finding) => finding.verdict !== "knocked-down").map(lensOfFinding))];
+  const lenses = [...new Set(findings.filter((finding) => finding.verdict !== "knocked-down").flatMap(lensesOf))];
   const lens = lenses[Number(/^g(\d+)$/.exec(key.item)?.[1]) - 1];
-  return lens === undefined ? [] : findings.filter((finding) => lensOfFinding(finding) === lens);
+  return lens === undefined ? [] : findings.filter((finding) => lensesOf(finding).includes(lens));
 }
 
 // The finding a doubt is about: one left open in a round over whose reviewer, refuter or fix raised that same question.
@@ -672,6 +685,11 @@ h3 small{font-weight:400;margin-right:1ch}
 table{border-collapse:collapse;margin-top:4px}
 th{text-align:left;color:var(--muted);font-weight:400;padding:0 3ch 0 0;white-space:nowrap}
 td{padding:0 3ch 0 0;vertical-align:top}
+.tests{grid-template-columns:minmax(0,1fr)}
+.tests h2{margin-bottom:2px}
+.tests th,.tests td{padding-right:1.5ch}
+.tests th:last-child,.tests td:last-child{padding-right:0}
+.tests td:first-child{white-space:nowrap}
 .looped p{margin-top:6px}
 .looped p strong{color:var(--amber);margin-right:1ch}
 @media (max-width:600px){body{padding:28px 16px 48px}section{grid-template-columns:minmax(0,1fr)}h2{margin-bottom:2px}.glance p{grid-template-columns:17ch minmax(0,1fr);column-gap:1ch}td,th{padding-right:2ch}}`;
