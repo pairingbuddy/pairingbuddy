@@ -121,6 +121,13 @@ describe("report-of-the-whole-task", () => {
     assert.ok(section.includes("returns 30.0"), "with its test");
   });
 
+  test("a TESTS card names its test by its short name, as the pane does, not its id", () => {
+    const [card] = cardsOf(report());
+
+    assert.match(card, /<h3><small>test 1<\/small> order total example two lines<\/h3>/);
+    assert.doesNotMatch(card, new RegExp(TEST_ID));
+  });
+
   test("TESTS give each step's result from the code run, and its commit", () => {
     const [card] = cardsOf(report());
 

@@ -249,7 +249,7 @@ function testCard(spawns, item, number, perTest, stop, { checkpoints, calls } = 
   const note = !perTest?.[item]?.red && tries.length === 0 ? "\n<p>not reached</p>" : "";
   const looped = loopNote(tries, stop);
   const table = cells.length === 0 ? "" : `\n<table>\n${head}\n${rows.join("\n")}\n</table>`;
-  return `<article${looped ? ' class="looped"' : ""}>\n<h3><small>test ${number}</small> ${escape(item)}</h3>${note}${table}${looped}\n</article>`;
+  return `<article${looped ? ' class="looped"' : ""}>\n<h3><small>test ${number}</small> ${escape(shortName(item))}</h3>${note}${table}${looped}\n</article>`;
 }
 
 function testsSection({ ledger, spawns, tests, calls }) {
