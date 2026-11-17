@@ -12,13 +12,15 @@ import { parseKey } from "./keys.mjs";
 import { lensOfFinding } from "./lens-merge.mjs";
 import { taskEnded, taskSpend, taskWaited } from "./task-runs.mjs";
 import { shortName } from "./now-building.mjs";
+import { goalOf } from "./end-state.mjs";
 
 const TASK_END = "G:task-end";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
 
-const section = (title, body) => `<section>\n<h2>${title}</h2>\n${body}\n</section>`;
+// One row, as the pane draws it: its label in the left column, what it holds to the right.
+const section = (title, body) => `<section>\n<h2>${title}</h2>\n<div>\n${body}\n</div>\n</section>`;
 
 function outcome(ledger) {
   if (ledger?.stop) return "STOPPED";
@@ -536,7 +538,7 @@ function needsYouSection(context) {
   return section("NEEDS YOU", body);
 }
 
-// ---------- WHAT WAS DONE: the files, the tests and the pull request, in plain words ----------
+// ---------- DONE: the files and the tests, in plain words (the pull request is STATUS's) ----------
 
 // The task's pull request: the last its runs opened, else the one the caller knows of.
 const taskPrUrl = (task, prUrl) => {
@@ -544,30 +546,23 @@ const taskPrUrl = (task, prUrl) => {
   return typeof url === "string" && url !== "" ? url : undefined;
 };
 
-const prLink = (url) => {
-  const number = prNumber(url);
-  return `${number ? `pull request #${number}` : "a pull request"}: <a href="${escape(url)}">${escape(url)}</a>`;
-};
-
 const passes = (record) => record?.green?.passed === true || record?.covered?.done === true;
 
-function doneSection({ task, changed, prUrl }) {
+function doneSection({ task, changed }) {
   const perTest = taskLedgerOf(task).tests.perTest;
   const ids = Object.keys(perTest);
   const passing = ids.filter((id) => passes(perTest[id]));
   const failing = ids.filter((id) => !passes(perTest[id]));
   const names = (list) => list.map((id) => escape(shortName(id))).join(", ");
-  const url = taskPrUrl(task, prUrl);
   const lines = [
     ...(Array.isArray(changed) && changed.length > 0 ? [`Changed ${plural(changed.length, "file")}: ${changed.map(escape).join(", ")}`] : []),
     ...(passing.length > 0 ? [`Added ${plural(passing.length, "test")}, passing: ${names(passing)}`] : []),
     ...(failing.length > 0 ? [`${plural(failing.length, "test")} not passing yet: ${names(failing)}`] : []),
-    ...(url ? [`Opened ${prLink(url)}`] : []),
   ];
-  return section("WHAT WAS DONE", lines.length > 0 ? lines.map((line) => `<p>${line}</p>`).join("\n") : "<p>Nothing yet.</p>");
+  return section("DONE", lines.length > 0 ? lines.map((line) => `<p>${line}</p>`).join("\n") : "<p>Nothing yet.</p>");
 }
 
-// ---------- CHANGES OF PLAN OR SCOPE: only what changed the task materially ----------
+// ---------- CHANGES: only what changed the task materially ----------
 
 const isClassification = (input) => typeof input?.task_type === "string" && typeof input.confidence === "string";
 
@@ -603,7 +598,32 @@ function forcedFixes(task, spawns) {
 
 function changesSection({ task, spawns }) {
   const items = [...typeChange(task), ...testsAdded(task), ...forcedFixes(task, spawns)];
-  return items.length === 0 ? "" : `\n${section("CHANGES OF PLAN OR SCOPE", `<ul>\n${items.map((item) => `<li>${item}</li>`).join("\n")}\n</ul>`)}`;
+  return items.length === 0 ? "" : `\n${section("CHANGES", `<ul>\n${items.map((item) => `<li>${item}</li>`).join("\n")}\n</ul>`)}`;
+}
+
+// STATUS as the pane's STATUS row reads it: the state's mark and word, in its colour, then what about; the pull request linked once.
+const STATUS_LOOKS = {
+  DONE: { head: "✓ DONE", tone: "done" },
+  STOPPED: { head: "✕ STOPPED", tone: "stopped" },
+  "WAITING ON YOU": { head: "▲ NEEDS YOU", tone: "needs-you" },
+  RUNNING: { head: "● working", tone: "working" },
+};
+
+function statusWhat(state, ledger, task) {
+  if (state === "STOPPED") return stopName(ledger.stop);
+  if (state === "WAITING ON YOU") return gateLine(ledger?.needsHuman?.gate ?? (awaitsSignOff(task) ? TASK_END : undefined));
+  if (state === "RUNNING") return plainName(ledger?.stage?.name);
+  return undefined;
+}
+
+function statusSection({ ledger, task, url }) {
+  const state = whereItIs(ledger, task);
+  const look = STATUS_LOOKS[state];
+  const number = url ? prNumber(url) : undefined;
+  const pr = url ? `<a href="${escape(url)}">${number ? `PR #${number}` : "PR"}</a> opened` : undefined;
+  const what = statusWhat(state, ledger, task);
+  const parts = [`<strong class="${look.tone}">${look.head}</strong>`, what ? escape(what) : undefined, pr].filter(Boolean);
+  return section("STATUS", `<p>${parts.join(" · ")}</p>`);
 }
 
 const prNumber = (url) => /\/pull\/(\d+)\/?$/.exec(url)?.[1];
@@ -634,10 +654,13 @@ details{margin-top:40px}
 summary{color:var(--muted);cursor:pointer;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
 footer{color:var(--faint);margin-top:40px;font-size:12px}`;
 
-// The task's paragraphs (split on blank lines) stay visibly apart inside the title.
-function title(task) {
-  if (typeof task !== "string") return escape(task);
-  return task.split(/\n\s*\n/).map((paragraph) => escape(paragraph.trim())).join("<br>");
+// The GOAL row: the task's goal sentence alone, as the pane's GOAL row reads it; a dash with no task.
+const goalSection = (task) => section("GOAL", `<p>${escape(goalOf(task) || "—")}</p>`);
+
+// The whole task, its paragraphs (split on blank lines) visibly apart: How it ran keeps the context the GOAL row leaves out.
+function taskSection(task) {
+  if (typeof task !== "string" || task.trim() === "") return "";
+  return `${section("TASK", `<p>${task.split(/\n\s*\n/).map((paragraph) => escape(paragraph.trim())).join("<br>")}</p>`)}\n`;
 }
 
 const PUBLISH_KIND = "publish";
@@ -665,9 +688,7 @@ export function renderReport({ ledger: given, spawns, calls, timing, commits, te
   const ledger = last.ledger;
   const code = codeRunIn(task).ledger;
   const ranFor = runSeconds(ledger, last.endedAt ?? endedAt, now, task[0].ledger);
-  const state = whereItIs(ledger, task);
   const url = taskPrUrl(task, prUrl);
-  const prPart = url ? ` · ${prLink(url)}` : "";
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Run report</title>
 <style>
@@ -675,14 +696,14 @@ ${STYLE}
 </style></head>
 <body>
 <header>
-<h1>${title(code?.task ?? ledger?.task)}</h1>
-<p><strong class="badge ${state.toLowerCase().replace(/ /g, "-")}">${state}</strong>${prPart}</p>
+${goalSection(code?.task ?? ledger?.task)}
+${statusSection({ ledger, task, url })}
 </header>
 ${needsYouSection({ ledger, task, spawns, tests })}
-${doneSection({ task, changed, prUrl })}${changesSection({ task, spawns })}
+${doneSection({ task, changed })}${changesSection({ task, spawns })}
 <details>
-<summary>How it ran</summary>
-${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${settledSection({ task })}
+<summary>HOW IT RAN</summary>
+${taskSection(code?.task ?? ledger?.task)}${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${settledSection({ task })}
 ${stepsSection({ task })}
 ${scenariosSection({ scenarios: task.find((run) => Array.isArray(run.scenarios))?.scenarios })}
 ${testsSection({ ledger: taskLedgerOf(task), spawns, tests, calls: task.flatMap((run) => run.calls ?? []) })}
@@ -690,6 +711,5 @@ ${builtSection({ changed })}
 ${reviewSection({ task: runs ? task : [{ ...task[0], endedAt: undefined }], spawns })}
 ${commitsSection({ commits })}
 </details>
-<footer>Written by Pairing Buddy from the run's ledger and agent labels. One self-contained file, nothing loaded from the network.</footer>
 </body></html>`;
 }

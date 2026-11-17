@@ -168,7 +168,7 @@ describe("report-of-the-whole-task", () => {
   test("the header names the pull request; NEEDS YOU does not ask to review it", () => {
     const html = report();
 
-    assert.ok(headerOf(html).includes(`pull request #7: <a href="${PR_URL}">`), "the header links the pull request");
+    assert.ok(headerOf(html).includes(`<a href="${PR_URL}">PR #7</a>`), "the header links the pull request");
     assert.ok(!sectionOf(html, "NEEDS YOU").includes("sign-off"), "the task was signed off already");
   });
 
