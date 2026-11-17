@@ -8,3 +8,11 @@ function asPromptData(value) {
 function corpusBlock(corpus) {
   return Array.isArray(corpus) && corpus.length > 0 ? corpus.map(asPromptData).join('\n') : 'none';
 }
+
+// The tool rule every agent's definition carries (contracts/agent-config.yaml, focus_warning), said again in each prompt: an
+// agent that inspected files with a compound Bash call waited on a permission prompt mid-stage.
+const TOOL_RULE = 'Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.';
+
+// Every agent a stage spawns goes through here, so each prompt opens with the tool rule. It goes first, so a data block
+// stays the prompt's last lines.
+const pbAgent = (prompt, options) => agent(`${TOOL_RULE}\n\n${prompt}`, options);

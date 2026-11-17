@@ -46,7 +46,7 @@ const prompt = [
   ...taskBlock(),
 ].join('\n');
 
-const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
+const result = await pbAgent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
 const snapshot = await runCommands(stage, ['snapshot'], { round: ROUND.snapshot });
 const { paths: corpus, rolledBack } = snapshotResult(snapshot);

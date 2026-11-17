@@ -25,7 +25,7 @@ const prompt = [
   ...taskBlock(),
 ].join('\n');
 
-const result = await agent(prompt, { agentType: 'pairingbuddy:apply-config-change', label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
+const result = await pbAgent(prompt, { agentType: 'pairingbuddy:apply-config-change', label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
 const runner = await runCommands(stage, [`checkpoint --step config --from ${pbKey}`, 'stage finish']);
 

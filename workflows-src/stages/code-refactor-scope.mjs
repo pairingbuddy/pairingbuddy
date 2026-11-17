@@ -62,7 +62,7 @@ const prompt = [
   ...taskBlock(),
 ].join('\n');
 
-const result = await agent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
+const result = await pbAgent(prompt, { agentType: `pairingbuddy:${role}`, label, schema: pinnedKey(RESULT_SCHEMA, pbKey) });
 
 // No budget, corpus or fix: this stage's row refutes nothing and fixes nothing.
 const lensResult = await lensAttack({

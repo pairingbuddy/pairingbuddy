@@ -36,7 +36,7 @@ async function lightReview(config) {
     corpusBlock(config.corpus),
     '</corpus>',
   ].join('\n');
-  const result = await (config.spawn ?? agent)(prompt, {
+  const result = await (config.spawn ?? pbAgent)(prompt, {
     agentType: 'pairingbuddy:lens',
     model: config.lightReview.model,
     label: buildLabel({ stage, phase: config.phase, role: 'lens', item: config.item, round: config.round ?? 1 }),

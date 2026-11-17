@@ -39,7 +39,7 @@ async function spawn(prompt, options) {
   if (spawned >= maxAgents - 1) throw new StageHalted('agent-budget');
   spawned += 1;
   try {
-    return await agent(prompt, options);
+    return await pbAgent(prompt, options);
   } catch {
     return null;
   }
@@ -50,7 +50,7 @@ async function spawn(prompt, options) {
 async function spawnStop(prompt, options) {
   spawned += 1;
   try {
-    return await agent(prompt, options);
+    return await pbAgent(prompt, options);
   } catch {
     return null;
   }

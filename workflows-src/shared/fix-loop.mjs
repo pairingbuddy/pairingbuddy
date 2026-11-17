@@ -70,7 +70,7 @@ async function fixGroup(config, attempt, spent) {
     ...(retry ? ['When mustChangeApproach is true, the fix must take an approach different from every entry in rejected_approaches.', '<retry>', asPromptData({ mustChangeApproach, rejected_approaches: rejectedApproaches }), '</retry>'] : []),
   ].join('\n');
   spent.count += 1;
-  const fixed = await agent(prompt, {
+  const fixed = await pbAgent(prompt, {
     agentType,
     model: 'sonnet',
     label: buildLabel({ stage: config.stage, phase: null, role: 'fix', item: group.id, round }),

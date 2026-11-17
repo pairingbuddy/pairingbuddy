@@ -29,7 +29,7 @@ const pbCommand = (words) => `node ${shellWord(`${args.pluginRoot}/cli/pb.mjs`)}
 
 // The CLI commits and proves the evidence, so the runner only runs the words it is given. A stage that runs it more than
 // once gives each run its own round, since a key is one return. spawn counts it, for a stage that keeps a count.
-async function runCommands(stage, commands, { tddPhase = null, item = null, round = 1, spawn = agent } = {}) {
+async function runCommands(stage, commands, { tddPhase = null, item = null, round = 1, spawn = pbAgent } = {}) {
   phase('runner');
   const role = 'runner';
   const pbKey = buildKey({ stage, role, item, round, attempt: args.attempt });

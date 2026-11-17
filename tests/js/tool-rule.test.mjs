@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,3 +22,18 @@ for (const skill of ["coding", "curating-guidance", "setting-up-spike"]) {
     assert.ok(read("skills", skill, "SKILL.md").includes(TOOL_RULE), `skills/${skill}/SKILL.md lacks: ${TOOL_RULE}`);
   });
 }
+
+// Every agent a stage spawns gets the rule in its prompt too, through the one wrapper all stage code calls.
+const SOURCES = ["shared", "stages"].flatMap((dir) => readdirSync(join(ROOT, "workflows-src", dir)).map((file) => join("workflows-src", dir, file)));
+
+test("stage code spawns agents only through pbAgent", () => {
+  for (const file of SOURCES) {
+    const direct = read(file).split("\n").filter((line) => /(?<![\w.])agent(?:\(|\s*[,})])/.test(line) && !/^\s*\/\//.test(line) && !line.includes("agent(`${TOOL_RULE}\\n\\n${prompt}`"));
+    assert.deepEqual(direct, [], `${file} calls agent() directly`);
+  }
+});
+
+test("the workflow prompts carry the canonical tool rule", () => {
+  assert.ok(read("workflows-src", "shared", "prompt-data.mjs").includes(`const TOOL_RULE = '${TOOL_RULE}';`), "prompt-data.mjs holds the canonical text");
+  for (const file of readdirSync(join(ROOT, "workflows"))) assert.ok(read("workflows", file).includes(TOOL_RULE), `workflows/${file} lacks the tool rule`);
+});
