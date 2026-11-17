@@ -70,8 +70,11 @@ function drawGlance(
   })
 }
 
-function suggestionView(pending: PendingSuggestion | null): Suggestion | undefined {
-  if (pending == null) {
+// Once the task is DONE no agent will read the note, so the line goes; the report keeps the note under How it ran. A note
+// left in another task is not this one's.
+function suggestionView(pending: PendingSuggestion | null, view: View): Suggestion | undefined {
+  const otherTask = pending?.task !== undefined && view.ledger?.task !== pending.task
+  if (pending == null || view.status.state === 'done' || otherTask) {
     return undefined
   }
 
@@ -168,7 +171,7 @@ export const register: Register = (on, options) => {
       columns={e.props.bodyColumns}
       unknownLabels={view.unknownLabels}
       note={note}
-      suggestion={suggestionView(pending)}
+      suggestion={suggestionView(pending, view)}
     />
   )))
 }

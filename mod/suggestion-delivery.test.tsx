@@ -2,6 +2,8 @@
 import { expect, test } from 'claude-code/testing'
 import { paneTexts } from './testing/report'
 import { buildLabel } from '../shared-node/labels.mjs'
+import { LEDGER, ROOT, SNAPSHOT_RUNNING } from './testing/band'
+import { POLL_MS } from './poll'
 import { NOTE_HEAD, WAITING_LINE, spawnStageAgent, startRunningPane, SUGGESTION_TEXT, runPbNote, leaveNote } from './testing/suggest'
 
 test('pane-shows-the-note-waiting-for-the-next-agent', async ($, on) => {
@@ -49,4 +51,13 @@ test('a-cycle-agent-is-named-with-its-test', async ($, on) => {
   await $.agent.spawn({ prompt: 'p', description: name, subagentType: 'pairingbuddy:implement-code', workflow: { runId: 'wf_1', agentIndex: 1 } })
 
   expect(await paneTexts($)).toContain(`${NOTE_HEAD} · read by: making the test pass for order total sums line totals`)
+})
+
+test('a-note-from-an-earlier-task-is-not-shown-for-the-next', async ($, on) => {
+  const { rig } = await leaveNote($, on, { text: SUGGESTION_TEXT })
+  await spawnStageAgent($, { stage: 'code-scenarios', role: 'enumerate-scenarios-and-test-cases' })
+  rig.served.set(`${ROOT}/${LEDGER}`, JSON.stringify({ ...SNAPSHOT_RUNNING, task: 'Another task' }))
+  await rig.clock.advance(POLL_MS)
+
+  expect((await paneTexts($)).some((text: string) => text.startsWith('your note')), 'the next task has no note yet').toBe(false)
 })

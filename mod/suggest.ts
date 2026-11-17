@@ -7,7 +7,8 @@ import { readLabel } from '../shared-node/labels.mjs'
 const PENDING = { plugin: 'pairingbuddy', key: 'pending-suggestion' }
 
 // deliveredFor: the test a TDD cycle's agent worked on, when it was one.
-export type PendingSuggestion = { savedAt: string; text?: string; deliveredTo?: string; deliveredFor?: string }
+// task: the task the note was left in, so the next task does not show it.
+export type PendingSuggestion = { savedAt: string; text?: string; task?: string; deliveredTo?: string; deliveredFor?: string }
 
 export const GUIDANCE = '.pairingbuddy/human-guidance.json'
 
@@ -34,7 +35,7 @@ export async function saveNote($: EngineInterface, spawns: Spawn[], text: string
     const existing = await readGuidance($, path)
     if (existing === null) return NOTE_NOT_SAVED
     await $.fs.write(path, JSON.stringify({ guidance: [...existing, entry] }, null, 2) + '\n')
-    await $.state.set(PENDING, { savedAt: timestamp, text: text.trim() })
+    await $.state.set(PENDING, { savedAt: timestamp, text: text.trim(), ...(typeof ledger.task === 'string' ? { task: ledger.task } : {}) })
     return NOTE_SAVED
   } catch {
     // A failed write leaves the note not pending.

@@ -39,7 +39,7 @@ export function recordWrites(on: Function, { unwritable = false }: { unwritable?
 }
 
 // Serves a running ledger (or the given one; null serves none) and the given guidance file (guidance: null serves none, so fs.read gets ENOENT; guidanceText serves that raw text; unreadable makes the read throw EACCES; unwritable makes the write throw EACCES), starts the engine and lets it poll once.
-// Returns the write recorder ({ writes, touched }), so a test keeps only its own assertions.
+// Returns the write recorder ({ writes, touched }) and the replay rig, so a test keeps only its own assertions.
 export async function startRunningPane($: any, on: Function, { guidance = EXISTING_GUIDANCE, guidanceText, unreadable = false, unwritable = false, ledger = SNAPSHOT_RUNNING }: { guidance?: unknown | null; guidanceText?: string; unreadable?: boolean; unwritable?: boolean; ledger?: unknown }) {
   const rig = setupReplay(on)
   if (ledger !== null) rig.served.set(`${ROOT}/${LEDGER}`, JSON.stringify(ledger))
@@ -49,7 +49,7 @@ export async function startRunningPane($: any, on: Function, { guidance = EXISTI
   const recorder = recordWrites(on, { unwritable })
   await start($)
   await rig.clock.advance(POLL_MS)
-  return recorder
+  return { ...recorder, rig }
 }
 
 // Runs /pb-note with the text and returns its one-line answer.
