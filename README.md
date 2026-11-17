@@ -32,6 +32,17 @@ Supports plan execution mode: point `/code` at a plan MD file and it iterates th
 
 **Run it in Claude Code's auto mode.** There is no separate flag: auto mode is what lets a gate pass by itself when its evidence is complete. In manual mode the cost is yours to pay: you approve each workflow start in a permission dialog, and every gate stops and waits for you to type its approval at the prompt.
 
+#### Fewer prompts
+
+The first run in a project asks once before each stage starts ("Run a dynamic workflow?"). That prompt is your consent to spend tokens on the stage, so pb never answers it for you. Pick "Yes, and don't ask again" and later runs in that project start their stages quietly.
+
+pb allows these by itself, with no prompt:
+
+- Its own CLI calls (`node <plugin>/cli/pb.mjs <verb>`) in their bare form, with no `cd`, `;`, `&&`, pipe, quotes or redirect: before a run, `status`, `unit open`, `unit status`, `run open` and `plan next`; during a run, every verb but `publish` and `pr refresh`, which ask each time because they reach GitHub.
+- Loading its internal stage skills, such as `pairingbuddy:intake`, which only load instructions.
+
+Its skills and agents look at files with Read, Glob and Grep and keep Bash to one plain command, so a compound shell command does not stop a run on a prompt.
+
 ### Plan
 
 ```
