@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SessionStart hook — injects the using-pairingbuddy skill into session context, and reports an open run.
+// SessionStart hook — injects the using-pairingbuddy skill into session context, says when no human answers, and reports an open run.
 // After compaction guardian.mjs reports the run, so the report is not injected twice.
 
 import { readFileSync } from "fs";
@@ -38,6 +38,17 @@ if (isSoloMode) {
     "Follow all skills, contracts, and workflows exactly. No exceptions.",
     "The human operator WILL review all code when this session ends.",
     "</EXTREMELY_IMPORTANT>"
+  );
+}
+
+// Only a hook sees the environment, so it tells the session when nobody can answer a question: under the auto policy or
+// `claude -p`. A skill reads this instead of running Bash to print the variables.
+if (process.env.PAIRINGBUDDY_GATE_POLICY === "auto" || process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-cli") {
+  parts.push(
+    "",
+    "<pairingbuddy-no-human>",
+    "No human answers in this session (the auto policy or claude -p). Ask nothing: where a Pairing Buddy skill checks for a human, this is the answer.",
+    "</pairingbuddy-no-human>"
   );
 }
 

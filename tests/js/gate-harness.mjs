@@ -14,7 +14,7 @@ export const fixture = (name) => JSON.parse(readFileSync(join(PAYLOADS, name), "
 // A string payload goes to stdin as it is. gate and path swap the hook file and the PATH it sees.
 // env overrides entries of the hook's environment. An inherited PAIRINGBUDDY_GATE_POLICY is dropped unless env sets it.
 export function runGate(payload, { pluginRoot = ROOT, processCwd = payload.cwd, gate = BOOT, path = process.env.PATH, env: overrides = {} } = {}) {
-  const { CLAUDE_PLUGIN_ROOT: _inherited, PAIRINGBUDDY_GATE_POLICY: _policy, ...env } = process.env;
+  const { CLAUDE_PLUGIN_ROOT: _inherited, PAIRINGBUDDY_GATE_POLICY: _policy, CLAUDE_CODE_ENTRYPOINT: _entrypoint, ...env } = process.env;
   if (pluginRoot !== null) env.CLAUDE_PLUGIN_ROOT = pluginRoot;
   env.PATH = path;
   Object.assign(env, overrides);

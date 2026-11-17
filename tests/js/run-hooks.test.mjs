@@ -500,9 +500,12 @@ describe("hooks run from anywhere", () => {
   });
 });
 
-function sessionStart(cwd, source, sessionId = newSession()) {
+// The human check reads these two, so every SessionStart run here sets them: the test's own session may be a claude -p one.
+const A_HUMAN = { PAIRINGBUDDY_GATE_POLICY: "", CLAUDE_CODE_ENTRYPOINT: "cli" };
+
+function sessionStart(cwd, source, sessionId = newSession(), env = A_HUMAN) {
   const input = JSON.stringify({ session_id: sessionId, cwd, hook_event_name: "SessionStart", source });
-  return JSON.parse(runHook("session-start.mjs", { input, cwd })).hookSpecificOutput.additionalContext;
+  return JSON.parse(runHook("session-start.mjs", { input, cwd, env: { ...A_HUMAN, ...env } })).hookSpecificOutput.additionalContext;
 }
 
 describe("SessionStart hook", () => {
@@ -526,6 +529,18 @@ describe("SessionStart hook", () => {
     const context = sessionStart(makeRun({ stage: { ...STRANDED, startedAt: secondsAgo(1) } }).dir, "resume");
     assert.match(context, /declined or failed before it ran/);
     assert.match(context, /cli\/pb\.mjs stage release/);
+  });
+
+  // The curating-guidance skill once ran `echo "$PAIRINGBUDDY_GATE_POLICY/$CLAUDE_CODE_ENTRYPOINT"` to learn this, and the
+  // compound Bash call cost the human a permission prompt. The hook sees the environment, so it says it instead.
+  for (const [who, env] of [["the auto policy", { PAIRINGBUDDY_GATE_POLICY: "auto" }], ["claude -p", { CLAUDE_CODE_ENTRYPOINT: "sdk-cli" }]]) {
+    test(`says no human answers under ${who}`, () => {
+      assert.match(sessionStart(makeDir(), "startup", newSession(), env), /<pairingbuddy-no-human>/);
+    });
+  }
+
+  test("says nothing about a human in an interactive session", () => {
+    assert.doesNotMatch(sessionStart(makeDir(), "startup"), /<pairingbuddy-no-human>/);
   });
 
   test("adds nothing outside a run", () => {

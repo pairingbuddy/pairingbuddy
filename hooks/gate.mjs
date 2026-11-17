@@ -283,8 +283,8 @@ async function denyConfinedCallWithNoRun(payload, cwd, reads) {
 }
 
 function denyQuestionWithNoHuman({ agent_type: agentType, permission_mode: mode }) {
-  if (agentType !== CURATOR || (mode !== "auto" && process.env[POLICY_ENV] !== "auto")) return;
-  decide("deny", "No human answers under the auto policy, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.");
+  if (agentType !== CURATOR || (mode !== "auto" && process.env[POLICY_ENV] !== "auto" && process.env.CLAUDE_CODE_ENTRYPOINT !== "sdk-cli")) return;
+  decide("deny", "No human answers under the auto policy or claude -p, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.");
 }
 
 // The Skill tool only loads instructions, so this plugin's stage skills need no prompt: each workflow whose description says
