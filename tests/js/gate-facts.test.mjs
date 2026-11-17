@@ -104,7 +104,7 @@ describe("G:task-end", () => {
 
   test("gives the goal check's findings by their gist and outcome", () => {
     const root = makeRoot();
-    reviewedRound(root, finding("The README does not name order_total. The plan asks for it in the API list.", { kind: "drift" }));
+    reviewedRound(root, finding("The README does not name order_total. The plan asks for it in the API list.", { kind: "drift", where: "README.md" }));
 
     const facts = gateFacts("G:task-end", root, atStage(SAFETY_NET));
 
@@ -125,6 +125,16 @@ describe("G:task-end", () => {
     reviewedRound(root, finding("The README does not name order_total.", { title: "README misses order_total" }));
 
     assert.deepEqual(gateFacts("G:task-end", root, atStage(SAFETY_NET)).goalCheck, [{ gist: "README misses order_total", outcome: "left as is" }]);
+  });
+
+  test("counts the findings the pane shows: two lenses that point at the same lines are one, one lens's two gists for them are two", () => {
+    const root = makeRoot();
+    const at = { where: "cart.py:10", rule: "", severity: "low", kind: "risk" };
+    writeReturn(root, `${SAFETY_NET}.lens.code.r1.a1`, { findings: [{ ...at, title: "order_total does not round the sum to cents", claim: "a" }, { ...at, title: "Empty order returns int 0, not float", claim: "b" }] });
+    writeReturn(root, `${SAFETY_NET}.lens.tests.r1.a1`, { findings: [{ ...at, title: "The sum is not rounded", claim: "c" }] });
+    writeReturn(root, `${SAFETY_NET}.lens.corpus-misalignment.r1.a1`, { findings: [] });
+
+    assert.deepEqual(gateFacts("G:task-end", root, atStage(SAFETY_NET)).review, ["left as is", "left as is"]);
   });
 
   test("no review line when no lens of the round was recorded", () => {
