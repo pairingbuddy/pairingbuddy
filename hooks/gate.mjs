@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Gate: PreToolUse enforcement during a run, loaded by gate-boot.mjs. With no run state it allows everything silently,
 // except a call that would start a stage of this plugin or reach an agent only a stage spawns: those have only ever run
-// inside a run. It also spares curate-guidance a question nobody would answer, since only a hook sees the policy.
+// inside a run. It also spares curate-guidance a question nobody would answer, since only a hook sees the policy, and, run
+// or not, lets this plugin's stage skills load without a prompt, since the Skill tool only loads their instructions.
 // An allow prints nothing, unless it is the runner's exact command or the main context's own exact pb command: during a run
 // any main verb bar publish and pr refresh, with no run the verbs that start or inspect one. A decision exits 0 with the
 // JSON form on stdout.
@@ -11,6 +12,7 @@
 import { existsSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const TARGET_KEYS = { Write: "file_path", Edit: "file_path", NotebookEdit: "notebook_path" };
 const MAX_SYMLINKS = 40;
@@ -18,6 +20,7 @@ const PLUGIN_PREFIX = "pairingbuddy:";
 const CURATOR = `${PLUGIN_PREFIX}curate-guidance`;
 const POLICY_ENV = "PAIRINGBUDDY_GATE_POLICY";
 const ABSENT_CODES = ["ENOENT", "ENOTDIR"];
+const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)));
 
 function readlinkOrNull(path) {
   try {
@@ -284,6 +287,24 @@ function denyQuestionWithNoHuman({ agent_type: agentType, permission_mode: mode 
   decide("deny", "No human answers under the auto policy, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.");
 }
 
+// The Skill tool only loads instructions, so this plugin's stage skills need no prompt: each workflow whose description says
+// it is an internal stage, and the stage skills the main context runs. Built-ins only, so no run pays for an import.
+const MAIN_CONTEXT_STAGE_SKILLS = ["curating-guidance", "setting-up-spike"];
+const STAGE_SKILL_REASON = "Pairing Buddy stage skill, auto-allowed by the Pairing Buddy gate: it only loads instructions.";
+
+function isStageSkill(payload) {
+  const skill = payload?.tool_name === "Skill" ? payload.tool_input?.skill : undefined;
+  if (typeof skill !== "string" || !skill.startsWith(PLUGIN_PREFIX)) return false;
+  const name = skill.slice(PLUGIN_PREFIX.length);
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) return false;
+  if (MAIN_CONTEXT_STAGE_SKILLS.includes(name)) return true;
+  try {
+    return readFileSync(join(PLUGIN, "workflows", `${name}.js`), "utf8").split("\n", 1)[0].includes("description: 'Internal stage");
+  } catch {
+    return false;
+  }
+}
+
 // A failed import is held back, not thrown here: only the walk can say whether this call is inside a run.
 let findRunRoot = nearestRunDirectory;
 let findSessionRoot = (cwd, sessionId) => nearestRunDirectory(cwd) ?? pointedRunDirectory(sessionId);
@@ -314,8 +335,10 @@ try {
   } else if (runRoots.size > 0) {
     if (importFailure !== null) throw importFailure;
     const { checkCall } = await import("../shared-node/gate-rules.mjs");
-    const allowReason = checkCall({ runRoots: [...runRoots], sessionRoot, payload, targets, reads, canonicalPath });
+    const allowReason = checkCall({ runRoots: [...runRoots], sessionRoot, payload, targets, reads, canonicalPath }) ?? (isStageSkill(payload) ? STAGE_SKILL_REASON : null);
     if (allowReason !== null) decide("allow", allowReason);
+  } else if (isStageSkill(payload)) {
+    decide("allow", STAGE_SKILL_REASON);
   } else if (payload?.tool_name === "Workflow") {
     await denyStageWithNoRun(payload.tool_input ?? {}, cwd);
   } else if (payload?.tool_name === "Agent") {

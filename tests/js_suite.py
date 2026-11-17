@@ -141,6 +141,7 @@ JS_TEST_FILES = [
     "tests/js/stage-graph-safeguards.test.mjs",
     "tests/js/stage-report-coverage.test.mjs",
     "tests/js/stage-run-safeguards.test.mjs",
+    "tests/js/stage-skill-gate.test.mjs",
     "tests/js/stop-code-cli.test.mjs",
     "tests/js/stop-code-ledger.test.mjs",
     "tests/js/stop-code-plain-names.test.mjs",
