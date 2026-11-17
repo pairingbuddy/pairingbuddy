@@ -18,7 +18,7 @@ Remaining step: a quick narrow re-look by the human before Task 60 is ticked.
 
 - **The band is the default.** Always visible above the prompt: the goal's gist on its first row (seventh watched run), then one row that leads with the run's status as the pane's STATUS draws it (hierarchy), then answers where, spent and left. See [R4-1](round-4/R4-1-band-tdd-calm.png) and "The band" under "Fixed layout".
 - **The pane holds the details.** `/pb` opens the pane, which the band names in its hint (see "Commands, not band buttons"), and esc or × closes it. The pane also opens by itself, without the keyboard, when a run starts (seventh watched run), when the run stops or needs you, and when the unit is done with nothing left to do (sixth watched run); for a question the band then reads "▲ NEEDS YOU · opened details". See [R4-7](round-4/R4-7-switching-storyboard.png).
-- **The HTML report gives depth.** The pane's `open report` writes a self-contained page and opens it in the browser. There is one report for a TDD run and one for a planning run. See [R5-3](round-5/R5-3-report-tdd.png) and [R5-4](round-5/R5-4-report-plan.png).
+- **The HTML report gives depth.** `/pb-report` writes a self-contained page and opens it in the browser. There is one report for a TDD run and one for a planning run. See [R5-3](round-5/R5-3-report-tdd.png) and [R5-4](round-5/R5-4-report-plan.png).
 
 ## The five rows
 
@@ -101,10 +101,9 @@ TESTS    1 of 2 done
          ▸ zero percent keeps full price  ●RED ›GREEN ›REFACTOR  0:11
 REVIEW   —
 
-[ r open report ]
-suggest: a note for the next agent
-[ dismiss ]
 ```
+
+The pane draws no control: see "No buttons in the pane" below.
 
 Rules:
 
@@ -297,7 +296,7 @@ The human's findings:
 - A scenario said the line totals of `order_total([(10, 2), (4, 1)])` are 20 and 4, where the task said 30.0 "which is 25.0 plus 5.0" (`line_total` in cart.py adds 25% VAT). A reviewer flagged it, and the refuter called it "not a real problem".
 
 What changed:
-- **The pane opens when a run starts.** Once per run, without the keyboard, the first poll that sees a run opens the pane. The run is kept in the mod's store before the open, so a pane the human dismissed is never opened again for that run, also after a reload; a store that fails opens nothing, since opening every poll would undo a dismissal. A run first seen with a question or a stop is opened by its alert alone. Unasked, Claude Code places a pane only from 144 columns (110 once the human asked for it); below that it waits undrawn, and one transcript line gives the reason and says to type `/pb` (or `/pb-report` for the report). `/pb` stays the way in; the band itself is unchanged, its room going to the goal and the step.
+- **The pane opens when a run starts.** Once per run, without the keyboard, the first poll that sees a run opens the pane. The run is kept in the mod's store before the open, so a pane the human closed (`/pb` or esc) is never opened again for that run, also after a reload; a store that fails opens nothing, since opening every poll would undo that close. A run first seen with a question or a stop is opened by its alert alone. Unasked, Claude Code places a pane only from 144 columns (110 once the human asked for it); below that it waits undrawn, and one transcript line gives the reason and says to type `/pb` (or `/pb-report` for the report). `/pb` stays the way in; the band itself is unchanged, its room going to the goal and the step.
 - **The band uses the pane's colours.** See "Colour means one thing", now the single truth for both.
 - **The goal leads the band** on its own row. See "The band" under "Fixed layout".
 - **Done leaves the status line alone.** Claude Code draws every plugin status line as a pinned notice `⚠ <plugin>: <text>` in the warning colour (`$.ui.status` adds the notice with no colour, and the notice row always draws the ⚠ figure); a plugin cannot change the mark or the colour. So done plays the sound, opens the pane, says it in the band (bold) and sends one native notice through the human's notification channel (`$.ui.notify`, titled "Pairing Buddy"), which carries no warning mark. The status line stays for needs-you and a stop, where a warning mark fits.
@@ -376,11 +375,21 @@ What changed:
 
 In a watched run the human could not use the band's `[ ▸ details ]` button. The classic renderer has no mouse, and the only way to the button is ctrl+x tab, tab, enter, which nobody finds. So the band draws no button and names commands instead.
 
-- **`/pb`** opens the pane with focus. **`/pb-report`** writes the run report (the same path as the pane's `r open report`) and answers with one transcript line: the report's absolute path and whether it opened (`Pairing Buddy report: <path> · opened in your browser`, or `· couldn't open it`), so the path can be opened by hand. It works for a live run and for an ended one (from the last polled ledger and the kept runs), and says `Pairing Buddy: no run to report yet` when there is none.
+- **`/pb`** opens the pane with focus (since 2026-11-17 it toggles: see below). **`/pb-report`** writes the run report and answers with one transcript line: the report's absolute path and whether it opened (`Pairing Buddy report: <path> · opened in your browser`, or `· couldn't open it`), so the path can be opened by hand. It works for a live run and for an ended one (from the last polled ledger and the kept runs), and says `Pairing Buddy: no run to report yet` when there is none.
 - **Both are immediate,** so they run while Claude is working, with no model turn.
 - **The band's hint** reads `/pb details · /pb-report report`, shortens to `/pb · /pb-report`, and is the first thing dropped at narrow widths. With the button gone the step gets its room.
-- **The pane keeps `r open report`** (it works while the pane has focus) and shows `or /pb-report, no focus needed` beside it.
+- **The pane kept `r open report`** at first, with `or /pb-report, no focus needed` beside it; it has gone since (see below).
 - **Why bare names.** From the mod docs (code.claude.com/docs/en/plugins/mods: api.md, interface.md, reference.md): a mod-registered command is a bare name of letters, digits, `_` and `-`, so `/pb:report` is not possible; a `command.run` hook runs mod code with no model turn and returns `{}` or `{ text }`; `$.ui.open({ id, focus: true })` from a command gets focus; `immediate: true` lets it run mid-turn.
+
+## No buttons in the pane (2026-11-17)
+
+Looking at the pane, the human called its last three lines useless: `[ r open report ]  or /pb-report, no focus needed`, `suggest: a note for the next agent` and `[ dismiss ]`. Like the band's old button, each needed the pane's focus (ctrl+x tab, then tab and enter), which nobody does. So the pane draws no control at all, only text, and every action is a typed command that runs at once, with no model turn:
+
+- **`/pb` toggles the pane.** Shown, it closes it; closed, waiting undrawn or behind another tab, it opens it with the keyboard (`$.ui.panes()` says which). It answers `Pairing Buddy pane opened` or `Pairing Buddy pane closed`. This replaces `[ dismiss ]`, which only closed the pane (`$.ui.close`) and cleared nothing; esc still closes it too. A pane closed either way is not opened again by the run start for the same run, as before.
+- **`/pb-report`** replaces `r open report`; the pane's note line still says what the last report came to.
+- **`/pb-note <text>`** replaces the suggest input. It appends the same task-scoped entry to `.pairingbuddy/human-guidance.json` (the agents read it when they start; curate-guidance drops it at the next task) and answers in one line: `Note saved to .pairingbuddy/human-guidance.json. The next agent will read it.` With no text, no running task, or a guidance file it cannot read or write, it saves nothing and says so in that line. The pane still says which agent reads the note next and, once it spawned, that it reached it.
+
+The pane's bottom is now only text: the unknown-label lines (if any), the note line from the last `/pb-report`, and the note's delivery line.
 
 ## The report leads with what you need (2026-11-16)
 
