@@ -48,6 +48,12 @@ test("STATUS says goal in doubt with the gist when the alignment lens has a find
   assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ findings: open }) }), "goal in doubt: The plan asks for a total with tax.", "a doubt is the human's to look at, so ready-for-your-next-task is left out");
 });
 
+test("STATUS says goal in doubt when the alignment lens said an open finding the code lens said first for the same lines", () => {
+  const merged = [{ id: "code-1", ids: ["code-1", "corpus-misalignment-1"], title: "Total leaves out tax", word: "left as is" }];
+
+  assert.equal(doneStatus({ codeRun: finishedRun(), round: round({ findings: merged }) }), "goal in doubt: Total leaves out tax", "the finding shown once stands for the alignment lens's too");
+});
+
 test("PR reads a dash until the publish result or the unit record names it", () => {
   const codeRun = finishedRun();
 

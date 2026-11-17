@@ -329,6 +329,10 @@ export function approvedDoubts(task) {
 
 const FIX_KEPT = "kept";
 
+// The ids a shown finding stands for: one finding, or every finding said for its lines (samePlaceFindings).
+const idsOf = (finding) => (Array.isArray(finding.ids) ? finding.ids : [finding.id]);
+const lensesOf = (finding) => idsOf(finding).map((id) => lensOfFinding({ id }));
+
 // How a later fix settled a doubt a refuter raised on one finding: the finding reads fixed by a fix kept in a later round of
 // the same review, so the human approved past a doubt that was no longer open. Only a refuter's doubt is about one finding,
 // so only it can be settled so; null when it was not.
@@ -339,8 +343,8 @@ function settledBy({ ambiguity }, task) {
       if (key?.role !== "refuter" || String(call.input.ambiguity ?? "").trim() !== ambiguity.trim()) continue;
       const stage = stagesOf(run.ledger).find((entry) => entry?.name === key.stage);
       const round = stage === undefined ? undefined : lensRound({ ledger: { stage, fixes: run.ledger.fixes, stop: null }, calls: run.calls, ended: true });
-      const found = round?.findings.find((finding) => finding.id === key.item && finding.verdict === "fixed");
-      const fix = found && round.fixes.find((each) => each.outcome === FIX_KEPT && each.round > key.round && each.lens === lensOfFinding(found));
+      const found = round?.findings.find((finding) => idsOf(finding).includes(key.item) && finding.verdict === "fixed");
+      const fix = found && round.fixes.find((each) => each.outcome === FIX_KEPT && each.round > key.round && each.lens === lensOfFinding({ id: key.item }));
       if (!fix) continue;
       const commit = (Array.isArray(run.ledger?.checkpoints) ? run.ledger.checkpoints : []).find((record) => {
         const at = keyOf(record?.key);
@@ -445,12 +449,12 @@ const LEFT_WORDS = [FINDING_WORDS.toFix, FINDING_WORDS.leftAsIs];
 // The findings a return's key is about: a refuter's one finding, a lens's own findings, a fix group's lens (the fix loop
 // groups the upheld findings by lens, in finding order, as g1, g2, ...).
 function findingsOfKey(key, findings) {
-  if (key.role === "refuter") return findings.filter((finding) => finding.id === key.item);
-  if (key.role === "lens") return findings.filter((finding) => lensOfFinding(finding) === key.item);
+  if (key.role === "refuter") return findings.filter((finding) => idsOf(finding).includes(key.item));
+  if (key.role === "lens") return findings.filter((finding) => lensesOf(finding).includes(key.item));
   if (key.role !== "fix") return [];
-  const lenses = [...new Set(findings.filter((finding) => finding.verdict !== "knocked-down").map(lensOfFinding))];
+  const lenses = [...new Set(findings.filter((finding) => finding.verdict !== "knocked-down").flatMap(lensesOf))];
   const lens = lenses[Number(/^g(\d+)$/.exec(key.item)?.[1]) - 1];
-  return lens === undefined ? [] : findings.filter((finding) => lensOfFinding(finding) === lens);
+  return lens === undefined ? [] : findings.filter((finding) => lensesOf(finding).includes(lens));
 }
 
 // The finding a doubt is about: one left open in a round over whose reviewer, refuter or fix raised that same question.

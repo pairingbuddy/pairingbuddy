@@ -245,6 +245,37 @@ describe("report-of-a-doubt-a-later-fix-settled", () => {
     assert.ok(section.includes(`settled by a later fix in the safety-net review: order_total returns int 0 for an empty list · ${SHA_FIX.slice(0, 7)}`), `with how it was settled, got ${section}`);
   });
 
+  test("a doubt on a finding another lens said first for the same lines is settled by its own lens's later fix", () => {
+    const same = { ...finding("order_total returns int 0 for an empty list", undefined), where: "cart.py:11" };
+    const calls = [
+      net("lens", "code", 1, { ambiguity: null, findings: [{ ...same, title: "Empty order gives an int" }] }),
+      net("lens", "tests", 1, { ambiguity: null, findings: [same] }),
+      net("refuter", "tests-1", 1, { finding_id: "tests-1", verdict: "survives", ambiguity: AMBIGUITY }),
+      net("fix", "g1", 2, { ambiguity: "", commit_subject: "fix: the code", no_change_reason: "", files_changed: ["cart.py"] }),
+      net("course-checker", "g1", 2, { finding_id: "code-1", verdict: "better", mistake: "none", what_went_wrong: "" }),
+      net("fix", "g2", 3, { ambiguity: "", commit_subject: "fix: the tests", no_change_reason: "", files_changed: ["tests/test_cart.py"] }),
+      net("course-checker", "g2", 3, { finding_id: "tests-1", verdict: "better", mistake: "none", what_went_wrong: "" }),
+    ];
+    const ledger = { ...settledRun, checkpoints: [...CODE_RUN.checkpoints, { step: "fix", key: "code-safety-net.fix.g2.r3.a1", committed: true, sha: SHA_FIX, stage: "code-safety-net", attempt: 1 }] };
+    const html = report({ runs: [{ ...RUNS[0], ledger, calls }, RUNS[1]] });
+
+    assert.ok(!sectionOf(html, "NEEDS YOU").includes(AMBIGUITY), "no doubt is open");
+    const section = sectionOf(html, "SETTLED DOUBTS");
+    assert.ok(section.includes(`settled by a later fix in the safety-net review: Empty order gives an int · ${SHA_FIX.slice(0, 7)}`), `under the gist shown, got ${section}`);
+  });
+
+  test("a doubt on a finding another lens said first for the same lines is asked under the finding shown", () => {
+    const same = { ...finding("order_total returns int 0 for an empty list", undefined), where: "cart.py:11" };
+    const calls = [
+      net("lens", "code", 1, { ambiguity: null, findings: [{ ...same, title: "Empty order gives an int" }] }),
+      net("lens", "tests", 1, { ambiguity: null, findings: [same] }),
+      net("refuter", "tests-1", 1, { finding_id: "tests-1", verdict: "survives", ambiguity: AMBIGUITY }),
+    ];
+    const section = sectionOf(report({ runs: [{ ...RUNS[0], ledger: settledRun, calls }, RUNS[1]] }), "NEEDS YOU");
+
+    assert.ok(section.includes(`<strong>Empty order gives an int</strong> · cart.py:11<br>Decide: ${AMBIGUITY}`), `the doubt is asked under the one finding, got ${section}`);
+  });
+
   test("a doubt whose finding no fix settled stays open", () => {
     const html = settledReport(SETTLING_CALLS.slice(0, 2));
 

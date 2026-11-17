@@ -244,6 +244,36 @@ export function distinctFindings(findings) {
   });
 }
 
+// A place names a file and its lines ("cart.py:11", "a.mjs:1-5"); a file alone names no place two findings can share.
+const placeOf = (finding) => {
+  const where = sameness(finding.where);
+  return /:\d+(-\d+)?$/.test(where) ? where : null;
+};
+
+// Once the review is over, the most open outcome of findings at one place is the one shown: to fix, left as is, fixed, not a real problem.
+const OPENNESS = ["to fix", "left as is", "fixed", "not a real problem"];
+const openness = (word) => (OPENNESS.includes(word) ? OPENNESS.indexOf(word) : -1);
+
+// Two lenses of a task review may point at the same lines: those findings show once, under the gist said first. Its outcome is
+// the most open one once the review is over, the one said last while it runs; `ids` names every finding it stands for.
+export function samePlaceFindings(findings, ended) {
+  const shown = [];
+  const byPlace = new Map();
+  for (const finding of findings) {
+    const place = placeOf(finding);
+    const first = place === null ? undefined : byPlace.get(place);
+    if (first === undefined) {
+      const one = { ...finding, ids: [finding.id] };
+      if (place !== null) byPlace.set(place, one);
+      shown.push(one);
+      continue;
+    }
+    first.ids.push(finding.id);
+    if (!ended || openness(finding.word) < openness(first.word)) Object.assign(first, { verdict: finding.verdict, word: finding.word });
+  }
+  return shown;
+}
+
 // A light review has ended once a later agent in the stage works on another test.
 function movedOn(labels, item) {
   const last = labels.findLastIndex((label) => label.role === "lens" && label.item === item);
@@ -297,7 +327,8 @@ export function lensRound({ ledger, calls: allCalls = [], spawns: allSpawns = []
   const ended = runEnded || current.status !== "active" || (light !== null && movedOn(labels, light.item));
   const answered = answeredByFixes(lensFindings(returned, refuterVerdicts(sources)), fixes);
   const shown = light ? distinctFindings(answeredByFixers(answered, labels, light.item)) : answered;
-  const findings = shown.map((finding) => ({ ...finding, word: findingWord(finding.verdict, ended) }));
+  const worded = shown.map((finding) => ({ ...finding, word: findingWord(finding.verdict, ended) }));
+  const findings = light ? worded : samePlaceFindings(worded, ended);
   return {
     stage: shownName(stage),
     lenses: lensStates(spawned, returned, nameOf),

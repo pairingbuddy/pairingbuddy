@@ -857,3 +857,50 @@ test("a-task-type-review-still-running-reads-one-plain-line", () => {
 
   assert.deepEqual(lensLines(round, 200).map(({ text }) => text), ["checking the task type"]);
 });
+
+// scenario same-place: two lenses of a task review that point at the same file and lines show as one finding
+test("a-task-review-finding-two-lenses-said-for-the-same-lines-shows-once-with-the-first-gist", () => {
+  const spawns = [spawnFor({ item: "code" }), spawnFor({ item: "tests" })];
+  const calls = [
+    callFor({ item: "code", findings: [{ where: "tests/test_cart.py:1-5", title: "Existing test rewritten beyond the stated scope", claim: "one" }, { where: "cart.py:11", title: "Empty total is an int", claim: "two" }] }),
+    callFor({ item: "tests", findings: [{ where: "tests/test_cart.py:1-5", title: "Existing test rewritten beyond the one-test scope", claim: "three" }] }),
+  ];
+
+  const round = lensRound({ ledger: ledgerFor(), calls, spawns, contract });
+
+  assert.deepEqual(round.findings.map(({ where, title }) => `${title} · ${where}`), ["Existing test rewritten beyond the stated scope · tests/test_cart.py:1-5", "Empty total is an int · cart.py:11"], "the same lines show once, under the gist said first");
+  assert.equal(round.counts.found, 2, "the count is of findings at distinct places");
+});
+
+test("a-finding-shown-once-for-its-lines-reads-the-most-open-outcome-once-the-review-is-over", () => {
+  const spawns = [spawnFor({ item: "code" }), spawnFor({ item: "tests" })];
+  const same = { where: "tests/test_cart.py:1-5" };
+  const calls = [
+    callFor({ item: "code", findings: [{ ...same, title: "First gist", claim: "one" }, { where: "a.mjs:1", title: "Refuted first", claim: "two" }] }),
+    callFor({ item: "tests", findings: [{ ...same, title: "Second gist", claim: "three" }, { where: "a.mjs:1", title: "Upheld second", claim: "four" }] }),
+    callFor({ role: "refuter", item: "code-2", finding_id: "code-2", verdict: "refuted" }),
+    callFor({ role: "fix", item: "g1", round: 2, ambiguity: "none", commit_subject: "fix it", approach: "change the code", files_changed: ["a.mjs"] }),
+    callFor({ role: "course-checker", item: "g1", round: 2, finding_id: "code-1", verdict: "better" }),
+  ];
+
+  const round = lensRound({ ledger: ledgerFor({ status: "done" }), calls, spawns, contract });
+
+  assert.deepEqual(round.findings.map(({ title, word }) => `${word} · ${title}`), ["left as is · First gist", "left as is · Refuted first"], "left as is outranks fixed and not a real problem, under the first gist");
+  assert.equal(round.counts.found, 2, "two places, two findings");
+});
+
+test("a-finding-shown-once-for-its-lines-reads-the-outcome-said-last-while-the-review-runs", () => {
+  const spawns = [spawnFor({ item: "code" }), spawnFor({ item: "tests" }), spawnFor({ role: "fix", item: "g2", round: 3 })];
+  const same = { where: "tests/test_cart.py:1-5" };
+  const calls = [
+    callFor({ item: "code", findings: [{ ...same, title: "First gist", claim: "one" }] }),
+    callFor({ item: "tests", findings: [{ ...same, title: "Second gist", claim: "two" }] }),
+    callFor({ role: "fix", item: "g1", round: 2, ambiguity: "none", commit_subject: "fix it", approach: "change the code", files_changed: ["a.mjs"] }),
+    callFor({ role: "course-checker", item: "g1", round: 2, finding_id: "code-1", verdict: "better" }),
+  ];
+
+  const round = lensRound({ ledger: ledgerFor(), calls, spawns, contract });
+  const lines = lensLines(round, 200).map(({ text }) => text);
+
+  assert.deepEqual(lines.slice(1), ["1 issue found · 1 fixing", "  fixing · First gist · tests/test_cart.py:1-5"], `one line, the latest outcome under the first gist: ${JSON.stringify(lines)}`);
+});
