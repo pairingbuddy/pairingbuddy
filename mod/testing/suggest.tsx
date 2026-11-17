@@ -74,8 +74,11 @@ export function writtenGuidance(writes: { path: string; text: string }[]) {
 // The note text the delivery tests leave with /pb-note.
 export const SUGGESTION_TEXT = 'Keep the signature, fix the formula'
 
-// The pane line shown while a suggestion waits for the next agent spawn.
-export const PENDING_PHRASE = 'applies at the next agent spawn'
+// The pane line's head: the note as typed, quoted.
+export const NOTE_HEAD = `your note "${SUGGESTION_TEXT}"`
+
+// The pane line shown while a note waits for an agent that reads it.
+export const WAITING_LINE = `${NOTE_HEAD} · waiting for the next agent`
 
 // Spawns an agent the way a workflow does: the name is a real label and the subagent type follows the role.
 export async function spawnStageAgent($: any, { stage, role }: { stage: string; role: string }) {

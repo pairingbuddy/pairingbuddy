@@ -6,7 +6,8 @@ import { readLabel } from '../shared-node/labels.mjs'
 // The pending suggestion, as mod state: when it was saved, until an agent spawns and reads it.
 const PENDING = { plugin: 'pairingbuddy', key: 'pending-suggestion' }
 
-export type PendingSuggestion = { savedAt: string; deliveredTo?: string }
+// deliveredFor: the test a TDD cycle's agent worked on, when it was one.
+export type PendingSuggestion = { savedAt: string; text?: string; deliveredTo?: string; deliveredFor?: string }
 
 export const GUIDANCE = '.pairingbuddy/human-guidance.json'
 
@@ -33,7 +34,7 @@ export async function saveNote($: EngineInterface, spawns: Spawn[], text: string
     const existing = await readGuidance($, path)
     if (existing === null) return NOTE_NOT_SAVED
     await $.fs.write(path, JSON.stringify({ guidance: [...existing, entry] }, null, 2) + '\n')
-    await $.state.set(PENDING, { savedAt: timestamp })
+    await $.state.set(PENDING, { savedAt: timestamp, text: text.trim() })
     return NOTE_SAVED
   } catch {
     // A failed write leaves the note not pending.
@@ -68,5 +69,5 @@ function isMissing(error: unknown): boolean {
 export async function recordDelivery($: EngineInterface, pending: PendingSuggestion | null, name: string | undefined): Promise<void> {
   const label = readLabel(name ?? '')
   if (pending == null || pending.deliveredTo != null || label.unknown || !readsNotes(label.role)) return
-  await $.state.set(PENDING, { ...pending, deliveredTo: label.role })
+  await $.state.set(PENDING, { ...pending, deliveredTo: label.role, ...(label.phase && label.item ? { deliveredFor: label.item } : {}) })
 }

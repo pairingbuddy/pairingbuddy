@@ -2,8 +2,6 @@ import { atom, read, type EngineInterface, type PluginOptions, type Register, ty
 import { fromPolled, spawnOf, startedAtOf, type Call, type Published, type Spawn } from './inputs'
 import { recordPublished } from './published'
 import { newPollerState, startPoller, type PollerState } from './poll'
-import { nextAgent } from '../shared-node/stage-graph.mjs'
-import contract from '../shared-node/stages-contract.mjs'
 import { Band } from './band'
 import { Pane, type Suggestion } from './pane'
 import { openReport, reportLine } from './report'
@@ -72,12 +70,13 @@ function drawGlance(
   })
 }
 
-function suggestionView(pending: PendingSuggestion | null, upcoming: () => string | undefined): Suggestion | undefined {
+function suggestionView(pending: PendingSuggestion | null): Suggestion | undefined {
   if (pending == null) {
     return undefined
   }
 
-  return pending.deliveredTo ? { state: 'delivered', to: pending.deliveredTo } : { state: 'pending', nextAgent: upcoming() }
+  const text = pending.text ?? ''
+  return pending.deliveredTo ? { state: 'delivered', text, to: pending.deliveredTo, test: pending.deliveredFor } : { state: 'pending', text }
 }
 
 export const register: Register = (on, options) => {
@@ -169,7 +168,7 @@ export const register: Register = (on, options) => {
       columns={e.props.bodyColumns}
       unknownLabels={view.unknownLabels}
       note={note}
-      suggestion={suggestionView(pending, () => nextAgent(contract, view.ledger, spawns))}
+      suggestion={suggestionView(pending)}
     />
   )))
 }

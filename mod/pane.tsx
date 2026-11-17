@@ -15,7 +15,7 @@ export const PHASE_COLOURS: Record<string, string> = { RED: '#e5534b', GREEN: '#
 export const ACCENT_COLOUR = '#39c5cf'
 const LIT: Props = { color: ACCENT_COLOUR, bold: true }
 
-export type Suggestion = { state: 'pending'; nextAgent?: string } | { state: 'delivered'; to: string }
+export type Suggestion = { text: string } & ({ state: 'pending' } | { state: 'delivered'; to: string; test?: string })
 
 type Props = Record<string, unknown>
 type Part = { text: string; props?: Props }
@@ -145,6 +145,14 @@ function paneRows(view: View, columns: number) {
   ]
 }
 
+// The /pb-note line: the note as typed, then who read it, or that it waits for an agent that will.
+function noteLine(suggestion: Suggestion): string {
+  if (suggestion.state === 'pending') return `your note "${suggestion.text}" · waiting for the next agent`
+  const test = suggestion.test ? ` for ${suggestion.test.replaceAll('-', ' ')}` : ''
+  const reader = `read by: ${plainName(suggestion.to) ?? suggestion.to}${test}`
+  return `your note "${suggestion.text}" · ${reader}`
+}
+
 export function Pane({ Box, Text, view, columns = 0, unknownLabels, note = null, suggestion }: Tags & {
   view: View
   columns?: number
@@ -171,8 +179,7 @@ export function Pane({ Box, Text, view, columns = 0, unknownLabels, note = null,
       {unknownLabels.length > 0 && <Text dimColor>{`${unknownLabels.length} label${unknownLabels.length === 1 ? '' : 's'} unknown`}</Text>}
       <Text key="gap"> </Text>
       {note && <Text>{note}</Text>}
-      {suggestion?.state === 'pending' && <Text>{`applies at the next agent spawn: ${suggestion.nextAgent ? (plainName(suggestion.nextAgent) ?? suggestion.nextAgent) : 'the next agent'}`}</Text>}
-      {suggestion?.state === 'delivered' && <Text>{`delivered to ${plainName(suggestion.to) ?? suggestion.to}`}</Text>}
+      {suggestion && <Text>{noteLine(suggestion)}</Text>}
     </Box>
   )
 }
