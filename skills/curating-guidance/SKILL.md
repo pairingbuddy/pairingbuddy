@@ -20,6 +20,8 @@ Read `.pairingbuddy/human-guidance.json` (optional, it may not exist on first ru
 
 Read `.pairingbuddy/task.json` (optional) for context on the just-completed task: `description` and `context`.
 
+Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+
 ## Conversation
 
 First, check whether a human can answer. Look in your session context for a `<pairingbuddy-no-human>` block: the SessionStart hook adds it under the auto policy or `claude -p`, since only a hook sees the environment. Run no Bash for this check. If that block is there, or `PAIRINGBUDDY_SOLO` is `true`, follow "When No Human Can Answer" below and skip the rest of this section.

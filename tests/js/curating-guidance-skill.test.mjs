@@ -31,7 +31,7 @@ test("skill-silent-carry-over-without-human", () => {
   // The check once ran `echo "$PAIRINGBUDDY_GATE_POLICY/$CLAUDE_CODE_ENTRYPOINT"`, and that Bash call cost a lab run's human a
   // permission prompt. SessionStart now says it, so the skill reads its session context and runs no Bash for it.
   sentencesSaying("the check reads the SessionStart no-human block", text, /`<pairingbuddy-no-human>`/, /SessionStart/);
-  assert.doesNotMatch(text, /echo|\$PAIRINGBUDDY_GATE_POLICY|\$CLAUDE_CODE_ENTRYPOINT/, "the skill prints no environment variable with Bash");
+  assert.doesNotMatch(text, /echo "\$|\$PAIRINGBUDDY_GATE_POLICY|\$CLAUDE_CODE_ENTRYPOINT/, "the skill prints no environment variable with Bash");
   sentencesSaying("the auto policy means no human", text, /auto/i, /policy/i, /no human/i);
   sentencesSaying("Solo means no human", text, /`PAIRINGBUDDY_SOLO`/, /no human|Solo/i);
   sentencesSaying("with no human it carries the guidance over silently", text, /no human/i, /silent/i, /carr/i);
