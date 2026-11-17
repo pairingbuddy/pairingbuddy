@@ -32,7 +32,7 @@ test('the mod registers /pb at session start, and running it opens the same pane
 
   await $.command.run({ command: 'pb' })
 
-  expect(calls.registered.map(command => command.name), 'the mod registers /pb and /pb-report at session start').toEqual(['pb', 'pb-report'])
+  expect(calls.registered.map(command => command.name), 'the mod registers /pb, /pb-report and /pb-note at session start').toEqual(['pb', 'pb-report', 'pb-note'])
   expect(calls.opened.map(open => open.id), '/pb opens the pane under its id').toEqual([PANE_ID])
   expect(calls.opened[0].closeOnEscape, '/pb opens it closeable by esc too').toBe(true)
 })
@@ -53,6 +53,24 @@ test('the pane draws no button, in any state', async ($, on) => {
   }
 
   expect(buttons, 'no state of the pane draws a button').toEqual({ running: [], 'between steps': [], ended: [] })
+})
+
+// Typing into the pane took its focus first; /pb-note <text> leaves the same note from the prompt.
+test('the pane draws no input, in any state', async ($, on) => {
+  const { serve } = engine(on)
+  const clock = mock.clock(on, { now: 0 })
+  await start($)
+  const inputs: Record<string, unknown[]> = {}
+
+  for (const [state, ledger] of [['running', SNAPSHOT_RUNNING], ['between steps', SNAPSHOT_NO_STAGE], ['ended', null]] as const) {
+    serve(ledger)
+    await clock.advance(POLL_MS)
+    const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+    inputs[state] = await pane.findAll({ type: 'Input' })
+    await pane.unmount()
+  }
+
+  expect(inputs, 'no state of the pane draws an input').toEqual({ running: [], 'between steps': [], ended: [] })
 })
 
 test('the band\'s width budget fits its segments beside the [-] control', async ($, on) => {

@@ -6,40 +6,38 @@ import { readLabel } from '../shared-node/labels.mjs'
 // The pending suggestion, as mod state: when it was saved, until an agent spawns and reads it.
 const PENDING = { plugin: 'pairingbuddy', key: 'pending-suggestion' }
 
-// The pane's one note line, as mod state: what failed, in plain words. Shared with the report press (PANE_NOTE in ./report).
-// Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The same key is written in four copies, PANE_NOTE in ./poll, ./report and ./suggest and noteAtom in register.tsx; keep all four in step.
-const PANE_NOTE = { plugin: 'pairingbuddy', key: 'pane-note' }
-
-// The pane note shown on every failed save, written once so the two failure paths cannot drift apart.
-const NOT_SAVED_NOTE = 'suggestion not saved'
-
 export type PendingSuggestion = { savedAt: string; deliveredTo?: string }
 
 export const GUIDANCE = '.pairingbuddy/human-guidance.json'
 
+// What /pb-note answers, one plain line each.
+export const NOTE_SAVED = `Note saved to ${GUIDANCE}. The next agent will read it.`
+export const NOTE_NOT_SAVED = `Note not saved: ${GUIDANCE} could not be read or written, so it was left as it was.`
+export const NOTE_BLANK = 'Nothing saved: type the note after the command, as in /pb-note keep the signature.'
+export const NOTE_NO_RUN = 'Note not saved: no Pairing Buddy task is running, so no agent would read it.'
+
 // A function declaration, not an arrow: the mod loader rejects an exported arrow taking $ across files.
-// Appends the typed note to human-guidance.json as a task-scoped entry, which curate-guidance drops at the next task. Never throws.
-export async function submitSuggestion($: EngineInterface, spawns: Spawn[], text: string): Promise<void> {
-  if (text.trim() === '') return
+// /pb-note: appends the typed note to human-guidance.json as a task-scoped entry, which curate-guidance drops at the next task,
+// and returns the one line the command answers with. Never throws.
+export async function saveNote($: EngineInterface, spawns: Spawn[], text: string): Promise<string> {
+  if (text.trim() === '') return NOTE_BLANK
   try {
     const path = `${await $.session.root()}/${GUIDANCE}`
     const { ledger, now } = await readInputs($, spawns)
-    const context = ledger?.task ?? ledger?.stage?.name ?? 'current task'
+    if (!ledger) return NOTE_NO_RUN
+    const context = ledger.task ?? ledger.stage?.name ?? 'current task'
     const timestamp = new Date(now ?? Date.now()).toISOString()
-    const entry = suggestionEntry({ timestamp, context, feedback: text })
+    const entry = suggestionEntry({ timestamp, context, feedback: text.trim() })
     // Known limit: the read-then-write is not atomic (the mod API has no append primitive), so an agent append landing
     // between the two is overwritten. The read sits right next to the write to keep that window as small as possible.
     const existing = await readGuidance($, path)
-    if (existing === null) {
-      await $.state.set(PANE_NOTE, NOT_SAVED_NOTE)
-      return
-    }
+    if (existing === null) return NOTE_NOT_SAVED
     await $.fs.write(path, JSON.stringify({ guidance: [...existing, entry] }, null, 2) + '\n')
     await $.state.set(PENDING, { savedAt: timestamp })
-    await $.state.set(PANE_NOTE, null)
+    return NOTE_SAVED
   } catch {
-    // The submit never throws; a failed write shows the plain "suggestion not saved" note and leaves the suggestion not pending.
-    await $.state.set(PANE_NOTE, NOT_SAVED_NOTE).catch(() => {})
+    // A failed write leaves the note not pending.
+    return NOTE_NOT_SAVED
   }
 }
 

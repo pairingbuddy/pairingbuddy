@@ -3,17 +3,17 @@
 import { expect, test } from 'claude-code/testing'
 import { SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING } from './testing/band'
 import { paneTexts } from './testing/report'
-import { PENDING_PHRASE, spawnStageAgent, startRunningPane, SUGGESTION_TEXT, typeIntoPane, typeSuggestion } from './testing/suggest'
+import { PENDING_PHRASE, spawnStageAgent, startRunningPane, SUGGESTION_TEXT, runPbNote, leaveNote } from './testing/suggest'
 
 test('pane-names-next-agent-after-suggest', async ($, on) => {
-  await typeSuggestion($, on, { text: SUGGESTION_TEXT })
+  await leaveNote($, on, { text: SUGGESTION_TEXT })
 
   const drawn = await paneTexts($)
   expect(drawn, 'the pane names the next agent in plain words (code-scenarios runs enumerate-scenarios-and-test-cases first)').toContain(`${PENDING_PHRASE}: listing scenarios`)
 })
 
 test('pane-says-delivered-after-next-spawn', async ($, on) => {
-  await typeSuggestion($, on, { text: SUGGESTION_TEXT })
+  await leaveNote($, on, { text: SUGGESTION_TEXT })
   await spawnStageAgent($, { stage: 'code-scenarios', role: 'enumerate-scenarios-and-test-cases' })
 
   const drawn = await paneTexts($)
@@ -22,7 +22,7 @@ test('pane-says-delivered-after-next-spawn', async ($, on) => {
 })
 
 test('pane-says-delivered-to-workflow-agent-labelled-by-description', async ($, on) => {
-  await typeSuggestion($, on, { text: SUGGESTION_TEXT })
+  await leaveNote($, on, { text: SUGGESTION_TEXT })
   // A workflow script's agent() label arrives as the description, with no name.
   await $.agent.spawn({ prompt: 'p', description: 'pb1 code-scenarios - enumerate-scenarios-and-test-cases - r1', subagentType: 'pairingbuddy:enumerate-scenarios-and-test-cases', workflow: { runId: 'wf_1', agentIndex: 1 } })
 
@@ -33,7 +33,7 @@ test('pane-says-delivered-to-workflow-agent-labelled-by-description', async ($, 
 test('spawn-before-suggestion-is-not-delivery', async ($, on) => {
   await startRunningPane($, on, {})
   await spawnStageAgent($, { stage: 'code-scenarios', role: 'enumerate-scenarios-and-test-cases' })
-  await typeIntoPane($, SUGGESTION_TEXT)
+  await runPbNote($, SUGGESTION_TEXT)
 
   const drawn = await paneTexts($)
   expect(drawn.some((text) => text.includes('delivered to')), 'a spawn before the suggestion was written is not a delivery').toBe(false)
@@ -52,7 +52,7 @@ async function expectFallbackLine($: any) {
 test('next-agent-unknown-falls-back-plain: after a spawn the successor is not derivable', async ($, on) => {
   await startRunningPane($, on, {})
   await spawnStageAgent($, { stage: 'code-scenarios', role: 'enumerate-scenarios-and-test-cases' })
-  await typeIntoPane($, SUGGESTION_TEXT)
+  await runPbNote($, SUGGESTION_TEXT)
 
   await expectFallbackLine($)
 })
@@ -66,7 +66,7 @@ const UNDERIVABLE = [
 for (const { name, ledger } of UNDERIVABLE) {
   test(`next-agent-unknown-falls-back-plain: ${name}`, async ($, on) => {
     await startRunningPane($, on, { ledger })
-    await typeIntoPane($, SUGGESTION_TEXT)
+    await runPbNote($, SUGGESTION_TEXT)
 
     await expectFallbackLine($)
   })
@@ -76,7 +76,7 @@ test('next-agent-judges-only-active-stage-spawns', async ($, on) => {
   const ledger = { ...SNAPSHOT_RUNNING, stage: { ...SNAPSHOT_RUNNING.stage, name: 'code-tdd' } }
   await startRunningPane($, on, { ledger })
   await spawnStageAgent($, { stage: 'code-scenarios', role: 'enumerate-scenarios-and-test-cases' })
-  await typeIntoPane($, SUGGESTION_TEXT)
+  await runPbNote($, SUGGESTION_TEXT)
 
   const drawn = await paneTexts($)
   expect(drawn, 'a spawn from an earlier stage does not count: the pane names the active stage\'s first agent (code-tdd runs create-test-placeholders first)').toContain(`${PENDING_PHRASE}: sketching the tests`)

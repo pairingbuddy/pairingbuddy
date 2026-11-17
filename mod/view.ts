@@ -22,10 +22,8 @@ export type RowTones = Partial<Record<keyof Rows, Tone>>
 // (the step, the question, why it stopped, the verdict). quiet: nothing runs and nothing waits on the human.
 export type StatusState = 'needsYou' | 'stopped' | 'done' | 'working' | 'quiet'
 export type Status = { state: StatusState; what?: string }
-// The kit's own types for the elements a render hook draws with.
-export type Tags = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
-// The Pane alone also draws the suggest Input.
-export type PaneTags = Tags & Pick<ElementTable, 'Input'>
+// The kit's own types for the elements a render hook draws with: text only, as neither the band nor the pane has a control.
+export type Tags = Pick<ElementTable, 'Box' | 'Text'>
 
 // count: how many of the planned tests are done (or covered), once the total is known; settled once the build step is over.
 export type Progress = { known?: boolean; count?: { total: number; done: number; covered: number; settled: boolean }; folded?: number; coveredFolded?: number; more?: number; entries: { id: string; name: string; mark: 'done' | 'current' | 'waiting' | 'covered' }[] }

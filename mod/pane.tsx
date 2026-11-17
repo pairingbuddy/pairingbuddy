@@ -1,7 +1,7 @@
 import { plainName } from '../shared-node/plain-names.mjs'
 import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
 import { endReviewLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
-import type { PaneTags, RowTones, Status, StatusState, View } from './view'
+import type { RowTones, Status, StatusState, Tags, View } from './view'
 
 // Every row is always drawn, in this order, its label in a column this wide; a row with nothing to show reads EMPTY.
 const LABEL_WIDTH = 9
@@ -145,15 +145,13 @@ function paneRows(view: View, columns: number) {
   ]
 }
 
-export function Pane({ Box, Text, Input, view, columns = 0, unknownLabels, note = null, suggestion, onSuggest = () => {} }: PaneTags & {
+export function Pane({ Box, Text, view, columns = 0, unknownLabels, note = null, suggestion }: Tags & {
   view: View
   columns?: number
   unknownLabels: string[]
   note?: string | null
   suggestion?: Suggestion
-  onSuggest?: (text: string) => unknown
 }) {
-  const { ledger, ended = false } = view
   return (
     <Box flexDirection="column">
       {topRows(view, columns).map(({ label: name, labelProps, parts }, row) => (
@@ -175,7 +173,6 @@ export function Pane({ Box, Text, Input, view, columns = 0, unknownLabels, note 
       {note && <Text>{note}</Text>}
       {suggestion?.state === 'pending' && <Text>{`applies at the next agent spawn: ${suggestion.nextAgent ? (plainName(suggestion.nextAgent) ?? suggestion.nextAgent) : 'the next agent'}`}</Text>}
       {suggestion?.state === 'delivered' && <Text>{`delivered to ${plainName(suggestion.to) ?? suggestion.to}`}</Text>}
-      {ledger && !ended && <Input key="suggest" label="suggest" placeholder="a note for the next agent" onSubmit={onSuggest} />}
     </Box>
   )
 }
