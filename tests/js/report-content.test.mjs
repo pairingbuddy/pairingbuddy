@@ -43,7 +43,7 @@ describe("report-content", () => {
     const section = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })), "AT A GLANCE");
 
     assert.match(section, /<strong>Where it stopped<\/strong>\s*stopped: a step kept failing/);
-    assert.match(section, /<strong>Spent<\/strong>\s*18 agents · 2:36 · tokens unknown · % of plan unknown/);
+    assert.match(section, /<strong>Spent<\/strong>\s*18 agents · 2:36 · tokens unknown<\/p>/);
     assert.match(section, /<strong>Left<\/strong>\s*unknown/);
     assert.doesNotMatch(section, /Looping|Off track/);
   });
@@ -342,7 +342,7 @@ describe("report-content", () => {
       }
       const glance = sectionOf(html, "AT A GLANCE");
       assert.match(glance, /<strong>Where it is<\/strong>\s*unknown/, "where the run is reads unknown");
-      assert.match(glance, /<strong>Spent<\/strong>[^<]*time unknown · tokens unknown · % of plan unknown/, "the spend reads unknown for time, tokens and plan");
+      assert.match(glance, /<strong>Spent<\/strong>[^<]*time unknown · tokens unknown<\/p>/, "the spend reads unknown for time and tokens, and says nothing of a plan share");
       assert.match(sectionOf(html, "COMMITS"), /<p>unknown<\/p>/, "the commits section says unknown when no commits were passed");
       assert.ok(!/undefined|NaN|\[object Object\]/.test(html), "no raw undefined, NaN or object leaks into the page");
     });

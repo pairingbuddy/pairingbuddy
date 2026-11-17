@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Spent no longer ends with `· % of plan unknown`, in the report or anywhere else. pb has no source for a plan share, so it was always unknown.
 - The report's TESTS cards name each test by its short name, as the pane does (`test 1 order total example two lines`), not its id (`order-total-example-two-lines`).
 - The task-type review says what classifying again changed in plain words: `task type kept: new feature; less sure than first thought` (or `surer than first thought`, or `task type changed: bug fix (was new feature)`), not `classified again: still new feature, confidence likely (was certain)`. A finding on the task's wording no longer shows its `subject: task_type/confidence (intake.classify-task.-.r1.a1)` place, in the pane or the report.
 - A finding two lenses of a task review said for the same lines now shows once (watched run: "Existing test rewritten beyond the stated scope" and "... beyond the one-test scope", both at `tests/test_cart.py:1-5`). The pane's REVIEW, an ended task's review, and the report's CHANGES, NEEDS YOU and How it ran show it under the gist said first. Once the review is over it reads the most open outcome (to fix, left as is, fixed, not a real problem); while it runs, the one said last. A doubt raised on either finding is asked or settled under the one shown. What lenses return and what gates read are unchanged.

@@ -91,7 +91,7 @@ function spentRow({ ledger, spawns, agents: recorded, now, ranFor, since, waited
   const agents = agentsOf(spawns, recorded);
   const known = ledger?.spend?.tokensKnown === true;
   const tokens = known ? `${ledger.spend.tokens} ${TOKENS_UNIT}` : "tokens unknown";
-  const parts = [plural(agents, "agent"), elapsed(since ?? runStart(ledger), now, ranFor, waited), tokens, "% of plan unknown"];
+  const parts = [plural(agents, "agent"), elapsed(since ?? runStart(ledger), now, ranFor, waited), tokens];
   return (leaveOutUnknown ? parts.filter((part) => !part.endsWith(UNKNOWN)) : parts).join(" · ");
 }
 
