@@ -2,7 +2,8 @@
 // Gate: PreToolUse enforcement during a run, loaded by gate-boot.mjs. With no run state it allows everything silently,
 // except a call that would start a stage of this plugin or reach an agent only a stage spawns: those have only ever run
 // inside a run. It also spares curate-guidance a question nobody would answer, since only a hook sees the policy.
-// An allow prints nothing, unless it is the runner's exact command; a decision exits 0 with the JSON form on stdout.
+// An allow prints nothing, unless it is the runner's exact command or, during a run, the main context's own exact pb command
+// (bar publish and pr refresh); a decision exits 0 with the JSON form on stdout.
 // Any error with run state denies.
 // This wrapper imports only built-ins and loads everything else dynamically, so that a failed import can
 // still deny, and so that a call outside a run costs little more than Node's startup.

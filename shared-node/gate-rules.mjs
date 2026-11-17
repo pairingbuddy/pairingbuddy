@@ -34,6 +34,7 @@ const CHECKPOINT_START = `${PB_COMMAND} checkpoint --step `;
 const ROLLBACK_START = `${PB_COMMAND} rollback `;
 const ARTIFACT_CHECK_START = `${PB_COMMAND} artifact check `;
 const AUTO_ALLOW_REASON = "Runner CLI command, auto-allowed by the Pairing Buddy gate.";
+const MAIN_AUTO_ALLOW_REASON = "Main-context CLI command, auto-allowed by the Pairing Buddy gate during a run.";
 const PB_CALL = /(?<![\w.-])pb(?:\.mjs)?(?=\s+([\w.-]+)(?:\s+([\w.-]+))?)/g;
 const POLICY_ENV = "PAIRINGBUDDY_GATE_POLICY";
 const VERB_OWNERS = { runner: "the runner agent", main: "the main context" };
@@ -471,6 +472,20 @@ function isRollbackCommand(command) {
 const isRunnerCommand = ({ tool_name: tool, agent_type: agentType, tool_input: toolInput }) =>
   tool === "Bash" && agentType === RUNNER_AGENT && (RUNNER_COMMANDS.includes(toolInput.command) || isCheckpointCommand(toolInput.command) || isArtifactCheckCommand(toolInput.command) || isRollbackCommand(toolInput.command));
 
+// The main verbs that push or edit a pull request keep their permission prompt, so the human sees the one call that reaches out.
+const MAIN_AUTO_VERBS = VERB_CLASSES.main.filter((verb) => !["publish", "pr refresh"].includes(verb));
+const PB_START = `${PB_COMMAND} `;
+
+// A word a shell reads as itself: no quoting, redirect, operator, expansion or whitespace.
+const PLAIN_WORD = /^[A-Za-z0-9_][A-Za-z0-9_.\/:=@+,-]*$|^--?[A-Za-z0-9][A-Za-z0-9_.\/:=@+,-]*$/;
+
+// The main context's own pb command, by itself: this plugin's CLI, a main verb, plain words one space apart.
+function isMainCommand({ tool_name: tool, tool_input: toolInput, ...payload }) {
+  if (tool !== "Bash" || isSubagentCall(payload) || !toolInput.command.startsWith(PB_START)) return false;
+  const words = toolInput.command.slice(PB_START.length).split(" ");
+  return words.every((word) => PLAIN_WORD.test(word)) && MAIN_AUTO_VERBS.includes(matchVerb(words));
+}
+
 // ---------- entry ----------
 
 const LEDGER_CHECKS = {
@@ -520,5 +535,6 @@ export function checkCall({ runRoots, sessionRoot, payload, targets, reads = [],
   assertNoDrift(payload);
   if (sessionRoot !== null && payload.agent_id === undefined) bindSession(payload.session_id, sessionRoot);
   for (const root of runRoots) checkRun(root, { payload, targets, reads, canonicalPath });
-  return isRunnerCommand(payload) ? AUTO_ALLOW_REASON : null;
+  if (isRunnerCommand(payload)) return AUTO_ALLOW_REASON;
+  return isMainCommand(payload) ? MAIN_AUTO_ALLOW_REASON : null;
 }
