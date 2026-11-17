@@ -28,7 +28,7 @@ const SOURCES = ["shared", "stages"].flatMap((dir) => readdirSync(join(ROOT, "wo
 
 test("stage code spawns agents only through pbAgent", () => {
   for (const file of SOURCES) {
-    const direct = read(file).split("\n").filter((line) => /(?<![\w.])agent(?:\(|\s*[,})])/.test(line) && !/^\s*\/\//.test(line) && !line.includes("agent(`${TOOL_RULE}\\n\\n${prompt}`"));
+    const direct = read(file).split("\n").filter((line) => /(?<![\w.])agent(?:\(|\s*[,})])/.test(line) && !/^\s*\/\//.test(line) && !line.includes("agent(`${TOOL_RULE}\\n${PATH_RULE}\\n\\n${prompt}`"));
     assert.deepEqual(direct, [], `${file} calls agent() directly`);
   }
 });

@@ -524,3 +524,14 @@ test("the-return-leads-with-the-review-then-the-kept-redraft", async () => {
   assert.equal(result.result.body, REDRAFT.body, "the result is the redraft the stage kept, not the first draft");
   assert.ok(!JSON.stringify(result).includes('"body":"body"'), "the first draft is not in the return: nothing reads it there");
 });
+
+// A lab run's redraft loaded the PR skill, then read every input path under the skill's plugin folder: the run lives in the
+// project, so nothing was there and the reads outside the project asked for permission.
+test("pr-draft-prompts-say-their-paths-are-relative-to-the-project-root", async () => {
+  const { calls } = await runStage();
+
+  for (const { prompt, opts } of calls) {
+    assert.match(prompt, /relative to the project root, your working directory/, `${opts.label} says where its paths are`);
+    assert.match(prompt, /never .*plugin/, `${opts.label} says they are not under a skill's or the plugin's folder`);
+  }
+});
