@@ -8,7 +8,7 @@ import { Band } from './band'
 import { Pane, type Suggestion } from './pane'
 import { openReport, reportLine } from './report'
 import { recordDelivery, saveNote, type PendingSuggestion } from './suggest'
-import { PANE_ID, togglePane } from './pane-open'
+import { PANE_ID, type PbToggle, togglePane } from './pane-open'
 import { buildEndedView, buildView, type Tags, type View } from './view'
 
 // The same key the poller writes (INPUTS in ./poll); the kit's scan reads the atom's literals from this file.
@@ -124,8 +124,10 @@ export const register: Register = (on, options) => {
     return result
   })
 
+  // What the last /pb did, so the next one does the other.
+  const pbToggle: PbToggle = { last: null }
   on('command.run', ($, e, next) => {
-    if (e.command === 'pb') return togglePane($).then(done => ({ text: `Pairing Buddy pane ${done}` }))
+    if (e.command === 'pb') return togglePane($, pbToggle).then(done => ({ text: `Pairing Buddy pane ${done}` }))
     if (e.command === 'pb-report') return openReport($, spawns, calls).then(outcome => ({ text: reportLine(outcome) }))
     if (e.command === 'pb-note') return saveNote($, spawns, e.args).then(text => ({ text }))
     return next(e)
