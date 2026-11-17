@@ -125,7 +125,7 @@ test('new-run-clears-ended-at', async ($, on) => {
   expect(writes.length, 'pressing the report button during the live run writes one report').toBe(1)
   const html = writes[0].text
   expect(html, 'the live report does not use the old end time').not.toContain(oldEndedAt as string)
-  expect(html, 'the live report is of the running run').toContain('RUNNING')
+  expect(html, 'the live report is of the running run').toContain('● working')
 })
 
 test('report-without-recorded-end-stays-unknown', async ($, on) => {

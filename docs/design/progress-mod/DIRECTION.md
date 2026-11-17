@@ -108,7 +108,7 @@ suggest: a note for the next agent
 
 Rules:
 
-- **GOAL leads,** bold, and STATUS follows it; the thin dim rule sits under the two. GOAL is the task's first sentence (its first line, before any blank-line context) from the first ledger on, so it is there for anyone cycling between sessions, and it never goes back to `—` during the unit (the code run's task is kept through the publish run). It wraps onto two lines; only past two is the second line cut at a clause break, else a word. The report's title holds the whole task.
+- **GOAL leads,** bold, and STATUS follows it; the thin dim rule sits under the two. GOAL is the task's first sentence (its first line, before any blank-line context) from the first ledger on, so it is there for anyone cycling between sessions, and it never goes back to `—` during the unit (the code run's task is kept through the publish run). It wraps onto two lines; only past two is the second line cut at a clause break, else a word. The report's GOAL row is the same sentence; its How it ran TASK row holds the whole task.
 - **STATUS answers "am I needed now?".** It leads with a head, a mark and the state's word, drawn to pull the eye in proportion to urgency, then says what it is about, wrapping at its ` · ` parts, then words:
   - `▲ NEEDS YOU · <what>`: the head a yellow block (inverse, bold), what follows in yellow and bold, until you answer. The strongest;
   - `✕ STOPPED · <why>`: the head a red block (inverse, bold), why in red. As strong. A stop with no plain name reads `✕ STOPPED`;
@@ -392,6 +392,17 @@ The report's shape, top to bottom:
 - **WHAT WAS DONE.** The files changed, the tests added and passing (by short name), the tests not passing yet, the pull request opened.
 - **CHANGES OF PLAN OR SCOPE.** Only when material: a new task type after a review, tests added because a coverage check found a scenario with none, and each finding a review had fixed in the work. A new confidence in the same type, a cycle's quick review and the pull request's wording are left out. With none, the section is not drawn.
 - **How it ran,** a closed `<details>` at the bottom, for debugging: AT A GLANCE (task type, where it is, spent, waited, left), SETTLED DOUBTS, STEPS, SCENARIOS, TESTS, BUILT, REVIEW and COMMITS, as before.
+
+### The report looks like the pane (2026-11-17)
+
+The human on that report: "using a header type for the goal or something? Really ugly. How it ran expand is useful. TBH, the whole report design is horrible, very AI generated crap." Decided: the report looks like the pane in the terminal, which the human likes.
+
+- **Rows, as the pane draws them.** Every part is a row: a narrow label column (GOAL, STATUS, NEEDS YOU, DONE, CHANGES, then HOW IT RAN) and what it holds to the right. One monospace face at one size; labels stand apart by weight and colour only. GOAL and STATUS have bold labels and a thin rule under them, as the pane's first glance; every other label is dim. Below 600px a label sits above its content.
+- **GOAL** is the goal sentence alone (the pane's GOAL), at the body's size. The whole task, context included, is How it ran's TASK row, left out when the task is the goal alone.
+- **STATUS** reads as the pane's: `✓ DONE · PR #7 opened`, `▲ NEEDS YOU · your sign-off at the end`, `✕ STOPPED · a step kept failing`, `● working · build test by test`, the head in the pane's colour (done plain bold, needs you amber, stopped red, working cyan). No badges. It holds the page's only pull request link; DONE no longer names it.
+- **WHAT WAS DONE and CHANGES OF PLAN OR SCOPE** are labelled DONE and CHANGES.
+- **HOW IT RAN** stays a closed `<details>` with a plain `▸`/`▾` marker; its rows are label and content too. A review round with no finding is one line (`safety-net review · no issues found`).
+- **No footer, no heading sizes, no pills, cards, shadows, gradients or letter-spaced titles with rules.** Light and dark follow `prefers-color-scheme`; the width is capped at 96 characters.
 
 Time waiting on the human is no working time. `pb gate eval` stamps `needsHuman.askedAt`; an answer keeps `askedAt` and `answeredAt` on its gate's record. SPENT (pane, band, an ended task's) and the report's Spent leave the waits out; the report's Waited row says them apart (`4h 1m waiting for you`). A ledger without the stamps waited 0.
 

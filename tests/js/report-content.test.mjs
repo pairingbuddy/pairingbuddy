@@ -695,17 +695,23 @@ test("goal-row-holds-the-goal-sentence-only", () => {
   assert.doesNotMatch(html, /<h1/, "no heading sets the goal apart by size");
 });
 
-test("how-it-ran-holds-the-whole-task-its-paragraphs-apart", () => {
+test("how-it-ran-holds-the-whole-task-each-paragraph-its-own", () => {
   const task = ["Fix <b>bold</b> & \"quoted\" rule", "Context: it's <script>alert(1)</script> & more"].join("\n\n");
 
   const html = renderReport({ ledger: { task, stage: { name: "code-tdd", status: "done" } }, spawns: [] });
 
   const whole = sectionOf(howItRan(html), "TASK");
   assert.ok(
-    whole.includes("Fix &lt;b&gt;bold&lt;/b&gt; &amp; &quot;quoted&quot; rule<br>Context: it&#39;s &lt;script&gt;alert(1)&lt;/script&gt; &amp; more"),
-    `both paragraphs are escaped and kept apart by a break, got ${whole}`,
+    whole.includes("<p>Fix &lt;b&gt;bold&lt;/b&gt; &amp; &quot;quoted&quot; rule</p>\n<p>Context: it&#39;s &lt;script&gt;alert(1)&lt;/script&gt; &amp; more</p>"),
+    `both paragraphs are escaped and kept apart, each its own paragraph, got ${whole}`,
   );
   assert.ok(!html.includes("<script>"), "the raw script tag from the task is absent from the whole report");
+});
+
+test("how-it-ran-has-no-task-row-when-the-task-is-its-goal-alone", () => {
+  const html = renderReport({ ledger: { task: "Add a discount rule.", stage: { name: "code-tdd", status: "done" } }, spawns: [] });
+
+  assert.throws(() => sectionOf(howItRan(html), "TASK"), /no TASK section/, "the task is not said twice");
 });
 
 test("goal-row-reads-a-dash-with-no-task", () => {
@@ -882,11 +888,12 @@ test("report-stays-self-contained-with-light-palette", async () => {
   assert.doesNotMatch(html, /\b(src|href)\s*=/i, "the page has no src or href attribute");
   assert.doesNotMatch(html, /<script|<link/i, "the page has no script or link tag");
   assert.doesNotMatch(html, /@import|url\s*\(/i, "the CSS imports nothing and loads no url() resource");
-  for (const name of ["--stopped", "--done", "--running", "--badge-ink", "--amber"]) {
+  for (const name of ["--stopped", "--done", "--working", "--needs-you", "--amber"]) {
     assert.ok(definedInLight(name), `${name} is defined as a colour in the light palette`);
   }
-  assert.ok(usedBy(".badge.stopped", "--stopped"), "the STOPPED badge background uses the --stopped colour");
-  assert.ok(usedBy(".badge.done", "--done"), "the DONE badge background uses the --done colour");
+  for (const [tone, name] of [["stopped", "--stopped"], ["done", "--done"], ["working", "--working"], ["needs-you", "--needs-you"]]) {
+    assert.ok(usedBy(`.${tone}`, name), `STATUS's ${tone} head uses the ${name} colour`);
+  }
   assert.ok(usedBy(".looped p strong", "--amber"), "the amber looping label uses the --amber colour");
 });
 
@@ -948,4 +955,14 @@ test("report-review-section-says-when-no-review-ran", () => {
   const ledger = { task: "t", stage: { name: "code-tdd", status: "active", attempt: 1, startedAt: null }, stages: [], tests: {} };
 
   assert.match(sectionOf(renderReport({ ledger, spawns: [], calls: [], tests: [] }), "REVIEW"), /no review round yet/);
+});
+
+test("report-review-round-with-no-findings-reads-on-one-line", () => {
+  const stage = { name: "code-safety-net", status: "active", runId: "wf_1", attempt: 1, startedAt: null };
+  const ledger = { task: "Fix the discount", stage, stages: [], tests: {}, fixes: { rollbacks: [] } };
+  const calls = [{ input: { pb_key: "code-safety-net.lens.code.r1.a1", findings: [] } }];
+
+  const review = sectionOf(renderReport({ ledger, spawns: [], calls, tests: [] }), "REVIEW");
+
+  assert.match(review, /<p>safety-net review · no issues found<\/p>/, `the round and its verdict share a line: ${review}`);
 });

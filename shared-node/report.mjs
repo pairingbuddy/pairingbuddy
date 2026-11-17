@@ -20,7 +20,7 @@ const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
 
 // One row, as the pane draws it: its label in the left column, what it holds to the right.
-const section = (title, body) => `<section>\n<h2>${title}</h2>\n<div>\n${body}\n</div>\n</section>`;
+const section = (title, body, kind) => `<section${kind ? ` class="${kind}"` : ""}>\n<h2>${title}</h2>\n<div>\n${body}\n</div>\n</section>`;
 
 function outcome(ledger) {
   if (ledger?.stop) return "STOPPED";
@@ -80,7 +80,7 @@ function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskTyp
   const labels = glanceLabels(ledger);
   const typed = { type: plainName(taskType) ?? UNKNOWN, ...rows };
   const lines = Object.entries(typed).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
-  return section("AT A GLANCE", lines.join("\n"));
+  return section("AT A GLANCE", lines.join("\n"), "glance");
 }
 
 // The tests the run touched, in order of first appearance, by the same label rule as the pane.
@@ -425,9 +425,10 @@ function reviewRounds(run, spawns) {
   return [...rounds, of(ledger, endedAt !== undefined)].filter(({ round }) => Boolean(round));
 }
 
+// A round with no finding is one line; one with findings lists them under its stage.
 const roundBlock = (round) => {
-  const body = round.findings.length ? `<ul>\n${round.findings.map(findingItem).join("\n")}\n</ul>` : "<p>no issues found</p>";
-  return `<p>${escape(round.stage)}</p>\n${body}`;
+  if (!round.findings.length) return `<p>${escape(round.stage)} · no issues found</p>`;
+  return `<p>${escape(round.stage)}</p>\n<ul class="findings">\n${round.findings.map(findingItem).join("\n")}\n</ul>`;
 };
 
 function reviewSection({ task, spawns }) {
@@ -535,7 +536,7 @@ function needsYouSection(context) {
   const items = [...questionItem(context), ...stopItem(context), ...findings.map(leftItem), ...doubts.map(looseItem), ...coveredItems(context), ...uncoveredItems(context)];
   const nothing = outcome(context.ledger) === "RUNNING" ? "Nothing needs you right now: the run is still going." : "Nothing needs you.";
   const body = items.length > 0 ? `<ul>\n${items.join("\n")}\n</ul>` : `<p>${nothing}</p>`;
-  return section("NEEDS YOU", body);
+  return section("NEEDS YOU", body, "needs");
 }
 
 // ---------- DONE: the files and the tests, in plain words (the pull request is STATUS's) ----------
@@ -628,39 +629,61 @@ function statusSection({ ledger, task, url }) {
 
 const prNumber = (url) => /\/pull\/(\d+)\/?$/.exec(url)?.[1];
 
-// R5-3's dark design: one inline stylesheet, monospace; the outcome badge is red, green or amber by outcome, and a looped test's "Why it looped" label is amber.
-const STYLE = `:root{color-scheme:light dark;--bg:#1c1d21;--fg:#e6e6e6;--muted:#9a9ca3;--rule:#3a3c44;--faint:#6b6d75;--amber:#ffc933;--badge-ink:#1c1d21;--stopped:#ff6b81;--done:#5fd38d;--running:#ffc933}
-@media (prefers-color-scheme:light){:root{--bg:#fafafa;--fg:#1c1d21;--muted:#5c5f66;--rule:#c9cbd1;--faint:#62646b;--amber:#8a5a00;--badge-ink:#ffffff;--stopped:#c62828;--done:#1a7f37;--running:#8a5a00}}
-body{background:var(--bg);color:var(--fg);font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0;padding:40px 56px;max-width:1100px}
-header p{color:var(--muted);margin:6px 0}
-.badge{color:var(--badge-ink);padding:2px 10px;border-radius:4px}
-.badge.stopped{background:var(--stopped)}
-.badge.done{background:var(--done)}
-.badge.running,.badge.waiting-on-you{background:var(--running)}
-h1{font:700 22px/1.3 system-ui,sans-serif;margin:0}
-h2{color:var(--muted);font-size:12px;letter-spacing:.12em;border-bottom:1px solid var(--rule);padding-bottom:6px;margin:32px 0 12px}
-h3{font-size:14px;margin:0 0 8px}
-p{margin:4px 0}
-section p strong{color:var(--muted);display:inline-block;min-width:150px;text-transform:uppercase;font-size:12px}
-article{border:1px solid var(--rule);border-radius:8px;padding:12px 16px;margin:12px 0}
-table{border-collapse:collapse;width:100%}
-th{text-align:left;color:var(--muted);font-weight:400;padding:4px 12px 4px 0}
-td{padding:4px 12px 4px 0;vertical-align:top}
+// The pane's look, in the browser: one monospace face at one size, each row a label column and what it holds. GOAL and STATUS
+// lead with bold labels as the pane's first glance does; every other label is dim. STATUS takes the pane's colour for its state.
+const STYLE = `:root{color-scheme:light dark;--bg:#15161a;--fg:#e3e4e8;--muted:#8a8d96;--rule:#2b2d34;--link:#39c5cf;--done:#e3e4e8;--working:#39c5cf;--needs-you:#e3b341;--stopped:#f0605a;--amber:#e3b341}
+@media (prefers-color-scheme:light){:root{--bg:#fbfbf9;--fg:#1c1d21;--muted:#696c74;--rule:#e1e2e5;--link:#0a6f78;--done:#1c1d21;--working:#0a6f78;--needs-you:#8a5a00;--stopped:#c2322c;--amber:#8a5a00}}
+*{font-size:inherit}
+body{background:var(--bg);color:var(--fg);font:14px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0 auto;padding:48px 32px 64px;max-width:96ch}
+h2,h3,p,ul{margin:0}
+section{display:grid;grid-template-columns:12ch minmax(0,1fr);column-gap:2ch;margin:0 0 18px}
+section>div{min-width:0;overflow-x:auto}
+h2{font-weight:400;color:var(--muted)}
+header{border-bottom:1px solid var(--rule);padding-bottom:6px;margin-bottom:24px}
+header section{margin-bottom:12px}
+header h2{font-weight:700;color:var(--fg)}
+strong{font-weight:700}
+small{color:var(--muted)}
+a{color:var(--link);text-underline-offset:3px}
+.done{color:var(--done)}
+.working{color:var(--working)}
+.needs-you{color:var(--needs-you)}
+.stopped{color:var(--stopped)}
 ul{list-style:none;padding:0}
-li{margin:2px 0}
-ul ul{padding-left:2ch}
-.looped p strong{color:var(--amber);min-width:0;text-transform:none;font-size:inherit}
-details{margin-top:40px}
-summary{color:var(--muted);cursor:pointer;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
-footer{color:var(--faint);margin-top:40px;font-size:12px}`;
+li+li{margin-top:2px}
+.findings{margin:2px 0 8px 2ch}
+.findings li+li,.needs li+li{margin-top:8px}
+ul ul{padding-left:2ch;margin-top:2px}
+ul ul li+li{margin-top:2px}
+details{margin-top:32px}
+summary{cursor:pointer;color:var(--muted);list-style:none;margin-bottom:18px}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"\\25B8\\00A0"}
+details[open]>summary::before{content:"\\25BE\\00A0"}
+summary:hover{color:var(--fg)}
+details:not([open])>summary{margin-bottom:0}
+section>div>p+p{margin-top:2px}
+.task p+p{margin-top:10px}
+.glance p{display:grid;grid-template-columns:18ch minmax(0,1fr);column-gap:2ch}
+.glance strong{font-weight:400;color:var(--muted)}
+article+article{margin-top:16px}
+h3{font-weight:700}
+h3 small{font-weight:400;margin-right:1ch}
+table{border-collapse:collapse;margin-top:4px}
+th{text-align:left;color:var(--muted);font-weight:400;padding:0 3ch 0 0;white-space:nowrap}
+td{padding:0 3ch 0 0;vertical-align:top}
+.looped p{margin-top:6px}
+.looped p strong{color:var(--amber);margin-right:1ch}
+@media (max-width:600px){body{padding:28px 16px 48px}section{grid-template-columns:minmax(0,1fr)}h2{margin-bottom:2px}.glance p{grid-template-columns:17ch minmax(0,1fr);column-gap:1ch}td,th{padding-right:2ch}}`;
 
 // The GOAL row: the task's goal sentence alone, as the pane's GOAL row reads it; a dash with no task.
 const goalSection = (task) => section("GOAL", `<p>${escape(goalOf(task) || "—")}</p>`);
 
-// The whole task, its paragraphs (split on blank lines) visibly apart: How it ran keeps the context the GOAL row leaves out.
+// The whole task, each paragraph (split on blank lines) its own: How it ran keeps the context the GOAL row leaves out,
+// and has no such row when the task is its goal alone.
 function taskSection(task) {
-  if (typeof task !== "string" || task.trim() === "") return "";
-  return `${section("TASK", `<p>${task.split(/\n\s*\n/).map((paragraph) => escape(paragraph.trim())).join("<br>")}</p>`)}\n`;
+  if (typeof task !== "string" || task.trim() === "" || task.trim() === goalOf(task)) return "";
+  return `${section("TASK", task.split(/\n\s*\n/).map((paragraph) => `<p>${escape(paragraph.trim())}</p>`).join("\n"), "task")}\n`;
 }
 
 const PUBLISH_KIND = "publish";
