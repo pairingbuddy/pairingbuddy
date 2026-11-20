@@ -189,6 +189,24 @@ describe("report-leads-with-what-you-need", () => {
     assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Waited<\/strong> 4h 1m waiting for you/);
   });
 
+  // Watched run: Claude Code's "Run a dynamic workflow?" prompt for the pull request step stood six hours with nobody there.
+  test("a permission prompt's wait is left out of Spent and told apart in Waited, like a question's", () => {
+    const publish = RUNS[1];
+    const waited = { ...publish, ledger: { ...publish.ledger, permissionWaits: [{ askedAt: "2026-11-16T15:42:30.000Z", seq: 3, tool: "Workflow", answeredAt: "2026-11-16T19:43:50.000Z" }] } };
+    const html = report({ runs: [RUNS[0], waited] });
+
+    assert.ok(spentOf(html).includes(" · 24:47 · "), `the task's 4:26:07 less the 4:01:20 wait, got ${spentOf(html)}`);
+    assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Waited<\/strong> 4h 1m waiting for you/);
+  });
+
+  test("while Claude Code's permission prompt stands, STATUS and NEEDS YOU say the human is needed and what for", () => {
+    const asking = { ...CODE_RUN, stage: { ...CODE_RUN.stage, name: "code-tdd", status: "active" }, stages: CODE_RUN.stages.slice(0, 2), gates: {}, needsHuman: null, permissionWaits: [{ askedAt: "2026-11-16T10:03:00.000Z", seq: 9, tool: "Workflow" }] };
+    const html = renderReport({ ledger: asking, spawns: [] });
+
+    assert.ok(headerOf(html).includes("▲ NEEDS YOU</strong> · Claude Code is asking your permission to start the next step"), `got ${headerOf(html)}`);
+    assert.ok(sectionOf(html, "NEEDS YOU").includes("<li>Claude Code is asking your permission to start the next step: answer its prompt in the session.</li>"), `got ${sectionOf(html, "NEEDS YOU")}`);
+  });
+
   test("How it ran says nothing of waiting when no wait was recorded", () => {
     assert.doesNotMatch(sectionOf(report(), "AT A GLANCE"), /Waited/);
   });

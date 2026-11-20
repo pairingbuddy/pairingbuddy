@@ -165,6 +165,21 @@
         }
       ]
     },
+    "permissionWaits": {
+      "description": "Claude Code's own permission prompts that stood unanswered during the run, oldest first: hooks/permission.mjs opens one on the prompt's Notification (notification_type permission_prompt) and closes it with answeredAt on the next tool call, the turn's end or the human's next prompt. The last one, while it has no answeredAt, is open: the run needs the human. The time from askedAt to answeredAt (or to now, while open) is waiting, no working time. May be absent.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["askedAt", "seq"],
+        "properties": {
+          "askedAt": { "type": "string", "format": "date-time" },
+          "seq": { "description": "The ledger seq the wait was opened at, so the alert fires once for it.", "type": "integer", "minimum": 0 },
+          "tool": { "description": "The tool the prompt asks for, as Claude Code names it. May be absent.", "type": "string", "minLength": 1 },
+          "answeredAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
     "voidedGates": {
       "description": "Gate approvals that stopped holding (G:publish after HEAD or the body moved), oldest first, kept for the audit trail. May be absent. record is the gate record as it stood; reason says what changed.",
       "type": "array",

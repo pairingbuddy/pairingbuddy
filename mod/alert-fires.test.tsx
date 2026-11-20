@@ -55,6 +55,20 @@ test('needs-human-sets-status-line', async ($, on) => {
   expect(run.calls.status[0].text, 'the line does not show the raw gate id').not.toContain('G:task-end')
 })
 
+// Claude Code's own permission prompt, unanswered: the alert fires once for it, as for a gate question.
+test('a-permission-prompt-plays-one-sound-and-sets-the-status-line', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const run = alertEngine(on)
+  await start($)
+
+  run.serve({ ...SNAPSHOT_RUNNING, seq: 7, permissionWaits: [{ askedAt: '2026-11-04T08:14:00.000Z', seq: 7, tool: 'Workflow' }] })
+  await clock.advance(POLL_MS)
+  await clock.advance(POLL_MS)
+
+  expect(run.calls.played.length, 'one sound, not one per poll').toBe(1)
+  expect(run.calls.status.map((call: { text: string }) => call.text), 'the line says what Claude Code asks').toEqual(['needs you: Claude Code is asking your permission to start the next step'])
+})
+
 test('stop-opens-pane', async ($, on) => {
   const clock = mock.clock(on, { now: 0 })
   const run = alertEngine(on)

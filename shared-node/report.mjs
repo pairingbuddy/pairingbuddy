@@ -13,6 +13,7 @@ import { lensOfFinding } from "./lens-merge.mjs";
 import { taskEnded, taskSpend, taskWaited } from "./task-runs.mjs";
 import { shortName } from "./now-building.mjs";
 import { goalOf } from "./end-state.mjs";
+import { permissionLine, withPermissionAsk } from "./permission-wait.mjs";
 
 const TASK_END = "G:task-end";
 
@@ -526,6 +527,8 @@ function stopItem({ ledger, spawns, tests }) {
 // sign-off, whether or not its question is asked yet.
 function questionItem({ ledger, task }) {
   const gate = ledger?.needsHuman?.gate;
+  const prompt = permissionLine(gate);
+  if (prompt) return [`<li>${escape(prompt)}: answer its prompt in the session.</li>`];
   if (gate && gate !== TASK_END) return [`<li>Answer the question waiting for you: ${escape(gateLine(gate))}.</li>`];
   return gate || awaitsSignOff(task) ? ["<li>Review the result and give your sign-off.</li>"] : [];
 }
@@ -738,7 +741,8 @@ const codeRunIn = (task) => task.find((run) => run.ledger?.kind !== PUBLISH_KIND
 export function renderReport({ ledger: given, spawns, calls, timing, commits, tests, testsComplete, endedAt, now, scenarios, changed, runs, prUrl } = {}) {
   const task = taskRunsOf({ runs, ledger: given, calls, scenarios, endedAt });
   const last = task.at(-1);
-  const ledger = last.ledger;
+  // Claude Code's permission prompt, while it stands, is the question waiting on the human.
+  const ledger = withPermissionAsk(last.ledger);
   const code = codeRunIn(task).ledger;
   const ranFor = runSeconds(ledger, last.endedAt ?? endedAt, now, task[0].ledger);
   const url = taskPrUrl(task, prUrl);

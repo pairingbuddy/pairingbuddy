@@ -79,6 +79,7 @@ JS_TEST_FILES = [
     "tests/js/looping-and-counts.test.mjs",
     "tests/js/mistake-check.test.mjs",
     "tests/js/paths-mode-no-ask.test.mjs",
+    "tests/js/permission-wait.test.mjs",
     "tests/js/pb-checkpoint.test.mjs",
     "tests/js/pb-cli-safeguards.test.mjs",
     "tests/js/pb-human-legacy.test.mjs",

@@ -28,3 +28,14 @@ test("hooks.json lists mod/register.tsx in modules and keeps the four shell hook
     );
   }
 });
+
+// A permission prompt is the human being needed: the prompt's Notification opens a wait, any later sign of life closes it.
+test("hooks.json runs permission.mjs on the permission prompt's Notification and on every tool call, turn end and prompt", () => {
+  const config = JSON.parse(readFileSync(HOOKS_JSON, "utf8"));
+  const runs = (entry) => entry.hooks.some((hook) => hook.command === "node ${CLAUDE_PLUGIN_ROOT}/hooks/permission.mjs");
+
+  assert.ok((config.hooks.Notification ?? []).some((entry) => entry.matcher === "permission_prompt" && runs(entry)), "on the permission prompt");
+  for (const event of ["PreToolUse", "PostToolUse", "Stop", "UserPromptSubmit"]) {
+    assert.ok((config.hooks[event] ?? []).some((entry) => !entry.matcher && runs(entry)), `on every ${event}`);
+  }
+});
