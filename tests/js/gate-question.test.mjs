@@ -75,6 +75,14 @@ describe("each gate asks in plain words", () => {
     assert.equal(question, "Task type: new feature. Adds order_total to cart.py.\nIs that the right type?");
   });
 
+  test("G:type says what the classifier was unsure of when it was not certain and named its doubt", () => {
+    const facts = { rationale: "Adds order_total to cart.py.", ambiguity: "The example says 30.0, but\n  2 times 10 plus 4 is 24." };
+
+    const { question } = gateQuestion("G:type", { reason: "the classifier does not report certain", taskType: "new_feature", facts });
+
+    assert.equal(question, "Task type: new feature. Adds order_total to cart.py.\nThe classifier was not sure: The example says 30.0, but 2 times 10 plus 4 is 24.\nIs that the right type?");
+  });
+
   test("G:task-end gives the goal, what was built and what the review did, then asks", () => {
     const facts = {
       goal: "Add order_total(lines) to cart.py. It returns the sum of price times quantity.",

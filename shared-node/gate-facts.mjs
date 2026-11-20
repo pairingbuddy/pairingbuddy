@@ -17,8 +17,9 @@ const artifactsDirOf = (root) => join(root, ".pairingbuddy", "run", "task", "art
 const text = (value) => (typeof value === "string" && value.trim() !== "" ? value : undefined);
 
 function typeFacts(root, ledger) {
-  const rationale = text(keptIntakeReturn(artifactsDirOf(root), ledger.stage.attempt)?.content?.rationale);
-  return rationale === undefined ? {} : { rationale };
+  const content = keptIntakeReturn(artifactsDirOf(root), ledger.stage.attempt)?.content;
+  const facts = { rationale: text(content?.rationale), ambiguity: text(content?.ambiguity) };
+  return Object.fromEntries(Object.entries(facts).filter(([, value]) => value !== undefined));
 }
 
 function scenarioFacts(root, ledger) {

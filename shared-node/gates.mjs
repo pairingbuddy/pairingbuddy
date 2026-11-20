@@ -211,6 +211,13 @@ const doubtLine = ({ step, ambiguity }) => (step === REVIEWER ? `A reviewer was 
 
 const doubtLines = (doubts, fullAt) => folded(doubts.map(doubtLine), MAX_DOUBTS, fullAt);
 
+// At G:type, a classifier that was not certain and named its doubt: the doubt itself, so the human knows what to judge.
+const UNSURE_CLASSIFIER = /^the classifier does not report certain/;
+const unsureClassifier = (gate, reason, { ambiguity }) =>
+  gate === "G:type" && UNSURE_CLASSIFIER.test(reason) && typeof ambiguity === "string" && ambiguity.trim() !== ""
+    ? `The classifier was not sure: ${doubtText(ambiguity)}`
+    : null;
+
 // The ask, turned so the human knows they decide over the doubts.
 const despite = (asked, doubts) => `${asked.replace(/\?$/, "")} despite ${doubts.length === 1 ? "this" : "these"}?`;
 
@@ -220,7 +227,7 @@ function questionLines(gate, { reason = "", taskType = null, refresh = false, fa
   const context = { taskType, refresh, facts, fullAt };
   const doubts = questionDoubts(reason, facts);
   if (doubts !== null) return [...(lines?.(context) ?? []), ...doubtLines(doubts, fullAt), despite(ask(context), doubts)];
-  const why = plainWhy(reason);
+  const why = unsureClassifier(gate, reason, facts) ?? plainWhy(reason);
   if (lines === undefined) return [`${ask(context)} ${why}`.trim()];
   return [...lines(context), ...(why === "" ? [] : [why]), ask(context)];
 }

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The task-type question says what the classifier was unsure of: `The classifier was not sure: <its doubt>`, not only `The classifier was not sure of the type.` (watched run: the doubt was about the example's numbers, and the question did not say so).
+
 - The review corpus holds the tracked files the task text names, by repo-relative path or file name (watched run: at intake nothing had changed, so the corpus was empty; the task-type lens never read `cart.py`, called the example's numbers wrong and a needless human gate followed).
 
 - Every stage prompt says its paths are relative to the project root, the agent's working directory, and never under a skill's base directory or the plugin folder (watched run: a pull request redraft loaded the PR skill, then read `unit.json`, `git-config.json` and the draft under the plugin checkout, found nothing and asked for permission to read outside the project). The rule sits next to the tool rule in `pbAgent`, so every agent a stage spawns gets it.
