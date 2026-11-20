@@ -153,12 +153,58 @@ To tag a past commit (e.g., for retroactive releases):
 git tag -a vX.Y.Z -m "Release message" <commit-hash>
 ```
 
+### Release channels
+
+Two plugins in `pairingbuddy-marketplace` install from this repo, each pinned to one tag:
+
+| Marketplace entry | Tag | Installs as |
+|-------------------|-----|-------------|
+| `pairingbuddy` (stable) | `vX.Y.Z` | `pairingbuddy@pairingbuddy-marketplace` |
+| `pairingbuddy-experimental` | `vX.Y.Z-exp.N` | `pairingbuddy-experimental@pairingbuddy-marketplace` |
+
+Both tags carry the same `plugin.json` name, `pairingbuddy`, so skills, agents and commands keep the `pairingbuddy:` namespace on either channel. Do not rename it for experimental: every stage and agent reference reads `pairingbuddy:<name>`. The marketplace entry name is what tells the channels apart in `enabledPlugins`, and `hooks/channel-guard.mjs` refuses every prompt while both are on (SessionStart cannot stop a session, so it only warns there). The ids live in `shared-node/channels.mjs`.
+
+**Cutting an experimental tag `vX.Y.Z-exp.N`.** `X.Y.Z` is the next stable release, and `N` counts up from 1. Every step must pass before the tag exists:
+
+1. On a clean checkout of the commit to tag, set `version` in `.claude-plugin/plugin.json` to `X.Y.Z-exp.N` and commit it. The version must change on each tag: Claude Code detects an update by it.
+2. Run the full suite:
+   ```bash
+   uv run --extra dev pytest -q
+   claude plugin test .
+   node scripts/build-workflows.mjs --check
+   claude plugin validate .
+   ```
+   `claude plugin validate .` reports six known errors today, `pairingbuddy.<key> is not declared` from the mod's types contract. Until those are fixed, no other error may show.
+3. Run a smoke run from the repo root, in a separate shell (it spends money): `uv run python -m tests.smoke.s1`. It must end with a pass.
+4. Tag and push the tag (the human approves every public tag):
+   ```bash
+   git tag -a vX.Y.Z-exp.N -m "Experimental X.Y.Z-exp.N"
+   git push origin vX.Y.Z-exp.N
+   ```
+5. In `pairingbuddy-marketplace/.claude-plugin/marketplace.json`, set the `pairingbuddy-experimental` entry's `source.ref` to `vX.Y.Z-exp.N`, then commit and push the marketplace.
+
+**Cutting a stable release `vX.Y.Z`.** Do steps 2 and 3 on the release commit, then follow Creating a release above, then set the `pairingbuddy` entry's `source.ref` to `vX.Y.Z` in the marketplace. A stable tag never carries `-exp`.
+
 ### Updating the Marketplace
 
-After creating a release in this repo, update the marketplace:
+The two entries, with neither `version` set (the tag's `plugin.json` version governs updates):
 
-1. Update version in `pairingbuddy-marketplace/.claude-plugin/marketplace.json`
-2. Commit and push to marketplace repo
+```json
+{
+  "name": "pairingbuddy",
+  "source": { "source": "github", "repo": "pairingbuddy/pairingbuddy", "ref": "vX.Y.Z" },
+  "description": "Pairing Buddy, your pair-programming companion. Stable channel: release tags only.",
+  "strict": true
+},
+{
+  "name": "pairingbuddy-experimental",
+  "source": { "source": "github", "repo": "pairingbuddy/pairingbuddy", "ref": "vX.Y.Z-exp.N" },
+  "description": "Pairing Buddy, experimental channel: tags that passed the full suite and a smoke run. Turn stable off first.",
+  "strict": true
+}
+```
+
+Check it with `claude plugin validate <marketplace checkout>`, then commit and push the marketplace repo.
 
 ## Recovering a wedged run
 

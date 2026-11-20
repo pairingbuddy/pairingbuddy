@@ -11,6 +11,33 @@ A Claude Code plugin that enforces TDD, SOLID, and Clean Code practices. Plan fe
 /plugin install pairingbuddy@pairingbuddy-marketplace
 ```
 
+### Channels: stable and experimental
+
+Pairing Buddy comes in two channels, two plugins in the same marketplace:
+
+| Plugin | Installs from | What the tag passed first |
+|--------|---------------|---------------------------|
+| `pairingbuddy` (stable) | release tags `vX.Y.Z` only | the full test suite and a smoke run, and the release was cut with a CHANGELOG entry |
+| `pairingbuddy-experimental` | tags `vX.Y.Z-exp.N` only | the full test suite and a smoke run. New work lands here first, so it changes more often and may still have rough edges |
+
+The marketplace pins each plugin to one tag, so neither ever installs from an untagged commit. Both are invoked the same way, `/pairingbuddy:code`, `/pairingbuddy:plan` and `/pairingbuddy:design-ux`, so nothing you type changes when you switch.
+
+Only one channel can be on at a time. With both on, Pairing Buddy says so at session start and refuses every prompt until you turn one off.
+
+**Switch to experimental** (in a terminal, then restart Claude Code):
+
+```bash
+claude plugin disable pairingbuddy@pairingbuddy-marketplace && claude plugin install pairingbuddy-experimental@pairingbuddy-marketplace
+```
+
+**Switch back to stable:**
+
+```bash
+claude plugin disable pairingbuddy-experimental@pairingbuddy-marketplace && claude plugin enable pairingbuddy@pairingbuddy-marketplace
+```
+
+Claude Code has no single command that swaps two plugins, so each switch is one line of two plugin commands. After the first switch, experimental is installed, and later switches to it use `claude plugin enable` in place of `install`. Run `claude plugin update pairingbuddy-experimental@pairingbuddy-marketplace` to move to a newer experimental tag.
+
 ## Usage
 
 ### Code
