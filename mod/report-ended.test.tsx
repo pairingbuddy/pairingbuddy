@@ -167,19 +167,3 @@ test('pb-report after the task ended writes the whole task from the kept runs an
   expect(written.text, 'including the code run').toContain('build test by test')
   expect(result?.text, 'the answer names the report by its absolute path').toContain(written.path)
 })
-
-test('report-of-a-done-task-keeps-the-notes-left-for-it', async ($, on) => {
-  const rig = setupReplay(on)
-  const recorder = recordReportCalls(on)
-  const guidance = { guidance: [{ agent: 'orchestrator', timestamp: '2026-11-14T10:01:00.000Z', context: TASK, feedback: 'to try later.', task_scoped: true }] }
-  serve(rig, { [LEDGER]: doneRun, [UNIT]: unitFile, [CHANGED]: changed, '.pairingbuddy/human-guidance.json': guidance })
-  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
-  await start($)
-  await rig.clock.advance(POLL_MS * 2)
-
-  await runPbReport($)
-
-  const html = recorder.writes.find((write: { path: string }) => write.path.endsWith('.html'))?.text ?? ''
-  expect(html, 'How it ran keeps the note in a NOTES row').toContain('<h2>NOTES</h2>')
-  expect(html).toContain('<p>to try later.</p>')
-})

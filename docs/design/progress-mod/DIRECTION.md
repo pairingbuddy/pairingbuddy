@@ -39,7 +39,7 @@ Planning uses the same rows. Its pane adds the aim, decisions, open questions (t
 - **Plain language.** No gate, stage or agent ids appear in the UI. `G:task-end` is "your sign-off at the end", and a gate auto mode passed reads "OK'd (auto)". `code-tdd` is "build test by test". Tracers are "slices", explained on first use. Agent names such as implement-tests are not shown.
 - **A compact cycle marker.** `●RED ›GREEN ›REFACTOR` sits on the current test's own line, next to the step age. Only the current step is lit, and a bug fix drops REFACTOR. See [R5-1](round-5/R5-1-pane-tdd-calm.png).
 - **Per-test progress** is one row of `✓ ◌ ▸ ·` with short test names. Long lists fold: finished items collapse to one line, then the current item and the next two, then `+ n more`.
-- **Suggestions.** Tab to suggest writes a note to `.pairingbuddy/human-guidance.json`. The next agent spawn reads it, because workflows take no input mid-run. The pane says which agent that will be, and that the agent running now won't see it.
+- **No notes mid-task.** The pane and the band take no note for the agents; see "No notes mid-task" below.
 - **Spend is low and dim:** one row of the glance and the band's middle segment. There are no dollars. Plan usage shows as "≈ % of plan".
 
 ## Rejected, and why
@@ -70,7 +70,6 @@ Planning uses the same rows. Its pane adds the aim, decisions, open questions (t
 | Planning aim, decisions, questions | an append-only log written during brainstorm | **no source yet**; plan JSON is written only at each agent's end |
 | Tokens | `turn.complete` usage (D11) | Task 57; every recording so far has `tokensKnown: false` |
 | % of plan | tokens divided by the plan's quota | **no source yet**; the mod can't read the quota |
-| Suggestions | `.pairingbuddy/human-guidance.json`, already passed to every spawn | exists; needs a task-specific marking for curate-guidance |
 | Reports | `$.fs.write` plus `$.process.run(['open', path])` | Task 57 onward; needs a kept location that R5 allows |
 | Alerts and auto-open | a new run, `stop` or `needsHuman` in the ledger, or a done unit, then `$.ui.open`, sound, the status line (needs-you and stop only) and `$.ui.notify` (done) | Task 58; sixth and seventh watched runs |
 
@@ -389,7 +388,11 @@ Looking at the pane, the human called its last three lines useless: `[ r open re
 - **`/pb-report`** replaces `r open report`; the pane's note line still says what the last report came to.
 - **`/pb-note <text>`** replaces the suggest input. It appends the same task-scoped entry to `.pairingbuddy/human-guidance.json` (the agents read it when they start; curate-guidance drops it at the next task) and answers in one line: `Note saved to .pairingbuddy/human-guidance.json. The next agent will read it.` With no text, no running task, or a guidance file it cannot read or write, it saves nothing and says so in that line. The pane still says which agent reads the note next and, once it spawned, that it reached it.
 
-The pane's bottom is now only text: the unknown-label lines (if any), the note line from the last `/pb-report`, and the note's delivery line.
+The pane's bottom is now only text: the unknown-label lines (if any) and the note line from the last `/pb-report`.
+
+## No notes mid-task (2026-11-20)
+
+`/pb-note` is gone, and with it the pane's note line and the report's NOTES row. A note reached whichever agent happened to start next (in a live run, "listing scenarios" and "checking coverage"), so the human could not aim it, and it gave nothing a human could rely on. The human's levers are answering questions at gates, stopping the task, typing to Claude in the chat, and the lasting guidance curated at task start.
 
 ## The report leads with what you need (2026-11-16)
 

@@ -1,9 +1,8 @@
 import { REPORTS_DIR } from '../report'
-import { GUIDANCE } from '../suggest'
 import { ROOT } from './band'
 
-// The one place that says which paths the mod may write, relative to the session root: the reports folder (a prefix, ends in '/') and the guidance file (exact).
-export const ALLOWED_WRITES: string[] = [`${REPORTS_DIR}/`, GUIDANCE]
+// The one place that says which paths the mod may write, relative to the session root: the reports folder (a prefix, ends in '/').
+export const ALLOWED_WRITES: string[] = [`${REPORTS_DIR}/`]
 
 // Where a recorded call came from: a label, or a function read when the call is made. Empty records no prefix.
 export type Where = string | (() => string)
@@ -56,4 +55,26 @@ export function refuseWorldChanges(on: Function, touched: string[], where: Where
     recordOther(touched, where, `process.spawn ${e.argv.join(' ')}`)
     return { deny: 'the mod is read-only' } as never
   })
+}
+
+// Registers fs.write, process.run and process.spawn and records what they were asked.
+// Every write lands in `writes`. An allowed write lands in `files` and answers success; a refused one lands in `touched` and throws. Every other world-changing call lands in `touched`.
+export function recordWrites(on: Function) {
+  const writes: { path: string; text: string }[] = []
+  const touched: string[] = []
+  const files = new Map<string, string>()
+  on('fs.write', async (_: unknown, e: { path: string; text: string }) => {
+    writes.push(e)
+    if (!recordWrite(files, touched, '', e.path, e.text)) throw new Error('the mod is read-only')
+    return { value: undefined }
+  })
+  on('process.run', async (_: unknown, e: { argv: string[] }) => {
+    recordOther(touched, '', `process.run ${e.argv.join(' ')}`)
+    return { value: { stdout: '', stderr: '', exitCode: 0 } }
+  })
+  on('process.spawn', async function* (_: unknown, e: { argv: string[] }) {
+    recordOther(touched, '', `process.spawn ${e.argv.join(' ')}`)
+    return { value: undefined } as never
+  })
+  return { writes, touched, files }
 }

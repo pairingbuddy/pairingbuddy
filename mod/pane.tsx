@@ -1,4 +1,3 @@
-import { plainName } from '../shared-node/plain-names.mjs'
 import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
 import { endReviewLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
 import type { RowTones, Status, StatusState, Tags, View } from './view'
@@ -14,8 +13,6 @@ export const PHASE_COLOURS: Record<string, string> = { RED: '#e5534b', GREEN: '#
 // Where the run is now: the current step and the current test. Fixed for the same reason, and readable on dark and light.
 export const ACCENT_COLOUR = '#39c5cf'
 const LIT: Props = { color: ACCENT_COLOUR, bold: true }
-
-export type Suggestion = { text: string } & ({ state: 'pending' } | { state: 'delivered'; to: string; test?: string })
 
 type Props = Record<string, unknown>
 type Part = { text: string; props?: Props }
@@ -145,20 +142,11 @@ function paneRows(view: View, columns: number) {
   ]
 }
 
-// The /pb-note line: the note as typed, then who read it, or that it waits for an agent that will.
-function noteLine(suggestion: Suggestion): string {
-  if (suggestion.state === 'pending') return `your note "${suggestion.text}" · waiting for the next agent`
-  const test = suggestion.test ? ` for ${suggestion.test.replaceAll('-', ' ')}` : ''
-  const reader = `read by: ${plainName(suggestion.to) ?? suggestion.to}${test}`
-  return `your note "${suggestion.text}" · ${reader}`
-}
-
-export function Pane({ Box, Text, view, columns = 0, unknownLabels, note = null, suggestion }: Tags & {
+export function Pane({ Box, Text, view, columns = 0, unknownLabels, note = null }: Tags & {
   view: View
   columns?: number
   unknownLabels: string[]
   note?: string | null
-  suggestion?: Suggestion
 }) {
   return (
     <Box flexDirection="column">
@@ -179,7 +167,6 @@ export function Pane({ Box, Text, view, columns = 0, unknownLabels, note = null,
       {unknownLabels.length > 0 && <Text dimColor>{`${unknownLabels.length} label${unknownLabels.length === 1 ? '' : 's'} unknown`}</Text>}
       <Text key="gap"> </Text>
       {note && <Text>{note}</Text>}
-      {suggestion && <Text>{noteLine(suggestion)}</Text>}
     </Box>
   )
 }

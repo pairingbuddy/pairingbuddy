@@ -2129,6 +2129,16 @@ const nearestFiles = (tracked, changedPaths) => {
 const repoRelative = (realRoot, realPath) =>
   realPath.startsWith(`${realRoot}/`) ? realPath.slice(realRoot.length + 1) : null;
 
+// The tracked files the task text names, by repo-relative path or by bare file name, sorted, up to 200.
+// A word is a run of letters, digits and _ . - /; a leading ./ and trailing dots (sentence ends) are dropped.
+const baseOf = (p) => p.slice(p.lastIndexOf("/") + 1);
+const namedFiles = (tracked, taskText) => {
+  const words = String(taskText ?? "").match(/[\p{L}\p{N}_.\-/]+/gu) ?? [];
+  const names = new Set(words.map((w) => w.replace(/^(\.\/)+/, "").replace(/\.+$/, "")).filter(Boolean));
+  const named = tracked.filter((t) => names.has(t) || names.has(baseOf(t)));
+  return [...new Set(named)].sort(byCodePoint).slice(0, NEAREST_TOTAL_CAP);
+};
+
 const missing = missingArgument();
 if (missing !== null) return missing;
 

@@ -37,6 +37,13 @@ describe("G:type", () => {
 
     assert.deepEqual(gateFacts("G:type", root, atStage("intake")), { rationale: "Adds order_total to cart.py." });
   });
+
+  test("gives the ambiguity of the classifier's kept return when it has one", () => {
+    const root = makeRoot();
+    writeReturn(root, "intake.classify-task.-.r1.a1", { task_type: "new_feature", confidence: "likely", rationale: "Adds order_total.", ambiguity: "Does 30.0 include VAT?" });
+
+    assert.deepEqual(gateFacts("G:type", root, atStage("intake")), { rationale: "Adds order_total.", ambiguity: "Does 30.0 include VAT?" });
+  });
 });
 
 const scenario = (description, ...cases) => ({ scenario_id: description, description, test_cases: cases.map((c) => ({ test_case_id: c, description: c })) });

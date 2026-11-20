@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { VERBS } from "../../cli/pb.mjs";
-import { NEAREST_TOTAL_CAP, nearestFiles } from "../../shared-node/snapshot.mjs";
+import { NEAREST_TOTAL_CAP, namedFiles, nearestFiles } from "../../shared-node/snapshot.mjs";
 import { buildKey } from "../../shared-node/keys.mjs";
 import { classOf } from "../../shared-node/verbs.mjs";
 import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
@@ -340,4 +340,28 @@ test("snapshot_rolled_back_zero_without_ledger", () => {
   assert.equal(result.code, 0, `pb snapshot succeeds, stderr: ${result.stderr}`);
   const printed = JSON.parse(result.stdout);
   assert.equal(printed.rolledBack, 0, "with no run ledger rolledBack is 0");
+});
+
+// Test case: corpus-named-files. Files the task text names reach the corpus, so intake lenses can read them before anything changed.
+test("named_files_match_tracked_paths_and_basenames_in_the_task_text", () => {
+  const tracked = ["cart.py", "src/util/price.py", "src/other.py", "docs/notes.md", "lib/cart.py.bak"];
+  const task = "Add order_total(lines) to `cart.py`: use src/other.py and price.py. Then see ./docs/notes.md.";
+
+  const named = namedFiles(tracked, task);
+
+  assert.deepEqual(named, ["cart.py", "docs/notes.md", "src/other.py", "src/util/price.py"], "repo-relative paths and bare basenames the task names, sorted; partial names do not match");
+});
+
+test("snapshot_corpus_holds_files_the_task_names_when_nothing_changed", () => {
+  const repo = makeRepo({ openTask: true, remote: true, ledger: { task: "Add a line to a.txt: it returns 30.0" } });
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
+  assert.equal(opened.code, 0, `setup: pb unit open, stderr: ${opened.stderr}`);
+
+  const result = pb(repo, "snapshot");
+
+  assert.equal(result.code, 0, `pb snapshot succeeds, stderr: ${result.stderr}`);
+  const runDir = join(repo.dir, ".pairingbuddy", "run");
+  assert.deepEqual(JSON.parse(readFileSync(join(runDir, "changed.json"), "utf8")), [], "nothing has changed yet");
+  const corpus = JSON.parse(readFileSync(join(runDir, "corpus.json"), "utf8"));
+  assert.ok(corpus.paths.includes("a.txt"), "the tracked file the task names is in the corpus");
 });
