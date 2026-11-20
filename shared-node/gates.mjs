@@ -378,32 +378,53 @@ function keptCheckOf({ pbKey, stage, item, round, attempt }, dir, ledger) {
   return check?.verdict === "better" && typeof check.finding_id === "string" ? check : null;
 }
 
-// The lenses whose fix group a kept fix answered at this stage attempt: a group is one lens's survivors, and its check names one of them.
-export function keptFixLenses(dir, stage, ledger) {
+// The kept fixes at this stage attempt, each as { lens, round }: a group is one lens's survivors, and its check names one of them.
+function keptFixes(dir, stage, ledger) {
   const fixes = returnsAt(dir, stage).filter(({ role }) => role === "fix");
-  return new Set(fixes.map((fix) => keptCheckOf(fix, dir, ledger)).filter((check) => check !== null).map((check) => lensOfFinding({ id: check.finding_id })));
+  return fixes.flatMap((fix) => {
+    const check = keptCheckOf(fix, dir, ledger);
+    return check === null ? [] : [{ lens: lensOfFinding({ id: check.finding_id }), round: fix.round }];
+  });
+}
+
+// The lenses whose fix group a kept fix answered at this stage attempt.
+export function keptFixLenses(dir, stage, ledger) {
+  return new Set(keptFixes(dir, stage, ledger).map(({ lens }) => lens));
+}
+
+// The outcome of each finding of a stage attempt's lens round, by id; null when the record cannot settle the round.
+function outcomesAt(dir, stage, ledger) {
+  try {
+    return new Map(findingOutcomes(lensRoundAt(dir, stage, ledger.taskType), keptFixLenses(dir, stage, ledger)).map(({ id, outcome }) => [id, outcome]));
+  } catch {
+    return null;
+  }
 }
 
 // A lens's doubt stands while one of its findings stands: one its refuter did not knock down and no kept fix answered.
 // A lens with no findings, or a round the record cannot settle, keeps its doubt.
 function lensDoubtStands(key, { findings }, dir, ledger) {
   if (!Array.isArray(findings) || findings.length === 0) return true;
-  const stage = { name: key.stage, attempt: key.attempt };
-  let round;
-  try {
-    round = lensRoundAt(dir, stage, ledger.taskType);
-  } catch {
-    return true;
-  }
-  const down = new Set(findingOutcomes(round, keptFixLenses(dir, stage, ledger)).filter(({ outcome }) => outcome !== "left as is").map(({ id }) => id));
-  return findings.some((_, i) => !down.has(findingIdOf(key.item, i + 1)));
+  const outcomes = outcomesAt(dir, { name: key.stage, attempt: key.attempt }, ledger);
+  if (outcomes === null) return true;
+  return findings.some((_, i) => [undefined, "left as is"].includes(outcomes.get(findingIdOf(key.item, i + 1))));
 }
 
-// Whether a return's doubt still stands after its round: a refuter's unless it knocked its finding down, a lens's while
-// one of its findings stands, a fix's unless it was kept. Every other return's doubt (the stage's own subject) stands.
+// A refuter's doubt is about its one finding, so it stands unless the refuter knocked the finding down or a fix kept in a
+// later round of the same review fixed it: the report's "settled by a later fix" rule.
+function refuterDoubtStands(key, artifact, dir, ledger) {
+  if (acceptVerdict(key.item, artifact)?.verdict === "refuted") return false;
+  const stage = { name: key.stage, attempt: key.attempt };
+  const lens = lensOfFinding({ id: key.item });
+  if (!keptFixes(dir, stage, ledger).some((fix) => fix.lens === lens && fix.round > key.round)) return true;
+  return outcomesAt(dir, stage, ledger)?.get(key.item) !== "fixed";
+}
+
+// Whether a return's doubt still stands after its round: a refuter's while its finding stands, a lens's while one of its
+// findings stands, a fix's unless it was kept. Every other return's doubt (the stage's own subject) stands.
 function doubtStands(file, artifact, dir, ledger) {
   const key = returnFileKey(file);
-  if (key?.role === "refuter") return acceptVerdict(key.item, artifact)?.verdict !== "refuted";
+  if (key?.role === "refuter") return refuterDoubtStands(key, artifact, dir, ledger);
   if (key?.role === "lens") return lensDoubtStands(key, artifact, dir, ledger);
   if (key?.role === "fix") return keptCheckOf({ ...key, pbKey: file.replace(/\.json$/, "") }, dir, ledger) === null;
   return true;
@@ -718,12 +739,16 @@ const askedDoubts = ({ needsHuman }, name) => (needsHuman?.gate === name && Arra
 // question that recorded when it was asked (needsHuman.askedAt) has a wait; an older ledger's records stay as they were.
 const waitedFor = ({ needsHuman }, name, answeredAt) => (needsHuman?.gate === name && typeof needsHuman.askedAt === "string" ? { askedAt: needsHuman.askedAt, answeredAt } : {});
 
+// An answered wait whose gate record goes away or is replaced, kept in gateWaits so the time stays waiting and never reads as work.
+const keptWait = (ledger, name, { askedAt, answeredAt }) =>
+  typeof askedAt === "string" && typeof answeredAt === "string" ? { ...ledger, gateWaits: [...(ledger.gateWaits ?? []), { gate: name, askedAt, answeredAt }] } : ledger;
+
 // What a human's answer to the asking gate does to the ledger. A publish answer is an approval that carries its binding.
-// A redo clears the gate's record, and with it the wait.
+// A redo clears the gate's record; its wait moves to gateWaits.
 export function recordAnswer(ledger, name, answer, gates, binding = {}, answeredAt = new Date().toISOString()) {
   const asked = { ...ledger, needsHuman: null };
   const waited = waitedFor(ledger, name, answeredAt);
-  if (answer === "redo") return reopenStage(asked, name, gates);
+  if (answer === "redo") return reopenStage(keptWait(asked, name, waited), name, gates);
   if (answer === PUBLISH_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: { ...approvalRecord("human", binding), ...askedDoubts(ledger, name), ...waited } } };
   if (answer === KEEP_LOCAL_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer: KEEP_LOCAL, ...waited } } };
   const recorded = { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer, ...(answer === "approve" ? askedDoubts(ledger, name) : {}), ...waited } } };
@@ -764,5 +789,6 @@ export function recordApproval(ledger, name, gates, binding = {}, answeredAt = n
   const reopened = reopenedGate(gates, ledger);
   const restored = reopened?.name === name ? withStageStatus(ledger, reopened.stage, "done") : ledger;
   const stoppedHere = Object.hasOwn(ledger.gates, name) && ledger.gates[name].answer === "stop";
-  return { ...restored, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: { ...approvalRecord("human-cli", binding), ...askedDoubts(ledger, name), ...waitedFor(ledger, name, answeredAt) } } };
+  const kept = keptWait(restored, name, ledger.gates[name] ?? {});
+  return { ...kept, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: { ...approvalRecord("human-cli", binding), ...askedDoubts(ledger, name), ...waitedFor(ledger, name, answeredAt) } } };
 }

@@ -32,7 +32,7 @@ export function ownerAgeMs(lastSeen) {
   const age = Date.now() - Date.parse(lastSeen);
   return Number.isNaN(age) ? Infinity : age;
 }
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "permissionWaits"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -146,9 +146,10 @@ export function validateLedger(ledger) {
     lenses: [isObject, "an object"], // pb stage finish writes "safety-net" (counts and lens names, no finding content); the schema documents it
     fixes: [isObject, "an object"],
     voidedGates: [Array.isArray, "an array"],
+    gateWaits: [Array.isArray, "an array"],
     permissionWaits: [Array.isArray, "an array"],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
-  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "permissionWaits"] });
+  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
@@ -195,6 +196,13 @@ export function validateLedger(ledger) {
       case "voidedGates":
         if (Array.isArray(ledger.voidedGates)) {
           ledger.voidedGates.forEach((v, i) => checkObject(v, `voidedGates.${i}`, { gate: [isNonEmptyString, "a non-empty string"], record: [isObject, "an object"], reason: [isString, "a string"] }, errors));
+        }
+        break;
+      case "gateWaits":
+        if (Array.isArray(ledger.gateWaits)) {
+          ledger.gateWaits.forEach((w, i) => checkObject(w, `gateWaits.${i}`, {
+            gate: [isNonEmptyString, "a non-empty string"], askedAt: [isTimestamp, "an ISO 8601 timestamp"], answeredAt: [isTimestamp, "an ISO 8601 timestamp"],
+          }, errors));
         }
         break;
       case "permissionWaits":
