@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The report's NEEDS YOU no longer lists doubts the human already answered a gate past (watched run: a DONE task listed three "Decide: ..." items from the scenarios and sign-off questions the human had approved). Only the question still asked holds open doubts. The answered ones move to How it ran's DOUBTS RAISED, which replaces SETTLED DOUBTS: `<doubt> (raised while listing scenarios; answered at your OK on the scenarios)`, or `settled by a later fix ...` when a fix did. A reviewer's doubt reads by its review (`raised during the safety-net review`), not `raised while a reviewer`; new doubts record the stage they reviewed (`stage` on a doubt in the ledger).
+
 - The task-type question says what the classifier was unsure of: `The classifier was not sure: <its doubt>`, not only `The classifier was not sure of the type.` (watched run: the doubt was about the example's numbers, and the question did not say so).
 
 - The review corpus holds the tracked files the task text names, by repo-relative path or file name (watched run: at intake nothing had changed, so the corpus was empty; the task-type lens never read `cart.py`, called the example's numbers wrong and a needless human gate followed).

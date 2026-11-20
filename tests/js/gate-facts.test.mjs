@@ -166,12 +166,12 @@ describe("open doubts", () => {
     }
   });
 
-  test("a lens's or a refuter's doubt is told as a reviewer's", () => {
+  test("a lens's or a refuter's doubt is told as a reviewer's, with the stage it reviewed", () => {
     const root = makeRoot();
     writeReturn(root, `${SAFETY_NET}.lens.code.r1.a1`, { ambiguity: DOUBT, findings: [] });
     writeReturn(root, `${SAFETY_NET}.refuter.code-1.r1.a1`, { ambiguity: "Is 0 a valid quantity?", finding_id: "code-1", verdict: "survives" });
 
-    assert.deepEqual(gateFacts("G:task-end", root, tddDone(), CONTRACT).doubts, [{ step: "a reviewer", ambiguity: DOUBT }, { step: "a reviewer", ambiguity: "Is 0 a valid quantity?" }]);
+    assert.deepEqual(gateFacts("G:task-end", root, tddDone(), CONTRACT).doubts, [{ step: "a reviewer", stage: SAFETY_NET, ambiguity: DOUBT }, { step: "a reviewer", stage: SAFETY_NET, ambiguity: "Is 0 a valid quantity?" }]);
   });
 
   test("what a reviewer could not check is no doubt: the gate shows only its ambiguity", () => {
@@ -179,7 +179,7 @@ describe("open doubts", () => {
     writeReturn(root, `${SAFETY_NET}.lens.code.r1.a1`, { ambiguity: null, not_checked: "I did not read the full cart.py.", findings: [] });
     writeReturn(root, `${SAFETY_NET}.lens.tests.r1.a1`, { ambiguity: DOUBT, not_checked: "The corpus is none.", findings: [] });
 
-    assert.deepEqual(gateFacts("G:task-end", root, tddDone(), CONTRACT).doubts, [{ step: "a reviewer", ambiguity: DOUBT }]);
+    assert.deepEqual(gateFacts("G:task-end", root, tddDone(), CONTRACT).doubts, [{ step: "a reviewer", stage: SAFETY_NET, ambiguity: DOUBT }]);
   });
 
   test("a doubt a human already approved past is not shown again", () => {

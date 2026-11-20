@@ -27,14 +27,17 @@ const RUNS = taskRuns({ ledger: null, kept: keptRuns(KEPT_FILES) });
 const report = (overrides = {}) => renderReport({ runs: RUNS, spawns: [], changed: CHANGED.map(({ path }) => path), commits: [], ...overrides });
 
 describe("report-leads-with-what-you-need", () => {
-  test("NEEDS YOU holds the one review finding left open, with its gist, its file and the question it left", () => {
-    const section = sectionOf(report(), "NEEDS YOU");
+  // The question the finding left was answered at the sign-off, so How it ran keeps it: only the finding stays.
+  test("NEEDS YOU holds the one review finding left open, with its gist and its file; the question it left was answered", () => {
+    const html = report();
+    const section = sectionOf(html, "NEEDS YOU");
     const items = section.match(/<li>/g) ?? [];
 
     assert.equal(items.length, 1, `one thing needs the human, got ${section}`);
     assert.ok(section.includes("Float sum of cent-rounded totals may drift"), "the finding's gist");
     assert.ok(section.includes("cart.py:9-10"), "where it is");
-    assert.ok(section.includes("Should order_total round its sum to cents?"), "the question it left for the human");
+    assert.ok(!section.includes("Should order_total round its sum to cents?"), "the question the sign-off answered is not asked again");
+    assert.ok(sectionOf(html, "DOUBTS RAISED").includes("Should order_total round its sum to cents?"), "How it ran keeps it");
   });
 
   test("NEEDS YOU of a stopped run says where it stopped, why, and how to go on", () => {

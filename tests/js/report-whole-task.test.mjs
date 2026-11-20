@@ -166,10 +166,23 @@ describe("report-of-the-whole-task", () => {
     assert.ok(!section.includes("Test name says example"), "a cycle's quick review is in TESTS, not here");
   });
 
-  test("NEEDS YOU lists the doubt the human approved the task past", () => {
-    const section = sectionOf(report(), "NEEDS YOU");
+  // The human answered the sign-off over the doubt, so it is settled: How it ran keeps it, NEEDS YOU does not ask again.
+  test("NEEDS YOU leaves out the doubt the human approved the task past; How it ran lists it with its step", () => {
+    const html = report();
 
-    assert.ok(section.includes("Decide: An empty order returns int 0, not 0.0. <small>(raised while listing scenarios)</small>"), `the doubt is listed in full, got ${section}`);
+    assert.ok(!sectionOf(html, "NEEDS YOU").includes(DOUBT.ambiguity), `the doubt is no open action, got ${sectionOf(html, "NEEDS YOU")}`);
+    const section = sectionOf(html, "DOUBTS RAISED");
+    assert.ok(section.includes(`${DOUBT.ambiguity} <small>(raised while listing scenarios; answered at your sign-off at the end)</small>`), `the doubt, its step and the answer that covered it, got ${section}`);
+  });
+
+  // A reviewer's doubt recorded before doubts named their stage: the review is the one that ends at the gate it was answered at.
+  test("a reviewer's doubt reads by the review it was raised during, never 'while a reviewer'", () => {
+    const reviewer = { step: "a reviewer", ambiguity: "Does the image add anything?" };
+    const ledger = { ...CODE_RUN, gates: { ...CODE_RUN.gates, "G:scenarios": { source: "human", answer: "approve", doubts: [reviewer] } } };
+    const section = sectionOf(report({ runs: [{ ...RUNS[0], ledger }, RUNS[1]] }), "DOUBTS RAISED");
+
+    assert.ok(section.includes("Does the image add anything? <small>(raised during the review in write test scenarios; answered at your OK on the scenarios)</small>"), `got ${section}`);
+    assert.doesNotMatch(section, /while a reviewer/);
   });
 
   test("the header names the pull request; NEEDS YOU does not ask to review it", () => {
@@ -253,7 +266,7 @@ describe("report-of-a-doubt-a-later-fix-settled", () => {
   ];
   const settledRun = {
     ...CODE_RUN,
-    gates: { ...CODE_RUN.gates, "G:task-end": { source: "human", answer: "approve", doubts: [{ step: "a reviewer", ambiguity: AMBIGUITY }] } },
+    gates: { ...CODE_RUN.gates, "G:task-end": { source: "human", answer: "approve", doubts: [{ step: "a reviewer", stage: "code-safety-net", ambiguity: AMBIGUITY }] } },
     checkpoints: [...CODE_RUN.checkpoints, { step: "fix", key: "code-safety-net.fix.g1.r2.a1", committed: true, sha: SHA_FIX, stage: "code-safety-net", attempt: 1 }],
   };
   const settledReport = (calls = SETTLING_CALLS) => report({ runs: [{ ...RUNS[0], ledger: settledRun, calls }, RUNS[1]] });
@@ -262,9 +275,8 @@ describe("report-of-a-doubt-a-later-fix-settled", () => {
     const html = settledReport();
 
     assert.ok(!sectionOf(html, "NEEDS YOU").includes(AMBIGUITY), "no doubt is open");
-    const section = sectionOf(html, "SETTLED DOUBTS");
-    assert.ok(section.includes(`a reviewer: ${AMBIGUITY}`), `the doubt is listed in full, got ${section}`);
-    assert.ok(section.includes(`settled by a later fix in the safety-net review: order_total returns int 0 for an empty list · ${SHA_FIX.slice(0, 7)}`), `with how it was settled, got ${section}`);
+    const section = sectionOf(html, "DOUBTS RAISED");
+    assert.ok(section.includes(`${AMBIGUITY} <small>(raised during the safety-net review; settled by a later fix in the safety-net review: order_total returns int 0 for an empty list · ${SHA_FIX.slice(0, 7)})</small>`), `the doubt in full, where it was raised and how it was settled, got ${section}`);
   });
 
   test("a doubt on a finding another lens said first for the same lines is settled by its own lens's later fix", () => {
@@ -282,25 +294,27 @@ describe("report-of-a-doubt-a-later-fix-settled", () => {
     const html = report({ runs: [{ ...RUNS[0], ledger, calls }, RUNS[1]] });
 
     assert.ok(!sectionOf(html, "NEEDS YOU").includes(AMBIGUITY), "no doubt is open");
-    const section = sectionOf(html, "SETTLED DOUBTS");
+    const section = sectionOf(html, "DOUBTS RAISED");
     assert.ok(section.includes(`settled by a later fix in the safety-net review: Empty order gives an int · ${SHA_FIX.slice(0, 7)}`), `under the gist shown, got ${section}`);
   });
 
-  test("a doubt on a finding another lens said first for the same lines is asked under the finding shown", () => {
+  test("a doubt still asked on a finding another lens said first for the same lines is asked under the finding shown", () => {
     const same = { ...finding("order_total returns int 0 for an empty list", undefined), where: "cart.py:11" };
     const calls = [
       net("lens", "code", 1, { ambiguity: null, findings: [{ ...same, title: "Empty order gives an int" }] }),
       net("lens", "tests", 1, { ambiguity: null, findings: [same] }),
       net("refuter", "tests-1", 1, { finding_id: "tests-1", verdict: "survives", ambiguity: AMBIGUITY }),
     ];
-    const section = sectionOf(report({ runs: [{ ...RUNS[0], ledger: settledRun, calls }, RUNS[1]] }), "NEEDS YOU");
+    const asking = { ...CODE_RUN, needsHuman: { gate: "G:task-end", reason: "open doubts", seq: 9, doubts: [{ step: "a reviewer", stage: "code-safety-net", ambiguity: AMBIGUITY }] } };
+    const section = sectionOf(report({ runs: [{ ...RUNS[0], ledger: asking, calls }] }), "NEEDS YOU");
 
     assert.ok(section.includes(`<strong>Empty order gives an int</strong> · cart.py:11<br>Decide: ${AMBIGUITY}`), `the doubt is asked under the one finding, got ${section}`);
   });
 
-  test("a doubt whose finding no fix settled stays open", () => {
+  test("a doubt whose finding no fix settled is settled by the sign-off the human answered over it", () => {
     const html = settledReport(SETTLING_CALLS.slice(0, 2));
 
-    assert.ok(sectionOf(html, "NEEDS YOU").includes(`Decide: ${AMBIGUITY}`), "the doubt is still open");
+    assert.ok(!sectionOf(html, "NEEDS YOU").includes(`Decide: ${AMBIGUITY}`), "the doubt is no open action");
+    assert.ok(sectionOf(html, "DOUBTS RAISED").includes(`${AMBIGUITY} <small>(raised during the safety-net review; answered at your sign-off at the end)</small>`), "How it ran says the sign-off answered it");
   });
 });

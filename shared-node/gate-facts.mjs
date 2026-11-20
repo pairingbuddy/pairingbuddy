@@ -104,11 +104,17 @@ const stepOf = (file) => {
   return plainName(key?.role ?? "") ?? plainName(key?.stage ?? "");
 };
 
+const reviewedStage = (file) => {
+  const key = returnFileKey(file);
+  return REVIEW_ROLES.includes(key?.role) && typeof key.stage === "string" ? { stage: key.stage } : {};
+};
+
 // Every open doubt in full, with the step that had it. One that cannot be told leaves them all out, so none is hidden.
 function doubtsOf(root, ledger, contract) {
   const open = openDoubts(contract, ledger, root);
   if (open === null || open.length === 0) return undefined;
-  const doubts = open.map(({ file, ambiguity }) => ({ step: stepOf(file), ambiguity: text(ambiguity) }));
+  // A reviewer's doubt keeps the stage it reviewed, so the report can say which review raised it.
+  const doubts = open.map(({ file, ambiguity }) => ({ step: stepOf(file), ...reviewedStage(file), ambiguity: text(ambiguity) }));
   return doubts.every(({ step, ambiguity }) => step !== undefined && ambiguity !== undefined) ? doubts : undefined;
 }
 

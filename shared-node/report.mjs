@@ -314,9 +314,7 @@ function builtSection({ changed }) {
   return section("BUILT", body);
 }
 
-// Every open doubt the pending question names, in full, as run/question.md holds them too.
-// A question with no doubt to name has no section.
-// A doubt a human approved past stays open: its gate's record keeps it, and the item names the gate.
+// The doubts the human approved past, each with the gate whose record keeps it: the human's answer there settled it.
 const isDoubt = (doubt) => typeof doubt?.step === "string" && typeof doubt?.ambiguity === "string";
 
 export function approvedDoubts(task) {
@@ -357,18 +355,31 @@ function settledBy({ ambiguity }, task) {
   return null;
 }
 
-// The doubts the human approved past, apart by whether a later fix settled them.
-function approvedDoubtsByState(task) {
-  const doubts = approvedDoubts(task).map((doubt) => ({ ...doubt, settled: settledBy(doubt, task) }));
-  return { open: doubts.filter(({ settled }) => settled === null), settled: doubts.filter(({ settled }) => settled !== null) };
-}
+// The step name a lens or refuter doubt carries (REVIEWER in gates.mjs, which this pure module cannot import).
+const REVIEWER = "a reviewer";
 
-const settledItem = ({ step, ambiguity, settled }) => `<li>${escape(step)}: ${escape(ambiguity)} <small>(${escape(settled)})</small></li>`;
+// The stage whose node ends at a gate: where a reviewer's doubt was raised when the doubt does not name its stage.
+const gateStage = (gate) => Object.values(contract.taskTypes).flatMap((type) => type.nodes).find((node) => node.gate === gate)?.name;
 
-// The doubts a later fix settled before the human signed off; the open ones are NEEDS YOU's.
-function settledSection({ task }) {
-  const { settled } = approvedDoubtsByState(task);
-  return settled.length === 0 ? "" : `\n${section("SETTLED DOUBTS", `<ul>\n${settled.map(settledItem).join("\n")}\n</ul>`)}`;
+// A review by its stage's plain name: "the safety-net review", else "the review in <step>".
+const reviewOf = (stage) => {
+  const name = plainName(stage);
+  if (!name) return "a review";
+  return /review$/.test(name) ? `the ${name}` : `the review in ${name}`;
+};
+
+// Where a doubt was raised, in plain words: while the agent's step ran, or during the review it came from.
+const raisedWords = ({ step, stage, gate }) => (step === REVIEWER ? `raised during ${reviewOf(stage ?? gateStage(gate))}` : `raised while ${step}`);
+
+// How a doubt the human approved past was settled: by a later fix, else by the human's answer at its gate.
+const settledWords = (doubt, task) => settledBy(doubt, task) ?? `answered at ${gateLine(doubt.gate)}`;
+
+const raisedItem = (task) => (doubt) => `<li>${escape(doubt.ambiguity)} <small>(${escape(raisedWords(doubt))}; ${escape(settledWords(doubt, task))})</small></li>`;
+
+// Every doubt the human answered a gate past: settled once the human answered over it, so How it ran keeps it, not NEEDS YOU.
+function doubtsSection({ task }) {
+  const doubts = approvedDoubts(task);
+  return doubts.length === 0 ? "" : `\n${section("DOUBTS RAISED", `<ul>\n${doubts.map(raisedItem(task)).join("\n")}\n</ul>`)}`;
 }
 
 const SHORT_SHA = 7;
@@ -483,9 +494,10 @@ function leftWithHuman({ ledger, task, spawns }) {
   const left = task.flatMap((run) => reviewRounds(run, spawns ?? []))
     .filter(({ over, stage }) => over && stage?.name !== CYCLE_STAGE)
     .flatMap((round) => round.round.findings.filter((finding) => LEFT_WORDS.includes(finding.word)).map((finding) => ({ finding, round, questions: [] })));
-  const pending = Array.isArray(ledger?.needsHuman?.doubts) ? ledger.needsHuman.doubts : [];
+  // Only the question still asked holds open doubts: one the human answered a gate past is settled.
+  const pending = Array.isArray(ledger?.needsHuman?.doubts) ? ledger.needsHuman.doubts.map((doubt) => (doubt !== null && typeof doubt === "object" ? { ...doubt, gate: ledger.needsHuman.gate } : doubt)) : [];
   const loose = [];
-  for (const doubt of [...approvedDoubtsByState(task).open, ...pending]) {
+  for (const doubt of pending) {
     const finding = findingOfDoubt(doubt, left);
     const held = left.find((entry) => entry.finding === finding);
     if (held) held.questions.push(doubt.ambiguity);
@@ -500,7 +512,7 @@ const leftItem = ({ finding, questions }) => {
   return `<li><strong>${escape(findingGist(finding))}</strong>${where}<br>${body}</li>`;
 };
 
-const looseItem = ({ step, ambiguity }) => `<li>Decide: ${escape(ambiguity)} <small>(raised while ${escape(step)})</small></li>`;
+const looseItem = (doubt) => `<li>Decide: ${escape(doubt.ambiguity)} <small>(${escape(raisedWords(doubt))})</small></li>`;
 
 // A stop, in plain words: the step it stopped at, why, and how to go on from it.
 function stopItem({ ledger, spawns, tests }) {
@@ -744,7 +756,7 @@ ${needsYouSection({ ledger, task, spawns, tests })}
 ${doneSection({ task, changed })}${changesSection({ task, spawns })}
 <details>
 <summary>HOW IT RAN</summary>
-${taskSection(code?.task ?? ledger?.task)}${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${settledSection({ task })}
+${taskSection(code?.task ?? ledger?.task)}${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${doubtsSection({ task })}
 ${stepsSection({ task })}
 ${scenariosSection({ scenarios: task.find((run) => Array.isArray(run.scenarios))?.scenarios })}
 ${testsSection({ ledger: taskLedgerOf(task), spawns, tests, calls: task.flatMap((run) => run.calls ?? []) })}
