@@ -1553,6 +1553,40 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
     assert.match(asked.reason, new RegExp(redKey("implement-tests", "t2").replaceAll(".", "\\.")));
   });
 
+  // ---------- a review doubt a later fix settled ----------
+
+  const netKey = (role, item, round = 1) => `${SAFETY_NET}.${role}.${item}.r${round}.a1`;
+  const writeNet = (repo, key, body) => writeFileSync(join(repo.taskDir, "artifacts", `${key}.json`), JSON.stringify({ pb_key: key, ambiguity: "", ...body }));
+  const NET_FINDING = { rule: "R", severity: "medium", kind: "fix-here", claim: "order_total ignores quantity", where: "cart.py:3" };
+
+  // The safety-net round: the code lens found one issue and doubted it, its refuter upheld it with a doubt of its own, and
+  // `check` is the course-checker's verdict on the fix in round 2.
+  function reviewedAtTaskEnd(check) {
+    const repo = atTaskEnd({ gates: { [G_SCENARIOS]: { source: "auto" } }, ambiguity: "" });
+    writeNet(repo, netKey("lens", "code"), { findings: [NET_FINDING], ambiguity: "Does quantity ever exceed one?" });
+    writeNet(repo, netKey("lens", "tests"), { findings: [] });
+    writeNet(repo, netKey("lens", "corpus-misalignment"), { findings: [] });
+    writeNet(repo, netKey("refuter", "code-1"), { finding_id: "code-1", verdict: "survives", ambiguity: "The task does not say whether quantity counts." });
+    writeNet(repo, netKey("fix", "g1", 2), {});
+    writeNet(repo, netKey("course-checker", "g1", 2), { finding_id: "code-1", verdict: check, mistake: "none", what_went_wrong: "" });
+    return repo;
+  }
+
+  test("a review doubt whose finding a later kept fix settled does not ask at G:task-end", () => {
+    const repo = reviewedAtTaskEnd("better");
+
+    assertAutoPassed(repo, gateEval(repo, "auto"), TASK_END);
+  });
+
+  test("the same doubts still ask when the course-checker did not keep the fix", () => {
+    const repo = reviewedAtTaskEnd("worse");
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, TASK_END);
+    assert.equal(asked.reason, `these returns carry an open ambiguity: ${netKey("lens", "code")}.json, ${netKey("refuter", "code-1")}.json`);
+  });
+
   // ---------- coverage gaps the loop left ----------
 
   const coverageKey = (round, attempt = 1) => `${TDD}.verify-test-coverage.-.r${round}.a${attempt}`;
