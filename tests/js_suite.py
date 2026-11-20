@@ -23,6 +23,7 @@ JS_TEST_FILES = [
     "tests/js/code-spike-document.test.mjs",
     "tests/js/code-spike-unit.test.mjs",
     "tests/js/committing-changes-skill.test.mjs",
+    "tests/js/compare-lab.test.mjs",
     "tests/js/config-hash-in-ledger.test.mjs",
     "tests/js/configured-branch-rules.test.mjs",
     "tests/js/course-check-call.test.mjs",
