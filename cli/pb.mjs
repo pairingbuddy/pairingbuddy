@@ -21,7 +21,7 @@ import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/un
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { SPIKE_SETUP_FILE, abandonRun, closeUnit, endRun, keepRun } from "../shared-node/unit-files.mjs";
-import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
+import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
 import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
@@ -2123,12 +2123,14 @@ function snapshot(args) {
   const git = (argv) => runGit(root, argv, { trim: false, env: GIT_ENV });
   const diff = git(subjectDiffArgv(subject.baseSha));
   const changed = parseChanged(git(changedArgv(subject.baseSha)));
-  const nearest = nearestFiles(parseTracked(git(trackedFilesArgv())), changed.map((c) => c.path));
-  const paths = buildCorpus(insideRepo(root, [...inRepoDocs(root), ...conventionPaths(root), "CLAUDE.md", ...nearest]), (p) => existsSync(join(root, p)));
-  const runDir = join(root, ".pairingbuddy", "run");
-  replaceFiles([[join(runDir, SUBJECT_DIFF_FILE), diff], [join(runDir, CHANGED_FILE), jsonText(changed)], [join(runDir, CORPUS_FILE), jsonText({ paths })]]);
   const ledgerPath = ledgerPathOf(root);
   const ledger = existsSync(ledgerPath) ? readLedger(ledgerPath) : null;
+  const tracked = parseTracked(git(trackedFilesArgv()));
+  const nearest = nearestFiles(tracked, changed.map((c) => c.path));
+  const named = namedFiles(tracked, ledger?.task);
+  const paths = buildCorpus(insideRepo(root, [...inRepoDocs(root), ...conventionPaths(root), "CLAUDE.md", ...named, ...nearest]), (p) => existsSync(join(root, p)));
+  const runDir = join(root, ".pairingbuddy", "run");
+  replaceFiles([[join(runDir, SUBJECT_DIFF_FILE), diff], [join(runDir, CHANGED_FILE), jsonText(changed)], [join(runDir, CORPUS_FILE), jsonText({ paths })]]);
   const taskType = ledger === null ? null : ledger.taskType;
   return { ok: true, paths, taskType, rolledBack: ledger === null ? 0 : rolledBackCount(ledger, ledger.stage.name) };
 }
