@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { baseLedger } from "./ledger-fixture.mjs";
 import { PublishRefused, askReason, fileHash, gatesFor, publishFacts, recordAnswer, recordApproval, reopenedGate } from "../../shared-node/gates.mjs";
 import { loadStages } from "../../shared-node/stages.mjs";
+import { waitedSeconds } from "../../shared-node/glance.mjs";
 
 const contract = loadStages(fileURLToPath(new URL("../..", import.meta.url)));
 const GATES = gatesFor(contract, "bug_fix");
@@ -120,4 +121,30 @@ test("an-approval-from-the-cli-records-when-its-question-was-asked-and-answered"
   const approved = recordApproval(askedAtPublish(), "G:task-end", GATES, {}, ANSWERED_AT);
 
   assert.deepEqual(approved.gates["G:task-end"], { source: "human-cli", answer: "approve", askedAt: ASKED_AT, answeredAt: ANSWERED_AT });
+});
+
+// 15:42:30 to 19:43:50 is 4h 1m 20s.
+const FIRST_WAIT = 4 * 3600 + 80;
+
+test("a-redo-keeps-the-wait-of-the-question-it-answered", () => {
+  const redone = recordAnswer(askedAtPublish(), "G:task-end", "redo", GATES, {}, ANSWERED_AT);
+
+  assert.equal(waitedSeconds(redone, Date.parse("2026-11-16T23:00:00.000Z")), FIRST_WAIT);
+});
+
+test("waited-counts-every-round-of-a-redone-gate", () => {
+  const redone = recordAnswer(askedAtPublish(), "G:task-end", "redo", GATES, {}, ANSWERED_AT);
+  const askedAgain = { ...redone, needsHuman: { gate: "G:task-end", reason: "auto mode is off", seq: 6, askedAt: "2026-11-16T20:00:00.000Z" } };
+
+  const approved = recordAnswer(askedAgain, "G:task-end", "approve", GATES, {}, "2026-11-16T20:10:00.000Z");
+
+  assert.equal(waitedSeconds(approved, Date.parse("2026-11-16T23:00:00.000Z")), FIRST_WAIT + 600);
+});
+
+test("an-approval-over-a-stop-keeps-the-wait-the-stop-answered", () => {
+  const stopped = recordAnswer(askedAtPublish(), "G:task-end", "stop", GATES, {}, ANSWERED_AT);
+
+  const approved = recordApproval(stopped, "G:task-end", GATES, {}, "2026-11-16T20:00:00.000Z");
+
+  assert.equal(waitedSeconds(approved, Date.parse("2026-11-16T23:00:00.000Z")), FIRST_WAIT);
 });

@@ -78,10 +78,11 @@ const secondsFrom = (from, to) => {
 const waitSeconds = ({ askedAt, answeredAt }, until) => (typeof askedAt === "string" ? secondsFrom(askedAt, answeredAt === undefined ? until : Date.parse(answeredAt)) : 0);
 
 // The seconds a run waited on the human: its questions, each answered one from askedAt to answeredAt (kept on its gate's
-// record) and the one still asked from its askedAt to `until`, and Claude Code's permission prompts (permissionWaits) the
-// same way. A ledger written before these stamps waited 0.
+// record, or in gateWaits once a redo removed the record) and the one still asked from its askedAt to `until`, and Claude
+// Code's permission prompts (permissionWaits) the same way. A ledger written before these stamps waited 0.
 export function waitedSeconds(ledger, until) {
-  const records = ledger?.gates && typeof ledger.gates === "object" ? Object.values(ledger.gates) : [];
+  const gates = ledger?.gates && typeof ledger.gates === "object" ? Object.values(ledger.gates) : [];
+  const records = [...gates, ...(Array.isArray(ledger?.gateWaits) ? ledger.gateWaits : [])];
   const answered = records.reduce((total, record) => total + (typeof record?.askedAt === "string" ? secondsFrom(record.askedAt, Date.parse(record.answeredAt)) : 0), 0);
   const open = typeof ledger?.needsHuman?.askedAt === "string" ? secondsFrom(ledger.needsHuman.askedAt, until) : 0;
   const prompts = (Array.isArray(ledger?.permissionWaits) ? ledger.permissionWaits : []).reduce((total, wait) => total + waitSeconds(wait ?? {}, until), 0);

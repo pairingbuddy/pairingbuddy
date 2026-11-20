@@ -739,12 +739,16 @@ const askedDoubts = ({ needsHuman }, name) => (needsHuman?.gate === name && Arra
 // question that recorded when it was asked (needsHuman.askedAt) has a wait; an older ledger's records stay as they were.
 const waitedFor = ({ needsHuman }, name, answeredAt) => (needsHuman?.gate === name && typeof needsHuman.askedAt === "string" ? { askedAt: needsHuman.askedAt, answeredAt } : {});
 
+// An answered wait whose gate record goes away or is replaced, kept in gateWaits so the time stays waiting and never reads as work.
+const keptWait = (ledger, name, { askedAt, answeredAt }) =>
+  typeof askedAt === "string" && typeof answeredAt === "string" ? { ...ledger, gateWaits: [...(ledger.gateWaits ?? []), { gate: name, askedAt, answeredAt }] } : ledger;
+
 // What a human's answer to the asking gate does to the ledger. A publish answer is an approval that carries its binding.
-// A redo clears the gate's record, and with it the wait.
+// A redo clears the gate's record; its wait moves to gateWaits.
 export function recordAnswer(ledger, name, answer, gates, binding = {}, answeredAt = new Date().toISOString()) {
   const asked = { ...ledger, needsHuman: null };
   const waited = waitedFor(ledger, name, answeredAt);
-  if (answer === "redo") return reopenStage(asked, name, gates);
+  if (answer === "redo") return reopenStage(keptWait(asked, name, waited), name, gates);
   if (answer === PUBLISH_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: { ...approvalRecord("human", binding), ...askedDoubts(ledger, name), ...waited } } };
   if (answer === KEEP_LOCAL_LABEL) return { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer: KEEP_LOCAL, ...waited } } };
   const recorded = { ...asked, gates: { ...ledger.gates, [name]: { source: "human", answer, ...(answer === "approve" ? askedDoubts(ledger, name) : {}), ...waited } } };
@@ -785,5 +789,6 @@ export function recordApproval(ledger, name, gates, binding = {}, answeredAt = n
   const reopened = reopenedGate(gates, ledger);
   const restored = reopened?.name === name ? withStageStatus(ledger, reopened.stage, "done") : ledger;
   const stoppedHere = Object.hasOwn(ledger.gates, name) && ledger.gates[name].answer === "stop";
-  return { ...restored, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: { ...approvalRecord("human-cli", binding), ...askedDoubts(ledger, name), ...waitedFor(ledger, name, answeredAt) } } };
+  const kept = keptWait(restored, name, ledger.gates[name] ?? {});
+  return { ...kept, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: { ...approvalRecord("human-cli", binding), ...askedDoubts(ledger, name), ...waitedFor(ledger, name, answeredAt) } } };
 }
