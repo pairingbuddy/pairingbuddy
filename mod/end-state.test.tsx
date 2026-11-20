@@ -5,8 +5,6 @@ import { PANE, paneLines, setupReplay, type Rig } from './testing/replay'
 import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
 import { publishedOf } from './published'
-import { recordWrites, runPbNote } from './testing/suggest'
-import { paneTexts } from './testing/report'
 
 test('published-reads-only-what-pb-publish-printed', () => {
   const ran = (stdout: string) => ({ result: { stdout, stderr: '' } })
@@ -173,29 +171,4 @@ test('tests-row-keeps-the-code-runs-tests-through-the-publish', async ($, on) =>
   serve(rig, {})
   await rig.clock.advance(POLL_MS * 2)
   expect(rowOf(await paneLines($), 'TESTS'), 'once the publish run is over').toBe(atCodeEnd)
-})
-
-// The lab run: the note line still read "delivered to running the checks" after DONE. The report keeps the note instead.
-test('the-note-line-clears-once-the-task-is-done', async ($, on) => {
-  const rig = setupReplay(on)
-  recordWrites(on)
-  serve(rig, { [LEDGER]: codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), [UNIT]: unitFile })
-  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
-  await start($)
-  await rig.clock.advance(POLL_MS * 2)
-  serve(rig, { [LEDGER]: publishRun, [UNIT]: unitFile })
-  await rig.clock.advance(Date.parse('2026-11-14T10:05:10.000Z') - Date.parse('2026-11-14T10:02:32.000Z'))
-  await runPbNote($, 'to try later.')
-  await $.agent.spawn({ prompt: 'p', description: 'pb1 pr-draft - draft-pull-request - r1', subagentType: 'pairingbuddy:draft-pull-request', workflow: { runId: 'wf_2', agentIndex: 1 } })
-  await rig.clock.advance(POLL_MS)
-  expect(await paneTexts($), 'while the task runs, the line says who read the note').toContain('your note "to try later." · read by: drafting the pull request')
-
-  rig.toolResults.set('Bash', { stdout: '{"ok":true,"result":"published","url":"https://github.com/o/r/pull/7","warnings":[]}\n', stderr: '' })
-  await $.tool.call({ tool: 'Bash', tool_use_id: 'tu-publish', command: 'node /plugin/cli/pb.mjs publish' })
-  serve(rig, {})
-  await rig.clock.advance(POLL_MS * 2)
-  const done = await paneLines($)
-
-  expect(rowOf(done, 'STATUS') ?? '', `the task is done: ${JSON.stringify(done)}`).toContain('DONE')
-  expect((await paneTexts($)).some((text: string) => text.startsWith('your note')), 'once DONE, no note line').toBe(false)
 })

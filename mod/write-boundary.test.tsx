@@ -7,20 +7,19 @@ import { POLL_MS } from './poll'
 import { needingHuman, stopped } from './testing/alert'
 import { PANE, replay, setupReplay } from './testing/replay'
 import { quietEngine } from './testing/quiet'
-import { recordWrites } from './testing/suggest'
+import { recordWrites } from './testing/refuse'
 import { BAND, SNAPSHOT_RUNNING, start } from './testing/band'
 import gOpen1 from './fixtures/replay/g-open-1'
 
-const GUIDANCE_FILE = `${ROOT}/.pairingbuddy/human-guidance.json`
 const REPORT_FILE = `${ROOT}/.pairingbuddy/reports/2026-11-03-x.html`
 
-test('allowed-writes-are-exactly-reports-and-guidance', () => {
-  const allowedPaths = [REPORT_FILE, GUIDANCE_FILE]
+test('allowed-writes-are-exactly-the-reports-folder', () => {
+  const allowedPaths = [REPORT_FILE]
   const refusedPaths = [
     `${ROOT}/${LEDGER}`,
     `${ROOT}/.pairingbuddy/tests.json`,
     `${ROOT}/.pairingbuddy/task.json`,
-    `${GUIDANCE_FILE}.bak`,
+    `${ROOT}/.pairingbuddy/human-guidance.json`,
     `${ROOT}/.pairingbuddy/reports/../tests.json`,
   ]
   const files = new Map<string, string>()
@@ -31,14 +30,11 @@ test('allowed-writes-are-exactly-reports-and-guidance', () => {
   const allowedTouched = [...touched]
   const refusedResults = refusedPaths.map(path => recordWrite(files, touched, 'boundary', path, 'x'))
 
-  expect(allowed, 'the allowed writes are the reports folder and the guidance file, nothing else').toEqual([
-    '.pairingbuddy/human-guidance.json',
-    '.pairingbuddy/reports/',
-  ])
-  expect(allowedResults, 'a report file and the guidance file are allowed').toEqual([true, true])
+  expect(allowed, 'the only allowed write is the reports folder').toEqual(['.pairingbuddy/reports/'])
+  expect(allowedResults, 'a report file is allowed').toEqual([true])
   expect(allowedTouched, 'an allowed write is not recorded as refused').toEqual([])
   expect([...files.keys()], 'only the allowed writes are applied to the files').toEqual(allowedPaths)
-  expect(refusedResults, 'the ledger, tests.json, task.json, the .bak neighbour and the ../ path are all refused').toEqual(refusedPaths.map(() => false))
+  expect(refusedResults, 'the ledger, tests.json, task.json, the guidance file and the ../ path are all refused').toEqual(refusedPaths.map(() => false))
   expect(touched, 'each refused write is recorded with its path').toEqual(refusedPaths.map(path => `boundary: fs.write ${path}`))
 })
 

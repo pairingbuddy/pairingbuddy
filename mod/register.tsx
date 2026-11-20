@@ -3,9 +3,8 @@ import { fromPolled, spawnOf, startedAtOf, type Call, type Published, type Spawn
 import { recordPublished } from './published'
 import { newPollerState, startPoller, type PollerState } from './poll'
 import { Band } from './band'
-import { Pane, type Suggestion } from './pane'
+import { Pane } from './pane'
 import { openReport, reportLine } from './report'
-import { recordDelivery, saveNote, type PendingSuggestion } from './suggest'
 import { PANE_ID, type PbToggle, togglePane } from './pane-open'
 import { buildEndedView, buildView, type Tags, type View } from './view'
 
@@ -26,16 +25,12 @@ const statusSetAtom = atom({ plugin: 'pairingbuddy', key: 'status-set' }, null)
 // Repeated on purpose: the kit needs the key spelled as literals in the file that writes it. The same key is written in three copies, PANE_NOTE in ./poll and ./report and noteAtom in register.tsx; keep all three in step. /pb-report and the poller write it.
 const noteAtom = atom({ plugin: 'pairingbuddy', key: 'pane-note' }, null)
 
-// The same key /pb-note writes (PENDING in ./suggest); the kit's scan reads the atom's literals from this file.
-const pendingAtom = atom({ plugin: 'pairingbuddy', key: 'pending-suggestion' }, null)
-
 // What the last pb publish printed, written by the Bash hook below.
 const publishedAtom = atom({ plugin: 'pairingbuddy', key: 'published' }, null)
 
 async function startWatching($: EngineInterface, poller: PollerState, options: PluginOptions) {
   await $.command.register({ name: 'pb', description: 'Open or close the Pairing Buddy pane', immediate: true })
   await $.command.register({ name: 'pb-report', description: 'Write the Pairing Buddy run report and open it', immediate: true })
-  await $.command.register({ name: 'pb-note', description: 'Leave a note for the next Pairing Buddy agent: /pb-note <text>', immediate: true })
   await startPoller($, poller, options)
 }
 
@@ -46,7 +41,7 @@ function drawGlance(
   next: (e: RenderInput) => Promise<RenderElement>,
   spawns: Spawn[],
   calls: Call[],
-  draw: (tags: Tags, view: View, opened: boolean, note: string | null, pending: PendingSuggestion | null) => RenderElement,
+  draw: (tags: Tags, view: View, opened: boolean, note: string | null) => RenderElement,
 ) {
   if ((e.props as { hasSurvey?: boolean }).hasSurvey) {
     return next(e)
@@ -55,7 +50,7 @@ function drawGlance(
   const tags = $.ui.resolve(e)
 
   // Until the first poll lands there is nothing to draw from, so the view is the idle one.
-  return Promise.all([read($, inputsAtom), read($, openedAtom), read($, noteAtom), read($, pendingAtom), read($, lastRunAtom), read($, endedAtAtom), read($, publishedAtom)]).then(([polled, opened, note, pending, lastRun, endedAt, published]) => {
+  return Promise.all([read($, inputsAtom), read($, openedAtom), read($, noteAtom), read($, lastRunAtom), read($, endedAtAtom), read($, publishedAtom)]).then(([polled, opened, note, lastRun, endedAt, published]) => {
     const live = fromPolled(polled, spawns, calls, published as Published | null)
     // With no live ledger the last polled one is shown as a finished run.
     const snapshot = fromPolled(lastRun as Parameters<typeof fromPolled>[0], spawns, calls, published as Published | null)
@@ -66,20 +61,8 @@ function drawGlance(
     const ended = { ...snapshot, unitOpen: live.unit !== null, task: live.task, ...(Number.isNaN(endedMs) ? {} : { now: endedMs }) }
     const view = live.ledger || !snapshot.ledger ? buildView(live) : buildEndedView(ended)
     const reportNote = typeof note === 'string' ? note : null
-    return draw(tags, view, opened === true, reportNote, pending as PendingSuggestion | null)
+    return draw(tags, view, opened === true, reportNote)
   })
-}
-
-// Once the task is DONE no agent will read the note, so the line goes; the report keeps the note under How it ran. A note
-// left in another task is not this one's.
-function suggestionView(pending: PendingSuggestion | null, view: View): Suggestion | undefined {
-  const otherTask = pending?.task !== undefined && view.ledger?.task !== pending.task
-  if (pending == null || view.status.state === 'done' || otherTask) {
-    return undefined
-  }
-
-  const text = pending.text ?? ''
-  return pending.deliveredTo ? { state: 'delivered', text, to: pending.deliveredTo, test: pending.deliveredFor } : { state: 'pending', text }
 }
 
 export const register: Register = (on, options) => {
@@ -131,15 +114,12 @@ export const register: Register = (on, options) => {
   on('command.run', ($, e, next) => {
     if (e.command === 'pb') return togglePane($, pbToggle).then(done => ({ text: `Pairing Buddy pane ${done}` }))
     if (e.command === 'pb-report') return openReport($, spawns, calls).then(outcome => ({ text: reportLine(outcome) }))
-    if (e.command === 'pb-note') return saveNote($, spawns, e.args).then(text => ({ text }))
     return next(e)
   })
 
   on('agent.spawn', ($, e, next) => {
     const spawn = spawnOf(e)
     spawns.push(spawn)
-    // Fire and forget: a mod-state write that stalls or fails must never hold or change the spawn result.
-    read($, pendingAtom).then((pending) => recordDelivery($, pending as PendingSuggestion | null, spawn.name)).catch(() => {})
     // The stamp follows without holding the spawn; a failed clock leaves the spawn unstamped.
     startedAtOf($).then((startedAt) => { if (startedAt) spawn.startedAt = startedAt }).catch(() => {})
     // next(e) runs first and synchronously; the agent's id is read off its result when that lands.
@@ -163,7 +143,7 @@ export const register: Register = (on, options) => {
     <Band Box={Box} Text={Text} band={band} goal={goal} running={running} waiting={waiting} ended={ended} done={done} between={between} opened={opened} columns={e.props.bodyColumns} />
   )))
 
-  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text }, view, _opened, note, pending) => (
+  on('ui.render', { component: 'Pane', requestId: PANE_ID }, ($, e, next) => drawGlance($, e, next, spawns, calls, ({ Box, Text }, view, _opened, note) => (
     <Pane
       Box={Box}
       Text={Text}
@@ -171,7 +151,6 @@ export const register: Register = (on, options) => {
       columns={e.props.bodyColumns}
       unknownLabels={view.unknownLabels}
       note={note}
-      suggestion={suggestionView(pending, view)}
     />
   )))
 }

@@ -145,8 +145,6 @@ JS_TEST_FILES = [
     "tests/js/stop-code-cli.test.mjs",
     "tests/js/stop-code-ledger.test.mjs",
     "tests/js/stop-code-plain-names.test.mjs",
-    "tests/js/suggestion-reaches-spawn.test.mjs",
-    "tests/js/suggestion-schema.test.mjs",
     "tests/js/t4a-broken-copy-helper.test.mjs",
     "tests/js/t4a-lab-setup.test.mjs",
     "tests/js/t4a-lab-show.test.mjs",

@@ -217,17 +217,8 @@ export async function readKeptRuns($: EngineInterface, cache?: Map<string, KeptR
   }
 }
 
-const GUIDANCE = '.pairingbuddy/human-guidance.json'
-
-// The guidance file's entries; none when it is absent or unusable.
-function guidanceOf(file: unknown): unknown[] {
-  const { guidance } = (file ?? {}) as { guidance?: unknown }
-  return Array.isArray(guidance) ? guidance : []
-}
-
-// What the report lists in full where a gate question folds: the standing scenarios and every changed file; and the guidance
-// file's entries, whose task-scoped ones are the notes left for the task. Never throws.
-export async function readReportLists($: EngineInterface, ledger: Ledger): Promise<{ scenarios?: ScenarioRow[]; changed: string[] | null; notes: unknown[] }> {
-  const [scenarios, changedFile, guidanceFile] = await Promise.all([readScenarios($, ledger), readJson($, CHANGED), readJson($, GUIDANCE)])
-  return { scenarios, changed: changedOf(changedFile), notes: guidanceOf(guidanceFile) }
+// What the report lists in full where a gate question folds: the standing scenarios and every changed file. Never throws.
+export async function readReportLists($: EngineInterface, ledger: Ledger): Promise<{ scenarios?: ScenarioRow[]; changed: string[] | null }> {
+  const [scenarios, changedFile] = await Promise.all([readScenarios($, ledger), readJson($, CHANGED)])
+  return { scenarios, changed: changedOf(changedFile) }
 }
