@@ -6,6 +6,7 @@ import { readLabel } from "./labels.mjs";
 import { MAX_TRIES } from "./limits.mjs";
 import { clock } from "./duration.mjs";
 import { TOKENS_UNIT } from "./spent-line.mjs";
+import { permissionLine } from "./permission-wait.mjs";
 
 const UNKNOWN = "unknown";
 const AGENT_KINDS = ["Agent", "workflow_agent"];
@@ -73,13 +74,18 @@ const secondsFrom = (from, to) => {
   return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
 };
 
-// The seconds a run's questions waited on the human: each answered one from askedAt to answeredAt (kept on its gate's
-// record), and the one still asked from its askedAt to `until`. A ledger written before these stamps waited 0.
+// The seconds of one wait: from askedAt to answeredAt, or to `until` while it is open.
+const waitSeconds = ({ askedAt, answeredAt }, until) => (typeof askedAt === "string" ? secondsFrom(askedAt, answeredAt === undefined ? until : Date.parse(answeredAt)) : 0);
+
+// The seconds a run waited on the human: its questions, each answered one from askedAt to answeredAt (kept on its gate's
+// record) and the one still asked from its askedAt to `until`, and Claude Code's permission prompts (permissionWaits) the
+// same way. A ledger written before these stamps waited 0.
 export function waitedSeconds(ledger, until) {
   const records = ledger?.gates && typeof ledger.gates === "object" ? Object.values(ledger.gates) : [];
   const answered = records.reduce((total, record) => total + (typeof record?.askedAt === "string" ? secondsFrom(record.askedAt, Date.parse(record.answeredAt)) : 0), 0);
   const open = typeof ledger?.needsHuman?.askedAt === "string" ? secondsFrom(ledger.needsHuman.askedAt, until) : 0;
-  return answered + open;
+  const prompts = (Array.isArray(ledger?.permissionWaits) ? ledger.permissionWaits : []).reduce((total, wait) => total + waitSeconds(wait ?? {}, until), 0);
+  return answered + open + prompts;
 }
 
 // The run began at the first stage's start; before any stage closes, that is the current stage's. A closed stage
@@ -151,8 +157,8 @@ export function stopLine(stop) {
   return name ? `${STOPPED}: ${name}` : STOPPED;
 }
 
-// A gate reads by its plain name; a gate with no plain name falls back to its id as given.
-export const gateLine = (gate) => plainName(gate) ?? gate;
+// A gate reads by its plain name, Claude Code's permission prompt by what it asks; a gate with neither falls back to its id as given.
+export const gateLine = (gate) => plainName(gate) ?? permissionLine(gate) ?? gate;
 
 // The one wording for a gate waiting on the human, shared by the band and the status line.
 export const needsYouLine = (gate) => `needs you: ${gateLine(gate)}`;

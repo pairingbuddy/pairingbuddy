@@ -146,7 +146,8 @@ const argsIn = (text) => JSON.parse(text.match(/with the args (\{.*\})\./)[1]);
 describe("Stop hook", () => {
   test("is registered for Stop, with the form the probe plugin used", () => {
     const { hooks } = JSON.parse(readFileSync(hook("hooks.json"), "utf8"));
-    assert.deepEqual(hooks.Stop, [{ hooks: [{ type: "command", command: "node ${CLAUDE_PLUGIN_ROOT}/hooks/stop.mjs" }] }]);
+    // permission.mjs follows it: a turn that ends closes a permission wait still open.
+    assert.deepEqual(hooks.Stop, [{ hooks: [{ type: "command", command: "node ${CLAUDE_PLUGIN_ROOT}/hooks/stop.mjs" }, { type: "command", command: "node ${CLAUDE_PLUGIN_ROOT}/hooks/permission.mjs" }] }]);
   });
 
   test("stays silent outside a run", () => {

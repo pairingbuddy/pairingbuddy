@@ -33,6 +33,8 @@ const PAYLOAD_FOR = {
   "PostToolUse[AskUserQuestion]": payload("posttooluse-askuserquestion.json"),
   "PostToolUse[StructuredOutput|Workflow]": payload("posttooluse-workflow.json"),
   "Stop[]": payload("stop.json"),
+  "UserPromptSubmit[]": { hook_event_name: "UserPromptSubmit", session_id: "iso-session", prompt: "go on" },
+  "Notification[permission_prompt]": { hook_event_name: "Notification", session_id: "iso-session", notification_type: "permission_prompt", message: "Claude needs your permission to use Workflow" },
 };
 
 const plugin = (() => {
@@ -52,7 +54,7 @@ test("with mod/register.tsx throwing on load, the shell hooks from hooks.json st
   const repo = makeDir("pb-iso-repo-");
   execFileSync("git", ["init", "-q"], { cwd: repo });
   const commands = shellCommands(plugin);
-  assert.deepEqual([...new Set(commands.map((c) => c.event))].sort(), ["PostToolUse", "PreToolUse", "SessionStart", "Stop"], "hooks.json declares the four shell hook events");
+  assert.deepEqual([...new Set(commands.map((c) => c.event))].sort(), ["Notification", "PostToolUse", "PreToolUse", "SessionStart", "Stop", "UserPromptSubmit"], "hooks.json declares the six shell hook events");
 
   for (const { event, matcher, command } of commands) {
     const key = `${event}[${matcher}]`;

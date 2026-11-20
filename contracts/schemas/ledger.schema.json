@@ -147,7 +147,7 @@
               }
             },
             "doubts": {
-              "description": "The open doubts the question names, in full (the question shows at most three, each whole on one line, and run/question.md holds them all), each with the plain name of the step that had it, so the run report holds them all. May be absent.",
+              "description": "The open doubts the question names, in full (the question shows at most three, each whole on one line, and run/question.md holds them all), each with the plain name of the step that had it, so the run report holds them all. A reviewer's doubt also names the stage it reviewed (stage), so the report can say which review raised it. May be absent.",
               "type": "array",
               "minItems": 1,
               "items": {
@@ -156,6 +156,7 @@
                 "required": ["step", "ambiguity"],
                 "properties": {
                   "step": { "type": "string", "minLength": 1 },
+                  "stage": { "type": "string", "minLength": 1 },
                   "ambiguity": { "type": "string", "minLength": 1 }
                 }
               }
@@ -163,6 +164,21 @@
           }
         }
       ]
+    },
+    "permissionWaits": {
+      "description": "Claude Code's own permission prompts that stood unanswered during the run, oldest first: hooks/permission.mjs opens one on the prompt's Notification (notification_type permission_prompt) and closes it with answeredAt on the next tool call, the turn's end or the human's next prompt. The last one, while it has no answeredAt, is open: the run needs the human. The time from askedAt to answeredAt (or to now, while open) is waiting, no working time. May be absent.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["askedAt", "seq"],
+        "properties": {
+          "askedAt": { "type": "string", "format": "date-time" },
+          "seq": { "description": "The ledger seq the wait was opened at, so the alert fires once for it.", "type": "integer", "minimum": 0 },
+          "tool": { "description": "The tool the prompt asks for, as Claude Code names it. May be absent.", "type": "string", "minLength": 1 },
+          "answeredAt": { "type": "string", "format": "date-time" }
+        }
+      }
     },
     "voidedGates": {
       "description": "Gate approvals that stopped holding (G:publish after HEAD or the body moved), oldest first, kept for the audit trail. May be absent. record is the gate record as it stood; reason says what changed.",

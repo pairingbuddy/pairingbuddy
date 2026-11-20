@@ -32,7 +32,7 @@ export function ownerAgeMs(lastSeen) {
   const age = Date.now() - Date.parse(lastSeen);
   return Number.isNaN(age) ? Infinity : age;
 }
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "permissionWaits"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -89,7 +89,9 @@ const isNullableString = (v) => v === null || typeof v === "string";
 const isNonEmptyString = (v) => typeof v === "string" && v !== "";
 const isTimestamp = (v) => typeof v === "string" && ISO_TIMESTAMP.test(v);
 const isNullableTimestamp = (v) => v === null || (typeof v === "string" && ISO_TIMESTAMP.test(v));
-const isDoubt = (v) => isObject(v) && Object.keys(v).sort().join() === "ambiguity,step" && isNonEmptyString(v.step) && isNonEmptyString(v.ambiguity);
+// A reviewer's doubt also names the stage it reviewed.
+const DOUBT_KEYS = ["ambiguity,step", "ambiguity,stage,step"];
+const isDoubt = (v) => isObject(v) && DOUBT_KEYS.includes(Object.keys(v).sort().join()) && isNonEmptyString(v.step) && isNonEmptyString(v.ambiguity) && (!Object.hasOwn(v, "stage") || isNonEmptyString(v.stage));
 const isDoubts = (v) => Array.isArray(v) && v.length > 0 && v.every(isDoubt);
 
 function checkObject(value, path, shape, errors, { closed = true, optional = [] } = {}) {
@@ -144,8 +146,9 @@ export function validateLedger(ledger) {
     lenses: [isObject, "an object"], // pb stage finish writes "safety-net" (counts and lens names, no finding content); the schema documents it
     fixes: [isObject, "an object"],
     voidedGates: [Array.isArray, "an array"],
+    permissionWaits: [Array.isArray, "an array"],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
-  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates"] });
+  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "permissionWaits"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
@@ -192,6 +195,13 @@ export function validateLedger(ledger) {
       case "voidedGates":
         if (Array.isArray(ledger.voidedGates)) {
           ledger.voidedGates.forEach((v, i) => checkObject(v, `voidedGates.${i}`, { gate: [isNonEmptyString, "a non-empty string"], record: [isObject, "an object"], reason: [isString, "a string"] }, errors));
+        }
+        break;
+      case "permissionWaits":
+        if (Array.isArray(ledger.permissionWaits)) {
+          ledger.permissionWaits.forEach((w, i) => checkObject(w, `permissionWaits.${i}`, {
+            askedAt: [isTimestamp, "an ISO 8601 timestamp"], seq: [isCount, "a non-negative integer"], tool: [isNonEmptyString, "a non-empty string"], answeredAt: [isTimestamp, "an ISO 8601 timestamp"],
+          }, errors, { optional: ["tool", "answeredAt"] }));
         }
         break;
       case "acceptances":

@@ -1,5 +1,6 @@
 import type { AgentSpawnInput, EngineInterface } from 'claude-code'
 import { isStandingScenarios, isStandingTests, newestKeyAmong, scenarioRows } from '../shared-node/standing-scenarios.mjs'
+import { withPermissionAsk } from '../shared-node/permission-wait.mjs'
 
 const TESTS = '.pairingbuddy/tests.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
@@ -114,8 +115,11 @@ async function readStandingReturn($: EngineInterface, ledger: Ledger, match: (le
 
 // The inputs, with the test list from the placeholders return a stage wrote (a new-path run writes no tests.json), else
 // the legacy tests.json.
+// Claude Code's permission prompt, while it stands, reads as the question waiting on the human (withPermissionAsk), so STATUS,
+// the band and the alert treat it as any NEEDS YOU.
 async function readInputsAndTests($: EngineInterface, spawns: Spawn[]): Promise<Inputs> {
-  const [ledger, legacyFile, now] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($)])
+  const [read, legacyFile, now] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($)])
+  const ledger = withPermissionAsk(read) as Ledger
   const testsFile = (await readStandingReturn($, ledger, isStandingTests)) ?? legacyFile
   return inputsOf({ ledger, testsFile, now, spawns })
 }

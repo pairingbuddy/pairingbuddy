@@ -403,7 +403,7 @@ The report's shape, top to bottom:
 - **NEEDS YOU.** Only what the human must act on or decide: a question not answered yet or a sign-off not given, a stop with its plain reason and how to go on, each review finding left open (to fix, or left as is) with its gist, where it is and the question it left (a doubt raised on that finding reads once, under it), any other open doubt, and checks by hand (a test that passed before its code, a scenario the last coverage check still found untested). With none: "Nothing needs you." (or "Nothing needs you right now: the run is still going."). The pull request is in the header, not here.
 - **WHAT WAS DONE.** The files changed, the tests added and passing (by short name), the tests not passing yet, the pull request opened.
 - **CHANGES OF PLAN OR SCOPE.** Only when material: a new task type after a review, tests added because a coverage check found a scenario with none, and each finding a review had fixed in the work. A new confidence in the same type, a cycle's quick review and the pull request's wording are left out. With none, the section is not drawn.
-- **How it ran,** a closed `<details>` at the bottom, for debugging: AT A GLANCE (task type, where it is, spent, waited, left), SETTLED DOUBTS, STEPS, SCENARIOS, TESTS, BUILT, REVIEW and COMMITS, as before.
+- **How it ran,** a closed `<details>` at the bottom, for debugging: AT A GLANCE (task type, where it is, spent, waited, left), DOUBTS RAISED (each doubt the human answered a gate past, with where it was raised and what settled it), STEPS, SCENARIOS, TESTS, BUILT, REVIEW and COMMITS, as before.
 
 ### The report looks like the pane (2026-11-17)
 

@@ -279,6 +279,25 @@ test('pane-now-names-what-is-needed-in-the-strongest-treatment', async ($, on) =
   expect([rest.text, rest.props.color, rest.props.bold, rest.props.inverse], 'what it needs follows in yellow, bold, not a block').toEqual([' · your OK on the scenarios', 'warning', true, undefined])
 })
 
+// Claude Code's own permission prompt, unanswered (hooks/permission.mjs opened the wait): the human is needed, as at a gate.
+test('pane-and-band-say-needs-you-while-claude-code-asks-permission', async ($, on) => {
+  const asking = { ...AFTER_SCENARIOS, permissionWaits: [{ askedAt: '2026-11-04T08:14:00.000Z', seq: 7, tool: 'Workflow' }] }
+  engine(on, asking)
+  await start($)
+
+  const { head } = await statusNodes($)
+  const band = (await bandTexts($, { bodyColumns: 200 })).join('')
+
+  const lines = await paneLines($)
+  const at = lines.findIndex(line => line.startsWith('STATUS'))
+  // STATUS wraps at its parts: the head, then what Claude Code asks on the line under it.
+  const status = [lines[at], lines[at + 1]].map(line => line.replace(/^(STATUS)?\s+/, ''))
+
+  expect(status, 'STATUS says what Claude Code is asking').toEqual(['▲ NEEDS YOU', 'Claude Code is asking your permission to start the next step'])
+  expect([head.text, head.props.color, head.props.inverse], 'in the yellow block').toEqual(['▲ NEEDS YOU', 'warning', true])
+  expect(band, `the band leads with it: ${band}`).toMatch(/^▲ NEEDS YOU/)
+})
+
 test('pane-status-says-why-it-stopped-as-strongly-in-red', async ($, on) => {
   engine(on, { ...SNAPSHOT_RUNNING, stop: { code: 'step-failed', reason: 'the stage failed three times', seq: 3 } })
   await start($)
