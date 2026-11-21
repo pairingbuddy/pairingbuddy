@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `pb unit open` with no base it can find says where it looked and how to fix it, not only `cannot tell the base branch` (smoke run: the session had no way forward and stopped). It names `pr.base_branch` in `.pairingbuddy/git-config.json` and `origin/HEAD`, and gives the human a `!git -C <root> remote set-head origin --auto` line to type.
 - Waited keeps the time the human spent answering a question they sent back with redo, and the time of a stop they later approved past (watched run: a redo removed the gate's record, and with it the wait, so SPENT counted that time as work). Such a wait moves to the ledger's new `gateWaits` list, and every round of a redone gate counts.
 - The task-done question no longer asks over a reviewer's doubt that a later fix settled (watched run: the report said "settled by a later fix" for the doubt the question had just asked about). A refuter's doubt now stands only while its finding does: a fix the course check kept in a later round of the same review settles it, by the report's rule.
 - Two release channels: `pairingbuddy` (stable, tags `vX.Y.Z`) and `pairingbuddy-experimental` (tags `vX.Y.Z-exp.N` that passed the full suite and a smoke run), both invoked as `/pairingbuddy:code`. A new hook, `hooks/channel-guard.mjs`, says so at session start and refuses every prompt while both are on, with the command that turns one off. The README says how to switch; CONTRIBUTING has the checklist for an experimental tag.

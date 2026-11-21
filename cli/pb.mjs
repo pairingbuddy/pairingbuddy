@@ -1955,7 +1955,7 @@ function unitOpen(args) {
   const configHash = validatedConfigHash(root);
   const gitConfigHash = fileHash(gitConfigPath(root));
   const base = baseBranch(gitConfig, defaultBranchOf(root, gitConfig.remote));
-  if (base === null) throw new Refusal("cannot tell the base branch");
+  if (base === null) throw new Refusal(unknownBaseMessage(root, gitConfig.remote));
   const git = (...a) => runGit(root, a);
   git("fetch", gitConfig.remote);
   const stackOn = planned ? stackOnOf(root, planned, gitConfig) : undefined;
@@ -1973,6 +1973,11 @@ function unitOpen(args) {
     throw e;
   }
   return { ok: true, branch, base: parent, baseSha, doctor: doctorReport(root) };
+}
+
+// Names both places the base is looked for, and the two fixes: the setting, or the `!` line that sets <remote>/HEAD.
+function unknownBaseMessage(root, remote) {
+  return `cannot tell the base branch: .pairingbuddy/git-config.json sets no pr.base_branch, and ${remote}/HEAD is not set. Nothing was touched. Set pr.base_branch there to the branch PRs go to, or let git learn ${remote}'s default branch. The human types:\n!git -C ${shellWord(root)} remote set-head ${shellWord(remote)} --auto`;
 }
 
 // The stack rule's depth is for the rule's own cap; unit.json records only where the unit stacks.
