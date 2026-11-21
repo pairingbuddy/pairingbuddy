@@ -93,7 +93,7 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
-Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+Look at files with Read. Find and search with Glob and Grep when they exist, otherwise with one plain `find` or `grep` Bash command. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
 
 With a `<paths>` block: your batch is the one row `<test_id>` names, there is no `.pairingbuddy/test-state.json` to write, and you may run the test to check your work. The CLI records whether it failed, so do not report that. No human is reachable from a stage: where the steps below say to ask the human, do not guess, and describe the problem in `ambiguity` instead. With nothing open, return an empty string. `ambiguity` is only for a question a human must settle: never use it to report what you did or found. A test that passes after an earlier GREEN is the CLI's call, which records it as covered, so it is not a question: leave it out of `ambiguity`.
 

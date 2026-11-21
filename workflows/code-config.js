@@ -427,7 +427,7 @@ function corpusBlock(corpus) {
 
 // The tool rule every agent's definition carries (contracts/agent-config.yaml, focus_warning), said again in each prompt: an
 // agent that inspected files with a compound Bash call waited on a permission prompt mid-stage.
-const TOOL_RULE = 'Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.';
+const TOOL_RULE = 'Look at files with Read. Find and search with Glob and Grep when they exist, otherwise with one plain `find` or `grep` Bash command. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.';
 
 // Where a prompt's paths are: a redraft that loaded a skill read its inputs under the skill's plugin folder, found nothing
 // there, and its reads outside the project asked for permission.

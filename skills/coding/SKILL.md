@@ -9,9 +9,9 @@ Orchestrates the TDD workflow by invoking specialized agents via the Task tool. 
 
 ## Tools in the Main Context
 
-Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run. This holds all through the task, from the first check to the end of the run, and in every skill this one runs:
+Look at files with Read. Find and search with Glob and Grep when they exist, otherwise with one plain `find` or `grep` Bash command. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run. This holds all through the task, from the first check to the end of the run, and in every skill this one runs:
 
-- To see whether `.pairingbuddy/test-config.json` or another state file exists, and what it holds, Read it or Glob for it. Read the project's files the same way, from the project root where the session started.
+- To see whether `.pairingbuddy/test-config.json` or another state file exists, and what it holds, Read it. Read the project's files the same way, from the project root where the session started.
 - A schema named in State File Mappings is at `<root>/contracts/schemas/<schema>`, with `<root>` the plugin root that An Open Run Comes First defines: Read it there, never find it with Bash.
 - Whether a human can answer is in your session context: SessionStart adds a `<pairingbuddy-no-human>` block under the auto policy or `claude -p`. Never print an environment variable to learn it.
 - Start a stage with the Workflow tool, by the name and args `pb status --action` gives. Do not load it with the Skill tool first: that adds a step and changes nothing.

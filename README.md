@@ -68,7 +68,7 @@ pb allows these by itself, with no prompt:
 - Its own CLI calls (`node <plugin>/cli/pb.mjs <verb>`) in their bare form, with no `cd`, `;`, `&&`, pipe, quotes or redirect: before a run, `status`, `unit open`, `unit status`, `run open` and `plan next`; during a run, every verb but `publish` and `pr refresh`, which ask each time because they reach GitHub.
 - Loading its internal stage skills, such as `pairingbuddy:intake`, which only load instructions.
 
-Its skills and agents look at files with Read, Glob and Grep and keep Bash to one plain command, so a compound shell command does not stop a run on a prompt.
+Its skills and agents look at files with Read, search with Glob and Grep (or one plain `find` or `grep` where a Claude Code build leaves those out) and keep Bash to one plain command, so a compound shell command does not stop a run on a prompt.
 
 ### Plan
 
