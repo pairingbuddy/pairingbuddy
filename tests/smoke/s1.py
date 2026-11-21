@@ -1,9 +1,11 @@
 """Smoke S1: `/pairingbuddy:code <task>` end to end on a sample repo, on a cheap model.
 
-One `claude -p` session on a human-made branch, with the plugin loaded from outside its cwd and the
-Stop hook driving the chain from stage to stage. Asserts control flow only, never output quality:
-stage order config then safety-net, one commit, the gate source, and run state gone at the end. The
-ledger leaves with the run, so a watcher keeps its last copy while the session runs.
+One `claude -p` session on main, with a local bare origin whose HEAD is main and the gh shim first
+on PATH, so `pb unit open` finds its base and nothing reaches GitHub. The plugin loads from outside
+its cwd and the Stop hook drives the chain from stage to stage. Asserts control flow only, never
+output quality: stage order intake, config, safety-net, one commit on the unit branch, the gate
+source, and the code run ended. The ledger leaves with the run, and the publish run after it opens
+run/task again, so a watcher keeps the code run's last copy. The publish run is not checked.
 
 Two checks need no model and cost nothing, because a model cannot be made to misbehave on cue. They
 drive the real gate hook, tap and CLI on a fresh sample repo: out-of-order calls are denied, and
@@ -39,11 +41,13 @@ from tests.smoke.runner import (
 
 CLI = REPO_ROOT / "cli" / "pb.mjs"
 GATE_HOOK = REPO_ROOT / "hooks" / "gate-boot.mjs"
+GH_SHIM = REPO_ROOT / "tests" / "js" / "gh-shim.mjs"
 TAP_HOOK = REPO_ROOT / "hooks" / "tap.mjs"
 SAMPLE_REPO = Path(__file__).parent / "sample_repo"
-STAGES = ["code-config", "code-safety-net"]
+STAGES = ["intake", "code-config", "code-safety-net"]
 GATE = "G:task-end"
 CONFIG_KEY = "code-config.apply-config-change.-.r1.a1"
+CLASSIFY_KEY = "intake.classify-task.-.r1.a1"
 BRANCH = "port-change"
 WATCH_INTERVAL_S = 0.02
 DENIED = "PreToolUse:"
@@ -74,6 +78,8 @@ TEST_CONFIG = {
     "default_runner": "node",
 }
 NO_DOCS = {"in_repo_docs": [], "external_docs": [], "last_verified": "2026-01-01T00:00:00Z"}
+# The sample's config files, so `pb task end` checks a config_change against them and asks no human.
+GIT_CONFIG = {"config_globs": ["app.ini", "settings.json"]}
 
 
 @dataclass
@@ -101,11 +107,12 @@ def git(repo: Path, *args: str) -> str:
     return subprocess.run(command, check=True, capture_output=True, text=True).stdout
 
 
-def make_repo(parent: Path) -> Path:
-    """A fresh copy of the sample repo, on a branch a human made from main.
+def make_repo(parent: Path, on_main: bool = False) -> tuple[Path, Path]:
+    """A fresh copy of the sample repo and its local bare origin, which has main as its HEAD.
 
-    Signing is off, so a signer cannot flake the run. `.pairingbuddy/` is ignored, as the coding
-    skill requires, because its state files would otherwise leave the tree dirty at `pb task end`.
+    The repo is on a branch a human made from main, or left on main with on_main. Signing is off,
+    so a signer cannot flake the run. `.pairingbuddy/` is ignored, as the coding skill requires,
+    because its state files would otherwise leave the tree dirty at `pb task end`.
     """
     repo = parent / "repo"
     shutil.copytree(SAMPLE_REPO, repo)
@@ -118,10 +125,28 @@ def make_repo(parent: Path) -> Path:
     state.mkdir()
     (state / "test-config.json").write_text(json.dumps(TEST_CONFIG))
     (state / "doc-config.json").write_text(json.dumps(NO_DOCS))
+    (state / "git-config.json").write_text(json.dumps(GIT_CONFIG))
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "-m", "init")
-    git(repo, "switch", "-q", "-c", BRANCH)
-    return repo
+    remote = parent / "origin.git"
+    git(parent, "init", "-q", "--bare", "-b", "main", str(remote))
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "-q", "origin", "main")
+    git(repo, "remote", "set-head", "origin", "main")
+    if not on_main:
+        git(repo, "switch", "-q", "-c", BRANCH)
+    return repo, remote
+
+
+def gh_shim_env(parent: Path) -> dict[str, str]:
+    """The env that puts the recording gh shim of tests/js/gh-shim.mjs first on PATH."""
+    script = (
+        f"const {{ installGhShim }} = await import({json.dumps(GH_SHIM.as_uri())});"
+        "process.stdout.write(JSON.stringify(installGhShim({ parent: process.argv[1] }).env()));"
+    )
+    command = ["node", "--input-type=module", "-e", script, str(parent)]
+    done = subprocess.run(command, env=clean_env(), check=True, capture_output=True, text=True)
+    return json.loads(done.stdout)
 
 
 def pb_raw(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -149,11 +174,12 @@ def commit_subjects(repo: Path) -> list[str]:
 
 
 class LedgerWatch:
-    """Keeps the last readable ledger of a run, which `pb task end` deletes."""
+    """Keeps the last readable ledger, and the code run's last one, which `pb task end` deletes."""
 
     def __init__(self, repo: Path):
         self.path = task_dir(repo) / "ledger.json"
         self.last: dict | None = None
+        self.last_code: dict | None = None
         self.stage_started: dict[str, float] = {}
         self.stage_ended: dict[str, float] = {}
         self._done = threading.Event()
@@ -174,7 +200,9 @@ class LedgerWatch:
             except (OSError, json.JSONDecodeError):
                 continue
             self.last = ledger
-            self._note_stage(ledger["stage"])
+            if ledger.get("kind") == "code":
+                self.last_code = ledger
+                self._note_stage(ledger["stage"])
 
     def _note_stage(self, stage: dict) -> None:
         if stage["name"]:
@@ -190,17 +218,21 @@ class LedgerWatch:
         }
 
 
+def code_run_open(repo: Path) -> bool:
+    return task_dir(repo).exists() and read_ledger(repo).get("kind") == "code"
+
+
 def run_position(repo: Path, last: dict | None) -> str:
     """Where a run that ended early was left, which names a stranded stage or a skipped start."""
     if last is None:
-        return "no run was opened, so nothing went through the gate"
+        return "no code run was opened, so nothing went through the gate"
     if not task_dir(repo).exists():
         return "the run ended"
     ledger = read_ledger(repo)
     stage = ledger["stage"]
     return (
-        f"run left open: stage {stage['name']!r} is {stage['status']!r} with runId "
-        f"{stage['runId']!r}, finished {[s['name'] for s in ledger['stages']]}, "
+        f"{ledger.get('kind')} run left open: stage {stage['name']!r} is {stage['status']!r} "
+        f"with runId {stage['runId']!r}, finished {[s['name'] for s in ledger['stages']]}, "
         f"stop {ledger['stop']}, needsHuman {ledger['needsHuman']}"
     )
 
@@ -245,14 +277,39 @@ def stage_start(stage: str, **drop: str) -> dict:
     return {"name": f"pairingbuddy:{stage}", "args": kept}
 
 
+def start_stage(repo: Path, stage: str, run_id: str) -> None:
+    start = stage_start(stage)
+    hook(GATE_HOOK, repo, "Workflow", start)
+    hook(TAP_HOOK, repo, "Workflow", start, tool_response={"runId": run_id})
+
+
+def pass_intake(repo: Path) -> None:
+    """Intake done on a certain config_change, and G:type approved by the human from this shell.
+
+    With no lens return, G:type asks; the human's approve is what S2 does for a judgment reason.
+    """
+    start_stage(repo, "intake", "wf_intake")
+    artifact = {
+        "pb_key": CLASSIFY_KEY,
+        "ambiguity": "",
+        "task_type": "config_change",
+        "confidence": "certain",
+        "rationale": "it sets one value in settings.json",
+    }
+    agent = {"agent_id": "smoke-intake", "agent_type": "pairingbuddy:classify-task"}
+    hook(TAP_HOOK, repo, "StructuredOutput", artifact, **agent)
+    pb(repo, "stage", "finish")
+    pb(repo, "gate", "eval")
+    pb(repo, "human", "approve", "G:type")
+
+
 def prepare_finishable_stage(parent: Path) -> Path:
     """code-config with all its evidence, reached by the real hooks and CLI and no model."""
     parent.mkdir(parents=True)
-    repo = make_repo(parent)
+    repo, _ = make_repo(parent)
     pb(repo, "run", "open", "--kind", "code")
-    start = stage_start(STAGES[0])
-    hook(GATE_HOOK, repo, "Workflow", start)
-    hook(TAP_HOOK, repo, "Workflow", start, tool_response={"runId": "wf_smoke"})
+    pass_intake(repo)
+    start_stage(repo, "code-config", "wf_smoke")
     (repo / "settings.json").write_text('{"feature": {"enabled": true}}\n')
     artifact = {
         "pb_key": CONFIG_KEY,
@@ -292,7 +349,7 @@ def assert_denied_untouched(repo: Path, tool: str, tool_input: dict, what: str) 
 
 def check_out_of_order_denied(parent: Path) -> None:
     parent.mkdir(parents=True)
-    repo = make_repo(parent)
+    repo, _ = make_repo(parent)
     pb(repo, "run", "open", "--kind", "code")
     assert_denied_untouched(repo, "Workflow", stage_start(STAGES[1]), "a stage ahead of its turn")
     agent = {"subagent_type": "pairingbuddy:apply-config-change", "prompt": "do it"}
@@ -300,6 +357,9 @@ def check_out_of_order_denied(parent: Path) -> None:
     for missing in ("task", "pluginRoot"):
         start = stage_start(STAGES[0], **{missing: ""})
         assert_denied_untouched(repo, "Workflow", start, f"a stage start with no {missing}")
+    answer = json.loads(hook(GATE_HOOK, repo, "Workflow", stage_start(STAGES[0])) or "{}")
+    if answer.get("hookSpecificOutput", {}).get("permissionDecision") == "deny":
+        raise SmokeError(f"the stage in its turn was denied, so the above proves nothing: {answer}")
 
 
 def tool_uses(events: list[dict]) -> list[dict]:
@@ -360,19 +420,21 @@ def read_stream(result: S1Result, stream: Path) -> None:
 
 
 def control_flow_run(task: str, budget: Budget, record: Path, result: S1Result) -> None:
-    repo = make_repo(record)
+    repo, _ = make_repo(record, on_main=True)
+    gh = gh_shim_env(record)
+    prompt = f"/pairingbuddy:code {TASKS[task]}"
     started = time.monotonic()
     with LedgerWatch(repo) as watch:
         try:
-            run_claude(repo, f"/pairingbuddy:code {TASKS[task]}", budget, record / "session.stream")
+            run_claude(repo, prompt, budget, record / "session.stream", gh)
         except SmokeError as e:
-            raise SmokeError(f"{e}; {run_position(repo, watch.last)}") from e
+            raise SmokeError(f"{e}; {run_position(repo, watch.last_code)}") from e
         finally:
             result.seconds = round(time.monotonic() - started, 1)
     result.stage_seconds = watch.stage_seconds()
-    if watch.last is None or task_dir(repo).exists():
-        raise SmokeError(run_position(repo, watch.last))
-    assert_control_flow(watch.last, commit_subjects(repo))
+    if watch.last_code is None or code_run_open(repo):
+        raise SmokeError(run_position(repo, watch.last_code))
+    assert_control_flow(watch.last_code, commit_subjects(repo))
 
 
 def check_free(parent: Path) -> None:

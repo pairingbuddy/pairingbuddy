@@ -11,6 +11,9 @@ export const BUDGET_USD = 3;
 const RUN_TIMEOUT_MS = 1_200_000;
 export const CHEAP_MODEL = "claude-haiku-5-5";
 export const DROPPED_PREFIXES = ["PAIRINGBUDDY", "PB_", "CLAUDE", "ANTHROPIC_", "GIT_"];
+// The run's tools, named: the default set can leave out Glob and Grep, which the product's tool rule names. runner.py
+// and the labs read the same file.
+export const SESSION_TOOLS = JSON.parse(readFileSync(new URL("./session-tools.json", import.meta.url), "utf8"));
 
 export class SmokeError extends Error {}
 export class SpendCapError extends SmokeError {}
@@ -49,6 +52,7 @@ export const claudeCommand = (prompt, budgetUsd, pluginDir = REPO_ROOT, resume =
   "--effort", "low",
   "--setting-sources", "project,local",
   "--strict-mcp-config",
+  "--tools", SESSION_TOOLS.join(","),
   "--permission-mode", "auto",
   "--max-budget-usd", String(budgetUsd),
   "--output-format", "stream-json",

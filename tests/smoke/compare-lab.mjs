@@ -18,7 +18,7 @@ import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { installGhShim } from "../js/gh-shim.mjs";
-import { DROPPED_PREFIXES, REPO_ROOT } from "./claude-run.mjs";
+import { DROPPED_PREFIXES, REPO_ROOT, SESSION_TOOLS } from "./claude-run.mjs";
 
 export const SIDES = ["old", "new"];
 export const OLD_REF = "v0.7.0";
@@ -114,6 +114,7 @@ export function runArgs(side, lab, { prompt = runPrompt(lab.task), resume = null
     "--plugin-dir", lab.sides[side].plugin.dir,
     "--setting-sources", "project,local",
     "--strict-mcp-config",
+    "--tools", SESSION_TOOLS.join(","),
     "--permission-mode", lab.permissionMode,
     "--max-budget-usd", String(budgetUsd),
   ];

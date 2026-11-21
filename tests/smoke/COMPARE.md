@@ -62,7 +62,7 @@ Nothing reaches GitHub: `origin` is a local bare repo, and the recording `gh` sh
 
 ## How each side runs unattended
 
-Both run `claude -p "/pairingbuddy:code <task>" --output-format json --model <id> --plugin-dir <plugin> --setting-sources project,local --strict-mcp-config --permission-mode bypassPermissions --max-budget-usd <cap>` in their repo. The environment drops every `PAIRINGBUDDY*`, `PB_*`, `CLAUDE*`, `ANTHROPIC_*` and `GIT_*` variable first.
+Both run `claude -p "/pairingbuddy:code <task>" --output-format json --model <id> --plugin-dir <plugin> --setting-sources project,local --strict-mcp-config --tools <tests/smoke/session-tools.json> --permission-mode bypassPermissions --max-budget-usd <cap>` in their repo. The tools are named because the default set can leave out Glob and Grep. The environment drops every `PAIRINGBUDDY*`, `PB_*`, `CLAUDE*`, `ANTHROPIC_*` and `GIT_*` variable first.
 
 - **Old** gets `PAIRINGBUDDY_SOLO=true`. Its `_ask_human` checkpoints answer yes, as under Solo Buddy, which also ran `claude -p --dangerously-skip-permissions`.
 - **New** gets `PAIRINGBUDDY_GATE_POLICY=auto`. The gate hook records the auto policy from it whatever the permission mode, so its continue gates pass by themselves, and the curator asks no question under `claude -p`.

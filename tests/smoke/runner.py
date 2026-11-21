@@ -19,6 +19,9 @@ BUDGET_USD = 3.0
 RUN_TIMEOUT_S = 600
 CHEAP_MODEL = "claude-haiku-5-5"
 DROPPED_PREFIXES = ("PAIRINGBUDDY", "PB_", "CLAUDE", "ANTHROPIC_", "GIT_")
+# The run's tools, named: the default set can leave out Glob and Grep, which the product's tool
+# rule names. claude-run.mjs and the labs read the same file.
+SESSION_TOOLS = json.loads((Path(__file__).parent / "session-tools.json").read_text())
 
 
 class SmokeError(Exception):
@@ -68,6 +71,7 @@ def claude_command(prompt: str, budget_usd: float) -> list[str]:
         "--effort", "low",
         "--setting-sources", "project,local",
         "--strict-mcp-config",
+        "--tools", ",".join(SESSION_TOOLS),
         "--permission-mode", "auto",
         "--max-budget-usd", str(budget_usd),
         "--output-format", "stream-json",
@@ -112,13 +116,15 @@ def refuse_repo_inside_plugin(repo: Path) -> None:
         )
 
 
-def spawn(repo: Path, prompt: str, budget: Budget, record: Path) -> subprocess.CompletedProcess:
+def spawn(
+    repo: Path, prompt: str, budget: Budget, record: Path, env: dict[str, str]
+) -> subprocess.CompletedProcess:
     refuse_repo_inside_plugin(repo)
     try:
         return subprocess.run(
             claude_command(prompt, round(budget.remaining, 6)),
             cwd=repo,
-            env=clean_env(),
+            env=env,
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -132,12 +138,17 @@ def spawn(repo: Path, prompt: str, budget: Budget, record: Path) -> subprocess.C
         raise SmokeError(f"claude timed out after {RUN_TIMEOUT_S}s") from e
 
 
-def run_claude(repo: Path, prompt: str, budget: Budget, record: Path) -> ClaudeRun:
-    """Runs and charges `budget`, so spend is known to the caller even when this raises."""
+def run_claude(
+    repo: Path, prompt: str, budget: Budget, record: Path, extra_env: dict[str, str] | None = None
+) -> ClaudeRun:
+    """Runs and charges `budget`, so spend is known to the caller even when this raises.
+
+    `extra_env` goes on top of the clean env, for example the gh shim first on PATH.
+    """
     if budget.remaining <= 0:
         raise SpendCapError(f"the spend cap is used up at ${budget.spent:.4f}")
     started = time.monotonic()
-    done = spawn(repo, prompt, budget, record)
+    done = spawn(repo, prompt, budget, record, clean_env() | (extra_env or {}))
     seconds = time.monotonic() - started
     record.write_text(done.stdout)
     events = parse_stream(done.stdout)

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { makeS2Repo, TASK, FEATURE_TASK } from "./s2.mjs";
 import { installGhShim } from "../js/gh-shim.mjs";
 import { makeBrokenCopy } from "./broken-plugin.mjs";
-import { CHEAP_MODEL, DROPPED_PREFIXES, REPO_ROOT } from "./claude-run.mjs";
+import { CHEAP_MODEL, DROPPED_PREFIXES, REPO_ROOT, SESSION_TOOLS } from "./claude-run.mjs";
 
 const BROKEN_MODES = ["load", "render"];
 const TASKS = { bug_fix: TASK, new_feature: FEATURE_TASK };
@@ -30,7 +30,7 @@ ${Object.entries(ghEnv).map(([k, v]) => `export ${k}=${k === "PATH" ? `${shq(v.s
 export ANTHROPIC_DEFAULT_OPUS_MODEL=${shq(CHEAP_MODEL)}
 export ANTHROPIC_DEFAULT_SONNET_MODEL=${shq(CHEAP_MODEL)}
 cd ${shq(repo)} || exit 1
-exec claude --plugin-dir ${shq(pluginDir)} --model haiku --setting-sources project,local --strict-mcp-config --permission-mode ${ask ? "acceptEdits" : "auto"}${settings ? ` --settings ${shq(settings)}` : ""} ${shq(`/pairingbuddy:code ${task}`)}
+exec claude --plugin-dir ${shq(pluginDir)} --model haiku --setting-sources project,local --strict-mcp-config --tools ${shq(SESSION_TOOLS.join(","))} --permission-mode ${ask ? "acceptEdits" : "auto"}${settings ? ` --settings ${shq(settings)}` : ""} ${shq(`/pairingbuddy:code ${task}`)}
 `;
 }
 

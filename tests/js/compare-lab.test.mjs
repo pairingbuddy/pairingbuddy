@@ -120,7 +120,9 @@ describe("compare-lab-env", () => {
     const old = lab.runArgs("old", fakeLab());
     const neu = lab.runArgs("new", fakeLab());
     assert.equal(flag(old, "-p"), "/pairingbuddy:code Add free_slots");
-    for (const [name, value] of [["--output-format", "json"], ["--model", "claude-sonnet-5-5"], ["--permission-mode", "bypassPermissions"], ["--setting-sources", "project,local"], ["--max-budget-usd", "25"]]) {
+    const tools = JSON.parse(readFileSync(new URL("../smoke/session-tools.json", import.meta.url), "utf8")).join(",");
+    assert.match(tools, /\bGlob\b.*\bGrep\b/, "the sessions have Glob and Grep, which the tool rule names");
+    for (const [name, value] of [["--output-format", "json"], ["--model", "claude-sonnet-5-5"], ["--permission-mode", "bypassPermissions"], ["--setting-sources", "project,local"], ["--max-budget-usd", "25"], ["--tools", tools]]) {
       assert.equal(flag(old, name), value, name);
       assert.equal(flag(neu, name), value, name);
     }
