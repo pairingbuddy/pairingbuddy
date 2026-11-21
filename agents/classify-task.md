@@ -57,7 +57,7 @@ With a `<paths>` block: where the steps below say to ask the human, do not guess
 With a `<paths>` block that includes `classification` (an earlier classification) and a prompt that lists findings, classify again taking the findings into account, and still return the same shape.
 
 1. Read the task from `.pairingbuddy/task.json`
-2. Analyze the task description and context
+2. Analyze the task description and context. The branch name is not evidence of the task type: the branch was named before you classified, from a guess. Classify from the task alone.
 3. Classify into one of five types:
    - **new_feature**: Adding new functionality that requires new tests
    - **bug_fix**: Fixing incorrect behavior (needs regression test)

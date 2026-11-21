@@ -73,7 +73,7 @@ const LENSES = {
         {
           "name": "classification",
           "model": "sonnet",
-          "brief": "Check that the task type fits what the task text asks for (new feature, bug fix, refactoring, config change or spike), and that the stated confidence is justified by the text."
+          "brief": "Check that the task type fits what the task text asks for (new feature, bug fix, refactoring, config change or spike), and that the stated confidence is justified by the text. The branch name is not evidence of the task type: it was named before intake, from a guess."
         }
       ],
       "refute": "none",
