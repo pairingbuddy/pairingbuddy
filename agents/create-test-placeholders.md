@@ -150,7 +150,7 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 3: Human Review
 
-With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at a gate. If a test case leaves what to test unresolved, do not guess: describe the open question in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at a gate. If a test case leaves what to test unresolved, do not guess: ask the open question in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only a question a human must answer before the work can be trusted, phrased as a question. Never use it to report what you did, found or chose: explain your choices in `notes`.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -250,7 +250,8 @@ With a `<paths>` block, return the result as your StructuredOutput with exactly 
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
-  "ambiguity": "string (open question a human should settle, or empty string)",
+  "ambiguity": "string (only a question a human must answer before the work can be trusted, phrased as a question, or empty string)",
+  "notes": "string (explanations of your choices, or empty string; no gate reads it)",
   "commit_subject": "string (proposed commit subject line, or empty string when nothing changed)",
   "files_changed": ["string (repo-relative path of each modified file, never absolute)"],
   "tests": [

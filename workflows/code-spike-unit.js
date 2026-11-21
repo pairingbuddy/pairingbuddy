@@ -24,7 +24,7 @@ const RESULT_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question a human should settle, or an empty string"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question, or an empty string. Explanations of your choices go in summary, never here"
     },
     "unit_id": {
       "type": "string",

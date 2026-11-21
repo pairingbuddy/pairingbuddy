@@ -112,7 +112,7 @@ With a `<paths>` block: read the paths, then write the whole write-up, covering 
 
 ### Step 3: Human Review
 
-With a `<paths>` block: skip Step 3. No human is reachable from a stage. If the write-up cannot be settled without a human, describe it in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
+With a `<paths>` block: skip Step 3. No human is reachable from a stage. If the write-up cannot be settled without a human, ask the human in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only a question a human must answer before the work can be trusted, phrased as a question. Never use it to report what you did, found or chose: explain your choices in `document`.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -211,7 +211,7 @@ With a `<paths>` block, return the result as your StructuredOutput with exactly 
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
-  "ambiguity": "string (open question a human should settle, or empty string)",
+  "ambiguity": "string (only a question a human must answer before the work can be trusted, phrased as a question, or empty string)",
   "document": "string (the whole write-up as markdown, covering every recorded finding; at least one character)",
   "finding_map": [
     {

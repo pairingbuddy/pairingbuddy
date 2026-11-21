@@ -11,7 +11,7 @@
     },
     "ambiguity": {
       "type": ["string", "null"],
-      "description": "Open question that affected the synthesis, or null"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (one that affected the synthesis), or null. Explanations of your choices go in summary, never here"
     },
     "summary": {
       "type": "string",

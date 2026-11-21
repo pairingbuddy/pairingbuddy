@@ -3,7 +3,7 @@
   "title": "Scope Refactoring Result",
   "description": "Return of the scope-refactoring agent when its prompt gives paths: the pb key it was given, any open ambiguity, and the code and test issues in the shape of issues.schema.json",
   "type": "object",
-  "required": ["pb_key", "ambiguity", "code_issues", "test_issues"],
+  "required": ["pb_key", "ambiguity", "notes", "code_issues", "test_issues"],
   "properties": {
     "pb_key": {
       "type": "string",
@@ -11,7 +11,11 @@
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question the task left unresolved, or an empty string"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (such as what the task wants refactored where it does not say), or an empty string. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "code_issues": {
       "type": "array",

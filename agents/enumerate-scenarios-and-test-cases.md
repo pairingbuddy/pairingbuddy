@@ -105,7 +105,7 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 3: Human Review
 
-With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the `G:scenarios` gate. If the task leaves what to test unresolved, do not guess: return the scenarios you are sure of and describe the open question in `ambiguity`, which sends the gate to the human. A case the task does not mention is out of scope: leave it out, and it is no ambiguity. Tests run one at a time and RED refuses a test that already passes, so leave out any case the task does not name that the fix for an earlier case would already make pass. A case the task names stays a test even if the fix for an earlier case will also make it pass: the CLI records it as covered, so keeping it is no ambiguity. With nothing open, return an empty string.
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the `G:scenarios` gate. If the task leaves what to test unresolved, do not guess: return the scenarios you are sure of and ask the open question in `ambiguity`, which sends the gate to the human. A case the task does not mention is out of scope: leave it out, and it is no ambiguity. Tests run one at a time and RED refuses a test that already passes, so leave out any case the task does not name that the fix for an earlier case would already make pass. A case the task names stays a test even if the fix for an earlier case will also make it pass: the CLI records it as covered, so keeping it is no ambiguity. With nothing open, return an empty string. `ambiguity` is only a question a human must answer before the work can be trusted, phrased as a question. Never use it to report what you did, found or chose: explain your choices in `notes`.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -197,7 +197,8 @@ With a `<paths>` block, return the result as your StructuredOutput with exactly 
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
-  "ambiguity": "string (open question a human should settle, or empty string)",
+  "ambiguity": "string (only a question a human must answer before the work can be trusted, phrased as a question, or empty string)",
+  "notes": "string (explanations of your choices, or empty string; no gate reads it)",
   "scenarios": [
     {
       "scenario_id": "string (unique identifier)",

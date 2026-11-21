@@ -10,12 +10,12 @@ const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), "
 const schemaOf = (name) => JSON.parse(read(`contracts/schemas/${name}`));
 
 const CONFIG = read("contracts/agent-config.yaml");
-const FILE_FIELDS = ["pb_key", "ambiguity", "commit_subject", "files_changed"];
+const FILE_FIELDS = ["pb_key", "ambiguity", "notes", "commit_subject", "files_changed"];
 const REFACTOR_FIELDS = [...FILE_FIELDS, "approach", "no_change_reason"];
-const ISSUE_FIELDS = ["pb_key", "ambiguity", "issues"];
+const ISSUE_FIELDS = ["pb_key", "ambiguity", "notes", "issues"];
 const COVERAGE_FIELDS = ["status", "scenarios_covered", "scenarios_total", "test_cases_covered", "test_cases_total", "gaps"];
 const AGENTS = [
-  { name: "enumerate-scenarios-and-test-cases", paths: ["test_config", "human_guidance"], fields: ["pb_key", "ambiguity", "scenarios"], legacy: ".pairingbuddy/scenarios.json", legacySchema: "scenarios.schema.json" },
+  { name: "enumerate-scenarios-and-test-cases", paths: ["test_config", "human_guidance"], fields: ["pb_key", "ambiguity", "notes", "scenarios"], legacy: ".pairingbuddy/scenarios.json", legacySchema: "scenarios.schema.json" },
   { name: "create-test-placeholders", paths: ["scenarios", "test_config", "human_guidance", "tests", "coverage_report"], fields: [...FILE_FIELDS, "tests"], legacy: ".pairingbuddy/tests.json", legacySchema: "tests.schema.json" },
   { name: "implement-tests", paths: ["tests", "scenarios", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/test-state.json", legacySchema: "test-state.schema.json" },
   { name: "implement-code", paths: ["tests", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/code-state.json", legacySchema: "code-state.schema.json" },
@@ -23,7 +23,7 @@ const AGENTS = [
   { name: "identify-code-issues", paths: ["code", "test_config", "human_guidance"], fields: ISSUE_FIELDS, legacy: ".pairingbuddy/code-issues.json", legacySchema: "issues.schema.json" },
   { name: "refactor-tests", paths: ["issues", "tests", "test_config", "human_guidance"], fields: REFACTOR_FIELDS, legacy: ".pairingbuddy/files-changed.json", legacySchema: "files-changed.schema.json" },
   { name: "refactor-code", paths: ["issues", "tests", "test_config", "human_guidance"], fields: REFACTOR_FIELDS, legacy: ".pairingbuddy/files-changed.json", legacySchema: "files-changed.schema.json" },
-  { name: "verify-test-coverage", paths: ["scenarios", "tests", "test_config", "human_guidance"], fields: ["pb_key", "ambiguity", ...COVERAGE_FIELDS], legacy: ".pairingbuddy/coverage-report.json", legacySchema: "coverage-report.schema.json" },
+  { name: "verify-test-coverage", paths: ["scenarios", "tests", "test_config", "human_guidance"], fields: ["pb_key", "ambiguity", "notes", ...COVERAGE_FIELDS], legacy: ".pairingbuddy/coverage-report.json", legacySchema: "coverage-report.schema.json" },
 ];
 
 const resultSchema = ({ name }) => `${name}-result.schema.json`;
@@ -185,7 +185,7 @@ test("the placeholder agent writes no assertion, so RED has a real test to commi
 
 test("ambiguity is a question for a human, never a report on the step", () => {
   for (const name of ["create-test-placeholders", "implement-tests", "implement-code", "identify-test-issues", "identify-code-issues", "refactor-tests", "refactor-code", "verify-test-coverage"]) {
-    assert.match(read(`agents/${name}.md`), /`ambiguity` is only for a question a human must settle: never use it to report what you did or found/, name);
+    assert.match(read(`agents/${name}.md`), /`ambiguity` is only a question a human must answer before the work can be trusted, phrased as a question\. Never use it to report what you did, found or chose: explain your choices in `notes`/, name);
   }
 });
 
@@ -258,6 +258,6 @@ for (const name of ["refactor-tests", "refactor-code"]) {
     assert.ok(sentences.some((sentence) => /no change/i.test(sentence) && sentence.includes("`no_change_reason`")), "a sentence tells a fix with no change to make to give the reason in `no_change_reason`");
     assert.ok(!sentences.some((sentence) => /why nothing needed changing/i.test(sentence) && sentence.includes("in `ambiguity`")), "no sentence puts that reason in `ambiguity`");
     assert.ok(sentences.some((sentence) => /refused|failed/i.test(sentence) && sentence.includes("`ambiguity`")), "an edit that was refused or failed is a doubt, in `ambiguity`");
-    assert.ok(sentences.some((sentence) => /never use it to report what you did or found/i.test(sentence) && !/\b(except|unless|apart from|other than)\b/i.test(sentence)), "the never-report rule has no exception");
+    assert.ok(sentences.some((sentence) => /never use it to report what you did, found or chose/i.test(sentence) && !/\b(except|unless|apart from|other than)\b/i.test(sentence)), "the never-report rule has no exception");
   });
 }

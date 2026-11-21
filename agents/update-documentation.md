@@ -91,7 +91,7 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 ### Step 2: Main Work
 
-With a `<paths>` block: skip bootstrapping, and treat a missing doc config as no configured docs. Work only on the in-repo docs the config lists. With nothing to update, change nothing and return an empty `files_changed`. No human is reachable from a stage: where the steps below say to ask the human, do not guess, and describe the open question in `ambiguity` instead. Make the changes without waiting for a review, since the human reviews at the task-end gate.
+With a `<paths>` block: skip bootstrapping, and treat a missing doc config as no configured docs. Work only on the in-repo docs the config lists. With nothing to update, change nothing and return an empty `files_changed`. No human is reachable from a stage: where the steps below say to ask the human, do not guess, and ask the open question in `ambiguity` instead. Make the changes without waiting for a review, since the human reviews at the task-end gate.
 
 1. **Bootstrap doc-config.json** (if needed)
    a. Check if `.pairingbuddy/doc-config.json` exists
@@ -115,7 +115,7 @@ With a `<paths>` block: skip bootstrapping, and treat a missing doc config as no
 
 ### Step 3: Human Review
 
-With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the task-end gate. Make only minimal changes the task clearly calls for. If the task leaves what the docs should say unresolved, do not guess: leave that part unchanged and describe the open question in `ambiguity`, which sends the task-end gate to the human. With nothing open, return an empty string.
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the task-end gate. Make only minimal changes the task clearly calls for. If the task leaves what the docs should say unresolved, do not guess: leave that part unchanged and ask the open question in `ambiguity`, which sends the task-end gate to the human. With nothing open, return an empty string. `ambiguity` is only a question a human must answer before the work can be trusted, phrased as a question. Never use it to report what you did, found or chose: explain your choices in `notes`.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -222,7 +222,8 @@ With a `<paths>` block, return the result as your StructuredOutput with exactly 
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
-  "ambiguity": "string (open question a human should settle, or empty string)",
+  "ambiguity": "string (only a question a human must answer before the work can be trusted, phrased as a question, or empty string)",
+  "notes": "string (explanations of your choices, or empty string; no gate reads it)",
   "commit_subject": "string (proposed commit subject line, or empty string when nothing changed)",
   "files_changed": ["string (repo-relative path of each modified file, never absolute)"]
 }

@@ -6,7 +6,7 @@
   "required": ["pb_key", "ambiguity", "document", "finding_map"],
   "properties": {
     "pb_key": { "type": "string", "description": "The key from the prompt, copied exactly" },
-    "ambiguity": { "type": "string", "description": "An open question a human should settle, or an empty string" },
+    "ambiguity": { "type": "string", "description": "Only a question a human must answer before the work can be trusted, phrased as a question, or an empty string. Explanations of your choices go in the document, never here" },
     "document": { "type": "string", "minLength": 1, "description": "The whole write-up as markdown, covering every recorded finding" },
     "finding_map": {
       "type": "array",

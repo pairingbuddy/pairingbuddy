@@ -508,7 +508,7 @@ const LENS_SCHEMA = {
         "string",
         "null"
       ],
-      "description": "A question only the human can decide, in plain words to the human, or null. It stops the gate"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question, in plain words to the human, or null. It stops the gate. What you could not read or check goes in not_checked, and an explanation of a finding goes in the finding, never here"
     },
     "not_checked": {
       "type": [

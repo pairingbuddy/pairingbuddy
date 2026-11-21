@@ -10,6 +10,7 @@ const RESULT_SCHEMA = {
   "required": [
     "pb_key",
     "ambiguity",
+    "notes",
     "commit_subject",
     "files_changed"
   ],
@@ -20,7 +21,11 @@ const RESULT_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question about the docs that a human should settle, or an empty string"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (such as what the docs should say where the task does not say), or an empty string. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "commit_subject": {
       "type": "string",
@@ -522,7 +527,7 @@ const LENS_SCHEMA = {
         "string",
         "null"
       ],
-      "description": "A question only the human can decide, in plain words to the human, or null. It stops the gate"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question, in plain words to the human, or null. It stops the gate. What you could not read or check goes in not_checked, and an explanation of a finding goes in the finding, never here"
     },
     "not_checked": {
       "type": [
@@ -618,7 +623,7 @@ const REFUTER_SCHEMA = {
         "string",
         "null"
       ],
-      "description": "A question about the finding only the human can decide, in plain words to the human, or null. It stops the gate"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question about the finding, in plain words to the human, or null. It stops the gate. What you could not read or check goes in not_checked, and an explanation of the verdict is not a question, so it never goes here"
     },
     "not_checked": {
       "type": [
@@ -638,6 +643,7 @@ const REFACTOR_CODE_SCHEMA = {
   "required": [
     "pb_key",
     "ambiguity",
+    "notes",
     "commit_subject",
     "approach",
     "no_change_reason",
@@ -650,7 +656,11 @@ const REFACTOR_CODE_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question a human should settle, or an issue the agent could not fix without changing behaviour, or an edit that was refused or failed, or an empty string. pb gate eval shows every non-empty one to the human as a doubt"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (such as whether to change behaviour to fix an issue, or what to do about an edit that was refused or failed), or an empty string. pb gate eval shows every non-empty one to the human as a doubt. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "commit_subject": {
       "type": "string",
@@ -683,6 +693,7 @@ const REFACTOR_TESTS_SCHEMA = {
   "required": [
     "pb_key",
     "ambiguity",
+    "notes",
     "commit_subject",
     "approach",
     "no_change_reason",
@@ -695,7 +706,11 @@ const REFACTOR_TESTS_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question a human should settle, or an issue the agent could not fix without changing behaviour, or an edit that was refused or failed, or an empty string. pb gate eval shows every non-empty one to the human as a doubt"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (such as whether to change behaviour to fix an issue, or what to do about an edit that was refused or failed), or an empty string. pb gate eval shows every non-empty one to the human as a doubt. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "commit_subject": {
       "type": "string",

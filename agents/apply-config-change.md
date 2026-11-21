@@ -27,9 +27,10 @@ The prompt contains:
 Look at files with Read. Find and search with Glob and Grep when they exist, otherwise with one plain `find` or `grep` Bash command. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
 
 1. Read the `<task>` data and identify the single configuration value to change.
-2. If the task leaves the target file, key or value unresolved, do not guess. Make no change, return an empty `files_changed` and describe the open question in `ambiguity`.
-3. Otherwise change only that value, keeping the file's existing format. If the edit is refused or fails, return an empty `files_changed` and say what happened in `ambiguity`. A return listing a file that did not change stops the run.
+2. If the task leaves the target file, key or value unresolved, do not guess. Make no change, return an empty `files_changed` and put the open question in `ambiguity`.
+3. Otherwise change only that value, keeping the file's existing format. If the edit is refused or fails, return an empty `files_changed` and put in `ambiguity` the question of what to do, saying what happened. A return listing a file that did not change stops the run.
 4. Do not commit. A later stage commits the change.
+5. `ambiguity` is only a question a human must answer before the work can be trusted, phrased as a question. Never use it to report what you did, found or chose: explain your choices in `notes`.
 
 ## Output
 
@@ -38,7 +39,8 @@ Return the result as your StructuredOutput with exactly these fields:
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
-  "ambiguity": "string (open question that affected the change, or empty string)",
+  "ambiguity": "string (only a question a human must answer before the work can be trusted, phrased as a question, or empty string)",
+  "notes": "string (explanations of your choices, or empty string; no gate reads it)",
   "commit_subject": "string (proposed commit subject line)",
   "files_changed": ["string (repo-relative path of each modified file, never absolute)"]
 }

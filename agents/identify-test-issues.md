@@ -110,7 +110,7 @@ With a `<paths>` block: read what the Input section says instead of the files be
 
 ### Step 3: Human Review
 
-With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at a gate. Find and never fix: `refactor-tests` fixes what you return. An empty `issues` list is a fine result: the refactor step is skipped, so return only issues worth a change now. If something can only be settled by a human, describe it in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at a gate. Find and never fix: `refactor-tests` fixes what you return. An empty `issues` list is a fine result: the refactor step is skipped, so return only issues worth a change now. If something can only be settled by a human, ask the human in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only a question a human must answer before the work can be trusted, phrased as a question. Never use it to report what you did, found or chose: explain your choices in `notes`.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -207,7 +207,8 @@ With a `<paths>` block, return the result as your StructuredOutput with exactly 
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
-  "ambiguity": "string (open question a human should settle, or empty string)",
+  "ambiguity": "string (only a question a human must answer before the work can be trusted, phrased as a question, or empty string)",
+  "notes": "string (explanations of your choices, or empty string; no gate reads it)",
   "issues": [
     {
       "file": "string (file path where issue was found)",

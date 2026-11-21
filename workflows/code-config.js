@@ -10,6 +10,7 @@ const RESULT_SCHEMA = {
   "required": [
     "pb_key",
     "ambiguity",
+    "notes",
     "commit_subject",
     "files_changed"
   ],
@@ -20,7 +21,11 @@ const RESULT_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question the task left unresolved, or an empty string"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (such as which file, key or value the task meant, or what to do about an edit that was refused or failed), or an empty string. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "commit_subject": {
       "type": "string",

@@ -94,7 +94,7 @@ With a `<paths>` block: read what the Input section says instead of the files ab
 
 ### Step 3: Human Review
 
-With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the `G:scope` gate. An empty list is a fine result when the task asks for nothing in that area. If the scope cannot be settled without a human, describe it in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only for a question a human must settle: never use it to report what you did or found.
+With a `<paths>` block: skip Step 3. No human is reachable from a stage, and the human reviews at the `G:scope` gate. An empty list is a fine result when the task asks for nothing in that area. If the scope cannot be settled without a human, ask the human in `ambiguity`. With nothing open, return an empty string. `ambiguity` is only a question a human must answer before the work can be trusted, phrased as a question. Never use it to report what you did, found or chose: explain your choices in `notes`.
 
 Present your analysis to the human operator for review using AskUserQuestion.
 
@@ -196,7 +196,8 @@ With a `<paths>` block, return the result as your StructuredOutput with exactly 
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
-  "ambiguity": "string (open question a human should settle, or empty string)",
+  "ambiguity": "string (only a question a human must answer before the work can be trusted, phrased as a question, or empty string)",
+  "notes": "string (explanations of your choices, or empty string; no gate reads it)",
   "code_issues": [
     {
       "file": "string (file path to refactor)",

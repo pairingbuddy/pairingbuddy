@@ -31,7 +31,7 @@ Look at files with Read. Find and search with Glob and Grep when they exist, oth
 
 1. Read the `<findings>` and the `<verdicts>`. Read only what they point at.
 2. Write one consolidated view of what stands and what was refuted. Do not change anything.
-3. If something unresolved affected the view, describe it in `ambiguity`. Otherwise use null.
+3. If an open question for the human affected the view, ask it in `ambiguity`. `ambiguity` is only a question a human must answer before the work can be trusted, phrased as a question: explanations go in `summary`. Otherwise use null.
 
 ## Output
 
@@ -40,7 +40,7 @@ Return the result as your StructuredOutput with exactly these fields:
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
-  "ambiguity": "string or null (open question that affected the view)",
+  "ambiguity": "string or null (only a question a human must answer before the work can be trusted, phrased as a question, in plain words, with no internal terms, or null)",
   "summary": "string (the one consolidated view)"
 }
 ```

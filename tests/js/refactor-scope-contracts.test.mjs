@@ -120,7 +120,7 @@ test("g-scope-asks-when-a-survivor-has-no-blocking-flag", () => {
 });
 
 // Scenario: scope-refactoring-old-callers (style of tests/js/tdd-agent-contracts.test.mjs)
-const AGENT_FIELDS = ["pb_key", "ambiguity", "code_issues", "test_issues"];
+const AGENT_FIELDS = ["pb_key", "ambiguity", "notes", "code_issues", "test_issues"];
 
 // The text of a markdown section: from its heading to the next heading of the same or a higher level.
 function sectionOf(text, heading) {
