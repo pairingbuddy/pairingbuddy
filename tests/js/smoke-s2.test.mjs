@@ -251,6 +251,14 @@ test("the run is capped and loads the plugin by --plugin-dir", () => {
   assert.equal(command[command.indexOf("--permission-mode") + 1], "auto");
 });
 
+test("the run names its tools, so Read, Glob and Grep are there as the tool rule says", () => {
+  const tools = JSON.parse(readFileSync(new URL("../smoke/session-tools.json", import.meta.url), "utf8"));
+  const command = claudeCommand("/pairingbuddy:code x", 1);
+
+  assert.equal(command[command.indexOf("--tools") + 1], tools.join(","));
+  for (const tool of ["Read", "Glob", "Grep"]) assert.ok(tools.includes(tool), tool);
+});
+
 test("a repo inside the plugin is refused, so the plugin loads from outside the cwd", () => {
   assert.throws(() => refuseRepoInsidePlugin(join(ROOT, "tests", "x")), SmokeError);
   refuseRepoInsidePlugin(tmpdir());

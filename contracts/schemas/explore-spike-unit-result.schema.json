@@ -6,7 +6,7 @@
   "required": ["pb_key", "ambiguity", "unit_id", "summary", "code_references", "recommendation", "commit_subject", "files_changed"],
   "properties": {
     "pb_key": { "type": "string", "description": "The key from the prompt, copied exactly" },
-    "ambiguity": { "type": "string", "description": "An open question a human should settle, or an empty string" },
+    "ambiguity": { "type": "string", "description": "Only a question a human must answer before the work can be trusted, phrased as a question, or an empty string. Explanations of your choices go in summary, never here" },
     "unit_id": { "type": "string", "description": "ID of the unit explored" },
     "summary": { "type": "string", "description": "Summary of the findings for this unit" },
     "code_references": {

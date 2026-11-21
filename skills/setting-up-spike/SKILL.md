@@ -11,7 +11,7 @@ Clarify the spike goal, split it into exploration units, and write the two setup
 
 Read `.pairingbuddy/task.json` (description, context) and `.pairingbuddy/human-guidance.json` if it exists, and apply that guidance.
 
-Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+Look at files with Read. Find and search with Glob and Grep when they exist, otherwise with one plain `find` or `grep` Bash command. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
 
 ## Conversation
 

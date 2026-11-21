@@ -9,9 +9,9 @@ Orchestrates the TDD workflow by invoking specialized agents via the Task tool. 
 
 ## Tools in the Main Context
 
-Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run. This holds all through the task, from the first check to the end of the run, and in every skill this one runs:
+Look at files with Read. Find and search with Glob and Grep when they exist, otherwise with one plain `find` or `grep` Bash command. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run. This holds all through the task, from the first check to the end of the run, and in every skill this one runs:
 
-- To see whether `.pairingbuddy/test-config.json` or another state file exists, and what it holds, Read it or Glob for it. Read the project's files the same way, from the project root where the session started.
+- To see whether `.pairingbuddy/test-config.json` or another state file exists, and what it holds, Read it. Read the project's files the same way, from the project root where the session started.
 - A schema named in State File Mappings is at `<root>/contracts/schemas/<schema>`, with `<root>` the plugin root that An Open Run Comes First defines: Read it there, never find it with Bash.
 - Whether a human can answer is in your session context: SessionStart adds a `<pairingbuddy-no-human>` block under the auto policy or `claude -p`. Never print an environment variable to learn it.
 - Start a stage with the Workflow tool, by the name and args `pb status --action` gives. Do not load it with the Skill tool first: that adds a step and changes nothing.
@@ -326,7 +326,7 @@ Outside Solo, every non-plan task runs through workflow stages instead of the br
 
 `_run_new_path(task)`:
 
-1. A non-plan `/code` task is a unit of one task, so the unit opens first. If an open unit has no task records and its branch is checked out, it is the one just opened: go on to step 2 and do not run `pb unit open` again. Otherwise run `pb unit open --type <type> --slug <slug>`, with the branch type you guess from the task (`feat`, `fix`, `refactor`, `chore` or `spike`) and a short kebab-case slug from the task. The type only names the branch: intake decides the run's type. The CLI validates both.
+1. A non-plan `/code` task is a unit of one task, so the unit opens first. If an open unit has no task records and its branch is checked out, it is the one just opened: go on to step 2 and do not run `pb unit open` again. Otherwise run `pb unit open --type <type> --slug <slug>`, with the branch type you guess from the task (`chore` for a config change, `feat` for a new feature, `fix` for a bug fix, `refactor` for refactoring, `spike` for a spike) and a short kebab-case slug from the task. The type only names the branch: intake decides the run's type. The CLI validates both.
    - There is no confirmation: a plain call opens the template branch, and `pb unit open` takes no `--yes`.
    - When it refuses with a command for the human to type, with a leading `!`, stop and show the human that command. Only the human types it. Resume at step 2 once they have.
 2. Run `pb run open --kind code`. It stores the task from `.pairingbuddy/task.json` and opens with no type. The first stage is intake (the classify-task agent), and the first gate is G:type. Under auto, G:type passes only when the classifier reports certain. If it refuses, stop and report the refusal. Do not make the change another way.

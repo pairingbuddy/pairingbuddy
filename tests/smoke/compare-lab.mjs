@@ -2,21 +2,23 @@
 // model, unattended, side by side. See COMPARE.md. It spends money, so no suite runs it; the tests cover the pure parts.
 //
 //   node tests/smoke/compare-lab.mjs setup [options]            make the lab: two identical repos, the old plugin
-//   node tests/smoke/compare-lab.mjs run old|new|both [--lab D]  run claude -p in one repo or both (both in parallel)
+//   node tests/smoke/compare-lab.mjs run old|new|both [--lab D]  run claude -p in one repo or both (both in parallel);
+//                                                                new resumes its session until its run ends
+//   node tests/smoke/compare-lab.mjs reset old|new|both [--lab D] put a side's repo back at the start, its results gone
 //   node tests/smoke/compare-lab.mjs judge [--lab D]             diffs, test runs, and a blind A/B judge
 //   node tests/smoke/compare-lab.mjs summary [--lab D]           results.json and summary.md
 //   node tests/smoke/compare-lab.mjs all [options]               setup, run both, judge, summary
 //
 // Nothing reaches GitHub: each repo's origin is a local bare repo and `gh` is the recording shim first on PATH.
 // ANTHROPIC_API_KEY must not be set: it switches billing, so the script refuses to start and unsets it in every child.
-import { execFileSync, spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { installGhShim } from "../js/gh-shim.mjs";
-import { DROPPED_PREFIXES, REPO_ROOT } from "./claude-run.mjs";
+import { DROPPED_PREFIXES, REPO_ROOT, SESSION_TOOLS } from "./claude-run.mjs";
 
 export const SIDES = ["old", "new"];
 export const OLD_REF = "v0.7.0";
@@ -24,22 +26,23 @@ export const FIXTURE = join(REPO_ROOT, "tests", "smoke", "fixtures", "compare-sc
 export const MODEL_IDS = { sonnet: "claude-sonnet-5-5", opus: "claude-opus-5-5", haiku: "claude-haiku-5-5" };
 export const CRITERIA = ["correctness", "test_quality", "readability", "scope_discipline"];
 const TIERS = ["same", "native"];
-const DEFAULTS = { model: "sonnet", tiers: "same", permissionMode: "bypassPermissions", budgetUsd: 25, timeoutMin: 120, newPlugin: REPO_ROOT, oldRef: OLD_REF };
+const DEFAULTS = { model: "sonnet", tiers: "same", permissionMode: "bypassPermissions", budgetUsd: 25, timeoutMin: 120, maxResumes: 30, newPlugin: REPO_ROOT, oldRef: OLD_REF };
 
 export class UsageError extends Error {}
 export class LabError extends Error {}
 
 export const USAGE = `usage: compare-lab.mjs <command> [options]
   setup [--model sonnet|opus|haiku|<id>] [--tiers same|native] [--permission-mode <mode>] [--budget-usd N]
-        [--timeout-min N] [--new-plugin <dir>] [--old-ref <tag> | --old-plugin <dir>] [--root <dir>]
+        [--timeout-min N] [--max-resumes N] [--new-plugin <dir>] [--old-ref <tag> | --old-plugin <dir>] [--root <dir>]
   run old|new|both [--lab <dir>]
+  reset old|new|both [--lab <dir>]
   judge [--lab <dir>]
   summary [--lab <dir>]
   all   [setup options]`;
 
-const VALUE_FLAGS = { "--model": "model", "--tiers": "tiers", "--permission-mode": "permissionMode", "--budget-usd": "budgetUsd", "--timeout-min": "timeoutMin", "--new-plugin": "newPlugin", "--old-ref": "oldRef", "--old-plugin": "oldPlugin", "--root": "root", "--lab": "lab" };
-const SETUP_KEYS = ["model", "tiers", "permissionMode", "budgetUsd", "timeoutMin", "newPlugin", "oldRef", "oldPlugin", "root"];
-const ALLOWED = { setup: SETUP_KEYS, all: SETUP_KEYS, run: ["lab"], judge: ["lab"], summary: ["lab"] };
+const VALUE_FLAGS = { "--model": "model", "--tiers": "tiers", "--permission-mode": "permissionMode", "--budget-usd": "budgetUsd", "--timeout-min": "timeoutMin", "--max-resumes": "maxResumes", "--new-plugin": "newPlugin", "--old-ref": "oldRef", "--old-plugin": "oldPlugin", "--root": "root", "--lab": "lab" };
+const SETUP_KEYS = ["model", "tiers", "permissionMode", "budgetUsd", "timeoutMin", "maxResumes", "newPlugin", "oldRef", "oldPlugin", "root"];
+const ALLOWED = { setup: SETUP_KEYS, all: SETUP_KEYS, run: ["lab"], reset: ["lab"], judge: ["lab"], summary: ["lab"] };
 const PERMISSION_MODES = ["bypassPermissions", "acceptEdits", "auto", "default", "dontAsk"];
 
 const positive = (name, text) => {
@@ -53,9 +56,9 @@ export function parseArgs(argv) {
   const [command, ...rest] = argv;
   if (!(command in ALLOWED)) throw new UsageError(command === undefined ? "no command" : `unknown command ${command}`);
   let side = null;
-  if (command === "run") {
+  if (command === "run" || command === "reset") {
     side = rest.shift();
-    if (![...SIDES, "both"].includes(side)) throw new UsageError(`run takes old, new or both, not ${side ?? "nothing"}`);
+    if (![...SIDES, "both"].includes(side)) throw new UsageError(`${command} takes old, new or both, not ${side ?? "nothing"}`);
   }
   const options = ALLOWED[command] === SETUP_KEYS ? { ...DEFAULTS } : {};
   for (let i = 0; i < rest.length; i += 2) {
@@ -66,6 +69,10 @@ export function parseArgs(argv) {
   }
   if ("budgetUsd" in options) options.budgetUsd = positive("--budget-usd", options.budgetUsd);
   if ("timeoutMin" in options) options.timeoutMin = positive("--timeout-min", options.timeoutMin);
+  if ("maxResumes" in options) {
+    options.maxResumes = Number(options.maxResumes);
+    if (!Number.isInteger(options.maxResumes) || options.maxResumes < 0) throw new UsageError("--max-resumes takes a whole number, 0 or more");
+  }
   if ("tiers" in options && !TIERS.includes(options.tiers)) throw new UsageError(`--tiers takes same or native, not ${options.tiers}`);
   if ("permissionMode" in options && !PERMISSION_MODES.includes(options.permissionMode)) throw new UsageError(`--permission-mode takes one of ${PERMISSION_MODES.join(", ")}`);
   return { command, side, options };
@@ -82,7 +89,9 @@ export function refuseApiKey(env = process.env) {
 
 // The child environment for one side: the inherited one without any PAIRINGBUDDY, PB_, CLAUDE, ANTHROPIC_ or GIT_
 // variable, the gh shim first on PATH, every model tier on the one model when tiers is same, and the side's own
-// unattended switch: Solo mode for old, the auto gate policy for new.
+// unattended switch: Solo mode for old, the auto gate policy for new. claude -p waits for background tasks (the new
+// build's stage Workflows) and takes each one's notification as a new turn, but by default it stops them 10 minutes
+// after the last turn; 0 makes it wait for them, so the side's own timeout is the only limit.
 export function runEnv(side, lab, inherited = process.env) {
   refuseApiKey(inherited);
   const kept = withoutDropped(inherited);
@@ -90,21 +99,24 @@ export function runEnv(side, lab, inherited = process.env) {
   const tiers = lab.tiers === "same" ? { ANTHROPIC_DEFAULT_OPUS_MODEL: id, ANTHROPIC_DEFAULT_SONNET_MODEL: id, ANTHROPIC_DEFAULT_HAIKU_MODEL: id } : {};
   const own = side === "old" ? { PAIRINGBUDDY_SOLO: "true", PAIRINGBUDDY_SOLO_MAX_RETRIES: "5" } : { PAIRINGBUDDY_GATE_POLICY: "auto" };
   const { shim } = lab.sides[side];
-  return { ...kept, ...tiers, ...own, PATH: `${shim.dir}:${kept.PATH ?? ""}`, GH_SHIM_LOG: shim.log, GH_SHIM_OPENED: shim.opened };
+  return { ...kept, ...tiers, ...own, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: "0", PATH: `${shim.dir}:${kept.PATH ?? ""}`, GH_SHIM_LOG: shim.log, GH_SHIM_OPENED: shim.opened };
 }
 
 export const runPrompt = (task) => `/pairingbuddy:code ${task}`;
 
-export function runArgs(side, lab) {
+// A resume goes on in that session with its own prompt; budgetUsd is what is left of the side's cap.
+export function runArgs(side, lab, { prompt = runPrompt(lab.task), resume = null, budgetUsd = lab.budgetUsd } = {}) {
   return [
-    "-p", runPrompt(lab.task),
+    "-p", prompt,
+    ...(resume === null ? [] : ["--resume", resume]),
     "--output-format", "json",
     "--model", modelId(lab.model),
     "--plugin-dir", lab.sides[side].plugin.dir,
     "--setting-sources", "project,local",
     "--strict-mcp-config",
+    "--tools", SESSION_TOOLS.join(","),
     "--permission-mode", lab.permissionMode,
-    "--max-budget-usd", String(lab.budgetUsd),
+    "--max-budget-usd", String(budgetUsd),
   ];
 }
 
@@ -205,8 +217,11 @@ export function transcriptFiles({ sessionId, repo, projects = join(homedir(), ".
   return existsSync(folder) ? walkJsonl(folder) : [];
 }
 
-export function transcriptUsage(where) {
-  const files = transcriptFiles(where);
+export const transcriptUsage = (where) => transcriptUsageOf(transcriptFiles(where));
+
+// Over several sessions' files (a resume that got a new session id); a file or message seen twice counts once.
+export function transcriptUsageOf(found) {
+  const files = [...new Set(found)];
   const sum = sumTranscripts(files.map((f) => readFileSync(f, "utf8")));
   return { files: files.length, agentFiles: files.filter((f) => /agent-[^/]+\.jsonl$/.test(f)).length, ...sum };
 }
@@ -257,7 +272,7 @@ function makeSideRepo(dir, side, fixture) {
 const inside = (path, dir) => path === dir || path.startsWith(dir.endsWith(sep) ? dir : dir + sep);
 
 // The old plugin is a detached worktree of oldRef, made inside the lab; oldPlugin skips that (tests pass a dir).
-export function setupLab({ root = LABS_ROOT(), model = DEFAULTS.model, tiers = DEFAULTS.tiers, permissionMode = DEFAULTS.permissionMode, budgetUsd = DEFAULTS.budgetUsd, timeoutMin = DEFAULTS.timeoutMin, newPlugin = DEFAULTS.newPlugin, oldRef = DEFAULTS.oldRef, oldPlugin = null, fixture = FIXTURE, now = new Date() } = {}) {
+export function setupLab({ root = LABS_ROOT(), model = DEFAULTS.model, tiers = DEFAULTS.tiers, permissionMode = DEFAULTS.permissionMode, budgetUsd = DEFAULTS.budgetUsd, timeoutMin = DEFAULTS.timeoutMin, maxResumes = DEFAULTS.maxResumes, newPlugin = DEFAULTS.newPlugin, oldRef = DEFAULTS.oldRef, oldPlugin = null, fixture = FIXTURE, now = new Date() } = {}) {
   mkdirSync(root, { recursive: true });
   const dir = join(realpathSync(root), stamp(now));
   if (existsSync(dir)) throw new LabError(`${dir} exists already`);
@@ -297,7 +312,7 @@ export function setupLab({ root = LABS_ROOT(), model = DEFAULTS.model, tiers = D
     sides[side] = { ...made, plugin: side === "old" ? old : { dir: newDir, ref: null, sha: newSha, dirtyFiles: newDirty }, shim: { dir: gh.dir, log: env.GH_SHIM_LOG, opened: env.GH_SHIM_OPENED } };
   }
   if (sides.old.startCommit !== sides.new.startCommit) throw new LabError("the two repos do not start from the same commit");
-  const lab = { dir, created: now.toISOString(), fixture, task, model, modelId: modelId(model), tiers, permissionMode, budgetUsd, timeoutMin, sides };
+  const lab = { dir, created: now.toISOString(), fixture, task, model, modelId: modelId(model), tiers, permissionMode, budgetUsd, timeoutMin, maxResumes, sides };
   writeFileSync(join(dir, "lab.json"), JSON.stringify(lab, null, 2));
   return lab;
 }
@@ -352,20 +367,185 @@ export function spawnCapture(command, args, { cwd, env, input = null, timeoutMs 
   });
 }
 
-export async function runSide(lab, side, { projects } = {}) {
+// ---------- end state ----------
+//
+// Where a side's run really ended, read from its repo, not from claude's exit code. Every end state has the same shape:
+// { state, finished, waitingForHuman, reason, ...more }.
+
+const readJsonOr = (path, fallback) => {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return fallback;
+  }
+};
+
+// The runs the new build kept under .pairingbuddy/reports/runs/ as each ended: its kind and the PR a publish opened.
+export function keptRuns(repo) {
+  const runs = join(repo, ".pairingbuddy", "reports", "runs");
+  if (!existsSync(runs)) return [];
+  return readdirSync(runs)
+    .filter((runId) => existsSync(join(runs, runId, "kept.json")))
+    .sort()
+    .map((runId) => {
+      const kept = readJsonOr(join(runs, runId, "kept.json"), {});
+      return { runId, kind: readJsonOr(join(runs, runId, "ledger.json"), {}).kind ?? null, prUrl: typeof kept.prUrl === "string" ? kept.prUrl : null };
+    });
+}
+
+const end = (state, over = {}) => ({ state, finished: false, waitingForHuman: false, reason: null, ...over });
+
+// status is what `pb status --action` gave ({ code, stdout, stderr }); kept is keptRuns. With no run open, a kept publish
+// run means the task ended and its publish ran: finished when it opened a PR. pb's next action says when only a human
+// can go on (the same order the build's own nextAction checks).
+export function newEndState({ status, kept }) {
+  if (status.code !== 0) {
+    const said = `${status.stderr}${status.stdout}`.trim();
+    if (!/no run here/.test(said)) return end("unreadable", { reason: `pb status failed (exit ${status.code}): ${said.slice(0, 500)}` });
+    const publish = kept.filter((run) => run.kind === "publish").at(-1);
+    if (publish?.prUrl) return end("ended", { finished: true, pr: publish.prUrl, reason: `the task ended and the PR was opened: ${publish.prUrl}` });
+    if (publish) return end("ended-no-pr", { reason: "the task ended and its publish run closed, but it opened no PR" });
+    if (kept.length > 0) return end("task-ended", { reason: "the task ended, and its publish run has not run" });
+    return end("not-started", { reason: "no run was opened" });
+  }
+  let s;
+  try {
+    s = JSON.parse(status.stdout);
+  } catch {
+    return end("unreadable", { reason: `pb status gave output that is not JSON: ${status.stdout.slice(0, 300)}` });
+  }
+  const stage = { stage: s.stage?.name || null, stageStatus: s.stage?.status || null, action: s.action ?? null };
+  if (typeof s.action === "string" && s.action.startsWith("The human answered")) return end("needs-human", { ...stage, waitingForHuman: true, reason: s.action });
+  if (s.stop) return end("stopped", { ...stage, waitingForHuman: true, reason: s.stop.reason ?? "the run stopped" });
+  if (s.stage?.status !== "active" && s.needsHuman) return end("needs-human", { ...stage, waitingForHuman: true, reason: `${s.needsHuman.gate}: ${s.needsHuman.reason}` });
+  return end("running", { ...stage, reason: s.stage?.status === "active" ? `stage ${s.stage.name} is still active` : `next: ${s.next?.stage ?? "a gate or the task end"}` });
+}
+
+// The new build's own read of its run: `pb status --action` in the repo, which writes nothing.
+export function readNewEnd(lab, side = "new") {
+  const { repo, plugin } = lab.sides[side];
+  const r = spawnSync(process.execPath, [join(plugin.dir, "cli", "pb.mjs"), "status", "--action"], { cwd: repo, env: withoutDropped(), encoding: "utf8" });
+  return newEndState({ status: { code: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? r.error?.message ?? "" }, kept: keptRuns(repo) });
+}
+
+// v0.7.0 under Solo mode writes .pairingbuddy/SOLO_BUDDY_REPORT.md when it runs a plan. A single /code task writes
+// none, so its last step, the commit agent's commit-result.json, stands in.
+export function oldEndState(repo) {
+  const state = join(repo, ".pairingbuddy");
+  const report = existsSync(join(state, "SOLO_BUDDY_REPORT.md")) ? readFileSync(join(state, "SOLO_BUDDY_REPORT.md"), "utf8") : null;
+  if (report !== null) {
+    const status = [...report.matchAll(/\*\*Status:\*\*\s*(\S+)/g)].at(-1)?.[1] ?? "unknown";
+    const stopped = report.includes("## Stopped") ? /## Stopped[\s\S]*?\*\*Reason:\*\*\s*(.+)/.exec(report)?.[1]?.trim() ?? "the Solo report says it stopped" : null;
+    if (stopped !== null || status === "stopped") return end("stopped", { waitingForHuman: true, reason: stopped ?? "the Solo report says it stopped" });
+    return end(status, { finished: status === "completed", reason: `the Solo report's status is ${status}` });
+  }
+  const commit = readJsonOr(join(state, "commit-result.json"), null);
+  if (commit?.status === "success") return end("committed", { finished: true, reason: `no Solo report (one task, no plan); the final commit ${String(commit.commit_sha ?? "").slice(0, 7)} succeeded` });
+  return end("unknown", { reason: "no Solo report and no successful final commit" });
+}
+
+export const sideEnd = (lab, side) => (side === "new" ? readNewEnd(lab, side) : oldEndState(lab.sides[side].repo));
+
+// ---------- the resume loop ----------
+
+// Why the loop stops after an invocation, or null to resume. Only the new build's run is resumed.
+export function resumeStop({ end: e, result, exit, resumes, maxResumes, elapsedMs, timeoutMs, spentUsd, budgetUsd }) {
+  if (e.finished || e.state === "ended" || e.state === "ended-no-pr") return `the run ended: ${e.reason ?? e.state}`;
+  if (e.waitingForHuman) return `waiting for a human: ${e.reason}`;
+  if (e.state === "unreadable") return e.reason;
+  if (exit.timedOut || elapsedMs >= timeoutMs) return "the wall time limit was reached";
+  if (result?.subtype === "error_max_budget_usd" || spentUsd >= budgetUsd) return "the budget is spent";
+  if (!result?.sessionId) return `no session to resume (exit ${exit.code})`;
+  if (resumes >= maxResumes) return `the resume cap (${maxResumes}) was reached`;
+  return null;
+}
+
+// What the resumed session is told. A stage left active when claude exited lost its workflow with the process.
+export function continuePrompt(e, pluginDir) {
+  const lost = e.stageStatus === "active" ? ` The last claude process ended while stage ${e.stage} was active, so its workflow was stopped with it.` : "";
+  return `Continue the Pairing Buddy run in this repo. No human is available.${lost} Run node ${join(pluginDir, "cli", "pb.mjs")} status --action and do what it says, until the task has ended and its publish has run.`;
+}
+
+const sumOf = (results, key) => (results.some((r) => typeof r[key] === "number") ? results.reduce((sum, r) => sum + (r[key] ?? 0), 0) : null);
+
+// A resumed session's total_cost_usd (and the API time saved with it) goes on from the total its transcript saved, so
+// each result carries the running total. What one invocation added is the rise from the one before; a total that fell
+// started over (nothing was saved), so all of it is new.
+export const spendSteps = (totals) => totals.map((total, i) => (i > 0 && total >= totals[i - 1] ? total - totals[i - 1] : total));
+const totalOf = (results, key) => {
+  const totals = results.map((r) => r[key]).filter((v) => typeof v === "number");
+  return totals.length === 0 ? null : Number(spendSteps(totals).reduce((sum, v) => sum + v, 0).toFixed(6));
+};
+
+// One result for all invocations: cost and API time as running totals, turns and durations summed (each result counts
+// its own), the last one's subtype and text.
+export function combineResults(results) {
+  const got = results.filter((r) => r !== null);
+  if (got.length === 0) return null;
+  const last = got.at(-1);
+  return { ...last, invocations: results.length, costUsd: totalOf(got, "costUsd"), numTurns: sumOf(got, "numTurns"), durationMs: sumOf(got, "durationMs"), durationApiMs: totalOf(got, "durationApiMs"), isError: last.isError, permissionDenials: sumOf(got, "permissionDenials"), sessionIds: [...new Set(got.map((r) => r.sessionId).filter(Boolean))] };
+}
+
+// claude.json for the first invocation, claude.<n>.json for the nth; stderr likewise.
+const invocationFile = (name, ext, n) => (n === 1 ? `${name}.${ext}` : `${name}.${n}.${ext}`);
+
+// The new side resumes its session (same flags, what is left of the budget and the wall time) until its run ends,
+// waits for a human, or a cap is reached. Old runs once. claude is the executable, inherited the parent environment.
+export async function runSide(lab, side, { projects, claude = "claude", inherited = process.env } = {}) {
   const out = resultsDir(lab, side);
-  const { repo } = lab.sides[side];
-  const startedAt = new Date().toISOString();
-  console.error(`${side}: claude -p in ${repo} (plugin ${lab.sides[side].plugin.dir})`);
-  const exit = await spawnCapture("claude", runArgs(side, lab), { cwd: repo, env: runEnv(side, lab), timeoutMs: lab.timeoutMin * 60_000 });
-  writeFileSync(join(out, "claude.json"), exit.stdout);
-  writeFileSync(join(out, "stderr.txt"), exit.stderr);
-  const result = parseRunResult(exit.stdout);
-  const transcript = transcriptUsage({ sessionId: result?.sessionId ?? null, repo, projects });
-  const run = { side, startedAt, wallMs: exit.wallMs, exitCode: exit.code, timedOut: exit.timedOut, result, transcript };
+  const { repo, plugin } = lab.sides[side];
+  const started = Date.now();
+  const startedAt = new Date(started).toISOString();
+  const timeoutMs = lab.timeoutMin * 60_000;
+  const maxResumes = lab.maxResumes ?? DEFAULTS.maxResumes;
+  const env = runEnv(side, lab, inherited);
+  const results = [];
+  const exits = [];
+  let args = runArgs(side, lab);
+  let e;
+  let stoppedBecause;
+  for (let n = 1; ; n++) {
+    console.error(`${side}: claude -p in ${repo} (plugin ${plugin.dir})${n > 1 ? `, resume ${n - 1}` : ""}`);
+    const exit = await spawnCapture(claude, args, { cwd: repo, env, timeoutMs: Math.max(1, timeoutMs - (Date.now() - started)) });
+    writeFileSync(join(out, invocationFile("claude", "json", n)), exit.stdout);
+    writeFileSync(join(out, invocationFile("stderr", "txt", n)), exit.stderr);
+    const result = parseRunResult(exit.stdout);
+    results.push(result);
+    exits.push({ exitCode: exit.code, timedOut: exit.timedOut, wallMs: exit.wallMs });
+    e = sideEnd(lab, side);
+    const spentUsd = combineResults(results)?.costUsd ?? 0;
+    stoppedBecause = side === "new" ? resumeStop({ end: e, result, exit, resumes: n - 1, maxResumes, elapsedMs: Date.now() - started, timeoutMs, spentUsd, budgetUsd: lab.budgetUsd }) : "old runs once";
+    console.error(`${side}: invocation ${n} done in ${Math.round(exit.wallMs / 1000)}s, exit ${exit.code}${exit.timedOut ? " (timed out)" : ""}, cost ${result?.costUsd ?? "unknown"}, run ${e.state}`);
+    if (stoppedBecause !== null) break;
+    args = runArgs(side, lab, { prompt: continuePrompt(e, plugin.dir), resume: result.sessionId, budgetUsd: Number((lab.budgetUsd - spentUsd).toFixed(6)) });
+  }
+  const result = combineResults(results);
+  const sessionIds = result?.sessionIds ?? [];
+  const transcript = sessionIds.length <= 1 ? transcriptUsage({ sessionId: sessionIds[0] ?? null, repo, projects }) : transcriptUsageOf(sessionIds.flatMap((sessionId) => transcriptFiles({ sessionId, repo, projects })));
+  const lastExit = exits.at(-1);
+  const run = { side, startedAt, wallMs: Date.now() - started, exitCode: lastExit.exitCode, timedOut: exits.some((x) => x.timedOut), result, transcript, end: e, loop: { invocations: results.length, resumes: results.length - 1, maxResumes, stoppedBecause, exits } };
   writeFileSync(join(out, "run.json"), JSON.stringify(run, null, 2));
-  console.error(`${side}: done in ${Math.round(exit.wallMs / 1000)}s, exit ${exit.code}${exit.timedOut ? " (timed out)" : ""}, cost ${result?.costUsd ?? "unknown"}`);
+  console.error(`${side}: done in ${Math.round(run.wallMs / 1000)}s over ${results.length} invocation(s), cost ${result?.costUsd ?? "unknown"}, ${e.finished ? "finished" : `not finished: ${stoppedBecause}`}`);
   return run;
+}
+
+// A side runs once per lab: a second run would start in the repo the first one left.
+export function assertFresh(lab, side) {
+  if (existsSync(join(lab.dir, "results", side, "run.json"))) throw new LabError(`${side} has run in ${lab.dir} already. To run it again from the start: node tests/smoke/compare-lab.mjs reset ${side} --lab ${lab.dir}`);
+}
+
+// Puts one side's repo back where setup left it (same start commit, fresh origin, the build's configs), empties its gh
+// shim log and removes its results, so the side can run again in the same lab. The other side is not touched.
+export function resetSide(lab, side) {
+  const s = lab.sides[side];
+  const sideDir = join(lab.dir, side);
+  rmSync(s.repo, { recursive: true, force: true });
+  rmSync(s.origin, { recursive: true, force: true });
+  const made = makeSideRepo(sideDir, side, lab.fixture);
+  if (made.startCommit !== s.startCommit) throw new LabError(`the remade ${side} repo starts at ${made.startCommit}, not ${s.startCommit}: the fixture changed since setup`);
+  writeFileSync(s.shim.log, "");
+  rmSync(s.shim.opened, { force: true });
+  rmSync(join(lab.dir, "results", side), { recursive: true, force: true });
 }
 
 // ---------- judge ----------
@@ -485,7 +665,9 @@ export async function judge(lab, { rand = Math.random } = {}) {
     const tests = await runTests(lab, side);
     writeFileSync(join(sideOut, "tests.txt"), tests.output);
     collected[side] = { ...c, tests };
-    writeFileSync(join(sideOut, "outcome.json"), JSON.stringify({ stats: c.stats, commits: c.commits, branch: c.branch, tests: { ...tests, output: undefined } }, null, 2));
+    const run = readJsonOr(join(sideOut, "run.json"), null);
+    const outcome = { end: sideEnd(lab, side), loop: run?.loop ?? null, stats: c.stats, commits: c.commits, branch: c.branch, tests: { ...tests, output: undefined } };
+    writeFileSync(join(sideOut, "outcome.json"), JSON.stringify(outcome, null, 2));
   }
   const mapping = blindMapping(rand);
   writeFileSync(join(out, "mapping.json"), JSON.stringify(mapping, null, 2));
@@ -506,13 +688,7 @@ export async function judge(lab, { rand = Math.random } = {}) {
 
 // ---------- summary ----------
 
-const readJsonOrNull = (path) => {
-  try {
-    return JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return null;
-  }
-};
+const readJsonOrNull = (path) => readJsonOr(path, null);
 
 export function gatherResults(lab) {
   const sides = Object.fromEntries(
@@ -530,6 +706,18 @@ const usd = (n) => (typeof n === "number" ? `$${n.toFixed(2)}` : dash);
 const num = (n) => (typeof n === "number" ? n.toLocaleString("en-US") : dash);
 const cell = (s) => String(s).replaceAll("|", "\\|").replaceAll("\n", " ");
 
+// The side's end as its repo shows it: the judge's read (outcome.json) first, then the run's (run.json). A run from
+// before end states were read has only its exit code, which says nothing about where the run got to.
+function finishedText(s) {
+  if (s.run === null) return "not run";
+  const e = s.outcome?.end ?? s.run.end;
+  if (!e) return s.run.timedOut ? "timed out" : s.run.result === null ? `no result (exit ${s.run.exitCode})` : s.run.result.isError ? `error: ${s.run.result.subtype}` : `exit ${s.run.exitCode}, end not read`;
+  if (e.finished) return `yes: ${e.reason ?? e.state}`;
+  if (e.waitingForHuman) return `no, waiting for a human: ${e.reason}`;
+  const stopped = s.outcome?.loop?.stoppedBecause ?? s.run.loop?.stoppedBecause;
+  return `no: ${[stopped, e.reason ?? e.state].filter(Boolean).join("; ")}`;
+}
+
 export function renderSummary(results) {
   const row = (name, f) => `| ${name} | ${SIDES.map((s) => cell(f(results.sides[s]))).join(" | ")} |`;
   const t = (s) => s.run?.transcript?.total;
@@ -544,9 +732,10 @@ export function renderSummary(results) {
     "| | old | new |",
     "|---|---|---|",
     row("plugin", (s) => `${s.plugin?.ref ?? s.plugin?.dir ?? dash}${s.plugin?.sha ? ` @ ${s.plugin.sha.slice(0, 7)}` : ""}`),
-    row("finished", (s) => (s.run === null ? "not run" : s.run.timedOut ? "timed out" : s.run.result === null ? `no result (exit ${s.run.exitCode})` : s.run.result.isError ? `error: ${s.run.result.subtype}` : "yes")),
+    row("finished", finishedText),
+    row("claude -p invocations", (s) => (s.run ? num(s.run.loop?.invocations ?? 1) : dash)),
     row("wall time", (s) => mins(s.run?.wallMs)),
-    row("claude duration", (s) => mins(s.run?.result?.durationMs)),
+    row("API time (claude)", (s) => mins(s.run?.result?.durationApiMs)),
     row("turns (main)", (s) => num(s.run?.result?.numTurns)),
     row("cost (claude)", (s) => usd(s.run?.result?.costUsd)),
     row("output tokens", (s) => num(t(s)?.output)),
@@ -598,8 +787,16 @@ async function main(argv) {
   }
   const lab = readLab(options.lab ?? latestLab());
   mkdirSync(join(lab.dir, "results"), { recursive: true });
+  if (command === "reset") {
+    for (const s of side === "both" ? SIDES : [side]) {
+      resetSide(lab, s);
+      console.error(`${s}: reset to ${lab.sides[s].startCommit.slice(0, 7)} in ${lab.sides[s].repo}`);
+    }
+    return;
+  }
   if (command === "run" || command === "all") {
     const which = command === "all" || side === "both" ? SIDES : [side];
+    for (const s of which) assertFresh(lab, s);
     await Promise.all(which.map((s) => runSide(lab, s)));
   }
   if (command === "judge" || command === "all") {

@@ -9,6 +9,7 @@ const { setupLab } = await import("../smoke/t4a-lab.mjs");
 const { makeS2Repo, TASK, FEATURE_TASK } = await import("../smoke/s2.mjs");
 const { BROKEN_MARKER } = await import("../smoke/broken-plugin.mjs");
 const { REPO_ROOT, CHEAP_MODEL } = await import("../smoke/claude-run.mjs");
+const SESSION_TOOLS = JSON.parse(readFileSync(new URL("../smoke/session-tools.json", import.meta.url), "utf8"));
 
 const git = (repo, ...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
 const branchOf = (repo) => git(repo, "branch", "--show-current");
@@ -86,7 +87,8 @@ describe("setup-healthy-start-line", () => {
       const seen = runStart(root, lab);
 
       assert.ok(readFileSync(lab.start, "utf8").startsWith("#!/bin/sh\n"), "start.sh is a sh script");
-      assert.deepEqual(seen.argv, ["--plugin-dir", REPO_ROOT, "--model", "haiku", "--setting-sources", "project,local", "--strict-mcp-config", "--permission-mode", "auto", `/pairingbuddy:code ${TASK}`], "claude gets the interactive argv, with no -p");
+      assert.deepEqual(seen.argv, ["--plugin-dir", REPO_ROOT, "--model", "haiku", "--setting-sources", "project,local", "--strict-mcp-config", "--tools", SESSION_TOOLS.join(","), "--permission-mode", "auto", `/pairingbuddy:code ${TASK}`], "claude gets the interactive argv, with no -p");
+      for (const tool of ["Read", "Glob", "Grep", "AskUserQuestion"]) assert.ok(SESSION_TOOLS.includes(tool), `the lab's session has ${tool}`);
       for (const name of Object.keys(SENTINELS)) {
         assert.ok(!(name in seen.env), `${name} is cleared before claude starts`);
       }

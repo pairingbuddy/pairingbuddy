@@ -6,6 +6,7 @@
   "required": [
     "pb_key",
     "ambiguity",
+    "notes",
     "issues"
   ],
   "properties": {
@@ -15,7 +16,11 @@
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question a human should settle, or an empty string"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question, or an empty string. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "issues": {
       "type": "array",

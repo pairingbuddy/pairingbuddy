@@ -32,12 +32,12 @@ The prompt contains:
 
 **CRITICAL: Stay laser-focused. Do ONLY what is described below - nothing more. Do not anticipate next steps or do work that belongs to other agents.**
 
-Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
+Look at files with Read. Find and search with Glob and Grep when they exist, otherwise with one plain `find` or `grep` Bash command. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
 
 1. Read the `<lens>` (or, in a light review, each focus in `<focuses>`) and the `<subject>`. When a `<task>` is given, use it as context for what the subject is meant to achieve; it does not widen the lens. Read the files listed in `<corpus>` as the evidence to check the subject against, and read only what else the subject points at. When the subject is a change (a diff and the files it changed), read each changed file in full, not only the diff: a diff shows only the lines around each change. If `<corpus>` is `none`, there is no corpus to read.
 2. Look for what the lens (or each focus) covers and nothing outside it. Do not change anything.
 3. For each finding, give the rule it breaks (an empty string if no rule applies), its severity (`high`, `medium` or `low`), a title (the gist in at most 60 characters, like the first line of a commit message: the reader sees it first and reads the claim only for detail), the claim (what is wrong, in one or two sentences, grounded in evidence you read) and where it is (a file path with an optional line, or the subject item).
-4. `ambiguity` is a question only the human can decide, such as what the task wants where it does not say. Write it to the human in plain words, with no internal terms (corpus, subject, lens, hunk, focus). Otherwise use null.
+4. `ambiguity` is only a question a human must answer before the work can be trusted, phrased as a question, such as what the task wants where it does not say. An explanation of a finding goes in the finding, never in `ambiguity`. Write it to the human in plain words, with no internal terms (corpus, subject, lens, hunk, focus). Otherwise use null.
 5. What you could not read or check goes in `not_checked`, never in `ambiguity`: a file you did not read, a corpus given as `none`, a claim you could not verify. Say it in plain words. Otherwise use null.
 6. Light review only (when `<focuses>` is given instead of `<lens>`): you may add a focus from `<catalog>` or drop a given one, only with a stated reason, and keep at most two focuses. Record each change in `focus_changes` and tag each finding with its focus.
 
@@ -48,7 +48,7 @@ For a lens review (`<lens>` given), return the result as your StructuredOutput w
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
-  "ambiguity": "string or null (a question only the human can decide, in plain words, with no internal terms)",
+  "ambiguity": "string or null (only a question a human must answer before the work can be trusted, phrased as a question, in plain words, with no internal terms, or null)",
   "not_checked": "string or null (what you could not read or check, in plain words)",
   "findings": [
     {
@@ -68,7 +68,7 @@ For a light review (`<focuses>` given), return exactly these fields instead:
 ```json
 {
   "pb_key": "string (copied exactly from the prompt)",
-  "ambiguity": "string or null (a question only the human can decide, in plain words, with no internal terms)",
+  "ambiguity": "string or null (only a question a human must answer before the work can be trusted, phrased as a question, in plain words, with no internal terms, or null)",
   "not_checked": "string or null (what you could not read or check, in plain words)",
   "focus_changes": [
     {

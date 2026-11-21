@@ -8,7 +8,7 @@
     "pb_key": { "type": "string", "description": "The key from the prompt, copied exactly" },
     "ambiguity": {
       "type": ["string", "null"],
-      "description": "A question only the human can decide, in plain words to the human, or null"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question, in plain words to the human, or null. What you could not read or check goes in not_checked, and an explanation of a finding goes in the finding, never here"
     },
     "not_checked": {
       "type": ["string", "null"],

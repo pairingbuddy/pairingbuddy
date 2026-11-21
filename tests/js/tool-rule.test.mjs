@@ -13,7 +13,18 @@ const read = (...parts) => readFileSync(join(ROOT, ...parts), "utf8");
 const TOOL_RULE = /\nfocus_warning:\n {2}content: \|\n[\s\S]*?\n {4}(Look at files with Read[^\n]*)\n/.exec(read("contracts", "agent-config.yaml"))[1];
 
 test("the canonical tool rule names the shapes that prompted", () => {
-  for (const shape of ["Read, Glob and Grep", "`&&`", "`;`", "`|`", "`$(...)`", "`cd`", "environment variable"]) assert.ok(TOOL_RULE.includes(shape), shape);
+  for (const shape of ["Look at files with Read.", "`&&`", "`;`", "`|`", "`$(...)`", "`cd`", "environment variable"]) assert.ok(TOOL_RULE.includes(shape), shape);
+});
+
+// Some Claude Code builds leave Glob and Grep out of the tool set and search through Bash's find and grep instead: a session
+// that reached for Glob got "No such tool available". The rule names the fallback, still one plain command.
+test("the tool rule falls back to one plain find or grep when Glob and Grep are missing", () => {
+  for (const shape of ["Glob and Grep when they exist", "one plain `find` or `grep` Bash command"]) assert.ok(TOOL_RULE.includes(shape), shape);
+});
+
+// Every agent file carries the focus warning, and with it the tool rule.
+test("every agent file carries the tool rule", () => {
+  for (const file of readdirSync(join(ROOT, "agents"))) assert.ok(read("agents", file).includes(TOOL_RULE), `agents/${file} lacks the tool rule`);
 });
 
 // The skills the main context runs during /pairingbuddy:code.

@@ -11,7 +11,7 @@
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question the task left unresolved, or an empty string"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (such as which of two types the task means), or an empty string. Explanations of your choices go in rationale, never here"
     },
     "task_type": {
       "type": "string",

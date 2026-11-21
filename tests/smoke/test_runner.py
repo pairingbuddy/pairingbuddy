@@ -6,12 +6,14 @@ The real runs are `tests/smoke/s1.py` and `tests/smoke/spike.py`, which pytest d
 import json
 import os
 import stat
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
-from tests.smoke import runner
+from tests.smoke import runner, s1
 from tests.smoke.runner import Budget, SmokeError, SpendCapError, clean_env, run_claude
 from tests.smoke.s1 import assert_control_flow
 from tests.smoke.spike import clear_winner
@@ -222,6 +224,7 @@ def test_a_timeout_fails_and_marks_the_spend_unknown(fake, tmp_path, monkeypatch
 
 LEDGER = {
     "stages": [
+        {"name": "intake", "status": "done"},
         {"name": "code-config", "status": "done"},
         {"name": "code-safety-net", "status": "done"},
     ],
@@ -290,3 +293,65 @@ def test_only_the_entry_points_stay_out_of_pytest_collection():
     collected = {path.name for path in Path(runner.__file__).parent.glob("test_*.py")}
 
     assert collected == {"test_runner.py"}, "S1 and the spike spend money, so pytest must miss them"
+
+
+SESSION_TOOLS = json.loads((Path(runner.__file__).parent / "session-tools.json").read_text())
+
+
+def test_the_run_names_its_tools_so_read_glob_and_grep_are_there(fake, tmp_path):
+    call(tmp_path)
+
+    named = fake.last_flag("--tools").split(",")
+    assert named == SESSION_TOOLS
+    assert {"Read", "Glob", "Grep"} <= set(named), "the product's tool rule names them"
+
+
+def test_the_extra_env_reaches_the_run_on_top_of_the_clean_env(fake, tmp_path):
+    run_claude(tmp_path, "/x", Budget(), tmp_path / "run.stream", {"GH_SHIM_LOG": "/shim.log"})
+
+    env = fake.calls()[0]["env"]
+    assert env["GH_SHIM_LOG"] == "/shim.log"
+    assert env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "claude-haiku-5-5"
+
+
+def test_the_s1_repo_has_a_local_origin_pb_finds_its_base_on(tmp_path):
+    repo, remote = s1.make_repo(tmp_path, on_main=True)
+
+    assert s1.git(repo, "remote", "get-url", "origin").strip() == str(remote)
+    assert s1.git(repo, "branch", "--show-current").strip() == "main"
+    opened = s1.pb(repo, "unit", "open", "--type", "chore", "--slug", "x")
+    assert opened["base"] == "main"
+
+
+def test_the_s1_config_globs_cover_every_sample_task_so_task_end_asks_no_human(tmp_path):
+    repo, _ = s1.make_repo(tmp_path)
+
+    git_config = json.loads((repo / ".pairingbuddy" / "git-config.json").read_text())
+    assert set(git_config["config_globs"]) == {"app.ini", "settings.json"}
+    globs = git_config["config_globs"]
+    assert all(any(glob in task for glob in globs) for task in s1.TASKS.values())
+
+
+def test_the_gh_shim_answers_for_gh_in_the_s1_env(tmp_path):
+    env = s1.gh_shim_env(tmp_path)
+
+    gh = subprocess.run(["gh", "repo", "view"], env=os.environ | env, capture_output=True)
+    assert gh.returncode == 0
+    logged = json.loads(Path(env["GH_SHIM_LOG"]).read_text().splitlines()[0])
+    assert logged["argv"] == ["repo", "view"]
+
+
+def test_the_ledger_watch_keeps_the_code_run_past_the_publish_run_after_it(tmp_path):
+    ledger = s1.task_dir(tmp_path) / "ledger.json"
+    ledger.parent.mkdir(parents=True)
+    stage = {"name": "code-config", "status": "done"}
+
+    with s1.LedgerWatch(tmp_path) as watch:
+        ledger.write_text(json.dumps({"kind": "code", "stage": stage}))
+        time.sleep(0.2)
+        ledger.write_text(json.dumps({"kind": "publish", "stage": stage | {"name": "pr-draft"}}))
+        time.sleep(0.2)
+
+    assert watch.last["kind"] == "publish"
+    assert watch.last_code["kind"] == "code"
+    assert set(watch.stage_seconds()) == {"code-config"}

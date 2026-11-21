@@ -252,6 +252,29 @@ test("pr-base-branch-wins-over-default-branch", () => {
   assertUntouched(missing, before, "missing base branch");
 });
 
+// The refusal says what was looked for and gives the human a `!` line that fixes it.
+test("unknown-base-refuses-with-what-was-looked-for-and-a-typed-fix", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  gitIn(repo, "remote", "set-head", "origin", "-d");
+  const before = snapshotRepo(repo);
+
+  const refused = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
+
+  assert.equal(refused.code, 1, "an unknown base refuses with exit code 1");
+  const said = refused.stderr + refused.stdout;
+  assert.match(said, /pr\.base_branch/, "it names the setting it looked for");
+  assert.match(said, /\.pairingbuddy\/git-config\.json/, "it names the file that holds the setting");
+  assert.match(said, /origin\/HEAD/, "it names the remote default it looked for");
+  assertUntouched(repo, before, "unknown base");
+  const typed = said.split("\n").find((line) => line.startsWith("!"));
+  assert.ok(typed, `it gives a ! line the human can type: ${said}`);
+  assert.match(typed, /git -C .+ remote set-head origin --auto$/, "the ! line sets origin/HEAD from the remote");
+
+  execFileSync("sh", ["-c", typed.slice(1)], { env: env(), stdio: "ignore" });
+  const opened = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
+  assert.equal(opened.code, 0, `after the typed fix, pb unit open opens: ${opened.stderr}`);
+});
+
 test("fetch-failure-refuses-before-creating-anything", () => {
   const repo = makeRepo({ openTask: false, remote: true });
   gitIn(repo, "remote", "set-url", "origin", `${repo.remoteDir}-missing`);

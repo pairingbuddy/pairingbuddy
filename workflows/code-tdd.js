@@ -10,6 +10,7 @@ const PLACEHOLDERS_SCHEMA = {
   "required": [
     "pb_key",
     "ambiguity",
+    "notes",
     "commit_subject",
     "files_changed",
     "tests"
@@ -21,7 +22,11 @@ const PLACEHOLDERS_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question the scenarios left unresolved, or an empty string"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (such as what a test case means to test), or an empty string. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "commit_subject": {
       "type": "string",
@@ -92,6 +97,7 @@ const TESTS_SCHEMA = {
   "required": [
     "pb_key",
     "ambiguity",
+    "notes",
     "commit_subject",
     "files_changed"
   ],
@@ -102,7 +108,11 @@ const TESTS_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question, or a test the agent could not get to fail for the right reason, or an empty string"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (such as what to do about a test the agent could not get to fail for the right reason), or an empty string. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "commit_subject": {
       "type": "string",
@@ -127,6 +137,7 @@ const CODE_SCHEMA = {
   "required": [
     "pb_key",
     "ambiguity",
+    "notes",
     "commit_subject",
     "files_changed"
   ],
@@ -137,7 +148,11 @@ const CODE_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question, or a test the agent could not satisfy, or an empty string"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (such as what to do about a test the agent could not satisfy), or an empty string. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "commit_subject": {
       "type": "string",
@@ -164,7 +179,7 @@ const LENSES = {
         {
           "name": "classification",
           "model": "sonnet",
-          "brief": "Check that the task type fits what the task text asks for (new feature, bug fix, refactoring, config change or spike), and that the stated confidence is justified by the text."
+          "brief": "Check that the task type fits what the task text asks for (new feature, bug fix, refactoring, config change or spike), and that the stated confidence is justified by the text. The branch name is not evidence of the task type: it was named before intake, from a guess."
         }
       ],
       "refute": "none",
@@ -614,7 +629,7 @@ const LIGHT_REVIEW_SCHEMA = {
         "string",
         "null"
       ],
-      "description": "A question only the human can decide, in plain words to the human, or null"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question, in plain words to the human, or null. What you could not read or check goes in not_checked, and an explanation of a finding goes in the finding, never here"
     },
     "not_checked": {
       "type": [
@@ -717,6 +732,7 @@ const REFACTOR_TESTS_SCHEMA = {
   "required": [
     "pb_key",
     "ambiguity",
+    "notes",
     "commit_subject",
     "approach",
     "no_change_reason",
@@ -729,7 +745,11 @@ const REFACTOR_TESTS_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question a human should settle, or an issue the agent could not fix without changing behaviour, or an edit that was refused or failed, or an empty string. pb gate eval shows every non-empty one to the human as a doubt"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (such as whether to change behaviour to fix an issue, or what to do about an edit that was refused or failed), or an empty string. pb gate eval shows every non-empty one to the human as a doubt. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "commit_subject": {
       "type": "string",
@@ -762,6 +782,7 @@ const REFACTOR_CODE_SCHEMA = {
   "required": [
     "pb_key",
     "ambiguity",
+    "notes",
     "commit_subject",
     "approach",
     "no_change_reason",
@@ -774,7 +795,11 @@ const REFACTOR_CODE_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question a human should settle, or an issue the agent could not fix without changing behaviour, or an edit that was refused or failed, or an empty string. pb gate eval shows every non-empty one to the human as a doubt"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question (such as whether to change behaviour to fix an issue, or what to do about an edit that was refused or failed), or an empty string. pb gate eval shows every non-empty one to the human as a doubt. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "commit_subject": {
       "type": "string",
@@ -807,6 +832,7 @@ const COVERAGE_SCHEMA = {
   "required": [
     "pb_key",
     "ambiguity",
+    "notes",
     "status",
     "scenarios_covered",
     "scenarios_total",
@@ -821,7 +847,11 @@ const COVERAGE_SCHEMA = {
     },
     "ambiguity": {
       "type": "string",
-      "description": "An open question a human should settle, or an empty string"
+      "description": "Only a question a human must answer before the work can be trusted, phrased as a question, or an empty string. Explanations of your choices go in notes, never here"
+    },
+    "notes": {
+      "type": "string",
+      "description": "What you want to explain about your choices, in plain words, or an empty string. No gate reads it and it never stops the run"
     },
     "status": {
       "type": "string",
@@ -1551,7 +1581,7 @@ function corpusBlock(corpus) {
 
 // The tool rule every agent's definition carries (contracts/agent-config.yaml, focus_warning), said again in each prompt: an
 // agent that inspected files with a compound Bash call waited on a permission prompt mid-stage.
-const TOOL_RULE = 'Look at files with Read, Glob and Grep. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.';
+const TOOL_RULE = 'Look at files with Read. Find and search with Glob and Grep when they exist, otherwise with one plain `find` or `grep` Bash command. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.';
 
 // Where a prompt's paths are: a redraft that loaded a skill read its inputs under the skill's plugin folder, found nothing
 // there, and its reads outside the project asked for permission.

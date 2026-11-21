@@ -395,8 +395,8 @@ function twoGateLedger() {
 // ---------- always-stop conditions from Section 4 ----------
 
 const writeReport = (repo, report) => writeFileSync(join(repo.taskDir, "report.json"), JSON.stringify(report));
-const writeReturn = (repo, ambiguity) =>
-  writeFileSync(join(repo.taskDir, "artifacts", `${CONFIG}.apply-config-change.-.r1.a1.json`), JSON.stringify({ pb_key: `${CONFIG}.apply-config-change.-.r1.a1`, ambiguity, commit_subject: "x", files_changed: [] }));
+const writeReturn = (repo, ambiguity, extra = {}) =>
+  writeFileSync(join(repo.taskDir, "artifacts", `${CONFIG}.apply-config-change.-.r1.a1.json`), JSON.stringify({ pb_key: `${CONFIG}.apply-config-change.-.r1.a1`, ambiguity, commit_subject: "x", files_changed: [], ...extra }));
 
 const ALWAYS_STOP = [
   { condition: "a decide finding", reason: /decide/, arrange: (repo) => writeReport(repo, { survivors: [{ id: "f1", class: "decide" }] }) },
@@ -441,6 +441,7 @@ describe("always-stop conditions", () => {
   const CLEAR = [
     { state: "an empty-string ambiguity, which is the schema's none", arrange: (repo) => writeReturn(repo, "") },
     { state: "a null ambiguity", arrange: (repo) => writeReturn(repo, null) },
+    { state: "notes beside an empty ambiguity, which no gate reads", arrange: (repo) => writeReturn(repo, "", { notes: "Kept the comment above the port, since the task did not mention it." }) },
     { state: "an empty report", arrange: (repo) => writeReport(repo, { survivors: [], gaps: [], uncovered: [], unrefuted: [] }) },
     { state: "a survivor not marked decide", arrange: (repo) => writeReport(repo, { survivors: [{ id: "f1", class: "fix-here" }] }) },
     { state: "an unrefuted finding below high severity", arrange: (repo) => writeReport(repo, { unrefuted: [{ id: "f2", severity: "low" }] }) },
