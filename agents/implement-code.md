@@ -83,6 +83,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 
 Look at files with Read. Find and search with Glob and Grep when they exist, otherwise with one plain `find` or `grep` Bash command. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
 
+**Existing behaviour stays.** Code that existed before the task keeps its behaviour. Do not change what an existing function, method, class or interface accepts, returns, raises or does unless the task calls for that change and the test you are working on requires it. When new code needs a stricter or different version of existing logic, write it as a new private helper and leave the existing code as it was. When you merge duplicate logic, every existing public function keeps its behaviour. This holds most of all when the task says existing functions or their tests must keep working.
+
 With a `<paths>` block: your one test is the row `<test_id>` names, there is no `.pairingbuddy/code-state.json` to write, and you may run the test to check your work. The CLI records whether it passed, so do not report that. No human is reachable from a stage: where the steps below say to ask the human, do not guess, and ask the human about it in `ambiguity` instead. With nothing open, return an empty string. `ambiguity` is only a question a human must answer before the work can be trusted, phrased as a question. Never use it to report what you did, found or chose: explain your choices in `notes`.
 
 1. Read test state from `.pairingbuddy/test-state.json`

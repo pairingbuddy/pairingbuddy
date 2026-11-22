@@ -90,6 +90,7 @@ const PLAIN_NAMES = {
   "claims": "what it claims",
   "permanence": "how long it lasts",
   "behaviour-preservation": "same behaviour",
+  "existing-behaviour": "existing code kept",
   "config-fit": "fit with the config",
   "scope-serves-intent": "scope fits the goal",
   "claims-against-recorded-evidence": "claims checked against evidence",

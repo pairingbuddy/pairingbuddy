@@ -51,3 +51,4 @@ Reference material for identifying code smells and applying refactoring techniqu
 3. Run tests after each change
 4. Commit frequently
 5. If tests break, revert and try smaller step
+6. When you merge duplicate logic, every existing public function keeps its behaviour: if one copy is stricter than the other, the public function keeps its own behaviour and the strict one stays a private helper

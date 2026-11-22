@@ -196,6 +196,19 @@ test("code-safety-net-bug-fix-shares-new-feature-lenses", async () => {
   assert.deepEqual(spawnedLenses(calls), expectedLenses(row), "and they are the contract's lenses");
 });
 
+// A compare lab's build made an existing public function strict while adding a new one, on a task that said the existing
+// functions must keep working, and no review caught it. For a feature or a fix, one lens looks only for that.
+for (const taskType of ["new_feature", "bug_fix"]) {
+  test(`code-safety-net-${taskType}-checks-existing-behaviour-the-task-did-not-ask-to-change`, async () => {
+    const { calls } = await runStage(ARGS, agentRelaying(taskType, { findings: [] }, ["CLAUDE.md"]));
+
+    const lens = calls.find(({ prompt, opts }) => opts.agentType === "pairingbuddy:lens" && JSON.parse(blockOf(prompt, "lens")) === "existing-behaviour");
+    assert.ok(lens, "the round spawns the existing-behaviour lens");
+    const brief = JSON.parse(blockOf(lens.prompt, "brief"));
+    for (const words of ["existed before", "the task does not ask for", "must keep working", "new private helper"]) assert.ok(brief.includes(words), `the brief says: ${words}`);
+  });
+}
+
 test("code-safety-net-refactoring-lens-models", async () => {
   const row = rowFor("refactoring");
   assert.ok(row, "lenses.json has a safety-net row for refactoring");
