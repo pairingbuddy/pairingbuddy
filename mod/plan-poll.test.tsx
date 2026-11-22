@@ -20,8 +20,8 @@ const PLAN = [
   '',
 ].join('\n')
 
-// Runs the mod over a ledger that names PLAN_PATH, serving `planText` there, and returns what the poll kept as its inputs.
-async function pollKeptInputs($: any, on: Function, planText: string): Promise<Polled> {
+// Runs the mod over a ledger that names PLAN_PATH, serving `planText` there. Returns the rig, to change what is served, and a read of what the poll kept as its inputs.
+async function startPolling($: any, on: Function, planText: string) {
   const rig = setupReplay(on)
   for (const event of ['audio.play', 'ui.toast', 'ui.status', 'store.get', 'store.set']) on(event, () => ({ value: undefined }))
   const kept = new Map<string, unknown>()
@@ -31,10 +31,17 @@ async function pollKeptInputs($: any, on: Function, planText: string): Promise<P
   rig.served.set(`${ROOT}/${PLAN_PATH}`, planText)
 
   await start($)
-  await rig.clock.advance(TWO_POLLS_MS)
 
-  expect(kept.has(INPUTS.key), 'the poll has kept its inputs').toBe(true)
-  return kept.get(INPUTS.key) as Polled
+  const keptInputs = async (): Promise<Polled> => {
+    await rig.clock.advance(TWO_POLLS_MS)
+    expect(kept.has(INPUTS.key), 'the poll has kept its inputs').toBe(true)
+    return kept.get(INPUTS.key) as Polled
+  }
+  return { rig, keptInputs }
+}
+
+async function pollKeptInputs($: any, on: Function, planText: string): Promise<Polled> {
+  return (await startPolling($, on, planText)).keptInputs()
 }
 
 test('with a ledger naming a plan path and a plan MD on disk, the poll returns the parsed plan units', async ($, on) => {
@@ -52,8 +59,15 @@ test('with a ledger naming a plan path and a plan MD on disk, the poll returns t
   ])
 })
 
-test('after the plan MD changes between polls (a box is ticked), the next poll returns the updated tree', async () => {
-  throw new Error('not implemented: poll-picks-up-plan-change')
+test('after the plan MD changes between polls (a box is ticked), the next poll returns the updated tree', async ($, on) => {
+  const { rig, keptInputs } = await startPolling($, on, PLAN)
+  const before = await keptInputs()
+  expect(before.plan?.units[0].tasks[1], 'Task 2 starts unticked').toMatchObject({ title: 'Task 2: Remove an item', checked: false })
+
+  rig.served.set(`${ROOT}/${PLAN_PATH}`, PLAN.replace('- [ ] Task 2', '- [x] Task 2'))
+  const after = await keptInputs()
+
+  expect(after.plan?.units[0].tasks[1], 'the next poll sees Task 2 ticked').toMatchObject({ title: 'Task 2: Remove an item', checked: true })
 })
 
 test('a plan path that is missing, empty or unreadable yields no plan and does not throw', async () => {
