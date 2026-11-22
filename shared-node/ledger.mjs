@@ -226,7 +226,7 @@ export function validateLedger(ledger) {
         }
         break;
       case "configApproval":
-        checkObject(ledger.configApproval, "configApproval", { source: [(x) => x === "human-cli", "human-cli"] }, errors);
+        checkObject(ledger.configApproval, "configApproval", { source: [(x) => x === "human-cli" || x === "human", "human-cli or human"] }, errors);
         break;
       case "configAcceptances":
         if (Array.isArray(ledger.configAcceptances)) {

@@ -18,3 +18,21 @@ export const configQuestion = () => ({
   ],
   multiSelect: false,
 });
+
+// A config_change with no config_globs to check it against needs the human's OK, once per task (pb task end).
+export const APPROVAL_GATE = "config-approval";
+export const CONFIRM_CONFIG = "Confirm";
+export const NOT_NOW = "Not now";
+
+export const approvalQuestion = () => ({
+  question: "This config change has no config_globs in .pairingbuddy/git-config.json to check its files against, so it needs your OK before the task ends. Confirm the change?",
+  header: "Config OK",
+  options: [
+    { label: CONFIRM_CONFIG, description: "The changed files are the right ones; end the task" },
+    { label: NOT_NOW, description: "Do not confirm; the task stays open" },
+  ],
+  multiSelect: false,
+});
+
+// The pb human verb each wait falls back to, typed as a ! line, when its question cannot be asked.
+export const TYPED_FALLBACKS = { [CONFIG_GATE]: "accept", [APPROVAL_GATE]: "approve-config" };

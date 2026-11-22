@@ -1,6 +1,6 @@
 // What a human's answer to a wait outside the gates does to the ledger, for the tap to record: the session asks the
 // question pb stored in needsHuman, and only the human's AskUserQuestion result is taken, so a model never answers it.
-import { ACCEPT_CONFIG, CONFIG_GATE, STOP_AT_CONFIG } from "./config-wait.mjs";
+import { ACCEPT_CONFIG, APPROVAL_GATE, CONFIRM_CONFIG, CONFIG_GATE, NOT_NOW, STOP_AT_CONFIG } from "./config-wait.mjs";
 import { GO_ON_LABEL, GO_ON_WAIT, STAY_STOPPED_LABEL, recordApproval } from "./gates.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { validatedConfigHash } from "./test-run.mjs";
@@ -32,7 +32,14 @@ function answerGoOn(ledger, answer, { gates, answeredAt }) {
   return recordApproval(ledger, gate, gates, {}, answeredAt, "human");
 }
 
+// Confirm records the human's OK on a config_change with no config_globs, for this task; Not now only ends the question.
+function answerApproval(ledger, answer, { answeredAt }) {
+  const done = answered(ledger, APPROVAL_GATE, answeredAt);
+  return answer === CONFIRM_CONFIG ? { ...done, configApproval: { source: "human" } } : done;
+}
+
 const WAITS = {
+  [APPROVAL_GATE]: { answers: [CONFIRM_CONFIG, NOT_NOW], answer: answerApproval },
   [CONFIG_GATE]: { answers: [ACCEPT_CONFIG, STOP_AT_CONFIG], answer: answerConfig },
   [GO_ON_WAIT]: { answers: [GO_ON_LABEL, STAY_STOPPED_LABEL], answer: answerGoOn },
 };

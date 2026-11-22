@@ -37,7 +37,7 @@ import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, i
 import { ConfigHashChanged, TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
-import { CONFIG_GATE, CONFIG_WAIT_LINE, configQuestion } from "../shared-node/config-wait.mjs";
+import { APPROVAL_GATE, CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS, approvalQuestion, configQuestion } from "../shared-node/config-wait.mjs";
 import { VERB_CLASSES, ensureShim, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
@@ -449,7 +449,7 @@ function gateEval(args) {
   const { needsHuman } = current;
   if (needsHuman !== null) {
     const { gate, reason } = needsHuman;
-    return { ok: true, result: "needs-human-command", gate, reason, humanCommand: gate === CONFIG_GATE ? humanCommand(root, "accept") : approveCommand(root, gate) };
+    return { ok: true, result: "needs-human-command", gate, reason, humanCommand: Object.hasOwn(TYPED_FALLBACKS, gate) ? humanCommand(root, TYPED_FALLBACKS[gate]) : approveCommand(root, gate) };
   }
   const contract = loadStages(PLUGIN_ROOT);
   const answered = answeredGate(gatesFor(contract, current.taskType), current);
@@ -647,7 +647,7 @@ function humanApproveConfig(args) {
   const ledger = readLedger(path);
   if (ledger.taskType !== "config_change") throw new Refusal(`no approval needed: this task is ${ledger.taskType ?? "not typed"}, not a config_change`);
   if (loadGitConfigOrRefuse(toplevel()).config_globs.length > 0) throw new Refusal("no approval needed: config_globs is not empty, so a config_change is checked against it");
-  updateLedger(path, (ledger) => ({ ...ledger, configApproval: { source: "human-cli" } }));
+  updateLedger(path, (ledger) => ({ ...ledger, configApproval: { source: "human-cli" }, ...(ledger.needsHuman?.gate === APPROVAL_GATE ? { needsHuman: null } : {}) }));
   return { ok: true, source: "human-cli" };
 }
 
@@ -1565,12 +1565,17 @@ function taskDiffFiles(root, ledger, opened) {
 }
 
 // A config_change may only touch config_globs. An empty list is the human's call, once per task.
-function assertConfigChangeInGlobs(root, ledger, opened) {
+// With no question waiting, the refusal also sets the run waiting on the human's OK, which the session asks in the session.
+function assertConfigChangeInGlobs(root, path, ledger, opened) {
   if (ledger.taskType !== "config_change") return;
   const globs = loadGitConfigOrRefuse(root).config_globs;
   if (globs.length === 0) {
-    if (ledger.configApproval?.source === "human-cli") return;
-    throw new Refusal(`config_globs is empty, so this config_change needs the human's confirmation. Nothing was touched: ask the human to run pb human approve-config by typing ${humanCommand(root, "approve-config")}`);
+    if (ledger.configApproval !== undefined) return;
+    const typed = humanCommand(root, "approve-config");
+    if (ledger.needsHuman === null) {
+      updateLedger(path, (current) => (current.needsHuman !== null ? current : { ...current, needsHuman: { gate: APPROVAL_GATE, reason: "config_globs is empty, so this config_change needs the human's confirmation", seq: current.seq + 1, askedAt: new Date().toISOString(), question: approvalQuestion(), fix: `answer the question in the session, or type ${typed}` } }));
+    }
+    throw new Refusal(`config_globs is empty, so this config_change needs the human's confirmation. The task was not ended: run ${pbCommand("status --action")}, which gives the question that asks them. If it cannot be asked, they run pb human approve-config by typing ${typed}`);
   }
   const outside = outsideGlobs(globs, taskDiffFiles(root, ledger, opened));
   if (outside.length > 0) throw new Refusal(`this config_change touches files outside config_globs (${globs.join(", ")}). Nothing was touched: ${outside.join(", ")}`);
@@ -1589,7 +1594,7 @@ function taskEnd(args) {
   assertGreenRunStands(root, ledger);
   assertCleanTree(root);
   const opened = readUnitForRecord(root, ledger);
-  assertConfigChangeInGlobs(root, ledger, opened);
+  assertConfigChangeInGlobs(root, path, ledger, opened);
   const plan = tickedPlan(root, ledger.plan);
   const branch = opened?.unit.branch ?? branchOf(root);
   appendTaskRecord(opened);

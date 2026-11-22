@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { writeLedger } from "../../shared-node/ledger.mjs";
 import { ROOT, env, makeRepo, pb } from "./cli-repo-fixture.mjs";
 import { fixture, runGate } from "./gate-harness.mjs";
+import { recordedAnswer, runTap } from "./tap-fixture.mjs";
 
 const CLI = join(ROOT, "cli", "pb.mjs");
 const NET = "code-safety-net";
@@ -129,17 +130,45 @@ test("approve-config-refuses-for-non-config-change-task", () => {
   assert.match(result.stderr + result.stdout, /no approval needed/i, "it says no approval is needed");
 });
 
-test("task-end-empty-globs-refuses-and-tells-human", () => {
+test("task-end-empty-globs-refuses-and-asks-the-human", () => {
   const repo = finishedRepo({ files: ["settings.json"] });
   const before = bytes(repo);
 
   const result = pb(repo, "task", "end");
 
   assert.equal(result.code, 1, `with empty config_globs the config_change is refused; stdout: ${result.stdout}`);
-  assert.match(result.stderr + result.stdout, /pb human approve-config/, "the output names the typed command pb human approve-config");
+  assert.match(result.stderr, /status --action/, "the refusal sends the session to the question");
+  assert.match(result.stderr, /pb human approve-config/, "and names the typed command as the fallback");
   assert.deepEqual(readFileSync(unitPath(repo)), before.unit, "unit.json is unchanged");
-  assert.deepEqual(readFileSync(ledgerPath(repo)), before.ledger, "the ledger is unchanged");
+  const { needsHuman } = repo.ledger();
+  assert.equal(needsHuman?.gate, "config-approval", "the run waits on the human's confirmation");
+  assert.deepEqual(needsHuman.question.options.map(({ label }) => label), ["Confirm", "Not now"]);
   assert.ok(existsSync(taskPath(repo)), "run/task stays");
+  const { action } = JSON.parse(pb(repo, "status", "--action").stdout);
+  assert.ok(action.includes(JSON.stringify({ questions: [needsHuman.question] })), action);
+});
+
+test("the human's Confirm, recorded by the tap, lets task end pass", () => {
+  const repo = finishedRepo({ files: ["settings.json"] });
+  pb(repo, "task", "end");
+
+  runTap(repo, recordedAnswer(repo, repo.ledger().needsHuman.question, "Confirm"));
+
+  assert.deepEqual(repo.ledger().configApproval, { source: "human" });
+  assert.equal(repo.ledger().needsHuman, null);
+  const ended = pb(repo, "task", "end");
+  assert.equal(ended.code, 0, ended.stderr);
+});
+
+test("the human's Not now ends the question and approves nothing", () => {
+  const repo = finishedRepo({ files: ["settings.json"] });
+  pb(repo, "task", "end");
+
+  runTap(repo, recordedAnswer(repo, repo.ledger().needsHuman.question, "Not now"));
+
+  assert.equal(repo.ledger().needsHuman, null);
+  assert.equal(repo.ledger().configApproval, undefined);
+  assert.equal(pb(repo, "task", "end").code, 1, "task end still refuses");
 });
 
 test("approve-config-then-task-end-passes", () => {

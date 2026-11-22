@@ -10,7 +10,7 @@ import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nex
 import { humanCommand, pbCommand, shaMismatchRemedy } from "./verbs.mjs";
 import { SPIKE_SETUP_FILE } from "./unit-files.mjs";
 import { plainName } from "./plain-names.mjs";
-import { CONFIG_GATE, CONFIG_WAIT_LINE } from "./config-wait.mjs";
+import { CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS } from "./config-wait.mjs";
 
 function nextStep(contract, ledger) {
   if (isStageActive(ledger)) return null;
@@ -69,10 +69,10 @@ export function nextAction(contract, ledger, root, pluginRoot) {
   if (answered !== undefined) return `The human answered ${answered.answer} at ${plainGate(answered.name)}. Only they can go on: ask them to type ${humanCommand(root, `approve ${answered.name}`)}`;
   if (ledger.stop !== null) return `The run has stopped: ${ledger.stop.reason}. Nothing skips a stop, so report ${pbCommand("status")} to the human and go no further. Only if they say to go on, ${pbCommand("stage fail")} clears it.`;
   if (isStageActive(ledger)) return activeAction(ledger, pluginRoot);
-  if (ledger.needsHuman?.gate === CONFIG_GATE) return `The run is waiting on the human: ${CONFIG_WAIT_LINE}. ${askHuman(root, CONFIG_GATE, ledger.needsHuman.question, humanCommand(root, "accept"))}`;
+  if (ledger.needsHuman?.gate === CONFIG_GATE) return `The run is waiting on the human: ${CONFIG_WAIT_LINE}. ${askHuman(root, CONFIG_GATE, ledger.needsHuman.question, humanCommand(root, TYPED_FALLBACKS[CONFIG_GATE]))}`;
   if (ledger.needsHuman !== null) {
     const { gate, reason } = ledger.needsHuman;
-    return `The run is waiting for ${plainGate(gate)}: ${reason}. ${askHuman(root, gate, ledger.needsHuman.question)}`;
+    return `The run is waiting for ${plainGate(gate)}: ${reason}. ${askHuman(root, gate, ledger.needsHuman.question, humanCommand(root, TYPED_FALLBACKS[gate] ?? `approve ${gate}`))}`;
   }
   const gate = blockingGate(gates, ledger);
   if (gate !== undefined) return `Gate ${gate.name} is due. Run ${pbCommand("gate eval")}.`;

@@ -20,6 +20,7 @@ const PLAIN_NAMES = {
   "G:unit": "your OK on this experiment",
   // the wait a changed test-config raises (shared-node/config-wait.mjs)
   "config-changed": "the test settings changed: check and accept them",
+  "config-approval": "your OK on the config change",
   // agents
   "apply-config-change": "changing the config",
   "runner": "running the checks",
