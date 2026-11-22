@@ -81,6 +81,7 @@ JS_TEST_FILES = [
     "tests/js/long-lists.test.mjs",
     "tests/js/looping-and-counts.test.mjs",
     "tests/js/mistake-check.test.mjs",
+    "tests/js/mod-test-one.test.mjs",
     "tests/js/paths-mode-no-ask.test.mjs",
     "tests/js/permission-wait.test.mjs",
     "tests/js/pb-checkpoint.test.mjs",
