@@ -240,7 +240,7 @@ const WEDGES = {
   "no-unit": {
     recipe: "A run with no unit",
     force: openRun,
-    sees: "pb task end refuses. The way out is for the human to type `! pb human abandon`.",
+    sees: "pb task end refuses. The way out is for the human to type `!.pairingbuddy/bin/pb human abandon`.",
   },
   "broken-cli": {
     recipe: "Broken CLI",

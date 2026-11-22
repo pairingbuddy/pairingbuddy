@@ -36,7 +36,7 @@ import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, i
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
-import { VERB_CLASSES, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
+import { VERB_CLASSES, ensureShim, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
 const RUN_OPEN_KINDS = KINDS.filter((k) => k !== "refresh");
@@ -266,6 +266,8 @@ function runOpen(args) {
   // A failed write is a disk error that leaves the run unnamed; `pb plan next` then reads its ticked box as hand-ticked
   // and stops, which is the safe side.
   if (planned?.namedUnit) writeJsonAtomic(unitPathOf(root), planned.namedUnit);
+  // The short pb a human's ! line names from here on.
+  ensureShim(root);
   return { ok: true, kind, branch, runDir: dir };
 }
 

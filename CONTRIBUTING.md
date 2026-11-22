@@ -228,7 +228,7 @@ pb() { node "$PLUGIN/cli/pb.mjs" "$@"; }
 cd "$ROOT"
 ```
 
-Typed at the Claude prompt with a leading `!`, a command also skips the hooks. Each `!` line is its own shell, so write it out in full: `!cd <ROOT> && node <PLUGIN>/cli/pb.mjs status`.
+Typed at the Claude prompt with a leading `!`, a command also skips the hooks. `pb run open` writes `.pairingbuddy/bin/pb`, a short pb for the project that runs the plugin's CLI from the root, so at the prompt `!.pairingbuddy/bin/pb status` does it (the session's shell sits at the project root). Without that file, as for a run opened by an older build, write the line out in full, since each `!` line is its own shell: `!cd <ROOT> && node <PLUGIN>/cli/pb.mjs status`. pb gives the short line only when the file is there and runs its own CLI.
 
 ### gate.mjs crash or throw
 
@@ -328,7 +328,7 @@ If the file is not well-formed, `pb human accept` refuses: fix it by hand and ru
 
 If the first session is still working, close the second one, and that is the whole recovery.
 
-To move the run to the second session, close the first one, then the human types `pb human adopt` at the prompt (with `--force` when the owner was seen in the last 10 minutes). It clears the owner and fails an active stage, and the next call from the second session claims the run. Then run `pb status`:
+To move the run to the second session, close the first one, then the human types `!.pairingbuddy/bin/pb human adopt` at the prompt (with `--force` when the owner was seen in the last 10 minutes). It clears the owner and fails an active stage, and the next call from the second session claims the run. Then run `pb status`:
 
 ```bash
 pb human adopt --force
@@ -342,8 +342,10 @@ pb status
 `pb human abandon` is human-only, so a human types it at the Claude prompt. It removes the run state under `.pairingbuddy/run/`. The branch and its commits stay, and so do `.pairingbuddy/test-config.json` and `git-config.json`, which are outside `run/`:
 
 ```bash
-! cd <ROOT> && node <PLUGIN>/cli/pb.mjs human abandon
+!.pairingbuddy/bin/pb human abandon
 ```
+
+Without `.pairingbuddy/bin/pb`, type `!cd <ROOT> && node <PLUGIN>/cli/pb.mjs human abandon`.
 
 If the CLI itself is broken, that command cannot run. Use the Broken CLI recovery below, which ends with deleting the run state by hand.
 

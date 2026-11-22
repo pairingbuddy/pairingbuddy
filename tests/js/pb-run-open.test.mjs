@@ -65,6 +65,18 @@ function assertCleanRefusal(r, pattern) {
 
 // run-open
 
+test("open-writes-the-shim-a-human-line-names", (t) => {
+  const root = makeRepo(t);
+
+  const r = open(root);
+
+  assert.equal(r.status, 0, r.stderr);
+  const shim = join(root, ".pairingbuddy", "bin", "pb");
+  assert.ok(statSync(shim).mode & 0o100, "the shim is executable");
+  assert.doesNotMatch(git(root, "status", "--porcelain", "--untracked-files=all"), /\.pairingbuddy\/bin/, "its folder ignores itself");
+  assert.match(readFileSync(shim, "utf8"), new RegExp(`exec node ${PB.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} "\\$@"`));
+});
+
 test("open-creates-run-task-layout", (t) => {
   const root = makeRepo(t);
 
