@@ -70,8 +70,23 @@ test('after the plan MD changes between polls (a box is ticked), the next poll r
   expect(after.plan?.units[0].tasks[1], 'the next poll sees Task 2 ticked').toMatchObject({ title: 'Task 2: Remove an item', checked: true })
 })
 
-test('a plan path that is missing, empty or unreadable yields no plan and does not throw', async () => {
-  throw new Error('not implemented: poll-unreadable-plan-reads-as-none')
+test('a plan path that is missing, empty or unreadable yields no plan and does not throw', async ($, on) => {
+  const { rig, keptInputs } = await startPolling($, on, PLAN)
+  const planFile = `${ROOT}/${PLAN_PATH}`
+  expect((await keptInputs()).plan?.units, 'the plan reads while the file is fine').toHaveLength(1)
+
+  rig.served.delete(planFile)
+  const missing = await keptInputs()
+  rig.served.set(planFile, '')
+  const empty = await keptInputs()
+  rig.served.set(planFile, PLAN)
+  rig.unreadable.add(planFile)
+  const unreadable = await keptInputs()
+
+  expect(missing.plan ?? null, 'a missing plan file reads as no plan').toBeNull()
+  expect(empty.plan ?? null, 'an empty plan file reads as no plan').toBeNull()
+  expect(unreadable.plan ?? null, 'an unreadable plan file reads as no plan').toBeNull()
+  expect(unreadable.ledger, 'the rest of the poll still carries the ledger').not.toBeNull()
 })
 
 test('polling and rendering the plan tree writes no file outside reports/', async () => {
