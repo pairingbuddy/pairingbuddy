@@ -3,6 +3,7 @@ import { isStandingScenarios, isStandingTests, newestKeyAmong, scenarioRows } fr
 import { withPermissionAsk } from '../shared-node/permission-wait.mjs'
 import { standingGateOff, withGateOff } from '../shared-node/gate-off.mjs'
 import { withStranded } from '../shared-node/stranded.mjs'
+import { parsePlan } from '../shared-node/plan.mjs'
 
 const TESTS = '.pairingbuddy/tests.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
@@ -197,13 +198,28 @@ export function changedOf(file: unknown): string[] | null {
   return file.map(entry => (entry as { path?: unknown })?.path).filter((path): path is string => typeof path === 'string' && path !== '')
 }
 
-export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; unit: Unit | null; changed: string[] | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null }
+export type PlanRead = { units: PlanUnit[]; next: unknown; problems: string[] }
+export type PlanUnit = { unit: string; tracer: string | null; pr: string | null; legacy: boolean; dependsOn: string | null; tasks: { title: string; checked: boolean; human: boolean; body: string }[] }
+
+// The plan MD the ledger names, parsed, or null when the ledger names none or the file is missing, empty or unreadable. Never throws.
+async function readPlan($: EngineInterface, ledger: Ledger | null): Promise<PlanRead | null> {
+  const path = ledger?.plan?.path
+  if (typeof path !== 'string' || path === '') return null
+  try {
+    const text = await $.fs.read(`${await $.session.root()}/${path}`)
+    return text.trim() === '' ? null : (parsePlan(text) as PlanRead)
+  } catch {
+    return null
+  }
+}
+
+export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; unit: Unit | null; changed: string[] | null; plan?: PlanRead | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null }
 
 // The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
 // spawns: this session's, so a stage its own agents are still running never reads as stranded.
 export async function pollInputs($: EngineInterface, spawns: Spawn[] = []): Promise<Polled> {
   const [{ ledger, tests, testsComplete, now }, unitFile, changedFile] = await Promise.all([readInputsAndTests($, spawns), readJson($, UNIT), readJson($, CHANGED)])
-  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: unitOf(unitFile), changed: changedOf(changedFile) }
+  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: unitOf(unitFile), changed: changedOf(changedFile), plan: await readPlan($, ledger ?? null) }
 }
 
 type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null } | null

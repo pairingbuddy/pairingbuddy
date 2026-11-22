@@ -1,8 +1,18 @@
 // Plan parser: turns plan markdown into units (one per PR: group, or per tracer that has no PR group) with their tasks.
-// It does no I/O itself: it imports only node:path's posix normalise and the plan-boxes heading, title and unit name
+// It does no I/O itself: it imports only the plan-text heading, title and unit name
 // rules, so the titles and names it reports are the ones pb task end and pb publish look for.
-import { posix } from "node:path";
-import { boxesTitled, boxLabel, checkboxes, HEADING, headingName, isPrHeading, PR_LINE } from "./plan-boxes.mjs";
+import { boxesTitled, boxLabel, checkboxes, HEADING, headingName, isPrHeading, PR_LINE } from "./plan-text.mjs";
+
+// A plan path as posix normalise reads it, for the cases a plan path takes: "." segments and repeated slashes drop, "a/.." folds.
+function normalised(path) {
+  const parts = [];
+  for (const part of path.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === ".." && parts.length > 0 && parts.at(-1) !== "..") parts.pop();
+    else parts.push(part);
+  }
+  return `${path.startsWith("/") ? "/" : ""}${parts.join("/")}`;
+}
 
 const FENCE = /^\s*(```|~~~)/;
 const LEGACY_LINE = /^Legacy: accepted\s*$/;
@@ -233,7 +243,7 @@ export function parsePlan(text) {
 
 // Titles of the tasks recorded for a unit: the open unit's records count only for that unit, in the same plan (paths compare normalised).
 function recordedTitles(unit, plan, openUnit) {
-  const matches = openUnit?.unit === unit.unit && typeof openUnit.plan === "string" && posix.normalize(openUnit.plan) === posix.normalize(plan);
+  const matches = openUnit?.unit === unit.unit && typeof openUnit.plan === "string" && normalised(openUnit.plan) === normalised(plan);
   return new Set((matches ? openUnit.tasks : []).map((task) => task.title));
 }
 
