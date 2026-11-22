@@ -2,9 +2,11 @@ import { expect, test } from 'claude-code/testing'
 import { setupReplay } from './testing/replay'
 import { LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
+import type { Polled } from './inputs'
 
 const PLAN_PATH = 'docs/plans/shop.md'
 const INPUTS = { key: 'inputs' } as const
+const TWO_POLLS_MS = POLL_MS * 2
 
 const PLAN = [
   '# Shop',
@@ -18,27 +20,27 @@ const PLAN = [
   '',
 ].join('\n')
 
-type PlanUnit = { unit: string; tracer: string | null; tasks: { title: string; checked: boolean }[] }
-
-test('with a ledger naming a plan path and a plan MD on disk, the poll returns the parsed plan units', async ($, on) => {
+// Runs the mod over a ledger that names PLAN_PATH, serving `planText` there, and returns what the poll kept as its inputs.
+async function pollKeptInputs($: any, on: Function, planText: string): Promise<Polled> {
   const rig = setupReplay(on)
-  on('audio.play', () => ({ value: undefined }))
-  on('ui.toast', () => ({ value: undefined }))
-  on('ui.status', () => ({ value: undefined }))
-  on('store.get', () => ({ value: undefined }))
-  on('store.set', () => ({ value: undefined }))
+  for (const event of ['audio.play', 'ui.toast', 'ui.status', 'store.get', 'store.set']) on(event, () => ({ value: undefined }))
   const kept = new Map<string, unknown>()
   on('state.get', (_: unknown, e: { key: string }) => ({ value: { value: kept.get(e.key) ?? null, version: 1 } }))
   on('state.set', (_: unknown, e: { key: string; value: unknown }) => (kept.set(e.key, e.value), { value: { isSet: true, version: 1 } }))
   rig.served.set(LEDGER_PATH, JSON.stringify({ ...SNAPSHOT_RUNNING, plan: { path: PLAN_PATH, title: 'Shop' } }))
-  rig.served.set(`${ROOT}/${PLAN_PATH}`, PLAN)
+  rig.served.set(`${ROOT}/${PLAN_PATH}`, planText)
 
   await start($)
-  await rig.clock.advance(POLL_MS * 2)
-  const polled = kept.get(INPUTS.key) as { plan?: { units: PlanUnit[] } | null }
-  const units = (polled.plan?.units ?? []).map(({ unit, tracer, tasks }) => ({ unit, tracer, tasks: tasks.map(({ title, checked }) => ({ title, checked })) }))
+  await rig.clock.advance(TWO_POLLS_MS)
 
-  expect(units, 'the one tracer unit, with its two tasks and their ticked state').toEqual([
+  expect(kept.has(INPUTS.key), 'the poll has kept its inputs').toBe(true)
+  return kept.get(INPUTS.key) as Polled
+}
+
+test('with a ledger naming a plan path and a plan MD on disk, the poll returns the parsed plan units', async ($, on) => {
+  const polled = await pollKeptInputs($, on, PLAN)
+
+  expect(polled.plan?.units, 'the one tracer unit, with its two tasks and their ticked state').toMatchObject([
     {
       unit: 'Tracer 1: Cart',
       tracer: 'Tracer 1: Cart',
