@@ -1,5 +1,7 @@
 import { expect, test } from 'claude-code/testing'
-import { setupReplay } from './testing/replay'
+import { paneTexts, setupReplay } from './testing/replay'
+import { recordWrites } from './testing/refuse'
+import { REPORTS_DIR } from './report'
 import { LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
 import type { Polled } from './inputs'
@@ -89,6 +91,15 @@ test('a plan path that is missing, empty or unreadable yields no plan and does n
   expect(unreadable.ledger, 'the rest of the poll still carries the ledger').not.toBeNull()
 })
 
-test('polling and rendering the plan tree writes no file outside reports/', async () => {
-  throw new Error('not implemented: view-writes-nothing-outside-reports')
+test('polling and rendering the plan tree writes no file outside reports/', async ($, on) => {
+  const { writes, touched } = recordWrites(on)
+  const { keptInputs } = await startPolling($, on, PLAN)
+
+  const polled = await keptInputs()
+  const shown = await paneTexts($)
+
+  expect(polled.plan?.units, 'the plan was polled, so the poll that could have written has run').toHaveLength(1)
+  expect(shown.length, 'the pane drew with the plan in hand').toBeGreaterThan(0)
+  expect(writes.filter(write => !write.path.startsWith(`${ROOT}/${REPORTS_DIR}/`)), 'no fs.write outside reports/').toEqual([])
+  expect(touched, 'no refused write, process run or spawn').toEqual([])
 })
