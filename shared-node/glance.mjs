@@ -7,6 +7,7 @@ import { MAX_TRIES } from "./limits.mjs";
 import { clock } from "./duration.mjs";
 import { TOKENS_UNIT } from "./spent-line.mjs";
 import { permissionLine } from "./permission-wait.mjs";
+import { strandedLine } from "./stranded.mjs";
 
 const UNKNOWN = "unknown";
 const AGENT_KINDS = ["Agent", "workflow_agent"];
@@ -158,8 +159,8 @@ export function stopLine(stop) {
   return name ? `${STOPPED}: ${name}` : STOPPED;
 }
 
-// A gate reads by its plain name, Claude Code's permission prompt by what it asks; a gate with neither falls back to its id as given.
-export const gateLine = (gate) => plainName(gate) ?? permissionLine(gate) ?? gate;
+// A gate reads by its plain name, Claude Code's permission prompt by what it asks, a stranded stage by what to do; a gate with neither falls back to its id as given.
+export const gateLine = (gate) => plainName(gate) ?? permissionLine(gate) ?? strandedLine(gate) ?? gate;
 
 // The one wording for a gate waiting on the human, shared by the band and the status line.
 export const needsYouLine = (gate) => `needs you: ${gateLine(gate)}`;

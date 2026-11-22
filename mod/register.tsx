@@ -68,7 +68,7 @@ function drawGlance(
 export const register: Register = (on, options) => {
   const spawns: Spawn[] = []
   const calls: Call[] = []
-  const poller = newPollerState()
+  const poller = newPollerState(spawns)
 
   // A new session starts with no agents; a count carried over would overstate the run's.
   on('session.start', ($, e, next) => {
