@@ -6,17 +6,21 @@ import { POLL_MS } from './poll'
 type Harness = Parameters<typeof paneLines>[0]
 type On = Parameters<typeof setupPlanReplay>[0]
 
+// The pane rows from the row that starts with PLAN to the end; fails with the whole pane when no row is drawn for the plan.
+function planRows(lines: string[]): string[] {
+  const planRow = lines.findIndex(line => line.startsWith('PLAN'))
+  if (planRow === -1) throw new Error(`no PLAN row in pane:\n${lines.join('\n')}`)
+  return lines.slice(planRow)
+}
+
 // Runs the mod over a ledger that names a plan, serving `planText` there plus any `extraFiles` (root-relative path to content),
-// and lets two polls pass so the pane has drawn from it. Returns the PLAN rows: from the row that starts with PLAN to the end.
+// and lets two polls pass so the pane has drawn from it. Returns the PLAN rows.
 async function showPlan($: Harness, on: On, planText: string, extraFiles: Record<string, string> = {}): Promise<string[]> {
   const { rig } = setupPlanReplay(on, planText)
   for (const [path, content] of Object.entries(extraFiles)) rig.served.set(`${ROOT}/${path}`, content)
   await start($)
   await rig.clock.advance(POLL_MS * 2)
-  const lines = await paneLines($)
-  const planRow = lines.findIndex(line => line.startsWith('PLAN'))
-  if (planRow === -1) throw new Error(`no PLAN row in pane:\n${lines.join('\n')}`)
-  return lines.slice(planRow)
+  return planRows(await paneLines($))
 }
 
 const TWO_TRACERS = [
@@ -154,7 +158,8 @@ test('a unit with a Depends on line shows the unit it is based on', async ($, on
   ])
 })
 
-// Pay is the open unit, with two commits recorded for it; Receipt has no record, so it shows none of these.
+// Pay is the open unit, with two commits recorded for it; unit.json names no other unit, so Receipt shows no branch, base or commits
+// (its `open` label comes from unitStates, not from a record).
 const OPEN_UNIT_PAY = JSON.stringify({
   unit: 'Pay',
   plan: PLAN_PATH,
