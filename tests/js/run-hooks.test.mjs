@@ -305,17 +305,17 @@ describe("Stop hook", () => {
     assert.doesNotMatch(JSON.parse(stdout).reason, /task end|pairingbuddy:code/);
   });
 
-  test("a human's stop sends the model to the human", () => {
+  test("a human's stop sends the model to the human, whose go-on is asked by gate eval", () => {
     const gates = { [TASK_END]: { source: "human", answer: "stop" } };
     const stdout = stop(makeRun(allDone({ gates, stop: { reason: "the human answered stop", seq: 1, code: HUMAN_STOPPED } })).dir);
-    assertBlocks(stdout, /human approve G:task-end/);
+    assertBlocks(stdout, /go no further[\s\S]*want to go on[\s\S]*gate eval/);
   });
 
   test("a human's stop is named by the plain gate name", () => {
     const gates = { [TASK_END]: { source: "human", answer: "stop" } };
     const reason = stopReason(stop(makeRun(allDone({ gates, stop: { reason: "the human answered stop", seq: 1, code: HUMAN_STOPPED } })).dir));
 
-    assert.ok(reason.includes("The human answered stop at your sign-off at the end."), reason);
+    assert.ok(reason.includes("The human answered stop at your sign-off at the end,"), reason);
   });
 
   test("a finished run says to end the task", () => {
