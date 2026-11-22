@@ -39,7 +39,8 @@ export type Ledger = {
 export type Call = { agentId?: unknown; at?: string; input: Record<string, unknown> }
 // unit: the open unit, by its identity (branch and base) and its last ended task's steps; since: when the unit's first run began.
 // prUrl: the pull request the unit record names, once pb publish has opened it.
-export type Unit = { key: string; taskStages: string[]; prUrl?: string }
+// open: the unit record as unitStates reads it, to tell each plan unit's state.
+export type Unit = { key: string; taskStages: string[]; prUrl?: string; open?: { unit?: string; plan?: string; tracer?: string; tasks: { title: string }[] } }
 // What the pane keeps of the unit's last code run (shared-node/end-state.mjs codeRunOf), so the end state outlives its ledger.
 export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; testsPassing: number; perTest?: Record<string, { green?: { passed: boolean }; covered?: { done: boolean } }>; safetyNet: { attempt?: number; startedAt?: string } | null; rollbacks: unknown[] }
 // What the last pb publish printed: the url it opened, or the result when it opened none; codeRunId ties it to the code run it published.
@@ -189,7 +190,10 @@ export function unitOf(file: unknown): Unit | null {
   const last = tasks.at(-1) as { stages?: unknown } | undefined
   const stages = Array.isArray(last?.stages) ? last.stages.filter((name): name is string => typeof name === 'string') : []
   const url = ((file as { pr?: { url?: unknown } }).pr)?.url
-  return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}) }
+  const { unit, plan, tracer } = file as { unit?: unknown; plan?: unknown; tracer?: unknown }
+  const titles = tasks.map(task => (task as { title?: unknown })?.title).filter((title): title is string => typeof title === 'string')
+  const open = { unit: typeof unit === 'string' ? unit : undefined, plan: typeof plan === 'string' ? plan : undefined, tracer: typeof tracer === 'string' ? tracer : undefined, tasks: titles.map(title => ({ title })) }
+  return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}), open }
 }
 
 // The paths run/changed.json lists ({ path, status } entries), or null when it is absent or does not read.

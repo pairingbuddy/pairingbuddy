@@ -131,10 +131,12 @@ function topRows(view: View, columns: number) {
 
 // The plan as a tree: each tracer, its units nested under it, each unit's tasks under that, in plan order.
 const TASK_MARKS = { ticked: '✓', unticked: '○' } as const
-function planLines(plan: NonNullable<View['plan']>): Part[][] {
+function planLines(plan: NonNullable<View['plan']>, states: string[] = []): Part[][] {
   // Consecutive units of one tracer form a group; a unit under no tracer is its own group, unindented.
-  const groups: { tracer: string | null | undefined; units: typeof plan.units }[] = []
-  for (const unit of plan.units) {
+  type Unit = (typeof plan.units)[number] & { state?: string }
+  const groups: { tracer: string | null | undefined; units: Unit[] }[] = []
+  for (const [i, planned] of plan.units.entries()) {
+    const unit: Unit = { ...planned, state: states[i] }
     const last = groups.at(-1)
     if (last && unit.tracer && last.tracer === unit.tracer) last.units.push(unit)
     else groups.push({ tracer: unit.tracer, units: [unit] })
@@ -144,7 +146,7 @@ function planLines(plan: NonNullable<View['plan']>): Part[][] {
     return [
       ...(tracer ? [[{ text: tracer }]] : []),
       ...units.flatMap(unit => [
-        [{ text: `${indent}${unit.unit}` }],
+        [{ text: `${indent}${unit.unit}${unit.state ? ` · ${unit.state}` : ''}` }],
         ...unit.tasks.map(task => [{ text: `${indent}  ${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
       ]),
     ]
@@ -163,7 +165,7 @@ function paneRows(view: View, columns: number) {
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
     ...rowLines('TESTS', testsParts(view, width)),
     ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
-    ...(view.plan ? rowLines('PLAN', planLines(view.plan)) : []),
+    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates)) : []),
   ]
 }
 

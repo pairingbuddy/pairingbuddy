@@ -4,6 +4,7 @@ import { isStageActive, stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
 import { lensRound } from '../shared-node/lens-round.mjs'
 import type { LensRound } from '../shared-node/lens-round.mjs'
+import { unitStates } from '../shared-node/plan.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { cycleMarker, progressRow, shortName, stepAge, testCounts } from '../shared-node/now-building.mjs'
 import { doneStatus, endRows, goalOf, isUnitDone, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
@@ -56,6 +57,18 @@ export type View = {
   endRound?: LensRound
   // The plan the ledger names, parsed, for the PLAN tree; absent when there is none.
   plan?: Inputs['plan']
+  // The state of each plan unit, by position (shared-node/plan.mjs unitStates).
+  planStates?: string[]
+}
+
+// Each plan unit's state, in plan order, once a unit record stands to read it against; else none.
+function planStatesOf({ plan, unit, ledger }: Inputs): string[] | undefined {
+  if (!plan || !unit?.open) return undefined
+  // A record names its unit, or only its tracer: then it is the plan unit under that tracer.
+  const named = plan.units.some(planned => planned.unit === unit.open?.unit)
+  const byTracer = !named && unit.open.tracer ? plan.units.find(planned => planned.tracer === unit.open?.tracer) : undefined
+  const openUnit = byTracer ? { ...unit.open, unit: byTracer.unit } : unit.open
+  return unitStates(plan.units, { plan: ledger?.plan?.path, openUnit })
 }
 
 export type EndRows = Record<'done' | 'pr', string>
@@ -237,7 +250,7 @@ function endedStatus(inputs: Inputs, end: { doneStatus?: string }): Status {
 
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
-  const view = { ...toned(buildPlainView(inputs)), plan: inputs.plan }
+  const view = { ...toned(buildPlainView(inputs)), plan: inputs.plan, planStates: planStatesOf(inputs) }
   const { ledger } = inputs
   if (!ledger) return view
   const { doneStatus: _done, ...end } = endState(inputs, view.running, true)
