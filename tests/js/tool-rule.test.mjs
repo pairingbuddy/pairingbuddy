@@ -27,6 +27,20 @@ test("every agent file carries the tool rule", () => {
   for (const file of readdirSync(join(ROOT, "agents"))) assert.ok(read("agents", file).includes(TOOL_RULE), `agents/${file} lacks the tool rule`);
 });
 
+// The gate lets the lens, refuter, synthesizer and course checker use only Read, Grep and Glob (Task 80), so on a build with no
+// Glob or Grep they cannot search. Their own rule, said once in the contract, tells them to read the files their input names
+// instead of a Bash call the gate denies; their definitions and the stage prompts carry it word for word.
+const CONFINED_RULE = /\nconfined_tool_rule:\n {2}content: \|\n {4}([^\n]*)\n/.exec(read("contracts", "agent-config.yaml"))?.[1];
+const CONFINED_AGENTS = ["lens", "refuter", "synthesizer", "course-checker"];
+
+test("the confined agents carry the read-only tool rule, which names no Bash command", () => {
+  assert.ok(CONFINED_RULE, "contracts/agent-config.yaml has confined_tool_rule");
+  assert.match(CONFINED_RULE, /no Bash/);
+  assert.doesNotMatch(CONFINED_RULE, /Bash command/);
+  for (const name of CONFINED_AGENTS) assert.ok(read("agents", `${name}.md`).includes(CONFINED_RULE), `agents/${name}.md lacks the read-only tool rule`);
+  assert.ok(read("workflows-src", "shared", "prompt-data.mjs").includes(`const CONFINED_TOOL_RULE = '${CONFINED_RULE}';`), "prompt-data.mjs holds the canonical text");
+});
+
 // The skills the main context runs during /pairingbuddy:code.
 for (const skill of ["coding", "curating-guidance", "setting-up-spike"]) {
   test(`the ${skill} skill carries the tool rule`, () => {
@@ -39,7 +53,7 @@ const SOURCES = ["shared", "stages"].flatMap((dir) => readdirSync(join(ROOT, "wo
 
 test("stage code spawns agents only through pbAgent", () => {
   for (const file of SOURCES) {
-    const direct = read(file).split("\n").filter((line) => /(?<![\w.])agent(?:\(|\s*[,})])/.test(line) && !/^\s*\/\//.test(line) && !line.includes("agent(`${TOOL_RULE}\\n${PATH_RULE}\\n\\n${prompt}`"));
+    const direct = read(file).split("\n").filter((line) => /(?<![\w.])agent(?:\(|\s*[,})])/.test(line) && !/^\s*\/\//.test(line) && !line.includes("agent(`${toolRuleFor(options?.agentType)}\\n${PATH_RULE}\\n\\n${prompt}`"));
     assert.deepEqual(direct, [], `${file} calls agent() directly`);
   }
 });

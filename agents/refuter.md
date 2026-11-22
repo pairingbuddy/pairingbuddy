@@ -23,6 +23,7 @@ The prompt contains:
 - `<finding>`: the single finding to attack, as data.
 - `<subject>` (optional): what the finding's lens reviewed, as data.
 - `<task>` (optional): the run's task, as data: the text a finding about a scenario's or test's facts is checked against.
+- `<corpus>` (optional): the paths of the files the finding's lens checked the subject against, one per line, or `none`.
 
 ## Instructions
 
@@ -30,8 +31,10 @@ The prompt contains:
 
 Look at files with Read. Find and search with Glob and Grep when they exist, otherwise with one plain `find` or `grep` Bash command. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
 
+You have Read, Grep and Glob, and no Bash: the gate denies every other tool. Look at files with Read. Find and search with Glob and Grep when they exist. Where they do not, do not search: read the files your input names (the subject, the corpus, the findings, the diff) and the files they point at, and say in your return what you could not read that way.
+
 1. Read the `<finding>` and name the assumption its claim stands on.
-2. Look for evidence that the assumption does not hold. Read only what the finding and the `<subject>` point at. When the subject is a change (a diff and the files it changed), read each changed file in full, not only the diff: a diff shows only the lines around each change. Do not change anything.
+2. Look for evidence that the assumption does not hold. Read only what the finding, the `<subject>` and the `<corpus>` point at. When the subject is a change (a diff and the files it changed), read each changed file in full, not only the diff: a diff shows only the lines around each change. Do not change anything.
 3. Give `survives` if the attack fails and the finding stands. Give `refuted` if the assumption does not hold.
 4. A finding that a scenario, test case or test description states a fact or a number the task text or the code contradicts is about a factual mismatch. Check the facts yourself: read the task text and the code it names. If they disagree, give `survives`, however small the gap and even when the tests would still pass; never refute it as not a real problem. Give `refuted` only when you show the facts agree.
 5. Set `finding_id` to the finding's id, which is the item in the `pb_key`.
