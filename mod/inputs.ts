@@ -49,7 +49,7 @@ export type Published = { url?: string; result?: string; codeRunId?: string | nu
 // task: what the runs pb kept say of the whole task once it has ended (endedTaskFacts in shared-node/task-runs.mjs).
 // waited: the seconds its runs waited on the human, which SPENT leaves out.
 export type TaskFacts = { spend: Spend; startedAt: string | null; endedAt: string; waited?: number; calls: Call[]; prUrl: string | null }
-export type Inputs = { task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
+export type Inputs = { plan?: PlanRead | null; task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {
@@ -222,14 +222,14 @@ export async function pollInputs($: EngineInterface, spawns: Spawn[] = []): Prom
   return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: unitOf(unitFile), changed: changedOf(changedFile), plan }
 }
 
-type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null } | null
+type PolledState = { plan?: PlanRead | null; ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null } | null
 
 // The one place the atom's loosely typed ledger is narrowed; null until the first poll, which reads as idle.
 export function fromPolled(polled: PolledState, spawns: Spawn[], calls: Call[] = [], published: Published | null = null): Inputs {
   return {
     ledger: (polled?.ledger ?? undefined) as Ledger, spawns, calls, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined,
     unit: polled?.unit ?? null, since: polled?.since ?? undefined,
-    changed: polled?.changed ?? null, codeRun: polled?.codeRun ?? null, prUrl: polled?.prUrl ?? null, published, task: polled?.task ?? null,
+    plan: polled?.plan ?? null, changed: polled?.changed ?? null, codeRun: polled?.codeRun ?? null, prUrl: polled?.prUrl ?? null, published, task: polled?.task ?? null,
   }
 }
 

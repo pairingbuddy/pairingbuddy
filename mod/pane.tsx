@@ -129,6 +129,21 @@ function topRows(view: View, columns: number) {
   return [...goalRows(view, columns), ...rowLines('STATUS', statusLines(view.status, width), FIRST_GLANCE_LABEL)]
 }
 
+// The plan as a tree: each tracer, its units nested under it, each unit's tasks under that, in plan order.
+const TASK_MARKS = { ticked: '✓', unticked: '○' } as const
+function planLines(plan: NonNullable<View['plan']>): Part[][] {
+  const lines: Part[][] = []
+  let tracer: string | null | undefined
+  for (const unit of plan.units) {
+    if (unit.tracer !== tracer && unit.tracer) lines.push([{ text: unit.tracer }])
+    tracer = unit.tracer
+    const indent = unit.tracer ? '  ' : ''
+    lines.push([{ text: `${indent}${unit.unit}` }])
+    for (const task of unit.tasks) lines.push([{ text: `${indent}  ${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }])
+  }
+  return lines
+}
+
 // The details under the rule, read after the first glance.
 function paneRows(view: View, columns: number) {
   const { rows, rowTones = {} as RowTones } = view
@@ -141,6 +156,7 @@ function paneRows(view: View, columns: number) {
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
     ...rowLines('TESTS', testsParts(view, width)),
     ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
+    ...(view.plan ? rowLines('PLAN', planLines(view.plan)) : []),
   ]
 }
 

@@ -54,6 +54,8 @@ export type View = {
   // The BUILT (done) and PR rows, each a dash until the task is done; endRound, once the work is finished, is the review the REVIEW row sums up.
   end: EndRows
   endRound?: LensRound
+  // The plan the ledger names, parsed, for the PLAN tree; absent when there is none.
+  plan?: Inputs['plan']
 }
 
 export type EndRows = Record<'done' | 'pr', string>
@@ -235,7 +237,7 @@ function endedStatus(inputs: Inputs, end: { doneStatus?: string }): Status {
 
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
-  const view = toned(buildPlainView(inputs))
+  const view = { ...toned(buildPlainView(inputs)), plan: inputs.plan }
   const { ledger } = inputs
   if (!ledger) return view
   const { doneStatus: _done, ...end } = endState(inputs, view.running, true)
