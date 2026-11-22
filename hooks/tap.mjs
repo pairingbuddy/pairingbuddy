@@ -134,6 +134,8 @@ function tapQuestion(modules, root, ledgerPath, toolResponse) {
   // Recorded only on an exact match with the question gate eval issued and stored for the waiting gate.
   const answer = modules.gateAnswer(ledger, toolResponse);
   if (answer === null) return;
+  // A wait outside the gates (a changed test-config) has its own answers, recorded against the question pb stored.
+  if (modules.isHumanWait(ledger)) return tapWaitAnswer(modules, root, ledgerPath, ledger.needsHuman, answer);
   let binding;
   if (answer === PUBLISH_LABEL) {
     try {
@@ -147,6 +149,15 @@ function tapQuestion(modules, root, ledgerPath, toolResponse) {
   updateLedger(ledgerPath, (current) => withAnswer(modules, current, toolResponse, binding));
   if (answer === "redo") appendRedoFeedback(root, ledger, runGates(modules, ledger), toolResponse);
   if (answer === KEEP_LOCAL_LABEL) closeKeptLocal(modules, root, ledger);
+}
+
+// The answer lands only while the same wait still asks. A file no test run can use is no acceptance: the wait stands and the hook says why.
+function tapWaitAnswer({ isHumanWait, recordWaitAnswer, updateLedger }, root, ledgerPath, asked, answer) {
+  try {
+    updateLedger(ledgerPath, (current) => (current.needsHuman?.seq === asked.seq && isHumanWait(current) ? recordWaitAnswer(current, answer, { root }) : current));
+  } catch (e) {
+    say(`Pairing Buddy did not record the answer "${answer}": ${e.message}. The run still waits on the human.`);
+  }
 }
 
 // Keep local closes the unit, and a publish run ends with it. Each step runs whatever the other did, and a failure is
@@ -190,9 +201,10 @@ try {
   const { closeUnit, endRun, keepRun } = await import("../shared-node/unit-files.mjs");
   const { findSessionRoot } = await import("../shared-node/run-root.mjs");
   const { loadStages, migratedType } = await import("../shared-node/stages.mjs");
+  const { isHumanWait, recordWaitAnswer } = await import("../shared-node/human-waits.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
   const root = findSessionRoot(input.cwd, input.session_id);
-  if (root !== null) tapRun({ KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, keepRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, updateLedger, migratedType }, root, input);
+  if (root !== null) tapRun({ isHumanWait, recordWaitAnswer, KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, keepRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, updateLedger, migratedType }, root, input);
 } catch {
   // not a run situation
 }

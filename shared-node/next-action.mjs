@@ -48,8 +48,8 @@ function activeAction(ledger, pluginRoot) {
 const plainGate = (gate) => plainName(gate) ?? `the human's OK at ${gate}`;
 
 // The question box first, since the tap records its answer; the ! command only when an asked question left the gate waiting.
-function askHuman(root, gate, question) {
-  const fallback = `tell the human the run still needs ${plainGate(gate)} and show them ${humanCommand(root, `approve ${gate}`)}, then go no further: only they run it.`;
+function askHuman(root, gate, question, command = humanCommand(root, `approve ${gate}`)) {
+  const fallback = `tell the human the run still needs ${plainGate(gate)} and show them ${command}, then go no further: only they run it.`;
   if (question === undefined) return `Ask the human for it: ${fallback}`;
   const asked = JSON.stringify({ questions: [question] });
   return `If you have not asked them yet, ask with AskUserQuestion, passing exactly this question: ${asked}. Then run ${pbCommand("status --action")}. If you asked and it still waits, ${fallback}`;
@@ -66,7 +66,7 @@ export function nextAction(contract, ledger, root, pluginRoot) {
   if (answered !== undefined) return `The human answered ${answered.answer} at ${plainGate(answered.name)}. Only they can go on: ask them to type ${humanCommand(root, `approve ${answered.name}`)}`;
   if (ledger.stop !== null) return `The run has stopped: ${ledger.stop.reason}. Nothing skips a stop, so report ${pbCommand("status")} to the human and go no further. Only if they say to go on, ${pbCommand("stage fail")} clears it.`;
   if (isStageActive(ledger)) return activeAction(ledger, pluginRoot);
-  if (ledger.needsHuman?.gate === CONFIG_GATE) return `The run is waiting on the human: ${CONFIG_WAIT_LINE}. Tell them ${root}/.pairingbuddy/test-config.json changed since the run opened, and show them ${humanCommand(root, "accept")} to accept it, then go no further: only they run it.`;
+  if (ledger.needsHuman?.gate === CONFIG_GATE) return `The run is waiting on the human: ${CONFIG_WAIT_LINE}. ${askHuman(root, CONFIG_GATE, ledger.needsHuman.question, humanCommand(root, "accept"))}`;
   if (ledger.needsHuman !== null) {
     const { gate, reason } = ledger.needsHuman;
     return `The run is waiting for ${plainGate(gate)}: ${reason}. ${askHuman(root, gate, ledger.needsHuman.question)}`;

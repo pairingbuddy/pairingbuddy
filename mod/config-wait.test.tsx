@@ -4,7 +4,7 @@ import { expect, test } from 'claude-code/testing'
 import { SNAPSHOT_RUNNING, engine, start } from './testing/band'
 import { paneLines } from './testing/replay'
 
-const FIX = 'type: !.pairingbuddy/bin/pb human accept'
+const FIX = 'answer the question in the session, or type !.pairingbuddy/bin/pb human accept'
 const WAITING = {
   ...SNAPSHOT_RUNNING,
   stage: { ...SNAPSHOT_RUNNING.stage, status: 'failed' },
@@ -16,7 +16,7 @@ const statusOf = (lines: string[]) => {
   return lines.slice(at, at + 2).map(line => line.replace(/^(STATUS)?\s+/, ''))
 }
 
-test('a changed test-config reads as needs you, with the accept line', async ($, on) => {
+test('a changed test-config reads as needs you: answer the question, or the accept line', async ($, on) => {
   engine(on, WAITING)
   await start($)
 

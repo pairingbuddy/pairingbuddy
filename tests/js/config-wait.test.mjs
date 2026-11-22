@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { recordedAnswer, runTap } from "./tap-fixture.mjs";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url)).replace(/\/$/, "");
 const CLI = join(ROOT, "cli", "pb.mjs");
@@ -96,16 +97,29 @@ describe("a changed test-config mid-stage waits on the human", () => {
     assert.match(action, new RegExp(`^Start the workflow pairingbuddy:${STAGE}`), action);
   });
 
-  test("while the run waits, the next action shows the human the accept line, not an approval", () => {
+  test("the wait holds a question for the human, with Accept and Stop", () => {
+    const repo = makeRepo();
+    repo.edit();
+    pb(repo, "test", "--full");
+
+    const { question } = repo.ledger().needsHuman;
+
+    assert.ok(question.header.length <= 12, question.header);
+    assert.match(question.question, /test-config\.json/, "it names the file to check");
+    assert.deepEqual(question.options.map(({ label }) => label), ["Accept", "Stop"]);
+    assert.equal(question.multiSelect, false);
+  });
+
+  test("while the run waits, the next action asks that exact question, with the ! line only as the fallback", () => {
     const repo = makeRepo();
     repo.edit();
     pb(repo, "test", "--full");
 
     const { action } = JSON.parse(pb(repo, "status", "--action").stdout);
 
-    assert.match(action, /test settings changed/, action);
-    assert.match(action, /human accept/, action);
-    assert.doesNotMatch(action, /approve|AskUserQuestion/, action);
+    assert.ok(action.includes(`AskUserQuestion, passing exactly this question: ${JSON.stringify({ questions: [repo.ledger().needsHuman.question] })}`), action);
+    assert.match(action, /If you asked and it still waits[\s\S]*human accept/, action);
+    assert.doesNotMatch(action, /approve/, action);
   });
 
   test("a file put back as it was is accepted too, and the wait ends", () => {
@@ -129,5 +143,43 @@ describe("a changed test-config mid-stage waits on the human", () => {
     const { humanCommand } = JSON.parse(pb(repo, "gate", "eval").stdout);
 
     assert.match(humanCommand, /human accept$/, humanCommand);
+  });
+
+  test("the human's Accept, recorded by the tap, pins the file and ends the wait", () => {
+    const repo = makeRepo();
+    repo.edit();
+    pb(repo, "test", "--full");
+
+    runTap(repo, recordedAnswer(repo, repo.ledger().needsHuman.question, "Accept"));
+
+    const ledger = repo.ledger();
+    assert.equal(ledger.needsHuman, null, "the wait is answered");
+    assert.equal(ledger.configHash, createHash("sha256").update(EDITED).digest("hex"), "the new file is pinned");
+    assert.equal(ledger.configAcceptances?.length, 1, "the acceptance is recorded");
+    assert.equal(ledger.gateWaits?.[0]?.gate, CONFIG_GATE, "the wait's time stays waiting");
+    assert.equal(JSON.parse(pb(repo, "status", "--action").stdout).next?.stage, STAGE, "the stage starts again");
+  });
+
+  test("the human's Stop, recorded by the tap, stops the run as theirs", () => {
+    const repo = makeRepo();
+    repo.edit();
+    pb(repo, "test", "--full");
+
+    runTap(repo, recordedAnswer(repo, repo.ledger().needsHuman.question, "Stop"));
+
+    const ledger = repo.ledger();
+    assert.equal(ledger.needsHuman, null);
+    assert.equal(ledger.stop?.code, "human-stopped");
+  });
+
+  test("an answer to another question is not recorded", () => {
+    const repo = makeRepo();
+    repo.edit();
+    pb(repo, "test", "--full");
+    const asked = repo.ledger().needsHuman.question;
+
+    runTap(repo, recordedAnswer(repo, { ...asked, question: `${asked.question} Really?` }, "Accept"));
+
+    assert.equal(repo.ledger().needsHuman?.gate, CONFIG_GATE, "the wait stands");
   });
 });

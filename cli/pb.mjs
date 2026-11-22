@@ -37,7 +37,7 @@ import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, i
 import { ConfigHashChanged, TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
-import { CONFIG_GATE, CONFIG_WAIT_LINE } from "../shared-node/config-wait.mjs";
+import { CONFIG_GATE, CONFIG_WAIT_LINE, configQuestion } from "../shared-node/config-wait.mjs";
 import { VERB_CLASSES, ensureShim, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
@@ -2461,7 +2461,7 @@ function configWait(e) {
     if (!waitable(ledger)) return ledger;
     waits = true;
     const { ledger: closed } = failActiveStage(root, ledger, { keepStop: true });
-    return { ...closed, needsHuman: { gate: CONFIG_GATE, reason: e.message, seq: closed.seq + 1, askedAt: new Date().toISOString(), fix: `type: ${humanCommand(root, "accept")}` } };
+    return { ...closed, needsHuman: { gate: CONFIG_GATE, reason: e.message, seq: closed.seq + 1, askedAt: new Date().toISOString(), question: configQuestion(), fix: `answer the question in the session, or type ${humanCommand(root, "accept")}` } };
   });
   return waits ? new Refusal(`the run stopped for the human: ${CONFIG_WAIT_LINE}. ${e.message}`) : e;
 }
