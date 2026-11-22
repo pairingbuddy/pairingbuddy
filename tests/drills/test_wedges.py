@@ -328,10 +328,27 @@ class TestGateBootParseFailure:
         assert wedged.stdout == ""
         assert "SyntaxError" in wedged.stderr
 
+        payload = {"session_id": SESSION_B, "cwd": str(clone), "tool_name": "Write"}
+        watched = hook(
+            clone, tmp_path, "gate-watch.mjs", {**payload, "hook_event_name": "PreToolUse"}
+        )
+        assert "safety checks are off" in denial(watched)
+        assert "checkout -- hooks" in denial(watched)
+
         result = recover(clone, tmp_path, "gate-boot-parse")
 
         assert "ledger.json" in result.stdout
         assert_allowed(write_call(clone, tmp_path))
+
+    def test_what_you_see_is_the_stop_gate_watch_raises(self, tmp_path):
+        printed = run_script(tmp_path, "--gate-boot-parse").stdout
+        sees = re.search(r"^What you see: (.+)$", printed, re.M)[1]
+        told = section("gate-boot.mjs parse failure").split("**What you see:**")[1]
+        told = told.split("\n\n")[0]
+
+        for text in (sees, told):
+            assert "safety checks are off" in text, text
+            assert "STOPPED" in text, text
 
 
 class TestStrandedStage:

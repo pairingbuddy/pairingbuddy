@@ -210,7 +210,7 @@ const WEDGES = {
   "gate-boot-parse": {
     recipe: "gate-boot.mjs parse failure",
     force: forceGateBootParse,
-    sees: "the hook exits 1 with a SyntaxError and no decision, so nothing is being gated.",
+    sees: "the pane reads '✕ STOPPED · safety checks are off' with the fix line, and gate-watch.mjs denies each gated call with that message. gate-boot.mjs itself exits 1 with a SyntaxError and no decision.",
   },
   "stranded-stage": {
     recipe: "Stranded active stage",
@@ -240,7 +240,7 @@ const WEDGES = {
   "no-unit": {
     recipe: "A run with no unit",
     force: openRun,
-    sees: "pb task end refuses. The way out is for the human to type `! pb human abandon`.",
+    sees: "pb task end refuses. The way out is for the human to type `!.pairingbuddy/bin/pb human abandon`.",
   },
   "broken-cli": {
     recipe: "Broken CLI",

@@ -18,7 +18,7 @@ import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
@@ -214,6 +214,19 @@ describe("pb human approve passes a gate", () => {
     assert.ok(asked.humanCommand.includes(CLI), "the command names this CLI");
 
     const result = spawnSync("sh", ["-c", asked.humanCommand.slice(1)], { cwd: makeDir("pb-human-elsewhere-"), env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN }, encoding: "utf8" });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(repo.ledger().gates[G_FIRST]?.source, "human-cli");
+  });
+
+  test("with the project's shim the printed command is short and works from the run root", async () => {
+    const { ensureShim } = await import(pathToFileURL(join(PLUGIN, "shared-node", "verbs.mjs")).href);
+    const repo = makeRepo();
+    ensureShim(repo.dir);
+    const asked = succeeded(pb(repo, "gate", "eval"));
+
+    assert.equal(asked.humanCommand, `!.pairingbuddy/bin/pb human approve ${G_FIRST}`);
+    const result = spawnSync("sh", ["-c", asked.humanCommand.slice(1)], { cwd: repo.dir, encoding: "utf8" });
 
     assert.equal(result.status, 0, result.stderr);
     assert.equal(repo.ledger().gates[G_FIRST]?.source, "human-cli");

@@ -4,7 +4,7 @@ import { endedTaskFacts, taskRuns } from '../shared-node/task-runs.mjs'
 import { alertOn, openOnRunStart } from './alert'
 import { runStart } from '../shared-node/glance.mjs'
 import { codeRunOf, isUnitDone } from '../shared-node/end-state.mjs'
-import type { CodeRun } from './inputs'
+import type { CodeRun, Spawn } from './inputs'
 
 export const POLL_MS = 1000
 const INPUTS = { plugin: 'pairingbuddy', key: 'inputs' } as const
@@ -59,8 +59,9 @@ function doneRunOf(polled: Polled & { codeRun: CodeRun | null; prUrl: string | n
   return done ? (codeRun?.runId ?? codeRun?.task ?? 'done') : null
 }
 
-export type PollerState = { started: boolean; polling: boolean; unit: UnitStart; record: UnitRecord; kept: Map<string, KeptRun> }
-export const newPollerState = (): PollerState => ({ started: false, polling: false, unit: null, record: null, kept: new Map() })
+// spawns: the session's own, which register.tsx keeps; the poll reads them so a stage they still run is not stranded.
+export type PollerState = { started: boolean; polling: boolean; unit: UnitStart; record: UnitRecord; kept: Map<string, KeptRun>; spawns: Spawn[] }
+export const newPollerState = (spawns: Spawn[] = []): PollerState => ({ started: false, polling: false, unit: null, record: null, kept: new Map(), spawns })
 
 type Snapshot = { ledger?: unknown; unit?: { key?: string } | null } | null
 
@@ -81,7 +82,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
     }
     state.polling = true
     try {
-      const read = await pollInputs($)
+      const read = await pollInputs($, state.spawns)
       const polled = { ...read, since: unitStart(state, read), ...unitRecord(state, read), task: await endedTask($, state, read) }
       await $.state.set(INPUTS, polled)
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.

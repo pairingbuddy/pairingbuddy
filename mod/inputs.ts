@@ -1,12 +1,17 @@
 import type { AgentSpawnInput, EngineInterface } from 'claude-code'
 import { isStandingScenarios, isStandingTests, newestKeyAmong, scenarioRows } from '../shared-node/standing-scenarios.mjs'
 import { withPermissionAsk } from '../shared-node/permission-wait.mjs'
+import { standingGateOff, withGateOff } from '../shared-node/gate-off.mjs'
+import { withStranded } from '../shared-node/stranded.mjs'
 
 const TESTS = '.pairingbuddy/tests.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
 const UNIT = '.pairingbuddy/run/unit.json'
 const CHANGED = '.pairingbuddy/run/changed.json'
 const ARTIFACTS = '.pairingbuddy/run/task/artifacts'
+const GATE_OFF = '.pairingbuddy/run/gate-off.json'
+// The project's shim for pb (shared-node/verbs.mjs SHIM), which the take-over line names.
+const SHIM = '.pairingbuddy/bin/pb'
 
 // seconds: how long the agent's turn took, from its turn.complete; absent until it finishes.
 export type Spawn = { kind: 'Agent' | 'workflow_agent'; name: string; subagentType?: string; startedAt?: string; agentId?: string; finished?: boolean; seconds?: number }
@@ -24,8 +29,10 @@ export type Ledger = {
   task?: string
   commits?: string[]
   plan?: { path?: string }
-  stop?: { reason?: string; seq?: number }
-  needsHuman?: { gate?: string | null; seq?: number }
+  stop?: { code?: string; reason?: string; seq?: number; fix?: string }
+  needsHuman?: { gate?: string | null; seq?: number; fix?: string; askedAt?: string }
+  // When the run stopped working, which SPENT's clock stops at (glance's pausedAtOf); set by the mod, never by pb.
+  pausedAt?: number
 } | undefined
 
 export type Call = { agentId?: unknown; at?: string; input: Record<string, unknown> }
@@ -113,13 +120,54 @@ async function readStandingReturn($: EngineInterface, ledger: Ledger, match: (le
   }
 }
 
+// A stop or a question with no time of its own (a stop carries none) stops SPENT's clock at the ledger's last write, which
+// is the one that raised it, since nothing runs after it.
+function pausedAtLastWrite(ledger: Ledger, writtenMs: number | undefined): Ledger {
+  if (!ledger || !(ledger.stop || ledger.needsHuman) || ledger.pausedAt !== undefined || ledger.needsHuman?.askedAt || writtenMs === undefined) return ledger
+  return { ...ledger, pausedAt: writtenMs }
+}
+
+// Whether a file under the root is there. Never throws.
+async function exists($: EngineInterface, relative: string): Promise<boolean> {
+  try {
+    return await $.fs.exists(`${await $.session.root()}/${relative}`)
+  } catch {
+    return false
+  }
+}
+
+// When a file under the root was last written, or undefined when it does not stat. Never throws.
+async function writtenMs($: EngineInterface, relative: string): Promise<number | undefined> {
+  try {
+    return (await $.fs.stat(`${await $.session.root()}/${relative}`)).mtimeMs
+  } catch {
+    return undefined
+  }
+}
+
+// The gate-watch marker while it stands (shared-node/gate-off.mjs), else null. gate-boot.mjs is stat'd so a restored file
+// clears it at once, before any hook runs again; a stat that fails leaves it standing. Never throws.
+async function readGateOff($: EngineInterface): Promise<unknown> {
+  const marker = (await readJson($, GATE_OFF)) as { path?: unknown } | undefined
+  if (!marker || typeof marker.path !== 'string') return null
+  let stat: { mtimeMs: number; size: number } | null = null
+  try {
+    stat = await $.fs.stat(marker.path)
+  } catch {
+    // Out of reach or gone: the marker stands.
+  }
+  return standingGateOff(marker, stat)
+}
+
 // The inputs, with the test list from the placeholders return a stage wrote (a new-path run writes no tests.json), else
 // the legacy tests.json.
 // Claude Code's permission prompt, while it stands, reads as the question waiting on the human (withPermissionAsk), so STATUS,
 // the band and the alert treat it as any NEEDS YOU.
 async function readInputsAndTests($: EngineInterface, spawns: Spawn[]): Promise<Inputs> {
-  const [read, legacyFile, now] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($)])
-  const ledger = withPermissionAsk(read) as Ledger
+  const [read, legacyFile, now, gateOff, ledgerWrittenMs, shim] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($), readGateOff($), writtenMs($, LEDGER), exists($, SHIM)])
+  const last = spawns.at(-1)
+  const seen = { now, ledgerWrittenMs, spawnAt: last?.startedAt, spawnRunning: spawns.some(spawn => !spawn.finished), shim }
+  const ledger = pausedAtLastWrite(withGateOff(withStranded(withPermissionAsk(read), seen), gateOff) as Ledger, ledgerWrittenMs)
   const testsFile = (await readStandingReturn($, ledger, isStandingTests)) ?? legacyFile
   return inputsOf({ ledger, testsFile, now, spawns })
 }
@@ -152,8 +200,9 @@ export function changedOf(file: unknown): string[] | null {
 export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; unit: Unit | null; changed: string[] | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null }
 
 // The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
-export async function pollInputs($: EngineInterface): Promise<Polled> {
-  const [{ ledger, tests, testsComplete, now }, unitFile, changedFile] = await Promise.all([readInputsAndTests($, []), readJson($, UNIT), readJson($, CHANGED)])
+// spawns: this session's, so a stage its own agents are still running never reads as stranded.
+export async function pollInputs($: EngineInterface, spawns: Spawn[] = []): Promise<Polled> {
+  const [{ ledger, tests, testsComplete, now }, unitFile, changedFile] = await Promise.all([readInputsAndTests($, spawns), readJson($, UNIT), readJson($, CHANGED)])
   return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: unitOf(unitFile), changed: changedOf(changedFile) }
 }
 

@@ -1181,6 +1181,8 @@ const RUN_PATTERN = /\.pairingbuddy\/run/;
 const TEST_CONFIG_PATTERN = /test-config\.json/;
 const GIT_CONFIG_PATTERN = /git-config\.json/;
 const SETTINGS_PATTERN = /\.claude\/settings/;
+// The shim a human's ! line runs (shared-node/verbs.mjs): an agent that rewrote it would run its own code as the human.
+const SHIM_PATTERN = /\.pairingbuddy\/bin/;
 
 const PROTECTED_PATHS = [
   [".pairingbuddy/run/task/ledger.json", RUN_PATTERN],
@@ -1190,6 +1192,8 @@ const PROTECTED_PATHS = [
   [".pairingbuddy/run/pr-body.md", RUN_PATTERN],
   [".pairingbuddy/test-config.json", TEST_CONFIG_PATTERN],
   [".pairingbuddy/git-config.json", GIT_CONFIG_PATTERN],
+  [".pairingbuddy/bin/pb", SHIM_PATTERN],
+  [".pairingbuddy/bin/.gitignore", SHIM_PATTERN],
   [".claude/settings.json", SETTINGS_PATTERN],
   [".claude/settings.local.json", SETTINGS_PATTERN],
 ];

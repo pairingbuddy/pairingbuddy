@@ -711,6 +711,21 @@ describe("session-start-adoption-line", () => {
     assert.doesNotMatch(unownedContext, /must not drive/, unownedContext);
   });
 
+  test("an owner seen recently gets the force line at once, on the condition that its session is closed", () => {
+    const lastSeen = new Date(Date.now() - 2 * 60_000).toISOString();
+    const report = runReport({ root: "/some/root", owner: "session-A", lastSeen, status: null, action: "Do the thing." }, "session-B");
+
+    assert.match(report, /If that session is closed, the human types !.* human adopt --force\b/, report);
+  });
+
+  test("an owner not seen for ten minutes gets the plain line, which adopt takes without --force", () => {
+    const lastSeen = new Date(Date.now() - 11 * 60_000).toISOString();
+    const report = runReport({ root: "/some/root", owner: "session-A", lastSeen, status: null, action: "Do the thing." }, "session-B");
+
+    assert.match(report, /human adopt\./, report);
+    assert.doesNotMatch(report, /--force/, report);
+  });
+
   test("run-report-without-session-id-has-no-adoption-line", () => {
     const report = runReport({ root: "/some/root", owner: "session-A", lastSeen: "2026-11-02T00:00:00Z", status: null, action: "Do the thing." });
 

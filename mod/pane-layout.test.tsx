@@ -1,7 +1,7 @@
 // Scenario pane-layout: the pane keeps one layout for the whole unit (docs/design/progress-mod/DIRECTION.md, "Fixed layout").
 import { expect, test } from 'claude-code/testing'
 import { PANE, paneLines, setupReplay, type Rig } from './testing/replay'
-import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
+import { LEDGER, ROOT, SNAPSHOT_RUNNING, seenAt, start } from './testing/band'
 import { POLL_MS } from './poll'
 import { ACCENT_COLOUR } from './pane'
 
@@ -22,7 +22,7 @@ async function serve($: any, rig: Rig, files: Record<string, unknown>, at = '202
 
 test('every-row-is-drawn-in-order-with-a-fixed-label-width-and-a-dash-when-empty', async ($, on) => {
   const rig = setupReplay(on)
-  await serve($, rig, { [LEDGER]: SNAPSHOT_RUNNING })
+  await serve($, rig, { [LEDGER]: seenAt(SNAPSHOT_RUNNING, '2026-11-14T10:00:00.000Z') })
 
   const lines = await paneLines($)
 
@@ -35,7 +35,7 @@ test('every-row-is-drawn-in-order-with-a-fixed-label-width-and-a-dash-when-empty
 
 test('goal-leads-the-pane-from-the-task-bold-wrapped-onto-two-lines', async ($, on) => {
   const rig = setupReplay(on)
-  await serve($, rig, { [LEDGER]: SNAPSHOT_RUNNING })
+  await serve($, rig, { [LEDGER]: seenAt(SNAPSHOT_RUNNING, '2026-11-14T10:00:00.000Z') })
 
   const lines = await paneLines($)
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
@@ -61,7 +61,7 @@ const isRule = (node: { text: string; props: Record<string, unknown> }) => node.
 
 test('the-first-glance-is-goal-then-status-with-the-rule-under-them', async ($, on) => {
   const rig = setupReplay(on)
-  await serve($, rig, { [LEDGER]: SNAPSHOT_RUNNING })
+  await serve($, rig, { [LEDGER]: seenAt(SNAPSHOT_RUNNING, '2026-11-14T10:00:00.000Z') })
 
   const drawn = await paneNodes($)
   const rule = drawn.findIndex(isRule)
@@ -75,7 +75,7 @@ test('the-first-glance-is-goal-then-status-with-the-rule-under-them', async ($, 
 
 test('the-first-glance-labels-are-bold-and-the-detail-labels-dim-with-their-values-at-full-strength', async ($, on) => {
   const rig = setupReplay(on)
-  await serve($, rig, { [LEDGER]: SNAPSHOT_RUNNING })
+  await serve($, rig, { [LEDGER]: seenAt(SNAPSHOT_RUNNING, '2026-11-14T10:00:00.000Z') })
 
   const drawn = await paneNodes($)
   const labelOf = (name: string) => drawn.find(node => node.text === name.padEnd(LABEL_WIDTH))!
@@ -97,7 +97,7 @@ function statusOf(drawn: { text: string; props: Record<string, unknown> }[]) {
 
 test('status-working-leads-with-a-calm-mark-in-the-accent', async ($, on) => {
   const rig = setupReplay(on)
-  await serve($, rig, { [LEDGER]: SNAPSHOT_RUNNING })
+  await serve($, rig, { [LEDGER]: seenAt(SNAPSHOT_RUNNING, '2026-11-14T10:00:00.000Z') })
 
   const lines = await paneLines($)
   const { head, rest } = statusOf(await paneNodes($))

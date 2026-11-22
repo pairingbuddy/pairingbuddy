@@ -1,5 +1,5 @@
 import type { ElementTable } from 'claude-code'
-import { currentStep, gateLine, glance, needsYouLine, stageOf, stopName } from '../shared-node/glance.mjs'
+import { currentStep, gateLine, glance, needsYouLine, pausedAtOf, stageOf, stopName } from '../shared-node/glance.mjs'
 import { isStageActive, stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
 import { lensRound } from '../shared-node/lens-round.mjs'
@@ -21,7 +21,8 @@ export type RowTones = Partial<Record<keyof Rows, Tone>>
 // What STATUS says, so the human cycling sessions sees at once whether they are needed: the run's state, then what it is about
 // (the step, the question, why it stopped, the verdict). quiet: nothing runs and nothing waits on the human.
 export type StatusState = 'needsYou' | 'stopped' | 'done' | 'working' | 'quiet'
-export type Status = { state: StatusState; what?: string }
+// fix: the one line that puts it right, when the state has one (the safety checks are off), drawn on its own line.
+export type Status = { state: StatusState; what?: string; fix?: string }
 // The kit's own types for the elements a render hook draws with: text only, as neither the band nor the pane has a control.
 export type Tags = Pick<ElementTable, 'Box' | 'Text'>
 
@@ -218,9 +219,9 @@ const NEXT_PUBLISH = `next: ${plainName(PUBLISH_STEP)}`
 
 // What state a live run is in: stopped, needs you, or working on its step (or between steps).
 function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean): Status {
-  if (ledger.stop) return { state: 'stopped', what: stopName(ledger.stop) }
+  if (ledger.stop) return { state: 'stopped', what: stopName(ledger.stop), ...(ledger.stop.fix ? { fix: ledger.stop.fix } : {}) }
   const gate = waitingGate(ledger)
-  if (gate) return { state: 'needsYou', what: gateLine(gate) }
+  if (gate) return { state: 'needsYou', what: gateLine(gate), ...(ledger.needsHuman?.fix ? { fix: ledger.needsHuman.fix } : {}) }
   if (view.between === ALL_DONE && publishes && !isPublishRun(ledger)) return { state: 'working', what: NEXT_PUBLISH }
   return { state: 'working', what: view.rows.now }
 }
@@ -244,7 +245,8 @@ export function buildView(inputs: Inputs): View {
 
 // agents: the count the task's kept runs recorded, once it has ended; else the session's spawns are counted.
 // waited: what an ended task's runs waited on the human; else glance reads the live ledger's own waits.
-const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, waited }: Inputs, agents?: number) => glance({ ledger, spawns, agents, tests, now, since, waited, testsComplete, leaveOutUnknown: true })
+// live: a run read now, whose clock stops while it waits on the human or is stopped (pausedAtOf); an ended run's never runs on.
+const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, waited }: Inputs, agents?: number, live = false) => glance({ ledger, spawns, agents, tests, now, since, waited, testsComplete, leaveOutUnknown: true, ...(live ? { pausedAt: pausedAtOf(ledger) } : {}) })
 
 // An ended task as its kept runs tell it: the agents and tokens they recorded, from the first run's start to the last run's
 // end less what they waited on the human, their returns in place of the session's, which a reload empties, and the pull request when nothing else named it.
@@ -260,7 +262,7 @@ function buildPlainView(inputs: Inputs): View {
   const { ledger } = inputs
   if (!ledger) return { ledger, running: false, rows: NO_RUN_ROWS, band: [], unknownLabels: [], steps: [], goal: EMPTY, status: { state: 'quiet', what: NO_RUN_ROWS.now }, end: NO_END }
   const running = isStageActive(ledger)
-  const shown = glanceOf(inputs)
+  const shown = glanceOf(inputs, undefined, true)
   const rows = { now: shown.rows.now, spent: shown.rows.spent }
   const named = namedWhere(shown.band, inputs)
   const base = { ledger, running, band: named, unknownLabels: shown.unknownLabels, steps: [], goal: EMPTY, status: { state: 'quiet' as const, what: EMPTY }, end: NO_END }

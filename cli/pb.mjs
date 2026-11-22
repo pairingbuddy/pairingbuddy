@@ -11,7 +11,7 @@ import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointS
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
 import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
-import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
+import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, seenRecently, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
@@ -30,13 +30,13 @@ import { isHumanTitle, parsePlan, planStep, unitStates } from "../shared-node/pl
 import { shellWord } from "../shared-node/shell-word.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
-import { nextAction, runStatus } from "../shared-node/next-action.mjs";
+import { nextAction, runStatus, statusText } from "../shared-node/next-action.mjs";
 import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, standingScenariosKey, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
-import { VERB_CLASSES, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
+import { VERB_CLASSES, ensureShim, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
 const RUN_OPEN_KINDS = KINDS.filter((k) => k !== "refresh");
@@ -266,6 +266,8 @@ function runOpen(args) {
   // A failed write is a disk error that leaves the run unnamed; `pb plan next` then reads its ticked box as hand-ticked
   // and stops, which is the safe side.
   if (planned?.namedUnit) writeJsonAtomic(unitPathOf(root), planned.namedUnit);
+  // The short pb a human's ! line names from here on.
+  ensureShim(root);
   return { ok: true, kind, branch, runDir: dir };
 }
 
@@ -587,9 +589,6 @@ function humanAbandon(args) {
   return { ok: true, result: "abandoned", removed: names.map((name) => `.pairingbuddy/run/${name}`) };
 }
 
-// An owner seen within this many minutes is presumed still working, so adopting its run needs the human to confirm.
-const ADOPT_RECENT_MINUTES = 10;
-
 const minutesSince = (lastSeen) => Math.floor(ownerAgeMs(lastSeen) / 60_000);
 
 // Refuses when no run is open; a run with no owner has nothing to adopt, so that is an ok no-op.
@@ -600,7 +599,7 @@ function humanAdopt(args) {
   const { owner } = readLedger(path);
   if (owner?.sessionId == null) return { ok: true, adopted: false, message: "the run has no owner: nothing to adopt" };
   const minutesAgo = minutesSince(owner.lastSeen);
-  if (!force && minutesAgo < ADOPT_RECENT_MINUTES) {
+  if (!force && seenRecently(owner.lastSeen)) {
     const unit = minutesAgo === 1 ? "minute" : "minutes";
     throw new Refusal(`the run's owner session ${owner.sessionId} was active ${minutesAgo} ${unit} ago (at ${owner.lastSeen}); if that session is still working, close it first; then type the same line with --force: ${humanCommand(root, "adopt --force")}`);
   }
@@ -1302,14 +1301,24 @@ function artifactCheck(args) {
 
 // The action stays behind a flag: plain status is what a stage's session reads, and an action there sends it past where
 // its prompt stopped.
+// A human at a terminal reads plain lines (statusText); a pipe, as a model's Bash call is, and --json get the JSON.
 function status(args) {
-  const withAction = args.length === 1 && args[0] === "--action";
-  if (!withAction && args.length > 0) throw new UsageError("usage: pb status [--action]");
+  if (args.some((arg) => arg !== "--action" && arg !== "--json") || new Set(args).size !== args.length) throw new UsageError("usage: pb status [--action] [--json]");
+  const withAction = args.includes("--action");
   const { root, path } = runLedgerPath();
   const contract = loadStages(PLUGIN_ROOT);
   const ledger = readLedger(path);
   const state = runStatus(contract, ledger, artifactsDirOf(root));
-  return withAction ? { ok: true, ...state, action: nextAction(contract, ledger, root, PLUGIN_ROOT) } : { ok: true, ...state };
+  const result = withAction ? { ok: true, ...state, action: nextAction(contract, ledger, root, PLUGIN_ROOT) } : { ok: true, ...state };
+  if (args.includes("--json") || !process.stdout.isTTY) return result;
+  return new PlainText(statusText(state, { owner: ledger.owner.sessionId, lastSeen: ledger.owner.lastSeen, action: result.action }));
+}
+
+// A verb's answer printed as it stands, not as JSON.
+class PlainText {
+  constructor(text) {
+    this.text = text;
+  }
 }
 
 // The units list leaves out task bodies: only `next` carries one.
@@ -2400,7 +2409,8 @@ async function main(argv) {
     const known = Object.keys(VERBS).filter((verb) => !VERB_CLASSES.human.includes(verb));
     throw new UsageError(`unknown verb: ${argv.slice(0, 2).join(" ") || "(none)"}. Known: ${known.join(", ")}`);
   }
-  console.log(JSON.stringify(await runVerb(name, argv.slice(name.split(" ").length))));
+  const result = await runVerb(name, argv.slice(name.split(" ").length));
+  console.log(result instanceof PlainText ? result.text : JSON.stringify(result));
 }
 
 function isEntryPoint() {

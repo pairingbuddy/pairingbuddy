@@ -2,7 +2,7 @@
 // and the report shows the same run time as the ended pane. Runs under `claude plugin test .`.
 import { expect, mock, test } from 'claude-code/testing'
 import { POLL_MS } from './poll'
-import { engine, SNAPSHOT_RUNNING, start } from './testing/band'
+import { engine, SNAPSHOT_RUNNING, seenAt, start } from './testing/band'
 import { paneLines } from './testing/replay'
 import { recordReportCalls, runPbReport } from './testing/report'
 
@@ -94,7 +94,7 @@ test('new-run-clears-ended-at', async ($, on) => {
   const firstStart = '2026-11-04T09:58:00.000Z'
   const secondStart = '2026-11-04T10:00:03.000Z'
   const firstRun = { ...SNAPSHOT_RUNNING, stages: [{ name: 'code-scenarios', status: 'done', attempt: 1, startedAt: firstStart }] }
-  const secondRun = { ...SNAPSHOT_RUNNING, stages: [{ name: 'code-scenarios', status: 'active', attempt: 1, startedAt: secondStart }] }
+  const secondRun = { ...seenAt(SNAPSHOT_RUNNING, secondStart), stages: [{ name: 'code-scenarios', status: 'active', attempt: 1, startedAt: secondStart }] }
   const clock = mock.clock(on, { now: Date.parse('2026-11-04T10:00:00.000Z') })
   const run = engine(on, firstRun)
   on('audio.play', () => ({ value: undefined }))

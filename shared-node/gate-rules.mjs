@@ -17,7 +17,7 @@ import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nex
 import { disguisesPb, pbInvocations, pbWithEnvironment } from "./shell-calls.mjs";
 import { shellWord } from "./shell-word.mjs";
 import { STAGE_STOP_REASONS } from "./stop-codes.mjs";
-import { VERB_CLASSES, classOf, humanCommand, matchVerb, shaMismatchRemedy } from "./verbs.mjs";
+import { SHIM_DIR, VERB_CLASSES, classOf, humanCommand, matchVerb, shaMismatchRemedy } from "./verbs.mjs";
 
 // Strips the quoting a shell removes before it reads words.
 const SHELL_QUOTING = /\\\n|\$(?=['"])|['"\\]/g;
@@ -88,6 +88,7 @@ function assertNotProtected(root, targets, canonicalPath) {
       throw new Denied(`${target} is inside a git directory, which is denied during a run: HEAD, refs, config and hooks decide what a push or a branch switch does.`);
     }
     if (isWithin(target, runDir)) throw new Denied(`${target} is inside .pairingbuddy/run, which is denied during a run.`);
+    if (isWithin(target, join(root, SHIM_DIR))) throw new Denied(`${target} holds the pb a human's typed line runs, so it cannot change during a run.`);
     const config = PROTECTED_CONFIGS.find((name) => target === join(stateDir, name));
     if (config !== undefined) throw new Denied(`${config} cannot change during a run: ${target}.`);
     if (isClaudeSettings(target)) throw new Denied(`.claude/settings files can set the gate policy, so they cannot change during a run: ${target}.`);

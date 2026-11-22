@@ -418,3 +418,14 @@ The human on that report: "using a header type for the goal or something? Really
 
 Time waiting on the human is no working time. `pb gate eval` stamps `needsHuman.askedAt`; an answer keeps `askedAt` and `answeredAt` on its gate's record. SPENT (pane, band, an ended task's) and the report's Spent leave the waits out; the report's Waited row says them apart (`4h 1m waiting for you`). A ledger without the stamps waited 0.
 
+
+## Recovery drill (2026-11-22)
+
+The human's findings on build 0211140:
+- With `gate-boot.mjs` broken nothing was gated, and the pane said `● working`.
+- After the session that ran a stage was killed, the pane said `● working` on that stage for good. A new session asked to go on said, rightly, that the human must adopt the run.
+
+What changed:
+- **Safety checks off is a stop.** While `run/gate-off.json` (left by `hooks/gate-watch.mjs`) stands and `gate-boot.mjs` is as it named it, STATUS and the band lead with `✕ STOPPED · safety checks are off`, and STATUS gives the one fix line under it: `fix: git -C <plugin> checkout -- hooks`. The alert fires as for any stop. A restored file clears it at the next poll.
+- **A stranded stage needs you.** An active stage that nothing has moved for 10 minutes (not its owner, its start, a ledger write or an agent of this session, none still running) reads `▲ NEEDS YOU · take over the run: its session is gone`. The rule and why it reads the ledger's last write are in `shared-node/stranded.mjs`.
+- **SPENT stops while nothing runs.** Its time ticked on through a stranded stage or a wait for the human, as if agents and tokens were being spent. While the run is stopped (the safety checks off included), needs you or is stranded, the time stops where the work did (the question's askedAt, the permission prompt's, the stranded stage's last move, the broken file's time, else the ledger's last write) and reads `paused`: `0 agents · 3:04 paused` in the pane, `3:04 paused · 0 agents` in the band. Dim as the rest of SPENT; STATUS already says why.

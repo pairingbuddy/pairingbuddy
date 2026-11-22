@@ -58,6 +58,10 @@ export const SNAPSHOT_RUNNING = {
   stage: { name: 'code-scenarios', status: 'active', runId: null, attempt: 1, startedAt: '2026-11-03T06:36:08.972Z' },
 }
 
+// The ledger with its owner seen at `at`, so a run read long after its stage started still reads as live, not stranded
+// (shared-node/stranded.mjs).
+export const seenAt = <T extends { owner: unknown }>(ledger: T, at: string): T => ({ ...ledger, owner: { sessionId: SNAPSHOT_RUNNING.owner.sessionId, lastSeen: at } })
+
 export function without(document: Record<string, unknown>, ...keys: string[]): Record<string, unknown> {
   const copy = { ...document }
   for (const key of keys) delete copy[key]
