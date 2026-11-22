@@ -328,6 +328,13 @@ class TestGateBootParseFailure:
         assert wedged.stdout == ""
         assert "SyntaxError" in wedged.stderr
 
+        payload = {"session_id": SESSION_B, "cwd": str(clone), "tool_name": "Write"}
+        watched = hook(
+            clone, tmp_path, "gate-watch.mjs", {**payload, "hook_event_name": "PreToolUse"}
+        )
+        assert "safety checks are off" in denial(watched)
+        assert "checkout -- hooks" in denial(watched)
+
         result = recover(clone, tmp_path, "gate-boot-parse")
 
         assert "ledger.json" in result.stdout

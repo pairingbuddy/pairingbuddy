@@ -34,6 +34,7 @@ JS_TEST_FILES = [
     "tests/js/d17-rules.test.mjs",
     "tests/js/duration-safeguards.test.mjs",
     "tests/js/gate-eval.test.mjs",
+    "tests/js/gate-watch.test.mjs",
     "tests/js/gate-facts.test.mjs",
     "tests/js/gate-question.test.mjs",
     "tests/js/gate.test.mjs",
