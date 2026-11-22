@@ -65,8 +65,10 @@ export type View = {
 
 // Each plan unit's state, in plan order, once a unit record stands to read it against; else none.
 function planStatesOf({ plan, unit, ledger }: Inputs): string[] | undefined {
-  if (!plan || !unit?.open) return undefined
-  const { open } = unit
+  if (!plan) return undefined
+  const open = unit?.open
+  // Without a unit record the states are told only once a unit shows a PR, since a published unit gives them something to say.
+  if (!open) return plan.units.some(planned => planned.pr) ? unitStates(plan.units, { plan: ledger?.plan?.path, openUnit: undefined }) : undefined
   // A record names its unit, or only its tracer: then it is the first plan unit under that tracer.
   const isPlanned = plan.units.some(planned => planned.unit === open.unit)
   const underTracer = isPlanned || !open.tracer ? undefined : plan.units.find(planned => planned.tracer === open.tracer)

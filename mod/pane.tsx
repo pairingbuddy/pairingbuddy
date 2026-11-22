@@ -160,6 +160,7 @@ function planLines(plan: NonNullable<View['plan']>, states: string[] = [], open?
         [{ text: `${unitIndent}${unit.unit}${state ? ` · ${state}` : ''}` }],
         ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
         ...(open && open.unit === unit.unit ? openUnitLines(open, contentIndent) : []),
+        ...(unit.pr ? [[{ text: `${contentIndent}PR ${unit.pr}` }]] : []),
         ...unit.tasks.map(task => [{ text: `${contentIndent}${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
       ]),
     ]
