@@ -21,7 +21,8 @@ export type RowTones = Partial<Record<keyof Rows, Tone>>
 // What STATUS says, so the human cycling sessions sees at once whether they are needed: the run's state, then what it is about
 // (the step, the question, why it stopped, the verdict). quiet: nothing runs and nothing waits on the human.
 export type StatusState = 'needsYou' | 'stopped' | 'done' | 'working' | 'quiet'
-export type Status = { state: StatusState; what?: string }
+// fix: the one line that puts it right, when the state has one (the safety checks are off), drawn on its own line.
+export type Status = { state: StatusState; what?: string; fix?: string }
 // The kit's own types for the elements a render hook draws with: text only, as neither the band nor the pane has a control.
 export type Tags = Pick<ElementTable, 'Box' | 'Text'>
 
@@ -218,7 +219,7 @@ const NEXT_PUBLISH = `next: ${plainName(PUBLISH_STEP)}`
 
 // What state a live run is in: stopped, needs you, or working on its step (or between steps).
 function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean): Status {
-  if (ledger.stop) return { state: 'stopped', what: stopName(ledger.stop) }
+  if (ledger.stop) return { state: 'stopped', what: stopName(ledger.stop), ...(ledger.stop.fix ? { fix: `fix: ${ledger.stop.fix}` } : {}) }
   const gate = waitingGate(ledger)
   if (gate) return { state: 'needsYou', what: gateLine(gate) }
   if (view.between === ALL_DONE && publishes && !isPublishRun(ledger)) return { state: 'working', what: NEXT_PUBLISH }

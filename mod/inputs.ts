@@ -1,12 +1,14 @@
 import type { AgentSpawnInput, EngineInterface } from 'claude-code'
 import { isStandingScenarios, isStandingTests, newestKeyAmong, scenarioRows } from '../shared-node/standing-scenarios.mjs'
 import { withPermissionAsk } from '../shared-node/permission-wait.mjs'
+import { standingGateOff, withGateOff } from '../shared-node/gate-off.mjs'
 
 const TESTS = '.pairingbuddy/tests.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
 const UNIT = '.pairingbuddy/run/unit.json'
 const CHANGED = '.pairingbuddy/run/changed.json'
 const ARTIFACTS = '.pairingbuddy/run/task/artifacts'
+const GATE_OFF = '.pairingbuddy/run/gate-off.json'
 
 // seconds: how long the agent's turn took, from its turn.complete; absent until it finishes.
 export type Spawn = { kind: 'Agent' | 'workflow_agent'; name: string; subagentType?: string; startedAt?: string; agentId?: string; finished?: boolean; seconds?: number }
@@ -24,7 +26,7 @@ export type Ledger = {
   task?: string
   commits?: string[]
   plan?: { path?: string }
-  stop?: { reason?: string; seq?: number }
+  stop?: { code?: string; reason?: string; seq?: number; fix?: string }
   needsHuman?: { gate?: string | null; seq?: number }
 } | undefined
 
@@ -113,13 +115,27 @@ async function readStandingReturn($: EngineInterface, ledger: Ledger, match: (le
   }
 }
 
+// The gate-watch marker while it stands (shared-node/gate-off.mjs), else null. gate-boot.mjs is stat'd so a restored file
+// clears it at once, before any hook runs again; a stat that fails leaves it standing. Never throws.
+async function readGateOff($: EngineInterface): Promise<unknown> {
+  const marker = (await readJson($, GATE_OFF)) as { path?: unknown } | undefined
+  if (!marker || typeof marker.path !== 'string') return null
+  let stat: { mtimeMs: number; size: number } | null = null
+  try {
+    stat = await $.fs.stat(marker.path)
+  } catch {
+    // Out of reach or gone: the marker stands.
+  }
+  return standingGateOff(marker, stat)
+}
+
 // The inputs, with the test list from the placeholders return a stage wrote (a new-path run writes no tests.json), else
 // the legacy tests.json.
 // Claude Code's permission prompt, while it stands, reads as the question waiting on the human (withPermissionAsk), so STATUS,
 // the band and the alert treat it as any NEEDS YOU.
 async function readInputsAndTests($: EngineInterface, spawns: Spawn[]): Promise<Inputs> {
-  const [read, legacyFile, now] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($)])
-  const ledger = withPermissionAsk(read) as Ledger
+  const [read, legacyFile, now, gateOff] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($), readGateOff($)])
+  const ledger = withGateOff(withPermissionAsk(read), gateOff) as Ledger
   const testsFile = (await readStandingReturn($, ledger, isStandingTests)) ?? legacyFile
   return inputsOf({ ledger, testsFile, now, spawns })
 }

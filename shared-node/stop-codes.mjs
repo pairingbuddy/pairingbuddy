@@ -14,4 +14,6 @@ export const COMMIT_FAILED = "commit-failed";
 export const NO_SELECTOR_TEMPLATE = "no-selector-template";
 export const HUMAN_STOPPED = "human-stopped";
 export const ATTEMPT_CAP = "attempt-cap";
-export const STOP_CODES = [MISSING_ARTIFACT, COMMIT_PLAN_UNUSABLE, COMMIT_FAILED, NO_SELECTOR_TEMPLATE, HUMAN_STOPPED, ...Object.keys(STAGE_STOP_REASONS)];
+// The views' own stop: no ledger holds it. They read it from the marker hooks/gate-watch.mjs leaves (shared-node/gate-off.mjs).
+export const GATE_OFF = "gate-off";
+export const STOP_CODES = [MISSING_ARTIFACT, COMMIT_PLAN_UNUSABLE, COMMIT_FAILED, NO_SELECTOR_TEMPLATE, HUMAN_STOPPED, GATE_OFF, ...Object.keys(STAGE_STOP_REASONS)];

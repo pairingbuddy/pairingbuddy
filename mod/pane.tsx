@@ -114,11 +114,13 @@ export const STATUS_LOOKS: Record<StatusState, Look> = {
 function statusLines(status: Status, width: number): Part[][] {
   const look = STATUS_LOOKS[status.state]
   const text = [look.head, status.what].filter(Boolean).join(look.sep)
-  return wrapAtParts(text, width).map((line: string, i: number) => {
+  const lines: Part[][] = wrapAtParts(text, width).map((line: string, i: number) => {
     if (i > 0 || !line.startsWith(look.head)) return [{ text: line, props: look.whatProps }]
     const rest = line.slice(look.head.length)
     return [{ text: look.head, props: look.headProps }, ...(rest ? [{ text: rest, props: look.whatProps }] : [])]
   })
+  // The fix is a command to type, so it has its own line, plain, wrapped at words only.
+  return status.fix ? [...lines, ...wrapAtParts(status.fix, width).map((line: string) => [{ text: line }])] : lines
 }
 
 // The first glance: GOAL, then STATUS, which answers "am I needed now?".

@@ -62,6 +62,7 @@ const PLAIN_NAMES = {
   "agent-budget": "the agent budget ran out",
   "step-failed": "a step kept failing",
   "tests-red": "the tests were not green",
+  "gate-off": "safety checks are off",
   // task types
   "config_change": "config change",
   "bug_fix": "bug fix",
