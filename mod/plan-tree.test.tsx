@@ -14,7 +14,9 @@ async function showPlan($: Harness, on: On, planText: string, extraFiles: Record
   await start($)
   await rig.clock.advance(POLL_MS * 2)
   const lines = await paneLines($)
-  return lines.slice(lines.findIndex(line => line.startsWith('PLAN')))
+  const planRow = lines.findIndex(line => line.startsWith('PLAN'))
+  if (planRow === -1) throw new Error(`no PLAN row in pane:\n${lines.join('\n')}`)
+  return lines.slice(planRow)
 }
 
 const TWO_TRACERS = [
