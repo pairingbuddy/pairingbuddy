@@ -412,6 +412,13 @@ describe("compare-lab-end-new", () => {
     assert.equal(lab.newEndState({ status: pbStatus({ stage: { name: "code-tdd", status: "done" }, next: { stage: "code-safety-net", attempt: 1 }, action: "Start the workflow" }), kept: [] }).state, "running");
   });
 
+  it("reads the current build's no-run answer, exit 0 with run null, as no run", () => {
+    const noRun = { code: 0, stdout: JSON.stringify({ ok: true, run: null, action: "No run is open: no run here, so go on to the workflow." }), stderr: "" };
+    const end = lab.newEndState({ status: noRun, kept: [{ runId: "p1", kind: "publish", prUrl: "https://github.com/example/repo/pull/7" }] });
+    assert.deepEqual([end.state, end.finished], ["ended", true]);
+    assert.equal(lab.newEndState({ status: noRun, kept: [] }).state, "not-started");
+  });
+
   it("reads no run with a kept publish run that opened a PR as finished", () => {
     const end = lab.newEndState({ status: NO_RUN, kept: [{ runId: "t1", kind: "code", prUrl: null }, { runId: "p1", kind: "publish", prUrl: "https://github.com/example/repo/pull/7" }] });
     assert.deepEqual([end.state, end.finished, end.pr], ["ended", true, "https://github.com/example/repo/pull/7"]);

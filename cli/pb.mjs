@@ -1332,9 +1332,18 @@ function artifactCheck(args) {
 // The action stays behind a flag: plain status is what a stage's session reads, and an action there sends it past where
 // its prompt stopped.
 // A human at a terminal reads plain lines (statusText); a pipe, as a model's Bash call is, and --json get the JSON.
+const NO_RUN_ACTION = "No run is open: no run here, so go on to the workflow.";
+
+function hasRun() {
+  const root = findRunRoot(process.cwd());
+  return root !== null && existsSync(ledgerPathOf(root));
+}
+
 function status(args) {
   if (args.some((arg) => arg !== "--action" && arg !== "--json") || new Set(args).size !== args.length) throw new UsageError("usage: pb status [--action] [--json]");
   const withAction = args.includes("--action");
+  // No run yet is a normal answer for the one asking what to do next, so it is no refusal, which a session shows as an error.
+  if (withAction && !hasRun()) return { ok: true, run: null, action: NO_RUN_ACTION };
   const { root, path } = runLedgerPath();
   const contract = loadStages(PLUGIN_ROOT);
   const ledger = readLedger(path);

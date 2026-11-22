@@ -77,7 +77,7 @@ The wait setting should keep the new side in one `claude -p`. The loop is the ba
 
 - **Ended**: no run is open and a kept publish run is there. It is finished when that run opened a PR (`kept.json` has `prUrl`), and "ended-no-pr" when it opened none.
 - **Waiting for a human**: the run has a stop, a question (`needsHuman`) with no stage active, or an answer only the human can act on. The loop stops and records the reason.
-- **Unreadable**: `pb status` failed for any reason but "no run here". The loop stops.
+- **Unreadable**: `pb status` failed for any reason but "no run here" (no run open: an older build refuses with it, the current one answers `run: null` with exit 0). The loop stops.
 - **Running**, **task-ended** (the task ended and its publish run has not run) or **not-started**: the session is resumed with `claude -p --resume <session_id> "<continue prompt>"` and the same flags. `--max-budget-usd` gets what is left of the cap. The prompt says no human is available, that a stage left active lost its workflow with the process (when one did), and to run `pb status --action` and do what it says.
 
 The loop also stops at `--max-resumes`, the wall time, the budget, an `error_max_budget_usd` result, or a result with no session id. `run.json` records the end state (`end`) and the loop (`loop`: invocations, resumes, why it stopped, each exit). Old runs once. Its end is read from `.pairingbuddy/SOLO_BUDDY_REPORT.md` when there is one (Solo writes it for a plan). A single `/code` task writes none, so its `commit-result.json` with status success stands in.

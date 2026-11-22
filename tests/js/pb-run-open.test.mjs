@@ -483,10 +483,14 @@ test("plain pb status gives no action, and any other argument is a usage error",
   assert.equal(pb(root, "status", "--action", "x").status, 2);
 });
 
-test("pb status --action refuses with no run, as plain status does", (t) => {
-  const r = pb(makeRepo(t), "status", "--action");
+test("pb status --action answers no run with exit 0, while plain status refuses", (t) => {
+  const root = makeRepo(t);
 
-  assertCleanRefusal(r, /no run here/);
+  const r = pb(root, "status", "--action");
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).run, null);
+  assertCleanRefusal(pb(root, "status"), /no run here/);
 });
 
 test("pb status --action gives the next action, whose args the gate takes", (t) => {

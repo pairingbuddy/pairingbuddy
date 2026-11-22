@@ -398,15 +398,21 @@ const end = (state, over = {}) => ({ state, finished: false, waitingForHuman: fa
 // status is what `pb status --action` gave ({ code, stdout, stderr }); kept is keptRuns. With no run open, a kept publish
 // run means the task ended and its publish ran: finished when it opened a PR. pb's next action says when only a human
 // can go on (the same order the build's own nextAction checks).
+// No run open: what the kept runs say the task came to.
+function noRunEnd(kept) {
+  const publish = kept.filter((run) => run.kind === "publish").at(-1);
+  if (publish?.prUrl) return end("ended", { finished: true, pr: publish.prUrl, reason: `the task ended and the PR was opened: ${publish.prUrl}` });
+  if (publish) return end("ended-no-pr", { reason: "the task ended and its publish run closed, but it opened no PR" });
+  if (kept.length > 0) return end("task-ended", { reason: "the task ended, and its publish run has not run" });
+  return end("not-started", { reason: "no run was opened" });
+}
+
+// An older build refuses with "no run here" (exit 1); the current one answers { ok: true, run: null } (exit 0).
 export function newEndState({ status, kept }) {
   if (status.code !== 0) {
     const said = `${status.stderr}${status.stdout}`.trim();
     if (!/no run here/.test(said)) return end("unreadable", { reason: `pb status failed (exit ${status.code}): ${said.slice(0, 500)}` });
-    const publish = kept.filter((run) => run.kind === "publish").at(-1);
-    if (publish?.prUrl) return end("ended", { finished: true, pr: publish.prUrl, reason: `the task ended and the PR was opened: ${publish.prUrl}` });
-    if (publish) return end("ended-no-pr", { reason: "the task ended and its publish run closed, but it opened no PR" });
-    if (kept.length > 0) return end("task-ended", { reason: "the task ended, and its publish run has not run" });
-    return end("not-started", { reason: "no run was opened" });
+    return noRunEnd(kept);
   }
   let s;
   try {
@@ -414,6 +420,7 @@ export function newEndState({ status, kept }) {
   } catch {
     return end("unreadable", { reason: `pb status gave output that is not JSON: ${status.stdout.slice(0, 300)}` });
   }
+  if (s.run === null) return noRunEnd(kept);
   const stage = { stage: s.stage?.name || null, stageStatus: s.stage?.status || null, action: s.action ?? null };
   if (typeof s.action === "string" && s.action.startsWith("The human answered")) return end("needs-human", { ...stage, waitingForHuman: true, reason: s.action });
   if (s.stop) return end("stopped", { ...stage, waitingForHuman: true, reason: s.stop.reason ?? "the run stopped" });

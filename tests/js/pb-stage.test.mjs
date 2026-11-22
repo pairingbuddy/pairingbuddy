@@ -1200,6 +1200,19 @@ describe("status", IN_PARALLEL, () => {
     assertRefused(pb({ dir: empty }, "status"), /no run here/);
   });
 
+  test("with --action and no run, it answers plainly and exits 0: no run yet is a normal answer", () => {
+    const empty = makeDir("pb-no-run-");
+    git(empty, "init", "-q");
+
+    const result = pb({ dir: empty }, "status", "--action");
+
+    assert.equal(result.code, 0, `exits 0: ${result.stderr}`);
+    const answer = JSON.parse(result.stdout);
+    assert.equal(answer.ok, true);
+    assert.equal(answer.run, null, "no run is open");
+    assert.match(answer.action, /no run here/, "the action says so, in the words the skill reads");
+  });
+
   test("pb-status-shows-known-tokens", () => {
     const repo = finishableWithTranscript("wf_status-run");
     writeReturn(repo, key(CONFIG, "runner"));
