@@ -132,7 +132,18 @@ function topRows(view: View, columns: number) {
 // The plan as a tree: each tracer, its units nested under it, each unit's tasks under that, in plan order.
 const TASK_MARKS = { ticked: '✓', unticked: '○' } as const
 const NEST = '  '
-function planLines(plan: NonNullable<View['plan']>, states: string[] = []): Part[][] {
+const SHORT_SHA = 7
+// The open unit's branch, base and commits, each on its own line.
+function openUnitLines(open: View['planOpen'], indent: string): Part[][] {
+  const facts = [
+    ...(open?.branch ? [`branch ${open.branch}`] : []),
+    ...(open?.base ? [`base ${open.base}`] : []),
+    ...(open?.commits ?? []).map(sha => `commit ${sha.slice(0, SHORT_SHA)}`),
+  ]
+  return facts.map(text => [{ text: `${indent}${text}` }])
+}
+
+function planLines(plan: NonNullable<View['plan']>, states: string[] = [], open?: View['planOpen']): Part[][] {
   // Consecutive units of one tracer form a group; a unit under no tracer is its own group, unindented.
   const groups: { tracer: string | null | undefined; units: { unit: (typeof plan.units)[number]; state?: string }[] }[] = []
   for (const [i, unit] of plan.units.entries()) {
@@ -148,6 +159,7 @@ function planLines(plan: NonNullable<View['plan']>, states: string[] = []): Part
       ...units.flatMap(({ unit, state }) => [
         [{ text: `${unitIndent}${unit.unit}${state ? ` · ${state}` : ''}` }],
         ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
+        ...(open?.unit === unit.unit ? openUnitLines(open, contentIndent) : []),
         ...unit.tasks.map(task => [{ text: `${contentIndent}${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
       ]),
     ]
@@ -166,7 +178,7 @@ function paneRows(view: View, columns: number) {
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
     ...rowLines('TESTS', testsParts(view, width)),
     ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
-    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates)) : []),
+    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen)) : []),
   ]
 }
 

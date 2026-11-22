@@ -8,7 +8,7 @@ import { unitStates } from '../shared-node/plan.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { cycleMarker, progressRow, shortName, stepAge, testCounts } from '../shared-node/now-building.mjs'
 import { doneStatus, endRows, goalOf, isUnitDone, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
-import type { Inputs, Ledger } from './inputs'
+import type { Inputs, Ledger, OpenUnit } from './inputs'
 import { STATUS_LOOKS } from './pane'
 
 export type Tone = 'error' | 'warning' | 'dim'
@@ -59,6 +59,8 @@ export type View = {
   plan?: Inputs['plan']
   // The state of each plan unit, by position (shared-node/plan.mjs unitStates).
   planStates?: string[]
+  // The open unit's record, whose branch, base and commits the PLAN tree shows under the plan unit it names.
+  planOpen?: OpenUnit
 }
 
 // Each plan unit's state, in plan order, once a unit record stands to read it against; else none.
@@ -251,7 +253,7 @@ function endedStatus(inputs: Inputs, end: { doneStatus?: string }): Status {
 
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
-  const view = { ...toned(buildPlainView(inputs)), plan: inputs.plan, planStates: planStatesOf(inputs) }
+  const view = { ...toned(buildPlainView(inputs)), plan: inputs.plan, planStates: planStatesOf(inputs), planOpen: inputs.unit?.open }
   const { ledger } = inputs
   if (!ledger) return view
   const { doneStatus: _done, ...end } = endState(inputs, view.running, true)
