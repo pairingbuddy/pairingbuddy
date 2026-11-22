@@ -210,7 +210,7 @@ const WEDGES = {
   "gate-boot-parse": {
     recipe: "gate-boot.mjs parse failure",
     force: forceGateBootParse,
-    sees: "the hook exits 1 with a SyntaxError and no decision, so nothing is being gated.",
+    sees: "the pane reads '✕ STOPPED · safety checks are off' with the fix line, and gate-watch.mjs denies each gated call with that message. gate-boot.mjs itself exits 1 with a SyntaxError and no decision.",
   },
   "stranded-stage": {
     recipe: "Stranded active stage",

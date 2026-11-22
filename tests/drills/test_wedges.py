@@ -340,6 +340,16 @@ class TestGateBootParseFailure:
         assert "ledger.json" in result.stdout
         assert_allowed(write_call(clone, tmp_path))
 
+    def test_what_you_see_is_the_stop_gate_watch_raises(self, tmp_path):
+        printed = run_script(tmp_path, "--gate-boot-parse").stdout
+        sees = re.search(r"^What you see: (.+)$", printed, re.M)[1]
+        told = section("gate-boot.mjs parse failure").split("**What you see:**")[1]
+        told = told.split("\n\n")[0]
+
+        for text in (sees, told):
+            assert "safety checks are off" in text, text
+            assert "STOPPED" in text, text
+
 
 class TestStrandedStage:
     def test_blocks_the_next_stage_until_stage_fail(self, tmp_path):

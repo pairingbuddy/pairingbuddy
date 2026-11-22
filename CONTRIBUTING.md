@@ -259,7 +259,7 @@ Inspect that listing. Run state is gitignored, so `git status` cannot show a wri
 
 ### gate-boot.mjs parse failure
 
-**What you see:** each tool call reports a hook error with a `SyntaxError`, and the tool still runs. This is the one file whose parse failure is not a deny: the hook exits 1 with no decision. Treat the run as ungated from that moment, and stop the session before doing anything else.
+**What you see:** the pane and the band read `✕ STOPPED · safety checks are off`, with the fix line under it, and the model says the safety checks are off and stops. `hooks/gate-watch.mjs` loads `gate-boot.mjs` apart from it: during a run it denies Write, Edit, Bash, Workflow and Agent with that message and leaves `.pairingbuddy/run/gate-off.json` for the pane. Without it you would see only a hook error with a `SyntaxError` on each call, and the tool still runs, since this is the one file whose parse failure is not a deny. Treat the run as ungated from the moment it broke, and stop the session before doing anything else.
 
 ```bash
 git -C "$PLUGIN" status --short
