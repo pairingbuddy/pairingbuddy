@@ -2,7 +2,7 @@
 // { options: { alertSound: false } } where the preference is off.
 import { expect, mock, test } from 'claude-code/testing'
 import { POLL_MS } from './poll'
-import { STOPPED_OPENED, ROOT, bandSays, bandTexts, start } from './testing/band'
+import { STOPPED_LEAD, ROOT, bandSays, bandTexts, start } from './testing/band'
 import { outcome, isDeny } from './testing/hooks'
 import { PANE_ID } from './pane-open'
 import { alertOn } from './alert'
@@ -19,7 +19,7 @@ for (const play of ['reject', 'throw'] as const) {
     expect(run.calls.status.length, `the status line is still set when the sound ${play}s`).toBe(1)
     expect(run.calls.status[0].text, 'the status line names the stop in plain words').toContain('a step kept failing')
     expect(run.calls.opened.length, `the pane still opens when the sound ${play}s`).toBe(1)
-    expect(bandSays(shown, STOPPED_OPENED), `the band still reads "✕ STOPPED · opened details" when the sound ${play}s: ${JSON.stringify(shown)}`).toBe(true)
+    expect(bandSays(shown, STOPPED_LEAD), `the band still leads with the stop and why when the sound ${play}s: ${JSON.stringify(shown)}`).toBe(true)
   })
 }
 
@@ -98,7 +98,7 @@ test('sound-off-keeps-band', { options: { alertSound: false } }, async ($, on) =
   const shown = await bandTexts($)
 
   expect(run.calls.played, 'the preference is off, so no sound was played').toEqual([])
-  expect(bandSays(shown, STOPPED_OPENED), `the band still reads "✕ STOPPED · opened details" with the sound off: ${JSON.stringify(shown)}`).toBe(true)
+  expect(bandSays(shown, STOPPED_LEAD), `the band still leads with the stop and why with the sound off: ${JSON.stringify(shown)}`).toBe(true)
 })
 
 test('sound-off-keeps-pane-open', { options: { alertSound: false } }, async ($, on) => {

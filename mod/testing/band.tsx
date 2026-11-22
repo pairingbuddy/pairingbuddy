@@ -206,9 +206,10 @@ export async function bandTexts($: any, props: Record<string, unknown> = {}): Pr
   return shown
 }
 
-// What the band leads with once an alert has run and the pane is placed: for a question, and for a stop.
-export const NEEDS_YOU_OPENED = '▲ NEEDS YOU · opened details'
-export const STOPPED_OPENED = '✕ STOPPED · opened details'
+// What the band leads with for the default question (needingHuman, G:task-end) and stop (stopped, step-failed): what it needs
+// or why, also once the alert opened the pane, as the pane's STATUS does.
+export const NEEDS_YOU_LEAD = '▲ NEEDS YOU · your sign-off at the end'
+export const STOPPED_LEAD = '✕ STOPPED · a step kept failing'
 
 // Whether any line of the band's texts includes the wording.
 export function bandSays(shown: string[], wording: string): boolean {

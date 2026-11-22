@@ -1,18 +1,20 @@
 // Scenarios: band-alert-text, pane-cannot-seat, glance-names-stop (pane side).
 // The band carries the alert text; when the pane is not placed, the band carries the alert alone.
 import { expect, mock, test } from 'claude-code/testing'
-import { BAND, NEEDS_YOU_OPENED, STOPPED_OPENED, bandSays, bandTexts, engine, start, texts } from './testing/band'
+import { BAND, NEEDS_YOU_LEAD, STOPPED_LEAD, bandSays, bandTexts, engine, start, texts } from './testing/band'
 import { alertEngine, cleared, needingHuman, sameEventPolledThenNewEvent, stopped } from './testing/alert'
 import { PANE } from './testing/replay'
 import { POLL_MS } from './poll'
 
-test('band-reads-needs-you-opened-details', async ($, on) => {
+// Live check of --gate-boot-parse: the band read "✕ STOPPED · opened details" while the pane said why. The band says why too.
+test('band-gives-the-stop-reason-once-the-pane-opened', async ($, on) => {
   alertEngine(on, { ledger: stopped(), open: 'ok' })
   await start($)
 
   const shown = await bandTexts($)
 
-  expect(shown[0], `the band leads with "✕ STOPPED · opened details" once the pane is placed: ${JSON.stringify(shown)}`).toBe(STOPPED_OPENED)
+  expect(shown[0], `the band leads with the stop and why once the pane is placed: ${JSON.stringify(shown)}`).toBe(STOPPED_LEAD)
+  expect(shown.some(text => text.includes('opened details')), `no "opened details": ${JSON.stringify(shown)}`).toBe(false)
 })
 
 test('band-shows-needs-you-without-opened-when-pane-unseated', async ($, on) => {
@@ -27,13 +29,13 @@ test('band-shows-needs-you-without-opened-when-pane-unseated', async ($, on) => 
 })
 
 test('band-for-stop-and-for-needs-human: needs human, placed', async ($, on) => {
-  // The stop's band is band-reads-needs-you-opened-details; this is the needsHuman kind, placed: the band reads "opened details".
+  // The stop's band is band-gives-the-stop-reason-once-the-pane-opened; this is the needsHuman kind, placed: the band says what it needs.
   alertEngine(on, { ledger: needingHuman({ gate: 'G:task-end' }), open: 'ok' })
   await start($)
 
   const shown = await bandTexts($)
 
-  expect(shown[0], `the band leads with "▲ NEEDS YOU · opened details" for a gate waiting on the human: ${JSON.stringify(shown)}`).toBe(NEEDS_YOU_OPENED)
+  expect(shown[0], `the band leads with what the gate needs, also once the pane is placed: ${JSON.stringify(shown)}`).toBe(NEEDS_YOU_LEAD)
 })
 
 test('band-for-stop-and-for-needs-human: needs human, unseated', async ($, on) => {
@@ -60,8 +62,7 @@ test('band-clears-when-event-clears', async ($, on) => {
 
   const shown = await bandTexts($, { bodyColumns: 200 })
 
-  expect(bandSays(alerting, STOPPED_OPENED), `the band showed the alert before the event cleared: ${JSON.stringify(alerting)}`).toBe(true)
-  expect(shown.some(text => text.includes('opened details')), `the band drops "opened details" once the event clears: ${JSON.stringify(shown)}`).toBe(false)
+  expect(bandSays(alerting, STOPPED_LEAD), `the band showed the alert before the event cleared: ${JSON.stringify(alerting)}`).toBe(true)
   expect(shown.some(text => text.includes('a step kept failing')), `the band drops the stop's plain name once the event clears: ${JSON.stringify(shown)}`).toBe(false)
   expect(shown[0], `the band leads with the working step again: ${JSON.stringify(shown)}`).toBe('● write test scenarios')
 })

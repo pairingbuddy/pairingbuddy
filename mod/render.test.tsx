@@ -137,7 +137,7 @@ test('at 75 columns with a standing stop needs-you is kept whole and the hint sh
 
   const joined = shown.join('')
   expect(joined.includes('/pb') ? joined.length <= COLUMNS : true, `the hint is shown only when the row still fits: ${JSON.stringify(shown)}`).toBe(true)
-  expect(shown.slice(0, 5), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['✕ STOPPED · opened details', ' │ ', 'write test scenarios', ' │ ', '0 agents'])
+  expect(shown.slice(0, 5), `every segment fits, so the hint gives way before any segment does: ${JSON.stringify(shown)}`).toEqual(['✕ STOPPED · a step kept failing', ' │ ', 'write test scenarios', ' │ ', '0 agents'])
   expect(joined.length, `the band is within ${COLUMNS} columns: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(COLUMNS)
 })
 

@@ -295,7 +295,7 @@ test('pane-and-band-say-needs-you-while-claude-code-asks-permission', async ($, 
 
   expect(status, 'STATUS says what Claude Code is asking').toEqual(['▲ NEEDS YOU', 'Claude Code is asking your permission to start the next step'])
   expect([head.text, head.props.color, head.props.inverse], 'in the yellow block').toEqual(['▲ NEEDS YOU', 'warning', true])
-  expect(band, `the band leads with it: ${band}`).toMatch(/^▲ NEEDS YOU/)
+  expect(band, `the band leads with it and says what it asks: ${band}`).toMatch(/^▲ NEEDS YOU · Claude Code is asking your permission/)
 })
 
 test('pane-status-says-why-it-stopped-as-strongly-in-red', async ($, on) => {

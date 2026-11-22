@@ -90,3 +90,11 @@ test('while stranded the SPENT time stops at the last move and says it is paused
   expect(spent, 'nothing has run since the stage started').toBe('SPENT    0 agents · 0:00 paused')
   expect(band, `the band says the same: ${band}`).toContain('0:00 paused · 0 agents')
 })
+
+test('the band keeps what it needs once the alert opened the pane', async ($, on) => {
+  await seenAfter($, on, 11)
+
+  const row = (await bandTexts($, { bodyColumns: 120 })).join('')
+
+  expect(row, `the band asks for the human, not "opened details": ${row}`).toMatch(/^▲ NEEDS YOU · take over the run/)
+})

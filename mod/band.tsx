@@ -27,16 +27,6 @@ export function bandGoal(goal: string | undefined, columns: number) {
   return goalGist(goal.trim().replace(/\s+/g, ' '), columns > 0 ? columns - CONTROL_WIDTH : 0)
 }
 
-const OPENED_DETAILS = 'opened details'
-
-// Once the alert opened the pane, the question or stop that leads the band reads as opened, behind its head; fitBand keeps it whole.
-const asOpened = (band: Segment[]): Segment[] =>
-  band.map(segment => {
-    if (segment.id !== 'needsYou' || !segment.standing || !segment.state) return segment
-    const look = STATUS_LOOKS[segment.state]
-    return { ...segment, text: `${look.bandHead}${look.sep}${OPENED_DETAILS}`, short: `${look.mark} ${OPENED_DETAILS}` }
-  })
-
 const LIT = { color: ACCENT_COLOUR, bold: true }
 
 // A lit segment as the pane draws where the run is now: its leading phase word in the phase's colour, the rest in the accent.
@@ -77,18 +67,19 @@ function quietLine({ between, ended, done }: { between?: string; ended?: boolean
 }
 
 // While a stage is active or a question waits, only the segments that fit; otherwise the quiet line. The commands hint follows.
-export function Band({ Box, Text, band, goal, columns, running, waiting, opened, ended, done, between }: Pick<Tags, 'Box' | 'Text'> & {
+export function Band({ Box, Text, band, goal, columns, running, waiting, ended, done, between }: Pick<Tags, 'Box' | 'Text'> & {
   band: Segment[]
   goal?: string
   columns: number
   running: boolean
   waiting?: boolean
-  opened?: boolean
   ended?: boolean
   done?: boolean
   between?: string
 }) {
-  const source = opened && running ? asOpened(band) : band
+  // A question or a stop leads with what it needs or why, also once the alert opened the pane: the band is what a human
+  // cycling sessions reads, and "opened details" told them nothing (live check, 2026-11-22).
+  const source = band
   // The hint is the lowest priority: it gives way to its short form, then to nothing, before any segment is cut.
   const content = running || waiting ? fitBand(source, bandColumns(columns)) : undefined
   const hint = [HINT, SHORT_HINT].find(candidate => JSON.stringify(fitBand(source, bandColumns(columns, candidate))) === JSON.stringify(content))
