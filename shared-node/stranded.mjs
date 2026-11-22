@@ -20,11 +20,17 @@ const timeOf = (time) => (typeof time === "string" ? Date.parse(time) : typeof t
 
 // Whether the ledger's active stage is stranded at `now`. ledgerWrittenMs: when the ledger was last written; spawnAt: this
 // session's last spawn's start; spawnRunning: an agent this session spawned has not finished.
+// When the stage last moved, in ms, or NaN when nothing says.
+const lastMoved = (ledger, { ledgerWrittenMs, spawnAt }) => {
+  const moved = [ledger.owner?.lastSeen, ledger.stage?.startedAt, ledgerWrittenMs, spawnAt].map(timeOf).filter(Number.isFinite);
+  return moved.length > 0 ? Math.max(...moved) : NaN;
+};
+
 export function isStranded(ledger, { now, ledgerWrittenMs, spawnAt, spawnRunning = false }) {
   if (!ledger || ledger.stop || ledger.needsHuman || ledger.stage?.status !== "active" || spawnRunning) return false;
   if (!Number.isFinite(now)) return false;
-  const moved = [ledger.owner?.lastSeen, ledger.stage.startedAt, ledgerWrittenMs, spawnAt].map(timeOf).filter(Number.isFinite);
-  return moved.length > 0 && now - Math.max(...moved) > STRANDED_MS;
+  const moved = lastMoved(ledger, { ledgerWrittenMs, spawnAt });
+  return Number.isFinite(moved) && now - moved > STRANDED_MS;
 }
 
 // The line that takes the run over, through the project's shim (shared-node/verbs.mjs SHIM, written by pb run open). The owner
@@ -33,7 +39,8 @@ export const TAKE_OVER_LINE = "type: !.pairingbuddy/bin/pb human adopt";
 
 // The ledger as the views read it: a stranded stage is the question waiting on the human. Its seq is the ledger's, which
 // stands while nothing writes it, so the alert fires once. seen.shim: the shim is there, so the take-over line can name it.
+// pausedAt: the last move, where SPENT's clock stops (glance's pausedAtOf).
 export function withStranded(ledger, seen) {
   if (!isStranded(ledger, seen)) return ledger;
-  return { ...ledger, needsHuman: { gate: STRANDED_GATE, reason: STRANDED_LINE, seq: ledger.seq, ...(seen.shim ? { fix: TAKE_OVER_LINE } : {}) } };
+  return { ...ledger, pausedAt: lastMoved(ledger, seen), needsHuman: { gate: STRANDED_GATE, reason: STRANDED_LINE, seq: ledger.seq, ...(seen.shim ? { fix: TAKE_OVER_LINE } : {}) } };
 }

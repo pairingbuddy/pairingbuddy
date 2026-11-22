@@ -21,5 +21,6 @@ export function standingGateOff(marker, stat) {
 // broken file's time, so the alert fires once for one break and again for the next.
 export function withGateOff(ledger, marker) {
   if (!ledger || !marker) return ledger;
-  return { ...ledger, stop: { code: GATE_OFF, reason: `gate-boot.mjs cannot load: ${marker.failure ?? "unknown"}`, seq: marker.mtimeMs, fix: `fix: ${gateOffFix(marker.plugin)}` } };
+  // Nothing has been checked since gate-boot.mjs broke, when the file changed: SPENT's clock stops there.
+  return { ...ledger, pausedAt: marker.mtimeMs, stop: { code: GATE_OFF, reason: `gate-boot.mjs cannot load: ${marker.failure ?? "unknown"}`, seq: marker.mtimeMs, fix: `fix: ${gateOffFix(marker.plugin)}` } };
 }

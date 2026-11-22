@@ -30,7 +30,9 @@ export type Ledger = {
   commits?: string[]
   plan?: { path?: string }
   stop?: { code?: string; reason?: string; seq?: number; fix?: string }
-  needsHuman?: { gate?: string | null; seq?: number; fix?: string }
+  needsHuman?: { gate?: string | null; seq?: number; fix?: string; askedAt?: string }
+  // When the run stopped working, which SPENT's clock stops at (glance's pausedAtOf); set by the mod, never by pb.
+  pausedAt?: number
 } | undefined
 
 export type Call = { agentId?: unknown; at?: string; input: Record<string, unknown> }
@@ -118,6 +120,13 @@ async function readStandingReturn($: EngineInterface, ledger: Ledger, match: (le
   }
 }
 
+// A stop or a question with no time of its own (a stop carries none) stops SPENT's clock at the ledger's last write, which
+// is the one that raised it, since nothing runs after it.
+function pausedAtLastWrite(ledger: Ledger, writtenMs: number | undefined): Ledger {
+  if (!ledger || !(ledger.stop || ledger.needsHuman) || ledger.pausedAt !== undefined || ledger.needsHuman?.askedAt || writtenMs === undefined) return ledger
+  return { ...ledger, pausedAt: writtenMs }
+}
+
 // Whether a file under the root is there. Never throws.
 async function exists($: EngineInterface, relative: string): Promise<boolean> {
   try {
@@ -158,7 +167,7 @@ async function readInputsAndTests($: EngineInterface, spawns: Spawn[]): Promise<
   const [read, legacyFile, now, gateOff, ledgerWrittenMs, shim] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($), readGateOff($), writtenMs($, LEDGER), exists($, SHIM)])
   const last = spawns.at(-1)
   const seen = { now, ledgerWrittenMs, spawnAt: last?.startedAt, spawnRunning: spawns.some(spawn => !spawn.finished), shim }
-  const ledger = withGateOff(withStranded(withPermissionAsk(read), seen), gateOff) as Ledger
+  const ledger = pausedAtLastWrite(withGateOff(withStranded(withPermissionAsk(read), seen), gateOff) as Ledger, ledgerWrittenMs)
   const testsFile = (await readStandingReturn($, ledger, isStandingTests)) ?? legacyFile
   return inputsOf({ ledger, testsFile, now, spawns })
 }

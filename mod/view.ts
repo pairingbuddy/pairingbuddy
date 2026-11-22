@@ -1,5 +1,5 @@
 import type { ElementTable } from 'claude-code'
-import { currentStep, gateLine, glance, needsYouLine, stageOf, stopName } from '../shared-node/glance.mjs'
+import { currentStep, gateLine, glance, needsYouLine, pausedAtOf, stageOf, stopName } from '../shared-node/glance.mjs'
 import { isStageActive, stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
 import { lensRound } from '../shared-node/lens-round.mjs'
@@ -245,7 +245,8 @@ export function buildView(inputs: Inputs): View {
 
 // agents: the count the task's kept runs recorded, once it has ended; else the session's spawns are counted.
 // waited: what an ended task's runs waited on the human; else glance reads the live ledger's own waits.
-const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, waited }: Inputs, agents?: number) => glance({ ledger, spawns, agents, tests, now, since, waited, testsComplete, leaveOutUnknown: true })
+// live: a run read now, whose clock stops while it waits on the human or is stopped (pausedAtOf); an ended run's never runs on.
+const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, waited }: Inputs, agents?: number, live = false) => glance({ ledger, spawns, agents, tests, now, since, waited, testsComplete, leaveOutUnknown: true, ...(live ? { pausedAt: pausedAtOf(ledger) } : {}) })
 
 // An ended task as its kept runs tell it: the agents and tokens they recorded, from the first run's start to the last run's
 // end less what they waited on the human, their returns in place of the session's, which a reload empties, and the pull request when nothing else named it.
@@ -261,7 +262,7 @@ function buildPlainView(inputs: Inputs): View {
   const { ledger } = inputs
   if (!ledger) return { ledger, running: false, rows: NO_RUN_ROWS, band: [], unknownLabels: [], steps: [], goal: EMPTY, status: { state: 'quiet', what: NO_RUN_ROWS.now }, end: NO_END }
   const running = isStageActive(ledger)
-  const shown = glanceOf(inputs)
+  const shown = glanceOf(inputs, undefined, true)
   const rows = { now: shown.rows.now, spent: shown.rows.spent }
   const named = namedWhere(shown.band, inputs)
   const base = { ledger, running, band: named, unknownLabels: shown.unknownLabels, steps: [], goal: EMPTY, status: { state: 'quiet' as const, what: EMPTY }, end: NO_END }

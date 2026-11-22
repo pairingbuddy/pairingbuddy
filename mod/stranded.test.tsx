@@ -76,3 +76,17 @@ test('with the project shim, STATUS gives the line that takes the run over', asy
 
   expect(lines[at + 1].trim(), 'the adopt line, under the head').toBe('type: !.pairingbuddy/bin/pb human adopt')
 })
+
+test('while stranded the SPENT time stops at the last move and says it is paused, in the pane and the band', async ($, on) => {
+  engine(on, SNAPSHOT_RUNNING, () => ({ value: { isPlaced: false } }))
+  const clock = mock.clock(on, { now: STARTED + 11 * MINUTE })
+  await start($)
+  await clock.advance(POLL_MS)
+  await clock.advance(MINUTE)
+
+  const spent = (await paneLines($, { bodyColumns: 120 })).find(line => line.startsWith('SPENT'))
+  const band = (await bandTexts($, { bodyColumns: 200 })).join('')
+
+  expect(spent, 'nothing has run since the stage started').toBe('SPENT    0 agents · 0:00 paused')
+  expect(band, `the band says the same: ${band}`).toContain('0:00 paused · 0 agents')
+})
