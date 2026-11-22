@@ -208,11 +208,11 @@ const PLAIN_WHYS = [
 // Names the runners a reason says lack selector_template, and the one fix: the run cannot build a test without it.
 function selectorWhy(reason) {
   const named = /^runners? (.+?) (?:has|have) no selector_template/.exec(reason);
-  if (named === null) return "A test runner can't run one test on its own: add a selector_template to it in .pairingbuddy/test-config.json, then start the task again.";
+  if (named === null) return "A test runner can't run one test on its own: add a selector_template to it in .pairingbuddy/test-config.json, and the run asks you to accept the change.";
   const many = named[1].includes(",");
   return many
-    ? `Runners ${named[1]} can't run one test on their own: add a selector_template to each in .pairingbuddy/test-config.json, then start the task again.`
-    : `Runner ${named[1]} can't run one test on its own: add a selector_template to it in .pairingbuddy/test-config.json, then start the task again.`;
+    ? `Runners ${named[1]} can't run one test on their own: add a selector_template to each in .pairingbuddy/test-config.json, and the run asks you to accept the change.`
+    : `Runner ${named[1]} can't run one test on its own: add a selector_template to it in .pairingbuddy/test-config.json, and the run asks you to accept the change.`;
 }
 
 const plainWhy = (reason) => {
@@ -572,7 +572,7 @@ function selectorReason(root, ledger, contract) {
   if (!needsTestSelection(contract, ledger.taskType)) return null;
   const advice = selectorAdvice(readTestConfig(root, ledger.configHash));
   if (advice === null) return null;
-  return `${advice}. Then the human abandons this run with pb human abandon and starts the task again`;
+  return `${advice}. Once the human has added it, the run asks them to accept the changed file at its next test run, and goes on`;
 }
 
 function classifierReason(root, ledger) {

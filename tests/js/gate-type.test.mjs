@@ -101,6 +101,7 @@ test("gate-type-asks-when-runner-lacks-selector-template", () => {
   assert.ok(out.reason.includes(RUNNER_WITHOUT_SELECTOR), "the reason names the runner");
   assert.match(out.reason, /selector_template/, "the reason names selector_template");
   assert.ok(out.reason.startsWith(`runner ${RUNNER_WITHOUT_SELECTOR} has no selector_template`), "one runner is named in the singular");
+  assert.doesNotMatch(out.reason, /abandon/, "no run is abandoned: the changed file is asked about, then the run goes on");
 });
 
 test("gate-type-passes-when-every-runner-has-a-selector-template", () => {
@@ -118,7 +119,7 @@ test("gate-type-names-the-missing-selector-before-the-classifier", () => {
 
   const out = evalNeedsHuman(repo);
 
-  assert.match(out.reason, /selector_template/, "the selector problem, which needs the run abandoned, is the reason given");
+  assert.match(out.reason, /selector_template/, "the selector problem is the reason given");
 });
 
 test("gate-type-gives-a-stop-before-its-own-reason", () => {
@@ -195,7 +196,7 @@ test("gate-type-names-the-missing-selector-before-the-lens", () => {
 
   const out = evalNeedsHuman(repo);
 
-  assert.match(out.reason, /selector_template/, "the selector problem, which needs the run abandoned, is the reason given");
+  assert.match(out.reason, /selector_template/, "the selector problem is the reason given");
 });
 test("gate-type-names-the-classifier-before-the-lens", () => {
   const repo = repoAtTypeGate({ confidence: "likely" });
