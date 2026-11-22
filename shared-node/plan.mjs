@@ -9,9 +9,10 @@ function normalised(path) {
   for (const part of path.split("/")) {
     if (part === "" || part === ".") continue;
     if (part === ".." && parts.length > 0 && parts.at(-1) !== "..") parts.pop();
-    else parts.push(part);
+    else if (part !== ".." || !path.startsWith("/")) parts.push(part);
   }
-  return `${path.startsWith("/") ? "/" : ""}${parts.join("/")}`;
+  const joined = parts.join("/");
+  return path.startsWith("/") ? `/${joined}` : joined || ".";
 }
 
 const FENCE = /^\s*(```|~~~)/;

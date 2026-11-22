@@ -198,8 +198,7 @@ export function changedOf(file: unknown): string[] | null {
   return file.map(entry => (entry as { path?: unknown })?.path).filter((path): path is string => typeof path === 'string' && path !== '')
 }
 
-export type PlanRead = { units: PlanUnit[]; next: unknown; problems: string[] }
-export type PlanUnit = { unit: string; tracer: string | null; pr: string | null; legacy: boolean; dependsOn: string | null; tasks: { title: string; checked: boolean; human: boolean; body: string }[] }
+export type PlanRead = ReturnType<typeof parsePlan>
 
 // The plan MD the ledger names, parsed, or null when the ledger names none or the file is missing, empty or unreadable. Never throws.
 async function readPlan($: EngineInterface, ledger: Ledger | null): Promise<PlanRead | null> {
@@ -207,7 +206,7 @@ async function readPlan($: EngineInterface, ledger: Ledger | null): Promise<Plan
   if (typeof path !== 'string' || path === '') return null
   try {
     const text = await $.fs.read(`${await $.session.root()}/${path}`)
-    return text.trim() === '' ? null : (parsePlan(text) as PlanRead)
+    return text.trim() === '' ? null : parsePlan(text)
   } catch {
     return null
   }
@@ -218,8 +217,9 @@ export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: bo
 // The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
 // spawns: this session's, so a stage its own agents are still running never reads as stranded.
 export async function pollInputs($: EngineInterface, spawns: Spawn[] = []): Promise<Polled> {
-  const [{ ledger, tests, testsComplete, now }, unitFile, changedFile] = await Promise.all([readInputsAndTests($, spawns), readJson($, UNIT), readJson($, CHANGED)])
-  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: unitOf(unitFile), changed: changedOf(changedFile), plan: await readPlan($, ledger ?? null) }
+  const inputs = readInputsAndTests($, spawns)
+  const [{ ledger, tests, testsComplete, now }, plan, unitFile, changedFile] = await Promise.all([inputs, inputs.then(({ ledger }) => readPlan($, ledger ?? null)), readJson($, UNIT), readJson($, CHANGED)])
+  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: unitOf(unitFile), changed: changedOf(changedFile), plan }
 }
 
 type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null } | null
