@@ -209,6 +209,29 @@ the session's total, with one first S1 and two cap checks, was about $0.215.
 
 The output of a `!` command reaches the model.
 
+## Recovery drill, 2026-11-22
+
+Run by the human on build 0211140, then on b3878b1 for the gate-boot wedge after its fix. Every wedge recovered.
+
+| Wedge | Result | Notes |
+|---|---|---|
+| killed-session | Recovered | Adopt needed `--force`. The stage then failed itself to attempt 2, and the session went on by itself. The pane said `● working` the whole time. |
+| gate-boot-parse | Recovered | On 0211140 the model ignored the red hook errors and ran 4 commands with nothing gated. Fixed in b3878b1; run again live there: the pane read `✕ STOPPED · safety checks are off` with the fix line, and the model made no tool call and told the human. The band read `✕ STOPPED · opened details`. |
+| second-session | Recovered | The second session refused to drive the run and gave the adopt line. |
+
+The other wedges (gate-throw, gate-parse, stranded-stage, killed-at-gate, sha-mismatch, no-unit, broken-cli) were not run live this time. `tests/drills/test_wedges.py` forces each one and runs its CONTRIBUTING recipe against it, with the hooks called directly.
+
+Findings and their fixes:
+
+- A broken `gate-boot.mjs` let every tool through, and nothing told the model. `hooks/gate-watch.mjs` now denies gated tools during a run and tells the model to stop: 0518490.
+- The pane did not say the safety checks were off. It now reads `✕ STOPPED · safety checks are off` with the fix line `git -C <plugin> checkout -- hooks`: c902221. The recipe and the drill say what you see: af57133.
+- A stage whose session was gone read `● working`. It now reads `▲ NEEDS YOU · take over the run: its session is gone`: c38cb07, with the adopt line under it: ea96f4b.
+- The adopt line held two absolute paths and broke on paste. Lines a human types are now `!.pairingbuddy/bin/pb human …`, through a shim `pb run open` writes: 2f30946.
+- The adopt line was refused for a recently seen owner, and the human had to retype it with `--force`. The `--force` line now comes at once, on the condition that the owner's session is closed: dbb0050.
+- `pb status` printed one raw JSON line to a human. A terminal now gets plain lines: d80f0e9.
+- SPENT's time ticked on through a stranded stage or a wait. It now stops and reads `paused`: 0bf6994.
+- The band read `opened details` in place of the reason. It now gives the reason, as the pane does: 0bbaaad.
+
 ## T1c lens spend spike
 
 Question: what does one lens plus one refuter cost on a real diff, and what does that imply across
