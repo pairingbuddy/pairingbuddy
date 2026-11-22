@@ -34,3 +34,9 @@ test("stranded: the views read it as the question waiting on the human, once per
   assert.deepEqual(withStranded(LEDGER, { now: LATER }).needsHuman, { gate: STRANDED_GATE, reason: "take over the run: its session is gone", seq: 4 });
   assert.equal(withStranded(LEDGER, { now: STARTED }), LEDGER);
 });
+
+test("stranded: the span is pb human adopt's own, so a plain adopt takes a stranded run", async () => {
+  const { ADOPT_RECENT_MS } = await import("../../shared-node/ledger.mjs");
+
+  assert.equal(STRANDED_MS, ADOPT_RECENT_MS);
+});

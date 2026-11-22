@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { PUBLISH_GATE, answeredGate, blockingGate, gatesFor, isPublishApproved, publishApproval } from "./gates.mjs";
-import { LedgerShaMismatch, isPublishRun, isRefreshRun, readLedger } from "./ledger.mjs";
+import { LedgerShaMismatch, isPublishRun, isRefreshRun, readLedger, seenRecently } from "./ledger.mjs";
 import { coveredTests, fixesOf, spendTotals } from "./stage-run.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, startLeaseSecondsLeft } from "./stages.mjs";
 import { humanCommand, pbCommand, shaMismatchRemedy } from "./verbs.mjs";
@@ -98,10 +98,17 @@ export function readRun(pluginRoot, root) {
   }
 }
 
+// How the human moves the run here. An owner seen recently makes a plain adopt refuse, so the line is the --force one at
+// once, on the condition that the owner's session is closed: one round, not a refusal and a retype.
+function adoptAdvice(root, lastSeen) {
+  if (seenRecently(lastSeen)) return `If that session is closed, the human types ${humanCommand(root, "adopt --force")} to move the run here; if it is still working, leave the run to it.`;
+  return `To move it here the human types ${humanCommand(root, "adopt")}.`;
+}
+
 // What SessionStart and the compact hook inject.
 export function runReport({ root, owner, lastSeen, status, action }, sessionId) {
   const lines = [`A Pairing Buddy run is open at ${root}.`];
-  if (owner && sessionId && owner !== sessionId) lines.push(`The run belongs to session ${owner}, last seen ${lastSeen}; this session must not drive it. To move it here the human types ${humanCommand(root, "adopt")}.`);
+  if (owner && sessionId && owner !== sessionId) lines.push(`The run belongs to session ${owner}, last seen ${lastSeen}; this session must not drive it. ${adoptAdvice(root, lastSeen)}`);
   if (status !== null) lines.push(`pb status: ${JSON.stringify(status)}`);
   lines.push(`Next action: ${action ?? "No task is open."}`);
   return lines.join("\n");

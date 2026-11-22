@@ -32,6 +32,12 @@ export function ownerAgeMs(lastSeen) {
   const age = Date.now() - Date.parse(lastSeen);
   return Number.isNaN(age) ? Infinity : age;
 }
+// An owner seen within this span is presumed still working, so pb human adopt takes its run only with --force.
+// shared-node/stranded.mjs keeps the same span, apart, since the mod cannot import this file.
+export const ADOPT_RECENT_MS = 10 * 60_000;
+
+// Whether the owner was seen within ADOPT_RECENT_MS.
+export const seenRecently = (lastSeen) => ownerAgeMs(lastSeen) < ADOPT_RECENT_MS;
 const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits"];
 
 // A ledger the CLI reports as a refusal rather than a crash.

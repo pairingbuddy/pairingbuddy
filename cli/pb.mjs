@@ -11,7 +11,7 @@ import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointS
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
 import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
-import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
+import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, seenRecently, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
@@ -589,9 +589,6 @@ function humanAbandon(args) {
   return { ok: true, result: "abandoned", removed: names.map((name) => `.pairingbuddy/run/${name}`) };
 }
 
-// An owner seen within this many minutes is presumed still working, so adopting its run needs the human to confirm.
-const ADOPT_RECENT_MINUTES = 10;
-
 const minutesSince = (lastSeen) => Math.floor(ownerAgeMs(lastSeen) / 60_000);
 
 // Refuses when no run is open; a run with no owner has nothing to adopt, so that is an ok no-op.
@@ -602,7 +599,7 @@ function humanAdopt(args) {
   const { owner } = readLedger(path);
   if (owner?.sessionId == null) return { ok: true, adopted: false, message: "the run has no owner: nothing to adopt" };
   const minutesAgo = minutesSince(owner.lastSeen);
-  if (!force && minutesAgo < ADOPT_RECENT_MINUTES) {
+  if (!force && seenRecently(owner.lastSeen)) {
     const unit = minutesAgo === 1 ? "minute" : "minutes";
     throw new Refusal(`the run's owner session ${owner.sessionId} was active ${minutesAgo} ${unit} ago (at ${owner.lastSeen}); if that session is still working, close it first; then type the same line with --force: ${humanCommand(root, "adopt --force")}`);
   }
