@@ -217,8 +217,9 @@ export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: bo
 // The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
 // spawns: this session's, so a stage its own agents are still running never reads as stranded.
 export async function pollInputs($: EngineInterface, spawns: Spawn[] = []): Promise<Polled> {
-  const inputs = readInputsAndTests($, spawns)
-  const [{ ledger, tests, testsComplete, now }, plan, unitFile, changedFile] = await Promise.all([inputs, inputs.then(({ ledger }) => readPlan($, ledger ?? null)), readJson($, UNIT), readJson($, CHANGED)])
+  const { ledger, tests, testsComplete, now } = await readInputsAndTests($, spawns)
+  // The plan is named by the ledger, so it is read once the ledger is.
+  const [plan, unitFile, changedFile] = await Promise.all([readPlan($, ledger ?? null), readJson($, UNIT), readJson($, CHANGED)])
   return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: unitOf(unitFile), changed: changedOf(changedFile), plan }
 }
 

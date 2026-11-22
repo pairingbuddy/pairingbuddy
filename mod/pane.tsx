@@ -132,16 +132,23 @@ function topRows(view: View, columns: number) {
 // The plan as a tree: each tracer, its units nested under it, each unit's tasks under that, in plan order.
 const TASK_MARKS = { ticked: '✓', unticked: '○' } as const
 function planLines(plan: NonNullable<View['plan']>): Part[][] {
-  const lines: Part[][] = []
-  let tracer: string | null | undefined
+  // Consecutive units of one tracer form a group; a unit under no tracer is its own group, unindented.
+  const groups: { tracer: string | null | undefined; units: typeof plan.units }[] = []
   for (const unit of plan.units) {
-    if (unit.tracer !== tracer && unit.tracer) lines.push([{ text: unit.tracer }])
-    tracer = unit.tracer
-    const indent = unit.tracer ? '  ' : ''
-    lines.push([{ text: `${indent}${unit.unit}` }])
-    for (const task of unit.tasks) lines.push([{ text: `${indent}  ${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }])
+    const last = groups.at(-1)
+    if (last && unit.tracer && last.tracer === unit.tracer) last.units.push(unit)
+    else groups.push({ tracer: unit.tracer, units: [unit] })
   }
-  return lines
+  return groups.flatMap(({ tracer, units }) => {
+    const indent = tracer ? '  ' : ''
+    return [
+      ...(tracer ? [[{ text: tracer }]] : []),
+      ...units.flatMap(unit => [
+        [{ text: `${indent}${unit.unit}` }],
+        ...unit.tasks.map(task => [{ text: `${indent}  ${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
+      ]),
+    ]
+  })
 }
 
 // The details under the rule, read after the first glance.
