@@ -147,6 +147,7 @@ function planLines(plan: NonNullable<View['plan']>, states: string[] = []): Part
       ...(tracer ? [[{ text: tracer }]] : []),
       ...units.flatMap(unit => [
         [{ text: `${indent}${unit.unit}${unit.state ? ` · ${unit.state}` : ''}` }],
+        ...(unit.dependsOn ? [[{ text: `${indent}  based on ${unit.dependsOn}` }]] : []),
         ...unit.tasks.map(task => [{ text: `${indent}  ${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
       ]),
     ]
