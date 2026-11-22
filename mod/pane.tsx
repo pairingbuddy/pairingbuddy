@@ -131,24 +131,24 @@ function topRows(view: View, columns: number) {
 
 // The plan as a tree: each tracer, its units nested under it, each unit's tasks under that, in plan order.
 const TASK_MARKS = { ticked: '✓', unticked: '○' } as const
+const NEST = '  '
 function planLines(plan: NonNullable<View['plan']>, states: string[] = []): Part[][] {
   // Consecutive units of one tracer form a group; a unit under no tracer is its own group, unindented.
-  type PlannedUnit = (typeof plan.units)[number] & { state?: string }
-  const groups: { tracer: string | null | undefined; units: PlannedUnit[] }[] = []
-  for (const [i, planned] of plan.units.entries()) {
-    const unit: PlannedUnit = { ...planned, state: states[i] }
+  const groups: { tracer: string | null | undefined; units: { unit: (typeof plan.units)[number]; state?: string }[] }[] = []
+  for (const [i, unit] of plan.units.entries()) {
     const last = groups.at(-1)
-    if (last && unit.tracer && last.tracer === unit.tracer) last.units.push(unit)
-    else groups.push({ tracer: unit.tracer, units: [unit] })
+    if (last && unit.tracer && last.tracer === unit.tracer) last.units.push({ unit, state: states[i] })
+    else groups.push({ tracer: unit.tracer, units: [{ unit, state: states[i] }] })
   }
   return groups.flatMap(({ tracer, units }) => {
-    const indent = tracer ? '  ' : ''
+    const unitIndent = tracer ? NEST : ''
+    const contentIndent = unitIndent + NEST
     return [
       ...(tracer ? [[{ text: tracer }]] : []),
-      ...units.flatMap(unit => [
-        [{ text: `${indent}${unit.unit}${unit.state ? ` · ${unit.state}` : ''}` }],
-        ...(unit.dependsOn ? [[{ text: `${indent}  based on ${unit.dependsOn}` }]] : []),
-        ...unit.tasks.map(task => [{ text: `${indent}  ${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
+      ...units.flatMap(({ unit, state }) => [
+        [{ text: `${unitIndent}${unit.unit}${state ? ` · ${state}` : ''}` }],
+        ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
+        ...unit.tasks.map(task => [{ text: `${contentIndent}${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
       ]),
     ]
   })
