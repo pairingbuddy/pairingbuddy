@@ -1213,6 +1213,22 @@ describe("status", IN_PARALLEL, () => {
     assert.match(answer.action, /no run here/, "the action says so, in the words the skill reads");
   });
 
+  test("with --action and no run, a dirty tree is named first, before the session asks the human anything", () => {
+    const empty = makeDir("pb-no-run-");
+    git(empty, "init", "-q");
+    writeFileSync(join(empty, "notes.txt"), "left over\n");
+
+    const result = pb({ dir: empty }, "status", "--action");
+
+    assert.equal(result.code, 0, result.stderr);
+    const answer = JSON.parse(result.stdout);
+    assert.equal(answer.run, null);
+    assert.deepEqual(answer.dirty, ["notes.txt"]);
+    assert.match(answer.action, /dirty/);
+    assert.match(answer.action, /notes\.txt/);
+    assert.match(answer.action, /before you ask the human anything else/);
+  });
+
   test("pb-status-shows-known-tokens", () => {
     const repo = finishableWithTranscript("wf_status-run");
     writeReturn(repo, key(CONFIG, "runner"));

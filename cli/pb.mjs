@@ -1334,6 +1334,21 @@ function artifactCheck(args) {
 // A human at a terminal reads plain lines (statusText); a pipe, as a model's Bash call is, and --json get the JSON.
 const NO_RUN_ACTION = "No run is open: no run here, so go on to the workflow.";
 
+// pb unit open refuses a dirty tree, and the session asks the human about guidance before it gets there. So with no unit
+// open, the dirty files come first: the human is asked nothing only to be stopped after.
+function noRunAnswer() {
+  let root;
+  try {
+    root = toplevel();
+  } catch {
+    return { ok: true, run: null, action: NO_RUN_ACTION };
+  }
+  const dirty = existsSync(unitPathOf(root)) ? [] : remainingFiles(root);
+  if (dirty.length === 0) return { ok: true, run: null, action: NO_RUN_ACTION };
+  const action = `No run is open (no run here), but the tree is dirty, so pb unit open would refuse: ${dirty.join(", ")}. Show the human these files and ask them to commit or remove them before you ask the human anything else, then go no further.`;
+  return { ok: true, run: null, dirty, action };
+}
+
 function hasRun() {
   const root = findRunRoot(process.cwd());
   return root !== null && existsSync(ledgerPathOf(root));
@@ -1343,7 +1358,7 @@ function status(args) {
   if (args.some((arg) => arg !== "--action" && arg !== "--json") || new Set(args).size !== args.length) throw new UsageError("usage: pb status [--action] [--json]");
   const withAction = args.includes("--action");
   // No run yet is a normal answer for the one asking what to do next, so it is no refusal, which a session shows as an error.
-  if (withAction && !hasRun()) return { ok: true, run: null, action: NO_RUN_ACTION };
+  if (withAction && !hasRun()) return noRunAnswer();
   const { root, path } = runLedgerPath();
   const contract = loadStages(PLUGIN_ROOT);
   const ledger = readLedger(path);
