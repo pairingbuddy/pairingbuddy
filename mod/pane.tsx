@@ -134,11 +134,11 @@ const TASK_MARKS = { ticked: '✓', unticked: '○' } as const
 const NEST = '  '
 const SHORT_SHA = 7
 // The open unit's branch, base and commits, each on its own line.
-function openUnitLines(open: View['planOpen'], indent: string): Part[][] {
+function openUnitLines(open: NonNullable<View['planOpen']>, indent: string): Part[][] {
   const facts = [
-    ...(open?.branch ? [`branch ${open.branch}`] : []),
-    ...(open?.base ? [`base ${open.base}`] : []),
-    ...(open?.commits ?? []).map(sha => `commit ${sha.slice(0, SHORT_SHA)}`),
+    ...(open.branch ? [`branch ${open.branch}`] : []),
+    ...(open.base ? [`base ${open.base}`] : []),
+    ...(open.commits ?? []).map(sha => `commit ${sha.slice(0, SHORT_SHA)}`),
   ]
   return facts.map(text => [{ text: `${indent}${text}` }])
 }
@@ -159,7 +159,7 @@ function planLines(plan: NonNullable<View['plan']>, states: string[] = [], open?
       ...units.flatMap(({ unit, state }) => [
         [{ text: `${unitIndent}${unit.unit}${state ? ` · ${state}` : ''}` }],
         ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
-        ...(open?.unit === unit.unit ? openUnitLines(open, contentIndent) : []),
+        ...(open && open.unit === unit.unit ? openUnitLines(open, contentIndent) : []),
         ...unit.tasks.map(task => [{ text: `${contentIndent}${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
       ]),
     ]

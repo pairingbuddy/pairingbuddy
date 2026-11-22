@@ -191,12 +191,12 @@ export function unitOf(file: unknown): Unit | null {
   const last = tasks.at(-1) as { stages?: unknown } | undefined
   const stages = Array.isArray(last?.stages) ? last.stages.filter((name): name is string => typeof name === 'string') : []
   const url = ((file as { pr?: { url?: unknown } }).pr)?.url
-  const { unit, plan, tracer } = file as { unit?: unknown; plan?: unknown; tracer?: unknown }
+  const { unit, plan, tracer, base, commits } = file as { unit?: unknown; plan?: unknown; tracer?: unknown; base?: unknown; commits?: unknown }
   const titles = tasks.map(task => (task as { title?: unknown })?.title).filter((title): title is string => typeof title === 'string')
-  const { base, commits } = file as { base?: unknown; commits?: unknown }
+  const text = (value: unknown) => (typeof value === 'string' ? value : undefined)
   const open: OpenUnit = {
-    unit: typeof unit === 'string' ? unit : undefined, plan: typeof plan === 'string' ? plan : undefined, tracer: typeof tracer === 'string' ? tracer : undefined, tasks: titles.map(title => ({ title })),
-    branch, base: typeof base === 'string' ? base : undefined, commits: Array.isArray(commits) ? commits.filter((sha): sha is string => typeof sha === 'string') : [],
+    unit: text(unit), plan: text(plan), tracer: text(tracer), tasks: titles.map(title => ({ title })),
+    branch, base: text(base), commits: Array.isArray(commits) ? commits.filter((sha): sha is string => typeof sha === 'string') : [],
   }
   return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}), open }
 }
