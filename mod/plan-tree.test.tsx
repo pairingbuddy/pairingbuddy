@@ -154,8 +154,33 @@ test('a unit with a Depends on line shows the unit it is based on', async ($, on
   ])
 })
 
-test('the open unit from unit.json shows its branch, base and the commits recorded for it', async () => {
-  throw new Error('not implemented: tree-marks-open-unit-with-base-and-commits')
+// Pay is the open unit, with two commits recorded for it; Receipt has no record, so it shows none of these.
+const OPEN_UNIT_PAY = JSON.stringify({
+  unit: 'Pay',
+  plan: PLAN_PATH,
+  tracer: 'Tracer 1: Checkout',
+  branch: 'feat/pay',
+  base: 'main',
+  baseSha: 'abc1234def5678',
+  tasks: [],
+  commits: ['1111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '2222222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
+})
+
+test('the open unit from unit.json shows its branch, base and the commits recorded for it', async ($, on) => {
+  const lines = await showPlan($, on, RECEIPT_DEPENDS_ON_PAY, { '.pairingbuddy/run/unit.json': OPEN_UNIT_PAY })
+
+  expect(lines, 'only the open unit, Pay, shows its branch, its base and each recorded commit by its short sha, before its tasks; Receipt shows none of them').toEqual([
+    'PLAN     Tracer 1: Checkout',
+    '           Pay · open',
+    '             branch feat/pay',
+    '             base main',
+    '             commit 1111111',
+    '             commit 2222222',
+    '             ○ Task 1: Take payment',
+    '           Receipt · open',
+    '             based on Pay',
+    '             ○ Task 2: Send receipt',
+  ])
 })
 
 test('a unit with a PR: line shows its PR link', async () => {
