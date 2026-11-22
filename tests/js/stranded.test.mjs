@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { STRANDED_GATE, STRANDED_MS, isStranded, withStranded } from "../../shared-node/stranded.mjs";
+import { STRANDED_GATE, STRANDED_MS, TAKE_OVER_LINE, isStranded, withStranded } from "../../shared-node/stranded.mjs";
 
 const STARTED = Date.parse("2026-11-22T10:00:00.000Z");
 const LEDGER = { seq: 4, owner: { sessionId: "s1", lastSeen: "2026-11-22T10:00:00.000Z" }, stage: { name: "code-tdd", status: "active", startedAt: "2026-11-22T10:00:00.000Z" }, stop: null, needsHuman: null };
@@ -39,4 +39,12 @@ test("stranded: the span is pb human adopt's own, so a plain adopt takes a stran
   const { ADOPT_RECENT_MS } = await import("../../shared-node/ledger.mjs");
 
   assert.equal(STRANDED_MS, ADOPT_RECENT_MS);
+});
+
+test("stranded: the take-over line names the shim pb writes, and only when it is there", async () => {
+  const { SHIM } = await import("../../shared-node/verbs.mjs");
+
+  assert.equal(TAKE_OVER_LINE, `type: !${SHIM} human adopt`);
+  assert.equal(withStranded(LEDGER, { now: LATER, shim: true }).needsHuman.fix, TAKE_OVER_LINE);
+  assert.equal(withStranded(LEDGER, { now: LATER, shim: false }).needsHuman.fix, undefined);
 });

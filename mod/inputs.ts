@@ -10,6 +10,8 @@ const UNIT = '.pairingbuddy/run/unit.json'
 const CHANGED = '.pairingbuddy/run/changed.json'
 const ARTIFACTS = '.pairingbuddy/run/task/artifacts'
 const GATE_OFF = '.pairingbuddy/run/gate-off.json'
+// The project's shim for pb (shared-node/verbs.mjs SHIM), which the take-over line names.
+const SHIM = '.pairingbuddy/bin/pb'
 
 // seconds: how long the agent's turn took, from its turn.complete; absent until it finishes.
 export type Spawn = { kind: 'Agent' | 'workflow_agent'; name: string; subagentType?: string; startedAt?: string; agentId?: string; finished?: boolean; seconds?: number }
@@ -28,7 +30,7 @@ export type Ledger = {
   commits?: string[]
   plan?: { path?: string }
   stop?: { code?: string; reason?: string; seq?: number; fix?: string }
-  needsHuman?: { gate?: string | null; seq?: number }
+  needsHuman?: { gate?: string | null; seq?: number; fix?: string }
 } | undefined
 
 export type Call = { agentId?: unknown; at?: string; input: Record<string, unknown> }
@@ -116,6 +118,15 @@ async function readStandingReturn($: EngineInterface, ledger: Ledger, match: (le
   }
 }
 
+// Whether a file under the root is there. Never throws.
+async function exists($: EngineInterface, relative: string): Promise<boolean> {
+  try {
+    return await $.fs.exists(`${await $.session.root()}/${relative}`)
+  } catch {
+    return false
+  }
+}
+
 // When a file under the root was last written, or undefined when it does not stat. Never throws.
 async function writtenMs($: EngineInterface, relative: string): Promise<number | undefined> {
   try {
@@ -144,9 +155,9 @@ async function readGateOff($: EngineInterface): Promise<unknown> {
 // Claude Code's permission prompt, while it stands, reads as the question waiting on the human (withPermissionAsk), so STATUS,
 // the band and the alert treat it as any NEEDS YOU.
 async function readInputsAndTests($: EngineInterface, spawns: Spawn[]): Promise<Inputs> {
-  const [read, legacyFile, now, gateOff, ledgerWrittenMs] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($), readGateOff($), writtenMs($, LEDGER)])
+  const [read, legacyFile, now, gateOff, ledgerWrittenMs, shim] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($), readGateOff($), writtenMs($, LEDGER), exists($, SHIM)])
   const last = spawns.at(-1)
-  const seen = { now, ledgerWrittenMs, spawnAt: last?.startedAt, spawnRunning: spawns.some(spawn => !spawn.finished) }
+  const seen = { now, ledgerWrittenMs, spawnAt: last?.startedAt, spawnRunning: spawns.some(spawn => !spawn.finished), shim }
   const ledger = withGateOff(withStranded(withPermissionAsk(read), seen), gateOff) as Ledger
   const testsFile = (await readStandingReturn($, ledger, isStandingTests)) ?? legacyFile
   return inputsOf({ ledger, testsFile, now, spawns })

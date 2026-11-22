@@ -1,7 +1,7 @@
 // Scenario stranded: a stage is active but the session that ran it is gone (killed, or closed mid-stage). Nothing will finish
 // it, so the pane and the band say the human is needed to take the run over, not "● working".
 import { expect, mock, test } from 'claude-code/testing'
-import { SNAPSHOT_RUNNING, bandTexts, engine, start } from './testing/band'
+import { LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, bandTexts, engine, start } from './testing/band'
 import { paneLines } from './testing/replay'
 import { POLL_MS } from './poll'
 
@@ -50,4 +50,29 @@ test('the band leads with it too', async ($, on) => {
   const row = (await bandTexts($, { bodyColumns: 120 })).join('')
 
   expect(row, `the band asks for the human: ${row}`).toMatch(/^▲ NEEDS YOU · take over the run/)
+})
+
+// The run as seenAfter serves it, with the project's shim (.pairingbuddy/bin/pb, which pb run open writes) beside it.
+async function withShim($: any, on: Function, minutes: number) {
+  const files = new Map<string, string>([[LEDGER_PATH, JSON.stringify(SNAPSHOT_RUNNING)], [`${ROOT}/.pairingbuddy/bin/pb`, '#!/bin/sh\n']])
+  on('session.root', () => ({ value: ROOT }))
+  on('session.start', () => ({ cwd: ROOT }))
+  on('command.register', (_: unknown, e: { name: string }) => ({ value: { command: e.name } }))
+  on('ui.open', () => ({ value: { isPlaced: false } }))
+  on('fs.read', (_: unknown, e: { path: string }) => (files.has(e.path) ? { value: files.get(e.path) } : { deny: `ENOENT ${e.path}` }))
+  on('fs.exists', (_: unknown, e: { path: string }) => ({ value: files.has(e.path) }))
+  on('fs.list', () => ({ value: [] }))
+  on('fs.stat', (_: unknown, e: { path: string }) => (files.has(e.path) ? { value: { kind: 'file', size: 1, mtimeMs: 0, isLink: false } } : { deny: `ENOENT ${e.path}` }))
+  const clock = mock.clock(on, { now: STARTED + minutes * MINUTE })
+  await start($)
+  await clock.advance(POLL_MS)
+}
+
+test('with the project shim, STATUS gives the line that takes the run over', async ($, on) => {
+  await withShim($, on, 11)
+
+  const lines = await paneLines($, { bodyColumns: 120 })
+  const at = lines.findIndex(line => line.startsWith('STATUS'))
+
+  expect(lines[at + 1].trim(), 'the adopt line, under the head').toBe('type: !.pairingbuddy/bin/pb human adopt')
 })

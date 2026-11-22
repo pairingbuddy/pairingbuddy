@@ -27,9 +27,13 @@ export function isStranded(ledger, { now, ledgerWrittenMs, spawnAt, spawnRunning
   return moved.length > 0 && now - Math.max(...moved) > STRANDED_MS;
 }
 
+// The line that takes the run over, through the project's shim (shared-node/verbs.mjs SHIM, written by pb run open). The owner
+// was not seen for STRANDED_MS, so adopt needs no --force.
+export const TAKE_OVER_LINE = "type: !.pairingbuddy/bin/pb human adopt";
+
 // The ledger as the views read it: a stranded stage is the question waiting on the human. Its seq is the ledger's, which
-// stands while nothing writes it, so the alert fires once.
+// stands while nothing writes it, so the alert fires once. seen.shim: the shim is there, so the take-over line can name it.
 export function withStranded(ledger, seen) {
   if (!isStranded(ledger, seen)) return ledger;
-  return { ...ledger, needsHuman: { gate: STRANDED_GATE, reason: STRANDED_LINE, seq: ledger.seq } };
+  return { ...ledger, needsHuman: { gate: STRANDED_GATE, reason: STRANDED_LINE, seq: ledger.seq, ...(seen.shim ? { fix: TAKE_OVER_LINE } : {}) } };
 }

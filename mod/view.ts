@@ -219,9 +219,9 @@ const NEXT_PUBLISH = `next: ${plainName(PUBLISH_STEP)}`
 
 // What state a live run is in: stopped, needs you, or working on its step (or between steps).
 function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean): Status {
-  if (ledger.stop) return { state: 'stopped', what: stopName(ledger.stop), ...(ledger.stop.fix ? { fix: `fix: ${ledger.stop.fix}` } : {}) }
+  if (ledger.stop) return { state: 'stopped', what: stopName(ledger.stop), ...(ledger.stop.fix ? { fix: ledger.stop.fix } : {}) }
   const gate = waitingGate(ledger)
-  if (gate) return { state: 'needsYou', what: gateLine(gate) }
+  if (gate) return { state: 'needsYou', what: gateLine(gate), ...(ledger.needsHuman?.fix ? { fix: ledger.needsHuman.fix } : {}) }
   if (view.between === ALL_DONE && publishes && !isPublishRun(ledger)) return { state: 'working', what: NEXT_PUBLISH }
   return { state: 'working', what: view.rows.now }
 }
