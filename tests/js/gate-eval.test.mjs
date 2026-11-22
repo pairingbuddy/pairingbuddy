@@ -10,7 +10,7 @@
 //                        stored as needsHuman.question: the hooks record an answer only to that exact question
 //   humanCommand:        !cd <run root> && node <absolute path>/pb.mjs human approve <gate>
 //   answered redo:       the gate record and the stage's done state go, so no gate is due and the stage re-runs at attempt+1
-//   answered stop:       {ok, result:"answered", gate, answer:"stop", reason, humanCommand}, with ledger.stop set
+//   answered stop:       {ok, result:"needs-human", gate, reason, question, humanCommand}: the go-on question (needsHuman.wait go-on), with ledger.stop kept until the human answers Go on
 // All three exit 0. No gate due, or a broken ledger, exits 1. Any argument exits 2.
 import { INTAKE_DONE, withTypePassed } from "./ledger-fixture.mjs";
 import "./isolated-tmpdir.mjs";
@@ -883,27 +883,72 @@ describe("a human's stop sets ledger.stop", () => {
     assert.ok(Date.parse(askedAt) <= Date.parse(answeredAt), "the stop keeps how long the question waited");
   });
 
-  test("gate eval reports the answer and the way on, rather than refusing", () => {
+  test("gate eval asks the human whether to go on, as a question, with the approve line as the fallback", () => {
     const repo = stopped();
 
     const output = JSON.parse(runPb(repo).stdout);
 
-    assert.equal(output.result, "answered");
+    assert.equal(output.result, "needs-human");
     assert.equal(output.gate, G_FIRST);
-    assert.equal(output.answer, "stop");
+    assert.deepEqual(output.question.options.map(({ label }) => label), ["Go on", "Stay stopped"]);
     assert.match(output.humanCommand, new RegExp(`human approve ${G_FIRST}$`));
-    assert.equal(repo.ledger().gates[G_FIRST].answer, "stop", "reporting it changes nothing");
+    const ledger = repo.ledger();
+    assert.deepEqual(ledger.needsHuman.question, output.question, "the hooks take only this question");
+    assert.equal(ledger.gates[G_FIRST].answer, "stop", "asking changes no answer");
+    assert.notEqual(ledger.stop, null, "nor the stop");
   });
 
-  test("a Workflow deny names the human's way on, not gate eval", () => {
+  test("the next action sends the session to gate eval, which asks, not to a ! line", () => {
+    const repo = stopped();
+
+    const { action } = JSON.parse(runPb(repo, ["status", "--action"]).stdout);
+
+    assert.match(action, /gate eval/, action);
+    assert.doesNotMatch(action, /type .*human approve/, action);
+  });
+
+  test("while the go-on question waits, the next action asks it exactly, past the stop", () => {
+    const repo = stopped();
+    const { question } = JSON.parse(runPb(repo).stdout);
+
+    const { action } = JSON.parse(runPb(repo, ["status", "--action"]).stdout);
+
+    assert.ok(action.includes(JSON.stringify({ questions: [question] })), action);
+  });
+
+  test("the human's Go on, recorded by the tap, approves the gate and lifts their stop", () => {
+    const repo = stopped();
+    const { question } = JSON.parse(runPb(repo).stdout);
+
+    runTap(repo, recordedAnswer(repo, question, "Go on"));
+
+    const ledger = repo.ledger();
+    assert.equal(ledger.stop, null);
+    assert.equal(ledger.needsHuman, null);
+    assert.deepEqual([ledger.gates[G_FIRST].source, ledger.gates[G_FIRST].answer], ["human", "approve"]);
+  });
+
+  test("the human's Stay stopped, recorded by the tap, keeps the stop and asks no more", () => {
+    const repo = stopped();
+    const { question } = JSON.parse(runPb(repo).stdout);
+
+    runTap(repo, recordedAnswer(repo, question, "Stay stopped"));
+
+    const ledger = repo.ledger();
+    assert.notEqual(ledger.stop, null);
+    assert.equal(ledger.needsHuman, null);
+    assert.equal(ledger.gates[G_FIRST].answer, "stop");
+  });
+
+  test("a Workflow deny names the human's way on: gate eval asks them, and the approve line is the fallback", () => {
     const repo = stopped();
     const result = runGate(repo, nextStageCall(repo));
 
     assertDenied(result, /human/);
     const reason = decisionOf(result).permissionDecisionReason;
     assert.match(reason, /stop/);
+    assert.match(reason, /gate eval/);
     assert.match(reason, new RegExp(`human approve ${G_FIRST}`));
-    assert.doesNotMatch(reason, /gate eval/);
     assert.doesNotMatch(reason, /abandon/i);
   });
 

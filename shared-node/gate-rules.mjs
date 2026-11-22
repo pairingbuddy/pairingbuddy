@@ -273,7 +273,9 @@ function answeredStep(ledger, { gates, root }) {
   const gate = answeredGate(gates, ledger);
   if (gate === undefined) return null;
   const stopped = ledger.stop === null ? "" : ` The run stopped: ${ledger.stop.reason}.`;
-  return `Gate ${gate.name} was answered ${gate.answer}.${stopped} Only the human can go on from here: ask them to type ${humanCommand(root, `approve ${gate.name}`)} at the prompt.`;
+  const typed = `${humanCommand(root, `approve ${gate.name}`)} at the prompt`;
+  if (gate.answer === "stop") return `Gate ${gate.name} was answered stop.${stopped} Only the human can go on from here: if they say they want to, run pb gate eval, which asks them in the session; if it cannot be asked, they type ${typed}.`;
+  return `Gate ${gate.name} was answered ${gate.answer}.${stopped} Only the human can go on from here: ask them to type ${typed}.`;
 }
 
 function stageDenial(stage, ledger, graph, toolInput, scripts) {

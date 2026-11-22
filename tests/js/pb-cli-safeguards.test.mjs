@@ -51,15 +51,14 @@ function succeeded(result) {
 }
 
 describe("pb gate eval reports a gate a human answered", () => {
-  test("an answered stop is reported with the stop's reason and the approve command, and changes nothing", () => {
+  test("an answered stop is asked again as whether to go on, with the stop's reason and the approve command as the fallback", () => {
     const reason = "the human answered stop at G:task-end";
     const repo = makeRepo({ ledger: safetyNetDone({ gates: { [TASK_END]: { source: "human", answer: "stop" } }, stop: { code: HUMAN_STOPPED, reason, seq: 0 } }) });
-    const before = ledgerBytes(repo);
 
-    const output = succeeded(pb(repo, "gate", "eval"));
+    const { question, ...output } = succeeded(pb(repo, "gate", "eval"));
 
-    assert.deepEqual(output, { ok: true, result: "answered", gate: TASK_END, answer: "stop", reason, humanCommand: humanCommand(repo.dir, `approve ${TASK_END}`) });
-    assert.equal(ledgerBytes(repo), before);
+    assert.deepEqual(output, { ok: true, result: "needs-human", gate: TASK_END, reason, humanCommand: humanCommand(repo.dir, `approve ${TASK_END}`) });
+    assert.equal(question.header, "Go on?");
   });
 
   test("an answer that set no stop is reported as the human's answer", () => {

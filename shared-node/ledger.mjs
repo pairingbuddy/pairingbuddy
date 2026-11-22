@@ -188,7 +188,7 @@ export function validateLedger(ledger) {
         checkNullableObject(ledger.stop, "stop", { reason: [isNonEmptyString, "a non-empty string"], seq: [isCount, "a non-negative integer"], code: [isNonEmptyString, "a non-empty string"] }, errors);
         break;
       case "needsHuman":
-        checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"], askedAt: [isTimestamp, "an ISO 8601 timestamp"], shown: [isObject, "an object"], question: [isObject, "an object"], doubts: [isDoubts, "a non-empty array of { step, ambiguity } non-empty strings"], fix: [isNonEmptyString, "a non-empty string"] }, errors, { optional: ["askedAt", "shown", "question", "doubts", "fix"] });
+        checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"], askedAt: [isTimestamp, "an ISO 8601 timestamp"], shown: [isObject, "an object"], question: [isObject, "an object"], doubts: [isDoubts, "a non-empty array of { step, ambiguity } non-empty strings"], fix: [isNonEmptyString, "a non-empty string"], wait: [isNonEmptyString, "a non-empty string"] }, errors, { optional: ["askedAt", "shown", "question", "doubts", "fix", "wait"] });
         break;
       case "fixes":
         checkObject(ledger.fixes, "fixes", { rollbacks: [Array.isArray, "an array"] }, errors);

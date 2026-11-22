@@ -10,7 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
-import { PUBLISH_GATE, answeredGate, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
+import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, seenRecently, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
@@ -453,6 +453,7 @@ function gateEval(args) {
   }
   const contract = loadStages(PLUGIN_ROOT);
   const answered = answeredGate(gatesFor(contract, current.taskType), current);
+  if (answered !== undefined && answered.answer === "stop") return askGoOn(path, answered, root);
   if (answered !== undefined) return answeredResult(answered, current, root);
   const voided = refusing(() => publishVoidReason(current, root));
   const standing = voided === null ? current : voidPublish(current, voided);
@@ -552,6 +553,17 @@ function publishShown(root, ledger) {
     testCommand: runner.command,
     commits: publishCommits(root, subject),
   };
+}
+
+// The human stopped the run at this gate: ask them in the session whether to go on, rather than send them to a ! line.
+function askGoOn(path, { name }, root) {
+  const question = goOnQuestion(name);
+  let reason;
+  updateLedger(path, (ledger) => {
+    reason = ledger.stop?.reason ?? `the human answered stop at ${name}`;
+    return { ...ledger, needsHuman: { gate: name, wait: GO_ON_WAIT, reason, seq: ledger.seq + 1, askedAt: new Date().toISOString(), question } };
+  });
+  return { ok: true, result: "needs-human", gate: name, reason, question, humanCommand: approveCommand(root, name) };
 }
 
 function answeredResult({ name, answer }, { stop }, root) {

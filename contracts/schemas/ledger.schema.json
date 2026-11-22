@@ -146,6 +146,7 @@
                 "multiSelect": { "type": "boolean" }
               }
             },
+            "wait": { "description": "Marks a question that is no answer to the gate itself, such as go-on: whether to go on past the human's own stop at that gate. The tap records its answer as that wait. May be absent.", "type": "string", "minLength": 1 },
             "fix": { "description": "What the views show under a wait the session asks about outside the gates, such as a changed test-config: answer the question, or the ! line to type when it cannot be asked. May be absent.", "type": "string", "minLength": 1 },
             "doubts": {
               "description": "The open doubts the question names, in full (the question shows at most three, each whole on one line, and run/question.md holds them all), each with the plain name of the step that had it, so the run report holds them all. A reviewer's doubt also names the stage it reviewed (stage), so the report can say which review raised it. May be absent.",

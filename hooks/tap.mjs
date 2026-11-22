@@ -135,7 +135,7 @@ function tapQuestion(modules, root, ledgerPath, toolResponse) {
   const answer = modules.gateAnswer(ledger, toolResponse);
   if (answer === null) return;
   // A wait outside the gates (a changed test-config) has its own answers, recorded against the question pb stored.
-  if (modules.isHumanWait(ledger)) return tapWaitAnswer(modules, root, ledgerPath, ledger.needsHuman, answer);
+  if (modules.isHumanWait(ledger)) return tapWaitAnswer(modules, root, ledgerPath, ledger, answer);
   let binding;
   if (answer === PUBLISH_LABEL) {
     try {
@@ -152,9 +152,12 @@ function tapQuestion(modules, root, ledgerPath, toolResponse) {
 }
 
 // The answer lands only while the same wait still asks. A file no test run can use is no acceptance: the wait stands and the hook says why.
-function tapWaitAnswer({ isHumanWait, recordWaitAnswer, updateLedger }, root, ledgerPath, asked, answer) {
+function tapWaitAnswer(modules, root, ledgerPath, ledger, answer) {
+  const { isHumanWait, recordWaitAnswer, updateLedger } = modules;
+  const asked = ledger.needsHuman;
+  const gates = runGates(modules, ledger);
   try {
-    updateLedger(ledgerPath, (current) => (current.needsHuman?.seq === asked.seq && isHumanWait(current) ? recordWaitAnswer(current, answer, { root }) : current));
+    updateLedger(ledgerPath, (current) => (current.needsHuman?.seq === asked.seq && isHumanWait(current) ? recordWaitAnswer(current, answer, { root, gates }) : current));
   } catch (e) {
     say(`Pairing Buddy did not record the answer "${answer}": ${e.message}. The run still waits on the human.`);
   }

@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { PUBLISH_GATE, answeredGate, blockingGate, gatesFor, isPublishApproved, publishApproval } from "./gates.mjs";
+import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, blockingGate, gatesFor, isPublishApproved, publishApproval } from "./gates.mjs";
 import { LedgerShaMismatch, isPublishRun, isRefreshRun, readLedger, seenRecently } from "./ledger.mjs";
 import { coveredTests, fixesOf, spendTotals } from "./stage-run.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, startLeaseSecondsLeft } from "./stages.mjs";
@@ -62,7 +62,10 @@ export function nextAction(contract, ledger, root, pluginRoot) {
   // A keep-local answer to G:publish is final, not a gate waiting for an approval: pb publish finishes closing the unit.
   const finishVerb = isPublishRun(ledger) ? "publish" : isRefreshRun(ledger) ? "pr refresh" : null;
   if (ledger.stop === null && finishVerb !== null && publishApproval(ledger) === "keep-local") return `The human answered keep local at ${PUBLISH_GATE}, so ${isPublishRun(ledger) ? "the unit is kept local" : "the PR is left unchanged"}. Run ${pbCommand(finishVerb)} to finish closing it.`;
+  // The question whether to go on past the human's own stop comes before the stop: it is the way past it.
+  if (ledger.needsHuman?.wait === GO_ON_WAIT) return `The human stopped the run at ${plainGate(ledger.needsHuman.gate)}. ${askHuman(root, ledger.needsHuman.gate, ledger.needsHuman.question)}`;
   const answered = answeredGate(gates, ledger);
+  if (answered?.answer === "stop") return `The human answered stop at ${plainGate(answered.name)}, so the run stays stopped. Report ${pbCommand("status")} to them and go no further. Only if they say they want to go on, run ${pbCommand("gate eval")}: it gives the question that asks them, and only their answer lifts the stop.`;
   if (answered !== undefined) return `The human answered ${answered.answer} at ${plainGate(answered.name)}. Only they can go on: ask them to type ${humanCommand(root, `approve ${answered.name}`)}`;
   if (ledger.stop !== null) return `The run has stopped: ${ledger.stop.reason}. Nothing skips a stop, so report ${pbCommand("status")} to the human and go no further. Only if they say to go on, ${pbCommand("stage fail")} clears it.`;
   if (isStageActive(ledger)) return activeAction(ledger, pluginRoot);

@@ -79,7 +79,7 @@ const SCENARIOS_DONE = {
   gates: withTypePassed(),
 };
 const STOPPED_AT_SCENARIOS = { ...SCENARIOS_DONE, gates: withTypePassed({ "G:scenarios": { source: "human", answer: "stop" } }), stop: STOP };
-const halted = (root) => `Gate G:scenarios was answered stop. The run stopped: ${STOP.reason}. Only the human can go on from here: ask them to type ${humanCommand(root, "approve G:scenarios")} at the prompt.`;
+const halted = (root) => `Gate G:scenarios was answered stop. The run stopped: ${STOP.reason}. Only the human can go on from here: if they say they want to, run pb gate eval, which asks them in the session; if it cannot be asked, they type ${humanCommand(root, "approve G:scenarios")} at the prompt.`;
 
 test("stage-start-after-an-answered-stop-names-the-stop", () => {
   const root = runRepo(STOPPED_AT_SCENARIOS);

@@ -45,6 +45,22 @@ const PUBLISH_OPTIONS = [
 
 const optionsOf = (gate) => (gate === PUBLISH_GATE ? PUBLISH_OPTIONS : GATE_OPTIONS);
 
+// After a human's stop at a gate, the question that asks them whether to go on: the way past their own stop, asked in the
+// session, so no one types a ! line. needsHuman.wait marks it, so the tap records it as this wait, never as the gate's answer.
+export const GO_ON_WAIT = "go-on";
+export const GO_ON_LABEL = "Go on";
+export const STAY_STOPPED_LABEL = "Stay stopped";
+
+export const goOnQuestion = (gate) => ({
+  question: `You stopped the run at ${plainName(gate) ?? gate}. Go on from there?`,
+  header: "Go on?",
+  options: [
+    { label: GO_ON_LABEL, description: "Approve that step and lift your stop." },
+    { label: STAY_STOPPED_LABEL, description: "Keep the run stopped." },
+  ],
+  multiSelect: false,
+});
+
 // The first sentence of a model's text, ending in a stop, or null when there is no text.
 export function firstSentence(text) {
   if (typeof text !== "string" || text.trim() === "") return null;
@@ -798,10 +814,10 @@ export function appendRedoFeedback(root, ledger, gates, toolResponse) {
 }
 
 // A human's way past any answer: it undoes a redo that has not restarted, and the stop this gate's answer set.
-export function recordApproval(ledger, name, gates, binding = {}, answeredAt = new Date().toISOString()) {
+export function recordApproval(ledger, name, gates, binding = {}, answeredAt = new Date().toISOString(), source = "human-cli") {
   const reopened = reopenedGate(gates, ledger);
   const restored = reopened?.name === name ? withStageStatus(ledger, reopened.stage, "done") : ledger;
   const stoppedHere = Object.hasOwn(ledger.gates, name) && ledger.gates[name].answer === "stop";
   const kept = keptWait(restored, name, ledger.gates[name] ?? {});
-  return { ...kept, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: { ...approvalRecord("human-cli", binding), ...askedDoubts(ledger, name), ...waitedFor(ledger, name, answeredAt) } } };
+  return { ...kept, needsHuman: null, stop: stoppedHere ? null : ledger.stop, gates: { ...ledger.gates, [name]: { ...approvalRecord(source, binding), ...askedDoubts(ledger, name), ...waitedFor(ledger, name, answeredAt) } } };
 }
