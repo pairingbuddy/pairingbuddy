@@ -10,12 +10,12 @@ const MARKER_PATH = `${ROOT}/.pairingbuddy/run/gate-off.json`
 const MARKER = { path: GATE_BOOT, plugin: PLUGIN, mtimeMs: 1000, size: 42, failure: 'SyntaxError: Unexpected token', at: '2026-11-22T10:00:00.000Z' }
 
 // The run's ledger and the marker; gate-boot.mjs stats as it stood when the marker was written, or as given.
-function engineWithMarker(on: Function, gateBoot: { mtimeMs: number; size: number } | null = { mtimeMs: MARKER.mtimeMs, size: MARKER.size }) {
+function engineWithMarker(on: Function, gateBoot: { mtimeMs: number; size: number } | null = { mtimeMs: MARKER.mtimeMs, size: MARKER.size }, placed = false) {
   const files = new Map<string, string>([[LEDGER_PATH, JSON.stringify(SNAPSHOT_RUNNING)], [MARKER_PATH, JSON.stringify(MARKER)]])
   on('session.root', () => ({ value: ROOT }))
   on('session.start', () => ({ cwd: ROOT }))
   on('command.register', (_: unknown, e: { name: string }) => ({ value: { command: e.name } }))
-  on('ui.open', () => ({ value: { isPlaced: false } }))
+  on('ui.open', () => ({ value: { isPlaced: placed } }))
   on('fs.read', (_: unknown, e: { path: string }) => (files.has(e.path) ? { value: files.get(e.path) } : { deny: `ENOENT ${e.path}` }))
   on('fs.exists', (_: unknown, e: { path: string }) => ({ value: files.has(e.path) }))
   on('fs.list', () => ({ value: [] }))
@@ -57,4 +57,18 @@ test('a restored gate-boot.mjs clears it at once, before any hook runs again', a
   const status = statusOf(await paneLines($, { bodyColumns: 120 }))
 
   expect(status[0], 'the run reads as working again').toBe('● working · write test scenarios')
+})
+
+// Live check on b3878b1: once the alert opened the pane the band read "✕ STOPPED · opened details".
+test('the band keeps the reason once the alert opened the pane', async ($, on) => {
+  engineWithMarker(on, undefined, true)
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.panes', () => ({ value: [] }))
+  await start($)
+
+  const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 120 }, surface: 'terminal' })
+  const row = (await bandRowTexts(band)).join('')
+  await band.unmount()
+
+  expect(row, `the band says why: ${row}`).toMatch(/^✕ STOPPED · safety checks are off/)
 })
