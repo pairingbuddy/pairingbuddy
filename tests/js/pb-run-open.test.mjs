@@ -823,3 +823,22 @@ test("open-refuses-a-feature-whose-runner-cannot-run-one-test-and-says-what-to-a
   assert.ok(r.stderr.includes(".pairingbuddy/test-config.json"), "it names the file");
   assert.equal(existsSync(runDir(root)), false, "no run was opened");
 });
+
+test("open-names-the-selector-to-add-for-node-and-for-a-mod", (t) => {
+  const runners = { js: { command: "node --test", test_directory: "tests", run_args: [] }, mod: { command: "node /p/cli/mod-test-one.mjs", test_directory: "mod", run_args: [] } };
+  const root = makeRepo(t, { config: `${JSON.stringify({ runners, default_runner: "js" })}\n` });
+  openUnit(root, "fix");
+
+  const r = open(root);
+
+  assertCleanRefusal(r, /runners js, mod have no selector_template/);
+  assert.ok(r.stderr.includes('runner js: "selector_template": ["--test-name-pattern=^{test_function}$", "{test_file}"]'), r.stderr);
+  assert.ok(r.stderr.includes('runner mod: "selector_template": ["{test_file}", "{test_function}"]'), r.stderr);
+});
+
+test("open-lets-a-chore-run-without-selectors", (t) => {
+  const root = makeRepo(t);
+  openUnit(root, "chore");
+
+  assert.equal(open(root).status, 0);
+});
