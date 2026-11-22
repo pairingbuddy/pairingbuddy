@@ -5,14 +5,16 @@ import { boxesTitled, boxLabel, checkboxes, HEADING, headingName, isPrHeading, P
 
 // A plan path as posix normalise reads it, for the cases a plan path takes: "." segments and repeated slashes drop, "a/.." folds.
 function normalised(path) {
+  const absolute = path.startsWith("/");
   const parts = [];
   for (const part of path.split("/")) {
     if (part === "" || part === ".") continue;
-    if (part === ".." && parts.length > 0 && parts.at(-1) !== "..") parts.pop();
-    else if (part !== ".." || !path.startsWith("/")) parts.push(part);
+    const foldsPrevious = part === ".." && parts.length > 0 && parts.at(-1) !== "..";
+    if (foldsPrevious) parts.pop();
+    else if (part !== ".." || !absolute) parts.push(part); // a ".." above an absolute root drops
   }
   const joined = parts.join("/");
-  return path.startsWith("/") ? `/${joined}` : joined || ".";
+  return absolute ? `/${joined}` : joined || ".";
 }
 
 const FENCE = /^\s*(```|~~~)/;

@@ -133,10 +133,10 @@ function topRows(view: View, columns: number) {
 const TASK_MARKS = { ticked: '✓', unticked: '○' } as const
 function planLines(plan: NonNullable<View['plan']>, states: string[] = []): Part[][] {
   // Consecutive units of one tracer form a group; a unit under no tracer is its own group, unindented.
-  type Unit = (typeof plan.units)[number] & { state?: string }
-  const groups: { tracer: string | null | undefined; units: Unit[] }[] = []
+  type PlannedUnit = (typeof plan.units)[number] & { state?: string }
+  const groups: { tracer: string | null | undefined; units: PlannedUnit[] }[] = []
   for (const [i, planned] of plan.units.entries()) {
-    const unit: Unit = { ...planned, state: states[i] }
+    const unit: PlannedUnit = { ...planned, state: states[i] }
     const last = groups.at(-1)
     if (last && unit.tracer && last.tracer === unit.tracer) last.units.push(unit)
     else groups.push({ tracer: unit.tracer, units: [unit] })
