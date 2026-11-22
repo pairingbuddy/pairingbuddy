@@ -283,14 +283,20 @@ def extract_section_content(content: str, heading: str) -> str | None:
     return section_content.strip()
 
 
+def section_content_keys(section):
+    """The shared content keys a config section names: one key or a list of keys."""
+    content = section.get("content", [])
+    return content if isinstance(content, list) else [content]
+
+
 def get_sections_with_content_refs():
     """Get list of (agent_name, section_heading, content_key) for sections with content refs."""
     config = load_agent_config()
     result = []
     for agent_name, agent_config in config["agents"].items():
         for section in agent_config.get("sections", []):
-            if "content" in section:
-                result.append((agent_name, section["heading"], section["content"]))
+            for content_key in section_content_keys(section):
+                result.append((agent_name, section["heading"], content_key))
     return result
 
 
@@ -391,3 +397,15 @@ def test_prompt_opens_with_authority_block(filename, title):
     assert "comments" in opening and "commit messages" in opening, (
         "Authority block must name comments and commit messages as repository content"
     )
+
+
+# A compare lab's build made an existing public function strict while adding a new one, on a
+# task that said the existing functions must keep working. The agents that change production
+# code carry one rule against that.
+@pytest.mark.parametrize("agent_name", ["implement-code", "refactor-code"])
+def test_code_changing_agents_carry_the_existing_behaviour_rule(agent_name):
+    """implement-code and refactor-code carry the shared existing-behaviour rule."""
+    agent = load_agent_config()["agents"][agent_name]
+    instructions = next(s for s in agent["sections"] if s["heading"] == "## Instructions")
+
+    assert "existing_behaviour_rule" in section_content_keys(instructions)

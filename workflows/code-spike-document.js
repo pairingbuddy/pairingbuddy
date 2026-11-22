@@ -289,6 +289,11 @@ const LENSES = {
           "model": "sonnet"
         },
         {
+          "name": "existing-behaviour",
+          "model": "sonnet",
+          "brief": "Check the diff for any change to the behaviour of code that existed before the change: what a function, method, class or interface the base already had accepts, returns, raises or does. Flag every such change the task does not ask for, even when its tests were changed to match, as high severity when the task says existing code or its tests must keep working. New code that needs a stricter or different version of existing logic belongs in a new private helper, which is not a change; an existing public function made stricter, looser or different is."
+        },
+        {
           "name": "tests",
           "model": "sonnet"
         },

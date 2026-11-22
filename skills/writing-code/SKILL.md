@@ -50,6 +50,8 @@ Only implement what the assertions explicitly check:
 
 If hardcoding passes, the test is incomplete or you need more tests.
 
+Leave existing behaviour alone. When the new code needs stricter or different logic than an existing public function gives, write a new private helper (in Python a leading underscore, such as `_strict_time` beside `parse_time`; in Go or JavaScript an unexported function) and leave the existing function and its tests as they were.
+
 ### Simple Design (Kent Beck's 4 Rules)
 
 In priority order:
