@@ -1,5 +1,5 @@
 import { mock } from 'claude-code/testing'
-import { BAND, LEDGER, ROOT, isSeparatorRule, texts } from './band'
+import { BAND, LEDGER, LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, isSeparatorRule, texts } from './band'
 import { POLL_MS } from '../poll'
 
 // Replays a recorded run against the mod. A recording is a directory under mod/fixtures/replay/ whose
@@ -91,6 +91,23 @@ export function setupReplay(on: Function): Rig {
       ? { value: { kind: 'file', size: rig.served.get(e.path)!.length, mtimeMs: 0, isLink: false } }
       : { deny: `ENOENT ${e.path}` })
   return rig
+}
+
+// The plan MD the ledger names, and where it is served.
+export const PLAN_PATH = 'docs/plans/shop.md'
+export const PLAN_FILE = `${ROOT}/${PLAN_PATH}`
+
+// setupReplay plus what a plan view needs: quiet stubs for the events the mod raises, a state store the poll keeps its inputs in (`kept`),
+// and a running ledger that names PLAN_PATH, with `planText` served there. Registered once per test, before `$` is first touched.
+export function setupPlanReplay(on: Function, planText: string): { rig: Rig; kept: Map<string, unknown> } {
+  const rig = setupReplay(on)
+  for (const event of ['audio.play', 'ui.toast', 'ui.status', 'store.get', 'store.set']) on(event, () => ({ value: undefined }))
+  const kept = new Map<string, unknown>()
+  on('state.get', (_: unknown, e: { key: string }) => ({ value: { value: kept.get(e.key) ?? null, version: 1 } }))
+  on('state.set', (_: unknown, e: { key: string; value: unknown }) => (kept.set(e.key, e.value), { value: { isSet: true, version: 1 } }))
+  rig.served.set(LEDGER_PATH, JSON.stringify({ ...SNAPSHOT_RUNNING, plan: { path: PLAN_PATH, title: 'Shop' } }))
+  rig.served.set(PLAN_FILE, planText)
+  return { rig, kept }
 }
 
 // Steps through the recording in time order. A ledger snapshot is served as <ROOT>/<LEDGER>; every other
