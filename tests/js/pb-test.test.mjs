@@ -269,23 +269,27 @@ describe("the output excerpt", IN_PARALLEL, () => {
   });
 });
 
+// With no stage active, so the refusal is all there is. Mid-stage, the refusal also sets the run waiting on the human
+// (tests/js/config-wait.test.mjs).
+const NO_ACTIVE_STAGE = { ledger: { stage: { name: STAGE, status: "done", runId: "wf_1", attempt: ATTEMPT, startedAt: null } } };
+
 describe("a config hash change refuses", IN_PARALLEL, () => {
   test("an edited test-config stops pb test before anything runs", () => {
-    const repo = makeRepo();
+    const repo = makeRepo(NO_ACTIVE_STAGE);
     writeFileSync(repo.configPath, JSON.stringify(singleRunner({ command: "node fake.mjs --edited" })));
 
     assertRefuses(repo, /config hash changed.*stop/i);
   });
 
   test("the refusal names what the human types to accept the file", () => {
-    const repo = makeRepo();
+    const repo = makeRepo(NO_ACTIVE_STAGE);
     writeFileSync(repo.configPath, JSON.stringify(singleRunner({ command: "node fake.mjs --edited" })));
 
     assertRefuses(repo, /human accept/);
   });
 
   test("the plain verb refuses too", () => {
-    const repo = makeRepo();
+    const repo = makeRepo(NO_ACTIVE_STAGE);
     writeTests(repo, [row("tests/a.mjs")]);
     writeFileSync(repo.configPath, `${JSON.stringify(singleRunner())}\n`);
 
@@ -293,7 +297,7 @@ describe("a config hash change refuses", IN_PARALLEL, () => {
   });
 
   test("restoring the file lets the run go on", () => {
-    const repo = makeRepo();
+    const repo = makeRepo(NO_ACTIVE_STAGE);
     const original = readFileSync(repo.configPath);
     writeFileSync(repo.configPath, "{}");
     assertRefuses(repo, /config hash changed/i);

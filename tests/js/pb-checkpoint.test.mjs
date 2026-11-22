@@ -462,11 +462,15 @@ describe("the tests must pass", IN_PARALLEL, () => {
     assert.equal(repo.ledger().stop, null, "a failed test is a refusal, not a stop");
   });
 
-  test("a changed test-config refuses", () => {
+  test("a changed test-config commits nothing and sets the run waiting on the human", () => {
     const repo = changedRepo();
+    const seed = repo.head();
     writeFileSync(repo.configPath, JSON.stringify({ ...CONFIG, source_directory: "src" }));
 
-    assertRefuses(repo, /config hash changed/);
+    assertNoCommit(repo, seed, pb(repo, configArgs()), /config hash changed/);
+    assert.equal(repo.testRuns(), 0, "no tests run");
+    assert.equal(repo.ledger().stop, null, "no stop");
+    assert.equal(repo.ledger().needsHuman?.gate, "config-changed", "the run waits on the human");
   });
 });
 

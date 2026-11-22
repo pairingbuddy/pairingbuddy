@@ -33,6 +33,8 @@ const SELECTOR_FIELDS = ["test_file", "test_function"];
 const SELECTOR_FIELD = /\{([^{}]*)\}/g;
 
 export class TestRunRefused extends Error {}
+// The human changed test-config.json after the run pinned it: a wait on the human, not a broken step.
+export class ConfigHashChanged extends TestRunRefused {}
 
 // ---------- test-config ----------
 
@@ -80,7 +82,7 @@ export function readTestConfig(root, configHash) {
   const path = configPathOf(root);
   const bytes = configBytes(path);
   if (hashOf(bytes) !== configHash) {
-    throw new TestRunRefused(`the config hash changed: ${path} is not the file this run opened with. Stop here and tell the human, who can check the file and type ${humanCommand(root, "accept")}`);
+    throw new ConfigHashChanged(`the config hash changed: ${path} is not the file this run opened with. Stop here and tell the human, who can check the file and type ${humanCommand(root, "accept")}`);
   }
   return parsedConfig(path, bytes);
 }

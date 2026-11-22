@@ -71,10 +71,12 @@ function nextAgentRound(role, item) {
 
 const isRelayed = (run) => Number.isInteger(run.result?.cli_exit_code);
 
-// A runner that came back with nothing says nothing about the command, so it runs again.
+// A runner that came back with nothing says nothing about the command, so it runs again. A run the CLI already stopped,
+// or set waiting on the human (a changed test-config), ends the stage at once: no retry helps, and the ledger has it.
 async function runStep(commands, { tddPhase = null, item = null } = {}) {
   for (let tries = 0; tries < MAX_TRIES; tries += 1) {
     const run = await runCommands(stage, commands, { tddPhase, item, round: nextRunnerRound(item), spawn });
+    if (run.result?.cli_exit_code !== 0 && RUN_STOPPED.test(run.result?.cli_output ?? '')) throw new StageHalted(NO_STOP_NEEDED);
     if (isRelayed(run)) return run;
   }
   throw new StageHalted('step-failed');
@@ -136,7 +138,6 @@ async function untilAccepted(call) {
       const { result: relay } = await runStep([`checkpoint --step ${call.step} --from ${pbKey}`], call);
       if (relay.cli_exit_code === 0) return { pbKey, result, relay };
       refusal = relay.cli_output ?? '';
-      if (RUN_STOPPED.test(refusal)) throw new StageHalted(NO_STOP_NEEDED);
     }
   }
   throw new StageHalted('step-failed');

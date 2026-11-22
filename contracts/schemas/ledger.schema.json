@@ -146,6 +146,7 @@
                 "multiSelect": { "type": "boolean" }
               }
             },
+            "fix": { "description": "The one line the human types to answer a wait that is no question, such as a changed test-config (pb human accept). May be absent.", "type": "string", "minLength": 1 },
             "doubts": {
               "description": "The open doubts the question names, in full (the question shows at most three, each whole on one line, and run/question.md holds them all), each with the plain name of the step that had it, so the run report holds them all. A reviewer's doubt also names the stage it reviewed (stage), so the report can say which review raised it. May be absent.",
               "type": "array",

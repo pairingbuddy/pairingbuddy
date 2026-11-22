@@ -33,9 +33,10 @@ import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus, statusText } from "../shared-node/next-action.mjs";
 import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, standingScenariosKey, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
-import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
+import { ConfigHashChanged, TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
+import { CONFIG_GATE, CONFIG_WAIT_LINE } from "../shared-node/config-wait.mjs";
 import { VERB_CLASSES, ensureShim, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
 export { KINDS };
@@ -433,7 +434,7 @@ function gateEval(args) {
   const { needsHuman } = current;
   if (needsHuman !== null) {
     const { gate, reason } = needsHuman;
-    return { ok: true, result: "needs-human-command", gate, reason, humanCommand: approveCommand(root, gate) };
+    return { ok: true, result: "needs-human-command", gate, reason, humanCommand: gate === CONFIG_GATE ? humanCommand(root, "accept") : approveCommand(root, gate) };
   }
   const contract = loadStages(PLUGIN_ROOT);
   const answered = answeredGate(gatesFor(contract, current.taskType), current);
@@ -687,13 +688,27 @@ function legacyArgs(args) {
   return [unit, plan];
 }
 
+// The wait a changed test-config raised is over once the human accepts, even when they put the file back as it was. Its
+// time moves to gateWaits, so it stays waiting and never reads as work.
+function answeredConfigWait(path) {
+  if (readLedger(path).needsHuman?.gate !== CONFIG_GATE) return false;
+  updateLedger(path, (ledger) => {
+    if (ledger.needsHuman?.gate !== CONFIG_GATE) return ledger;
+    const { askedAt } = ledger.needsHuman;
+    const waits = typeof askedAt === "string" ? { gateWaits: [...(ledger.gateWaits ?? []), { gate: CONFIG_GATE, askedAt, answeredAt: new Date().toISOString() }] } : {};
+    return { ...ledger, ...waits, needsHuman: null };
+  });
+  return true;
+}
+
 function humanAccept(args) {
   if (args.length > 0) return acceptLegacy(...legacyArgs(args));
   const { root, path } = runLedgerPath();
   const edit = acceptedEdit(path);
   const config = acceptedConfig(root, path);
-  if (edit === null && config === null) throw new Refusal(`nothing to accept: ledger ${path} has no sha mismatch, and test-config.json has not changed`);
-  return { ok: true, ...edit, ...(config === null ? {} : { config }) };
+  const answered = answeredConfigWait(path);
+  if (edit === null && config === null && !answered) throw new Refusal(`nothing to accept: ledger ${path} has no sha mismatch, and test-config.json has not changed`);
+  return { ok: true, ...edit, ...(config === null ? {} : { config }), ...(answered ? { answered: CONFIG_GATE } : {}) };
 }
 
 async function suiteRecord(plans, root, stage) {
@@ -2394,11 +2409,30 @@ export const VERBS = {
   "plan next": planNext, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
+// The human changed test-config.json while a stage ran: the attempt ends and the run waits on the human, with no stop, so
+// pb human accept is all it takes to go on. The refusal's first words are the ones a stage script halts on, with no retry.
+// Outside a stage the refusal stands as it is.
+function configWait(e) {
+  const root = findRunRoot(process.cwd());
+  const path = root === null ? null : ledgerPathOf(root);
+  const waitable = (ledger) => isStageActive(ledger) && ledger.stop === null && ledger.needsHuman === null;
+  if (path === null || !existsSync(path) || !waitable(readLedger(path))) return e;
+  let waits = false;
+  updateLedger(path, (ledger) => {
+    if (!waitable(ledger)) return ledger;
+    waits = true;
+    const { ledger: closed } = failActiveStage(root, ledger, { keepStop: true });
+    return { ...closed, needsHuman: { gate: CONFIG_GATE, reason: e.message, seq: closed.seq + 1, askedAt: new Date().toISOString(), fix: `type: ${humanCommand(root, "accept")}` } };
+  });
+  return waits ? new Refusal(`the run stopped for the human: ${CONFIG_WAIT_LINE}. ${e.message}`) : e;
+}
+
 async function runVerb(name, args) {
   try {
     return await VERBS[name](args);
   } catch (e) {
     if (e instanceof LedgerShaMismatch) throw new Refusal(shaMismatchRemedy(e.message, findRunRoot(process.cwd())));
+    if (e instanceof ConfigHashChanged) throw configWait(e);
     throw e;
   }
 }

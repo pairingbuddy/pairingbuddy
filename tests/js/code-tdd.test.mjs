@@ -303,6 +303,13 @@ test("code-tdd-a-run-the-cli-already-stopped-is-not-retried", async () => {
   assert.equal(calls.some(({ prompt }) => prompt.includes("stage stop")), false, "the ledger already holds the stop");
 });
 
+test("code-tdd-a-state-read-the-cli-already-stopped-is-not-retried", async () => {
+  const { calls, result } = await runStage({ runner: ([command]) => (command === "tdd state" ? refused("the run stopped for the human: the test settings changed: check and accept them") : undefined) });
+
+  assert.equal(calls.length, 1, "one read, no retry and no stop runner");
+  assert.equal(result.stopReason, "run-stopped");
+});
+
 test("code-tdd-a-placeholders-refusal-for-an-existing-test-goes-to-a-new-placeholders-agent", async () => {
   const refusal = "test test_zero_price_stays_zero is already in tests/test_a.py at the commit before the placeholders";
   let tries = 0;

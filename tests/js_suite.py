@@ -25,6 +25,7 @@ JS_TEST_FILES = [
     "tests/js/committing-changes-skill.test.mjs",
     "tests/js/compare-lab.test.mjs",
     "tests/js/config-hash-in-ledger.test.mjs",
+    "tests/js/config-wait.test.mjs",
     "tests/js/configured-branch-rules.test.mjs",
     "tests/js/course-check-call.test.mjs",
     "tests/js/course-verdict-schema.test.mjs",
