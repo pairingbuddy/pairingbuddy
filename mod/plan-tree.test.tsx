@@ -120,8 +120,36 @@ test('each unit shows the state unitStates gives it: open, hand-ticked, unpublis
   ])
 })
 
-test('a unit with a Depends on line shows the unit it is based on', async () => {
-  throw new Error('not implemented: tree-shows-dependency-base')
+const RECEIPT_DEPENDS_ON_PAY = [
+  '# Shop',
+  '',
+  '## Tasks',
+  '',
+  '### Tracer 1: Checkout',
+  '',
+  '#### PR: Pay',
+  '',
+  '- [ ] Task 1: Take payment',
+  '',
+  '#### PR: Receipt',
+  '',
+  'Depends on: Pay',
+  '',
+  '- [ ] Task 2: Send receipt',
+  '',
+].join('\n')
+
+test('a unit with a Depends on line shows the unit it is based on', async ($, on) => {
+  const lines = await showPlan($, on, RECEIPT_DEPENDS_ON_PAY)
+
+  expect(lines, 'the Receipt unit names Pay as its base on its own row under it, before its tasks; Pay, which depends on nothing, shows no base').toEqual([
+    'PLAN     Tracer 1: Checkout',
+    '           Pay',
+    '             ○ Task 1: Take payment',
+    '           Receipt',
+    '             based on Pay',
+    '             ○ Task 2: Send receipt',
+  ])
 })
 
 test('the open unit from unit.json shows its branch, base and the commits recorded for it', async () => {
