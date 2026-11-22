@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
-import { paneLines, setupPlanReplay } from './testing/replay'
-import { start } from './testing/band'
+import { PLAN_PATH, paneLines, setupPlanReplay } from './testing/replay'
+import { ROOT, start } from './testing/band'
 import { POLL_MS } from './poll'
 
 // Runs the mod over a ledger that names a plan, serving `planText` there, and lets two polls pass so the pane has drawn from it.
@@ -49,8 +49,72 @@ test('units appear nested under their tracer, in plan order, each with its task 
   ])
 })
 
-test('each unit shows the state unitStates gives it: open, hand-ticked, unpublished, published, accepted or legacy', async () => {
-  throw new Error('not implemented: tree-shows-unit-state')
+const ONE_UNIT_PER_STATE = [
+  '# Shop',
+  '',
+  '## Tasks',
+  '',
+  '### Tracer 1: Fresh',
+  '',
+  '- [ ] Task 1: Start',
+  '',
+  '### Tracer 2: Halfway',
+  '',
+  '- [x] Task 2: Ticked by hand',
+  '- [ ] Task 3: Still to do',
+  '',
+  '### Tracer 3: Done',
+  '',
+  '- [x] Task 4: Built',
+  '',
+  '### Tracer 4: Sent',
+  '',
+  'PR: https://github.com/acme/shop/pull/7',
+  '',
+  '- [x] Task 5: Shipped',
+  '',
+  '### Tracer 5: Taken',
+  '',
+  'Legacy: accepted',
+  '',
+  '- [x] Task 6: Old work',
+  '',
+  '### Tracer 6: Old',
+  '',
+  '- [x] Task 7: Before pb',
+  '',
+].join('\n')
+
+test('each unit shows the state unitStates gives it: open, hand-ticked, unpublished, published, accepted or legacy', async ($, on) => {
+  const { rig } = setupPlanReplay(on, ONE_UNIT_PER_STATE)
+  // The open unit is Done, with a record of its one task, so only it can read as unpublished.
+  rig.served.set(`${ROOT}/.pairingbuddy/run/unit.json`, JSON.stringify({ unit: 'Done', plan: PLAN_PATH, tracer: 'Tracer 3: Done', branch: 'feat/done', base: 'main', baseSha: 'abc123', tasks: [{ title: 'Task 4: Built' }], commits: [] }))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = await paneLines($)
+
+  expect(lines.slice(-19), 'every unit row ends with the state unitStates gives that unit, each state shown once').toEqual([
+    'PLAN     Tracer 1: Fresh',
+    '           Tracer 1: Fresh · open',
+    '             ○ Task 1: Start',
+    '         Tracer 2: Halfway',
+    '           Tracer 2: Halfway · hand-ticked',
+    '             ✓ Task 2: Ticked by hand',
+    '             ○ Task 3: Still to do',
+    '         Tracer 3: Done',
+    '           Tracer 3: Done · unpublished',
+    '             ✓ Task 4: Built',
+    '         Tracer 4: Sent',
+    '           Tracer 4: Sent · published',
+    '             ✓ Task 5: Shipped',
+    '         Tracer 5: Taken',
+    '           Tracer 5: Taken · accepted',
+    '             ✓ Task 6: Old work',
+    '         Tracer 6: Old',
+    '           Tracer 6: Old · legacy',
+    '             ✓ Task 7: Before pb',
+  ])
 })
 
 test('a unit with a Depends on line shows the unit it is based on', async () => {
