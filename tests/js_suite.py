@@ -150,6 +150,7 @@ JS_TEST_FILES = [
     "tests/js/stop-code-ledger.test.mjs",
     "tests/js/stop-code-plain-names.test.mjs",
     "tests/js/human-line.test.mjs",
+    "tests/js/pb-status-plain.test.mjs",
     "tests/js/stranded.test.mjs",
     "tests/js/t4a-broken-copy-helper.test.mjs",
     "tests/js/t4a-lab-setup.test.mjs",

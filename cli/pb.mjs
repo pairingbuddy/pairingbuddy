@@ -30,7 +30,7 @@ import { isHumanTitle, parsePlan, planStep, unitStates } from "../shared-node/pl
 import { shellWord } from "../shared-node/shell-word.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
-import { nextAction, runStatus } from "../shared-node/next-action.mjs";
+import { nextAction, runStatus, statusText } from "../shared-node/next-action.mjs";
 import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, standingScenariosKey, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
@@ -1301,14 +1301,24 @@ function artifactCheck(args) {
 
 // The action stays behind a flag: plain status is what a stage's session reads, and an action there sends it past where
 // its prompt stopped.
+// A human at a terminal reads plain lines (statusText); a pipe, as a model's Bash call is, and --json get the JSON.
 function status(args) {
-  const withAction = args.length === 1 && args[0] === "--action";
-  if (!withAction && args.length > 0) throw new UsageError("usage: pb status [--action]");
+  if (args.some((arg) => arg !== "--action" && arg !== "--json") || new Set(args).size !== args.length) throw new UsageError("usage: pb status [--action] [--json]");
+  const withAction = args.includes("--action");
   const { root, path } = runLedgerPath();
   const contract = loadStages(PLUGIN_ROOT);
   const ledger = readLedger(path);
   const state = runStatus(contract, ledger, artifactsDirOf(root));
-  return withAction ? { ok: true, ...state, action: nextAction(contract, ledger, root, PLUGIN_ROOT) } : { ok: true, ...state };
+  const result = withAction ? { ok: true, ...state, action: nextAction(contract, ledger, root, PLUGIN_ROOT) } : { ok: true, ...state };
+  if (args.includes("--json") || !process.stdout.isTTY) return result;
+  return new PlainText(statusText(state, { owner: ledger.owner.sessionId, lastSeen: ledger.owner.lastSeen, action: result.action }));
+}
+
+// A verb's answer printed as it stands, not as JSON.
+class PlainText {
+  constructor(text) {
+    this.text = text;
+  }
 }
 
 // The units list leaves out task bodies: only `next` carries one.
@@ -2399,7 +2409,8 @@ async function main(argv) {
     const known = Object.keys(VERBS).filter((verb) => !VERB_CLASSES.human.includes(verb));
     throw new UsageError(`unknown verb: ${argv.slice(0, 2).join(" ") || "(none)"}. Known: ${known.join(", ")}`);
   }
-  console.log(JSON.stringify(await runVerb(name, argv.slice(name.split(" ").length))));
+  const result = await runVerb(name, argv.slice(name.split(" ").length));
+  console.log(result instanceof PlainText ? result.text : JSON.stringify(result));
 }
 
 function isEntryPoint() {

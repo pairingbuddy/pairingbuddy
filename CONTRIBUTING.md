@@ -228,6 +228,8 @@ pb() { node "$PLUGIN/cli/pb.mjs" "$@"; }
 cd "$ROOT"
 ```
 
+In a terminal `pb status` prints a few plain lines: the stage, its status and attempt, the owner and when it was last seen, a stop or a question waiting on you, and what comes next. Add `--json` for the JSON a pipe gets.
+
 Typed at the Claude prompt with a leading `!`, a command also skips the hooks. `pb run open` writes `.pairingbuddy/bin/pb`, a short pb for the project that runs the plugin's CLI from the root, so at the prompt `!.pairingbuddy/bin/pb status` does it (the session's shell sits at the project root). Without that file, as for a run opened by an older build, write the line out in full, since each `!` line is its own shell: `!cd <ROOT> && node <PLUGIN>/cli/pb.mjs status`. pb gives the short line only when the file is there and runs its own CLI.
 
 ### gate.mjs crash or throw

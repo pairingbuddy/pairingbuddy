@@ -105,6 +105,40 @@ function adoptAdvice(root, lastSeen) {
   return `To move it here the human types ${humanCommand(root, "adopt")}.`;
 }
 
+// How long ago a time was, in the words a human reads: "just now", "3 minutes ago", "2 hours ago", "4 days ago".
+function ago(time, now) {
+  const minutes = Math.floor((now - Date.parse(time)) / 60_000);
+  if (Number.isNaN(minutes)) return "at an unknown time";
+  const say = (count, unit) => `${count} ${unit}${count === 1 ? "" : "s"} ago`;
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return say(minutes, "minute");
+  if (minutes < 48 * 60) return say(Math.floor(minutes / 60), "hour");
+  return say(Math.floor(minutes / (24 * 60)), "day");
+}
+
+const named = (id) => (plainName(id) ? `${plainName(id)} (${id})` : id);
+
+// What comes next, plainly: the action when --action asked for it, else what the run waits on.
+function nextLine({ stage, stop, needsHuman, next }, action) {
+  if (action) return action;
+  if (stop) return "nothing runs until you act on the stop";
+  if (needsHuman) return "nothing runs until you answer";
+  if (stage?.status === "active") return "wait for the stage to finish";
+  return next ? `${named(next.stage)}, attempt ${next.attempt}` : "nothing left to run";
+}
+
+// pb status for a human at a terminal: a few labelled lines in place of the JSON a pipe gets.
+export function statusText(status, { owner, lastSeen, now = Date.now(), action } = {}) {
+  const { stage, stop, needsHuman } = status;
+  const line = (label, text) => `${`${label}:`.padEnd(11)}${text}`;
+  const lines = [line("Stage", stage?.name ? `${named(stage.name)}, ${stage.status || "not started"}, attempt ${stage.attempt}` : "none yet")];
+  lines.push(line("Owner", owner ? `session ${owner}, last seen ${ago(lastSeen, now)}` : "none"));
+  if (stop) lines.push(line("Stopped", [plainName(stop.code), stop.reason].filter(Boolean).join(": ") || "yes"));
+  if (needsHuman?.gate) lines.push(line("Needs you", named(needsHuman.gate)));
+  lines.push(line("Next", nextLine(status, action)));
+  return lines.join("\n");
+}
+
 // What SessionStart and the compact hook inject.
 export function runReport({ root, owner, lastSeen, status, action }, sessionId) {
   const lines = [`A Pairing Buddy run is open at ${root}.`];
