@@ -117,6 +117,31 @@ test("Each refuter prompt carries the run's task in a <task> block, so it can ch
   assert.equal(/<task>\n([\s\S]*?)\n<\/task>/.exec(refuters[0].prompt)?.[1], JSON.stringify(config.task));
 });
 
+// On a Claude Code build with no Glob or Grep a refuter can only Read, so it gets the lens's file list and needs no search.
+test("Each refuter prompt carries the corpus paths in a <corpus> block, as its lens's prompt does", async () => {
+  const config = refutingConfig(1, { corpus: ["src/a.mjs", "docs/b.md"] });
+
+  const { calls } = await runLensAttack(config, refuterStandIn([ranked(1)]));
+
+  const refuters = refuterCallsOf(calls);
+  assert.equal(refuters.length, 1, "the finding was sent to a refuter");
+  const corpus = /<corpus>\n([\s\S]*?)\n<\/corpus>/.exec(refuters[0].prompt)?.[1];
+  assert.deepEqual(corpus?.split("\n").map((line) => JSON.parse(line)), config.corpus);
+});
+
+// The gate lets a lens or a refuter use only Read, Grep and Glob, so its prompt never points it at a Bash find or grep.
+test("A lens and a refuter prompt open with the read-only tool rule, which names no Bash command", async () => {
+  const { calls } = await runLensAttack(refutingConfig(1), refuterStandIn([ranked(1)]));
+
+  assert.equal(calls.length, 2, "one lens and one refuter");
+  for (const { prompt, opts } of calls) {
+    const rule = prompt.split("\n", 1)[0];
+    assert.match(rule, /no Bash/, `${opts.agentType} is told it has no Bash`);
+    assert.doesNotMatch(rule, /Bash command/, `${opts.agentType} is not told to search with a Bash command`);
+    assert.match(rule, /Glob and Grep when they exist/, `${opts.agentType} still searches with Glob and Grep where it can`);
+  }
+});
+
 // lens-merge
 test("Each lens prompt has a <corpus> section listing the corpus paths, and says none when the corpus is empty", async () => {
   const withCorpus = { ...ONE_LENS, corpus: ["src/a.mjs", "docs/b.md"] };

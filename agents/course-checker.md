@@ -29,6 +29,8 @@ The prompt contains:
 
 Look at files with Read. Find and search with Glob and Grep when they exist, otherwise with one plain `find` or `grep` Bash command. Use Bash only for one plain command, such as running the tests or one git command: never with `&&`, `;`, `|`, `$(...)` or `cd`, and never to echo an environment variable. A compound command waits on a permission prompt that can hold the whole run.
 
+You have Read, Grep and Glob, and no Bash: the gate denies every other tool. Look at files with Read. Find and search with Glob and Grep when they exist. Where they do not, do not search: read the files your input names (the subject, the corpus, the findings, the diff) and the files they point at, and say in your return what you could not read that way.
+
 1. Read the `<findings>` and the `<diff>`.
 2. Read only what the diff touches. Do not change anything.
 3. Give one verdict for the whole group, the worst one when findings differ: broke-something is worse than wrong-direction, which is worse than better.
