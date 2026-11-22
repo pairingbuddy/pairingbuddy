@@ -355,7 +355,7 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 1. Check if `.pairingbuddy/test-config.json` exists
 2. If it exists, use it and ask nothing. The human owns that file, and a run that stops here waits for an answer no auto run can give
 3. If missing, infer from: README, CLAUDE.md, plan docs, project structure
-4. Give each test command a `selector_template`: the argument words that select one test, for example `["{test_file}::{test_function}"]` for pytest. Without it `pb run open` refuses a `bug_fix` or a `new_feature`, because RED and GREEN could not speak for one test
+4. Give each test command a `selector_template`: the argument words that select one test, for example `["{test_file}::{test_function}"]` for pytest and `["--test-name-pattern=^{test_function}$", "{test_file}"]` for `node --test`. Without it `pb run open` refuses a unit opened as `feat` or `fix`, before any agent runs, and names each test command that lacks it and what to add, because RED and GREEN could not speak for one test
 5. Validate inferred config with human before writing
 6. If unable to infer, ask human directly
 

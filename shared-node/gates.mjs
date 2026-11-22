@@ -15,7 +15,7 @@ import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
 import { isRefreshRun } from "./ledger.mjs";
 import { needsTestSelection } from "./stage-graph.mjs";
-import { readTestConfig, runnersWithoutSelector } from "./test-run.mjs";
+import { readTestConfig, selectorAdvice } from "./test-run.mjs";
 import { targetBranch, taskHasLensRecord } from "./publish.mjs";
 import { headOf } from "./checkpoint.mjs";
 import { PrLintConfigRefused } from "./pr-lint.mjs";
@@ -172,7 +172,7 @@ const PLAIN_WHYS = [
   [/^(no gate policy is recorded|the gate policy is )/, ""],
   [/^the classifier does not report certain/, "The classifier was not sure of the type."],
   [/^the classification lens has an open finding/, "A reviewer doubts the task type."],
-  [/no selector_template/, "A test runner can't run one test on its own."],
+  [/no selector_template/, (reason) => selectorWhy(reason)],
   [/^the scope lens found/, "A reviewer doubts the tidy-up fits the goal."],
   [/^the run stopped/, "The run stopped and needs you."],
   [/^retries are exhausted/, "A step ran out of retries."],
@@ -189,7 +189,21 @@ const PLAIN_WHYS = [
   [/^no lens record yet for the safety net/, "Not every task has had its safety-net review."],
 ];
 
-const plainWhy = (reason) => PLAIN_WHYS.find(([pattern]) => pattern.test(reason))?.[1] ?? reason;
+// Names the runners a reason says lack selector_template, and the one fix: the run cannot build a test without it.
+function selectorWhy(reason) {
+  const named = /^runners? (.+?) (?:has|have) no selector_template/.exec(reason);
+  if (named === null) return "A test runner can't run one test on its own: add a selector_template to it in .pairingbuddy/test-config.json, then start the task again.";
+  const many = named[1].includes(",");
+  return many
+    ? `Runners ${named[1]} can't run one test on their own: add a selector_template to each in .pairingbuddy/test-config.json, then start the task again.`
+    : `Runner ${named[1]} can't run one test on its own: add a selector_template to it in .pairingbuddy/test-config.json, then start the task again.`;
+}
+
+const plainWhy = (reason) => {
+  const why = PLAIN_WHYS.find(([pattern]) => pattern.test(reason))?.[1];
+  if (why === undefined) return reason;
+  return typeof why === "function" ? why(reason) : why;
+};
 
 const AMBIGUITY_REASON = /open ambiguity/;
 
@@ -540,10 +554,9 @@ const artifactsDir = (root) => join(root, ".pairingbuddy", "run", "task", "artif
 // G:type asks when a runner has no selector_template (for task types that need test selection) or when the classifier is not certain.
 function selectorReason(root, ledger, contract) {
   if (!needsTestSelection(contract, ledger.taskType)) return null;
-  const missing = runnersWithoutSelector(readTestConfig(root, ledger.configHash));
-  if (missing.length === 0) return null;
-  const [noun, verb] = missing.length === 1 ? ["runner", "has"] : ["runners", "have"];
-  return `${noun} ${missing.join(", ")} ${verb} no selector_template, so RED and GREEN cannot speak for one test. Ask the human to add selector_template to each runner in .pairingbuddy/test-config.json, then abandon this run with pb human abandon and start the task again`;
+  const advice = selectorAdvice(readTestConfig(root, ledger.configHash));
+  if (advice === null) return null;
+  return `${advice}. Then the human abandons this run with pb human abandon and starts the task again`;
 }
 
 function classifierReason(root, ledger) {

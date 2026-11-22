@@ -31,9 +31,10 @@ import { shellWord } from "../shared-node/shell-word.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus, statusText } from "../shared-node/next-action.mjs";
+import { needsTestSelection } from "../shared-node/stage-graph.mjs";
 import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, standingScenariosKey, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
-import { ConfigHashChanged, TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
+import { ConfigHashChanged, TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
 import { CONFIG_GATE, CONFIG_WAIT_LINE } from "../shared-node/config-wait.mjs";
@@ -245,6 +246,19 @@ function assertUnitTakes(openUnit, next, planPath) {
   }
 }
 
+// The task type each branch type of pb unit open guesses. Intake decides the run's type later, but the guess is the only
+// one there is before any agent runs.
+const GUESSED_TYPES = { feat: "new_feature", fix: "bug_fix", chore: "config_change", refactor: "refactoring", spike: "spike" };
+
+// A feature or a fix is built one test at a time, so a runner that cannot run one test would stop it at its first RED,
+// after every stage before has spent its agents. It refuses here, before any of them, and says what to add.
+function assertSelectorsFor(root, branchType) {
+  const taskType = GUESSED_TYPES[branchType];
+  if (taskType === undefined || !needsTestSelection(loadStages(PLUGIN_ROOT), taskType)) return;
+  const advice = selectorAdvice(readTestConfig(root, validatedConfigHash(root)));
+  if (advice !== null) throw new Refusal(`${advice}. No run was opened`);
+}
+
 function runOpen(args) {
   const kind = parseKind(args);
   const planPath = flagValue(args, "--plan");
@@ -259,6 +273,7 @@ function runOpen(args) {
   assertBranchNotProtected(gitConfig, root, branch, "open a run", "; start the work on a unit branch with pb unit open");
 
   const configHash = validatedConfigHash(root);
+  if (kind === "code") assertSelectorsFor(root, readOpenUnit(root)?.type);
   const taskType = kind === "publish" ? "publish" : null;
   const planned = hasPlan ? planTask(planPath) : null;
   const task = planned ? planned.task : storedTask(root);
@@ -1986,7 +2001,7 @@ function unitOpen(args) {
   const parent = stackOn?.branch ?? base;
   const baseSha = git("rev-parse", `${gitConfig.remote}/${parent}`);
   ensureRunRoot(root);
-  const unit = newUnit({ branch, base: parent, baseSha, configHash, gitConfigHash });
+  const unit = { ...newUnit({ branch, base: parent, baseSha, configHash, gitConfigHash }), type };
   if (stackOn) unit.stackedOn = withoutDepth(stackOn);
   if (planned) Object.assign(unit, { unit: planned.next.unit, plan: planned.context.plan, tracer: planned.next.tracer });
   writeJsonAtomic(unitPathOf(root), unit, { exclusive: true });

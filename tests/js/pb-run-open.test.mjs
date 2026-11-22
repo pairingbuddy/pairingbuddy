@@ -803,3 +803,23 @@ test("open-plan-only-with-kind-code", async (t) => {
     });
   }
 });
+
+// run-open: runner selectors, checked before any agent runs
+
+// The unit pb unit open recorded, with the branch type it was opened with.
+function openUnit(root, type) {
+  mkdirSync(join(root, ".pairingbuddy", "run"), { recursive: true });
+  writeFileSync(unitPath(root), JSON.stringify({ unit: null, plan: null, tracer: null, branch: "feature/x", base: "main", baseSha: git(root, "rev-parse", "HEAD"), configHash: "", gitConfigHash: null, tasks: [], commits: [], type }));
+}
+
+test("open-refuses-a-feature-whose-runner-cannot-run-one-test-and-says-what-to-add", (t) => {
+  const root = makeRepo(t);
+  openUnit(root, "feat");
+
+  const r = open(root);
+
+  assertCleanRefusal(r, /runner pytest has no selector_template/);
+  assert.ok(r.stderr.includes('"selector_template": ["{test_file}::{test_function}"]'), `it says what to add for pytest: ${r.stderr}`);
+  assert.ok(r.stderr.includes(".pairingbuddy/test-config.json"), "it names the file");
+  assert.equal(existsSync(runDir(root)), false, "no run was opened");
+});

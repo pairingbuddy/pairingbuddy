@@ -9,6 +9,7 @@
     "plan": { "type": ["string", "null"] },
     "tracer": { "type": ["string", "null"] },
     "branch": { "type": "string" },
+    "type": { "description": "The branch type pb unit open was given (feat, fix, chore, refactor, spike): the guess of the task type before intake, which pb run open checks the runners against. May be absent (units opened before it).", "type": "string" },
     "base": { "type": "string" },
     "baseSha": { "type": "string" },
     "configHash": { "type": "string" },

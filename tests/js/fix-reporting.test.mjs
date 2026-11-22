@@ -138,7 +138,7 @@ test("pb task end puts every notes entry of the task into the unit.json task rec
   const net = "code-safety-net";
   const scenarios = "code-scenarios";
   const repo = makeCliRepo({ openTask: false, remote: true });
-  const opened = pbCli(repo, "unit", "open", "--type", "feat", "--slug", "x");
+  const opened = pbCli(repo, "unit", "open", "--type", "chore", "--slug", "x");
   assert.equal(opened.code, 0, `unit open: ${opened.stderr}`);
   const run = pbCli(repo, "run", "open", "--kind", "code");
   assert.equal(run.code, 0, `run open: ${run.stderr}`);
@@ -248,7 +248,7 @@ test("pb tdd state skips a scenarios return from an attempt that failed and was 
 test("pb task end ignores a file in run/task/notes that is not a .md file", () => {
   const net = "code-safety-net";
   const repo = makeCliRepo({ openTask: false, remote: true });
-  assert.equal(pbCli(repo, "unit", "open", "--type", "feat", "--slug", "x").code, 0, "unit open");
+  assert.equal(pbCli(repo, "unit", "open", "--type", "chore", "--slug", "x").code, 0, "unit open");
   assert.equal(pbCli(repo, "run", "open", "--kind", "code").code, 0, "run open");
   makeReadyToEndTask(repo, net);
   const pbDir = join(repo.dir, ".pairingbuddy");

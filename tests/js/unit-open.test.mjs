@@ -69,6 +69,7 @@ test("creates-template-branch-and-writes-record", () => {
   assert.match(unit.gitConfigHash, /^[0-9a-f]{64}$/, "unit.gitConfigHash is a sha256 hex digest");
   assert.deepEqual(unit.tasks, [], "tasks starts empty");
   assert.deepEqual(unit.commits, [], "commits starts empty");
+  assert.equal(unit.type, "feat", "unit.type keeps the branch type, so pb run open can check the runners before any agent runs");
   for (const key of ["unit", "plan", "tracer"]) assert.ok(key in unit, `unit.${key} is present`);
   assert.deepEqual(violations(schema, unit), [], "the record validates against the unit schema");
 });
@@ -338,9 +339,9 @@ test("run-open-on-protected-branch-points-at-unit-open", () => {
   assert.equal(gitIn(onMain, "rev-parse", "--abbrev-ref", "HEAD"), "main", "HEAD did not move");
 
   const fresh = makeRepo({ openTask: false, remote: true });
-  const opened = pbUnitOpen(fresh, {}, "--type", "feat", "--slug", "x");
+  const opened = pbUnitOpen(fresh, {}, "--type", "chore", "--slug", "x");
   assert.equal(opened.code, 0, `pb unit open moves to the unit branch: ${opened.stderr}`);
-  assert.equal(gitIn(fresh, "rev-parse", "--abbrev-ref", "HEAD"), "feat/x", "HEAD is on the unit branch");
+  assert.equal(gitIn(fresh, "rev-parse", "--abbrev-ref", "HEAD"), "chore/x", "HEAD is on the unit branch");
 
   const run = pb(fresh, "run", "open", "--kind", "code");
 
@@ -370,7 +371,7 @@ const finishLedger = (repo, task) => {
 // A repo with an open unit and an open task, optionally finished.
 const unitRepo = ({ finished }) => {
   const repo = makeRepo({ openTask: false, remote: true });
-  const opened = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
+  const opened = pbUnitOpen(repo, {}, "--type", "chore", "--slug", "x");
   assert.equal(opened.code, 0, `pb unit open: ${opened.stderr}`);
   const run = pb(repo, "run", "open", "--kind", "code");
   assert.equal(run.code, 0, `pb run open: ${run.stderr}`);

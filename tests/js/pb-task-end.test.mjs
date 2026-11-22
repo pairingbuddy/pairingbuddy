@@ -599,7 +599,7 @@ describe("the task record carries the task ledger", IN_PARALLEL, () => {
   // With { plan: { title } } it also commits a plan holding that box and points ledger.plan at it.
   function finishedTaskInUnit(extraLedger = {}, { plan = null } = {}) {
     const repo = makeRepoWithRemote({ openTask: false, remote: true });
-    const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
+    const opened = pb(repo, "unit", "open", "--type", "chore", "--slug", "x");
     assert.equal(opened.status, 0, `unit open: ${opened.stderr}`);
     const run = pb(repo, "run", "open", "--kind", "code");
     assert.equal(run.status, 0, `run open: ${run.stderr}`);

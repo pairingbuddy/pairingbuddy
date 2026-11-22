@@ -226,6 +226,31 @@ export const hasSelector = (config, { runner_id: id }) => checkedRunner(config, 
 
 export const runnersWithoutSelector = (config) => Object.keys(config.runners).filter((id) => checkedRunner(config, id).template === null);
 
+// The selector_template to add, by what the runner's command runs, or null when the command is not one pb knows.
+const SELECTOR_EXAMPLES = [
+  [/\bpytest\b/, ["{test_file}::{test_function}"]],
+  [/\bmod-test-one\.mjs\b/, ["{test_file}", "{test_function}"]],
+  [/\bnode\b.*--test\b/, ["--test-name-pattern=^{test_function}$", "{test_file}"]],
+];
+
+const exampleFor = (command) => SELECTOR_EXAMPLES.find(([pattern]) => pattern.test(String(command ?? "")))?.[1] ?? null;
+
+function selectorLine(id, { command }) {
+  const example = exampleFor(command);
+  const what = example === null ? "a list of the words that run one test, naming {test_function} and, if it needs it, {test_file}" : JSON.stringify(example).replaceAll(",", ", ");
+  return `runner ${id}: "selector_template": ${what}`;
+}
+
+// What a human adds to test-config.json so every runner can run one test on its own, in plain words, or null when each
+// already can. RED and GREEN need it, so a bug fix or a feature cannot be built without it.
+export function selectorAdvice(config) {
+  const missing = runnersWithoutSelector(config);
+  if (missing.length === 0) return null;
+  const [noun, verb] = missing.length === 1 ? ["runner", "has"] : ["runners", "have"];
+  const lines = missing.map((id) => selectorLine(id, config.runners[id]));
+  return `${noun} ${missing.join(", ")} ${verb} no selector_template, so pb cannot run one test on its own, and RED and GREEN need that. Add to .pairingbuddy/test-config.json: ${lines.join("; ")}`;
+}
+
 export const testDirectoryOf = (config, { runner_id: id }) => checkedRunner(config, id).testDirectory;
 
 // What RED and GREEN run: this test and no other, or a refusal, since a run of its file says nothing about it.
