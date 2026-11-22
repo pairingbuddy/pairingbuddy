@@ -188,8 +188,36 @@ test('the open unit from unit.json shows its branch, base and the commits record
   ])
 })
 
-test('a unit with a PR: line shows its PR link', async () => {
-  throw new Error('not implemented: tree-shows-pr-link')
+const PAY_WITH_PR = [
+  '# Shop',
+  '',
+  '## Tasks',
+  '',
+  '### Tracer 1: Checkout',
+  '',
+  '#### PR: Pay',
+  '',
+  'PR: https://github.com/acme/shop/pull/7',
+  '',
+  '- [x] Task 1: Take payment',
+  '',
+  '#### PR: Receipt',
+  '',
+  '- [ ] Task 2: Send receipt',
+  '',
+].join('\n')
+
+test('a unit with a PR: line shows its PR link', async ($, on) => {
+  const lines = await showPlan($, on, PAY_WITH_PR)
+
+  expect(lines, 'the Pay unit shows its PR link on its own row before its tasks; Receipt, which has no PR: line, shows none').toEqual([
+    'PLAN     Tracer 1: Checkout',
+    '           Pay · published',
+    '             PR https://github.com/acme/shop/pull/7',
+    '             ✓ Task 1: Take payment',
+    '           Receipt · open',
+    '             ○ Task 2: Send receipt',
+  ])
 })
 
 test('when parsePlan reports problems, the view shows them instead of hiding them', async () => {
