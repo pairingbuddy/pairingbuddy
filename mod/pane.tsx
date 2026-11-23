@@ -163,31 +163,42 @@ type PlanUnit = NonNullable<View['plan']>['units'][number]
 const TO_DO = 'to do'
 const stateWords = (state: string | undefined, isOpen: boolean) => (state === 'open' && !isOpen ? TO_DO : state)
 
+// A tree row too wide for the room cuts its title, at a word and marked by …, never its lead (indent and mark) or the state
+// words after it. No room given cuts nothing.
+const ELLIPSIS = '…'
+function titleRow(lead: string, title: string, tail: string, width: number): string {
+  const whole = `${lead}${title}${tail}`
+  if (!(width > 0) || cells(whole) <= width) return whole
+  const room = width - cells(lead) - cells(tail) - ELLIPSIS.length
+  const cut = room > 0 ? cutAtWord(title, room) : ''
+  return `${lead}${cut === title ? cut : `${cut}${ELLIPSIS}`}${tail}`
+}
+
 // One unit's rows: its name and state, then what it is based on, the open unit's facts, its PR and its tasks.
-// building: the title of the task the live run builds.
-function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpen'], indent: string, building?: string): Part[][] {
+// building: the title of the task the live run builds; width: the room each row has.
+function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpen'], indent: string, building?: string, width = 0): Part[][] {
   const contentIndent = indent + NEST
   const isOpen = Boolean(open && open.unit === unit.unit)
   const words = stateWords(state, isOpen)
   const next = unit.tasks.find(task => !task.checked)
   return [
-    [{ text: `${indent}${unit.unit}${words ? `${STATE_SEPARATOR}${words}` : ''}` }],
+    [{ text: titleRow(indent, unit.unit, words ? `${STATE_SEPARATOR}${words}` : '', width) }],
     ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
     ...(open && isOpen ? openUnitLines(open, contentIndent) : []),
     ...prRows(unit.pr, contentIndent),
     ...unit.tasks.map(task => {
       const inProgress = !task.checked && task.title === building
-      return [{ text: contentIndent + taskRow(task, inProgress, task === next), ...(inProgress ? { props: LIT } : {}) }]
+      return [{ text: taskRow(task, inProgress, task === next, contentIndent, width), ...(inProgress ? { props: LIT } : {}) }]
     }),
   ]
 }
 
 // A task's mark and title: ▸ for the one being built, as STEPS marks its running step. A [HUMAN] task that is its unit's
 // next unticked one also says it waits on a person; one behind another unticked task is not reached yet.
-function taskRow(task: PlanUnit['tasks'][number], inProgress: boolean, isNext: boolean): string {
+function taskRow(task: PlanUnit['tasks'][number], inProgress: boolean, isNext: boolean, indent: string, width: number): string {
   const mark = task.checked ? TASK_MARKS.ticked : inProgress ? TASK_MARKS.inProgress : TASK_MARKS.unticked
   const waiting = task.human && isNext ? `${STATE_SEPARATOR}${WAITING_ON_PERSON}` : ''
-  return `${mark} ${task.title}${waiting}`
+  return titleRow(`${indent}${mark} `, task.title, waiting, width)
 }
 
 // Consecutive units of one tracer form a group; a unit under no tracer is its own group, unindented.
@@ -203,12 +214,12 @@ function tracerGroups(units: PlanUnit[]): TracerGroup[] {
   return groups
 }
 
-function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen'], building?: string): Part[][] {
+function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen'], building?: string, width = 0): Part[][] {
   // The same unit the states resolved: a record naming only its tracer shows its facts under that tracer's first unit.
   const open = rawOpen && resolveOpenUnit(plan.units, rawOpen)
   const tree = tracerGroups(plan.units).flatMap(({ tracer, units }) => [
     ...(tracer ? [[{ text: tracer }]] : []),
-    ...units.flatMap(({ unit, index }) => unitRows(unit, states[index], open, tracer ? NEST : '', building)),
+    ...units.flatMap(({ unit, index }) => unitRows(unit, states[index], open, tracer ? NEST : '', building, width)),
   ])
   return [...tree, ...(plan.problems ?? []).map((problem: string) => [{ text: problem }])]
 }
@@ -225,7 +236,7 @@ function paneRows(view: View, columns: number) {
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
     ...rowLines('TESTS', testsParts(view, width)),
     ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
-    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen, view.planBuilding)) : []),
+    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen, view.planBuilding, width)) : []),
     ...(!view.plan && view.planOpen ? rowLines('PLAN', unitOnlyLines(view.planOpen, view.planOpenPr)) : []),
   ]
 }

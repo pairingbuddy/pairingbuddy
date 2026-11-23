@@ -431,3 +431,28 @@ test('a [HUMAN] task behind an unticked task is not yet waiting on a person', as
     '             ○ Task 2: [HUMAN] Approve the pricing page',
   ])
 })
+
+// A narrow pane cuts a task's title, never the words that say what it waits on.
+test('in a narrow pane a [HUMAN] task keeps "waiting on a person" and its title is cut with …', async ($, on) => {
+  const { rig } = setupPlanReplay(on, PLAN_WITH_HUMAN_TASK)
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = planRows(await paneLines($, { bodyColumns: 60 }))
+
+  expect(lines.at(-1), 'the title gives way at a word, marked by …; the state words stay whole').toBe('             ○ Task 1: [HUMAN]… · waiting on a person')
+})
+
+const LONG_UNIT_NAMES = RECEIPT_DEPENDS_ON_PAY.replace('#### PR: Receipt', '#### PR: Receipt by email, text message and a printed copy')
+  .replace('Depends on: Pay', '')
+
+test('in a narrow pane a unit row keeps its state and its name is cut with …', async ($, on) => {
+  const { rig } = setupPlanReplay(on, LONG_UNIT_NAMES)
+  rig.served.set(`${ROOT}/.pairingbuddy/run/unit.json`, unitRecordNaming('Pay', 'Tracer 1: Checkout'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = planRows(await paneLines($, { bodyColumns: 50 }))
+
+  expect(lines.find(line => line.includes('Receipt')), 'the name gives way at a word, marked by …; "to do" stays whole').toBe('           Receipt by email, text message… · to do')
+})
