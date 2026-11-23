@@ -113,6 +113,8 @@ test('each unit shows the state unitStates gives it: open, hand-ticked, unpublis
     '             ○ Task 3: Still to do',
     '         Tracer 3: Done',
     '           Tracer 3: Done · unpublished',
+    '             branch feat/done',
+    '             base main',
     '             ✓ Task 4: Built',
     '         Tracer 4: Sent',
     '           Tracer 4: Sent · published',

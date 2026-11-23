@@ -1,5 +1,6 @@
 import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
 import { endReviewLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
+import { resolveOpenUnit } from './view'
 import type { RowTones, Status, StatusState, Tags, View } from './view'
 
 // Every row is always drawn, in this order, its label in a column this wide; a row with nothing to show reads EMPTY.
@@ -189,7 +190,9 @@ function tracerGroups(units: PlanUnit[]): TracerGroup[] {
   return groups
 }
 
-function planLines(plan: NonNullable<View['plan']>, states: string[] = [], open?: View['planOpen']): Part[][] {
+function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen']): Part[][] {
+  // The same unit the states resolved: a record naming only its tracer shows its facts under that tracer's first unit.
+  const open = rawOpen && resolveOpenUnit(plan.units, rawOpen)
   const tree = tracerGroups(plan.units).flatMap(({ tracer, units }) => [
     ...(tracer ? [[{ text: tracer }]] : []),
     ...units.flatMap(({ unit, index }) => unitRows(unit, states[index], open, tracer ? NEST : '')),

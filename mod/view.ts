@@ -73,7 +73,7 @@ function hasStateToTell(units: PlannedUnits): boolean {
 }
 
 // A record names its unit, or only its tracer: then it is the first plan unit under that tracer.
-function resolveOpenUnit(units: PlannedUnits, open: NonNullable<NonNullable<Inputs['unit']>['open']>) {
+export function resolveOpenUnit(units: PlannedUnits, open: NonNullable<NonNullable<Inputs['unit']>['open']>) {
   const isPlanned = units.some(planned => planned.unit === open.unit)
   const underTracer = isPlanned || !open.tracer ? undefined : units.find(planned => planned.tracer === open.tracer)
   return underTracer ? { ...open, unit: underTracer.unit } : open
@@ -93,7 +93,7 @@ function planFields(inputs: Inputs): Pick<View, 'plan' | 'planStates' | 'planOpe
   return { plan: inputs.plan, planStates: planStatesOf(inputs), planOpen: inputs.unit?.open, planOpenPr: inputs.unit?.prUrl }
 }
 
-export type EndRows =Record<'done' | 'pr', string>
+export type EndRows = Record<'done' | 'pr', string>
 const NO_END: EndRows = { done: '—', pr: '—' }
 
 const EMPTY = '—'
