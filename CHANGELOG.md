@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A session that starts after the unit's code run ended reads that run from the runs pb kept (S6 run: session 2 started at unit A's publish run, GOAL read `—` while it drafted, and once PR #1 opened the pane read `○ ended · not signed off` and PR `—`, while unit B, whose code run session 3 watched, read `✓ DONE · PR #2 opened`). The session's memory of the code run starts empty at each session start, and the publish ledger names no task, so nothing put it back. The poller now takes the unit's last kept code run, and the last PR a kept run of it opened, when it has none, so both units read the same.
+
 - A [HUMAN] task says `waiting on a person` only once it is its unit's next unticked task (S6 run: Task 2 [HUMAN] said it while Task 1 was still being built).
 
 - The plan task the live code run builds reads `▸`, lit as STEPS draws its running step (S6 run: Task 1 read `○` while it was being built, the same as a task not yet started).

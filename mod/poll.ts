@@ -42,13 +42,22 @@ function unitStart(state: PollerState, polled: Polled): string | null {
 // unit drops both. With no unit open, as after pb publish, they are kept.
 export type UnitRecord = { key: string | null; codeRun: CodeRun | null; prUrl: string | null } | null
 
-function unitRecord(state: PollerState, polled: Polled): { codeRun: CodeRun | null; prUrl: string | null } {
+// A session forgets the code run it saw, and one that starts after the code run ended never saw it: the unit's runs pb kept
+// then stand in, the last code run of the unit for its code run and the last PR a run of it opened.
+async function unitRecord($: EngineInterface, state: PollerState, polled: Polled): Promise<{ codeRun: CodeRun | null; prUrl: string | null }> {
   const key = polled.unit?.key ?? null
   const kept = state.record !== null && (key === null || state.record.key === null || state.record.key === key) ? state.record : null
   const read = codeRunOf(polled.ledger) as CodeRun | null
-  const record = { key: key ?? kept?.key ?? null, codeRun: read ?? kept?.codeRun ?? null, prUrl: polled.unit?.prUrl ?? kept?.prUrl ?? null }
-  state.record = record
-  return { codeRun: record.codeRun, prUrl: record.prUrl }
+  const unitKey = key ?? kept?.key ?? null
+  let codeRun = read ?? kept?.codeRun ?? null
+  let prUrl = polled.unit?.prUrl ?? kept?.prUrl ?? null
+  if (unitKey !== null && (codeRun === null || prUrl === null)) {
+    const runs = (await readKeptRuns($, state.kept)).filter(run => run.unit === unitKey).sort((a, b) => (Date.parse(a.endedAt ?? '') || 0) - (Date.parse(b.endedAt ?? '') || 0))
+    codeRun ??= (runs.map(run => codeRunOf(run.ledger) as CodeRun | null).findLast(run => run !== null) ?? null)
+    prUrl ??= runs.findLast(run => run.prUrl)?.prUrl ?? null
+  }
+  state.record = { key: unitKey, codeRun, prUrl }
+  return { codeRun, prUrl }
 }
 
 // The code run whose end left nothing to do, by its id, or null: no run is live, its task was signed off, and no unit is open
@@ -91,7 +100,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
     state.polling = true
     try {
       const read = await pollInputs($, state.spawns, state.kept)
-      const polled = { ...read, since: unitStart(state, read), ...unitRecord(state, read), task: await endedTask($, state, read), earlierAgents: await earlierAgents($, state, read) }
+      const polled = { ...read, since: unitStart(state, read), ...(await unitRecord($, state, read)), task: await endedTask($, state, read), earlierAgents: await earlierAgents($, state, read) }
       await $.state.set(INPUTS, polled)
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.
       await alertOn($, polled.ledger, options, doneRunOf(polled))

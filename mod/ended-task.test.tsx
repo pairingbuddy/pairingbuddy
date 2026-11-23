@@ -103,3 +103,25 @@ test('live-publish-run-spent-counts-the-kept-code-run-after-a-reload', async ($,
 
   expect(spent, 'the code run\'s 32 agents, with none seen this session').toMatch(/^SPENT\s+32 agents · /)
 })
+
+// Scenario S6 unit A: the code run ended in an earlier session, and this session starts at the publish run, whose ledger
+// names no task. The code run pb kept stands in for the one the session never saw, so the goal and the end state read as
+// they do for a unit whose code run the session watched.
+test('a session that starts at the publish run reads the code run pb kept: its goal, then done with its PR', async ($, on) => {
+  const rig = setupReplay(on)
+  const live = { ...PUBLISH_RUN, task: '', stage: { ...PUBLISH_RUN.stage, status: 'active' }, stages: [], spend: { agents: 0, tokens: 0, tokensKnown: true } }
+  const codeRunKept = Object.fromEntries(Object.entries(KEPT_FILES).filter(([path]) => path.includes(CODE_RUN.runId)))
+  serve(rig, { [LEDGER]: live, [UNIT]: UNIT_FILE, [CHANGED_PATH]: CHANGED, ...codeRunKept })
+  await rig.clock.set(Date.parse('2026-11-16T15:43:00.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+  const goal = row(await paneLines($), 'GOAL')
+  // pb publish opens the PR and keeps the publish run; the unit closes.
+  serve(rig, { [CHANGED_PATH]: CHANGED, ...KEPT_FILES })
+  await rig.clock.advance(POLL_MS * 2)
+  const lines = await paneLines($)
+
+  expect(goal, 'the kept code run\'s task, while the publish run drafts').toMatch(/^GOAL\s+Add order_total\(lines\) to cart\.py/)
+  expect(row(lines, 'STATUS'), 'signed off and published').toMatch(/^STATUS\s+✓ DONE · .*PR #7 opened/)
+  expect(row(lines, 'PR'), 'the PR the publish opened').toMatch(/^PR\s+opened · #7/)
+})
