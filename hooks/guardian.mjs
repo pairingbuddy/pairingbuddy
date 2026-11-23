@@ -41,7 +41,7 @@ const SOLO_ADDITIONS = [
 
 const isSoloMode = process.env.PAIRINGBUDDY_SOLO === "true";
 
-const input = JSON.parse(readFileSync("/dev/stdin", "utf8"));
+const input = JSON.parse(readFileSync(0, "utf8"));
 const sessionId = input.session_id || "unknown";
 const forceInject = process.argv[2] === "always";
 const stateDir = join(process.cwd(), ".pairingbuddy", "hooks");

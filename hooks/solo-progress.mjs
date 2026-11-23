@@ -16,7 +16,7 @@ if (!isSoloMode) {
 
 try {
 
-const input = JSON.parse(readFileSync("/dev/stdin", "utf8"));
+const input = JSON.parse(readFileSync(0, "utf8"));
 
 if (input.tool_name !== "Agent") {
   process.exit(0);

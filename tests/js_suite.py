@@ -54,6 +54,7 @@ JS_TEST_FILES = [
     "tests/js/glance-stop-names.test.mjs",
     "tests/js/glance-safeguards.test.mjs",
     "tests/js/harness.test.mjs",
+    "tests/js/hook-stdin.test.mjs",
     "tests/js/hooks-json.test.mjs",
     "tests/js/intake-contract.test.mjs",
     "tests/js/intake.test.mjs",
