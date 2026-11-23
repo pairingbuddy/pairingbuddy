@@ -268,8 +268,17 @@ test('an unchecked [HUMAN] task shows as waiting on a person, with its title', a
   ])
 })
 
-test('a ticked [HUMAN] task no longer shows as waiting', async () => {
-  throw new Error('not implemented: checked-human-task-not-waiting')
+const PLAN_WITH_DONE_HUMAN_TASK = PLAN_WITH_HUMAN_TASK.replace('- [ ] Task 1', '- [x] Task 1')
+
+// Same plan as the waiting test with the box ticked; with no unit.json and no PR: line a fully ticked unit reads as legacy.
+test('a ticked [HUMAN] task no longer shows as waiting', async ($, on) => {
+  const lines = await showPlan($, on, PLAN_WITH_DONE_HUMAN_TASK)
+
+  expect(lines, 'the ticked [HUMAN] task keeps its title with a tick and no "waiting on a person" ending').toEqual([
+    'PLAN     Tracer 1: Launch',
+    '           Tracer 1: Launch · legacy',
+    '             ✓ Task 1: [HUMAN] Approve the pricing page',
+  ])
 })
 
 test('an unchecked agent task is not shown as waiting on a person', async () => {
