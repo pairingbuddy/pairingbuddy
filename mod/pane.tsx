@@ -131,7 +131,7 @@ function topRows(view: View, columns: number) {
 }
 
 // The plan as a tree: each tracer, its units nested under it, each unit's tasks under that, in plan order.
-const TASK_MARKS = { ticked: '✓', unticked: '○' } as const
+const TASK_MARKS = { ticked: '✓', unticked: '○', inProgress: '▸' } as const
 const NEST = '  '
 const SHORT_SHA = 7
 const STATE_SEPARATOR = ' · '
@@ -164,7 +164,8 @@ const TO_DO = 'to do'
 const stateWords = (state: string | undefined, isOpen: boolean) => (state === 'open' && !isOpen ? TO_DO : state)
 
 // One unit's rows: its name and state, then what it is based on, the open unit's facts, its PR and its tasks.
-function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpen'], indent: string): Part[][] {
+// building: the title of the task the live run builds.
+function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpen'], indent: string, building?: string): Part[][] {
   const contentIndent = indent + NEST
   const isOpen = Boolean(open && open.unit === unit.unit)
   const words = stateWords(state, isOpen)
@@ -173,13 +174,16 @@ function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpe
     ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
     ...(open && isOpen ? openUnitLines(open, contentIndent) : []),
     ...prRows(unit.pr, contentIndent),
-    ...unit.tasks.map(task => [{ text: contentIndent + taskRow(task) }]),
+    ...unit.tasks.map(task => {
+      const inProgress = !task.checked && task.title === building
+      return [{ text: contentIndent + taskRow(task, inProgress), ...(inProgress ? { props: LIT } : {}) }]
+    }),
   ]
 }
 
-// A task's mark and title; an unticked [HUMAN] task also says it waits on a person.
-function taskRow(task: PlanUnit['tasks'][number]): string {
-  const mark = task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked
+// A task's mark and title: ▸ for the one being built, as STEPS marks its running step; an unticked [HUMAN] task also says it waits on a person.
+function taskRow(task: PlanUnit['tasks'][number], inProgress: boolean): string {
+  const mark = task.checked ? TASK_MARKS.ticked : inProgress ? TASK_MARKS.inProgress : TASK_MARKS.unticked
   const waiting = task.human && !task.checked ? `${STATE_SEPARATOR}${WAITING_ON_PERSON}` : ''
   return `${mark} ${task.title}${waiting}`
 }
@@ -197,12 +201,12 @@ function tracerGroups(units: PlanUnit[]): TracerGroup[] {
   return groups
 }
 
-function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen']): Part[][] {
+function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen'], building?: string): Part[][] {
   // The same unit the states resolved: a record naming only its tracer shows its facts under that tracer's first unit.
   const open = rawOpen && resolveOpenUnit(plan.units, rawOpen)
   const tree = tracerGroups(plan.units).flatMap(({ tracer, units }) => [
     ...(tracer ? [[{ text: tracer }]] : []),
-    ...units.flatMap(({ unit, index }) => unitRows(unit, states[index], open, tracer ? NEST : '')),
+    ...units.flatMap(({ unit, index }) => unitRows(unit, states[index], open, tracer ? NEST : '', building)),
   ])
   return [...tree, ...(plan.problems ?? []).map((problem: string) => [{ text: problem }])]
 }
@@ -219,7 +223,7 @@ function paneRows(view: View, columns: number) {
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
     ...rowLines('TESTS', testsParts(view, width)),
     ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
-    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen)) : []),
+    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen, view.planBuilding)) : []),
     ...(!view.plan && view.planOpen ? rowLines('PLAN', unitOnlyLines(view.planOpen, view.planOpenPr)) : []),
   ]
 }

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The plan task the live code run builds reads `▸`, lit as STEPS draws its running step (S6 run: Task 1 read `○` while it was being built, the same as a task not yet started).
+
 - A plan unit pb has not opened yet reads `to do`, not `open` (S6 run: `Discounted totals · open` showed before unit B was ever opened, since pb's "open" state means "has unticked boxes"). `open` now names only the unit pb has open.
 
 - The PLAN tree stays when no run is going (S6 run: it vanished at the [HUMAN] stop, after unit A published and at the end, so "waiting on a person" never showed when it mattered, and the last frame could not show both PRs). The ended view now draws the tree too, from the plan as it reads now, and with no ledger and no unit open the pane finds the plan by the last run pb kept under `reports/runs` that names one.

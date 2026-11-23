@@ -63,6 +63,8 @@ export type View = {
   planOpen?: OpenUnit
   // The open unit's PR link, shown with it when there is no plan.
   planOpenPr?: string
+  // The title of the plan task the live code run is building, which the tree marks in progress.
+  planBuilding?: string
 }
 
 type PlannedUnits = NonNullable<Inputs['plan']>['units']
@@ -285,9 +287,16 @@ function endedStatus(inputs: Inputs, end: { doneStatus?: string }): Status {
   return { state: 'quiet', what: `ended${STATUS_PART}not signed off` }
 }
 
+// The plan task a live code run builds: the title its ledger's plan names, else its task's first line. A publish run builds none.
+function buildingTask(ledger: Ledger): Pick<View, 'planBuilding'> {
+  if (!ledger || isPublishRun(ledger)) return {}
+  const title = ledger.plan?.title || ledger.task?.split('\n')[0]?.trim()
+  return title ? { planBuilding: title } : {}
+}
+
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
-  const view = { ...toned(buildPlainView(inputs)), ...planFields(inputs) }
+  const view = { ...toned(buildPlainView(inputs)), ...planFields(inputs), ...buildingTask(inputs.ledger) }
   const { ledger } = inputs
   if (!ledger) return view
   const { doneStatus: _done, ...end } = endState(inputs, view.running, true)

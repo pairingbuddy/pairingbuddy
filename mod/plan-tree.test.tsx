@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
-import { PLAN_FILE, PLAN_PATH, paneLines, setupPlanReplay, setupReplay } from './testing/replay'
+import { PANE, PLAN_FILE, PLAN_PATH, paneLines, setupPlanReplay, setupReplay } from './testing/replay'
+import { ACCENT_COLOUR } from './pane'
 import { LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
 
@@ -395,4 +396,26 @@ test('a unit with tasks left reads open only while it is the open unit, else to 
     '           Pay · open',
     '           Receipt · to do',
   ])
+})
+
+// The live code run is building Task 2: its row is marked as STEPS marks the step running now.
+test('the task the live run is building is marked in progress, lit as the running step', async ($, on) => {
+  const { rig } = setupPlanReplay(on, TWO_TRACERS)
+  rig.served.set(LEDGER_PATH, JSON.stringify({ ...SNAPSHOT_RUNNING, task: 'Task 2: Remove an item\n\nTake it out of the cart.', plan: { path: PLAN_PATH, title: 'Task 2: Remove an item' } }))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = planRows(await paneLines($))
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const texts: any[] = await pane.findAll({ type: 'Text' })
+  await pane.unmount()
+  const building = texts.find(node => String(node.text ?? '').includes('▸ Task 2: Remove an item'))
+
+  expect(lines.slice(1, 4), 'Task 2 reads ▸, as the running step does; Task 4, not started, keeps ○').toEqual([
+    '           Tracer 1: Cart',
+    '             ✓ Task 1: Add an item',
+    '             ▸ Task 2: Remove an item',
+  ])
+  expect(lines.at(-1)).toBe('             ○ Task 4: Send receipt')
+  expect(building?.props, 'in the accent, bold, as STEPS draws its ▸ line').toMatchObject({ color: ACCENT_COLOUR, bold: true })
 })
