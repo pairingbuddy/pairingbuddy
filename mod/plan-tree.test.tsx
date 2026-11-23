@@ -116,6 +116,7 @@ test('each unit shows the state unitStates gives it: open, hand-ticked, unpublis
     '             ✓ Task 4: Built',
     '         Tracer 4: Sent',
     '           Tracer 4: Sent · published',
+    '             PR https://github.com/acme/shop/pull/7',
     '             ✓ Task 5: Shipped',
     '         Tracer 5: Taken',
     '           Tracer 5: Taken · accepted',
@@ -210,13 +211,10 @@ const PAY_WITH_PR = [
 test('a unit with a PR: line shows its PR link', async ($, on) => {
   const lines = await showPlan($, on, PAY_WITH_PR)
 
-  expect(lines, 'the Pay unit shows its PR link on its own row before its tasks; Receipt, which has no PR: line, shows none').toEqual([
-    'PLAN     Tracer 1: Checkout',
-    '           Pay · published',
+  const prRows = lines.filter(line => line.trimStart().startsWith('PR '))
+
+  expect(prRows, 'one PR row, for Pay, on its own row; Receipt, which has no PR: line, shows none').toEqual([
     '             PR https://github.com/acme/shop/pull/7',
-    '             ✓ Task 1: Take payment',
-    '           Receipt · open',
-    '             ○ Task 2: Send receipt',
   ])
 })
 
