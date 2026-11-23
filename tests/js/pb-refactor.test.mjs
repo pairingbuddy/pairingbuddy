@@ -185,6 +185,18 @@ describe("pb checkpoint --step refactor", IN_PARALLEL, () => {
     assert.equal(repo.ledger().checkpoints, undefined, "a refused step is no evidence");
   });
 
+  test("the refusal names each failing test and gives its output, so the next try knows what broke", () => {
+    const repo = makeRepo({ rows: [row("t1"), row("t2")], perTest: { t1: closed, t2: closed }, outcomes: { "tests/a.mjs::t1": 1, "tests/a.mjs::t2": 0 } });
+    repo.write("src.mjs", "broken code\n");
+    fixed(repo, codeKey("t2"), ["src.mjs"]);
+
+    const { stderr } = refactor(repo, codeKey("t2"));
+
+    assert.match(stderr, /test t1 \(t1 in tests\/a\.mjs\) failed with exit code 1/, stderr);
+    assert.match(stderr, /ran tests\/a\.mjs::t1/, "its output excerpt follows");
+    assert.doesNotMatch(stderr, /test t2 /, "a passing test is not named");
+  });
+
   test("a covered test of the task runs too, and a test still at its placeholder does not", () => {
     const repo = makeRepo({ rows: [row("t1"), row("t2"), row("t3")], perTest: { t1: closed, t2: coveredRow, t3: { selector: {}, red: { done: true } } }, outcomes: { "tests/a.mjs::t1": 0, "tests/a.mjs::t2": 0, "tests/a.mjs::t3": 1 } });
     repo.write("src.mjs", "cleaner code\n");

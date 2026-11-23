@@ -462,6 +462,15 @@ describe("the tests must pass", IN_PARALLEL, () => {
     assert.equal(repo.ledger().stop, null, "a failed test is a refusal, not a stop");
   });
 
+  test("the refusal names the failing runner and gives its output", () => {
+    const repo = changedRepo({ tests: "console.log('expected 3, got 4'); process.exit(1);" });
+
+    const { stderr } = pb(repo, configArgs());
+
+    assert.match(stderr, /runner fake failed with exit code 1/, stderr);
+    assert.match(stderr, /expected 3, got 4/, "its output follows");
+  });
+
   test("a changed test-config commits nothing and sets the run waiting on the human", () => {
     const repo = changedRepo();
     const seed = repo.head();

@@ -782,7 +782,7 @@ async function requirePassingTests(root, path, { configHash, stage }) {
   const plans = fullSuitePlans(readTestConfig(root, configHash));
   const record = await suiteRecord(plans, root, stage);
   updateLedger(path, (ledger) => ({ ...ledger, tests: { ...ledger.tests, checkpoint: record } }));
-  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed: exit codes ${record.runs.map(({ exitCode }) => exitCode).join(", ")}`);
+  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${failedRunnersText(record.runs)}`);
 }
 
 function assertCommitAllowed(step, key, ledger) {
@@ -967,7 +967,9 @@ const provesNothing = (step, exitCode) => (step === "red" && exitCode === 0 ? ",
 
 // How much of a run's output a refusal or a rollback note keeps: the tail, where the failure is.
 const EXCERPT_TAIL = 300;
-const excerptTail = (excerpt) => excerpt.slice(-EXCERPT_TAIL);
+const excerptTail = (excerpt, chars = EXCERPT_TAIL) => excerpt.slice(-chars);
+// A failing earlier test's tail: long enough to hold the assertion past a runner's closing summary.
+const FAILED_TEST_TAIL = 1500;
 
 const stepNotMet = (step, id, { exitCode, excerpt }) => `test ${id} is not ${step.toUpperCase()}: exit ${exitCode}${provesNothing(step, exitCode)}, so nothing was committed. ${excerptTail(excerpt)}`;
 
@@ -1020,11 +1022,26 @@ const isClosedCycle = ({ red, green, covered }) => covered?.done === true || (re
 // Every test of the task a cycle closed, each by its own selector: the full suite would run the placeholders still
 // waiting for their RED, which fail by design. A failed run is evidence, so it lands in the ledger before the refusal.
 async function requireClosedTestsPass({ root, path, ledger }, config, rows) {
-  const plans = rows.filter(({ test_id: id }) => isClosedCycle(perTestOf(ledger, id))).map((row) => testPlan(config, row));
+  const closedRows = rows.filter(({ test_id: id }) => isClosedCycle(perTestOf(ledger, id)));
+  const plans = closedRows.map((row) => testPlan(config, row));
   const head = headOf(root);
   const record = { ...(await suiteRecord(plans, root, ledger.stage)), head };
   updateLedger(path, (current) => ({ ...current, tests: { ...current.tests, refactor: record } }));
-  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed: exit codes ${record.runs.map(({ exitCode }) => exitCode).join(", ")}`);
+  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${failedTestsText(closedRows, record.runs)}`);
+}
+
+// Each failing runner of a full-suite run, with its exit code and its output.
+const failedRunnersText = (runs) =>
+  runs.filter(({ exitCode }) => exitCode !== 0).map((run) => `runner ${run.runner} failed with ${run.timedOut ? "a timeout" : `exit code ${run.exitCode}`}. Its output:\n${excerptTail(run.excerpt ?? "", FAILED_TEST_TAIL)}`).join("\n\n");
+
+// Each failing test by its id, its function and file, its exit code and its output, so whoever reads the refusal (the
+// next agent's try, the human) knows which test broke and why. rows and runs are in the same order.
+function failedTestsText(rows, runs) {
+  return runs
+    .map((run, i) => ({ run, row: rows[i] }))
+    .filter(({ run }) => run.exitCode !== 0)
+    .map(({ run, row }) => `test ${row.test_id} (${row.test_function} in ${row.test_file}) failed with ${run.timedOut ? "a timeout" : `exit code ${run.exitCode}`}. Its output:\n${excerptTail(run.excerpt ?? "", FAILED_TEST_TAIL)}`)
+    .join("\n\n");
 }
 
 // One fix group of a cycle's refactor. It follows the cycle's GREEN, and every test the task has closed must still pass.
