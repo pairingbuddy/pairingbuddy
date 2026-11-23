@@ -57,8 +57,8 @@ export type Published = { url?: string; result?: string; codeRunId?: string | nu
 export type TaskFacts = { spend: Spend; startedAt: string | null; endedAt: string; waited?: number; calls: Call[]; prUrl: string | null }
 // earlierAgents: what the live run's task spent in agents in its earlier runs, the ones pb kept; earlier: all they spent.
 // planUnit: the open unit the PLAN tree reads, when it is not `unit` (an ended run's view keeps the unit it last saw, the tree the one open now).
-// What a live run's task spent in its earlier runs pb kept: agents and tokens summed, when the first began, and its waits.
-export type EarlierSpend = { agents: number; tokens: number; tokensKnown: boolean; startedAt: string | null; waited: number }
+// What a live run's task spent in its earlier runs pb kept: agents and tokens summed, when the first began, its waits, and the returns they kept.
+export type EarlierSpend = { agents: number; tokens: number; tokensKnown: boolean; startedAt: string | null; waited: number; calls: Call[] }
 export type Inputs = { earlierAgents?: number; earlier?: EarlierSpend | null; plan?: PlanRead | null; planPath?: string | null; planUnit?: Unit | null; task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.

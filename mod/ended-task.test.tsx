@@ -161,3 +161,21 @@ test('live-publish-run-spent-counts-the-kept-code-run-time-and-tokens-too', asyn
 
   expect(spent, 'the code run\'s 32 agents, its start at 15:17:53 and its 27779 tokens, with the publish run\'s none yet').toBe('SPENT    32 agents · 25:08 · 27779 output tokens')
 })
+
+// Scenario S6: REVIEW read the PR draft's review while unit A's PR was drafted, and the code review once unit B's draft was
+// done. One rule: once the code is signed off, REVIEW is the code review, in the publish run too, read from the kept code run
+// after a reload.
+test('live-publish-run-review-is-the-code-review-its-code-run-kept', async ($, on) => {
+  const rig = setupReplay(on)
+  const live = { ...PUBLISH_RUN, stage: { ...PUBLISH_RUN.stage, status: 'active' }, stages: [], spend: { agents: 0, tokens: 0, tokensKnown: true } }
+  const codeRunKept = Object.fromEntries(Object.entries(KEPT_FILES).filter(([path]) => path.includes(CODE_RUN.runId)))
+  serve(rig, { [LEDGER]: live, [UNIT]: UNIT_FILE, [CHANGED_PATH]: CHANGED, ...codeRunKept })
+  await rig.clock.set(Date.parse('2026-11-16T15:43:00.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = await paneLines($)
+  const review = lines.slice(lines.findIndex(line => line.startsWith('REVIEW')))
+
+  expect(review[0], 'the safety-net review, not the PR draft\'s').toBe('REVIEW   review: 1 issue, all left as is')
+})

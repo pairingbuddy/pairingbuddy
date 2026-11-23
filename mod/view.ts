@@ -257,11 +257,15 @@ const goalText = ({ codeRun, ledger }: Inputs) => goalOf(codeRun?.task ?? ledger
 
 // The end rows once the task is done; while no stage runs, the work is finished and its review is told as one summary.
 // live: a run's ledger is read now. Done, STATUS says so with the goal's verdict and the pull request.
+// REVIEW's one rule: once the code is signed off, it is the code review, in the publish run too; the PR draft's own review
+// is not shown in its place.
 function endState(inputs: Inputs, running: boolean, live: boolean): Pick<View, 'end' | 'endRound' | 'done'> & { doneStatus?: string } {
-  const round = safetyNetRound({ codeRun: inputs.codeRun, calls: inputs.calls, spawns: inputs.spawns })
+  // The earlier runs' kept returns stand in for those a reload emptied.
+  const calls = [...(inputs.earlier?.calls ?? []), ...(inputs.calls ?? [])]
+  const round = safetyNetRound({ codeRun: inputs.codeRun, calls, spawns: inputs.spawns })
   const pr = prOf(inputs)
   const end = endRows({ codeRun: inputs.codeRun, changed: inputs.changed, pr }) as EndRows
-  const finished = inputs.codeRun?.taskEndPassed === true && !running && round !== undefined
+  const finished = inputs.codeRun?.taskEndPassed === true && (!running || isPublishRun(inputs.ledger)) && round !== undefined
   const unitOpen = inputs.unitOpen ?? Boolean(inputs.unit)
   const done = isUnitDone({ live, codeRun: inputs.codeRun, unitOpen, pr })
   return { end, ...(finished ? { endRound: round } : {}), done, ...(done ? { doneStatus: doneStatus({ codeRun: inputs.codeRun, round, pr }) } : {}) }
@@ -333,7 +337,7 @@ function keptTask(inputs: Inputs): Inputs {
   const { task } = inputs
   if (!task) return inputs
   const end = Date.parse(task.endedAt)
-  return { ...inputs, ledger: inputs.ledger && { ...inputs.ledger, spend: task.spend }, spawns: [], calls: task.calls, since: task.startedAt ?? inputs.since, waited: task.waited, prUrl: inputs.prUrl ?? task.prUrl, ...(Number.isNaN(end) ? {} : { now: end }) }
+  return { ...inputs, ledger: inputs.ledger && { ...inputs.ledger, spend: task.spend }, spawns: [], calls: task.calls, earlier: null, since: task.startedAt ?? inputs.since, waited: task.waited, prUrl: inputs.prUrl ?? task.prUrl, ...(Number.isNaN(end) ? {} : { now: end }) }
 }
 
 function buildPlainView(inputs: Inputs): View {

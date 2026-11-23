@@ -84,6 +84,7 @@ async function endedTask($: EngineInterface, state: PollerState, polled: Polled)
 
 // What the live run's task spent before it: the runs of its unit pb kept, which a reload does not empty. SPENT adds their
 // agents, tokens and waits to the live run's, and counts its time from the first of them, so all three cover the whole task.
+// Their returns stand in for the session's, which a reload empties, so the code review reads in the publish run.
 // Null with no run live or no earlier run kept.
 async function earlierSpend($: EngineInterface, state: PollerState, polled: Polled): Promise<EarlierSpend | null> {
   const ledger = polled.ledger as { runId?: string } | null
@@ -92,7 +93,7 @@ async function earlierSpend($: EngineInterface, state: PollerState, polled: Poll
   const earlier = runs.filter(run => run.ledger !== ledger && run.ledger?.runId !== ledger.runId)
   if (earlier.length === 0) return null
   const { agents, tokens, tokensKnown } = taskSpend(earlier)
-  return { agents, tokens, tokensKnown, startedAt: (runStart(earlier[0].ledger) as string | undefined) ?? null, waited: taskWaited(earlier, undefined) }
+  return { agents, tokens, tokensKnown, startedAt: (runStart(earlier[0].ledger) as string | undefined) ?? null, waited: taskWaited(earlier, undefined), calls: earlier.flatMap(run => run.calls) }
 }
 
 // The earlier of two run starts, either of which may be unknown.

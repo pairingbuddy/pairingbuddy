@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- REVIEW follows one rule: once the code is signed off it is the code review, in the publish run too (S6 run: it showed the PR draft's review while unit A's PR was drafted, and the code review once unit B's draft was done). After a reload the code review is read from the code run pb kept. The PR draft's review stays in the report.
+
 - SPENT's agents, time and tokens cover one scope, the whole task (S6 run: while unit A's PR was drafted, the agents were both runs' but the time only the publish run's, and before unit B's publish the tokens were only the PR draft's). A live run now adds the tokens and waits of its unit's earlier kept runs, as it already added their agents, and its time counts from the first of them, as the ended view does. A session start no longer resets that start.
 
 - The PR row belongs to one unit (S6 run, with the mod's state kept across sessions: it read `opened · #1 feat: Add discounted_total…`, unit A's number with unit B's title). A pb publish whose code run the pane did not know counted as every later code run's. It now counts only for the unit that was open when it ran.
