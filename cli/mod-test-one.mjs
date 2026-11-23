@@ -4,6 +4,7 @@
 // row of that name in that file passed (a parametrized test's cases are `<name>: <case>`), and 1 when one failed or none
 // was found. With no arguments it is the whole suite, with the suite's own exit code.
 import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { normalize } from "node:path";
 
 const FILE_HEAD = /^(\S.*\.test\.[cm]?[jt]sx?):$/;
@@ -26,8 +27,19 @@ export function rowsFor(output, file, name) {
   return rows;
 }
 
-function main([file, name]) {
+// claude plugin test leaves a Vite cache in node_modules/.vite, untracked, which makes the tree dirty for pb unit open. A
+// cache this run made goes again, and so does a node_modules it made that holds nothing else; one there before stays.
+function runSuite() {
+  const hadModules = existsSync("node_modules");
+  const hadCache = existsSync("node_modules/.vite");
   const run = spawnSync("claude", ["plugin", "test", "."], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  if (!hadCache) rmSync("node_modules/.vite", { recursive: true, force: true });
+  if (!hadModules && existsSync("node_modules") && readdirSync("node_modules").length === 0) rmSync("node_modules", { recursive: true, force: true });
+  return run;
+}
+
+function main([file, name]) {
+  const run = runSuite();
   if (run.error) {
     process.stderr.write(`mod-test-one: cannot run claude: ${run.error.code ?? run.error.message}\n`);
     return 1;

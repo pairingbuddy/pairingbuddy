@@ -60,3 +60,6 @@ tests/smoke/recordings/
 
 # Progress mod mockups: only the chosen round keeps its images; rerun src/mocks.py for the rest
 docs/design/progress-mod/round-[1-3]/*.png
+
+# Mod test runs (claude plugin test) leave a Vite cache
+node_modules/

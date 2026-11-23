@@ -4,7 +4,7 @@ import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,11 +32,13 @@ const SUITE = [
 ].join("\n");
 
 // A project dir with a fake claude that logs its argv and prints `output`, exiting `code`.
-function project({ output = SUITE, code = 1 } = {}) {
+// cache: the fake also leaves node_modules/.vite behind, as claude plugin test does.
+function project({ output = SUITE, code = 1, cache = false } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "pb-mod-one-")));
   tempDirs.push(dir);
   const fake = join(dir, "claude");
-  writeFileSync(fake, `#!/bin/sh\necho "$@" > ${JSON.stringify(join(dir, "argv.txt"))}\ncat <<'PB_EOF'\n${output}\nPB_EOF\nexit ${code}\n`);
+  const leave = cache ? "mkdir -p node_modules/.vite/deps\ntouch node_modules/.vite/deps/x.js\n" : "";
+  writeFileSync(fake, `#!/bin/sh\necho "$@" > ${JSON.stringify(join(dir, "argv.txt"))}\n${leave}cat <<'PB_EOF'\n${output}\nPB_EOF\nexit ${code}\n`);
   chmodSync(fake, 0o755);
   return dir;
 }
@@ -84,5 +86,23 @@ describe("one mod test", () => {
 
     assert.equal(result.code, 3);
     assert.match(result.stdout, /4 pass/);
+  });
+
+  test("the Vite cache the suite leaves is removed, so the tree stays clean", () => {
+    const dir = project({ cache: true });
+
+    helper(dir, "mod/pane.test.tsx", "the pane opens");
+
+    assert.equal(existsSync(join(dir, "node_modules")), false, "no node_modules is left behind");
+  });
+
+  test("a node_modules that was there before stays, and only a cache this run made goes", () => {
+    const dir = project({ cache: true });
+    mkdirSync(join(dir, "node_modules", "left-pad"), { recursive: true });
+
+    helper(dir, "mod/pane.test.tsx", "the pane opens");
+
+    assert.equal(existsSync(join(dir, "node_modules", "left-pad")), true);
+    assert.equal(existsSync(join(dir, "node_modules", ".vite")), false);
   });
 });
