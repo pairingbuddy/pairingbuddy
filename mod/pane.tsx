@@ -1,5 +1,6 @@
 import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
 import { endReviewLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
+import { resolveOpenUnit } from './view'
 import type { RowTones, Status, StatusState, Tags, View } from './view'
 
 // Every row is always drawn, in this order, its label in a column this wide; a row with nothing to show reads EMPTY.
@@ -129,6 +130,76 @@ function topRows(view: View, columns: number) {
   return [...goalRows(view, columns), ...rowLines('STATUS', statusLines(view.status, width), FIRST_GLANCE_LABEL)]
 }
 
+// The plan as a tree: each tracer, its units nested under it, each unit's tasks under that, in plan order.
+const TASK_MARKS = { ticked: '✓', unticked: '○' } as const
+const NEST = '  '
+const SHORT_SHA = 7
+const STATE_SEPARATOR = ' · '
+const WAITING_ON_PERSON = 'waiting on a person'
+// The open unit's branch, base and commits, each on its own line.
+function openUnitLines(open: NonNullable<View['planOpen']>, indent: string): Part[][] {
+  const facts = [
+    ...(open.branch ? [`branch ${open.branch}`] : []),
+    ...(open.base ? [`base ${open.base}`] : []),
+    ...(open.commits ?? []).map(sha => `commit ${sha.slice(0, SHORT_SHA)}`),
+  ]
+  return facts.map(text => [{ text: `${indent}${text}` }])
+}
+
+// A unit's PR link as a row, or none.
+function prRows(pr: string | undefined, indent: string): Part[][] {
+  return pr ? [[{ text: `${indent}PR ${pr}` }]] : []
+}
+
+// With no plan, the open unit alone: its facts and its PR link.
+function unitOnlyLines(open: NonNullable<View['planOpen']>, pr?: string): Part[][] {
+  return [...openUnitLines(open, ''), ...prRows(pr, '')]
+}
+
+type PlanUnit = NonNullable<View['plan']>['units'][number]
+
+// One unit's rows: its name and state, then what it is based on, the open unit's facts, its PR and its tasks.
+function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpen'], indent: string): Part[][] {
+  const contentIndent = indent + NEST
+  return [
+    [{ text: `${indent}${unit.unit}${state ? `${STATE_SEPARATOR}${state}` : ''}` }],
+    ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
+    ...(open && open.unit === unit.unit ? openUnitLines(open, contentIndent) : []),
+    ...prRows(unit.pr, contentIndent),
+    ...unit.tasks.map(task => [{ text: contentIndent + taskRow(task) }]),
+  ]
+}
+
+// A task's mark and title; an unticked [HUMAN] task also says it waits on a person.
+function taskRow(task: PlanUnit['tasks'][number]): string {
+  const mark = task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked
+  const waiting = task.human && !task.checked ? `${STATE_SEPARATOR}${WAITING_ON_PERSON}` : ''
+  return `${mark} ${task.title}${waiting}`
+}
+
+// Consecutive units of one tracer form a group; a unit under no tracer is its own group, unindented.
+type TracerGroup = { tracer: string | null | undefined; units: { unit: PlanUnit; index: number }[] }
+
+function tracerGroups(units: PlanUnit[]): TracerGroup[] {
+  const groups: TracerGroup[] = []
+  for (const [index, unit] of units.entries()) {
+    const last = groups.at(-1)
+    if (last && unit.tracer && last.tracer === unit.tracer) last.units.push({ unit, index })
+    else groups.push({ tracer: unit.tracer, units: [{ unit, index }] })
+  }
+  return groups
+}
+
+function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen']): Part[][] {
+  // The same unit the states resolved: a record naming only its tracer shows its facts under that tracer's first unit.
+  const open = rawOpen && resolveOpenUnit(plan.units, rawOpen)
+  const tree = tracerGroups(plan.units).flatMap(({ tracer, units }) => [
+    ...(tracer ? [[{ text: tracer }]] : []),
+    ...units.flatMap(({ unit, index }) => unitRows(unit, states[index], open, tracer ? NEST : '')),
+  ])
+  return [...tree, ...(plan.problems ?? []).map((problem: string) => [{ text: problem }])]
+}
+
 // The details under the rule, read after the first glance.
 function paneRows(view: View, columns: number) {
   const { rows, rowTones = {} as RowTones } = view
@@ -141,6 +212,8 @@ function paneRows(view: View, columns: number) {
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
     ...rowLines('TESTS', testsParts(view, width)),
     ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
+    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen)) : []),
+    ...(!view.plan && view.planOpen ? rowLines('PLAN', unitOnlyLines(view.planOpen, view.planOpenPr)) : []),
   ]
 }
 

@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SPENT counts the whole task's agents after a reload (live T4d run: the builder was switched while the run was stopped, and SPENT went from `193 agents` to `11 agents` while its time carried on). The live count was the session's own spawns, which a new session empties; the time comes from the ledger, so it survived. The count is now the agents the ledger recorded for every closed stage attempt, plus the kept earlier runs of the same unit (the code run, while the publish run is live), plus the session's spawns of the stage attempt running now.
 
+- The pane shows where the whole plan stands: a PLAN tree of the tracer bullets and their tasks, with each unit, its commits, base, PR link and publish state, and `[HUMAN]` tasks marked as waiting on a person. The mod polls `unit.json` and the plan MD, and a new `shared-node/plan-text.mjs` reads the plan text. With no plan the pane keeps its usual rows.
+
 ## [0.8.0-exp.2] - 2026-11-23
 
 - The runner runs its own commands whatever a relayed user request says. The Claude Code workflow harness hands every workflow agent the human's last message, marked as overriding the computed task; in the T4d run that message said to clear the stage with `pb stage fail`, and the fix's checkpoint runner ran that. `agents/runner.md` now says that request is the human talking to the main session about the run as a whole, never changes which commands the runner runs, and that a runner whose commands seem to conflict with it runs them anyway and looks for no others.

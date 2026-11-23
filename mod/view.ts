@@ -4,10 +4,11 @@ import { isStageActive, stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
 import { lensRound } from '../shared-node/lens-round.mjs'
 import type { LensRound } from '../shared-node/lens-round.mjs'
+import { unitStates } from '../shared-node/plan.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { cycleMarker, progressRow, shortName, stepAge, testCounts } from '../shared-node/now-building.mjs'
 import { doneStatus, endRows, goalOf, isUnitDone, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
-import type { Inputs, Ledger } from './inputs'
+import type { Inputs, Ledger, OpenUnit } from './inputs'
 import { STATUS_LOOKS } from './pane'
 
 export type Tone = 'error' | 'warning' | 'dim'
@@ -54,6 +55,42 @@ export type View = {
   // The BUILT (done) and PR rows, each a dash until the task is done; endRound, once the work is finished, is the review the REVIEW row sums up.
   end: EndRows
   endRound?: LensRound
+  // The plan the ledger names, parsed, for the PLAN tree; absent when there is none.
+  plan?: Inputs['plan']
+  // The state of each plan unit, by position (shared-node/plan.mjs unitStates).
+  planStates?: string[]
+  // The open unit's record, whose branch, base and commits the PLAN tree shows under the plan unit it names.
+  planOpen?: OpenUnit
+  // The open unit's PR link, shown with it when there is no plan.
+  planOpenPr?: string
+}
+
+type PlannedUnits = NonNullable<Inputs['plan']>['units']
+
+// A unit shows a PR or a [HUMAN] task: something for its state to say even with no unit record.
+function hasStateToTell(units: PlannedUnits): boolean {
+  return units.some(planned => planned.pr || planned.tasks.some(task => task.human))
+}
+
+// A record names its unit, or only its tracer: then it is the first plan unit under that tracer.
+export function resolveOpenUnit(units: PlannedUnits, open: NonNullable<NonNullable<Inputs['unit']>['open']>) {
+  const isPlanned = units.some(planned => planned.unit === open.unit)
+  const underTracer = isPlanned || !open.tracer ? undefined : units.find(planned => planned.tracer === open.tracer)
+  return underTracer ? { ...open, unit: underTracer.unit } : open
+}
+
+// Each plan unit's state, in plan order, once a unit record stands to read it against; else none.
+function planStatesOf({ plan, unit, ledger }: Inputs): string[] | undefined {
+  if (!plan) return undefined
+  const open = unit?.open
+  const planPath = ledger?.plan?.path
+  if (open) return unitStates(plan.units, { plan: planPath, openUnit: resolveOpenUnit(plan.units, open) })
+  return hasStateToTell(plan.units) ? unitStates(plan.units, { plan: planPath, openUnit: undefined }) : undefined
+}
+
+// What the PLAN tree reads: the plan, each unit's state, and the open unit with its PR link.
+function planFields(inputs: Inputs): Pick<View, 'plan' | 'planStates' | 'planOpen' | 'planOpenPr'> {
+  return { plan: inputs.plan, planStates: planStatesOf(inputs), planOpen: inputs.unit?.open, planOpenPr: inputs.unit?.prUrl }
 }
 
 export type EndRows = Record<'done' | 'pr', string>
@@ -244,7 +281,7 @@ function endedStatus(inputs: Inputs, end: { doneStatus?: string }): Status {
 
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
-  const view = toned(buildPlainView(inputs))
+  const view = { ...toned(buildPlainView(inputs)), ...planFields(inputs) }
   const { ledger } = inputs
   if (!ledger) return view
   const { doneStatus: _done, ...end } = endState(inputs, view.running, true)

@@ -5,6 +5,7 @@ import { standingGateOff, withGateOff } from '../shared-node/gate-off.mjs'
 import { withStranded } from '../shared-node/stranded.mjs'
 import { readLabel } from '../shared-node/labels.mjs'
 import { boxesUnder, humanTasksLeft } from '../shared-node/plan-text.mjs'
+import { parsePlan } from '../shared-node/plan.mjs'
 
 const TESTS = '.pairingbuddy/tests.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
@@ -41,7 +42,9 @@ export type Call = { agentId?: unknown; at?: string; input: Record<string, unkno
 // unit: the open unit, by its identity (branch and base) and its last ended task's steps; since: when the unit's first run began.
 // prUrl: the pull request the unit record names, once pb publish has opened it.
 // humanLeft: the unit's [HUMAN] tasks its plan still has unticked, which a person does before pb publishes the unit.
-export type Unit = { key: string; taskStages: string[]; prUrl?: string; humanLeft?: string[] }
+// open: the unit record as unitStates reads it, to tell each plan unit's state.
+export type OpenUnit = { unit?: string; plan?: string; tracer?: string; tasks: { title: string }[]; branch?: string; base?: string; commits?: string[] }
+export type Unit = { key: string; taskStages: string[]; prUrl?: string; humanLeft?: string[]; open?: OpenUnit }
 // What the pane keeps of the unit's last code run (shared-node/end-state.mjs codeRunOf), so the end state outlives its ledger.
 export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; testsPassing: number; perTest?: Record<string, { green?: { passed: boolean }; covered?: { done: boolean } }>; safetyNet: { attempt?: number; startedAt?: string } | null; rollbacks: unknown[] }
 // What the last pb publish printed: the url it opened, or the result when it opened none; codeRunId ties it to the code run it published.
@@ -52,7 +55,7 @@ export type Published = { url?: string; result?: string; codeRunId?: string | nu
 // waited: the seconds its runs waited on the human, which SPENT leaves out.
 export type TaskFacts = { spend: Spend; startedAt: string | null; endedAt: string; waited?: number; calls: Call[]; prUrl: string | null }
 // earlierAgents: what the live run's task spent in agents in its earlier runs, the ones pb kept.
-export type Inputs = { earlierAgents?: number; task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
+export type Inputs = { earlierAgents?: number; plan?: PlanRead | null; task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {
@@ -193,7 +196,14 @@ export function unitOf(file: unknown): Unit | null {
   const last = tasks.at(-1) as { stages?: unknown } | undefined
   const stages = Array.isArray(last?.stages) ? last.stages.filter((name): name is string => typeof name === 'string') : []
   const url = ((file as { pr?: { url?: unknown } }).pr)?.url
-  return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}) }
+  const { unit, plan, tracer, base, commits } = file as { unit?: unknown; plan?: unknown; tracer?: unknown; base?: unknown; commits?: unknown }
+  const titles = tasks.map(task => (task as { title?: unknown })?.title).filter((title): title is string => typeof title === 'string')
+  const text = (value: unknown) => (typeof value === 'string' ? value : undefined)
+  const open: OpenUnit = {
+    unit: text(unit), plan: text(plan), tracer: text(tracer), tasks: titles.map(title => ({ title })),
+    branch, base: text(base), commits: Array.isArray(commits) ? commits.filter((sha): sha is string => typeof sha === 'string') : [],
+  }
+  return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}), open }
 }
 
 // A plan path the unit record names is read only inside the repo: relative, with no ".." part.
@@ -219,23 +229,39 @@ export function changedOf(file: unknown): string[] | null {
   return file.map(entry => (entry as { path?: unknown })?.path).filter((path): path is string => typeof path === 'string' && path !== '')
 }
 
-export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; unit: Unit | null; changed: string[] | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null; earlierAgents?: number }
+export type PlanRead = ReturnType<typeof parsePlan>
+
+// The plan MD the ledger names, parsed, or null when the ledger names none or the file is missing, empty or unreadable. Never throws.
+async function readPlan($: EngineInterface, ledger: Ledger | null): Promise<PlanRead | null> {
+  const path = ledger?.plan?.path
+  if (typeof path !== 'string' || path === '') return null
+  try {
+    const text = await $.fs.read(`${await $.session.root()}/${path}`)
+    return text.trim() === '' ? null : parsePlan(text)
+  } catch {
+    return null
+  }
+}
+
+export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; unit: Unit | null; changed: string[] | null; plan?: PlanRead | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null; earlierAgents?: number }
 
 // The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
 // spawns: this session's, so a stage its own agents are still running never reads as stranded.
 export async function pollInputs($: EngineInterface, spawns: Spawn[] = []): Promise<Polled> {
-  const [{ ledger, tests, testsComplete, now }, unitFile, changedFile] = await Promise.all([readInputsAndTests($, spawns), readJson($, UNIT), readJson($, CHANGED)])
-  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: await withHumanLeft($, unitOf(unitFile), unitFile), changed: changedOf(changedFile) }
+  const { ledger, tests, testsComplete, now } = await readInputsAndTests($, spawns)
+  // The plan is named by the ledger, so it is read once the ledger is.
+  const [plan, unitFile, changedFile] = await Promise.all([readPlan($, ledger ?? null), readJson($, UNIT), readJson($, CHANGED)])
+  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: await withHumanLeft($, unitOf(unitFile), unitFile), changed: changedOf(changedFile), plan }
 }
 
-type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null; earlierAgents?: number } | null
+type PolledState = { plan?: PlanRead | null; ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null; earlierAgents?: number } | null
 
 // The one place the atom's loosely typed ledger is narrowed; null until the first poll, which reads as idle.
 export function fromPolled(polled: PolledState, spawns: Spawn[], calls: Call[] = [], published: Published | null = null): Inputs {
   return {
     ledger: (polled?.ledger ?? undefined) as Ledger, spawns, calls, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined,
     unit: polled?.unit ?? null, since: polled?.since ?? undefined,
-    changed: polled?.changed ?? null, codeRun: polled?.codeRun ?? null, prUrl: polled?.prUrl ?? null, published, task: polled?.task ?? null, earlierAgents: polled?.earlierAgents ?? 0,
+    plan: polled?.plan ?? null, changed: polled?.changed ?? null, codeRun: polled?.codeRun ?? null, prUrl: polled?.prUrl ?? null, published, task: polled?.task ?? null, earlierAgents: polled?.earlierAgents ?? 0,
   }
 }
 
