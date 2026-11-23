@@ -288,15 +288,16 @@ function unknownLabels(spawns) {
 // agents: the agents the task's runs recorded, once they have ended; otherwise the ledger's and the running attempt's spawns.
 // earlierAgents: what the task's earlier runs recorded (the kept code run, while the publish run is live), added to those.
 // waited: the seconds the time spent waited on the human, left out of it; by default the ledger's own waits (waitedSeconds).
+// earlierWaited: the seconds the task's earlier runs waited (since reaching back to their start), left out too.
 // pausedAt: when a live run stopped working (pausedAtOf), in ms; SPENT's time stops there and says "paused".
-export function glance({ ledger, spawns, agents, earlierAgents, tests, now, ranFor, since, waited, pausedAt, testsComplete = false, leaveOutUnknown = false } = {}) {
+export function glance({ ledger, spawns, agents, earlierAgents, tests, now, ranFor, since, waited, earlierWaited = 0, pausedAt, testsComplete = false, leaveOutUnknown = false } = {}) {
   const list = Array.isArray(spawns) ? spawns : [];
   const names = Array.isArray(tests) ? tests : [];
   const step = currentStep(list, stageOf(ledger));
   // A pause before the run began says nothing of it (a file time from another clock, say), so the clock runs on.
   const paused = Number.isFinite(pausedAt) && !(pausedAt < Date.parse(since ?? runStart(ledger)));
   const until = paused && Number.isFinite(now) ? Math.min(now, pausedAt) : now;
-  const wait = Number.isFinite(waited) ? waited : waitedSeconds(ledger, until);
+  const wait = (Number.isFinite(waited) ? waited : waitedSeconds(ledger, until)) + (Number.isFinite(earlierWaited) ? earlierWaited : 0);
   const spent = { ledger, spawns: list, agents, earlierAgents, now: until, since, waited: wait, paused };
   const rows = {
     now: nowRow(step, names, ledger, testsComplete),

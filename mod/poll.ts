@@ -1,6 +1,6 @@
 import type { EngineInterface, PluginOptions } from 'claude-code'
-import { pollInputs, readKeptRuns, type KeptRun, type Polled, type TaskFacts } from './inputs'
-import { endedTaskFacts, taskRuns, taskSpend } from '../shared-node/task-runs.mjs'
+import { pollInputs, readKeptRuns, type EarlierSpend, type KeptRun, type Polled, type TaskFacts } from './inputs'
+import { endedTaskFacts, taskRuns, taskSpend, taskWaited } from '../shared-node/task-runs.mjs'
 import { alertOn, openOnRunStart } from './alert'
 import { runStart } from '../shared-node/glance.mjs'
 import { codeRunOf, isUnitDone } from '../shared-node/end-state.mjs'
@@ -82,12 +82,23 @@ async function endedTask($: EngineInterface, state: PollerState, polled: Polled)
   return endedTaskFacts(runs) as TaskFacts | null
 }
 
-// What the live run's task spent in agents before it: the runs of its unit pb kept, which a reload does not empty. 0 with no run live.
-async function earlierAgents($: EngineInterface, state: PollerState, polled: Polled): Promise<number> {
+// What the live run's task spent before it: the runs of its unit pb kept, which a reload does not empty. SPENT adds their
+// agents, tokens and waits to the live run's, and counts its time from the first of them, so all three cover the whole task.
+// Null with no run live or no earlier run kept.
+async function earlierSpend($: EngineInterface, state: PollerState, polled: Polled): Promise<EarlierSpend | null> {
   const ledger = polled.ledger as { runId?: string } | null
-  if (!ledger) return 0
+  if (!ledger) return null
   const runs = taskRuns({ ledger, kept: await readKeptRuns($, state.kept), unitKey: polled.unit?.key ?? null })
-  return taskSpend(runs.filter(run => run.ledger !== ledger && run.ledger?.runId !== ledger.runId)).agents
+  const earlier = runs.filter(run => run.ledger !== ledger && run.ledger?.runId !== ledger.runId)
+  if (earlier.length === 0) return null
+  const { agents, tokens, tokensKnown } = taskSpend(earlier)
+  return { agents, tokens, tokensKnown, startedAt: (runStart(earlier[0].ledger) as string | undefined) ?? null, waited: taskWaited(earlier, undefined) }
+}
+
+// The earlier of two run starts, either of which may be unknown.
+const earliest = (a: string | null | undefined, b: string | null | undefined) => {
+  const known = [a, b].filter((time): time is string => !Number.isNaN(parsed(time)))
+  return known.sort((x, y) => parsed(x) - parsed(y))[0] ?? null
 }
 
 // One poller per register: the poll exists so the band redraws and the alert fires every second, since a render may not wait on files.
@@ -100,7 +111,8 @@ export async function startPoller($: EngineInterface, state: PollerState, option
     state.polling = true
     try {
       const read = await pollInputs($, state.spawns, state.kept)
-      const polled = { ...read, since: unitStart(state, read), ...(await unitRecord($, state, read)), task: await endedTask($, state, read), earlierAgents: await earlierAgents($, state, read) }
+      const earlier = await earlierSpend($, state, read)
+      const polled = { ...read, since: earliest(unitStart(state, read), earlier?.startedAt), ...(await unitRecord($, state, read)), task: await endedTask($, state, read), earlierAgents: earlier?.agents ?? 0, earlier }
       await $.state.set(INPUTS, polled)
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.
       await alertOn($, polled.ledger, options, doneRunOf(polled))

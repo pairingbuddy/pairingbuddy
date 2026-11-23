@@ -313,10 +313,18 @@ export function buildView(inputs: Inputs): View {
 }
 
 // agents: the count the task's kept runs recorded, once it has ended; else the live ledger's, its running attempt's spawns and,
-// for a live run, its task's earlier kept runs (earlierAgents).
+// for a live run, its task's earlier kept runs (earlierAgents), whose tokens and waits it also adds, so the agents, the time
+// (from the task's start, since) and the tokens all cover the whole task.
 // waited: what an ended task's runs waited on the human; else glance reads the live ledger's own waits.
 // live: a run read now, whose clock stops while it waits on the human or is stopped (pausedAtOf); an ended run's never runs on.
-const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, waited, earlierAgents }: Inputs, agents?: number, live = false) => glance({ ledger, spawns, agents, tests, now, since, waited, testsComplete, leaveOutUnknown: true, ...(live ? { pausedAt: pausedAtOf(ledger), earlierAgents } : {}) })
+const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, waited, earlierAgents, earlier }: Inputs, agents?: number, live = false) => glance({ ledger: live ? withEarlierTokens(ledger, earlier) : ledger, spawns, agents, tests, now, since, waited, testsComplete, leaveOutUnknown: true, ...(live ? { pausedAt: pausedAtOf(ledger), earlierAgents, earlierWaited: earlier?.waited ?? 0 } : {}) })
+
+// The live ledger with its task's earlier runs' tokens added, known only when every run knew its own.
+function withEarlierTokens(ledger: Ledger, earlier: Inputs['earlier']): Ledger {
+  if (!ledger || !earlier) return ledger
+  const own = ledger.spend
+  return { ...ledger, spend: { agents: own?.agents ?? 0, tokens: (Number(own?.tokens) || 0) + earlier.tokens, tokensKnown: own?.tokensKnown === true && earlier.tokensKnown } }
+}
 
 // An ended task as its kept runs tell it: the agents and tokens they recorded, from the first run's start to the last run's
 // end less what they waited on the human, their returns in place of the session's, which a reload empties, and the pull request when nothing else named it.

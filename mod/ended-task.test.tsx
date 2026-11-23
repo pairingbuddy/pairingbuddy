@@ -145,3 +145,19 @@ test('a PR opened for a code run the pane did not know is not the next unit\'s P
 
   expect(row(await paneLines($), 'PR'), 'unit B has opened no PR yet').toBe('PR       —')
 })
+
+// Scenario S6 unit A, SPENT while the publish run drafts: the agents already count the kept code run, so the time and the
+// tokens count it too. One scope, the whole task: from the code run's start, with both runs' tokens.
+test('live-publish-run-spent-counts-the-kept-code-run-time-and-tokens-too', async ($, on) => {
+  const rig = setupReplay(on)
+  const live = { ...PUBLISH_RUN, stage: { ...PUBLISH_RUN.stage, status: 'active' }, stages: [], spend: { agents: 0, tokens: 0, tokensKnown: true } }
+  const codeRunKept = Object.fromEntries(Object.entries(KEPT_FILES).filter(([path]) => path.includes(CODE_RUN.runId)))
+  serve(rig, { [LEDGER]: live, [UNIT]: UNIT_FILE, [CHANGED_PATH]: CHANGED, ...codeRunKept })
+  await rig.clock.set(Date.parse('2026-11-16T15:43:00.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const spent = row(await paneLines($), 'SPENT')
+
+  expect(spent, 'the code run\'s 32 agents, its start at 15:17:53 and its 27779 tokens, with the publish run\'s none yet').toBe('SPENT    32 agents · 25:08 · 27779 output tokens')
+})

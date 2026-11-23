@@ -55,9 +55,11 @@ export type Published = { url?: string; result?: string; codeRunId?: string | nu
 // task: what the runs pb kept say of the whole task once it has ended (endedTaskFacts in shared-node/task-runs.mjs).
 // waited: the seconds its runs waited on the human, which SPENT leaves out.
 export type TaskFacts = { spend: Spend; startedAt: string | null; endedAt: string; waited?: number; calls: Call[]; prUrl: string | null }
-// earlierAgents: what the live run's task spent in agents in its earlier runs, the ones pb kept.
+// earlierAgents: what the live run's task spent in agents in its earlier runs, the ones pb kept; earlier: all they spent.
 // planUnit: the open unit the PLAN tree reads, when it is not `unit` (an ended run's view keeps the unit it last saw, the tree the one open now).
-export type Inputs = { earlierAgents?: number; plan?: PlanRead | null; planPath?: string | null; planUnit?: Unit | null; task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
+// What a live run's task spent in its earlier runs pb kept: agents and tokens summed, when the first began, and its waits.
+export type EarlierSpend = { agents: number; tokens: number; tokensKnown: boolean; startedAt: string | null; waited: number }
+export type Inputs = { earlierAgents?: number; earlier?: EarlierSpend | null; plan?: PlanRead | null; planPath?: string | null; planUnit?: Unit | null; task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {
@@ -254,7 +256,7 @@ async function readPlan($: EngineInterface, path: string | null): Promise<PlanRe
   }
 }
 
-export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; unit: Unit | null; changed: string[] | null; plan?: PlanRead | null; planPath?: string | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null; earlierAgents?: number }
+export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: boolean; now: number | null; unit: Unit | null; changed: string[] | null; plan?: PlanRead | null; planPath?: string | null; since?: string | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null; earlierAgents?: number; earlier?: EarlierSpend | null }
 
 // The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
 // spawns: this session's, so a stage its own agents are still running never reads as stranded.
@@ -268,14 +270,14 @@ export async function pollInputs($: EngineInterface, spawns: Spawn[] = [], kept?
   return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: await withHumanLeft($, unitOf(unitFile), unitFile), changed: changedOf(changedFile), plan, planPath: plan ? planPath : null }
 }
 
-type PolledState = { plan?: PlanRead | null; planPath?: string | null; ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null; earlierAgents?: number } | null
+type PolledState = { plan?: PlanRead | null; planPath?: string | null; ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null; earlierAgents?: number; earlier?: EarlierSpend | null } | null
 
 // The one place the atom's loosely typed ledger is narrowed; null until the first poll, which reads as idle.
 export function fromPolled(polled: PolledState, spawns: Spawn[], calls: Call[] = [], published: Published | null = null): Inputs {
   return {
     ledger: (polled?.ledger ?? undefined) as Ledger, spawns, calls, tests: polled?.tests ?? [], testsComplete: polled?.testsComplete ?? false, now: polled?.now ?? undefined,
     unit: polled?.unit ?? null, since: polled?.since ?? undefined,
-    plan: polled?.plan ?? null, planPath: polled?.planPath ?? null, changed: polled?.changed ?? null, codeRun: polled?.codeRun ?? null, prUrl: polled?.prUrl ?? null, published, task: polled?.task ?? null, earlierAgents: polled?.earlierAgents ?? 0,
+    plan: polled?.plan ?? null, planPath: polled?.planPath ?? null, changed: polled?.changed ?? null, codeRun: polled?.codeRun ?? null, prUrl: polled?.prUrl ?? null, published, task: polled?.task ?? null, earlierAgents: polled?.earlierAgents ?? 0, earlier: polled?.earlier ?? null,
   }
 }
 
