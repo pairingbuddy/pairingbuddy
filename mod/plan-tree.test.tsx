@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
-import { PLAN_PATH, paneLines, setupPlanReplay } from './testing/replay'
-import { ROOT, start } from './testing/band'
+import { PLAN_FILE, PLAN_PATH, paneLines, setupPlanReplay } from './testing/replay'
+import { LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
 
 type Harness = Parameters<typeof paneLines>[0]
@@ -295,8 +295,17 @@ test('an unchecked agent task is not shown as waiting on a person', async ($, on
   ])
 })
 
-test('with no plan MD and no plan path in the ledger, the view renders a plain no-plan state and nothing else breaks', async () => {
-  throw new Error('not implemented: no-plan-renders-without-error')
+test('with no plan MD and no plan path in the ledger, the view renders a plain no-plan state and nothing else breaks', async ($, on) => {
+  const { rig } = setupPlanReplay(on, TWO_TRACERS)
+  rig.served.set(LEDGER_PATH, JSON.stringify(SNAPSHOT_RUNNING))
+  rig.served.delete(PLAN_FILE)
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = await paneLines($)
+
+  expect(lines.length, 'the pane still draws its other rows, so the run is shown').toBeGreaterThan(0)
+  expect(lines.filter(line => line.startsWith('PLAN')), 'with no plan path in the ledger the pane draws no PLAN row and no tracer tree').toEqual([])
 })
 
 test('with an open unit in unit.json but no plan, the unit still shows its branch, base and PR link', async () => {
