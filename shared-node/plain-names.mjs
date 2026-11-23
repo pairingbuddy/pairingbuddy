@@ -104,3 +104,16 @@ const PLAIN_NAMES = {
 export function plainName(id) {
   return Object.hasOwn(PLAIN_NAMES, id) ? PLAIN_NAMES[id] : undefined;
 }
+
+// Text the CLI wrote about "the human", told to the person reading it as "you": pb status at a terminal and the gate
+// question's why line. Text only the model reads keeps "the human", so the model never takes "you" as itself.
+const SECOND_PERSON = { has: "have", is: "are", was: "were", does: "do" };
+const youVerb = (verb) => SECOND_PERSON[verb] ?? verb.replace(/s$/, "");
+const THIRD_PERSON_VERBS = /\b([Tt])he human (has|is|was|does|types|approves|owns|answers|abandons|starts|runs|adds|checks)\b/g;
+
+export function forYou(text) {
+  return String(text)
+    .replace(THIRD_PERSON_VERBS, (_, t, verb) => `${t === "T" ? "Y" : "y"}ou ${youVerb(verb)}`)
+    .replace(/\b([Tt])he human's\b/g, (_, t) => (t === "T" ? "Your" : "your"))
+    .replace(/\b([Tt])he human\b/g, (_, t) => (t === "T" ? "You" : "you"));
+}

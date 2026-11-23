@@ -105,3 +105,21 @@ test("through a pipe, as a model's Bash call reads it, pb status prints JSON", (
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).ok, true);
 });
+
+test("a person reading pb status is told as you, never as the human", () => {
+  const status = { stage: { name: "code-tdd", status: "active", attempt: 1 }, stop: { code: "human-stopped", reason: "the human answered stop at G:task-end", seq: 1 }, needsHuman: null, next: null };
+
+  const text = statusText(status, { owner: null, lastSeen: null, now: Date.now() });
+
+  assert.match(text, /you answered stop at G:task-end/, text);
+  assert.doesNotMatch(text, /the human/, text);
+});
+
+test("a gate question's raw reason is told as you", async () => {
+  const { gateQuestion } = await import("../../shared-node/gates.mjs");
+
+  const { question } = gateQuestion("G:task-end", { reason: "the human's keep local answer no longer holds for a pending check" });
+
+  assert.doesNotMatch(question, /the human/, question);
+  assert.match(question, /your keep local answer/, question);
+});

@@ -10,7 +10,7 @@ import { buildFindingId, buildKey } from "./keys.mjs";
 import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt } from "./stage-run.mjs";
 import { acceptVerdict, findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
 import { isPassed } from "./gate-passed.mjs";
-import { plainName } from "./plain-names.mjs";
+import { forYou, plainName } from "./plain-names.mjs";
 import { HUMAN_STOPPED } from "./stop-codes.mjs";
 import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
 import { isRefreshRun } from "./ledger.mjs";
@@ -217,7 +217,7 @@ function selectorWhy(reason) {
 
 const plainWhy = (reason) => {
   const why = PLAIN_WHYS.find(([pattern]) => pattern.test(reason))?.[1];
-  if (why === undefined) return reason;
+  if (why === undefined) return forYou(reason);
   return typeof why === "function" ? why(reason) : why;
 };
 

@@ -9,7 +9,7 @@ import { coveredTests, fixesOf, spendTotals } from "./stage-run.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, startLeaseSecondsLeft } from "./stages.mjs";
 import { humanCommand, pbCommand, shaMismatchRemedy } from "./verbs.mjs";
 import { SPIKE_SETUP_FILE } from "./unit-files.mjs";
-import { plainName } from "./plain-names.mjs";
+import { forYou, plainName } from "./plain-names.mjs";
 import { CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS } from "./config-wait.mjs";
 
 function nextStep(contract, ledger) {
@@ -138,7 +138,7 @@ export function statusText(status, { owner, lastSeen, now = Date.now(), action }
   const line = (label, text) => `${`${label}:`.padEnd(11)}${text}`;
   const lines = [line("Stage", stage?.name ? `${named(stage.name)}, ${stage.status || "not started"}, attempt ${stage.attempt}` : "none yet")];
   lines.push(line("Owner", owner ? `session ${owner}, last seen ${ago(lastSeen, now)}` : "none"));
-  if (stop) lines.push(line("Stopped", [plainName(stop.code), stop.reason].filter(Boolean).join(": ") || "yes"));
+  if (stop) lines.push(line("Stopped", [plainName(stop.code), stop.reason && forYou(stop.reason)].filter(Boolean).join(": ") || "yes"));
   if (needsHuman?.gate) lines.push(line("Needs you", named(needsHuman.gate)));
   lines.push(line("Next", nextLine(status, action)));
   return lines.join("\n");
