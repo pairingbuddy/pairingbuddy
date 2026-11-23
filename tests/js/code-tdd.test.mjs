@@ -318,6 +318,21 @@ test("code-tdd-green-is-told-the-earlier-tests-must-keep-passing", async () => {
   assert.match(green.prompt, /Change an earlier test only when the task itself requires behaviour that it contradicts, and say in notes which test and why/);
 });
 
+test("code-tdd-a-relay-that-shows-pb-never-ran-runs-the-runner-again-not-the-agent", async () => {
+  let tries = 0;
+  const { calls, result } = await runStage({
+    runner: ([command]) => {
+      if (!command.startsWith("checkpoint --step red")) return undefined;
+      tries += 1;
+      return tries === 1 ? { cli_exit_code: 1, cli_output: "not run: the guard blocked pb stage fail" } : undefined;
+    },
+  });
+
+  assert.equal(calls.filter(({ opts }) => opts.agentType === TESTS).length, 1, "the test writer is not spawned again");
+  assert.equal(calls.filter(({ prompt }) => prompt.includes("checkpoint --step red")).length, 2, "the checkpoint runner runs again");
+  assert.equal(result.stopReason, null);
+});
+
 test("code-tdd-a-placeholders-refusal-for-an-existing-test-goes-to-a-new-placeholders-agent", async () => {
   const refusal = "test test_zero_price_stays_zero is already in tests/test_a.py at the commit before the placeholders";
   let tries = 0;

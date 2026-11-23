@@ -69,7 +69,8 @@ function nextAgentRound(role, item) {
   return agentRounds[name];
 }
 
-const isRelayed = (run) => Number.isInteger(run.result?.cli_exit_code);
+// A relay that shows pb never answered (isBrokenRelay) says nothing about the command either, so it runs again too.
+const isRelayed = (run) => Number.isInteger(run.result?.cli_exit_code) && !isBrokenRelay(run.result);
 
 // A runner that came back with nothing says nothing about the command, so it runs again. A run the CLI already stopped,
 // or set waiting on the human (a changed test-config), ends the stage at once: no retry helps, and the ledger has it.

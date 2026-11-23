@@ -983,7 +983,7 @@ async function courseCheck(config) {
 //   lensOfFinding: the pb-inline-module line for shared-node/lens-merge.mjs
 //   mistakeKey, normalizeApproach: the pb-inline-module line for shared-node/mistake-check.mjs
 //   asPromptData, pinnedKey, taskBlock: the other shared sources
-//   relayedJson, lintReportOf: relayed-json.mjs
+//   relayedJson, lintReportOf, isBrokenRelay: relayed-json.mjs
 //   courseCheck: course-check.mjs
 //   runCommands: the stage runtime; agent: the workflow runtime
 // Config fields read:
@@ -1002,6 +1002,8 @@ async function courseCheck(config) {
 // The lens whose findings are lint failures. pr-draft names its lint findings `${LINT_LENS}-<n>` and lensOfFinding strips the number, so the stage and this loop meet on this name.
 const LINT_LENS = 'lint';
 
+// The most agents one fix attempt can spawn (see fixLoop): a code-mode checkpoint may run twice.
+const attemptAgents = (artifactMode) => (artifactMode ? 4 : 5);
 const TESTS_FAILED = /^pb: the tests failed, so nothing was committed/m;
 const FIX_DIFF_PATH = '.pairingbuddy/run/fix.diff';
 // Survivors grouped by the lens that found them (lensOfFinding), in survivor order, as g1, g2, ...
@@ -1061,7 +1063,13 @@ async function fixGroup(config, attempt, spent) {
   if (normalized !== '' && rejectedApproaches.some((rejected) => normalizeApproach(rejected) === normalized)) return { outcome: 'repeated', key, approach };
   if (!artifactMode) {
     spent.count += 1;
-    const { result: relay } = await runCommands(config.stage, [`checkpoint --step fix --from ${key}`], { item: group.id, round });
+    let { result: relay } = await runCommands(config.stage, [`checkpoint --step fix --from ${key}`], { item: group.id, round });
+    // A relay that shows pb never answered is no verdict on the fix: its runner runs once more, under a key of its own.
+    if (isBrokenRelay(relay)) {
+      spent.count += 1;
+      ({ result: relay } = await runCommands(config.stage, [`checkpoint --step fix --from ${key}`], { item: `${group.id}-relay`, round }));
+    }
+    if (isBrokenRelay(relay)) return { outcome: 'failed', key };
     if (relay.cli_exit_code !== 0 && TESTS_FAILED.test(relay.cli_output ?? '')) return { outcome: 'red', key, approach };
     if (relay.cli_exit_code !== 0) return { outcome: 'failed', key };
     // No commit means fix.diff is stale (pb only accepts a no-change fix that says why: in no_change_reason, or as a doubt in ambiguity, which reaches the human), so skip the checker.
@@ -1118,8 +1126,8 @@ async function fixLoop(config, survivors, budget = Infinity) {
     let mustChangeApproach = false;
     const rejectedApproaches = [];
     for (;;) {
-      // An attempt spawns up to 4 agents (fix, checkpoint runner, checker, rollback runner), each charged to spent when spawned. The worst case is 4 in code mode (fix, checkpoint, checker, rollback) and in artifact mode with fix.lint (fix, lint, checker, rollback); plain artifact mode spawns at most 3. The check stays at 4 in every mode.
-      if (budget - spent.count < 4) return stop('agent-budget');
+      // An attempt spawns up to 5 agents in code mode (fix, checkpoint runner, its one re-run after a broken relay, checker, rollback runner) and 4 in artifact mode with fix.lint (fix, lint, checker, rollback); plain artifact mode spawns at most 3. Each is charged to spent when spawned.
+      if (budget - spent.count < attemptAgents(artifactMode)) return stop('agent-budget');
       attempts += 1;
       const attempt = { group, fixAttempt: attempts, notes: retry ? lessons : [], retry, mustChangeApproach, rejectedApproaches, failedAttempts, before, artifactMode };
       const { outcome, key, artifact, verdict, approach, checked, final: kept } = await fixGroup(config, attempt, spent);
@@ -1337,6 +1345,15 @@ function lintReportOf(relay) {
   if (typeof report?.ok !== 'boolean') return null;
   if (report.ok) return { ok: true, failures: [] };
   return Array.isArray(report.failures) ? { ok: false, failures: report.failures } : null;
+}
+
+// A relay that shows pb never answered: no line pb wrote (its "pb: " refusal or its JSON). The runner ran something else
+// or nothing (T4d run: the relayed user words said "pb stage fail", the runner ran that, the guard blocked it, and it
+// returned exit 1 "not run"). That says nothing about the step, so the step's runner runs again rather than the step failing.
+function isBrokenRelay(relay) {
+  if (!Number.isInteger(relay?.cli_exit_code)) return false;
+  const output = relay.cli_output ?? '';
+  return !/^pb: /m.test(output) && relayedJson(output) === null;
 }
 
 // The corpus is what pb snapshot found, relayed by the runner as the JSON the CLI printed. A snapshot that failed is no

@@ -15,3 +15,12 @@ function lintReportOf(relay) {
   if (report.ok) return { ok: true, failures: [] };
   return Array.isArray(report.failures) ? { ok: false, failures: report.failures } : null;
 }
+
+// A relay that shows pb never answered: no line pb wrote (its "pb: " refusal or its JSON). The runner ran something else
+// or nothing (T4d run: the relayed user words said "pb stage fail", the runner ran that, the guard blocked it, and it
+// returned exit 1 "not run"). That says nothing about the step, so the step's runner runs again rather than the step failing.
+function isBrokenRelay(relay) {
+  if (!Number.isInteger(relay?.cli_exit_code)) return false;
+  const output = relay.cli_output ?? '';
+  return !/^pb: /m.test(output) && relayedJson(output) === null;
+}

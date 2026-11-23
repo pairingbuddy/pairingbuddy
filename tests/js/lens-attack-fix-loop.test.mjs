@@ -392,7 +392,7 @@ test("A fix agent that returned nothing ends the loop with step-failed", async (
   assert.equal(callsOf(calls, CHECKER).length, 0, "no checker call");
 });
 // Test case: small-agent-budget-gives-agent-budget
-test("When fewer than 4 agents of budget remain before an attempt the loop ends with agent-budget", async () => {
+test("When fewer than 5 agents of budget remain before a code-mode attempt the loop ends with agent-budget", async () => {
   const lensAgents = 2;
   const lenses = { code: [finding("R1", "one")], tests: [finding("R3", "three")] };
   const runWithBudget = async (fixBudget) => {
@@ -401,16 +401,17 @@ test("When fewer than 4 agents of budget remain before an attempt the loop ends 
     return { result, fixCount: fixCallsOf(calls).length };
   };
 
-  // A kept attempt spends 3 (fix, checkpoint runner, checker), so 4 + 2 leaves 3 for g2: too few to hold a rollback too.
-  const roomForOneAttempt = await runWithBudget(4 + 2);
-  const exactlyFourLeft = await runWithBudget(3 + 4);
-  const tooSmall = await runWithBudget(3);
+  // A kept attempt spends 3 (fix, checkpoint runner, checker). An attempt may spend 5: the checkpoint runner can run twice
+  // after a broken relay, and a rollback follows. So 3 + 4 leaves 4 for g2: too few.
+  const roomForOneAttempt = await runWithBudget(3 + 4);
+  const exactlyFiveLeft = await runWithBudget(3 + 5);
+  const tooSmall = await runWithBudget(4);
 
-  assert.equal(roomForOneAttempt.result.stopReason, "agent-budget", "g2 does not start with only 3 agents left");
+  assert.equal(roomForOneAttempt.result.stopReason, "agent-budget", "g2 does not start with only 4 agents left");
   assert.equal(roomForOneAttempt.fixCount, 1, "exactly one fix call: g1's attempt fit, g2's did not");
-  assert.equal(exactlyFourLeft.fixCount, 2, "g2 starts when exactly 4 agents are left: the threshold is 4, not 5 or 6");
-  assert.notEqual(exactlyFourLeft.result.stopReason, "agent-budget", "4 agents left is enough, so the loop does not end with agent-budget");
-  assert.equal(tooSmall.result.stopReason, "agent-budget", "3 agents of budget end the loop with agent-budget");
+  assert.equal(exactlyFiveLeft.fixCount, 2, "g2 starts when exactly 5 agents are left: the threshold is 5");
+  assert.notEqual(exactlyFiveLeft.result.stopReason, "agent-budget", "5 agents left is enough, so the loop does not end with agent-budget");
+  assert.equal(tooSmall.result.stopReason, "agent-budget", "4 agents of budget end the loop with agent-budget");
   assert.equal(tooSmall.fixCount, 0, "no fix agent at all");
 });
 // Test case: result-carries-attempts-and-lessons
@@ -745,4 +746,29 @@ test("review-says-what-became-of-each-finding: a group the checker found better 
     { id: "code-1", outcome: "left as is" },
     { id: "tests-1", outcome: "fixed" },
   ], "the unchanged code fix leaves its finding as is; the checked tests fix fixes its finding");
+});
+
+// T4d run: the relayed user request said "pb stage fail", the runner ran that instead, the guard blocked it, and the runner
+// returned exit 1 "not run". A relay that shows pb never answered is a broken relay, not a failed fix.
+test("A checkpoint relay that shows pb never ran is run again once, with no fix attempt spent and nothing rolled back", async () => {
+  const { respond } = scriptedAgents({ lenses: { code: [finding("R1", "one")] }, checkpoints: ["not run: the guard blocked pb stage fail"] });
+
+  const { calls, result } = await runFixLoop(baseConfig(), guardFixSpawns(respond));
+
+  const checkpointRuns = callsOf(calls, RUNNER).filter(({ prompt }) => commandsOf(prompt)[0].includes(" checkpoint "));
+  assert.equal(checkpointRuns.length, 2, "the checkpoint runner ran once more");
+  assert.deepEqual(commandsOf(checkpointRuns[1].prompt), commandsOf(checkpointRuns[0].prompt), "with the same command");
+  assert.notEqual(keyOfPrompt(checkpointRuns[1].prompt), keyOfPrompt(checkpointRuns[0].prompt), "under a key of its own");
+  assert.equal(fixCallsOf(calls).length, 1, "no new fix agent");
+  assert.equal(rollbackCallsOf(calls).length, 0, "nothing rolled back");
+  assert.equal(result.stopReason, null);
+});
+
+test("A checkpoint relay broken twice ends the loop with step-failed, still rolling nothing back", async () => {
+  const { respond } = scriptedAgents({ lenses: { code: [finding("R1", "one")] }, checkpoints: ["not run", "not run either"] });
+
+  const { calls, result } = await runFixLoop(baseConfig(), guardFixSpawns(respond));
+
+  assert.equal(result.stopReason, "step-failed");
+  assert.equal(rollbackCallsOf(calls).length, 0);
 });
