@@ -24,7 +24,7 @@ const PUBLISH_KIND = "publish";
 const testMarks = (record) => ({ ...(record?.green?.passed === true && { green: { passed: true } }), ...(record?.covered?.done === true && { covered: { done: true } }) });
 
 // What the pane keeps of a code run's ledger once the publish run has replaced it: the task, whether its task-end gate
-// passed, its tests' marks and how many pass, and where its safety-net round ran. Null for a publish run or no ledger.
+// passed, its tests' marks and how many pass (a covered test passes), and where its safety-net round ran. Null for a publish run or no ledger.
 export function codeRunOf(ledger) {
   if (!ledger || typeof ledger !== "object" || ledger.kind === PUBLISH_KIND) return null;
   const records = ledger.tests?.perTest && typeof ledger.tests.perTest === "object" ? ledger.tests.perTest : {};
@@ -35,7 +35,8 @@ export function codeRunOf(ledger) {
     runId: ledger.runId,
     task: ledger.task,
     taskEndPassed: ledger.gates && typeof ledger.gates === "object" ? isPassed(ledger, TASK_END) : false,
-    testsPassing: perTest.filter((record) => record?.green?.passed === true).length,
+    // A test an earlier one already covered passes too, as the TESTS row counts it.
+    testsPassing: perTest.filter((record) => record?.green?.passed === true || record?.covered?.done === true).length,
     perTest: Object.fromEntries(Object.entries(records).map(([id, record]) => [id, testMarks(record)])),
     safetyNet: safetyNet ? { attempt: safetyNet.attempt, startedAt: safetyNet.startedAt } : null,
     rollbacks: Array.isArray(ledger.fixes?.rollbacks) ? ledger.fixes.rollbacks : [],

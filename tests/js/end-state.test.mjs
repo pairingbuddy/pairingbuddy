@@ -115,6 +115,13 @@ test("the code run's record: its task, whether the task-end gate passed, its pas
   assert.equal(codeRunOf(undefined), null);
 });
 
+// Live Task 107 run: BUILT read "9 tests passing" while TESTS read "17 of 17 passing · 8 covered".
+test("a test an earlier test already covered counts as passing, as the TESTS row counts it", () => {
+  const ledger = { ...codeLedger({ "G:task-end": { source: "auto" } }), tests: { perTest: { a: { green: { passed: true } }, b: { covered: { done: true } }, c: {} } } };
+
+  assert.equal(codeRunOf(ledger).testsPassing, 2, "a passed GREEN and a covered pass, not the test with neither");
+});
+
 test("the end round is the code run's safety-net round, read from the recorded returns once it is over", () => {
   const codeRun = codeRunOf(codeLedger({ "G:task-end": { source: "auto" } }));
   const calls = [{ at: "2026-11-14T10:03:00.000Z", input: { pb_key: "code-safety-net.lens.corpus-misalignment.r1.a1", findings: [] } }];

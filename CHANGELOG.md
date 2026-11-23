@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- BUILT counts the tests an earlier test already covered as passing, as TESTS does (live Task 107 run: BUILT read `9 tests passing` while TESTS read `17 of 17 passing · 8 covered`). BUILT counted only the tests that passed their own GREEN.
+
 - The REVIEW row calls a finding fixed only when the fix loop was given it (live Task 107 run: the pane read `review: 16 issues, all fixed`, listing `fixed · Plan path from ledger is read without a root bound`, while pb told the human 6 fixed and 10 left as is). The pane counted every finding of a lens with a kept fix as fixed. In a review with refuters, the fix loop is given only the findings a refuter upheld; one no refuter was sent now reads left as is, as pb says.
 
 - A stage's runs and its fixes are told in different words (live T4d run: the session told the human "the safety-net review is running again, on its sixth attempt. This is the last fix attempt: 4 of 5 are used"). The sixth was the stage's sixth start, restarts included; the fixes are counted apart, and their limit of 5 counts undone fixes only. `pb status --action` now gives a plain `say` line, such as `safety-net review: run 6 (restarted 5 times) · fixes: 4 tried, undone: 1 of 5 allowed`, and its action, `pb status` at a terminal and a redo's refusal say "run N" for the stage. The coding skill tells the session to relay `say` and never to call either count an attempt. The pane and the band show neither count.
