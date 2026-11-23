@@ -133,6 +133,7 @@ function topRows(view: View, columns: number) {
 const TASK_MARKS = { ticked: '✓', unticked: '○' } as const
 const NEST = '  '
 const SHORT_SHA = 7
+const WAITING_ON_PERSON = ' · waiting on a person'
 // The open unit's branch, base and commits, each on its own line.
 function openUnitLines(open: NonNullable<View['planOpen']>, indent: string): Part[][] {
   const facts = [
@@ -153,7 +154,7 @@ function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpe
     ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
     ...(open && open.unit === unit.unit ? openUnitLines(open, contentIndent) : []),
     ...(unit.pr ? [[{ text: `${contentIndent}PR ${unit.pr}` }]] : []),
-    ...unit.tasks.map(task => [{ text: `${contentIndent}${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
+    ...unit.tasks.map(task => [{ text: `${contentIndent}${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}${task.human && !task.checked ? WAITING_ON_PERSON : ''}` }]),
   ]
 }
 

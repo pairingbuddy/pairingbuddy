@@ -67,8 +67,8 @@ export type View = {
 function planStatesOf({ plan, unit, ledger }: Inputs): string[] | undefined {
   if (!plan) return undefined
   const open = unit?.open
-  // Without a unit record the states are told only once a unit shows a PR, since a published unit gives them something to say.
-  if (!open) return plan.units.some(planned => planned.pr) ? unitStates(plan.units, { plan: ledger?.plan?.path, openUnit: undefined }) : undefined
+  // Without a unit record the states are told only once a unit shows a PR or a [HUMAN] task, since those give them something to say.
+  if (!open) return plan.units.some(planned => planned.pr || planned.tasks.some(task => task.human)) ?unitStates(plan.units, { plan: ledger?.plan?.path, openUnit: undefined }) : undefined
   // A record names its unit, or only its tracer: then it is the first plan unit under that tracer.
   const isPlanned = plan.units.some(planned => planned.unit === open.unit)
   const underTracer = isPlanned || !open.tracer ? undefined : plan.units.find(planned => planned.tracer === open.tracer)
