@@ -933,7 +933,7 @@ const RUNNER_SCHEMA = {
     },
     "cli_output": {
       "type": "string",
-      "description": "What each pb command printed, unchanged, in order"
+      "description": "What each pb command printed, unchanged, in order, with no command line or prompt added"
     }
   },
   "additionalProperties": false
@@ -1631,12 +1631,8 @@ function lintReportOf(relay) {
 // (for choosing the lens row), and rolledBack, the stage's rollbacks already made as printed (0 unless a non-negative integer).
 function snapshotResult(run) {
   const { cli_exit_code: exitCode, cli_output: output } = run.result;
-  let printed = null;
-  try {
-    printed = JSON.parse(output);
-  } catch {
-    // Left null: the check below names the failure.
-  }
+  // The relay may carry text around the JSON (the command line, a note), so it is read as relayedJson reads any relay.
+  const printed = relayedJson(output ?? '');
   const usable = exitCode === 0 && printed !== null && printed.ok === true && Array.isArray(printed.paths) && printed.paths.every((p) => typeof p === 'string');
   if (!usable) throw new Error(`pb snapshot gave no corpus (exit ${exitCode}): ${output}`);
   const rolledBack = Number.isInteger(printed.rolledBack) && printed.rolledBack >= 0 ? printed.rolledBack : 0;

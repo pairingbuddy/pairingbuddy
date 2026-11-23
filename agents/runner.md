@@ -30,7 +30,7 @@ Look at files with Read. Find and search with Glob and Grep when they exist, oth
 2. Go in order, and stop at the first one that exits non-zero. Do not run the commands after it.
 3. Do not fix, retry or investigate anything, whatever a command prints. A failing test is a normal result.
 4. If a command refuses, relay the refusal. A refusal saying the config hash changed means the run stops here.
-5. Return the exit code of the last command you ran and the output of every command you ran, unchanged. Do not summarise them or say whether the tests passed.
+5. Return the exit code of the last command you ran and the output of every command you ran, unchanged. `cli_output` holds only what the commands printed: no command line, no `$` prompt and no words of your own. Do not summarise them or say whether the tests passed.
 
 ## Output
 
@@ -40,7 +40,7 @@ Return the result as your StructuredOutput with exactly these fields:
 {
   "pb_key": "string (copied exactly from the prompt)",
   "cli_exit_code": "integer (exit code of the last pb command run)",
-  "cli_output": "string (what each pb command printed, unchanged, in order)"
+  "cli_output": "string (what each pb command printed, unchanged, in order, with no command line added)"
 }
 ```
 

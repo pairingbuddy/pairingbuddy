@@ -15,7 +15,7 @@
     },
     "cli_output": {
       "type": "string",
-      "description": "What each pb command printed, unchanged, in order"
+      "description": "What each pb command printed, unchanged, in order, with no command line or prompt added"
     }
   },
   "additionalProperties": false

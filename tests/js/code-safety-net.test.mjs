@@ -321,6 +321,22 @@ test("code-safety-net-lens-prompts-carry-the-corpus-paths-the-snapshot-relayed",
   }
 });
 
+// T4d run: the relay put the command line in front of the JSON, and the stage threw "pb snapshot gave no corpus (exit 0)".
+test("code-safety-net-a-snapshot-relayed-with-the-command-line-in-front-still-reads", async () => {
+  const paths = ["CLAUDE.md"];
+  const json = JSON.stringify({ ok: true, paths, taskType: "new_feature", rolledBack: 0 });
+  const agent = async (_prompt, { agentType }) => {
+    if (agentType === "pairingbuddy:runner") return { cli_exit_code: 0, cli_output: `$ node /plugins/pairingbuddy/cli/pb.mjs snapshot ${json}` };
+    return agentType === "pairingbuddy:lens" ? { findings: [] } : {};
+  };
+
+  const { calls } = await runStage(ARGS, agent);
+
+  const prompts = lensPrompts(calls);
+  assert.ok(prompts.length > 0, "the round spawns lenses");
+  assert.deepEqual(blockOf(prompts[0], "corpus").split("\n").map((line) => JSON.parse(line)), paths);
+});
+
 test("code-safety-net-lens-prompts-name-the-snapshot-subject-diff-and-changed-files", async () => {
   const { calls } = await runStage(ARGS, agentRelaying("new_feature", { findings: [] }, ["CLAUDE.md"]));
 

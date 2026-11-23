@@ -132,6 +132,7 @@ JS_TEST_FILES = [
     "tests/js/task-runs.test.mjs",
     "tests/js/channels.test.mjs",
     "tests/js/run-hooks.test.mjs",
+    "tests/js/runner-relay.test.mjs",
     "tests/js/run-recorder.test.mjs",
     "tests/js/session-binding.test.mjs",
     "tests/js/shell-hooks-isolation.test.mjs",
