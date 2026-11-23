@@ -98,3 +98,17 @@ test('after-the-build-tests-reads-as-a-settled-summary', async ($, on) => {
 
   expect(row, 'the build is over: how many pass of the total, then the list').toEqual(['TESTS    ✓ 2 of 2 passing', '         ✓ order total sums two lines', '         ✓ order total of no lines is zero'])
 })
+
+// T4d run: a stopped run's TEST age ran on for hours ("REFACTOR 9:57:19") while SPENT said paused.
+test('a stopped run keeps its step age where the run stopped', async ($, on) => {
+  const stopped = { ...building, stop: { reason: 'a step failed', seq: 1, code: 'step-failed' }, pausedAt: Date.parse('2026-11-04T08:20:00.000Z') }
+  const rig = await serve($, on, stopped, { [`${ARTIFACTS}/${PLACEHOLDERS_KEY}.json`]: placeholders }, `pb1 code-tdd GREEN implement-code ${FIRST} r1`)
+  const current = (lines: string[]) => lines.find(line => /GREEN.*\d:\d\d$/.test(line))
+  const before = current(await paneLines($))
+  expect(before, 'the TESTS row shows the current step with its age').toBeDefined()
+
+  await rig.clock.advance(60 * 60_000)
+
+  const after = current(await paneLines($)) ?? (await paneLines($)).join('\n')
+  expect(after, `the age stands still: ${before} then ${after}`).toBe(before)
+})

@@ -99,4 +99,5 @@ export function cycleMarker({ spawns, ledger }) {
 }
 
 // How long the current step has run, as a run-time clock; unknown when the spawn or the clock carries no time.
-export const stepAge = ({ spawns, now, stage }) => elapsed(currentStep(spawns, stage)?.startedAt, now);
+// pausedAt: where a stopped or waiting run's clock stopped (glance's pausedAtOf), so the age freezes there as SPENT does.
+export const stepAge = ({ spawns, now, stage, pausedAt }) => elapsed(currentStep(spawns, stage)?.startedAt, Number.isFinite(pausedAt) && pausedAt < now ? pausedAt : now);

@@ -54,3 +54,13 @@ test("step-age-unknown-without-clock", () => {
   assert.equal(stepAge({ spawns: stamped, now: undefined }), "time unknown", "no clock reads as unknown, never a made-up age");
   assert.equal(stepAge({ spawns: unstamped, now }), "time unknown", "a spawn with no time reads as unknown, never a made-up age");
 });
+
+test("step-age-stops-where-the-run-paused", () => {
+  const label = buildLabel({ stage: "tdd", phase: "REFACTOR", role: "refactor-code", item: "login-works", round: 1 });
+  const spawns = [{ kind: "workflow_agent", name: label, startedAt: "2026-11-05T10:00:00.000Z" }];
+  const pausedAt = Date.parse("2026-11-05T10:02:00.000Z");
+  const now = Date.parse("2026-11-05T19:00:00.000Z");
+
+  assert.equal(stepAge({ spawns, now, pausedAt }), "2:00", "a stopped or waiting run's step age freezes where SPENT's does");
+  assert.equal(stepAge({ spawns, now: Date.parse("2026-11-05T10:01:00.000Z"), pausedAt }), "1:00", "a pause later than now changes nothing");
+});
