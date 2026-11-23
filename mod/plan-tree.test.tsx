@@ -218,8 +218,28 @@ test('a unit with a PR: line shows its PR link', async ($, on) => {
   ])
 })
 
-test('when parsePlan reports problems, the view shows them instead of hiding them', async () => {
-  throw new Error('not implemented: tree-shows-plan-problems')
+// Task 9 sits before any tracer, which parsePlan reports as a problem; the tracer below it is well formed.
+const PLAN_WITH_STRAY_TASK = [
+  '# Shop',
+  '',
+  '## Tasks',
+  '',
+  '- [ ] Task 9: Stray',
+  '',
+  '### Tracer 1: Cart',
+  '',
+  '- [ ] Task 1: Add an item',
+  '',
+].join('\n')
+
+test('when parsePlan reports problems, the view shows them instead of hiding them', async ($, on) => {
+  const lines = await showPlan($, on, PLAN_WITH_STRAY_TASK)
+
+  const problemRows = lines.filter(line => line.includes('Task 9: Stray'))
+
+  expect(problemRows, 'one row carries the problem parsePlan reports for the stray task, worded as parsePlan words it').toEqual([
+    expect.stringContaining('the task "Task 9: Stray" is not under a tracer'),
+  ])
 })
 
 test('an unchecked [HUMAN] task shows as waiting on a person, with its title', async () => {
