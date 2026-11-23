@@ -88,7 +88,12 @@ function planStatesOf({ plan, unit, ledger }: Inputs): string[] | undefined {
   return hasStateToTell(plan.units) ? unitStates(plan.units, { plan: planPath, openUnit: undefined }) : undefined
 }
 
-export type EndRows = Record<'done' | 'pr', string>
+// What the PLAN tree reads: the plan, each unit's state, and the open unit with its PR link.
+function planFields(inputs: Inputs): Pick<View, 'plan' | 'planStates' | 'planOpen' | 'planOpenPr'> {
+  return { plan: inputs.plan, planStates: planStatesOf(inputs), planOpen: inputs.unit?.open, planOpenPr: inputs.unit?.prUrl }
+}
+
+export type EndRows =Record<'done' | 'pr', string>
 const NO_END: EndRows = { done: '—', pr: '—' }
 
 const EMPTY = '—'
@@ -267,7 +272,7 @@ function endedStatus(inputs: Inputs, end: { doneStatus?: string }): Status {
 
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
-  const view = { ...toned(buildPlainView(inputs)), plan: inputs.plan, planStates: planStatesOf(inputs), planOpen: inputs.unit?.open, planOpenPr: inputs.unit?.prUrl }
+  const view = { ...toned(buildPlainView(inputs)), ...planFields(inputs) }
   const { ledger } = inputs
   if (!ledger) return view
   const { doneStatus: _done, ...end } = endState(inputs, view.running, true)

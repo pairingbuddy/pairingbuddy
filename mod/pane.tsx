@@ -145,9 +145,14 @@ function openUnitLines(open: NonNullable<View['planOpen']>, indent: string): Par
   return facts.map(text => [{ text: `${indent}${text}` }])
 }
 
+// A unit's PR link as a row, or none.
+function prRows(pr: string | undefined, indent: string): Part[][] {
+  return pr ? [[{ text: `${indent}PR ${pr}` }]] : []
+}
+
 // With no plan, the open unit alone: its facts and its PR link.
 function unitOnlyLines(open: NonNullable<View['planOpen']>, pr?: string): Part[][] {
-  return [...openUnitLines(open, ''), ...(pr ? [[{ text: `PR ${pr}` }]] : [])]
+  return [...openUnitLines(open, ''), ...prRows(pr, '')]
 }
 
 type PlanUnit = NonNullable<View['plan']>['units'][number]
@@ -159,7 +164,7 @@ function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpe
     [{ text: `${indent}${unit.unit}${state ? `${STATE_SEPARATOR}${state}` : ''}` }],
     ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
     ...(open && open.unit === unit.unit ? openUnitLines(open, contentIndent) : []),
-    ...(unit.pr ? [[{ text: `${contentIndent}PR ${unit.pr}` }]] : []),
+    ...prRows(unit.pr, contentIndent),
     ...unit.tasks.map(task => [{ text: contentIndent + taskRow(task) }]),
   ]
 }
