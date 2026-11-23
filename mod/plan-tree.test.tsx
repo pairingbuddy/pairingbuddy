@@ -191,6 +191,36 @@ test('the open unit from unit.json shows its branch, base and the commits record
   ])
 })
 
+const unitRecordNaming = (unit: string, tracer: string) => JSON.stringify({ unit, plan: PLAN_PATH, tracer, branch: 'feat/pay', base: 'main', baseSha: 'abc1234def5678', tasks: [], commits: [] })
+
+test('a unit.json that names only a tracer shows its branch and base on the first unit under that tracer', async ($, on) => {
+  const lines = await showPlan($, on, RECEIPT_DEPENDS_ON_PAY, { '.pairingbuddy/run/unit.json': unitRecordNaming('Checkout', 'Tracer 1: Checkout') })
+
+  expect(lines, 'the record names no planned unit, so Pay, the first unit under its tracer, takes its branch and base; Receipt shows none').toEqual([
+    'PLAN     Tracer 1: Checkout',
+    '           Pay · open',
+    '             branch feat/pay',
+    '             base main',
+    '             ○ Task 1: Take payment',
+    '           Receipt · open',
+    '             based on Pay',
+    '             ○ Task 2: Send receipt',
+  ])
+})
+
+test('a unit.json that names neither a planned unit nor a planned tracer shows no branch or base on any unit', async ($, on) => {
+  const lines = await showPlan($, on, RECEIPT_DEPENDS_ON_PAY, { '.pairingbuddy/run/unit.json': unitRecordNaming('Elsewhere', 'Tracer 9: Elsewhere') })
+
+  expect(lines, 'the record matches no unit, so no unit takes its branch or base').toEqual([
+    'PLAN     Tracer 1: Checkout',
+    '           Pay · open',
+    '             ○ Task 1: Take payment',
+    '           Receipt · open',
+    '             based on Pay',
+    '             ○ Task 2: Send receipt',
+  ])
+})
+
 const PAY_WITH_PR = [
   '# Shop',
   '',

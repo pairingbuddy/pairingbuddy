@@ -174,6 +174,24 @@ describe("plan-step-rule", () => {
     assert.deepEqual(otherPlan.stop, { reason: "legacy", unit: "Built" }, "records of a different plan do not count");
     assert.deepEqual(samePlanOtherSpelling.stop, { reason: "unpublished", unit: "Built" }, "the same plan path written differently still matches, paths compare normalised");
   });
+  test("plan-paths-compare-by-their-normalised-spelling", () => {
+    const plan = ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Built", "", "- [x] **First task**", ""].join("\n");
+    const { units } = parsePlan(plan);
+    const tasks = [{ title: "First task" }];
+    const stopFor = (recorded, current) => planStep(units, { plan: current, openUnit: { unit: "Built", plan: recorded, tasks } }).stop;
+    const counts = { reason: "unpublished", unit: "Built" };
+    const ignored = { reason: "legacy", unit: "Built" };
+
+    assert.deepEqual(stopFor("docs//plans///p.md", "docs/plans/p.md"), counts, "repeated slashes drop");
+    assert.deepEqual(stopFor("docs/x/../plans/p.md", "docs/plans/p.md"), counts, "a segment folds with the .. after it");
+    assert.deepEqual(stopFor("docs/plans/./p.md", "docs/plans/p.md"), counts, "a . segment drops");
+    assert.deepEqual(stopFor("/abs/../plans/p.md", "/plans/p.md"), counts, "a .. above an absolute root drops");
+    assert.deepEqual(stopFor("/abs/plans/p.md", "abs/plans/p.md"), ignored, "an absolute path is not its relative spelling");
+    assert.deepEqual(stopFor("../p.md", "p.md"), ignored, "a leading .. is kept, so it is not the plan beside it");
+    assert.deepEqual(stopFor("../../p.md", "../p.md"), ignored, "two leading .. differ from one");
+    assert.deepEqual(stopFor("a/../..", "../x/.."), counts, "a path that folds to nothing above its start keeps the leading ..");
+    assert.deepEqual(stopFor("a/..", "."), counts, "a path that folds to nothing reads as .");
+  });
   test("unchecked-human-task-stops-with-reason-human", () => {
     const plan = [
       "## Tasks",
