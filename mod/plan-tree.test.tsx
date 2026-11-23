@@ -281,8 +281,18 @@ test('a ticked [HUMAN] task no longer shows as waiting', async ($, on) => {
   ])
 })
 
-test('an unchecked agent task is not shown as waiting on a person', async () => {
-  throw new Error('not implemented: agent-task-not-marked-waiting')
+const PLAN_WITH_AGENT_TASK = PLAN_WITH_HUMAN_TASK.replace('[HUMAN] Approve the pricing page', 'Build the pricing page')
+
+// Same plan as the waiting test without the [HUMAN] marker; with no unit.json, PR: line or [HUMAN] task there is no state to tell, so the unit row is bare
+// and the task row is drawn unticked without "waiting on a person".
+test('an unchecked agent task is not shown as waiting on a person', async ($, on) => {
+  const lines = await showPlan($, on, PLAN_WITH_AGENT_TASK)
+
+  expect(lines, 'the unchecked agent task is drawn unticked with its title and no "waiting on a person" ending').toEqual([
+    'PLAN     Tracer 1: Launch',
+    '           Tracer 1: Launch',
+    '             ○ Task 1: Build the pricing page',
+  ])
 })
 
 test('with no plan MD and no plan path in the ledger, the view renders a plain no-plan state and nothing else breaks', async () => {
