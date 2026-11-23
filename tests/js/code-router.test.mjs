@@ -723,6 +723,15 @@ describe("router-asks-gates-with-the-question-box", () => {
     sentencesSaying("that a passed gate is told by who passed it: the human's click or auto mode", section, /who passed a gate/, /"you answered/, /"auto mode passed/);
     sentencesSaying("that the session never claims it approved a gate", section, /never say you approved/, /on the human's behalf/);
   });
+
+  // Live T4d run: "on its sixth attempt. This is the last fix attempt: 4 of 5 are used" blurred a stage's restarts and its fixes.
+  test("a-stage-run-and-a-fix-are-told-apart", () => {
+    const section = routerSection();
+
+    sentencesSaying("that a stage's progress is told from the say line", section, /`say`/, /`pb status --action`/);
+    sentencesSaying("that a stage's starts are runs and its fixes are fixes", section, /"run 6 \(restarted 5 times\)"/, /its fixes are fixes/);
+    sentencesSaying("that neither is called an attempt", section, /two counts/, /never call either an attempt/);
+  });
 });
 
 // A lab run's model wrapped each pb call in `cd "$(git rev-parse --show-toplevel)" && ... 2>&1; echo "exit=$?"`, a shape no

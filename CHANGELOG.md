@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A stage's runs and its fixes are told in different words (live T4d run: the session told the human "the safety-net review is running again, on its sixth attempt. This is the last fix attempt: 4 of 5 are used"). The sixth was the stage's sixth start, restarts included; the fixes are counted apart, and their limit of 5 counts undone fixes only. `pb status --action` now gives a plain `say` line, such as `safety-net review: run 6 (restarted 5 times) · fixes: 4 tried, undone: 1 of 5 allowed`, and its action, `pb status` at a terminal and a redo's refusal say "run N" for the stage. The coding skill tells the session to relay `say` and never to call either count an attempt. The pane and the band show neither count.
+
 - SPENT counts the whole task's agents after a reload (live T4d run: the builder was switched while the run was stopped, and SPENT went from `193 agents` to `11 agents` while its time carried on). The live count was the session's own spawns, which a new session empties; the time comes from the ledger, so it survived. The count is now the agents the ledger recorded for every closed stage attempt, plus the kept earlier runs of the same unit (the code run, while the publish run is live), plus the session's spawns of the stage attempt running now.
 
 ## [0.8.0-exp.2] - 2026-11-23

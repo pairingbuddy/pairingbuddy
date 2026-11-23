@@ -9,7 +9,7 @@ import { coveredTests, fixesOf, spendTotals } from "./stage-run.mjs";
 import { graphFor, isStageActive, isStageUnstarted, loadStages, nextAttempt, nextStage, startLeaseSecondsLeft } from "./stages.mjs";
 import { humanCommand, pbCommand, shaMismatchRemedy } from "./verbs.mjs";
 import { SPIKE_SETUP_FILE } from "./unit-files.mjs";
-import { forYou, plainName } from "./plain-names.mjs";
+import { fixesLine, forYou, plainName, stageRun } from "./plain-names.mjs";
 import { CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS } from "./config-wait.mjs";
 
 function nextStep(contract, ledger) {
@@ -18,9 +18,17 @@ function nextStep(contract, ledger) {
   return stage === undefined ? null : { stage, attempt: nextAttempt(ledger, stage) };
 }
 
+// say: the stage's run and its fixes in the plain words a model relays to the human, each its own (sayRun).
 export function runStatus(contract, ledger, artifactsDir) {
   const { stage, stop, needsHuman } = ledger;
-  return { stage, next: nextStep(contract, ledger), stop, needsHuman, covered: coveredTests(ledger), spend: spendTotals(ledger, artifactsDir, contract), fixes: fixesOf(ledger, artifactsDir) };
+  const fixes = fixesOf(ledger, artifactsDir);
+  return { stage, next: nextStep(contract, ledger), stop, needsHuman, covered: coveredTests(ledger), spend: spendTotals(ledger, artifactsDir, contract), fixes, say: sayRun(stage, fixes) };
+}
+
+// "safety-net review: run 6 (restarted 5 times) · fixes: 4 tried, undone: 1 of 5 allowed"; the fixes part only once one was tried.
+function sayRun(stage, fixes) {
+  if (!stage.name) return "no stage started yet";
+  return [`${plainName(stage.name) ?? stage.name}: ${stageRun(stage.attempt)}`, ...(fixes.attempts > 0 ? [fixesLine(fixes)] : [])].join(" · ");
 }
 
 // Active with no recorded run and no lease left: the gate marked it, and a declined prompt or a failed start left it.
@@ -40,8 +48,8 @@ function activeAction(ledger, pluginRoot) {
   const { name, attempt } = ledger.stage;
   const clears = `${pbCommand("stage fail")} clears the stage.`;
   if (isStranded(ledger)) return `Stage ${name} has no recorded run and its start lease is over, so its workflow never started. ${startAction({ stage: name, attempt }, pluginRoot, ledger.task)} If it cannot start, ${clears}`;
-  if (isStageUnstarted(ledger)) return `Stage ${name} is active at attempt ${attempt} with no recorded run yet. If its Workflow call was declined or failed before it ran, run ${pbCommand("stage release")} to free the start now. Then: ${startAction({ stage: name, attempt }, pluginRoot, ledger.task)} Otherwise wait for its workflow.`;
-  return `Stage ${name} is active at attempt ${attempt}. Wait for its workflow. If that workflow was killed or refused to start, ${clears}`;
+  if (isStageUnstarted(ledger)) return `Stage ${name} is active on ${stageRun(attempt)} with no recorded workflow yet. If its Workflow call was declined or failed before it ran, run ${pbCommand("stage release")} to free the start now. Then: ${startAction({ stage: name, attempt }, pluginRoot, ledger.task)} Otherwise wait for its workflow.`;
+  return `Stage ${name} is active on ${stageRun(attempt)}. Wait for its workflow. If that workflow was killed or refused to start, ${clears}`;
 }
 
 // The plain name the human knows a gate by, as the progress pane shows it.
@@ -129,14 +137,14 @@ function nextLine({ stage, stop, needsHuman, next }, action) {
   if (stop) return "nothing runs until you act on the stop";
   if (needsHuman) return "nothing runs until you answer";
   if (stage?.status === "active") return "wait for the stage to finish";
-  return next ? `${named(next.stage)}, attempt ${next.attempt}` : "nothing left to run";
+  return next ? `${named(next.stage)}, ${stageRun(next.attempt)}` : "nothing left to run";
 }
 
 // pb status for a human at a terminal: a few labelled lines in place of the JSON a pipe gets.
 export function statusText(status, { owner, lastSeen, now = Date.now(), action } = {}) {
   const { stage, stop, needsHuman } = status;
   const line = (label, text) => `${`${label}:`.padEnd(11)}${text}`;
-  const lines = [line("Stage", stage?.name ? `${named(stage.name)}, ${stage.status || "not started"}, attempt ${stage.attempt}` : "none yet")];
+  const lines = [line("Stage", stage?.name ? `${named(stage.name)}, ${stage.status || "not started"}, ${stageRun(stage.attempt)}` : "none yet")];
   lines.push(line("Owner", owner ? `session ${owner}, last seen ${ago(lastSeen, now)}` : "none"));
   if (stop) lines.push(line("Stopped", [plainName(stop.code), stop.reason && forYou(stop.reason)].filter(Boolean).join(": ") || "yes"));
   if (needsHuman?.gate) lines.push(line("Needs you", named(needsHuman.gate)));

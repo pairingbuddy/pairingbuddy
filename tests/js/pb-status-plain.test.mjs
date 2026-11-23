@@ -49,11 +49,11 @@ function inTerminal(cwd, ...args) {
 const NOW = Date.parse("2026-11-22T10:10:00.000Z");
 const ACTIVE = { name: "code-tdd", status: "active", runId: "wf_1", attempt: 2, startedAt: "2026-11-22T10:00:00.000Z" };
 
-test("an active stage reads by its plain name, its status and its attempt, with the owner and when it was last seen", () => {
+test("an active stage reads by its plain name, its status and which run of it this is, with the owner and when it was last seen", () => {
   const text = statusText({ stage: ACTIVE, stop: null, needsHuman: null, next: null }, { owner: "session-A", lastSeen: "2026-11-22T10:07:00.000Z", now: NOW });
 
   assert.deepEqual(text.split("\n"), [
-    "Stage:     build test by test (code-tdd), active, attempt 2",
+    "Stage:     build test by test (code-tdd), active, run 2 (restarted once)",
     "Owner:     session session-A, last seen 3 minutes ago",
     "Next:      wait for the stage to finish",
   ]);
@@ -72,10 +72,10 @@ test("a stop and a question waiting each get their line, the gate by its plain n
   ]);
 });
 
-test("between stages, next names the stage to start and its attempt", () => {
+test("between stages, next names the stage to start and which run of it that is", () => {
   const status = { stage: { name: "code-scenarios", status: "done", runId: null, attempt: 1, startedAt: null }, stop: null, needsHuman: null, next: { stage: "code-tdd", attempt: 1 } };
 
-  assert.match(statusText(status, { owner: null, now: NOW }), /^Next: {6}build test by test \(code-tdd\), attempt 1$/m);
+  assert.match(statusText(status, { owner: null, now: NOW }), /^Next: {6}build test by test \(code-tdd\), run 1$/m);
 });
 
 test("in a terminal pb status prints the plain lines", () => {

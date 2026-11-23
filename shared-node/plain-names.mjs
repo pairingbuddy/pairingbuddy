@@ -117,3 +117,15 @@ export function forYou(text) {
     .replace(/\b([Tt])he human's\b/g, (_, t) => (t === "T" ? "Your" : "your"))
     .replace(/\b([Tt])he human\b/g, (_, t) => (t === "T" ? "You" : "you"));
 }
+
+// Which run of a stage this is, from its ledger attempt: every start of its workflow counts, restarts after a crash or a
+// stop included. Told as "run N", never "attempt", so it is not taken for a fix attempt, which is told as a fix.
+export function stageRun(attempt) {
+  const restarts = attempt - 1;
+  if (!Number.isInteger(restarts) || restarts < 1) return `run ${attempt}`;
+  return `run ${attempt} (restarted ${restarts === 1 ? "once" : `${restarts} times`})`;
+}
+
+// A stage's fixes: how many were tried, kept or undone, and how many were undone of the most the stage allows before it
+// stops. Told as fixes, never "attempt", so it is not taken for a run of the stage.
+export const fixesLine = ({ attempts, rolledBack, maxAttempts }) => `fixes: ${attempts} tried, undone: ${rolledBack} of ${maxAttempts} allowed`;

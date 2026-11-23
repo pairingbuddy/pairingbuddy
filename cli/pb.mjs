@@ -31,6 +31,7 @@ import { shellWord } from "../shared-node/shell-word.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
 import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus, statusText } from "../shared-node/next-action.mjs";
+import { stageRun } from "../shared-node/plain-names.mjs";
 import { needsTestSelection } from "../shared-node/stage-graph.mjs";
 import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, standingScenariosKey, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
@@ -572,7 +573,7 @@ function answeredResult({ name, answer }, { stop }, root) {
 
 function noGateDue(ledger) {
   const { name, status } = ledger.stage;
-  return status === REDO_STATUS ? `no gate is due: the human answered redo, so ${name} restarts at attempt ${nextAttempt(ledger, name)}` : "no gate is due";
+  return status === REDO_STATUS ? `no gate is due: the human answered redo, so ${name} starts again on ${stageRun(nextAttempt(ledger, name))}` : "no gate is due";
 }
 
 // While a gate is pending it is the only one a human can pass: the next gate stays behind it. A gate answered redo

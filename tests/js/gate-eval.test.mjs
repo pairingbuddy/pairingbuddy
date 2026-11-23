@@ -833,7 +833,7 @@ describe("a human's redo reopens the stage", () => {
 
     assert.equal(result.code, 1);
     assert.match(result.stderr, /no gate is due/);
-    assert.match(result.stderr, new RegExp(`${FIRST}[^\\n]*attempt 2`));
+    assert.match(result.stderr, new RegExp(`${FIRST}[^\\n]*run 2`));
   });
 
   test("a direct pipeline Agent call names the restart", () => {

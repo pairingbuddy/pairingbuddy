@@ -77,7 +77,7 @@ describe("pb gate eval reports a gate a human answered", () => {
 
     const stderr = refused(pb(repo, "gate", "eval"));
 
-    assert.equal(stderr, "pb: no gate is due: the human answered redo, so code-safety-net restarts at attempt 2\n");
+    assert.equal(stderr, "pb: no gate is due: the human answered redo, so code-safety-net starts again on run 2 (restarted once)\n");
   });
 });
 
