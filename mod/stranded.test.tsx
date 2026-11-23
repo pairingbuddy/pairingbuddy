@@ -98,3 +98,16 @@ test('the band keeps what it needs once the alert opened the pane', async ($, on
 
   expect(row, `the band asks for the human, not "opened details": ${row}`).toMatch(/^▲ NEEDS YOU · take over the run/)
 })
+
+// T4d run: the safety net's workflow threw, the session that ran it was alive, and the pane said its session was gone.
+// A stage this session ran agents for, and none of them still runs, has a workflow that ended without finishing.
+test('a stage whose workflow ended in this session reads as restart the step, not take over', async ($, on) => {
+  engine(on, SNAPSHOT_RUNNING)
+  const clock = mock.clock(on, { now: STARTED + MINUTE })
+  await start($)
+  const spawned = await $.agent.spawn({ prompt: 'p', description: 'pb1 code-scenarios - runner - r1', subagentType: 'pairingbuddy:runner', workflow: { runId: 'wf_1', agentIndex: 1 } })
+  await $.turn.complete({ answer: '', durationMs: 1000, isAborted: false, turnId: 't1', agentId: spawned.agentId, reason: 'answer' })
+  await clock.advance(11 * MINUTE)
+
+  expect(statusOf(await paneLines($, { bodyColumns: 120 })), 'STATUS asks for the step again').toBe('▲ NEEDS YOU · restart the step: its workflow ended without finishing')
+})

@@ -3,6 +3,7 @@ import { isStandingScenarios, isStandingTests, newestKeyAmong, scenarioRows } fr
 import { withPermissionAsk } from '../shared-node/permission-wait.mjs'
 import { standingGateOff, withGateOff } from '../shared-node/gate-off.mjs'
 import { withStranded } from '../shared-node/stranded.mjs'
+import { readLabel } from '../shared-node/labels.mjs'
 
 const TESTS = '.pairingbuddy/tests.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
@@ -166,7 +167,8 @@ async function readGateOff($: EngineInterface): Promise<unknown> {
 async function readInputsAndTests($: EngineInterface, spawns: Spawn[]): Promise<Inputs> {
   const [read, legacyFile, now, gateOff, ledgerWrittenMs, shim] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($), readGateOff($), writtenMs($, LEDGER), exists($, SHIM)])
   const last = spawns.at(-1)
-  const seen = { now, ledgerWrittenMs, spawnAt: last?.startedAt, spawnRunning: spawns.some(spawn => !spawn.finished), shim }
+  const stageRanHere = spawns.some(spawn => readLabel(spawn.name).stage === read?.stage?.name)
+  const seen = { now, ledgerWrittenMs, spawnAt: last?.startedAt, spawnRunning: spawns.some(spawn => !spawn.finished), shim, stageRanHere }
   const ledger = pausedAtLastWrite(withGateOff(withStranded(withPermissionAsk(read), seen), gateOff) as Ledger, ledgerWrittenMs)
   const testsFile = (await readStandingReturn($, ledger, isStandingTests)) ?? legacyFile
   return inputsOf({ ledger, testsFile, now, spawns })

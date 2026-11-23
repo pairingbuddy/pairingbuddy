@@ -13,8 +13,16 @@ export const STRANDED_MS = 10 * 60_000;
 export const STRANDED_GATE = "stranded";
 const STRANDED_LINE = "take over the run: its session is gone";
 
-// The plain words for the stranded gate, or undefined for any other gate.
-export const strandedLine = (gate) => (gate === STRANDED_GATE ? STRANDED_LINE : undefined);
+// The same stage, when this session ran its agents and none still runs: the session is alive (the views run in it), and
+// only the stage's workflow ended without finishing, so the way on is to restart the stage, not to take the run over.
+export const WORKFLOW_ENDED_GATE = "workflow-ended";
+const WORKFLOW_ENDED_LINE = "restart the step: its workflow ended without finishing";
+export const RESTART_LINE = "tell Claude to restart it: pb stage fail, then pb status --action";
+
+const STRANDED_LINES = { [STRANDED_GATE]: STRANDED_LINE, [WORKFLOW_ENDED_GATE]: WORKFLOW_ENDED_LINE };
+
+// The plain words for the stranded gates, or undefined for any other gate.
+export const strandedLine = (gate) => STRANDED_LINES[gate];
 
 const timeOf = (time) => (typeof time === "string" ? Date.parse(time) : typeof time === "number" ? time : NaN);
 
@@ -40,7 +48,10 @@ export const TAKE_OVER_LINE = "type: !.pairingbuddy/bin/pb human adopt";
 // The ledger as the views read it: a stranded stage is the question waiting on the human. Its seq is the ledger's, which
 // stands while nothing writes it, so the alert fires once. seen.shim: the shim is there, so the take-over line can name it.
 // pausedAt: the last move, where SPENT's clock stops (glance's pausedAtOf).
+// seen.stageRanHere: this session spawned agents of the active stage, so its workflow, not its session, is what ended.
 export function withStranded(ledger, seen) {
   if (!isStranded(ledger, seen)) return ledger;
-  return { ...ledger, pausedAt: lastMoved(ledger, seen), needsHuman: { gate: STRANDED_GATE, reason: STRANDED_LINE, seq: ledger.seq, ...(seen.shim ? { fix: TAKE_OVER_LINE } : {}) } };
+  const pausedAt = lastMoved(ledger, seen);
+  if (seen.stageRanHere) return { ...ledger, pausedAt, needsHuman: { gate: WORKFLOW_ENDED_GATE, reason: WORKFLOW_ENDED_LINE, seq: ledger.seq, fix: RESTART_LINE } };
+  return { ...ledger, pausedAt, needsHuman: { gate: STRANDED_GATE, reason: STRANDED_LINE, seq: ledger.seq, ...(seen.shim ? { fix: TAKE_OVER_LINE } : {}) } };
 }
