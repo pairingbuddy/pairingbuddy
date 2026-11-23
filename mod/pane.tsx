@@ -145,6 +145,11 @@ function openUnitLines(open: NonNullable<View['planOpen']>, indent: string): Par
   return facts.map(text => [{ text: `${indent}${text}` }])
 }
 
+// With no plan, the open unit alone: its facts and its PR link.
+function unitOnlyLines(open: NonNullable<View['planOpen']>, pr?: string): Part[][] {
+  return [...openUnitLines(open, ''), ...(pr ? [[{ text: `PR ${pr}` }]] : [])]
+}
+
 type PlanUnit = NonNullable<View['plan']>['units'][number]
 
 // One unit's rows: its name and state, then what it is based on, the open unit's facts, its PR and its tasks.
@@ -200,6 +205,7 @@ function paneRows(view: View, columns: number) {
     ...rowLines('TESTS', testsParts(view, width)),
     ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
     ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen)) : []),
+    ...(!view.plan && view.planOpen ? rowLines('PLAN', unitOnlyLines(view.planOpen, view.planOpenPr)) : []),
   ]
 }
 

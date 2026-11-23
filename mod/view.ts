@@ -61,6 +61,8 @@ export type View = {
   planStates?: string[]
   // The open unit's record, whose branch, base and commits the PLAN tree shows under the plan unit it names.
   planOpen?: OpenUnit
+  // The open unit's PR link, shown with it when there is no plan.
+  planOpenPr?: string
 }
 
 type PlannedUnits = NonNullable<Inputs['plan']>['units']
@@ -265,7 +267,7 @@ function endedStatus(inputs: Inputs, end: { doneStatus?: string }): Status {
 
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
-  const view = { ...toned(buildPlainView(inputs)), plan: inputs.plan, planStates: planStatesOf(inputs), planOpen: inputs.unit?.open }
+  const view = { ...toned(buildPlainView(inputs)), plan: inputs.plan, planStates: planStatesOf(inputs), planOpen: inputs.unit?.open, planOpenPr: inputs.unit?.prUrl }
   const { ledger } = inputs
   if (!ledger) return view
   const { doneStatus: _done, ...end } = endState(inputs, view.running, true)
