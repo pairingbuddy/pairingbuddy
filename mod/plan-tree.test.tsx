@@ -257,10 +257,11 @@ const PLAN_WITH_HUMAN_TASK = [
   '',
 ].join('\n')
 
+// No unit.json is given and the plan has no PR: line or ticked task, so unitStates gives Launch `open`; the task row alone differs.
 test('an unchecked [HUMAN] task shows as waiting on a person, with its title', async ($, on) => {
   const lines = await showPlan($, on, PLAN_WITH_HUMAN_TASK)
 
-  expect(lines, 'the unchecked [HUMAN] task keeps its title and its row ends with "waiting on a person"').toEqual([
+  expect(lines, 'Launch is an open unit with no record; its unchecked [HUMAN] task keeps its title and its row ends with "waiting on a person"').toEqual([
     'PLAN     Tracer 1: Launch',
     '           Tracer 1: Launch · open',
     '             ○ Task 1: [HUMAN] Approve the pricing page · waiting on a person',
