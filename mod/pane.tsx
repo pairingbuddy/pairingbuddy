@@ -133,7 +133,8 @@ function topRows(view: View, columns: number) {
 const TASK_MARKS = { ticked: '✓', unticked: '○' } as const
 const NEST = '  '
 const SHORT_SHA = 7
-const WAITING_ON_PERSON = ' · waiting on a person'
+const STATE_SEPARATOR = ' · '
+const WAITING_ON_PERSON = 'waiting on a person'
 // The open unit's branch, base and commits, each on its own line.
 function openUnitLines(open: NonNullable<View['planOpen']>, indent: string): Part[][] {
   const facts = [
@@ -150,17 +151,26 @@ type PlanUnit = NonNullable<View['plan']>['units'][number]
 function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpen'], indent: string): Part[][] {
   const contentIndent = indent + NEST
   return [
-    [{ text: `${indent}${unit.unit}${state ? ` · ${state}` : ''}` }],
+    [{ text: `${indent}${unit.unit}${state ? `${STATE_SEPARATOR}${state}` : ''}` }],
     ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
     ...(open && open.unit === unit.unit ? openUnitLines(open, contentIndent) : []),
     ...(unit.pr ? [[{ text: `${contentIndent}PR ${unit.pr}` }]] : []),
-    ...unit.tasks.map(task => [{ text: `${contentIndent}${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}${task.human && !task.checked ? WAITING_ON_PERSON : ''}` }]),
+    ...unit.tasks.map(task => [{ text: contentIndent + taskRow(task) }]),
   ]
 }
 
+// A task's mark and title; an unticked [HUMAN] task also says it waits on a person.
+function taskRow(task: PlanUnit['tasks'][number]): string {
+  const mark = task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked
+  const waiting = task.human && !task.checked ? `${STATE_SEPARATOR}${WAITING_ON_PERSON}` : ''
+  return `${mark} ${task.title}${waiting}`
+}
+
 // Consecutive units of one tracer form a group; a unit under no tracer is its own group, unindented.
-function tracerGroups(units: PlanUnit[]): { tracer: string | null | undefined; units: { unit: PlanUnit; index: number }[] }[] {
-  const groups: { tracer: string | null | undefined; units: { unit: PlanUnit; index: number }[] }[] = []
+type TracerGroup = { tracer: string | null | undefined; units: { unit: PlanUnit; index: number }[] }
+
+function tracerGroups(units: PlanUnit[]): TracerGroup[] {
+  const groups: TracerGroup[] = []
   for (const [index, unit] of units.entries()) {
     const last = groups.at(-1)
     if (last && unit.tracer && last.tracer === unit.tracer) last.units.push({ unit, index })

@@ -63,17 +63,27 @@ export type View = {
   planOpen?: OpenUnit
 }
 
+type PlannedUnits = NonNullable<Inputs['plan']>['units']
+
+// A unit shows a PR or a [HUMAN] task: something for its state to say even with no unit record.
+function hasStateToTell(units: PlannedUnits): boolean {
+  return units.some(planned => planned.pr || planned.tasks.some(task => task.human))
+}
+
+// A record names its unit, or only its tracer: then it is the first plan unit under that tracer.
+function resolveOpenUnit(units: PlannedUnits, open: NonNullable<NonNullable<Inputs['unit']>['open']>) {
+  const isPlanned = units.some(planned => planned.unit === open.unit)
+  const underTracer = isPlanned || !open.tracer ? undefined : units.find(planned => planned.tracer === open.tracer)
+  return underTracer ? { ...open, unit: underTracer.unit } : open
+}
+
 // Each plan unit's state, in plan order, once a unit record stands to read it against; else none.
 function planStatesOf({ plan, unit, ledger }: Inputs): string[] | undefined {
   if (!plan) return undefined
   const open = unit?.open
-  // Without a unit record the states are told only once a unit shows a PR or a [HUMAN] task, since those give them something to say.
-  if (!open) return plan.units.some(planned => planned.pr || planned.tasks.some(task => task.human)) ?unitStates(plan.units, { plan: ledger?.plan?.path, openUnit: undefined }) : undefined
-  // A record names its unit, or only its tracer: then it is the first plan unit under that tracer.
-  const isPlanned = plan.units.some(planned => planned.unit === open.unit)
-  const underTracer = isPlanned || !open.tracer ? undefined : plan.units.find(planned => planned.tracer === open.tracer)
-  const openUnit = underTracer ? { ...open, unit: underTracer.unit } : open
-  return unitStates(plan.units, { plan: ledger?.plan?.path, openUnit })
+  const planPath = ledger?.plan?.path
+  if (open) return unitStates(plan.units, { plan: planPath, openUnit: resolveOpenUnit(plan.units, open) })
+  return hasStateToTell(plan.units) ? unitStates(plan.units, { plan: planPath, openUnit: undefined }) : undefined
 }
 
 export type EndRows = Record<'done' | 'pr', string>
