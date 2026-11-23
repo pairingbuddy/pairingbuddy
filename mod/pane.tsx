@@ -158,13 +158,20 @@ function unitOnlyLines(open: NonNullable<View['planOpen']>, pr?: string): Part[]
 
 type PlanUnit = NonNullable<View['plan']>['units'][number]
 
+// A unit's state in plain words: unitStates' "open" (it has boxes left) reads open only for the unit pb has open; any
+// other unit with boxes left has its work to do.
+const TO_DO = 'to do'
+const stateWords = (state: string | undefined, isOpen: boolean) => (state === 'open' && !isOpen ? TO_DO : state)
+
 // One unit's rows: its name and state, then what it is based on, the open unit's facts, its PR and its tasks.
 function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpen'], indent: string): Part[][] {
   const contentIndent = indent + NEST
+  const isOpen = Boolean(open && open.unit === unit.unit)
+  const words = stateWords(state, isOpen)
   return [
-    [{ text: `${indent}${unit.unit}${state ? `${STATE_SEPARATOR}${state}` : ''}` }],
+    [{ text: `${indent}${unit.unit}${words ? `${STATE_SEPARATOR}${words}` : ''}` }],
     ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
-    ...(open && open.unit === unit.unit ? openUnitLines(open, contentIndent) : []),
+    ...(open && isOpen ? openUnitLines(open, contentIndent) : []),
     ...prRows(unit.pr, contentIndent),
     ...unit.tasks.map(task => [{ text: contentIndent + taskRow(task) }]),
   ]

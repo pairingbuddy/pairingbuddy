@@ -50,7 +50,7 @@ test('a publish run, whose ledger names no plan, shows the plan the open unit.js
     '             base main',
     '             commit 1111111',
     '             ✓ Task 1: Take payment',
-    '           Receipt · open',
+    '           Receipt · to do',
     '             based on Pay',
     '             ○ Task 2: Send receipt',
   ])

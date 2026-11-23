@@ -100,12 +100,12 @@ const ONE_UNIT_PER_STATE = [
 // The open unit is Done, with a record of its one task, so only it can read as unpublished.
 const OPEN_UNIT_DONE = JSON.stringify({ unit: 'Done', plan: PLAN_PATH, tracer: 'Tracer 3: Done', branch: 'feat/done', base: 'main', baseSha: 'abc123', tasks: [{ title: 'Task 4: Built' }], commits: [] })
 
-test('each unit shows the state unitStates gives it: open, hand-ticked, unpublished, published, accepted or legacy', async ($, on) => {
+test('each unit shows the state unitStates gives it: to do, hand-ticked, unpublished, published, accepted or legacy', async ($, on) => {
   const lines = await showPlan($, on, ONE_UNIT_PER_STATE, { '.pairingbuddy/run/unit.json': OPEN_UNIT_DONE })
 
   expect(lines, 'every unit row ends with the state unitStates gives that unit, each state shown once').toEqual([
     'PLAN     Tracer 1: Fresh',
-    '           Tracer 1: Fresh · open',
+    '           Tracer 1: Fresh · to do',
     '             ○ Task 1: Start',
     '         Tracer 2: Halfway',
     '           Tracer 2: Halfway · hand-ticked',
@@ -162,7 +162,7 @@ test('a unit with a Depends on line shows the unit it is based on', async ($, on
 })
 
 // Pay is the open unit, with two commits recorded for it; unit.json names no other unit, so Receipt shows no branch, base or commits
-// (its `open` label comes from unitStates, not from a record).
+// (its `to do` label comes from unitStates, not from a record).
 const OPEN_UNIT_PAY = JSON.stringify({
   unit: 'Pay',
   plan: PLAN_PATH,
@@ -185,7 +185,7 @@ test('the open unit from unit.json shows its branch, base and the commits record
     '             commit 1111111',
     '             commit 2222222',
     '             ○ Task 1: Take payment',
-    '           Receipt · open',
+    '           Receipt · to do',
     '             based on Pay',
     '             ○ Task 2: Send receipt',
   ])
@@ -202,7 +202,7 @@ test('a unit.json that names only a tracer shows its branch and base on the firs
     '             branch feat/pay',
     '             base main',
     '             ○ Task 1: Take payment',
-    '           Receipt · open',
+    '           Receipt · to do',
     '             based on Pay',
     '             ○ Task 2: Send receipt',
   ])
@@ -213,9 +213,9 @@ test('a unit.json that names neither a planned unit nor a planned tracer shows n
 
   expect(lines, 'the record matches no unit, so no unit takes its branch or base').toEqual([
     'PLAN     Tracer 1: Checkout',
-    '           Pay · open',
+    '           Pay · to do',
     '             ○ Task 1: Take payment',
-    '           Receipt · open',
+    '           Receipt · to do',
     '             based on Pay',
     '             ○ Task 2: Send receipt',
   ])
@@ -248,7 +248,7 @@ test('a unit with a PR: line shows its PR link', async ($, on) => {
     '           Pay · published',
     '             PR https://github.com/acme/shop/pull/7',
     '             ✓ Task 1: Take payment',
-    '           Receipt · open',
+    '           Receipt · to do',
     '             ○ Task 2: Send receipt',
   ])
 })
@@ -289,13 +289,13 @@ const PLAN_WITH_HUMAN_TASK = [
   '',
 ].join('\n')
 
-// No unit.json is given and the plan has no PR: line or ticked task, so unitStates gives Launch `open`; the task row alone differs.
+// No unit.json is given and the plan has no PR: line or ticked task, so unitStates gives Launch `open`, which reads to do with no unit open; the task row alone differs.
 test('an unchecked [HUMAN] task shows as waiting on a person, with its title', async ($, on) => {
   const lines = await showPlan($, on, PLAN_WITH_HUMAN_TASK)
 
-  expect(lines, 'Launch is an open unit with no record; its unchecked [HUMAN] task keeps its title and its row ends with "waiting on a person"').toEqual([
+  expect(lines, 'Launch has its task to do and no record; its unchecked [HUMAN] task keeps its title and its row ends with "waiting on a person"').toEqual([
     'PLAN     Tracer 1: Launch',
-    '           Tracer 1: Launch · open',
+    '           Tracer 1: Launch · to do',
     '             ○ Task 1: [HUMAN] Approve the pricing page · waiting on a person',
   ])
 })
@@ -384,5 +384,15 @@ test('with no ledger, unit or plan, the pane renders as before', async ($, on) =
     'STEPS    —',
     'TESTS    —',
     'REVIEW   —',
+  ])
+})
+
+// "open" is the unit pb has open; a unit with boxes left that pb has not opened yet has its work to do.
+test('a unit with tasks left reads open only while it is the open unit, else to do', async ($, on) => {
+  const lines = await showPlan($, on, RECEIPT_DEPENDS_ON_PAY, { '.pairingbuddy/run/unit.json': unitRecordNaming('Pay', 'Tracer 1: Checkout') })
+
+  expect(lines.filter(line => /^ {11}\S/.test(line)), 'Pay is open; Receipt, which pb has not opened, is to do').toEqual([
+    '           Pay · open',
+    '           Receipt · to do',
   ])
 })
