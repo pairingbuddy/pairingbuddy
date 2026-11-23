@@ -217,19 +217,28 @@ function endState(inputs: Inputs, running: boolean, live: boolean): Pick<View, '
 const STATUS_PART = ' · '
 const NEXT_PUBLISH = `next: ${plainName(PUBLISH_STEP)}`
 
+// What comes once the code run is signed off: a [HUMAN] task the unit's plan still has unticked, by its "Task <id>" when it
+// has one, since pb publishes nothing until a person does it and ticks its box; else the pull request.
+function nextAfterCode(unit: Inputs['unit']): string {
+  const human = unit?.humanLeft?.[0]
+  if (human === undefined) return NEXT_PUBLISH
+  const task = /^Task\s+[^:\s]+(?=:)/.exec(human)?.[0] ?? human.replace(/\[HUMAN\]\s*/, '')
+  return `next: you do ${task} and tick its box`
+}
+
 // What state a live run is in: stopped, needs you, or working on its step (or between steps).
-function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean): Status {
+function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean, unit: Inputs['unit']): Status {
   if (ledger.stop) return { state: 'stopped', what: stopName(ledger.stop), ...(ledger.stop.fix ? { fix: ledger.stop.fix } : {}) }
   const gate = waitingGate(ledger)
   if (gate) return { state: 'needsYou', what: gateLine(gate), ...(ledger.needsHuman?.fix ? { fix: ledger.needsHuman.fix } : {}) }
-  if (view.between === ALL_DONE && publishes && !isPublishRun(ledger)) return { state: 'working', what: NEXT_PUBLISH }
+  if (view.between === ALL_DONE && publishes && !isPublishRun(ledger)) return { state: 'working', what: nextAfterCode(unit) }
   return { state: 'working', what: view.rows.now }
 }
 
 // A run that is over: done, waiting on the publish run, or ended without the sign-off.
 function endedStatus(inputs: Inputs, end: { doneStatus?: string }): Status {
   if (end.doneStatus) return { state: 'done', what: end.doneStatus }
-  if (inputs.codeRun?.taskEndPassed === true) return { state: 'quiet', what: `between runs${STATUS_PART}${NEXT_PUBLISH}` }
+  if (inputs.codeRun?.taskEndPassed === true) return { state: 'quiet', what: `between runs${STATUS_PART}${nextAfterCode(inputs.unit)}` }
   return { state: 'quiet', what: `ended${STATUS_PART}not signed off` }
 }
 
@@ -239,7 +248,7 @@ export function buildView(inputs: Inputs): View {
   const { ledger } = inputs
   if (!ledger) return view
   const { doneStatus: _done, ...end } = endState(inputs, view.running, true)
-  const status = liveStatus(view, ledger, publishesAfter(inputs))
+  const status = liveStatus(view, ledger, publishesAfter(inputs), inputs.unit)
   return { ...view, goal: goalText(inputs), status, ...buildTestRows(inputs, false), steps: unitSteps(inputs, false), lensRound: lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns }), ...end }
 }
 

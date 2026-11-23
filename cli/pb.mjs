@@ -16,6 +16,7 @@ import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchP
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, boxesUnder, planFile, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
+import { humanTasksLeft } from "../shared-node/plan-text.mjs";
 import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, refreshPrReason, targetBranch, untickedTasks, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
 import { remapCommits } from "../shared-node/rebase-map.mjs";
@@ -1646,7 +1647,7 @@ function unitPlan(root, unit) {
   if (typeof unit.plan !== "string" || unit.plan === "" || typeof unit.unit !== "string" || unit.unit === "") return { planBoxes: null, planUnticked: null, planProblem: null };
   try {
     const boxes = boxesUnder(readFileSync(join(root, unit.plan), "utf8"), unit.unit);
-    return { planBoxes: boxes?.map(({ label }) => label) ?? null, planUnticked: boxes?.filter(({ label, ticked }) => !ticked && isHumanTitle(label)).map(({ label }) => label) ?? null, planProblem: null };
+    return { planBoxes: boxes?.map(({ label }) => label) ?? null, planUnticked: boxes ? humanTasksLeft(boxes) : null, planProblem: null };
   } catch (e) {
     return { planBoxes: null, planUnticked: null, planProblem: `the plan ${unit.plan} cannot be read: ${e.code ?? e.message}` };
   }

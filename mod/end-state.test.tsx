@@ -172,3 +172,66 @@ test('tests-row-keeps-the-code-runs-tests-through-the-publish', async ($, on) =>
   await rig.clock.advance(POLL_MS * 2)
   expect(rowOf(await paneLines($), 'TESTS'), 'once the publish run is over').toBe(atCodeEnd)
 })
+
+const PLAN = 'docs/plans/cart.md'
+const planText = (humanBox: ' ' | 'x') => [
+  '# Cart', '', '## T1: Order total', '',
+  '- [x] **Task 1: Add order_total**', '', '**Goal:** Sum the lines.', '',
+  `- [${humanBox}] **Task 2: [HUMAN] Try the checkout**`, '', '**Goal:** Judge it by hand.', '',
+  '## T2: Tax', '', '- [ ] **Task 3: [HUMAN] Ask about tax**', '',
+].join('\n')
+const planUnit = { ...unitFile, unit: 'T1: Order total', plan: PLAN, tracer: 'T1: Order total' }
+
+// Live Task 107 run: the code run ended with the plan's next task a [HUMAN] one, and STATUS read
+// "between runs · next: write the pull request", though pb publishes nothing until a person ticks that task.
+test('between runs, a person-only task left in the unit is next, not the pull request', async ($, on) => {
+  const rig = setupReplay(on)
+  serve(rig, { [LEDGER]: codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), [UNIT]: planUnit, [PLAN]: planText(' ') })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await lensReturn($, 'corpus-misalignment', [])
+  await rig.clock.advance(POLL_MS * 2)
+  // pb task end removes the code run's ledger; the unit stays open.
+  serve(rig, { [UNIT]: planUnit, [PLAN]: planText(' ') })
+  await rig.clock.advance(POLL_MS * 2)
+
+  expect(rowOf(await paneLines($), 'STATUS')).toBe('STATUS   ○ between runs · next: you do Task 2 and tick its box')
+})
+
+test('once every step is done, a person-only task left in the unit is next, not the pull request', async ($, on) => {
+  const rig = setupReplay(on)
+  serve(rig, { [LEDGER]: codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), [UNIT]: planUnit, [PLAN]: planText(' ') })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await lensReturn($, 'corpus-misalignment', [])
+  await rig.clock.advance(POLL_MS * 2)
+
+  expect(rowOf(await paneLines($), 'STATUS')).toBe('STATUS   ● working · next: you do Task 2 and tick its box')
+})
+
+test('a plan the unit record names outside the repo is never read', async ($, on) => {
+  const rig = setupReplay(on)
+  const outside = { ...planUnit, plan: '../elsewhere/cart.md' }
+  serve(rig, { [LEDGER]: codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), [UNIT]: outside })
+  // The engine resolves the ".." before the read reaches the file.
+  const resolved = `${ROOT.slice(0, ROOT.lastIndexOf('/'))}/elsewhere/cart.md`
+  rig.served.set(resolved, planText(' '))
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await lensReturn($, 'corpus-misalignment', [])
+  await rig.clock.advance(POLL_MS * 2)
+
+  expect(rig.reads.has(resolved), 'the plan outside the repo is not read').toBe(false)
+  expect(rowOf(await paneLines($), 'STATUS')).toBe('STATUS   ● working · next: write the pull request')
+})
+
+test('once a person ticks the unit\'s last [HUMAN] task, the pull request is next', async ($, on) => {
+  const rig = setupReplay(on)
+  serve(rig, { [LEDGER]: codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), [UNIT]: planUnit, [PLAN]: planText('x') })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await lensReturn($, 'corpus-misalignment', [])
+  await rig.clock.advance(POLL_MS * 2)
+
+  expect(rowOf(await paneLines($), 'STATUS'), "another unit's [HUMAN] task is not this unit's").toBe('STATUS   ● working · next: write the pull request')
+})

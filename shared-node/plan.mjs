@@ -11,8 +11,9 @@ const TRACER_LEVEL = 3;
 const SECTION_LEVEL = 2;
 const TASKS_SECTION = "Tasks";
 const NON_TASK_SECTIONS = ["Requirements", "Architecture"];
-const HUMAN_TITLE = /^(?:Task\s+[^:\s]+:\s*)?\[HUMAN\]/; // [HUMAN] opens a title, or follows a leading "Task <id>:"
-export const isHumanTitle = (title) => HUMAN_TITLE.test(title);
+import { isHumanTitle } from "./plan-text.mjs";
+
+export { isHumanTitle };
 
 // A level-1/2 heading opens a section; the task area is ## Tasks, or without it everything but Requirements and Architecture.
 function inTaskArea(section, hasTasks) {

@@ -4,6 +4,7 @@ import { withPermissionAsk } from '../shared-node/permission-wait.mjs'
 import { standingGateOff, withGateOff } from '../shared-node/gate-off.mjs'
 import { withStranded } from '../shared-node/stranded.mjs'
 import { readLabel } from '../shared-node/labels.mjs'
+import { boxesUnder, humanTasksLeft } from '../shared-node/plan-text.mjs'
 
 const TESTS = '.pairingbuddy/tests.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
@@ -39,7 +40,8 @@ export type Ledger = {
 export type Call = { agentId?: unknown; at?: string; input: Record<string, unknown> }
 // unit: the open unit, by its identity (branch and base) and its last ended task's steps; since: when the unit's first run began.
 // prUrl: the pull request the unit record names, once pb publish has opened it.
-export type Unit = { key: string; taskStages: string[]; prUrl?: string }
+// humanLeft: the unit's [HUMAN] tasks its plan still has unticked, which a person does before pb publishes the unit.
+export type Unit = { key: string; taskStages: string[]; prUrl?: string; humanLeft?: string[] }
 // What the pane keeps of the unit's last code run (shared-node/end-state.mjs codeRunOf), so the end state outlives its ledger.
 export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; testsPassing: number; perTest?: Record<string, { green?: { passed: boolean }; covered?: { done: boolean } }>; safetyNet: { attempt?: number; startedAt?: string } | null; rollbacks: unknown[] }
 // What the last pb publish printed: the url it opened, or the result when it opened none; codeRunId ties it to the code run it published.
@@ -194,6 +196,23 @@ export function unitOf(file: unknown): Unit | null {
   return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}) }
 }
 
+// A plan path the unit record names is read only inside the repo: relative, with no ".." part.
+const inRepo = (path: unknown): path is string => typeof path === 'string' && path !== '' && !path.startsWith('/') && !path.split(/[\\/]/).includes('..')
+
+// The unit with the [HUMAN] tasks its plan still has unticked under its heading, as pb publish reads them. A unit with no
+// plan, or a plan that does not read, has none. Never throws.
+async function withHumanLeft($: EngineInterface, unit: Unit | null, file: unknown): Promise<Unit | null> {
+  const { plan, unit: name } = (file ?? {}) as { plan?: unknown; unit?: unknown }
+  if (!unit || !inRepo(plan) || typeof name !== 'string' || name === '') return unit
+  try {
+    const text = await $.fs.read(`${await $.session.root()}/${plan}`)
+    const left = humanTasksLeft(boxesUnder(text, name))
+    return left.length > 0 ? { ...unit, humanLeft: left } : unit
+  } catch {
+    return unit
+  }
+}
+
 // The paths run/changed.json lists ({ path, status } entries), or null when it is absent or does not read.
 export function changedOf(file: unknown): string[] | null {
   if (!Array.isArray(file)) return null
@@ -206,7 +225,7 @@ export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: bo
 // spawns: this session's, so a stage its own agents are still running never reads as stranded.
 export async function pollInputs($: EngineInterface, spawns: Spawn[] = []): Promise<Polled> {
   const [{ ledger, tests, testsComplete, now }, unitFile, changedFile] = await Promise.all([readInputsAndTests($, spawns), readJson($, UNIT), readJson($, CHANGED)])
-  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: unitOf(unitFile), changed: changedOf(changedFile) }
+  return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: await withHumanLeft($, unitOf(unitFile), unitFile), changed: changedOf(changedFile) }
 }
 
 type PolledState = { ledger: unknown; tests: string[]; testsComplete?: boolean; now: number | null; unit?: Unit | null; since?: string | null; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; task?: TaskFacts | null; earlierAgents?: number } | null
