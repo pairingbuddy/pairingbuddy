@@ -151,7 +151,8 @@ function planLines(plan: NonNullable<View['plan']>, states: string[] = [], open?
     if (last && unit.tracer && last.tracer === unit.tracer) last.units.push({ unit, state: states[i] })
     else groups.push({ tracer: unit.tracer, units: [{ unit, state: states[i] }] })
   }
-  return groups.flatMap(({ tracer, units }) => {
+  const problems = (plan.problems ?? []).map((problem: string) => [{ text: problem }])
+  return [...groups.flatMap(({ tracer, units }) => {
     const unitIndent = tracer ? NEST : ''
     const contentIndent = unitIndent + NEST
     return [
@@ -164,7 +165,7 @@ function planLines(plan: NonNullable<View['plan']>, states: string[] = [], open?
         ...unit.tasks.map(task => [{ text: `${contentIndent}${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
       ]),
     ]
-  })
+  }), ...problems]
 }
 
 // The details under the rule, read after the first glance.
