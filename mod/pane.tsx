@@ -169,6 +169,7 @@ function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpe
   const contentIndent = indent + NEST
   const isOpen = Boolean(open && open.unit === unit.unit)
   const words = stateWords(state, isOpen)
+  const next = unit.tasks.find(task => !task.checked)
   return [
     [{ text: `${indent}${unit.unit}${words ? `${STATE_SEPARATOR}${words}` : ''}` }],
     ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
@@ -176,15 +177,16 @@ function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpe
     ...prRows(unit.pr, contentIndent),
     ...unit.tasks.map(task => {
       const inProgress = !task.checked && task.title === building
-      return [{ text: contentIndent + taskRow(task, inProgress), ...(inProgress ? { props: LIT } : {}) }]
+      return [{ text: contentIndent + taskRow(task, inProgress, task === next), ...(inProgress ? { props: LIT } : {}) }]
     }),
   ]
 }
 
-// A task's mark and title: ▸ for the one being built, as STEPS marks its running step; an unticked [HUMAN] task also says it waits on a person.
-function taskRow(task: PlanUnit['tasks'][number], inProgress: boolean): string {
+// A task's mark and title: ▸ for the one being built, as STEPS marks its running step. A [HUMAN] task that is its unit's
+// next unticked one also says it waits on a person; one behind another unticked task is not reached yet.
+function taskRow(task: PlanUnit['tasks'][number], inProgress: boolean, isNext: boolean): string {
   const mark = task.checked ? TASK_MARKS.ticked : inProgress ? TASK_MARKS.inProgress : TASK_MARKS.unticked
-  const waiting = task.human && !task.checked ? `${STATE_SEPARATOR}${WAITING_ON_PERSON}` : ''
+  const waiting = task.human && isNext ? `${STATE_SEPARATOR}${WAITING_ON_PERSON}` : ''
   return `${mark} ${task.title}${waiting}`
 }
 

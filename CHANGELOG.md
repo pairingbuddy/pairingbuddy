@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A [HUMAN] task says `waiting on a person` only once it is its unit's next unticked task (S6 run: Task 2 [HUMAN] said it while Task 1 was still being built).
+
 - The plan task the live code run builds reads `▸`, lit as STEPS draws its running step (S6 run: Task 1 read `○` while it was being built, the same as a task not yet started).
 
 - A plan unit pb has not opened yet reads `to do`, not `open` (S6 run: `Discounted totals · open` showed before unit B was ever opened, since pb's "open" state means "has unticked boxes"). `open` now names only the unit pb has open.

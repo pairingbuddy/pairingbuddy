@@ -419,3 +419,15 @@ test('the task the live run is building is marked in progress, lit as the runnin
   expect(lines.at(-1)).toBe('             ○ Task 4: Send receipt')
   expect(building?.props, 'in the accent, bold, as STEPS draws its ▸ line').toMatchObject({ color: ACCENT_COLOUR, bold: true })
 })
+
+const BUILD_THEN_HUMAN = PLAN_WITH_HUMAN_TASK.replace('- [ ] Task 1: [HUMAN] Approve the pricing page', '- [ ] Task 1: Build the pricing page\n- [ ] Task 2: [HUMAN] Approve the pricing page')
+
+// A person's task waits on them only once the unit reaches it: before that, the task ahead of it is still to be done.
+test('a [HUMAN] task behind an unticked task is not yet waiting on a person', async ($, on) => {
+  const lines = await showPlan($, on, BUILD_THEN_HUMAN)
+
+  expect(lines.slice(-2), 'Task 1 comes first, so Task 2 reads as any task not yet reached').toEqual([
+    '             ○ Task 1: Build the pricing page',
+    '             ○ Task 2: [HUMAN] Approve the pricing page',
+  ])
+})
