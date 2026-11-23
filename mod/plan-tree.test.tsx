@@ -211,10 +211,13 @@ const PAY_WITH_PR = [
 test('a unit with a PR: line shows its PR link', async ($, on) => {
   const lines = await showPlan($, on, PAY_WITH_PR)
 
-  const prRows = lines.filter(line => line.trimStart().startsWith('PR '))
-
-  expect(prRows, 'one PR row, for Pay, on its own row; Receipt, which has no PR: line, shows none').toEqual([
+  expect(lines, 'Pay shows its PR link on its own row, before its tasks; Receipt, which has no PR: line, shows none').toEqual([
+    'PLAN     Tracer 1: Checkout',
+    '           Pay · published',
     '             PR https://github.com/acme/shop/pull/7',
+    '             ✓ Task 1: Take payment',
+    '           Receipt · open',
+    '             ○ Task 2: Send receipt',
   ])
 })
 
@@ -235,10 +238,11 @@ const PLAN_WITH_STRAY_TASK = [
 test('when parsePlan reports problems, the view shows them instead of hiding them', async ($, on) => {
   const lines = await showPlan($, on, PLAN_WITH_STRAY_TASK)
 
-  const problemRows = lines.filter(line => line.includes('Task 9: Stray'))
-
-  expect(problemRows, 'one row carries the problem parsePlan reports for the stray task, worded as parsePlan words it').toEqual([
-    expect.stringContaining('the task "Task 9: Stray" is not under a tracer'),
+  expect(lines, 'the well-formed Tracer 1 renders as a tree, then, after it, one row with the problem parsePlan reports for the stray task').toEqual([
+    'PLAN     Tracer 1: Cart',
+    '           Tracer 1: Cart',
+    '             ○ Task 1: Add an item',
+    '         the task "Task 9: Stray" is not under a tracer',
   ])
 })
 
