@@ -143,29 +143,37 @@ function openUnitLines(open: NonNullable<View['planOpen']>, indent: string): Par
   return facts.map(text => [{ text: `${indent}${text}` }])
 }
 
-function planLines(plan: NonNullable<View['plan']>, states: string[] = [], open?: View['planOpen']): Part[][] {
-  // Consecutive units of one tracer form a group; a unit under no tracer is its own group, unindented.
-  const groups: { tracer: string | null | undefined; units: { unit: (typeof plan.units)[number]; state?: string }[] }[] = []
-  for (const [i, unit] of plan.units.entries()) {
+type PlanUnit = NonNullable<View['plan']>['units'][number]
+
+// One unit's rows: its name and state, then what it is based on, the open unit's facts, its PR and its tasks.
+function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpen'], indent: string): Part[][] {
+  const contentIndent = indent + NEST
+  return [
+    [{ text: `${indent}${unit.unit}${state ? ` · ${state}` : ''}` }],
+    ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
+    ...(open && open.unit === unit.unit ? openUnitLines(open, contentIndent) : []),
+    ...(unit.pr ? [[{ text: `${contentIndent}PR ${unit.pr}` }]] : []),
+    ...unit.tasks.map(task => [{ text: `${contentIndent}${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
+  ]
+}
+
+// Consecutive units of one tracer form a group; a unit under no tracer is its own group, unindented.
+function tracerGroups(units: PlanUnit[]): { tracer: string | null | undefined; units: { unit: PlanUnit; index: number }[] }[] {
+  const groups: { tracer: string | null | undefined; units: { unit: PlanUnit; index: number }[] }[] = []
+  for (const [index, unit] of units.entries()) {
     const last = groups.at(-1)
-    if (last && unit.tracer && last.tracer === unit.tracer) last.units.push({ unit, state: states[i] })
-    else groups.push({ tracer: unit.tracer, units: [{ unit, state: states[i] }] })
+    if (last && unit.tracer && last.tracer === unit.tracer) last.units.push({ unit, index })
+    else groups.push({ tracer: unit.tracer, units: [{ unit, index }] })
   }
-  const problems = (plan.problems ?? []).map((problem: string) => [{ text: problem }])
-  return [...groups.flatMap(({ tracer, units }) => {
-    const unitIndent = tracer ? NEST : ''
-    const contentIndent = unitIndent + NEST
-    return [
-      ...(tracer ? [[{ text: tracer }]] : []),
-      ...units.flatMap(({ unit, state }) => [
-        [{ text: `${unitIndent}${unit.unit}${state ? ` · ${state}` : ''}` }],
-        ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
-        ...(open && open.unit === unit.unit ? openUnitLines(open, contentIndent) : []),
-        ...(unit.pr ? [[{ text: `${contentIndent}PR ${unit.pr}` }]] : []),
-        ...unit.tasks.map(task => [{ text: `${contentIndent}${task.checked ? TASK_MARKS.ticked : TASK_MARKS.unticked} ${task.title}` }]),
-      ]),
-    ]
-  }), ...problems]
+  return groups
+}
+
+function planLines(plan: NonNullable<View['plan']>, states: string[] = [], open?: View['planOpen']): Part[][] {
+  const tree = tracerGroups(plan.units).flatMap(({ tracer, units }) => [
+    ...(tracer ? [[{ text: tracer }]] : []),
+    ...units.flatMap(({ unit, index }) => unitRows(unit, states[index], open, tracer ? NEST : '')),
+  ])
+  return [...tree, ...(plan.problems ?? []).map((problem: string) => [{ text: problem }])]
 }
 
 // The details under the rule, read after the first glance.
