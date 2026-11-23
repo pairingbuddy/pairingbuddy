@@ -323,7 +323,10 @@ function forwardSignals(pid) {
 export function runPlan({ runner, argv, timeoutMs: limit }, cwd) {
   return new Promise((resolve, reject) => {
     const started = Date.now();
-    const child = spawn(argv[0], argv.slice(1), { cwd, shell: false, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    // A pb started under node --test inherits NODE_TEST_CONTEXT, which turns a node --test child's report into data for a
+    // parent runner, so its output would name no test. The suite runs as it would at a prompt.
+    const { NODE_TEST_CONTEXT: _parent, ...env } = process.env;
+    const child = spawn(argv[0], argv.slice(1), { cwd, env, shell: false, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     const tail = outputTail();
     let timedOut = false;
     let drain;
@@ -386,7 +389,16 @@ export function runRecord(plans, runs, { name, attempt }) {
 // A failing run's tail in a refusal: long enough to hold the assertion past a runner's closing summary.
 const FAILED_RUN_TAIL = 1500;
 
-const howItFailed = ({ timedOut, durationMs, exitCode }) => (timedOut ? `timed out after ${Math.round(durationMs / 1000)}s` : `failed with exit code ${exitCode}`);
+// pytest exits 5 when it collected no test: a selector or a path that names nothing, not a failing test.
+const PYTEST_NO_TESTS = 5;
+const isPytestArgv = (argv = []) => argv.some((word) => basename(word) === "pytest" || word === "pytest");
+export const collectedNoTest = ({ argv, exitCode }) => exitCode === PYTEST_NO_TESTS && isPytestArgv(argv);
+
+function howItFailed(run) {
+  if (run.timedOut) return `timed out after ${Math.round(run.durationMs / 1000)}s`;
+  if (collectedNoTest(run)) return `collected no test (pytest exit code ${PYTEST_NO_TESTS})`;
+  return `failed with exit code ${run.exitCode}`;
+}
 
 // Each failing run by name, how it failed and its output, so whoever reads the refusal (the next agent's try, the human)
 // knows what broke and why. rows: the tests the runs selected, in the same order, to name each by its test; else each
@@ -397,4 +409,18 @@ export function failedRunsText(runs, rows = null) {
     .filter(({ run }) => run.exitCode !== 0 || run.timedOut)
     .map(({ run, row }) => `${row ? `test ${row.test_id} (${row.test_function} in ${row.test_file})` : `runner ${run.runner}`} ${howItFailed(run)}. Its output:\n${String(run.excerpt ?? "").slice(-FAILED_RUN_TAIL)}`)
     .join("\n\n");
+}
+
+// ---------- a selected run that ran no test ----------
+
+const escapedPattern = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const isNodeTestArgv = (argv) => basename(argv[0] ?? "") === "node" && argv.includes("--test");
+
+// Why a selected run that exited 0 ran no test, or null when it did or the output cannot tell. node --test exits 0 when
+// --test-name-pattern matches nothing, counting the file itself as one passing test, so the test must be named as passing
+// (spec "✔ name" or TAP "ok N - name"). pytest's no-test exit 5 is no pass already, and the mod helper exits 1 itself.
+export function ranNoTest({ argv }, { exitCode, excerpt }, { test_function: name }) {
+  if (exitCode !== 0 || !isNodeTestArgv(argv)) return null;
+  const passed = new RegExp(`^\\s*(?:✔|ok \\d+ -) ${escapedPattern(name)}(?:\\s\\(|\\s*$)`, "m");
+  return passed.test(String(excerpt ?? "")) ? null : `its selector matched none: node --test passed without running ${name}`;
 }

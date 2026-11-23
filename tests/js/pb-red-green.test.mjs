@@ -1004,3 +1004,44 @@ describe("stage finish and the report", IN_PARALLEL, () => {
     assert.ok(report.redEvidence[0].excerpt.length <= 1024, `kept ${report.redEvidence[0].excerpt.length}`);
   });
 });
+
+// node --test exits 0 when --test-name-pattern matches nothing, counting the file itself as one passing test. A run that
+// ran no test proves nothing, at GREEN or at a later RED, so it is refused by that name.
+describe("a selected run that ran no test", IN_PARALLEL, () => {
+  const NODE_RUNNER = { command: "node --test", file_pattern: "*.test.mjs", selector_template: ["--test-name-pattern=^{test_function}$", "{test_file}"] };
+  const REAL = 'import { test } from "node:test";\ntest("t1", () => {});\n';
+  const nodeRow = (test_function) => row("t1", { test_file: "tests/real.test.mjs", test_function });
+  const redStood = { tests: { perTest: { t1: { selector: {}, red: { stage: STAGE, attempt: ATTEMPT, passed: true, done: true, exitCodes: [1] } } } } };
+
+  function nodeRepo(testFunction, { rows = [nodeRow(testFunction)], ledger = redStood } = {}) {
+    const repo = makeRepo({ runnerConfig: NODE_RUNNER, rows, ledger });
+    repo.write("tests/real.test.mjs", REAL);
+    git(repo.dir, "add", "tests/real.test.mjs");
+    git(repo.dir, "commit", "-q", "-m", "the test as RED committed it");
+    repo.write("src.mjs", "fixed\n");
+    writeArtifact(repo, greenKey(), fileReturn(greenKey(), { commit_subject: "stop the crash", files_changed: ["src.mjs"] }));
+    return repo;
+  }
+
+  test("GREEN whose selector matches no test is refused, saying no test ran", () => {
+    const repo = nodeRepo("nothing");
+    const seed = repo.head();
+
+    assertRefused(repo, seed, step(repo, "green", greenKey()), /ran no test: its selector matched none/);
+  });
+
+  test("an earlier closed test whose selector matches none fails GREEN's check by that name", () => {
+    const earlier = row("t0", { test_file: "tests/real.test.mjs", test_function: "nothing" });
+    const ledger = { tests: { perTest: { ...redStood.tests.perTest, t0: { selector: {}, red: { done: true }, green: { done: true } } } } };
+    const repo = nodeRepo("t1", { rows: [earlier, nodeRow("t1")], ledger });
+    const seed = repo.head();
+
+    assertRefused(repo, seed, step(repo, "green", greenKey()), /test t0 .*ran no test: its selector matched none/);
+  });
+
+  test("GREEN whose selector matches the test passes", () => {
+    const repo = nodeRepo("t1");
+
+    assertPasses(step(repo, "green", greenKey()));
+  });
+});

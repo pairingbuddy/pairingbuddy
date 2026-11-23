@@ -34,7 +34,7 @@ import { nextAction, runStatus, statusText } from "../shared-node/next-action.mj
 import { needsTestSelection } from "../shared-node/stage-graph.mjs";
 import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, standingScenariosKey, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
-import { ConfigHashChanged, TestRunRefused, cycleRun, failedRunsText, fullSuitePlans, hasSelector, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
+import { ConfigHashChanged, TestRunRefused, collectedNoTest, cycleRun, failedRunsText, ranNoTest, fullSuitePlans, hasSelector, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
 import { APPROVAL_GATE, CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS, approvalQuestion, configQuestion } from "../shared-node/config-wait.mjs";
@@ -969,7 +969,8 @@ const provesNothing = (step, exitCode) => (step === "red" && exitCode === 0 ? ",
 const EXCERPT_TAIL = 300;
 const excerptTail = (excerpt, chars = EXCERPT_TAIL) => excerpt.slice(-chars);
 
-const stepNotMet = (step, id, { exitCode, excerpt }) => `test ${id} is not ${step.toUpperCase()}: exit ${exitCode}${provesNothing(step, exitCode)}, so nothing was committed. ${excerptTail(excerpt)}`;
+const noTestCollected = (run) => (collectedNoTest(run) ? ", which is pytest collecting no test: its selector names none" : "");
+const stepNotMet = (step, id, run) => `test ${id} is not ${step.toUpperCase()}: exit ${run.exitCode}${provesNothing(step, run.exitCode)}${noTestCollected(run)}, so nothing was committed. ${excerptTail(run.excerpt)}`;
 
 // The first GREEN this task finished, by where its commit sits in the run's commits, or null before any.
 function earliestGreen({ tests: { perTest = {} }, commits }) {
@@ -1004,6 +1005,11 @@ async function cycleCheckpoint(context) {
   const plan = planFor(context, { testDirectories: [testDirectoryOf(config, row)], testFile: row.test_file });
   const head = headOf(root);
   const run = await runPlan(test, root);
+  const none = ranNoTest(test, run, row);
+  if (none !== null) {
+    recordCycleRun(context, row, { ...cycleRun(run, false), head });
+    throw new Refusal(`test ${id} ran no test: ${none}, so nothing was committed. Check its test_function and test_file in the tests artifact against the test as written`);
+  }
   const passed = meetsStep(step, test, run);
   const record = { ...cycleRun(run, passed), head };
   recordCycleRun(context, row, record);
@@ -1026,9 +1032,13 @@ async function requireClosedTestsPass({ root, path, ledger }, config, rows, key 
   if (closedRows.length === 0) return;
   const plans = closedRows.map((row) => testPlan(config, row));
   const head = headOf(root);
-  const record = { ...(await suiteRecord(plans, root, ledger.stage)), head };
+  const ran = { ...(await suiteRecord(plans, root, ledger.stage)), head };
+  // A run that passed without running its test proves nothing: it counts as failed, and the refusal says why.
+  const empty = ran.runs.map((run, i) => ranNoTest(plans[i], run, closedRows[i]));
+  const record = empty.some((why) => why !== null) ? { ...ran, passed: false } : ran;
   updateLedger(path, (current) => ({ ...current, tests: { ...current.tests, [key]: record } }));
-  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${failedRunsText(record.runs, closedRows)}`);
+  const none = empty.map((why, i) => (why === null ? null : `test ${closedRows[i].test_id} (${closedRows[i].test_function} in ${closedRows[i].test_file}) ran no test: ${why}`)).filter(Boolean);
+  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${[failedRunsText(record.runs, closedRows), ...none].filter(Boolean).join("\n\n")}`);
 }
 
 

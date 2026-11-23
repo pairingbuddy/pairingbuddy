@@ -70,4 +70,10 @@ describe("a failed run, in words", () => {
   test("a passing run is not named", () => {
     assert.equal(failedRunsText([run({ exitCode: 0 })]), "");
   });
+
+  test("pytest's exit 5 is told as no test collected", () => {
+    const text = failedRunsText([run({ runner: "py", argv: ["uv", "run", "pytest", "tests/test_a.py::test_x"], exitCode: 5 })]);
+
+    assert.match(text, /runner py collected no test \(pytest exit code 5\)/, text);
+  });
 });
