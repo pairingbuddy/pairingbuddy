@@ -43,7 +43,7 @@ describe("report-content", () => {
     const section = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })), "AT A GLANCE");
 
     assert.match(section, /<strong>Where it stopped<\/strong>\s*stopped: a step kept failing/);
-    assert.match(section, /<strong>Spent<\/strong>\s*18 agents · 2:36 · tokens unknown<\/p>/);
+    assert.match(section, /<strong>Spent<\/strong>\s*15 agents · 2:36 · tokens unknown<\/p>/);
     assert.match(section, /<strong>Left<\/strong>\s*unknown/);
     assert.doesNotMatch(section, /Looping|Off track/);
   });

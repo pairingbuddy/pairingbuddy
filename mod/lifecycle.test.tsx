@@ -34,17 +34,20 @@ function engine(on: Function, files: Record<string, string>) {
 const spawn = ($: any, name: string) => $.agent.spawn({ prompt: 'p', description: 'd', name, subagentType: 'pairingbuddy:implement-tests' })
 const agentsIn = (shown: string[]) => shown.find(text => /\d+ agents?/.test(text))?.match(/\d+ agents?/)?.[0]
 
+// The running stage's agents the ledger has not recorded yet are the session's to count, so a clear forgets them.
+const scenariosAgent = (item: string) => `pb1 code-scenarios - enumerate-scenarios-and-test-cases-${item} - r1`
+
 test('a session.end with reason clear empties the spawn history, so the next draw\'s agent count restarts, while the poller keeps running', async ($, on) => {
-  const clock = mock.clock(on, { now: 0 })
+  const clock = mock.clock(on, { now: Date.parse(SNAPSHOT_RUNNING.stage.startedAt) })
   const run = engine(on, { [LEDGER_PATH]: JSON.stringify(SNAPSHOT_RUNNING) })
   await start($)
-  await spawn($, label('one'))
-  await spawn($, label('two'))
+  await spawn($, scenariosAgent('one'))
+  await spawn($, scenariosAgent('two'))
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(agentsIn(await bandRowTexts(band)), 'two agents are counted before the clear').toBe('2 agents')
 
   await $.session.end({ sessionId: 's1', reason: 'clear' })
-  await spawn($, label('three'))
+  await spawn($, scenariosAgent('three'))
   const readsAfterClear = run.ledgerReads
   run.files[LEDGER_PATH] = JSON.stringify(SNAPSHOT_NO_STAGE)
   await clock.advance(POLL_MS)

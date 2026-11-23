@@ -156,6 +156,7 @@ JS_TEST_FILES = [
     "tests/js/stop-code-plain-names.test.mjs",
     "tests/js/human-line.test.mjs",
     "tests/js/pb-status-plain.test.mjs",
+    "tests/js/spent-agents.test.mjs",
     "tests/js/spent-paused.test.mjs",
     "tests/js/stop-waits.test.mjs",
     "tests/js/stranded.test.mjs",

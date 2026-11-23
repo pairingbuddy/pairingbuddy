@@ -88,3 +88,18 @@ test('ended-task-spent-leaves-out-the-time-its-questions-waited', async ($, on) 
 
   expect(spent, 'the task\'s 4:26:07 less the 4:01:20 the publish question waited').toMatch(/^SPENT\s+41 agents · 24:47 · 39856 output tokens$/)
 })
+
+// A reload while the publish run is live empties the session's agents; the code run pb kept still counts toward SPENT.
+test('live-publish-run-spent-counts-the-kept-code-run-after-a-reload', async ($, on) => {
+  const rig = setupReplay(on)
+  const live = { ...PUBLISH_RUN, stage: { ...PUBLISH_RUN.stage, status: 'active' }, stages: [], spend: { agents: 0, tokens: 0, tokensKnown: true } }
+  const codeRunKept = Object.fromEntries(Object.entries(KEPT_FILES).filter(([path]) => path.includes(CODE_RUN.runId)))
+  serve(rig, { [LEDGER]: live, [UNIT]: UNIT_FILE, [CHANGED_PATH]: CHANGED, ...codeRunKept })
+  await rig.clock.set(Date.parse('2026-11-16T15:43:00.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const spent = row(await paneLines($), 'SPENT')
+
+  expect(spent, 'the code run\'s 32 agents, with none seen this session').toMatch(/^SPENT\s+32 agents · /)
+})

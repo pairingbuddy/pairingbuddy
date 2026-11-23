@@ -136,7 +136,7 @@ test('with the pane open, every row in order, the step list in plain names with 
     'BUILT    —',
   ])
   const review = all.slice(5)
-  expect(review[0], 'SPENT leaves out what is not measured').toMatch(/^SPENT {4}6 agents · \d+:\d\d$/)
+  expect(review[0], 'SPENT leaves out what is not measured: the 14 agents the closed stages recorded, and the review\'s one').toMatch(/^SPENT {4}15 agents · \d+:\d\d$/)
   expect(review.filter(line => /^(LEFT|OFF TRACK|NOW|DONE|LOOPING)\b/.test(line)), 'LEFT, OFF TRACK, NOW, DONE and LOOPING are gone').toEqual([])
   expect(review.slice(1, 5), 'steps done, then current, in plain names').toEqual(['STEPS    ○ work out the task type', '         ✓ write test scenarios', '         ✓ build test by test', '         ▸ safety-net review'])
   expect(review, 'the tests stay listed, and no test is current in the review').toEqual(expect.arrayContaining(['TESTS    ✓ 4 of 4 passing · 3 covered']))

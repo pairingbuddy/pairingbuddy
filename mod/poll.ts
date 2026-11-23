@@ -1,6 +1,6 @@
 import type { EngineInterface, PluginOptions } from 'claude-code'
 import { pollInputs, readKeptRuns, type KeptRun, type Polled, type TaskFacts } from './inputs'
-import { endedTaskFacts, taskRuns } from '../shared-node/task-runs.mjs'
+import { endedTaskFacts, taskRuns, taskSpend } from '../shared-node/task-runs.mjs'
 import { alertOn, openOnRunStart } from './alert'
 import { runStart } from '../shared-node/glance.mjs'
 import { codeRunOf, isUnitDone } from '../shared-node/end-state.mjs'
@@ -73,6 +73,14 @@ async function endedTask($: EngineInterface, state: PollerState, polled: Polled)
   return endedTaskFacts(runs) as TaskFacts | null
 }
 
+// What the live run's task spent in agents before it: the runs of its unit pb kept, which a reload does not empty. 0 with no run live.
+async function earlierAgents($: EngineInterface, state: PollerState, polled: Polled): Promise<number> {
+  const ledger = polled.ledger as { runId?: string } | null
+  if (!ledger) return 0
+  const runs = taskRuns({ ledger, kept: await readKeptRuns($, state.kept), unitKey: polled.unit?.key ?? null })
+  return taskSpend(runs.filter(run => run.ledger !== ledger && run.ledger?.runId !== ledger.runId)).agents
+}
+
 // One poller per register: the poll exists so the band redraws and the alert fires every second, since a render may not wait on files.
 // A start while one runs only reads once, a tick is skipped while a poll is in flight, and a failed poll is dropped.
 export async function startPoller($: EngineInterface, state: PollerState, options: PluginOptions = {}) {
@@ -83,7 +91,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
     state.polling = true
     try {
       const read = await pollInputs($, state.spawns)
-      const polled = { ...read, since: unitStart(state, read), ...unitRecord(state, read), task: await endedTask($, state, read) }
+      const polled = { ...read, since: unitStart(state, read), ...unitRecord(state, read), task: await endedTask($, state, read), earlierAgents: await earlierAgents($, state, read) }
       await $.state.set(INPUTS, polled)
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.
       await alertOn($, polled.ledger, options, doneRunOf(polled))

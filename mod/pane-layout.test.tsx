@@ -161,6 +161,10 @@ test('spent-counts-the-whole-unit-when-the-publish-run-starts', async ($, on) =>
   await serve($, rig, { [LEDGER]: CODE_RUN, [UNIT]: unitFile() }, '2026-11-14T10:00:30.000Z')
   await $.agent.spawn({ prompt: 'p', description: 'pb1 code-scenarios - enumerate-scenarios-and-test-cases - r1', subagentType: 'pairingbuddy:enumerate-scenarios-and-test-cases', workflow: { runId: 'wf_1', agentIndex: 1 } })
 
+  // The code run ends: pb keeps it, with the one agent it recorded, before the publish run starts.
+  const kept = `${ROOT}/.pairingbuddy/reports/runs/code-run`
+  rig.served.set(`${kept}/ledger.json`, JSON.stringify({ ...CODE_RUN, stage: { ...CODE_RUN.stage, status: 'done' }, spend: { agents: 1, tokens: 0, tokensKnown: false } }))
+  rig.served.set(`${kept}/kept.json`, JSON.stringify({ unit: 'fix/order-total abc', endedAt: '2026-11-14T10:02:50.000Z' }))
   rig.served.set(`${ROOT}/${LEDGER}`, JSON.stringify({ ...PUBLISH_RUN, runId: 'publish-run' }))
   rig.served.set(`${ROOT}/${UNIT}`, JSON.stringify(unitFile([{ stages: BUG_FIX_STEPS }])))
   await rig.clock.advance(Date.parse('2026-11-14T10:03:35.000Z') - Date.parse('2026-11-14T10:00:32.000Z'))

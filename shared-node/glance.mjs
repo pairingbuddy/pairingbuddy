@@ -50,8 +50,22 @@ export const isLooping = (tries) => tries >= MAX_TRIES;
 
 const testPosition = (step, tests) => tests.indexOf(step?.item) + 1;
 const agentCount = (spawns) => spawns.filter((spawn) => spawn && AGENT_KINDS.includes(spawn.kind)).length;
-// The agents the runs recorded when given (an ended task's), else the session's spawns.
-const agentsOf = (spawns, recorded) => (Number.isInteger(recorded) && recorded >= 0 ? recorded : agentCount(spawns));
+// The agents the runs recorded when given (an ended task's); else the task's earlier runs', the ledger's closed stage
+// attempts and the session's spawns of the attempt running now.
+function agentsOf(spawns, recorded, ledger, earlier) {
+  if (Number.isInteger(recorded) && recorded >= 0) return recorded;
+  const closed = ledger?.spend?.agents;
+  const before = Number.isInteger(earlier) && earlier > 0 ? earlier : 0;
+  return before + (Number.isInteger(closed) && closed >= 0 ? closed + agentCount(attemptSpawns(spawns, ledger)) : agentCount(spawns));
+}
+
+// The spawns of the stage attempt running now, by their label's stage and not started before the attempt: the ledger counts an
+// attempt's agents only once it closes, and every closed one's whatever the session saw.
+function attemptSpawns(spawns, ledger) {
+  if (ledger?.stage?.status !== "active") return [];
+  const start = Date.parse(ledger.stage.startedAt);
+  return spawns.filter((spawn) => readLabel(spawn?.name).stage === ledger.stage.name && !(Date.parse(spawn.startedAt) < start));
+}
 export const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 // What is left after the current test: "N more tests" / "this test". `more` says whether to word it "N more tests" or "N tests".
@@ -122,8 +136,8 @@ export const PAUSED = "paused";
 export const runStart = (ledger) => (ledger?.stages?.length > 0 ? ledger.stages[0].startedAt : ledger?.stage?.startedAt);
 
 // leaveOutUnknown drops the parts that are not measured (the pane's choice); the report keeps them, saying "unknown".
-function spentRow({ ledger, spawns, agents: recorded, now, ranFor, since, waited, paused, leaveOutUnknown }) {
-  const agents = agentsOf(spawns, recorded);
+function spentRow({ ledger, spawns, agents: recorded, earlierAgents, now, ranFor, since, waited, paused, leaveOutUnknown }) {
+  const agents = agentsOf(spawns, recorded, ledger, earlierAgents);
   const known = ledger?.spend?.tokensKnown === true;
   const tokens = known ? `${ledger.spend.tokens} ${TOKENS_UNIT}` : "tokens unknown";
   const parts = [plural(agents, "agent"), spentTime(since ?? runStart(ledger), now, ranFor, waited, paused), tokens];
@@ -174,8 +188,8 @@ function spentTime(startedAt, now, ranFor, waited, paused) {
   return paused && !time.endsWith(UNKNOWN) ? `${time} ${PAUSED}` : time;
 }
 
-function bandSpent({ ledger, spawns, agents: recorded, now, since, waited, paused }) {
-  const agents = agentsOf(spawns, recorded);
+function bandSpent({ ledger, spawns, agents: recorded, earlierAgents, now, since, waited, paused }) {
+  const agents = agentsOf(spawns, recorded, ledger, earlierAgents);
   return [spentTime(since ?? runStart(ledger), now, undefined, waited, paused), plural(agents, "agent")].filter((part) => !part.endsWith(UNKNOWN)).join(" · ");
 }
 
@@ -210,10 +224,10 @@ function bandNeedsYou(ledger) {
 const known = (id, text) => (text === undefined ? [] : [{ id, text }]);
 
 // A retry is told where the step is (NOW, the pane's STATUS), so the band has no looping segment.
-function bandSegments({ ledger, spawns, agents, tests, now, since, waited, paused, complete }, step) {
+function bandSegments({ ledger, spawns, agents, earlierAgents, tests, now, since, waited, paused, complete }, step) {
   return [
     { id: "where", text: bandWhere(step, tests, ledger, complete) },
-    { id: "spent", text: bandSpent({ ledger, spawns, agents, now, since, waited, paused }) },
+    { id: "spent", text: bandSpent({ ledger, spawns, agents, earlierAgents, now, since, waited, paused }) },
     ...known("left", bandLeft(step, tests, complete)),
     bandNeedsYou(ledger),
   ];
@@ -271,10 +285,11 @@ function unknownLabels(spawns) {
 // testsComplete: false says the list is only the tests seen so far, so no total ("of M") and no count left is claimed.
 // leaveOutUnknown: true leaves the unknown parts out of SPENT, for the pane.
 // since: the unit's start, when known, so the time spent counts the whole unit and not only this run.
-// agents: the agents the task's runs recorded, once they have ended; otherwise the session's spawns are counted.
+// agents: the agents the task's runs recorded, once they have ended; otherwise the ledger's and the running attempt's spawns.
+// earlierAgents: what the task's earlier runs recorded (the kept code run, while the publish run is live), added to those.
 // waited: the seconds the time spent waited on the human, left out of it; by default the ledger's own waits (waitedSeconds).
 // pausedAt: when a live run stopped working (pausedAtOf), in ms; SPENT's time stops there and says "paused".
-export function glance({ ledger, spawns, agents, tests, now, ranFor, since, waited, pausedAt, testsComplete = false, leaveOutUnknown = false } = {}) {
+export function glance({ ledger, spawns, agents, earlierAgents, tests, now, ranFor, since, waited, pausedAt, testsComplete = false, leaveOutUnknown = false } = {}) {
   const list = Array.isArray(spawns) ? spawns : [];
   const names = Array.isArray(tests) ? tests : [];
   const step = currentStep(list, stageOf(ledger));
@@ -282,7 +297,7 @@ export function glance({ ledger, spawns, agents, tests, now, ranFor, since, wait
   const paused = Number.isFinite(pausedAt) && !(pausedAt < Date.parse(since ?? runStart(ledger)));
   const until = paused && Number.isFinite(now) ? Math.min(now, pausedAt) : now;
   const wait = Number.isFinite(waited) ? waited : waitedSeconds(ledger, until);
-  const spent = { ledger, spawns: list, agents, now: until, since, waited: wait, paused };
+  const spent = { ledger, spawns: list, agents, earlierAgents, now: until, since, waited: wait, paused };
   const rows = {
     now: nowRow(step, names, ledger, testsComplete),
     spent: spentRow({ ...spent, ranFor, leaveOutUnknown }),

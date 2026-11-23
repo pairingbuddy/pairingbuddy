@@ -11,8 +11,8 @@ const probeSpawns = await recording("probe-2", "spawns");
 const THROUGH_FIRST_RED_TRY = 10;
 const THROUGH_GREEN_RUNNER_CHECKPOINT = 13;
 const THROUGH_THIRD_ZERO_PERCENT_TRY = 18;
-// Hand count of probe-2 spawns[0..17]: 2 Agent-kind (curate-guidance, classify-task) + 14 workflow_agent; the 2 Workflow-kind do not count.
-const LIVE_AGENT_SPAWNS_THROUGH_THIRD_ZERO_PERCENT_TRY = 16;
+// Hand count of probe-2 spawns[0..17]: 12 code-tdd workflow agents, after the 1 agent the closed code-scenarios stage recorded.
+const LIVE_AGENTS_THROUGH_THIRD_ZERO_PERCENT_TRY = 13;
 
 // No recording reaches test 3 of 4; these spawns are built with buildLabel, not recorded.
 function failingTestSpawn(item) {
@@ -34,14 +34,14 @@ test("calm run at test 3 of 4 gives NOW 'writing a failing test ... test 3 of 4'
   assert.equal(result.rows.left, "1 more test, then the safety-net review and your sign-off");
 });
 
-test("live agent count equals the number of agent.spawn events, not ledger spend.agents", async () => {
+test("live agent count is the ledger's closed stages plus the running stage's spawns", async () => {
   const ledger = await ledgerAtSeq("probe-2", TDD_ACTIVE_SEQ);
   const spawns = probeSpawns.slice(0, THROUGH_THIRD_ZERO_PERCENT_TRY);
 
   const result = glance({ ledger, spawns, now: SOME_TIME });
 
   assert.equal(ledger.spend.agents, 1, "precondition: the ledger lags behind the live spawns");
-  assert.match(result.rows.spent, new RegExp(`^${LIVE_AGENT_SPAWNS_THROUGH_THIRD_ZERO_PERCENT_TRY} agents`), "SPENT starts with the spawn count");
+  assert.match(result.rows.spent, new RegExp(`^${LIVE_AGENTS_THROUGH_THIRD_ZERO_PERCENT_TRY} agents`), "SPENT starts with the agent count");
 });
 
 // Tenth watched run: a retry is told in NOW (the pane's STATUS) in plain words, and the last try before the run asks says so.
@@ -191,8 +191,8 @@ test("across two stages SPENT counts from the first stage's start, in the pane a
 
   const result = glance({ ledger, spawns: [], now: THREE_MINUTES_IN });
 
-  assert.match(result.rows.spent, /^0 agents · 3:00 ·/, "run time, not the 1:00 of the current stage");
-  assert.equal(spentBand(ledger), "3:00 · 0 agents");
+  assert.match(result.rows.spent, /^1 agent · 3:00 ·/, "run time, not the 1:00 of the current stage");
+  assert.equal(spentBand(ledger), "3:00 · 1 agent");
 });
 
 test("with no stage closed yet SPENT counts from the current stage's start", () => {
@@ -200,8 +200,8 @@ test("with no stage closed yet SPENT counts from the current stage's start", () 
 
   const result = glance({ ledger, spawns: [], now: THREE_MINUTES_IN });
 
-  assert.match(result.rows.spent, /^0 agents · 3:00 ·/);
-  assert.equal(spentBand(ledger), "3:00 · 0 agents");
+  assert.match(result.rows.spent, /^1 agent · 3:00 ·/);
+  assert.equal(spentBand(ledger), "3:00 · 1 agent");
 });
 
 test("when a closed stage has no startedAt SPENT says 'time unknown' (the band leaves the time out), never the current stage's time", () => {
@@ -209,8 +209,8 @@ test("when a closed stage has no startedAt SPENT says 'time unknown' (the band l
 
   const result = glance({ ledger, spawns: [], now: THREE_MINUTES_IN });
 
-  assert.match(result.rows.spent, /^0 agents · time unknown ·/);
-  assert.equal(spentBand(ledger), "0 agents");
+  assert.match(result.rows.spent, /^1 agent · time unknown ·/);
+  assert.equal(spentBand(ledger), "1 agent");
 });
 
 test("glance lists the raw name of every workflow agent whose label does not read", () => {

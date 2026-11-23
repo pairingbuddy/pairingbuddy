@@ -243,10 +243,11 @@ export function buildView(inputs: Inputs): View {
   return { ...view, goal: goalText(inputs), status, ...buildTestRows(inputs, false), steps: unitSteps(inputs, false), lensRound: lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns }), ...end }
 }
 
-// agents: the count the task's kept runs recorded, once it has ended; else the session's spawns are counted.
+// agents: the count the task's kept runs recorded, once it has ended; else the live ledger's, its running attempt's spawns and,
+// for a live run, its task's earlier kept runs (earlierAgents).
 // waited: what an ended task's runs waited on the human; else glance reads the live ledger's own waits.
 // live: a run read now, whose clock stops while it waits on the human or is stopped (pausedAtOf); an ended run's never runs on.
-const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, waited }: Inputs, agents?: number, live = false) => glance({ ledger, spawns, agents, tests, now, since, waited, testsComplete, leaveOutUnknown: true, ...(live ? { pausedAt: pausedAtOf(ledger) } : {}) })
+const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, waited, earlierAgents }: Inputs, agents?: number, live = false) => glance({ ledger, spawns, agents, tests, now, since, waited, testsComplete, leaveOutUnknown: true, ...(live ? { pausedAt: pausedAtOf(ledger), earlierAgents } : {}) })
 
 // An ended task as its kept runs tell it: the agents and tokens they recorded, from the first run's start to the last run's
 // end less what they waited on the human, their returns in place of the session's, which a reload empties, and the pull request when nothing else named it.
