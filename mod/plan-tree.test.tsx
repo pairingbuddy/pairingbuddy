@@ -308,8 +308,29 @@ test('with no plan MD and no plan path in the ledger, the view renders a plain n
   expect(lines.filter(line => line.startsWith('PLAN')), 'with no plan path in the ledger the pane draws no PLAN row and no tracer tree').toEqual([])
 })
 
-test('with an open unit in unit.json but no plan, the unit still shows its branch, base and PR link', async () => {
-  throw new Error('not implemented: unit-without-plan-still-shows')
+const OPEN_UNIT_WITH_PR = JSON.stringify({
+  unit: 'Pay',
+  branch: 'feat/pay',
+  base: 'main',
+  baseSha: 'abc1234def5678',
+  tasks: [],
+  commits: [],
+  pr: { url: 'https://github.com/acme/shop/pull/7' },
+})
+
+test('with an open unit in unit.json but no plan, the unit still shows its branch, base and PR link', async ($, on) => {
+  const { rig } = setupPlanReplay(on, TWO_TRACERS)
+  rig.served.set(LEDGER_PATH, JSON.stringify(SNAPSHOT_RUNNING))
+  rig.served.delete(PLAN_FILE)
+  rig.served.set(`${ROOT}/.pairingbuddy/run/unit.json`, OPEN_UNIT_WITH_PR)
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = (await paneLines($)).join('\n')
+
+  expect(lines, 'with no plan the pane still shows the open unit\'s branch, as the plan tree words it').toContain('branch feat/pay')
+  expect(lines, 'and its base').toContain('base main')
+  expect(lines, 'and its PR link').toContain('PR https://github.com/acme/shop/pull/7')
 })
 
 test('with no ledger, unit or plan, the pane renders as before', async () => {
