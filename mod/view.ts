@@ -80,10 +80,11 @@ export function resolveOpenUnit(units: PlannedUnits, open: NonNullable<NonNullab
 }
 
 // Each plan unit's state, in plan order, once a unit record stands to read it against; else none.
-function planStatesOf({ plan, unit, ledger }: Inputs): string[] | undefined {
+function planStatesOf(inputs: Inputs): string[] | undefined {
+  const { plan, unit, ledger } = inputs
   if (!plan) return undefined
   const open = unit?.open
-  const planPath = ledger?.plan?.path
+  const planPath = inputs.planPath ?? ledger?.plan?.path
   if (open) return unitStates(plan.units, { plan: planPath, openUnit: resolveOpenUnit(plan.units, open) })
   return hasStateToTell(plan.units) ? unitStates(plan.units, { plan: planPath, openUnit: undefined }) : undefined
 }
