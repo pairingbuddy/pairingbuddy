@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { PLAN_FILE, PLAN_PATH, paneLines, setupPlanReplay } from './testing/replay'
+import { PLAN_FILE, PLAN_PATH, paneLines, setupPlanReplay, setupReplay } from './testing/replay'
 import { LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
 import { POLL_MS } from './poll'
 
@@ -336,6 +336,21 @@ test('with an open unit in unit.json but no plan, the unit still shows its branc
   ])
 })
 
-test('with no ledger, unit or plan, the pane renders as before', async () => {
-  throw new Error('not implemented: no-plan-no-unit-no-ledger')
+test('with no ledger, unit or plan, the pane renders as before', async ($, on) => {
+  const rig = setupReplay(on)
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = await paneLines($)
+
+  expect(lines, 'with no ledger, no unit.json and no plan the pane draws only its usual rows, each empty: no PLAN row and no branch, base or unit PR row').toEqual([
+    'GOAL     —',
+    'STATUS   ○ no run',
+    'PR       —',
+    'BUILT    —',
+    'SPENT    —',
+    'STEPS    —',
+    'TESTS    —',
+    'REVIEW   —',
+  ])
 })
