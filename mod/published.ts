@@ -44,6 +44,6 @@ function lastObject(lines: string[]): { result?: unknown; url?: unknown } | null
 export async function recordPublished($: EngineInterface, command: unknown, ran: unknown): Promise<void> {
   const published = publishedOf(command, ran)
   if (!published) return
-  const polled = (await $.state.get(INPUTS)).value as { codeRun?: { runId?: string } | null } | null | undefined
-  await $.state.set(PUBLISHED, { ...published, codeRunId: polled?.codeRun?.runId ?? null })
+  const polled = (await $.state.get(INPUTS)).value as { codeRun?: { runId?: string } | null; unit?: { key?: string } | null } | null | undefined
+  await $.state.set(PUBLISHED, { ...published, codeRunId: polled?.codeRun?.runId ?? null, unitKey: polled?.unit?.key ?? null })
 }

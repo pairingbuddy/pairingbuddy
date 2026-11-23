@@ -125,3 +125,23 @@ test('a session that starts at the publish run reads the code run pb kept: its g
   expect(row(lines, 'STATUS'), 'signed off and published').toMatch(/^STATUS\s+✓ DONE · .*PR #7 opened/)
   expect(row(lines, 'PR'), 'the PR the publish opened').toMatch(/^PR\s+opened · #7/)
 })
+
+// Scenario S6 with the mod's state kept across sessions: a publish whose code run the pane never knew opened PR #1, and the
+// next unit's code run is signed off. The PR row is the next unit's, not unit A's number under unit B's title.
+test('a PR opened for a code run the pane did not know is not the next unit\'s PR', async ($, on) => {
+  const rig = setupReplay(on)
+  const unitA = { ...UNIT_FILE, branch: 'fix/a', baseSha: 'aaaaaaa' }
+  const publishingA = { ...PUBLISH_RUN, runId: 'publish-a', task: '', stage: { ...PUBLISH_RUN.stage, status: 'active' }, stages: [] }
+  serve(rig, { [LEDGER]: publishingA, [UNIT]: unitA })
+  await rig.clock.set(Date.parse('2026-11-16T15:43:00.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+  rig.toolResults.set('Bash', { stdout: '{"result":"opened","url":"https://github.com/example/repo/pull/1"}', stderr: '', exitCode: 0 })
+  await $.tool.call({ tool: 'Bash', command: '.pairingbuddy/bin/pb publish' })
+  await rig.clock.advance(POLL_MS * 2)
+  // Unit B opens, and its code run is signed off.
+  serve(rig, { [LEDGER]: CODE_RUN, [UNIT]: UNIT_FILE, [CHANGED_PATH]: CHANGED })
+  await rig.clock.advance(POLL_MS * 2)
+
+  expect(row(await paneLines($), 'PR'), 'unit B has opened no PR yet').toBe('PR       —')
+})

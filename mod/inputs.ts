@@ -47,8 +47,9 @@ export type OpenUnit = { unit?: string; plan?: string; tracer?: string; tasks: {
 export type Unit = { key: string; taskStages: string[]; prUrl?: string; humanLeft?: string[]; open?: OpenUnit }
 // What the pane keeps of the unit's last code run (shared-node/end-state.mjs codeRunOf), so the end state outlives its ledger.
 export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; testsPassing: number; perTest?: Record<string, { green?: { passed: boolean }; covered?: { done: boolean } }>; safetyNet: { attempt?: number; startedAt?: string } | null; rollbacks: unknown[] }
-// What the last pb publish printed: the url it opened, or the result when it opened none; codeRunId ties it to the code run it published.
-export type Published = { url?: string; result?: string; codeRunId?: string | null }
+// What the last pb publish printed: the url it opened, or the result when it opened none; codeRunId ties it to the code run it
+// published, and unitKey to the unit that was open, for a publish whose code run the pane did not know.
+export type Published = { url?: string; result?: string; codeRunId?: string | null; unitKey?: string | null }
 // changed: the paths run/changed.json lists (null when it does not read); prUrl: the unit's pull request as the poller last saw it.
 // unitOpen: whether a unit is open now, for a finished run drawn from its snapshot (whose unit is the one it last saw).
 // task: what the runs pb kept say of the whole task once it has ended (endedTaskFacts in shared-node/task-runs.mjs).

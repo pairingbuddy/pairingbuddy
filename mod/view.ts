@@ -236,10 +236,18 @@ function buildTestRows(inputs: Inputs, ended: boolean): Pick<View, 'progress' | 
   return { progress, test }
 }
 
+// Whether what pb publish printed is this unit's: by the code run it published, else, when the pane knew none then, by the unit
+// that was open. A PR row belongs to one unit, never one unit's number under the next one's title.
+function isOurs(published: NonNullable<Inputs['published']>, { codeRun, unit }: Inputs): boolean {
+  if (published.codeRunId != null) return published.codeRunId === codeRun?.runId
+  return published.unitKey != null && published.unitKey === unit?.key
+}
+
 // The pull request as far as it is known: what pb publish printed for this code run, else the url the unit record names.
-function prOf({ published, prUrl, codeRun, calls = [] }: Inputs) {
+function prOf(inputs: Inputs) {
+  const { published, prUrl, calls = [] } = inputs
   const title = prTitleOf(calls)
-  const ours = published && (published.codeRunId == null || published.codeRunId === codeRun?.runId) ? published : null
+  const ours = published && isOurs(published, inputs) ? published : null
   if (ours?.url || ours?.result) return { ...ours, title }
   return prUrl ? { url: prUrl, title } : undefined
 }
