@@ -295,16 +295,24 @@ test('an unchecked agent task is not shown as waiting on a person', async ($, on
   ])
 })
 
-test('with no plan MD and no plan path in the ledger, the view renders a plain no-plan state and nothing else breaks', async ($, on) => {
+const UNIT_JSON = '.pairingbuddy/run/unit.json'
+
+// Runs the mod over a running ledger that names no plan, with the plan file gone and any `extraFiles` served,
+// and lets two polls pass. Returns every pane row.
+async function showNoPlan($: Harness, on: On, extraFiles: Record<string, string> = {}): Promise<string[]> {
   const { rig } = setupPlanReplay(on, TWO_TRACERS)
   rig.served.set(LEDGER_PATH, JSON.stringify(SNAPSHOT_RUNNING))
   rig.served.delete(PLAN_FILE)
+  for (const [path, content] of Object.entries(extraFiles)) rig.served.set(`${ROOT}/${path}`, content)
   await start($)
   await rig.clock.advance(POLL_MS * 2)
+  return paneLines($)
+}
 
-  const lines = await paneLines($)
+test('with no plan MD and no plan path in the ledger, the view renders a plain no-plan state and nothing else breaks', async ($, on) => {
+  const lines = await showNoPlan($, on)
 
-  expect(lines.length, 'the pane still draws its other rows, so the run is shown').toBeGreaterThan(0)
+  expect(lines.find(line => line.startsWith('STATUS')), 'the pane still draws the run\'s status row').toEqual('STATUS   ● working · write test scenarios')
   expect(lines.filter(line => line.startsWith('PLAN')), 'with no plan path in the ledger the pane draws no PLAN row and no tracer tree').toEqual([])
 })
 
@@ -319,18 +327,13 @@ const OPEN_UNIT_WITH_PR = JSON.stringify({
 })
 
 test('with an open unit in unit.json but no plan, the unit still shows its branch, base and PR link', async ($, on) => {
-  const { rig } = setupPlanReplay(on, TWO_TRACERS)
-  rig.served.set(LEDGER_PATH, JSON.stringify(SNAPSHOT_RUNNING))
-  rig.served.delete(PLAN_FILE)
-  rig.served.set(`${ROOT}/.pairingbuddy/run/unit.json`, OPEN_UNIT_WITH_PR)
-  await start($)
-  await rig.clock.advance(POLL_MS * 2)
+  const lines = await showNoPlan($, on, { [UNIT_JSON]: OPEN_UNIT_WITH_PR })
 
-  const lines = (await paneLines($)).join('\n')
-
-  expect(lines, 'with no plan the pane still shows the open unit\'s branch, as the plan tree words it').toContain('branch feat/pay')
-  expect(lines, 'and its base').toContain('base main')
-  expect(lines, 'and its PR link').toContain('PR https://github.com/acme/shop/pull/7')
+  expect(planRows(lines), 'with no plan the pane still shows the open unit\'s branch, base and PR link, one row each, under the PLAN label').toEqual([
+    'PLAN     branch feat/pay',
+    '         base main',
+    '         PR https://github.com/acme/shop/pull/7',
+  ])
 })
 
 test('with no ledger, unit or plan, the pane renders as before', async () => {
