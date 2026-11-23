@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The S6 smoke recorder also keeps what the mod reads besides the ledger: every `.pairingbuddy/` file and the plan MD, as diffs in `files.jsonl`, and the harness's own moments (each session's start and end, the human's tick and adopt) in `marks.jsonl`, so the pane can be replayed from a recording with its plan tree.
+
 - STATUS names a [HUMAN] task left in the unit as what comes next, not the pull request (live Task 107 run: STATUS read `between runs · next: write the pull request` while the plan's next task was `Task 108: [HUMAN] Mod review, plan tree view`, and pb publishes nothing until a person ticks it). The pane now reads the unit's plan for its unticked [HUMAN] boxes, by the rule pb publish refuses with, and reads `next: you do Task 108 and tick its box`. A plan path outside the repo is never read. The plan's text rules move to the pure `shared-node/plan-text.mjs`, which `plan-boxes.mjs` and `plan.mjs` re-export, so the mod can load them.
 
 - BUILT counts the tests an earlier test already covered as passing, as TESTS does (live Task 107 run: BUILT read `9 tests passing` while TESTS read `17 of 17 passing · 8 covered`). BUILT counted only the tests that passed their own GREEN.

@@ -13,9 +13,9 @@
 // tests/js/smoke-s6.test.mjs exercise the pure helpers.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -259,6 +259,7 @@ async function driveSession(ctx, label, prompt, { env, capUsd = Infinity, killAt
   const { repo, budget, recorder, gh, pluginDir, result } = ctx;
   const from = { stream: recorder.stream.length, snapshots: recorder.snapshots.length };
   const session = { label, killed: false, ledgerAtKill: null, notes: [] };
+  recorder.mark(`${label} starts`);
   let next = prompt;
   let resume = null;
   for (;;) {
@@ -291,6 +292,7 @@ async function driveSession(ctx, label, prompt, { env, capUsd = Infinity, killAt
     resume = sessionOf(recorder.stream.slice(from.stream));
     check(resume !== null, `${label}'s stream has no session id to resume`);
   }
+  recorder.mark(`${label} ends${session.killed ? " (killed)" : ""}`);
   session.snapshots = recorder.snapshots.slice(from.snapshots);
   result.sessions.push({ label, killed: session.killed, notes: session.notes });
   return session;
@@ -301,11 +303,68 @@ const bare = (remote, ...args) => execFileSync("git", ["--git-dir", remote, ...a
 const isAncestor = (remote, older, newer) => spawnSync("git", ["--git-dir", remote, "merge-base", "--is-ancestor", older, newer], { env: cleanEnv() }).status === 0;
 const prBranchOf = (plan, url) => new RegExp(`^PR: ${url.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")} branch: (\\S+)$`, "m").exec(plan)?.[1] ?? null;
 
+// Also keeps what the mod reads besides the ledger: every file under .pairingbuddy/ and the plan MD, as diffs in
+// files.jsonl ({ t, set: { path: text }, gone: [path] }), and the harness's own moments in marks.jsonl ({ t, label }),
+// so the pane can be replayed with its plan tree.
+const FILES_MS = 200;
+class FilesRecorder extends RunRecorder {
+  constructor(repo, out, options) {
+    super(repo, out, options);
+    this.repo = repo;
+    this.files = new Map();
+    this.filesAt = -Infinity;
+  }
+
+  walk(dir, into) {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) this.walk(path, into);
+      else if (entry.isFile()) {
+        try {
+          if (statSync(path).size <= 2_000_000) into.set(relative(this.repo, path), readFileSync(path, "utf8"));
+        } catch {
+          // gone between the list and the read
+        }
+      }
+    }
+  }
+
+  poll() {
+    super.poll();
+    const t = this.seconds();
+    if (t - this.filesAt < FILES_MS / 1000) return;
+    this.filesAt = t;
+    const now = new Map();
+    this.walk(join(this.repo, ".pairingbuddy"), now);
+    try {
+      now.set(PLAN_PATH, readFileSync(join(this.repo, PLAN_PATH), "utf8"));
+    } catch {
+      // no plan yet
+    }
+    const set = Object.fromEntries([...now].filter(([path, text]) => this.files.get(path) !== text));
+    const gone = [...this.files.keys()].filter((path) => !now.has(path));
+    this.files = now;
+    if (Object.keys(set).length > 0 || gone.length > 0) appendFileSync(join(this.out, "files.jsonl"), `${JSON.stringify({ t, set, gone })}\n`);
+  }
+
+  mark(label) {
+    this.filesAt = -Infinity;
+    this.poll();
+    appendFileSync(join(this.out, "marks.jsonl"), `${JSON.stringify({ t: this.seconds(), label })}\n`);
+  }
+}
+
 async function runS6(budget, record, out, pluginDir) {
   const { repo, remote } = makeS6Repo(record);
   const gh = installGhShim({ parent: record });
   const planStart = readPlan(repo);
-  const recorder = new RunRecorder(repo, out, { streamPath: join(record, "stream.jsonl") }).start();
+  const recorder = new FilesRecorder(repo, out, { streamPath: join(record, "stream.jsonl") }).start();
   const result = { passed: false, cause: "", phases: {}, sessions: [], humanApprovals: [], capped: false };
   const ctx = { repo, budget, recorder, gh, pluginDir, result };
   try {
@@ -322,6 +381,7 @@ async function runS6(budget, record, out, pluginDir) {
       unit: unitA,
     });
     writeFileSync(planPathOf(repo), tickBox(readPlan(repo), HUMAN_TASK));
+    recorder.mark("the human ticked the human task");
 
     // Unit A's PR, as the recording gh shows it to pb unit open and pb unit status: open, from unit A's branch.
     const views = viewsEnv({ [PR_URLS[0]]: { url: PR_URLS[0], head: unitA.branch, base: BASE, state: "OPEN" } });
@@ -329,6 +389,7 @@ async function runS6(budget, record, out, pluginDir) {
     const planAtKill = readPlan(repo);
     const adoptPlain = humanPb(repo, gh, pluginDir, "human", "adopt");
     const adoptForced = humanPb(repo, gh, pluginDir, "human", "adopt", "--force");
+    recorder.mark("the human adopted the run");
     const planBeforeResume = readPlan(repo);
 
     const third = await driveSession(ctx, "session 3", PROMPTS.afterKill, { env: runEnv(gh.env({ GH_SHIM_URL: PR_URLS[1], ...views })) });
@@ -352,6 +413,7 @@ async function runS6(budget, record, out, pluginDir) {
     if (!(e instanceof SmokeError)) throw e;
     result.cause = `${e.message}; ${position(recorder.last)}`;
   } finally {
+    recorder.mark("S6 ends");
     recorder.stop();
   }
   return { ...result, repo, costUsd: Number(budget.spent.toFixed(6)), costUpperBound: budget.upperBound, costKnown: budget.costKnown, seconds: Number(recorder.seconds().toFixed(1)) };
