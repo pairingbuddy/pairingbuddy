@@ -310,6 +310,14 @@ test("code-tdd-a-state-read-the-cli-already-stopped-is-not-retried", async () =>
   assert.equal(result.stopReason, "run-stopped");
 });
 
+test("code-tdd-green-is-told-the-earlier-tests-must-keep-passing", async () => {
+  const { calls } = await runStage({});
+
+  const green = calls.find(({ opts }) => opts.agentType === CODE);
+  assert.match(green.prompt, /Every test an earlier cycle of this task closed must still pass/);
+  assert.match(green.prompt, /Change an earlier test only when the task itself requires behaviour that it contradicts, and say in notes which test and why/);
+});
+
 test("code-tdd-a-placeholders-refusal-for-an-existing-test-goes-to-a-new-placeholders-agent", async () => {
   const refusal = "test test_zero_price_stays_zero is already in tests/test_a.py at the commit before the placeholders";
   let tries = 0;

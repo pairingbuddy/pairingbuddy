@@ -180,7 +180,7 @@ const redStep = (testId, testsPath, scenarios) => untilAccepted({
 const greenStep = (testId, testsPath) => untilAccepted({
   role: 'implement-code',
   schema: CODE_SCHEMA,
-  instruction: 'Write the least production code that makes the one test named below pass. The paths are your inputs.',
+  instruction: 'Write the least production code that makes the one test named below pass. Every test an earlier cycle of this task closed must still pass: the commit check runs them, and names any that fails. When your change breaks one, fix your code so both pass. Change an earlier test only when the task itself requires behaviour that it contradicts, and say in notes which test and why. The paths are your inputs.',
   paths: { tests: testsPath, ...SHARED_PATHS },
   step: 'green',
   tddPhase: 'GREEN',

@@ -291,6 +291,26 @@ describe("GREEN", IN_PARALLEL, () => {
     assert.deepEqual([repo.ledger().tests.perTest.t1.green.done, repo.ledger().tests.perTest.t1.green.exitCodes], [false, [1]]);
   });
 
+  test("a GREEN that breaks a test an earlier cycle closed is refused, naming that test, and nothing is committed", () => {
+    const closed = { selector: { runner_id: "fake", test_file: "tests/a.mjs", test_function: "t0" }, red: { done: true }, green: { done: true } };
+    const repo = makeRepo({ rows: [row("t0"), row("t1")], outcomes: { "tests/a.mjs::t0": 0, "tests/a.mjs::t1": 1 }, ledger: { tests: { perTest: { t0: closed } } } });
+    greenReady(repo, { outcomes: { "tests/a.mjs::t0": 1, "tests/a.mjs::t1": 0 } });
+    const seed = repo.head();
+
+    assertRefused(repo, seed, step(repo, "green", greenKey()), /test t0 \(t0 in tests\/a\.mjs\) failed with exit code 1/);
+    assert.equal(repo.ledger().tests.perTest.t1.green?.done, false, "GREEN is not done");
+  });
+
+  test("a GREEN that keeps the earlier closed tests passing commits, having run them", () => {
+    const closed = { selector: { runner_id: "fake", test_file: "tests/a.mjs", test_function: "t0" }, red: { done: true }, green: { done: true } };
+    const repo = makeRepo({ rows: [row("t0"), row("t1")], outcomes: { "tests/a.mjs::t0": 0, "tests/a.mjs::t1": 1 }, ledger: { tests: { perTest: { t0: closed } } } });
+    greenReady(repo, { outcomes: { "tests/a.mjs::t0": 0, "tests/a.mjs::t1": 0 } });
+
+    assertPasses(step(repo, "green", greenKey()));
+
+    assert.ok(repo.runs().some((argv) => argv[0] === "tests/a.mjs::t0"), `the earlier test ran: ${JSON.stringify(repo.runs())}`);
+  });
+
   test("only the selected test decides: another failing test in the file does not hold it back", () => {
     const repo = makeRepo({ rows: [row("t1"), row("t2")], outcomes: { "tests/a.mjs::t1": 1, "tests/a.mjs::t2": 1 } });
     greenReady(repo, { outcomes: { "tests/a.mjs::t1": 0, "tests/a.mjs::t2": 1 } });

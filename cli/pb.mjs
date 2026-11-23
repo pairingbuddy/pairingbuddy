@@ -1012,6 +1012,7 @@ async function cycleCheckpoint(context) {
   const after = passed ? null : coveredBy(step, run, ledger);
   if (after !== null) return coveredCheckpoint(context, plan, head, id, record, after);
   if (!passed) throw new Refusal(stepNotMet(step, id, run));
+  if (step === "green") await requireEarlierTestsPass(context, config, id);
   if (plan === null) return noChange(context, withCycleDone(step, id));
   return commitPlan(context, plan, head, (sha) => withCycleDone(step, id, sha));
 }
@@ -1021,12 +1022,14 @@ const isClosedCycle = ({ red, green, covered }) => covered?.done === true || (re
 
 // Every test of the task a cycle closed, each by its own selector: the full suite would run the placeholders still
 // waiting for their RED, which fail by design. A failed run is evidence, so it lands in the ledger before the refusal.
-async function requireClosedTestsPass({ root, path, ledger }, config, rows) {
+// key: where the run lands in ledger.tests (refactor, or closed for a GREEN's check of the earlier tests).
+async function requireClosedTestsPass({ root, path, ledger }, config, rows, key = "refactor") {
   const closedRows = rows.filter(({ test_id: id }) => isClosedCycle(perTestOf(ledger, id)));
+  if (closedRows.length === 0) return;
   const plans = closedRows.map((row) => testPlan(config, row));
   const head = headOf(root);
   const record = { ...(await suiteRecord(plans, root, ledger.stage)), head };
-  updateLedger(path, (current) => ({ ...current, tests: { ...current.tests, refactor: record } }));
+  updateLedger(path, (current) => ({ ...current, tests: { ...current.tests, [key]: record } }));
   if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${failedTestsText(closedRows, record.runs)}`);
 }
 
@@ -1042,6 +1045,18 @@ function failedTestsText(rows, runs) {
     .filter(({ run }) => run.exitCode !== 0)
     .map(({ run, row }) => `test ${row.test_id} (${row.test_function} in ${row.test_file}) failed with ${run.timedOut ? "a timeout" : `exit code ${run.exitCode}`}. Its output:\n${excerptTail(run.excerpt ?? "", FAILED_TEST_TAIL)}`)
     .join("\n\n");
+}
+
+// A GREEN must not break a test an earlier cycle closed: its own test passing says nothing of theirs. They run as a
+// refactor's do, each by its own selector, and a failure names the test, so implement-code fixes it in its next try.
+async function requireEarlierTestsPass(context, config, id) {
+  const rows = testRows(config, artifactsDirOf(context.root), context.ledger.stage).filter(({ test_id: rowId }) => rowId !== id);
+  try {
+    await requireClosedTestsPass(context, config, rows, "closed");
+  } catch (e) {
+    if (e instanceof Refusal) throw new Refusal(`test ${id} passes, but its GREEN broke an earlier test of this task. ${e.message.replace(/^the tests failed, so /, "So ")}`);
+    throw e;
+  }
 }
 
 // One fix group of a cycle's refactor. It follows the cycle's GREEN, and every test the task has closed must still pass.
