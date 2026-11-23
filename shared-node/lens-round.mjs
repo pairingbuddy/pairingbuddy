@@ -100,27 +100,31 @@ function lensFindings(returned, verdicts) {
   return returned.flatMap((one) => returnFindings(one, verdicts));
 }
 
+// The findings the fix loop is given, as pb settles them: in a round with refuters, those a refuter upheld; in a round
+// without, every finding. A finding no refuter was sent is never fixed, so it is left as is once the round is over.
+const upheldIn = (refuting) => ({ verdict }) => verdict === VERDICTS.stands || (!refuting && verdict === VERDICTS.unchallenged);
+
 // The fix loop groups the upheld findings by lens, in finding order, as g1, g2, ...; so a fix group names the lens at its place.
-function groupLenses(findings) {
-  const upheld = findings.filter(({ verdict }) => verdict === VERDICTS.stands || verdict === VERDICTS.unchallenged);
-  const lenses = [...new Set(upheld.map(lensOfFinding))];
+function groupLenses(findings, upheld) {
+  const lenses = [...new Set(findings.filter(upheld).map(lensOfFinding))];
   return new Map(lenses.map((lens, i) => [`g${i + 1}`, lens]));
 }
 
 // A finding still upheld whose lens a kept fix answered reads fixed; one whose lens's fix is under way reads fixing; one whose
 // lens fix was only undone is to fix again. A fix names its lens by the check's finding, else by its group's place.
-function answeredByFixes(findings, fixes) {
-  const byGroup = groupLenses(findings);
+function answeredByFixes(findings, fixes, refuting) {
+  const upheld = upheldIn(refuting);
+  const byGroup = groupLenses(findings, upheld);
   const lensOfFix = (fix) => fix.lens ?? byGroup.get(fix.group);
   const lensesOf = (outcomes) => new Set(fixes.filter((fix) => outcomes.includes(fix.outcome)).map(lensOfFix).filter((lens) => lens !== undefined));
   const inProgress = [FIX_OUTCOMES.fixing, FIX_OUTCOMES.checking, FIX_OUTCOMES.undoing];
   const [kept, fixing, undone] = [lensesOf([FIX_OUTCOMES.kept]), lensesOf(inProgress), lensesOf([FIX_OUTCOMES.undone])];
-  const settled = (verdict) => verdict === VERDICTS.stands || verdict === VERDICTS.unchallenged;
   return findings.map((finding) => {
     const lens = lensOfFinding(finding);
-    if (finding.verdict !== VERDICTS.knockedDown && kept.has(lens)) return { ...finding, verdict: VERDICTS.fixed };
-    if (settled(finding.verdict) && fixing.has(lens)) return { ...finding, verdict: VERDICTS.fixing };
-    return settled(finding.verdict) && undone.has(lens) ? { ...finding, verdict: VERDICTS.fixUndone } : finding;
+    if (!upheld(finding)) return finding;
+    if (kept.has(lens)) return { ...finding, verdict: VERDICTS.fixed };
+    if (fixing.has(lens)) return { ...finding, verdict: VERDICTS.fixing };
+    return undone.has(lens) ? { ...finding, verdict: VERDICTS.fixUndone } : finding;
   });
 }
 
@@ -351,7 +355,8 @@ export function lensRound({ ledger, calls: allCalls = [], spawns: allSpawns = []
   const fixes = fixOutcomes(sources);
   const labels = stageLabels(spawns, stage);
   const ended = runEnded || current.status !== "active" || (light !== null && movedOn(labels, light.item));
-  const answered = answeredByFixes(lensFindings(returned, refuterVerdicts(sources)), fixes);
+  const verdicts = refuterVerdicts(sources);
+  const answered = answeredByFixes(lensFindings(returned, verdicts), fixes, verdicts.size > 0);
   const shown = light ? distinctFindings(answeredByFixers(answered, labels, light.item)) : answered;
   const worded = shown.map((finding) => ({ ...finding, word: findingWord(finding.verdict, ended) }));
   const findings = light ? worded : samePlaceFindings(worded, ended);

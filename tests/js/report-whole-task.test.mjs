@@ -284,6 +284,7 @@ describe("report-of-a-doubt-a-later-fix-settled", () => {
     const calls = [
       net("lens", "code", 1, { ambiguity: null, findings: [{ ...same, title: "Empty order gives an int" }] }),
       net("lens", "tests", 1, { ambiguity: null, findings: [same] }),
+      net("refuter", "code-1", 1, { finding_id: "code-1", verdict: "survives" }),
       net("refuter", "tests-1", 1, { finding_id: "tests-1", verdict: "survives", ambiguity: AMBIGUITY }),
       net("fix", "g1", 2, { ambiguity: "", commit_subject: "fix: the code", no_change_reason: "", files_changed: ["cart.py"] }),
       net("course-checker", "g1", 2, { finding_id: "code-1", verdict: "better", mistake: "none", what_went_wrong: "" }),

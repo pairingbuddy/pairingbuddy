@@ -700,6 +700,7 @@ test("lines-fit-exactly-at-the-column-edge", () => {
 test("findings-say-fixed-when-a-kept-fix-answered-their-lens", () => {
   const calls = [
     callFor({ item: "code", findings: [{ where: "a.mjs:1", claim: "first code claim" }, { where: "b.mjs:2", claim: "second code claim" }] }),
+    callFor({ role: "refuter", item: "code-1", finding_id: "code-1", verdict: "survives" }),
     callFor({ role: "refuter", item: "code-2", finding_id: "code-2", verdict: "refuted" }),
     callFor({ role: "fix", item: "g1", round: 2, ambiguity: "none", commit_subject: "fix it", approach: "change the code", files_changed: ["a.mjs"] }),
     callFor({ role: "course-checker", item: "g1", round: 2, finding_id: "code-1", verdict: "better" }),
@@ -926,4 +927,16 @@ test("one-lens-saying-one-gist-twice-for-the-same-lines-shows-once", () => {
   const round = lensRound({ ledger: ledgerFor({ status: "done" }), calls, spawns, contract });
 
   assert.deepEqual(round.findings.map(({ ids }) => ids), [["code-1", "code-2"]]);
+});
+
+test("a-finding-no-refuter-was-sent-is-left-as-is-though-a-kept-fix-answered-its-lens", () => {
+  const calls = [
+    callFor({ item: "code", findings: [{ where: "a.mjs:1", title: "Upheld" }, { where: "b.mjs:2", title: "Past the cut" }] }),
+    callFor({ role: "refuter", item: "code-1", finding_id: "code-1", verdict: "survives" }),
+    callFor({ role: "fix", item: "g1", round: 2, ambiguity: "none", commit_subject: "fix it", approach: "change the code", files_changed: ["a.mjs"] }),
+    callFor({ role: "course-checker", item: "g1", round: 2, finding_id: "code-1", verdict: "better" }),
+  ];
+  const round = lensRound({ ledger: ledgerFor({ status: "done" }), calls, spawns: [spawnFor({ item: "code" })], contract });
+
+  assert.deepEqual(round.findings.map(({ title, word }) => `${word} · ${title}`), ["fixed · Upheld", "left as is · Past the cut"], "the fix loop is given only the findings a refuter upheld, as pb counts them");
 });
