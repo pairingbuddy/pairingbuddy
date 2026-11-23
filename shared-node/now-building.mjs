@@ -1,6 +1,6 @@
 // The TESTS and TEST rows' data: folds per-test progress into marks (done, covered, current, waiting) and fits the progress row
 // to a width budget. Pure; no node: imports.
-import { currentStep, elapsed, stageOf } from "./glance.mjs";
+import { currentStep, elapsed, stageOf, waitedBetween } from "./glance.mjs";
 import { PHASES, refactorsPerCycle } from "./labels.mjs";
 
 const SHOWN = 3;
@@ -100,4 +100,11 @@ export function cycleMarker({ spawns, ledger }) {
 
 // How long the current step has run, as a run-time clock; unknown when the spawn or the clock carries no time.
 // pausedAt: where a stopped or waiting run's clock stopped (glance's pausedAtOf), so the age freezes there as SPENT does.
-export const stepAge = ({ spawns, now, stage, pausedAt }) => elapsed(currentStep(spawns, stage)?.startedAt, Number.isFinite(pausedAt) && pausedAt < now ? pausedAt : now);
+// ledger: whose waits since the step began (a stop, a question) are no working time, so the age leaves them out.
+export function stepAge({ spawns, now, stage, pausedAt, ledger }) {
+  const startedAt = currentStep(spawns, stage)?.startedAt;
+  const until = Number.isFinite(pausedAt) && pausedAt < now ? pausedAt : now;
+  const from = Date.parse(startedAt);
+  const waited = ledger && Number.isFinite(from) && Number.isFinite(until) ? waitedBetween(ledger, from, until, { clipEnd: true }) : 0;
+  return elapsed(startedAt, until, undefined, waited);
+}

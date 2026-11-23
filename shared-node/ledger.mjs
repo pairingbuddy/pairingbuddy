@@ -38,7 +38,7 @@ export const ADOPT_RECENT_MS = 10 * 60_000;
 
 // Whether the owner was seen within ADOPT_RECENT_MS.
 export const seenRecently = (lastSeen) => ownerAgeMs(lastSeen) < ADOPT_RECENT_MS;
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -154,8 +154,9 @@ export function validateLedger(ledger) {
     voidedGates: [Array.isArray, "an array"],
     gateWaits: [Array.isArray, "an array"],
     permissionWaits: [Array.isArray, "an array"],
+    stopWaits: [Array.isArray, "an array"],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
-  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits"] });
+  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
@@ -438,11 +439,21 @@ export function writeLedger(path, ledger, opts = {}) {
   });
 }
 
+// A stopped run does no work, so its stop is a wait, kept in stopWaits as a question's is in gateWaits: the write that sets
+// a stop opens one, and the write that lifts it closes it. Every verb and hook writes through here, so no stop is missed.
+export function withStopWaits(after, now = new Date().toISOString()) {
+  const waits = Array.isArray(after.stopWaits) ? after.stopWaits : [];
+  const openAt = waits.findLastIndex((wait) => wait?.answeredAt === undefined);
+  if (after.stop !== null && after.stop !== undefined && openAt === -1) return { ...after, stopWaits: [...waits, { askedAt: now }] };
+  if ((after.stop === null || after.stop === undefined) && openAt !== -1) return { ...after, stopWaits: waits.map((wait, i) => (i === openAt ? { ...wait, answeredAt: now } : wait)) };
+  return after;
+}
+
 export function updateLedger(path, fn, opts = {}) {
   return withLock(path, opts, (assertOwned) => {
     const disk = readLedger(path);
     const diskSeq = disk.seq;
-    return writeLocked(path, fn(disk), diskSeq, assertOwned);
+    return writeLocked(path, withStopWaits(fn(disk)), diskSeq, assertOwned);
   });
 }
 

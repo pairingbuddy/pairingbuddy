@@ -70,24 +70,37 @@ export function elapsed(startedAt, now, ranFor, waited = 0) {
   return clock((Number.isFinite(ranFor) ? ranFor : (now - Date.parse(startedAt)) / 1000) - waited);
 }
 
-const secondsFrom = (from, to) => {
-  const seconds = (to - Date.parse(from)) / 1000;
-  return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
-};
 
-// The seconds of one wait: from askedAt to answeredAt, or to `until` while it is open.
-const waitSeconds = ({ askedAt, answeredAt }, until) => (typeof askedAt === "string" ? secondsFrom(askedAt, answeredAt === undefined ? until : Date.parse(answeredAt)) : 0);
+// Every wait as [from, to] in ms: answered questions, the one still asked, permission prompts and stops (stopWaits), an
+// open one up to `until`. A record with no usable times is no interval.
+function waitIntervals(ledger, until) {
+  const list = (value) => (Array.isArray(value) ? value : []);
+  const gates = ledger?.gates && typeof ledger.gates === "object" ? Object.values(ledger.gates) : [];
+  const answered = [...gates, ...list(ledger?.gateWaits)].filter((record) => typeof record?.askedAt === "string").map(({ askedAt, answeredAt }) => [Date.parse(askedAt), Date.parse(answeredAt)]);
+  const asked = typeof ledger?.needsHuman?.askedAt === "string" ? [[Date.parse(ledger.needsHuman.askedAt), until]] : [];
+  const openable = [...list(ledger?.permissionWaits), ...list(ledger?.stopWaits)].filter((wait) => typeof wait?.askedAt === "string").map(({ askedAt, answeredAt }) => [Date.parse(askedAt), answeredAt === undefined ? until : Date.parse(answeredAt)]);
+  return [...answered, ...asked, ...openable].filter(([from, to]) => Number.isFinite(from) && Number.isFinite(to) && to > from);
+}
+
+// The seconds of the waits since `from`, each moment once: a question asked while the run is stopped is one wait. An open
+// wait runs to `until`; an answered one counts whole unless clipEnd also cuts it there (a step's age, which ends at until).
+export function waitedBetween(ledger, from, until, { clipEnd = false } = {}) {
+  const clipped = waitIntervals(ledger, until).map(([a, b]) => [Math.max(a, from), clipEnd ? Math.min(b, until) : b]).filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+  let total = 0;
+  let end = -Infinity;
+  for (const [a, b] of clipped) {
+    const start = Math.max(a, end);
+    if (b > start) total += b - start;
+    end = Math.max(end, b);
+  }
+  return total / 1000;
+}
 
 // The seconds a run waited on the human: its questions, each answered one from askedAt to answeredAt (kept on its gate's
-// record, or in gateWaits once a redo removed the record) and the one still asked from its askedAt to `until`, and Claude
-// Code's permission prompts (permissionWaits) the same way. A ledger written before these stamps waited 0.
+// record, or in gateWaits once a redo removed the record) and the one still asked from its askedAt to `until`, Claude
+// Code's permission prompts (permissionWaits) and its stops (stopWaits) the same way. A ledger written before these stamps waited 0.
 export function waitedSeconds(ledger, until) {
-  const gates = ledger?.gates && typeof ledger.gates === "object" ? Object.values(ledger.gates) : [];
-  const records = [...gates, ...(Array.isArray(ledger?.gateWaits) ? ledger.gateWaits : [])];
-  const answered = records.reduce((total, record) => total + (typeof record?.askedAt === "string" ? secondsFrom(record.askedAt, Date.parse(record.answeredAt)) : 0), 0);
-  const open = typeof ledger?.needsHuman?.askedAt === "string" ? secondsFrom(ledger.needsHuman.askedAt, until) : 0;
-  const prompts = (Array.isArray(ledger?.permissionWaits) ? ledger.permissionWaits : []).reduce((total, wait) => total + waitSeconds(wait ?? {}, until), 0);
-  return answered + open + prompts;
+  return waitedBetween(ledger, -Infinity, until);
 }
 
 // When the live run stopped working, in ms, or undefined while it works or when nothing says. A run that stopped or waits on
@@ -96,7 +109,8 @@ export function waitedSeconds(ledger, until) {
 export function pausedAtOf(ledger) {
   if (!ledger?.stop && !ledger?.needsHuman) return undefined;
   const prompt = (Array.isArray(ledger.permissionWaits) ? ledger.permissionWaits : []).findLast((wait) => wait?.answeredAt === undefined)?.askedAt;
-  const at = [ledger.needsHuman?.askedAt, prompt, ledger.pausedAt].map((time) => (typeof time === "string" ? Date.parse(time) : time)).find(Number.isFinite);
+  const stopped = ledger.stop ? (Array.isArray(ledger.stopWaits) ? ledger.stopWaits : []).findLast((wait) => wait?.answeredAt === undefined)?.askedAt : undefined;
+  const at = [ledger.needsHuman?.askedAt, prompt, stopped, ledger.pausedAt].map((time) => (typeof time === "string" ? Date.parse(time) : time)).find(Number.isFinite);
   return at;
 }
 

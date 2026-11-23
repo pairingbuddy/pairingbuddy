@@ -187,7 +187,7 @@ function buildTestRows(inputs: Inputs, ended: boolean): Pick<View, 'progress' | 
   const progress = progressOf({ tests, perTest, spawns: ended ? [] : spawns, testsComplete: complete, stage, settled })
   const step = ended ? undefined : currentStep(spawns, stage)
   if (!step) return { progress }
-  const test = { current: shortName(step.item), marker: cycleMarker({ spawns, ledger }), age: stepAge({ spawns, now, stage, pausedAt: pausedAtOf(ledger) }) }
+  const test = { current: shortName(step.item), marker: cycleMarker({ spawns, ledger }), age: stepAge({ spawns, now, stage, pausedAt: pausedAtOf(ledger), ledger }) }
   return { progress, test }
 }
 

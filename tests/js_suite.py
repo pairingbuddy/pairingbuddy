@@ -154,6 +154,7 @@ JS_TEST_FILES = [
     "tests/js/human-line.test.mjs",
     "tests/js/pb-status-plain.test.mjs",
     "tests/js/spent-paused.test.mjs",
+    "tests/js/stop-waits.test.mjs",
     "tests/js/stranded.test.mjs",
     "tests/js/t4a-broken-copy-helper.test.mjs",
     "tests/js/t4a-lab-setup.test.mjs",
