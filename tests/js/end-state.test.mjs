@@ -191,3 +191,13 @@ test("a status wraps at its parts, then at words", () => {
   assert.deepEqual(wrapAtParts("done · goal met", 0), ["done · goal met"]);
   assert.deepEqual(wrapAtParts("stopped · a step kept failing at the same place", 20), ["stopped", "a step kept failing", "at the same place"]);
 });
+
+// S6 at 60 columns: "left as is · Needless alias sut in regression" read as a whole title. A finding too long for the
+// columns keeps what happens to it and cuts its title at a word, marked by "…".
+test("a finding title too long for the columns is cut at a word with an ellipsis, its word kept whole", () => {
+  const findings = [{ word: "left as is", title: "Needless alias sut in regression test", where: { file: "tests/test_discount.py", line: 9 } }];
+
+  const [, line] = endReviewLines({ findings }, 47).map(({ text }) => text);
+
+  assert.equal(line, "  left as is · Needless alias sut in…");
+});

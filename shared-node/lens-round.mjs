@@ -426,14 +426,17 @@ export function findingGist({ title, claim }) {
 }
 
 // One line per finding, never folded: what happens to it, the gist, then where. Too long for the columns, where gives way first,
-// then the gist is cut at a word boundary; nothing is cut with an ellipsis.
+// then the gist is cut at a word boundary, marked by "…"; what happens to it is never cut.
 function findingLine({ word, where, ...finding }, columns) {
   const gist = findingGist(finding);
   const full = `  ${[word, gist, shownWhere(where)].filter(Boolean).join(PART_BREAK)}`;
   if (!(columns > 0) || full.length <= columns) return { text: full, whole: true };
   const lead = `  ${word}${PART_BREAK}`;
-  return { text: `${lead}${cutAtWord(gist, columns - lead.length)}`, whole: true };
+  if (lead.length + gist.length <= columns) return { text: `${lead}${gist}`, whole: true };
+  return { text: `${lead}${cutAtWord(gist, columns - lead.length - ELLIPSIS.length)}${ELLIPSIS}`, whole: true };
 }
+
+const ELLIPSIS = "…";
 
 export function findingLines(findings, columns) {
   const lines = findings.slice(0, SHOWN_FINDINGS).map((finding) => findingLine(finding, columns));

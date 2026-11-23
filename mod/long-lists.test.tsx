@@ -128,7 +128,8 @@ for (const columns of WIDTHS) {
     expect(tests[0], 'the done tests fold into the count of the total').toBe('TESTS    10 of 40 done')
     expect(tests.at(-1), 'the waiting tests past the shown ones are counted').toBe(`${' '.repeat(LABEL_WIDTH)}+27 more`)
     // A test line stays one line: a long name is cut at a word, never with an ellipsis; the report's SCENARIOS holds it whole.
-    expect(lines.filter(line => line.includes('…')), 'nothing in the pane is cut with an ellipsis').toEqual([])
+    // Only a finding's title, too long for the room, is cut, at a word and marked by …; what happens to it stays whole.
+    expect(lines.filter(line => line.includes('…')).every(line => /^ +left as is · \S.*\S…$/.test(line)), `only finding titles are cut with an ellipsis: ${JSON.stringify(lines)}`).toBe(true)
   })
 
   test(`a-big-task-at-its-end-fits-${columns}-columns-with-built-wrapped-whole-and-review-in-five`, async ($, on) => {
@@ -144,7 +145,8 @@ for (const columns of WIDTHS) {
     const built = rowLinesOf(lines, 'BUILT').map(line => line.slice(LABEL_WIDTH)).join('')
     const whole = `${BIG_FILES.slice(0, 3).map(file => file.path).join(', ')} + 17 more files · 40 tests passing`
     expect(squash(built), `BUILT is drawn whole, wrapped: ${JSON.stringify(lines)}`).toBe(squash(whole))
-    expect(lines.filter(line => line.includes('…')), 'nothing in the pane is cut with an ellipsis').toEqual([])
+    // Only a finding's title, too long for the room, is cut, at a word and marked by …; what happens to it stays whole.
+    expect(lines.filter(line => line.includes('…')).every(line => /^ +left as is · \S.*\S…$/.test(line)), `only finding titles are cut with an ellipsis: ${JSON.stringify(lines)}`).toBe(true)
     // The end review: one summary line, the first three findings, then "+ n more".
     expect(review.length, `REVIEW is at most 5 lines: ${JSON.stringify(review)}`).toBeLessThanOrEqual(5)
     expect(review.at(-1), 'the other five findings are counted').toBe(`${' '.repeat(LABEL_WIDTH)}  + 5 more`)
@@ -153,8 +155,8 @@ for (const columns of WIDTHS) {
     expect(tests[0], `TESTS leads with the settled count: ${JSON.stringify(tests)}`).toBe('TESTS    ✓ 40 of 40 passing')
     expect(tests.slice(1, -1).map(line => line.trim().slice(0, 2)), 'then the first three tests').toEqual(['✓ ', '✓ ', '✓ '])
     expect(tests.at(-1), 'then how many more').toBe(`${' '.repeat(LABEL_WIDTH)}+37 more`)
-    // BUILT, GOAL, PR and REVIEW cut at a word, never mid-word with an ellipsis.
-    for (const name of ['BUILT', 'GOAL', 'PR', 'REVIEW']) {
+    // BUILT, GOAL and PR cut at a word, never mid-word with an ellipsis.
+    for (const name of ['BUILT', 'GOAL', 'PR']) {
       for (const line of rowLinesOf(lines, name)) expect(line.includes('…'), `${name} is cut at a word: ${line}`).toBe(false)
     }
   })

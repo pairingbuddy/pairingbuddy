@@ -388,10 +388,9 @@ test("lines-truncate-and-fold-to-columns", () => {
     "only the first 3 findings show, each as what happens to it, the gist, then where, then a dim '+ n more' for the rest",
   );
   assert.equal(narrow.every(({ text }) => text.length <= 60), true, "at 60 columns no line is longer than 60");
-  assert.equal(narrow.some(({ text }) => text.includes("…")), false, "no finding is cut with an ellipsis");
   assert.ok(
-    narrow.some(({ text }) => text === "  to fix · the loop never stops when the queue is empty and"),
-    `a finding too long for the width gives up its where, then its gist is cut at a word boundary: ${JSON.stringify(narrow)}`,
+    narrow.some(({ text }) => text === "  to fix · the loop never stops when the queue is empty and…"),
+    `a finding too long for the width gives up its where, then its gist is cut at a word boundary, marked by "…": ${JSON.stringify(narrow)}`,
   );
   assert.deepEqual(uncut, wide, "columns 0 cuts nothing");
   const findingsAt = narrow.findIndex(({ text }) => text.includes(" issues found"));
