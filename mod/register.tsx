@@ -58,7 +58,8 @@ function drawGlance(
     const endedMs = typeof endedAt === 'string' ? Date.parse(endedAt) : NaN
     // Whether a unit is still open is read now: pb publish closes it after the snapshot was taken.
     // Once the task has ended, what the runs pb kept say of it is read now too: the snapshot's poll may not have seen them.
-    const ended = { ...snapshot, unitOpen: live.unit !== null, task: live.task, ...(Number.isNaN(endedMs) ? {} : { now: endedMs }) }
+    // The plan tree is read now too: a person ticks a box, and pb publish writes its PR: line, after the run has ended.
+    const ended = { ...snapshot, unitOpen: live.unit !== null, task: live.task, plan: live.plan, planPath: live.planPath, planUnit: live.unit, ...(Number.isNaN(endedMs) ? {} : { now: endedMs }) }
     const view = live.ledger || !snapshot.ledger ? buildView(live) : buildEndedView(ended)
     const reportNote = typeof note === 'string' ? note : null
     return draw(tags, view, opened === true, reportNote)

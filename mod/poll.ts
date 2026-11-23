@@ -90,7 +90,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
     }
     state.polling = true
     try {
-      const read = await pollInputs($, state.spawns)
+      const read = await pollInputs($, state.spawns, state.kept)
       const polled = { ...read, since: unitStart(state, read), ...unitRecord(state, read), task: await endedTask($, state, read), earlierAgents: await earlierAgents($, state, read) }
       await $.state.set(INPUTS, polled)
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.

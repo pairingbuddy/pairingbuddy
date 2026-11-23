@@ -81,7 +81,8 @@ export function resolveOpenUnit(units: PlannedUnits, open: NonNullable<NonNullab
 
 // Each plan unit's state, in plan order, once a unit record stands to read it against; else none.
 function planStatesOf(inputs: Inputs): string[] | undefined {
-  const { plan, unit, ledger } = inputs
+  const { plan, ledger } = inputs
+  const unit = treeUnit(inputs)
   if (!plan) return undefined
   const open = unit?.open
   const planPath = inputs.planPath ?? ledger?.plan?.path
@@ -89,9 +90,13 @@ function planStatesOf(inputs: Inputs): string[] | undefined {
   return hasStateToTell(plan.units) ? unitStates(plan.units, { plan: planPath, openUnit: undefined }) : undefined
 }
 
+// The open unit the PLAN tree reads: the one open now when the view is told it apart, else the view's own.
+const treeUnit = (inputs: Inputs) => (inputs.planUnit !== undefined ? inputs.planUnit : inputs.unit)
+
 // What the PLAN tree reads: the plan, each unit's state, and the open unit with its PR link.
 function planFields(inputs: Inputs): Pick<View, 'plan' | 'planStates' | 'planOpen' | 'planOpenPr'> {
-  return { plan: inputs.plan, planStates: planStatesOf(inputs), planOpen: inputs.unit?.open, planOpenPr: inputs.unit?.prUrl }
+  const unit = treeUnit(inputs)
+  return { plan: inputs.plan, planStates: planStatesOf(inputs), planOpen: unit?.open, planOpenPr: unit?.prUrl }
 }
 
 export type EndRows = Record<'done' | 'pr', string>
@@ -358,6 +363,7 @@ export function buildEndedView(given: Inputs): View {
     lensRound: ledger ? lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns, ended: true }) : undefined,
     ...end,
     status: endedStatus(inputs, { doneStatus: finished }),
+    ...planFields(inputs),
   }
   // The run is gone, so a stop or a question its last snapshot held colours nothing.
   return { ...toned(view), rowTones: { spent: 'dim' } }

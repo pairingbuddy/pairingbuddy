@@ -55,7 +55,8 @@ export type Published = { url?: string; result?: string; codeRunId?: string | nu
 // waited: the seconds its runs waited on the human, which SPENT leaves out.
 export type TaskFacts = { spend: Spend; startedAt: string | null; endedAt: string; waited?: number; calls: Call[]; prUrl: string | null }
 // earlierAgents: what the live run's task spent in agents in its earlier runs, the ones pb kept.
-export type Inputs = { earlierAgents?: number; plan?: PlanRead | null; planPath?: string | null; task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
+// planUnit: the open unit the PLAN tree reads, when it is not `unit` (an ended run's view keeps the unit it last saw, the tree the one open now).
+export type Inputs = { earlierAgents?: number; plan?: PlanRead | null; planPath?: string | null; planUnit?: Unit | null; task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {
@@ -231,11 +232,14 @@ export function changedOf(file: unknown): string[] | null {
 
 export type PlanRead = ReturnType<typeof parsePlan>
 
-// Where the plan is: the path the ledger names, else the one the open unit's unit.json names. A publish run's ledger names
-// none, and with no run going there is no ledger. Only a path inside the repo counts.
-function planPathOf(ledger: Ledger | null, unitFile: unknown): string | null {
-  const named = [ledger?.plan?.path, (unitFile as { plan?: unknown } | undefined)?.plan]
-  return named.find(inRepo) ?? null
+// Where the plan is: the path the ledger names, else the one the open unit's unit.json names, else the one the last run pb
+// kept names. A publish run's ledger names none, and with no run going there is no ledger and, once published, no unit.
+// Only a path inside the repo counts.
+async function planPathOf($: EngineInterface, ledger: Ledger | null, unitFile: unknown, cache?: Map<string, KeptRun>): Promise<string | null> {
+  const named = [ledger?.plan?.path, (unitFile as { plan?: unknown } | undefined)?.plan].find(inRepo)
+  if (named) return named
+  const newestFirst = (await readKeptRuns($, cache)).sort((a, b) => (Date.parse(b.endedAt ?? '') || 0) - (Date.parse(a.endedAt ?? '') || 0))
+  return newestFirst.map(run => run.ledger?.plan?.path).find(inRepo) ?? null
 }
 
 // The plan MD at `path`, parsed, or null when there is no path or the file is missing, empty or unreadable. Never throws.
@@ -253,11 +257,12 @@ export type Polled = { ledger: Ledger | null; tests: string[]; testsComplete: bo
 
 // The pieces the poller reads; spawns are the mod's own, so render takes them from memory.
 // spawns: this session's, so a stage its own agents are still running never reads as stranded.
-export async function pollInputs($: EngineInterface, spawns: Spawn[] = []): Promise<Polled> {
+// kept: the kept runs read before, by folder (readKeptRuns).
+export async function pollInputs($: EngineInterface, spawns: Spawn[] = [], kept?: Map<string, KeptRun>): Promise<Polled> {
   const { ledger, tests, testsComplete, now } = await readInputsAndTests($, spawns)
   const [unitFile, changedFile] = await Promise.all([readJson($, UNIT), readJson($, CHANGED)])
-  // The plan is named by the ledger or the unit record, so it is read once both are.
-  const planPath = planPathOf(ledger ?? null, unitFile)
+  // The plan is named by the ledger, the unit record or a kept run, so it is read once they are.
+  const planPath = await planPathOf($, ledger ?? null, unitFile, kept)
   const plan = await readPlan($, planPath)
   return { ledger: ledger ?? null, tests, testsComplete, now: now ?? null, unit: await withHumanLeft($, unitOf(unitFile), unitFile), changed: changedOf(changedFile), plan, planPath: plan ? planPath : null }
 }
