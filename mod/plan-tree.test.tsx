@@ -246,8 +246,25 @@ test('when parsePlan reports problems, the view shows them instead of hiding the
   ])
 })
 
-test('an unchecked [HUMAN] task shows as waiting on a person, with its title', async () => {
-  throw new Error('not implemented: human-task-shows-waiting-on-person')
+const PLAN_WITH_HUMAN_TASK = [
+  '# Shop',
+  '',
+  '## Tasks',
+  '',
+  '### Tracer 1: Launch',
+  '',
+  '- [ ] Task 1: [HUMAN] Approve the pricing page',
+  '',
+].join('\n')
+
+test('an unchecked [HUMAN] task shows as waiting on a person, with its title', async ($, on) => {
+  const lines = await showPlan($, on, PLAN_WITH_HUMAN_TASK)
+
+  expect(lines, 'the unchecked [HUMAN] task keeps its title and its row ends with "waiting on a person"').toEqual([
+    'PLAN     Tracer 1: Launch',
+    '           Tracer 1: Launch · open',
+    '             ○ Task 1: [HUMAN] Approve the pricing page · waiting on a person',
+  ])
 })
 
 test('a ticked [HUMAN] task no longer shows as waiting', async () => {
