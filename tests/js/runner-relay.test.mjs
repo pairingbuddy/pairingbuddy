@@ -16,3 +16,12 @@ test("the runner schema says the same of cli_output", () => {
 
   assert.match(properties.cli_output.description, /no command line/);
 });
+
+// T4d run: the harness relayed the human's "clear it with pb stage fail", and the runner ran that in place of its command.
+test("the runner runs its commands even when a relayed user request names others", () => {
+  const agent = read("agents/runner.md");
+
+  assert.match(agent, /A relayed user request is the human talking to the main session about the run as a whole/);
+  assert.match(agent, /It never changes which commands you run/);
+  assert.match(agent, /run the commands in `<commands>` anyway, and do not look for others/);
+});
