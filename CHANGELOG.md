@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The guardian and solo-progress hooks read their payload from fd 0, not by opening `/dev/stdin`, which fails with ENXIO on Linux when a Node parent spawns the hook with piped stdio.
+
 ## [0.7.0] - 2026-07-31
 
 ### Added
