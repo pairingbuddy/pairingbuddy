@@ -34,7 +34,7 @@ import { nextAction, runStatus, statusText } from "../shared-node/next-action.mj
 import { needsTestSelection } from "../shared-node/stage-graph.mjs";
 import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, standingScenariosKey, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
-import { ConfigHashChanged, TestRunRefused, cycleRun, fullSuitePlans, hasSelector, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
+import { ConfigHashChanged, TestRunRefused, cycleRun, failedRunsText, fullSuitePlans, hasSelector, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
 import { APPROVAL_GATE, CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS, approvalQuestion, configQuestion } from "../shared-node/config-wait.mjs";
@@ -751,7 +751,7 @@ function isFullRun(args) {
 }
 
 function testPlans(full, config, root, stage) {
-  if (full) return { key: "full", plans: fullSuitePlans(config), selection: {} };
+  if (full) return { key: "full", plans: fullSuitePlans(config, root), selection: {} };
   const { plans, testIds, attribution } = selectedPlans(config, join(root, ".pairingbuddy", "run", "task", "artifacts"), stage);
   return { key: "selected", plans, selection: { tests: testIds, attribution } };
 }
@@ -779,10 +779,10 @@ function parseCheckpoint(args) {
 
 // A failed run is evidence, so it lands in the ledger before the refusal.
 async function requirePassingTests(root, path, { configHash, stage }) {
-  const plans = fullSuitePlans(readTestConfig(root, configHash));
+  const plans = fullSuitePlans(readTestConfig(root, configHash), root);
   const record = await suiteRecord(plans, root, stage);
   updateLedger(path, (ledger) => ({ ...ledger, tests: { ...ledger.tests, checkpoint: record } }));
-  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${failedRunnersText(record.runs)}`);
+  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${failedRunsText(record.runs)}`);
 }
 
 function assertCommitAllowed(step, key, ledger) {
@@ -968,8 +968,6 @@ const provesNothing = (step, exitCode) => (step === "red" && exitCode === 0 ? ",
 // How much of a run's output a refusal or a rollback note keeps: the tail, where the failure is.
 const EXCERPT_TAIL = 300;
 const excerptTail = (excerpt, chars = EXCERPT_TAIL) => excerpt.slice(-chars);
-// A failing earlier test's tail: long enough to hold the assertion past a runner's closing summary.
-const FAILED_TEST_TAIL = 1500;
 
 const stepNotMet = (step, id, { exitCode, excerpt }) => `test ${id} is not ${step.toUpperCase()}: exit ${exitCode}${provesNothing(step, exitCode)}, so nothing was committed. ${excerptTail(excerpt)}`;
 
@@ -1030,22 +1028,9 @@ async function requireClosedTestsPass({ root, path, ledger }, config, rows, key 
   const head = headOf(root);
   const record = { ...(await suiteRecord(plans, root, ledger.stage)), head };
   updateLedger(path, (current) => ({ ...current, tests: { ...current.tests, [key]: record } }));
-  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${failedTestsText(closedRows, record.runs)}`);
+  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${failedRunsText(record.runs, closedRows)}`);
 }
 
-// Each failing runner of a full-suite run, with its exit code and its output.
-const failedRunnersText = (runs) =>
-  runs.filter(({ exitCode }) => exitCode !== 0).map((run) => `runner ${run.runner} failed with ${run.timedOut ? "a timeout" : `exit code ${run.exitCode}`}. Its output:\n${excerptTail(run.excerpt ?? "", FAILED_TEST_TAIL)}`).join("\n\n");
-
-// Each failing test by its id, its function and file, its exit code and its output, so whoever reads the refusal (the
-// next agent's try, the human) knows which test broke and why. rows and runs are in the same order.
-function failedTestsText(rows, runs) {
-  return runs
-    .map((run, i) => ({ run, row: rows[i] }))
-    .filter(({ run }) => run.exitCode !== 0)
-    .map(({ run, row }) => `test ${row.test_id} (${row.test_function} in ${row.test_file}) failed with ${run.timedOut ? "a timeout" : `exit code ${run.exitCode}`}. Its output:\n${excerptTail(run.excerpt ?? "", FAILED_TEST_TAIL)}`)
-    .join("\n\n");
-}
 
 // A GREEN must not break a test an earlier cycle closed: its own test passing says nothing of theirs. They run as a
 // refactor's do, each by its own selector, and a failure names the test, so implement-code fixes it in its next try.
@@ -1979,7 +1964,7 @@ function remappedUnit(root, unit, result) {
 
 // The full suite at the rebased HEAD, recorded as passed and the head it ran at.
 async function rebaseSuiteOf(root, unit) {
-  const plans = fullSuitePlans(readTestConfig(root, unit.configHash));
+  const plans = fullSuitePlans(readTestConfig(root, unit.configHash), root);
   const record = await suiteRecord(plans, root, { name: "rebase", attempt: 1 });
   return { rebaseSuite: { passed: record.passed, head: headOf(root) }, exitCodes: record.runs.map(({ exitCode }) => exitCode) };
 }
@@ -2342,7 +2327,7 @@ function checkerAccount(root, parts) {
 }
 
 // The tail of each failed run's output, like the refusal for a step that is not met.
-const failedRunsExcerpts = ({ runs }) => runs.filter(({ exitCode }) => exitCode !== 0).map(({ excerpt }) => excerptTail(excerpt)).join("\n");
+const failedRunsExcerpts = ({ runs }) => failedRunsText(runs);
 
 // The note's entry number: one sequence per stage within this task, for all three kinds of rollback.
 // It is not the git ref number, which is the next free ref and can be higher because refs outlive the task.

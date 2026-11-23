@@ -7,6 +7,7 @@ import { constants } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
 
 import { isOutside } from "./checkpoint.mjs";
+import { matchesGlob } from "./glob-match.mjs";
 import { returnFileKey } from "./stages.mjs";
 import { humanCommand } from "./verbs.mjs";
 
@@ -142,12 +143,34 @@ const selectorWords = ({ template }, row) => template.map((word) => filledWord(w
 
 const planFor = (runner, paths) => ({ runner: runner.id, argv: [...runner.command, ...paths, ...runner.runArgs], failureCodes: runner.failureCodes, timeoutMs: runner.timeoutMs });
 
-// Every configured runner, so the evidence for the whole suite covers the whole suite.
-export function fullSuitePlans(config) {
+// node --test, given a folder, runs every .mjs and .js file in it, helpers that wait on stdin included, so a full run can
+// hang until its timeout. Each runner whose command takes plain files and file names gets the files its file_pattern
+// matches; pytest and the rest pick their own tests from the folder.
+const takesFiles = ({ command }) => basename(command[0]) === "node" && command.includes("--test");
+
+function filesUnder(root, directory) {
+  const at = join(root, directory);
+  if (!existsSync(at)) return [];
+  return readdirSync(at, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(root, join(entry.parentPath ?? entry.path, entry.name)).split("\\").join("/"))
+    .sort();
+}
+
+// The words a full run names its tests by. A pattern that matches nothing keeps the folder, as before: no file list is no run.
+function suitePaths(runner, filePattern, root) {
+  if (!takesFiles(runner) || typeof filePattern !== "string" || filePattern === "" || root === undefined) return [runner.testDirectory];
+  const files = filesUnder(root, runner.testDirectory).filter((file) => matchesGlob(filePattern, file));
+  return files.length > 0 ? files : [runner.testDirectory];
+}
+
+// Every configured runner, so the evidence for the whole suite covers the whole suite. root: where the run's files are,
+// for a runner that is given its test files by name.
+export function fullSuitePlans(config, root) {
   checkedRunner(config, config?.default_runner);
   return Object.keys(config.runners).map((id) => {
     const runner = checkedRunner(config, id);
-    return planFor(runner, [runner.testDirectory]);
+    return planFor(runner, suitePaths(runner, config.runners[id].file_pattern, root));
   });
 }
 
@@ -358,4 +381,20 @@ export function runRecord(plans, runs, { name, attempt }) {
     red: runs.every(({ exitCode }, i) => plans[i].failureCodes.includes(exitCode)),
     runs,
   };
+}
+
+// A failing run's tail in a refusal: long enough to hold the assertion past a runner's closing summary.
+const FAILED_RUN_TAIL = 1500;
+
+const howItFailed = ({ timedOut, durationMs, exitCode }) => (timedOut ? `timed out after ${Math.round(durationMs / 1000)}s` : `failed with exit code ${exitCode}`);
+
+// Each failing run by name, how it failed and its output, so whoever reads the refusal (the next agent's try, the human)
+// knows what broke and why. rows: the tests the runs selected, in the same order, to name each by its test; else each
+// run is named by its runner.
+export function failedRunsText(runs, rows = null) {
+  return runs
+    .map((run, i) => ({ run, row: rows?.[i] }))
+    .filter(({ run }) => run.exitCode !== 0 || run.timedOut)
+    .map(({ run, row }) => `${row ? `test ${row.test_id} (${row.test_function} in ${row.test_file})` : `runner ${run.runner}`} ${howItFailed(run)}. Its output:\n${String(run.excerpt ?? "").slice(-FAILED_RUN_TAIL)}`)
+    .join("\n\n");
 }
