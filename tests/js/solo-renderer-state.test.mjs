@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 
 // Solo renderer (render_status in scripts/solo-buddy.sh) reads run/unit.json, the ledger,
 // the captured claude stream and task_progress / task_notification events.
-// Tests not yet implemented are placeholders that fail until implement-tests writes the real assertion.
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SOLO_SCRIPT = join(REPO_ROOT, "scripts", "solo-buddy.sh");
