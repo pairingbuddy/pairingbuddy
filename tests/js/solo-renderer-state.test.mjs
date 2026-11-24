@@ -154,7 +154,27 @@ test("shows-latest-task-progress-description", () => {
 });
 
 test("ignores-non-progress-stream-lines", () => {
-  assert.fail("not implemented: Stream lines that are not task_progress (other system subtypes, assistant messages) do not change the agent line");
+  const stream = jsonl([
+    { type: "system", subtype: "task_progress", description: "Writing the failing test" },
+    { type: "system", subtype: "init", description: "Session started" },
+    { type: "system", subtype: "task_started", description: "Starting a subtask" },
+    { type: "assistant", message: { content: [{ type: "text", text: "Thinking about the next step" }] } },
+    { type: "result", subtype: "success", description: "All done" },
+  ]);
+
+  const result = renderWithFiles({ "solo-stream.jsonl": stream });
+
+  assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /^Agent: Writing the failing test$/m,
+    "the Agent line still shows the last task_progress description",
+  );
+  assert.doesNotMatch(
+    result.stdout,
+    /Session started|Starting a subtask|Thinking about the next step|All done/,
+    "lines that are not task_progress do not reach the output",
+  );
 });
 
 test("skips-partial-or-invalid-stream-line", () => {
