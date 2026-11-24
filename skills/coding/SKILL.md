@@ -399,7 +399,7 @@ When `PAIRINGBUDDY_SOLO` environment variable is `true`, the orchestrator operat
 - Solo follows the Plan Loop (`pb plan next`, one task at a time). On task failure, the loop must stop (not skip ahead)
 - The orchestrator MUST NOT skip to the next task
 - Stopping ensures the human reviews the situation
-- A `[HUMAN]` task stops the Solo run. Solo does not skip it to reach the next task. When `pb plan next` refuses on a `[HUMAN]` task, Solo reports a message that names the task and says a person must do and tick it, then stops.
+- A `[HUMAN]` task stops the Solo run. Solo does not skip it to reach the next task. When `pb plan next` refuses on a `[HUMAN]` task, Solo reports a message that names the task and says a person must do and tick it, then stops. Auto-yes does not apply to a `[HUMAN]` task: Solo never does it and never ticks its box.
 
 **Resource exhaustion before stopping**
 Before stopping a Solo session due to a failure or ambiguity (not on normal completion or token exhaustion):
