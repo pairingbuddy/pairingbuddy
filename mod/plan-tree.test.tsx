@@ -470,3 +470,15 @@ test('in a narrow pane a unit row keeps its state and its name is cut with …',
 
   expect(lines.find(line => line.includes('Receipt')), 'the name gives way at a word, marked by …; "to do" stays whole').toBe('           Receipt by email, text message… · to do')
 })
+
+// The real plan's tracers are long ("T0: Live probes — Every untested platform assumption has a recorded result"): at 60
+// columns the row ran past the width and the renderer cut it mid-word.
+test('in a narrow pane a tracer row is cut at a word, marked by …, as unit and task rows are', async ($, on) => {
+  const { rig } = setupPlanReplay(on, TWO_TRACERS.replace('### Tracer 2: Checkout', '### Tracer 2: Checkout — Every order is paid for and gets its receipt'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = planRows(await paneLines($, { bodyColumns: 50 }))
+
+  expect(lines.find(line => line.includes('Tracer 2')), 'the title gives way at a word, within the 41 cells the row has').toBe('         Tracer 2: Checkout — Every order is paid…')
+})

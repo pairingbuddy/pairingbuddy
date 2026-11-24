@@ -230,7 +230,7 @@ function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOp
   const focus: { task?: PlanUnit['tasks'][number]; row?: number } = { task: at ? plan.units[at.unit].tasks[at.task] : undefined }
   const rows: TreeRow[] = []
   for (const { tracer, units } of tracerGroups(plan.units)) {
-    const context = tracer ? [rows.push({ parts: [{ text: tracer }], needs: [], indent: '' }) - 1] : []
+    const context = tracer ? [rows.push({ parts: [{ text: titleRow('', tracer, '', width) }], needs: [], indent: '' }) - 1] : []
     for (const { unit, index } of units) unitRows(rows, unit, index, states[index], open, tracer ? NEST : '', context, focus, building, width, publishing)
   }
   // The problems are told first, so the tree has the room they leave.
