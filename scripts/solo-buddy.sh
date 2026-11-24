@@ -260,10 +260,11 @@ render_status() {
     fi
 
     # Read the unit's branch and task count from run/unit.json
+    # Each state read has one error layer: node exits non-zero on unreadable JSON or a missing binary,
+    # and `|| true` keeps set -e quiet
     local unit_file=".pairingbuddy/run/unit.json"
     if [[ -f "$unit_file" ]]; then
         local unit_line
-        # One error layer: node exits non-zero on unreadable JSON or a missing binary, and `|| true` keeps set -e quiet
         unit_line=$(node -e '
             const u = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
             const n = Array.isArray(u.tasks) ? u.tasks.length : 0;
@@ -281,7 +282,8 @@ render_status() {
         local stage_line
         stage_line=$(node -e '
             const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).stage;
-            if (s && s.name) console.log(`${s.name} ${s.status} (attempt ${s.attempt})`);
+            const attempt = s && s.attempt !== undefined ? `(attempt ${s.attempt})` : "";
+            if (s && s.name) console.log([s.name, s.status, attempt].filter(Boolean).join(" "));
         ' "$ledger_file" 2>/dev/null || true)
         if [[ -n "$stage_line" ]]; then
             content="${content}Stage: ${dim}${stage_line}${reset}${NL}"
