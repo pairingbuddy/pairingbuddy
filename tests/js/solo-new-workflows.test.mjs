@@ -77,10 +77,24 @@ function runSoloOnFeatureBranch(branch = "feature/solo-test") {
   }
 }
 
-test("exports-gate-policy-auto", () => {
-  const { result, claudeEnv } = runSoloOnFeatureBranch();
+// Runs solo-buddy.sh on a feature branch and asserts it succeeded.
+function runSoloSucceeding() {
+  const run = runSoloOnFeatureBranch();
+  assert.equal(run.result.status, 0, `solo-buddy.sh should run on a feature branch: ${run.result.stderr}`);
+  return run;
+}
 
-  assert.equal(result.status, 0, `solo-buddy.sh should run on a feature branch: ${result.stderr}`);
+// Runs solo-buddy.sh on a protected branch and asserts it refused before claude started.
+function runSoloRefusing(branch) {
+  const run = runSoloOnFeatureBranch(branch);
+  assert.notEqual(run.result.status, 0, `solo-buddy.sh must exit non-zero on ${branch}`);
+  assert.equal(run.claudeStarted, false, `claude must never start on ${branch}`);
+  return run.result;
+}
+
+test("exports-gate-policy-auto", () => {
+  const { claudeEnv } = runSoloSucceeding();
+
   assert.match(
     claudeEnv,
     /^PAIRINGBUDDY_GATE_POLICY=auto$/m,
@@ -88,23 +102,9 @@ test("exports-gate-policy-auto", () => {
   );
 });
 
-test("gate-policy-set-before-claude-starts", () => {
-  const lines = readFileSync(SOLO_SCRIPT, "utf8").split("\n");
-  const exportLine = lines.findIndex((line) => /^\s*export\s+PAIRINGBUDDY_GATE_POLICY=auto\s*$/.test(line));
-  const claudeLine = lines.findIndex((line) => /^\s*claude\s+"\$\{CLAUDE_ARGS\[@\]\}"/.test(line));
-
-  assert.notEqual(exportLine, -1, "solo-buddy.sh must export PAIRINGBUDDY_GATE_POLICY=auto");
-  assert.notEqual(claudeLine, -1, "solo-buddy.sh must invoke claude with CLAUDE_ARGS");
-  assert.ok(
-    exportLine < claudeLine,
-    `the policy export (line ${exportLine + 1}) must come before the claude invocation (line ${claudeLine + 1})`,
-  );
-});
-
 test("still-exports-solo-flag", () => {
-  const { result, claudeEnv } = runSoloOnFeatureBranch();
+  const { claudeEnv } = runSoloSucceeding();
 
-  assert.equal(result.status, 0, `solo-buddy.sh should run on a feature branch: ${result.stderr}`);
   assert.match(claudeEnv, /^PAIRINGBUDDY_SOLO=true$/m, "claude must still see PAIRINGBUDDY_SOLO=true");
   assert.match(
     claudeEnv,
@@ -119,9 +119,8 @@ test("still-exports-solo-flag", () => {
 });
 
 test("prompt-invokes-code-on-plan", () => {
-  const { result, claudeArgs, planFile } = runSoloOnFeatureBranch();
+  const { claudeArgs, planFile } = runSoloSucceeding();
 
-  assert.equal(result.status, 0, `solo-buddy.sh should run on a feature branch: ${result.stderr}`);
   assert.match(claudeArgs, /\/pairingbuddy:code/, "the prompt passed to claude must name /pairingbuddy:code");
   assert.ok(
     claudeArgs.includes(planFile),
@@ -169,18 +168,13 @@ test("agents-do-not-read-policy-env", () => {
 });
 
 test("refuses-main", () => {
-  const { result, claudeStarted } = runSoloOnFeatureBranch("main");
+  const result = runSoloRefusing("main");
 
-  assert.notEqual(result.status, 0, "solo-buddy.sh must exit non-zero on main");
-  assert.equal(claudeStarted, false, "claude must never start on main");
   assert.match(result.stdout + result.stderr, /main/, "the error must name the branch main");
 });
 
 test("refuses-master", () => {
-  const { result, claudeStarted } = runSoloOnFeatureBranch("master");
-
-  assert.notEqual(result.status, 0, "solo-buddy.sh must exit non-zero on master");
-  assert.equal(claudeStarted, false, "claude must never start on master");
+  runSoloRefusing("master");
 });
 
 test("skill-solo-stops-on-human-task", () => {
