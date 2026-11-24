@@ -1014,7 +1014,7 @@ Solo Buddy is an autonomous execution mode where Pairing Buddy executes a pre-es
 
 ### Entry Point
 
-`scripts/solo-buddy.sh` launches a `claude -p` session with `PAIRINGBUDDY_SOLO=true`. The script unsets `ANTHROPIC_API_KEY` by default to prevent unexpected API billing (use `--use-api-key` to opt in). The prompt tells Claude to use `/pairingbuddy:code` to execute the plan.
+`scripts/solo-buddy.sh` launches a `claude -p` session with `PAIRINGBUDDY_SOLO=true`. The script unsets `ANTHROPIC_API_KEY` by default to prevent unexpected API billing (use `--use-api-key` to opt in). The prompt tells Claude to use `/pairingbuddy:code` to execute the plan, which runs the Plan Loop on the new workflows. The script also exports `PAIRINGBUDDY_GATE_POLICY=auto`, which only the hooks read (agents and skills never do), and it still refuses to start on `main` or `master`. A `[HUMAN]` task stops the run with a message naming it, and Solo never does or ticks it.
 
 ### How It Works
 
