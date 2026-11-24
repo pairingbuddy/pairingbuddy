@@ -182,7 +182,7 @@ test("skill-solo-stops-on-human-task", () => {
 
   assert.match(section, /\[HUMAN\]/, "the Solo Mode section must name [HUMAN] tasks");
   assert.match(section, /\[HUMAN\][^\n]*\bstops?\b/i, "Solo must stop on a [HUMAN] task");
-  assert.match(section, /not skip|never skip|does not skip/i, "Solo must not skip a [HUMAN] task to the next one");
+  assert.match(section, /Solo does not skip it to reach the next task/, "Solo must not skip a [HUMAN] task to the next one");
 });
 
 test("skill-solo-human-stop-message", () => {
@@ -207,7 +207,7 @@ test("skill-solo-human-stop-not-auto-yes", () => {
   );
   assert.match(
     section,
-    /never (does|do) (it|the task)|never ticks|does not tick/i,
+    /Solo never does it and never ticks its box/,
     "Solo must never do a [HUMAN] task or tick its box",
   );
 });

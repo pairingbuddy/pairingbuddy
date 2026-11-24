@@ -101,7 +101,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_filter_pending(tests)` | Filter tests.json to return only tests not yet processed in this session |
 | `_filter_pending(spike_questions)` | Filter spike-questions.json units to return only units with status "pending" |
 | `_mark_unit_answered(spike_questions, unit_id)` | Update unit status to "answered" in spike-questions.json |
-| `_ask_human(question)` | **Interactive mode:** Present question to human, return true/false based on response. **Solo mode** (`PAIRINGBUDDY_SOLO=true`): Return `true` for all checkpoints (auto-yes). Exception: if the orchestrator has tracked N consecutive retry failures on the current task (where N = `PAIRINGBUDDY_SOLO_MAX_RETRIES` env var, default 5), return `false` to trigger a stop. |
+| `_ask_human(question)` | **Interactive mode:** Present question to human, return true/false based on response. **Solo mode** (`PAIRINGBUDDY_SOLO=true`): Return `true` for all checkpoints (auto-yes), except that auto-yes never covers a `[HUMAN]` task (see Solo Mode). Exception: if the orchestrator has tracked N consecutive retry failures on the current task (where N = `PAIRINGBUDDY_SOLO_MAX_RETRIES` env var, default 5), return `false` to trigger a stop. |
 | `_stop(message)` | Stop workflow execution and report message to human. In Solo mode, also write the stop reason to `.pairingbuddy/SOLO_BUDDY_REPORT.md` (see Solo Mode section below). |
 | `_detect_plan_file(task)` | Check if the task description references a plan MD file path. Returns true if a plan file is detected. |
 | `_is_solo()` | True when the `PAIRINGBUDDY_SOLO` env var is `true`. |
