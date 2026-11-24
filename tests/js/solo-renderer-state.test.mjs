@@ -320,7 +320,18 @@ test("missing-stream-file-does-not-crash", () => {
 });
 
 test("malformed-json-state-does-not-crash", () => {
-  assert.fail("not implemented: With a unit.json or ledger that is not valid JSON, render_status exits 0 and shows the initializing or partial view");
+  const stdout = renderStdout(
+    {
+      "run/unit.json": '{"unit":"solo-renderer","branch":"feat/solo-ren',
+      "run/task/ledger.json": "this is not json",
+    },
+    "with a unit.json and a ledger that are not valid JSON",
+  );
+
+  assert.match(stdout, /Initializing autonomous execution/, "the initializing view shows when no state file can be read");
+  assert.doesNotMatch(stdout, /^Unit: /m, "no Unit line shows for a malformed unit.json");
+  assert.doesNotMatch(stdout, /^Stage: /m, "no Stage line shows for a malformed ledger");
+  assert.doesNotMatch(stdout, /SyntaxError|Unexpected token/, "the parse error does not leak into the output");
 });
 
 test("no-files-shows-initializing", () => {
