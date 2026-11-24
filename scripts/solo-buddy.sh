@@ -286,6 +286,7 @@ render_status() {
         const attempt = s && s.attempt !== undefined ? `(attempt ${s.attempt})` : "";
         if (state.stop && state.stop.reason) console.log(`Stopped: ${state.stop.reason}`);
         else if (s && s.name) console.log(`Stage: ${[s.name, s.status, attempt].filter(Boolean).join(" ")}`);
+        if (state.needsHuman && state.needsHuman.gate) console.log(`Waiting on: ${state.needsHuman.gate}`);
     ')
     if [[ -n "$stage_line" ]]; then
         content="${content}${stage_line}${NL}"
