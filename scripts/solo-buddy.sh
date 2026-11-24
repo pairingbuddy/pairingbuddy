@@ -327,7 +327,7 @@ render_status() {
             total += tokens;
             seen = true;
         }
-        if (seen) console.log(`${total} tokens`);
+        console.log(seen ? `${total} tokens` : "unknown");
     ')
     if [[ -n "$spend_line" ]]; then
         content="${content}Spend: ${spend_line}${NL}"
