@@ -299,7 +299,18 @@ test("missing-ledger-does-not-crash", () => {
 });
 
 test("missing-stream-file-does-not-crash", () => {
-  assert.fail("not implemented: With no captured stream, render_status exits 0 and shows no agent line and unknown spend");
+  const ledger = { stage: { name: "implement-tests", status: "running", attempt: 2 } };
+
+  const result = renderWithFiles({ "run/task/ledger.json": ledger });
+
+  assert.equal(result.status, 0, `render_status must exit 0 without a stream file: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /^Stage: implement-tests running \(attempt 2\)$/m,
+    "the Stage line from the ledger still shows",
+  );
+  assert.doesNotMatch(result.stdout, /^Agent: /m, "no Agent line shows when there is no stream");
+  assert.match(result.stdout, /^Spend: unknown$/m, "the Spend line says unknown when there is no stream");
 });
 
 test("malformed-json-state-does-not-crash", () => {
