@@ -455,3 +455,10 @@ Seen live: the PLAN block is drawn last, under up to 5 STEPS, 5 TESTS and 5 REVI
 - **PLAN gets the rows left,** at least its floor and at most 24, with the same window around its focus.
 - **A pane still past its room says so.** The room's last row is a dim `↓ 12 more rows · ctrl+x tab, then arrows` (`· arrows scroll` once the pane has the keys), while the window is at the top.
 - **Labels pb cannot read** take at most three rows, the latest, above the count of all of them.
+
+Decided next (defaults, the owner not asked; logged for the next watched run):
+
+- **The plan window focuses the unit waiting on its pull request.** In a publish run, and with no run going while the open unit has every box ticked and no PR, the window centres on that unit's title and its last task, not on the next unticked task (live at 20 and 30 rows the unit being published had dropped out of the window).
+- **PLAN has a target of 12 rows** (`PLAN_TARGET`) besides its floor of 7. STEPS, then TESTS (only once settled), then REVIEW fold while PLAN would get fewer than 12 rows, or the whole block when it is shorter; a running TESTS row folds only for the floor, the hard minimum.
+- **At the end of a run REVIEW folds first,** to its summary: the findings are in the report.
+- **A PLAN block short of its target shows the open unit's commits on two rows,** the earlier ones counted and the latest (`… 47 earlier commits`, `commit 4c8eae5`), so the unit's tasks fit beside its branch and base.
