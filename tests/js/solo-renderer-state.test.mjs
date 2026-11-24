@@ -20,16 +20,18 @@ function renderWithUnit(unit) {
   try {
     mkdirSync(join(dir, ".pairingbuddy", "run"), { recursive: true });
     writeFileSync(join(dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify(unit));
+    // Paths travel as positional arguments, so the shell never parses them.
     const script = [
       "set +e",
-      `PLAN_FILE=${JSON.stringify(join(dir, "no-plan.md"))}`,
+      `PLAN_FILE="$2/no-plan.md"`,
       "LAST_RENDER_LINES=0",
       "FORCE_COLOR=0",
-      `eval "$(awk '/^render_status\\(\\)[ \\t]*\\{/,/^\\}/' ${JSON.stringify(SOLO_SCRIPT)})"`,
-      `cd ${JSON.stringify(dir)}`,
+      `eval "$(awk '/^render_status\\(\\)[ \\t]*\\{/,/^\\}/' "$1")"`,
+      `declare -F render_status >/dev/null || { echo "render_status not found in $1" >&2; exit 99; }`,
+      `cd "$2"`,
       "render_status",
     ].join("\n");
-    return spawnSync("bash", ["-c", script], { encoding: "utf8" });
+    return spawnSync("bash", ["-c", script, "bash", SOLO_SCRIPT, dir], { encoding: "utf8" });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -46,11 +48,10 @@ test("shows-unit-branch-and-task-count-from-unit-json", () => {
   const result = renderWithUnit(unit);
 
   assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
-  assert.match(result.stdout, /feat\/solo-renderer/, "output names the unit's branch");
   assert.match(
     result.stdout,
-    /\b3 tasks?\b|\btasks?\b\D{0,10}\b3\b/i,
-    "output shows the three tasks recorded on the unit",
+    /^Unit: feat\/solo-renderer \(3 tasks\)$/m,
+    "the Unit line names the branch and the three tasks recorded on the unit",
   );
 });
 
