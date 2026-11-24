@@ -60,7 +60,16 @@ test("exports-gate-policy-auto", () => {
 });
 
 test("gate-policy-set-before-claude-starts", () => {
-  notImplemented("gate-policy-set-before-claude-starts");
+  const lines = readFileSync(SOLO_SCRIPT, "utf8").split("\n");
+  const exportLine = lines.findIndex((line) => /^\s*export\s+PAIRINGBUDDY_GATE_POLICY=auto\s*$/.test(line));
+  const claudeLine = lines.findIndex((line) => /^\s*claude\s+"\$\{CLAUDE_ARGS\[@\]\}"/.test(line));
+
+  assert.notEqual(exportLine, -1, "solo-buddy.sh must export PAIRINGBUDDY_GATE_POLICY=auto");
+  assert.notEqual(claudeLine, -1, "solo-buddy.sh must invoke claude with CLAUDE_ARGS");
+  assert.ok(
+    exportLine < claudeLine,
+    `the policy export (line ${exportLine + 1}) must come before the claude invocation (line ${claudeLine + 1})`,
+  );
 });
 
 test("still-exports-solo-flag", () => {
