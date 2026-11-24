@@ -309,6 +309,25 @@ render_status() {
         content="${content}Agent: ${agent_line}${NL}"
     fi
 
+    # Sum the tokens the task_notification events report in their usage
+    local spend_line
+    spend_line=$(read_state_line ".pairingbuddy/solo-stream.jsonl" '
+        let total = 0, seen = false;
+        for (const line of text.split("\n")) {
+            try {
+                const event = JSON.parse(line);
+                if (event.type === "system" && event.subtype === "task_notification" && event.usage) {
+                    total += Number(event.usage.total_tokens) || 0;
+                    seen = true;
+                }
+            } catch (error) { /* skip a partial or invalid line */ }
+        }
+        if (seen) console.log(`${total} tokens`);
+    ')
+    if [[ -n "$spend_line" ]]; then
+        content="${content}Spend: ${spend_line}${NL}"
+    fi
+
     # Fallback if nothing to display
     if [[ -z "$content" ]]; then
         content="  ${cyan}→${reset} ${bold_white:-}Initializing autonomous execution...${reset:-}${NL}"
