@@ -29,7 +29,11 @@ function runSoloOnFeatureBranch() {
     const planFile = join(dir, "plan.md");
     mkdirSync(binDir, { recursive: true });
     mkdirSync(repoDir, { recursive: true });
-    writeExecutable(join(binDir, "claude"), `#!/usr/bin/env bash\nenv > "${envFile}"\nexit 0\n`);
+    const argsFile = join(dir, "claude-args.txt");
+    writeExecutable(
+      join(binDir, "claude"),
+      `#!/usr/bin/env bash\nenv > "${envFile}"\nprintf '%s\\n' "$@" > "${argsFile}"\nexit 0\n`,
+    );
     writeExecutable(join(binDir, "gh"), "#!/usr/bin/env bash\nexit 0\n");
     writeFileSync(planFile, "# Plan\n");
     const init = spawnSync("git", ["init", "-b", "feature/solo-test"], { cwd: repoDir, encoding: "utf8" });
@@ -42,7 +46,8 @@ function runSoloOnFeatureBranch() {
     };
     const result = spawnSync(SOLO_SCRIPT, [planFile], { cwd: repoDir, env, encoding: "utf8" });
     const claudeEnv = readFileSync(envFile, "utf8");
-    return { result, claudeEnv };
+    const claudeArgs = readFileSync(argsFile, "utf8");
+    return { result, claudeEnv, claudeArgs, planFile };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -90,7 +95,14 @@ test("still-exports-solo-flag", () => {
 });
 
 test("prompt-invokes-code-on-plan", () => {
-  notImplemented("prompt-invokes-code-on-plan");
+  const { result, claudeArgs, planFile } = runSoloOnFeatureBranch();
+
+  assert.equal(result.status, 0, `solo-buddy.sh should run on a feature branch: ${result.stderr}`);
+  assert.match(claudeArgs, /\/pairingbuddy:code/, "the prompt passed to claude must name /pairingbuddy:code");
+  assert.ok(
+    claudeArgs.includes(planFile),
+    `the prompt passed to claude must name the plan file ${planFile}, got: ${claudeArgs}`,
+  );
 });
 
 test("skill-solo-uses-new-plan-loop", () => {
