@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The pane fits the rows the terminal gives it, so PLAN shows without scrolling (live: PLAN sat under STEPS, TESTS and REVIEW, below a 20 to 45-row window, with no hint it was there). In a short pane STEPS folds to one line (`✓ 4 done · ▸ write the pull request`), then TESTS to its count and the running test, then REVIEW to its summary, until PLAN has at least 7 rows; PLAN gets the rest, up to 24. A pane still too tall ends its window with `↓ 12 more rows · ctrl+x tab, then arrows`. The pane lists at most three labels pb could not read, the latest, under their count.
+
 - `pb publish` publishes after the human accepts a changed test-config.json during the unit's code run (T4d publish: it refused with `these files changed since the unit opened: test-config.json`, and no command could clear it, since the acceptance was only in the code run's ledger and that run had ended). Publish now takes the hash accepted in one of the unit's own kept runs, and `pb human accept` with a unit open pins the new hash in `unit.json` too.
 
 - Once the build is over, TESTS shows a covered test as passing: `✓ poll picks up plan change · covered` (T4d publish run: under `✓ 17 of 17 passing · 8 covered`, its `◌` read as not started).

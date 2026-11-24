@@ -441,3 +441,17 @@ The real plan has 150 tasks. The PLAN tree drew every one, so it ran past 200 ro
 - **The cuts were stacked at first** (frame 03: `… 2 tasks done above`, `… 4 tasks done`, `… 5 tasks done` above a later unit). The human asked for them to collapse, so the rows go to what is shown.
 - **Everything is bounded:** at most four commit rows for the open unit (`… 3 earlier commits` and the latest three) and three rows of plan problems (the first two and `… N more plan problems`).
 - **`/pb-plan`** writes the whole tree as a page beside the reports, with the same states (done, open, to do, being built, waiting on a person, PRs), opens it and answers with its path, as `/pb-report` does. It is a command of its own, not a section of the report, because a plan spans many tasks and exists with no run to report.
+
+## The pane's height (2026-11-24)
+
+Seen live: the PLAN block is drawn last, under up to 5 STEPS, 5 TESTS and 5 REVIEW lines, and a terminal shows the pane's body in 20 to 45 rows. PLAN fell below the window, and the platform draws no "more" hint, so the person had to give the pane the keys (ctrl+x tab) and scroll to find it. The owner's rule: every element has explicit bounds; nothing is unbounded.
+
+- **The pane reads its room** from the platform (`scroll.bodyRows`). With the room not known it draws as before.
+- **GOAL, STATUS, the rule, PR, BUILT and SPENT never fold.** GOAL keeps to two lines, PR to its title, BUILT to three files and a count, SPENT to one line.
+- **A short room folds the details, in this order,** until the PLAN block keeps its floor (7 rows: a cut row, the tracer, the unit, a fact or two, the focus task, a cut row):
+  - STEPS to one line: `✓ 4 done · ▸ write the pull request`, with `· 2 to come` while steps are left;
+  - TESTS to its count: `✓ 17 of 17 passing · 8 covered` once settled; while building, the count and the running test's row;
+  - REVIEW to its summary line: `review: 16 issues · 6 fixed · 10 left as is`.
+- **PLAN gets the rows left,** at least its floor and at most 24, with the same window around its focus.
+- **A pane still past its room says so.** The room's last row is a dim `↓ 12 more rows · ctrl+x tab, then arrows` (`· arrows scroll` once the pane has the keys), while the window is at the top.
+- **Labels pb cannot read** take at most three rows, the latest, above the count of all of them.
