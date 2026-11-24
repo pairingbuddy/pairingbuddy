@@ -176,6 +176,15 @@ SPINNER_INDEX=0
 FINAL_RENDERED=""
 
 render_status() {
+    # Print what a JS snippet says about a JSON state file, bound to `state`.
+    # Prints nothing when the file is missing or unreadable: node exits non-zero on bad JSON or a
+    # missing binary, and `|| true` keeps set -e quiet. Defined here so render_status stays self-contained.
+    read_state_line() {
+        local file="$1" body="$2"
+        [[ -f "$file" ]] || return 0
+        node -e "const state = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')); ${body}" "$file" 2>/dev/null || true
+    }  # end read_state_line
+
     local spinner_chars=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
     local spinner_count=${#spinner_chars[@]}
 
@@ -260,39 +269,26 @@ render_status() {
     fi
 
     # Read the unit's branch and task count from run/unit.json
-    # Each state read has one error layer: node exits non-zero on unreadable JSON or a missing binary,
-    # and `|| true` keeps set -e quiet
-    local unit_file=".pairingbuddy/run/unit.json"
-    if [[ -f "$unit_file" ]]; then
-        local unit_line
-        unit_line=$(node -e '
-            const u = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-            const n = Array.isArray(u.tasks) ? u.tasks.length : 0;
-            const count = `(${n} ${n === 1 ? "task" : "tasks"})`;
-            console.log(u.branch ? `${u.branch} ${count}` : count);
-        ' "$unit_file" 2>/dev/null || true)
-        if [[ -n "$unit_line" ]]; then
-            content="${content}Unit: ${dim}${unit_line}${reset}${NL}"
-        fi
+    local unit_line
+    unit_line=$(read_state_line ".pairingbuddy/run/unit.json" '
+        const n = Array.isArray(state.tasks) ? state.tasks.length : 0;
+        const count = `(${n} ${n === 1 ? "task" : "tasks"})`;
+        console.log(state.branch ? `${state.branch} ${count}` : count);
+    ')
+    if [[ -n "$unit_line" ]]; then
+        content="${content}Unit: ${dim}${unit_line}${reset}${NL}"
     fi
 
-    # Read the current stage from the task ledger
-    local ledger_file=".pairingbuddy/run/task/ledger.json"
-    if [[ -f "$ledger_file" ]]; then
-        local stage_line
-        stage_line=$(node -e '
-            const ledger = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-            const s = ledger.stage;
-            if (ledger.stop && ledger.stop.reason) {
-                console.log(`Stopped: ${ledger.stop.reason}`);
-            } else if (s && s.name) {
-                const attempt = s.attempt !== undefined ? `(attempt ${s.attempt})` : "";
-                console.log(`Stage: ${[s.name, s.status, attempt].filter(Boolean).join(" ")}`);
-            }
-        ' "$ledger_file" 2>/dev/null || true)
-        if [[ -n "$stage_line" ]]; then
-            content="${content}${stage_line}${NL}"
-        fi
+    # Read the stop reason or the current stage from the task ledger
+    local stage_line
+    stage_line=$(read_state_line ".pairingbuddy/run/task/ledger.json" '
+        const s = state.stage;
+        const attempt = s && s.attempt !== undefined ? `(attempt ${s.attempt})` : "";
+        if (state.stop && state.stop.reason) console.log(`Stopped: ${state.stop.reason}`);
+        else if (s && s.name) console.log(`Stage: ${[s.name, s.status, attempt].filter(Boolean).join(" ")}`);
+    ')
+    if [[ -n "$stage_line" ]]; then
+        content="${content}${stage_line}${NL}"
     fi
 
     # Read agent info from guardian session file
