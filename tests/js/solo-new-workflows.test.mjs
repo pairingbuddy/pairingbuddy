@@ -144,9 +144,19 @@ test("skill-solo-uses-new-plan-loop", () => {
   assert.doesNotMatch(skill, /old plan loop stays until T10/, "the skill must drop the old Solo plan loop");
   assert.match(
     soloModeSection(),
-    /Plan Loop/,
-    "the Solo Mode section must say Solo follows the Plan Loop (pb plan loop)",
+    /Solo follows the Plan Loop/,
+    "the Solo Mode section must say Solo follows the Plan Loop",
   );
+
+  const start = skill.indexOf("if _detect_plan_file(task):");
+  const end = skill.indexOf("# Normal (non-plan) execution", start);
+  assert.notEqual(start, -1, "the skill must have a plan branch '_detect_plan_file(task)'");
+  assert.notEqual(end, -1, "the plan branch must end at the non-plan execution marker");
+  const planBranch = skill.slice(start, end);
+
+  assert.match(planBranch, /_run_plan_loop\(plan_path\)/, "the plan branch must run the plan loop");
+  assert.doesNotMatch(planBranch, /_is_solo\(\)/, "the plan branch must not treat Solo differently from other runs");
+  assert.doesNotMatch(planBranch, /\bfor plan_task in\b/, "the plan branch must not keep its own old Solo task loop");
 });
 
 test("agents-do-not-read-policy-env", () => {
