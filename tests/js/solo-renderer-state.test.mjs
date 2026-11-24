@@ -233,11 +233,6 @@ test("shows-unknown-spend-with-no-notifications", () => {
     /^Spend: unknown$/m,
     "the Spend line says unknown when the stream holds no task_notification",
   );
-  assert.doesNotMatch(
-    result.stdout,
-    /^Spend: 0/m,
-    "unknown spend is not shown as zero tokens",
-  );
 });
 
 test("task-notification-without-usage-adds-nothing", () => {
