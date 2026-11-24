@@ -275,6 +275,19 @@ render_status() {
         fi
     fi
 
+    # Read the current stage from the task ledger
+    local ledger_file=".pairingbuddy/run/task/ledger.json"
+    if [[ -f "$ledger_file" ]]; then
+        local stage_line
+        stage_line=$(node -e '
+            const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).stage;
+            if (s && s.name) console.log(`${s.name} ${s.status} (attempt ${s.attempt})`);
+        ' "$ledger_file" 2>/dev/null || true)
+        if [[ -n "$stage_line" ]]; then
+            content="${content}Stage: ${dim}${stage_line}${reset}${NL}"
+        fi
+    fi
+
     # Read agent info from guardian session file
     local agent_name="" agent_desc=""
     local hooks_file
