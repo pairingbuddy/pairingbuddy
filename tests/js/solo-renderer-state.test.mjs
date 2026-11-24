@@ -178,7 +178,28 @@ test("ignores-non-progress-stream-lines", () => {
 });
 
 test("skips-partial-or-invalid-stream-line", () => {
-  assert.fail("not implemented: A truncated last line in the stream is skipped and the previous task_progress description still shows");
+  const truncatedLine = '{"type":"system","subtype":"task_progress","description":"Half writ';
+  const stream =
+    jsonl([
+      { type: "system", subtype: "task_progress", description: "Reading the scenarios" },
+      { type: "system", subtype: "task_progress", description: "Writing the failing test" },
+    ]) +
+    "this is not json\n" +
+    truncatedLine;
+
+  const result = renderWithFiles({ "solo-stream.jsonl": stream });
+
+  assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /^Agent: Writing the failing test$/m,
+    "the Agent line shows the last complete task_progress description",
+  );
+  assert.doesNotMatch(
+    result.stdout,
+    /Half writ/,
+    "the truncated last line is skipped",
+  );
 });
 
 test("sums-usage-across-task-notifications", () => {
