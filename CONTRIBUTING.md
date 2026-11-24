@@ -276,7 +276,7 @@ The last four show what ran while nothing was gated. Inspect the listing too: ru
 
 ### Stranded active stage
 
-**What you see:** the next stage is denied with `Stage <name> is active at attempt <n>. Wait for it to finish`, a deny that ends by naming `pb stage fail`, and nothing is running. `pb status` shows the stage as active.
+**What you see:** the next stage is denied with `Stage <name> is still running. Wait for it to finish`, a deny that ends by naming `pb stage fail`, and nothing is running. `pb status` shows the stage as active.
 
 ```bash
 pb status

@@ -258,14 +258,14 @@ function argsDenial(called, attempt, { args }, task) {
 }
 
 function activeDenial(stage, ledger) {
-  const { name, attempt } = ledger.stage;
+  const { name } = ledger.stage;
   const called = workflowName(stage);
-  const wait = `Stage ${name} is active at attempt ${attempt}. Wait for it to finish before starting ${called}. A stranded stage is cleared by the human running pb stage fail.`;
+  const wait = `Stage ${name} is still running. Wait for it to finish before starting ${called}. If it is stuck, the human clears it with pb stage fail.`;
   if (!isStageUnstarted(ledger)) return wait;
   const seconds = startLeaseSecondsLeft(ledger.stage, Date.now());
-  if (seconds > 0) return `${wait} It has no recorded run yet: ${seconds} seconds remain on its start lease. If its Workflow call was declined or failed before it ran, pb stage release frees the start now: then start ${workflowName(name)} at attempt ${attempt} again.`;
+  if (seconds > 0) return `${wait} It has no recorded run yet: ${seconds} seconds remain on its start lease. If its Workflow call was declined or failed before it ran, pb stage release frees the start now: then start ${workflowName(name)} again.`;
   if (name === stage) return null;
-  return `Stage ${name} is active at attempt ${attempt} with no recorded run, so it may never have started. Restart ${workflowName(name)} at attempt ${attempt} before starting ${called}.`;
+  return `Stage ${name} has no recorded run, so it may never have started. Start ${workflowName(name)} again before starting ${called}.`;
 }
 
 // The real next step when a human's answer has halted the run, or null.
@@ -349,7 +349,7 @@ function resumeStage(ledgerPath, stage, payload, scripts) {
 }
 
 function runPosition(ledger, graph) {
-  if (isStageActive(ledger)) return `Stage ${ledger.stage.name} is active at attempt ${ledger.stage.attempt}.`;
+  if (isStageActive(ledger)) return `Stage ${ledger.stage.name} is still running.`;
   const halted = answeredStep(ledger, graph);
   if (halted) return halted;
   const next = nextStage(graph, ledger);

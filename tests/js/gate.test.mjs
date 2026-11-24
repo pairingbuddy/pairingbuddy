@@ -17,9 +17,9 @@ const GATE = join(ROOT, "hooks", "gate.mjs");
 const MESSAGES = {
   order: (called, next) => `Stage order: ${called} cannot start now. The next stage is ${next}.`,
   allDone: (called) => `Stage order: ${called} cannot start now. All stages for config_change are done.`,
-  secondActive: (stage, attempt, called) => `Stage ${stage} is active at attempt ${attempt}. Wait for it to finish before starting ${called}. A stranded stage is cleared by the human running pb stage fail.`,
-  withinLease: (stage, attempt, called, seconds) => `${MESSAGES.secondActive(stage, attempt, called)} It has no recorded run yet: ${seconds} seconds remain on its start lease. If its Workflow call was declined or failed before it ran, pb stage release frees the start now: then start ${workflowName(stage)} at attempt ${attempt} again.`,
-  neverStarted: (stage, attempt, called) => `Stage ${stage} is active at attempt ${attempt} with no recorded run, so it may never have started. Restart ${workflowName(stage)} at attempt ${attempt} before starting ${called}.`,
+  secondActive: (stage, _attempt, called) => `Stage ${stage} is still running. Wait for it to finish before starting ${called}. If it is stuck, the human clears it with pb stage fail.`,
+  withinLease: (stage, attempt, called, seconds) => `${MESSAGES.secondActive(stage, attempt, called)} It has no recorded run yet: ${seconds} seconds remain on its start lease. If its Workflow call was declined or failed before it ran, pb stage release frees the start now: then start ${workflowName(stage)} again.`,
+  neverStarted: (stage, _attempt, called) => `Stage ${stage} has no recorded run, so it may never have started. Start ${workflowName(stage)} again before starting ${called}.`,
   missingBundle: (workflow, bundle) => `Cannot start ${workflow}: its built bundle ${bundle} is missing.`,
   byName: (stage) => `Stage ${stage} cannot run under another name or none. Call ${workflowName(stage)} by name.`,
   unreadable: (path, position) => `Script file ${path} could not be read. ${position}`,
@@ -29,7 +29,7 @@ const MESSAGES = {
   placeholder: (workflow, got, task = "Task 23") => `Placeholder task for ${workflow}: got ${JSON.stringify(got)}. Pass the task as args.task, as ${JSON.stringify({ description: task })}.`,
   script: (workflow, bundle) => `Script for ${workflow} does not match the built bundle ${bundle}. Call ${workflow} by name with no script.`,
   inline: (next) => `Inline script containing pairingbuddy: is denied. The next stage is ${next}: call it by name.`,
-  inlineActive: (stage, attempt) => `Inline script containing pairingbuddy: is denied. Stage ${stage} is active at attempt ${attempt}.`,
+  inlineActive: (stage) => `Inline script containing pairingbuddy: is denied. Stage ${stage} is still running.`,
   inlineAllDone: () => "Inline script containing pairingbuddy: is denied. All stages for config_change are done.",
   agent: (agent, stage) => `Direct Agent call for ${agent} is denied during stage ${stage}. Start the workflow ${workflowName(stage)} instead.`,
   agentNext: (agent, next) => `Direct Agent call for ${agent} is denied during this run. Start the workflow ${next} instead.`,
@@ -836,7 +836,7 @@ test("a scriptPath the hook has no permission to read is denied during a run", (
 
 test("an unreadable scriptPath is denied with the position of an active stage", () =>
   withRepo({ ledger: makeLedger({ stage: activeStage(CONFIG, 2) }) }, (repo) =>
-    assertDeniedWithoutWrite(repo, workflowCall(repo.dir, { scriptPath: "~/evil.js" }), MESSAGES.unreadable("~/evil.js", `Stage ${CONFIG} is active at attempt 2.`))));
+    assertDeniedWithoutWrite(repo, workflowCall(repo.dir, { scriptPath: "~/evil.js" }), MESSAGES.unreadable("~/evil.js", `Stage ${CONFIG} is still running.`))));
 
 // ---------- plugin root ----------
 
