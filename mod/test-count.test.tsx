@@ -111,6 +111,18 @@ test('after-the-build-tests-reads-as-a-settled-summary', async ($, on) => {
   expect(row, 'the build is over: how many pass of the total, then the list').toEqual(['TESTS    ✓ 2 of 2 passing', '         ✓ order total sums two lines', '         ✓ order total of no lines is zero'])
 })
 
+// T4d publish run: under `✓ 17 of 17 passing · 8 covered`, a covered test's `◌` read as not started. Once the build is over a
+// covered test passes too, so its row says it passes and was already covered.
+test('after-the-build-a-covered-test-reads-as-passing-and-covered', async ($, on) => {
+  const covered = { stage: 'code-tdd', attempt: 1, done: true }
+  const ledger = { ...built, tests: { perTest: { ...built.tests.perTest, [SECOND]: { selector: selectorOf(SECOND), red: { ...record, done: false, passed: false }, covered } } } }
+  await serve($, on, ledger, { [`${ARTIFACTS}/${PLACEHOLDERS_KEY}.json`]: placeholders }, 'pb1 code-safety-net - corpus-misalignment - r1')
+
+  const row = testsRow(await paneLines($))
+
+  expect(row, 'the covered test passes, already covered').toEqual(['TESTS    ✓ 2 of 2 passing · 1 covered', '         ✓ order total sums two lines', '         ✓ order total of no lines is zero · covered'])
+})
+
 // T4d run: a stopped run's TEST age ran on for hours ("REFACTOR 9:57:19") while SPENT said paused.
 test('a stopped run keeps its step age where the run stopped', async ($, on) => {
   const stopped = { ...building, stop: { reason: 'a step failed', seq: 1, code: 'step-failed' }, pausedAt: Date.parse('2026-11-04T08:20:00.000Z') }

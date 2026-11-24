@@ -76,8 +76,11 @@ function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: 
     const room = width > 0 ? width - rest - (cycle.length ? GAP.length : 0) : 0
     return [{ text: `${cutName(`${MARKS.current} ${name}`, room)}${cycle.length ? GAP : ''}`, props: LIT }, ...cycle]
   }
+  // Once the build is over a covered test passes too: its `◌` read as not started beside `✓ n of n passing`.
+  const settled = progress?.count?.settled === true
+  const entryText = ({ mark, name }: { mark: keyof typeof MARKS; name: string }) => (settled && mark === 'covered' ? `${MARKS.done} ${name} · covered` : `${MARKS[mark]} ${name}`)
   for (const entry of entries) {
-    lines.push(entry.mark === 'current' ? currentLine(entry.name) : [{ text: cutName(`${MARKS[entry.mark]} ${entry.name}`, width) }])
+    lines.push(entry.mark === 'current' ? currentLine(entry.name) : [{ text: cutName(entryText(entry), width) }])
   }
   // A current test the list does not hold still gets its line.
   if (test?.current && !entries.some(entry => entry.mark === 'current')) lines.push(currentLine(test.current))

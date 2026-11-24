@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Once the build is over, TESTS shows a covered test as passing: `✓ poll picks up plan change · covered` (T4d publish run: under `✓ 17 of 17 passing · 8 covered`, its `◌` read as not started).
+
 - SPENT and the report's Spent leave out any gap of more than an hour between two ledger writes (T4d run: SPENT read 22:52:56 for a couple of hours of work, as the code run's overnight stop and the stops between sessions came before stops were stamped). Every step, test run and owner's tool call writes the ledger, so nothing ran then; the write that ends the gap keeps it in the ledger's `idleWaits`.
 
 ## [0.8.0-exp.4] - 2026-11-24
