@@ -16,10 +16,23 @@ const SOLO_SCRIPT = join(REPO_ROOT, "scripts", "solo-buddy.sh");
 // Loads render_status out of solo-buddy.sh and runs it once inside a temp project
 // whose .pairingbuddy/run/unit.json holds `unit`. Returns the spawn result.
 function renderWithUnit(unit) {
+  return renderWithFiles({ "run/unit.json": unit });
+}
+
+// Same, with a ledger at .pairingbuddy/run/task/ledger.json.
+function renderWithLedger(ledger) {
+  return renderWithFiles({ "run/task/ledger.json": ledger });
+}
+
+// Writes each entry of `files` (path under .pairingbuddy -> JSON value) and runs render_status.
+function renderWithFiles(files) {
   const dir = mkdtempSync(join(tmpdir(), "solo-render-"));
   try {
-    mkdirSync(join(dir, ".pairingbuddy", "run"), { recursive: true });
-    writeFileSync(join(dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify(unit));
+    for (const [path, value] of Object.entries(files)) {
+      const full = join(dir, ".pairingbuddy", path);
+      mkdirSync(dirname(full), { recursive: true });
+      writeFileSync(full, JSON.stringify(value));
+    }
     // Paths travel as positional arguments, so the shell never parses them.
     const script = [
       "set +e",
@@ -56,7 +69,20 @@ test("shows-unit-branch-and-task-count-from-unit-json", () => {
 });
 
 test("shows-current-stage-from-ledger", () => {
-  assert.fail("not implemented: With a ledger whose stage is {name, status, attempt}, the output shows the stage name, its status and the attempt");
+  const ledger = {
+    stage: { name: "implement-tests", status: "running", attempt: 2, runId: null },
+    stop: null,
+    needsHuman: null,
+  };
+
+  const result = renderWithLedger(ledger);
+
+  assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /^Stage: implement-tests running \(attempt 2\)$/m,
+    "the Stage line names the ledger stage, its status and its attempt",
+  );
 });
 
 test("shows-stop-reason-from-ledger", () => {
