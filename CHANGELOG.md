@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0-exp.6] - 2026-11-24
+
 - A safety-net fix whose commit the repo's commit hook refuses is rolled back like a fix that fails the suite: nothing stays staged, it counts toward the 5-attempt cap, and the next fixer is told the hook's output. Fixers are told to run the lint and format checks the hook runs before they finish (T4d Task 110: a ruff line-too-long in a test docstring stopped the whole stage with "the commit failed" and left the change staged).
 
 - Accepting a changed test-config.json in the session, as well as with `pb human accept`, pins it in the open unit too, so `pb publish` does not refuse it later (the tap's Accept updated only the run's ledger).
@@ -16,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A safety-net fixer is told that the full suite must pass after its fix, so a fix that rewords text tests check word for word updates those tests in the same fix, keeping what they check (T4d Task 109: five fixes reworded the coding skill, broke the router tests that pin its wording, were all rolled back, and the run stopped at its cap of 5).
 
 - A gate answered with typed words instead of a listed choice sends its step back with the words as the note, the way redo with a note does; typed words never approve. A question with no redo (go on, a changed config) keeps waiting, and the session is told only a listed choice counts (T4d G:scenarios: a typed answer to a reviewer's doubt was dropped, and the same question came back with no word why).
+
+## [0.8.0-exp.5] - 2026-11-24
 
 - The PLAN window centres on the unit whose pull request is being written, or not opened yet, instead of the next unticked task (live at 20 and 30 rows the unit being published had dropped out of view). In a short pane the details also fold while PLAN would get fewer than 12 rows; TESTS only once the build is over, and REVIEW first once the work is finished, as the report holds its findings. A short PLAN block shows the open unit's commits on two rows.
 
