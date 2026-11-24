@@ -292,22 +292,6 @@ render_status() {
         content="${content}${ledger_line}${NL}"
     fi
 
-    # Read agent info from guardian session file
-    local agent_name="" agent_desc=""
-    local hooks_file
-    hooks_file=$(ls -t .pairingbuddy/hooks/*.json 2>/dev/null | head -1 || true)
-    if [[ -n "$hooks_file" && -f "$hooks_file" ]]; then
-        agent_name=$(grep -o '"lastAgent"[[:space:]]*:[[:space:]]*"[^"]*"' "$hooks_file" 2>/dev/null | sed 's/.*: *"//;s/"$//' || true)
-        agent_desc=$(grep -o '"lastDescription"[[:space:]]*:[[:space:]]*"[^"]*"' "$hooks_file" 2>/dev/null | sed 's/.*: *"//;s/"$//' || true)
-    fi
-
-    if [[ -n "$agent_name" ]]; then
-        content="${content}Agent: ${dim}${agent_name}${reset}${NL}"
-        if [[ -n "$agent_desc" ]]; then
-            content="${content}${dim}  ${agent_desc}${reset}${NL}"
-        fi
-    fi
-
     # Fallback if nothing to display
     if [[ -z "$content" ]]; then
         content="  ${cyan}→${reset} ${bold_white:-}Initializing autonomous execution...${reset:-}${NL}"
