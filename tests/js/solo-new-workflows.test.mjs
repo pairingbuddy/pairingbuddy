@@ -20,7 +20,7 @@ function soloModeSection() {
   const skill = readSkill();
   const start = skill.indexOf("### Solo Mode");
   assert.notEqual(start, -1, "skills/coding/SKILL.md must have a '### Solo Mode' section");
-  const rest = skill.slice(start + 1);
+  const rest = skill.slice(start);
   const next = rest.search(/\n#{2,3} /);
   return next === -1 ? rest : rest.slice(0, next);
 }
@@ -48,10 +48,10 @@ function runSoloOnFeatureBranch(branch = "feature/solo-test") {
     const binDir = join(dir, "bin");
     const repoDir = join(dir, "repo");
     const envFile = join(dir, "claude-env.txt");
+    const argsFile = join(dir, "claude-args.txt");
     const planFile = join(dir, "plan.md");
     mkdirSync(binDir, { recursive: true });
     mkdirSync(repoDir, { recursive: true });
-    const argsFile = join(dir, "claude-args.txt");
     writeExecutable(
       join(binDir, "claude"),
       `#!/usr/bin/env bash\nenv > "${envFile}"\nprintf '%s\\n' "$@" > "${argsFile}"\nexit 0\n`,
@@ -68,8 +68,9 @@ function runSoloOnFeatureBranch(branch = "feature/solo-test") {
     };
     const result = spawnSync(SOLO_SCRIPT, [planFile], { cwd: repoDir, env, encoding: "utf8" });
     const claudeStarted = existsSync(envFile);
-    const claudeEnv = claudeStarted ? readFileSync(envFile, "utf8") : "";
-    const claudeArgs = claudeStarted ? readFileSync(argsFile, "utf8") : "";
+    const readIfStarted = (file) => (claudeStarted ? readFileSync(file, "utf8") : "");
+    const claudeEnv = readIfStarted(envFile);
+    const claudeArgs = readIfStarted(argsFile);
     return { result, claudeEnv, claudeArgs, planFile, claudeStarted };
   } finally {
     rmSync(dir, { recursive: true, force: true });
