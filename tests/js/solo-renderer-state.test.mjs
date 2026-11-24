@@ -95,8 +95,7 @@ test("shows-stop-reason-from-ledger", () => {
 
 test("shows-needs-human-gate-from-ledger", () => {
   const ledger = {
-    stage: { name: "pr-draft", status: "running", attempt: 1 },
-    needsHuman: { gate: "pr-review", reason: "the pull request draft needs a human look" },
+    needsHuman: { gate: "pr-review" },
   };
 
   const result = renderWithFiles({ "run/task/ledger.json": ledger });
