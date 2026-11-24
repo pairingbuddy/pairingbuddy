@@ -109,7 +109,21 @@ test("shows-needs-human-gate-from-ledger", () => {
 });
 
 test("no-longer-reads-guardian-hooks-file", () => {
-  assert.fail("not implemented: With a .pairingbuddy/hooks session file holding lastAgent and no new state, the output does not show that agent");
+  const guardianSession = { lastAgent: "implement-tests", lastDescription: "Writing the failing test" };
+
+  const result = renderWithFiles({ "hooks/session-1.json": guardianSession });
+
+  assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
+  assert.doesNotMatch(
+    result.stdout,
+    /implement-tests/,
+    "the agent name in the guardian hooks file is not shown",
+  );
+  assert.doesNotMatch(
+    result.stdout,
+    /Writing the failing test/,
+    "the description in the guardian hooks file is not shown",
+  );
 });
 
 test("shows-latest-task-progress-description", () => {
