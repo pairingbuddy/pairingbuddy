@@ -663,8 +663,19 @@ test("plan-tasks-curate-with-skill-and-solo-has-no-old-plan-loop", () => {
   assert.ok(curate <= clean && clean < open, "the Plan Loop curates guidance, then cleans the state files, before pb run open --kind code --plan");
   assert.doesNotMatch(section, /curate_guidance/, "the Plan Loop does not call the curate_guidance agent");
   assert.doesNotMatch(pseudocode(), /for plan_task in plan_tasks:/, "Solo has no old plan loop of its own");
-  assert.match(row, /plan tasks included/, "the _curating_guidance row says it runs outside Solo, plan tasks included");
+  assert.match(row, /plan tasks included, Solo's too/, "the _curating_guidance row says plan tasks use the skill, Solo's too");
+  assert.match(row, /Solo's non-plan tasks use the `curate_guidance` agent/, "the row keeps the agent for Solo's non-plan tasks");
+});
 
+test("solo-continues-an-open-plan-run-through-the-plan-loop", () => {
+  const text = skill();
+  const check = text.indexOf("## An Open Run Comes First");
+  const section = text.slice(check, text.indexOf("## State File Mappings"));
+  const solo = section.split("\n").find((line) => line.startsWith("Solo takes the same check"));
+
+  assert.ok(solo, "the open-run section has a paragraph for Solo");
+  assert.doesNotMatch(solo, /no stage starts under Solo/, "Solo does start stages now");
+  assert.match(solo, /plan it continues an open run through the Plan Loop/, "Solo continues an open plan run through the Plan Loop");
 });
 
 describe("router-asks-gates-with-the-question-box", () => {

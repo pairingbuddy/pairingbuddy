@@ -24,7 +24,7 @@ Before anything else, run `pb status --action`. `<root>` is the plugin root the 
 - If it prints a status, a run is open. Do not clean state or classify, do not curate guidance, and do not start the new task. Cleanup would delete what the run still needs. Finish that run first: follow `pb status --action` as Plan Loop step 1 says (a stranded stage: `pb stage fail`, then restart it at `nextAttempt`). For a plan, then go on with the Plan Loop. Otherwise report the finished run and the new task you did not start.
 - If it refuses any other way, a run is there and cannot be read. Report the refusal and stop.
 
-Solo takes the same check but does not continue the run: no stage starts under Solo, so a run left open stops it here. Report the status's `action` and stop.
+Solo takes the same check. For a plan it continues an open run through the Plan Loop, as it does outside Solo. A non-plan Solo task never opens a run, so a run left open stops it here: report the status's `action` and stop.
 
 ## CRITICAL: Follow the Workflow Exactly
 
