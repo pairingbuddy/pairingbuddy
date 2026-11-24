@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SOLO_SCRIPT = join(REPO_ROOT, "scripts", "solo-buddy.sh");
 
-// Loads render_status out of solo-buddy.sh and runs it once inside a temp project.
+// Loads render_status, the read_state_line helper it calls and the STREAM_FILE path out of solo-buddy.sh and runs it once inside a temp project.
 // Writes each entry of `files` (path under .pairingbuddy -> JSON value) first,
 // e.g. { "run/unit.json": unit, "run/task/ledger.json": ledger }. Returns the spawn result.
 function renderWithFiles(files) {
@@ -30,6 +30,8 @@ function renderWithFiles(files) {
       `PLAN_FILE="$2/no-plan.md"`,
       "LAST_RENDER_LINES=0",
       "FORCE_COLOR=0",
+      `eval "$(grep -E '^STREAM_FILE=' "$1")"`,
+      `eval "$(awk '/^read_state_line\\(\\)[ \\t]*\\{/,/^\\}/' "$1")"`,
       `eval "$(awk '/^render_status\\(\\)[ \\t]*\\{/,/^\\}/' "$1")"`,
       `declare -F render_status >/dev/null || { echo "render_status not found in $1" >&2; exit 99; }`,
       `cd "$2"`,

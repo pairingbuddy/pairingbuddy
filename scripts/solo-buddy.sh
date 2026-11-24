@@ -20,6 +20,7 @@ set -euo pipefail
 MAX_RETRIES=5
 USE_API_KEY=false
 STATUS_FILE=".pairingbuddy/solo-status"
+STREAM_FILE=".pairingbuddy/solo-stream.jsonl"
 RENDER_INTERVAL=0.08
 
 # Build invocation arguments
@@ -175,17 +176,17 @@ LAST_RENDER_LINES=0
 SPINNER_INDEX=0
 FINAL_RENDERED=""
 
-render_status() {
-    # Print what a JS snippet says about a state file: `text` is its contents, `state` its parsed JSON
-    # (undefined when the file is not one JSON document, as a JSONL stream is not).
-    # Prints nothing when the file is missing or unreadable: node exits non-zero on a throwing snippet or a
-    # missing binary, and `|| true` keeps set -e quiet. Defined here so render_status stays self-contained.
-    read_state_line() {
-        local file="$1" body="$2"
-        [[ -f "$file" ]] || return 0
-        node -e "const text = require('fs').readFileSync(process.argv[1], 'utf8'); let state; try { state = JSON.parse(text); } catch (error) {} ${body}" "$file" 2>/dev/null || true
-    }  # end read_state_line
+# Print what a JS snippet says about a state file: `text` is its contents, `state` its parsed JSON
+# (undefined when the file is not one JSON document, as a JSONL stream is not).
+# Prints nothing when the file is missing or unreadable: node exits non-zero on a throwing snippet or a
+# missing binary, and `|| true` keeps set -e quiet.
+read_state_line() {
+    local file="$1" body="$2"
+    [[ -f "$file" ]] || return 0
+    node -e "const text = require('fs').readFileSync(process.argv[1], 'utf8'); let state; try { state = JSON.parse(text); } catch (error) {} ${body}" "$file" 2>/dev/null || true
+}  # end read_state_line
 
+render_status() {
     local spinner_chars=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
     local spinner_count=${#spinner_chars[@]}
 
@@ -295,9 +296,8 @@ render_status() {
 
     # Read the captured claude stream once: show the description of the latest task_progress event and sum the
     # tokens the task_notification events report in their usage. A partial or invalid line is skipped.
-    local spend_unknown="Spend: unknown"
     local stream_lines
-    stream_lines=$(SPEND_UNKNOWN="$spend_unknown" read_state_line ".pairingbuddy/solo-stream.jsonl" '
+    stream_lines=$(read_state_line "$STREAM_FILE" '
         const events = text.split("\n").map((line) => { try { return JSON.parse(line); } catch (error) { return null; } });
         const system = events.filter((event) => event && event.type === "system");
         const progress = system.filter((event) => event.subtype === "task_progress" && event.description);
@@ -307,16 +307,16 @@ render_status() {
             .map((event) => Number(event.usage.total_tokens))
             .filter(Number.isFinite);
         const total = tokens.reduce((sum, count) => sum + count, 0);
-        const seen = tokens.length > 0;
         if (last) console.log(`Agent: ${last}`);
-        console.log(seen ? `Spend: ${total} tokens` : process.env.SPEND_UNKNOWN);
+        if (tokens.length > 0) console.log(`Spend: ${total} tokens`);
     ')
 
-    # Fallback if nothing to display; otherwise add the spend, unknown while there is no stream file yet
+    # Fallback if nothing to display; otherwise add the stream lines, with the spend unknown until a task_notification reports it
     if [[ -z "$content" && -z "$stream_lines" ]]; then
         content="  ${cyan}→${reset} ${bold_white:-}Initializing autonomous execution...${reset:-}${NL}"
     else
-        content="${content}${stream_lines:-$spend_unknown}${NL}"
+        [[ "$stream_lines" == *Spend:* ]] || stream_lines="${stream_lines:+${stream_lines}${NL}}Spend: unknown"
+        content="${content}${stream_lines}${NL}"
     fi
 
     # Replace → with spinner char
@@ -548,7 +548,7 @@ start_renderer
 start_caffeinate
 trap cleanup EXIT SIGTERM SIGINT
 
-claude "${CLAUDE_ARGS[@]}" -- "$PROMPT" > .pairingbuddy/solo-stream.jsonl
+claude "${CLAUDE_ARGS[@]}" -- "$PROMPT" > "$STREAM_FILE"
 CLAUDE_EXIT=$?
 
 # Stop the renderer before writing final status

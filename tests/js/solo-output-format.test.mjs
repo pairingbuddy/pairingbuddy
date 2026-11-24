@@ -43,15 +43,23 @@ function stdoutTarget(line) {
   return unquote(words[word === "tee" && words[at + 1] === "-a" ? at + 2 : at + 1] ?? "");
 }
 
+// A word with a "$NAME" or $NAME reference replaced by the value the script assigns to NAME at the top level.
+function expandVariable(word, lines) {
+  const reference = word.match(/^"?\$\{?(\w+)\}?"?$/);
+  if (!reference) return word;
+  const assignment = lines.map((line) => line.match(new RegExp(`^${reference[1]}=(\\S+)`))).find(Boolean);
+  return assignment ? unquote(assignment[1]) : word;
+}
+
 test("claude-output-captured-to-stream-file", () => {
   const lines = scriptLines();
   const invocation = lines.find((line) => /^\s*claude\s+"\$\{CLAUDE_ARGS\[@\]\}"/.test(line));
   assert.ok(invocation, "solo-buddy.sh must invoke claude with CLAUDE_ARGS");
 
-  const streamFile = stdoutTarget(invocation);
+  const streamFile = expandVariable(stdoutTarget(invocation) ?? "", lines);
   assert.ok(streamFile?.startsWith(".pairingbuddy/"), `the claude invocation must write its output under .pairingbuddy, got: ${invocation.trim()}`);
 
-  const rendererReads = lines.flatMap((line) => [...line.matchAll(/\bread_state_line\s+(\S+)/g)].map((match) => unquote(match[1])));
+  const rendererReads = lines.flatMap((line) => [...line.matchAll(/\bread_state_line\s+(\S+)/g)].map((match) => expandVariable(unquote(match[1]), lines)));
   assert.ok(
     rendererReads.includes(streamFile),
     `the renderer must read the file claude writes to (${streamFile}) as the first argument of read_state_line; it reads: ${rendererReads.join(", ")}`,
