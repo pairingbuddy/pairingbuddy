@@ -26,5 +26,17 @@ test("claude-args-use-output-format-per-p14", () => {
 });
 
 test("claude-output-captured-to-stream-file", () => {
-  assert.fail("not implemented: The claude invocation writes its output to the stream file the renderer reads, and the file is under .pairingbuddy");
+  const source = readFileSync(SOLO_SCRIPT, "utf8");
+  const invocation = source.split("\n").find((line) => /^\s*claude\s+"\$\{CLAUDE_ARGS\[@\]\}"/.test(line));
+  assert.ok(invocation, "solo-buddy.sh must invoke claude with CLAUDE_ARGS");
+
+  const written = invocation.match(/(?:>>?|\btee\s+(?:-a\s+)?)\s*"?(\.pairingbuddy\/[^\s"|;&]+)/);
+  assert.ok(written, `the claude invocation must write its output under .pairingbuddy, got: ${invocation.trim()}`);
+
+  const streamFile = written[1];
+  const renderer = source.match(/read_state_line\s+"([^"]+)"/g) ?? [];
+  assert.ok(
+    renderer.some((call) => call.includes(`"${streamFile}"`)),
+    `the renderer must read the file claude writes to (${streamFile}); renderer reads: ${renderer.join(", ")}`,
+  );
 });
