@@ -259,6 +259,22 @@ render_status() {
         content="${content}[${completed}/${total}] ${cyan}${filled_str}${reset}${dim}${empty_str}${reset} ${pct_str}${NL}"
     fi
 
+    # Read the unit's branch and task count from run/unit.json
+    local unit_file=".pairingbuddy/run/unit.json"
+    if [[ -f "$unit_file" ]]; then
+        local unit_line
+        unit_line=$(node -e '
+            try {
+                const u = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+                const n = Array.isArray(u.tasks) ? u.tasks.length : 0;
+                console.log(`${u.branch || ""} (${n} ${n === 1 ? "task" : "tasks"})`);
+            } catch (e) {}
+        ' "$unit_file" 2>/dev/null || true)
+        if [[ -n "$unit_line" ]]; then
+            content="${content}Unit: ${dim}${unit_line}${reset}${NL}"
+        fi
+    fi
+
     # Read agent info from guardian session file
     local agent_name="" agent_desc=""
     local hooks_file
