@@ -38,7 +38,7 @@ export const ADOPT_RECENT_MS = 10 * 60_000;
 
 // Whether the owner was seen within ADOPT_RECENT_MS.
 export const seenRecently = (lastSeen) => ownerAgeMs(lastSeen) < ADOPT_RECENT_MS;
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -155,8 +155,9 @@ export function validateLedger(ledger) {
     gateWaits: [Array.isArray, "an array"],
     permissionWaits: [Array.isArray, "an array"],
     stopWaits: [Array.isArray, "an array"],
+    idleWaits: [Array.isArray, "an array"],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
-  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits"] });
+  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
@@ -449,11 +450,22 @@ export function withStopWaits(after, now = new Date().toISOString()) {
   return after;
 }
 
+// Every step, test run, checkpoint and owner's tool call writes the ledger, so an hour with no write ran nothing: a night, a
+// closed session, a stop or a question no stamp kept (a ledger written before stopWaits). The write that ends such a gap
+// keeps it in idleWaits, from the last write to this one, and SPENT and the report leave it out as they do a stop.
+export const IDLE_MS = 60 * 60_000;
+
+export function withIdleWaits(after, lastWriteMs, nowMs = Date.now()) {
+  if (!(nowMs - lastWriteMs > IDLE_MS)) return after;
+  const waits = Array.isArray(after.idleWaits) ? after.idleWaits : [];
+  return { ...after, idleWaits: [...waits, { askedAt: new Date(lastWriteMs).toISOString(), answeredAt: new Date(nowMs).toISOString() }] };
+}
+
 export function updateLedger(path, fn, opts = {}) {
   return withLock(path, opts, (assertOwned) => {
     const disk = readLedger(path);
     const diskSeq = disk.seq;
-    return writeLocked(path, withStopWaits(fn(disk)), diskSeq, assertOwned);
+    return writeLocked(path, withIdleWaits(withStopWaits(fn(disk)), statSync(path).mtimeMs), diskSeq, assertOwned);
   });
 }
 

@@ -85,14 +85,14 @@ export function elapsed(startedAt, now, ranFor, waited = 0) {
 }
 
 
-// Every wait as [from, to] in ms: answered questions, the one still asked, permission prompts and stops (stopWaits), an
-// open one up to `until`. A record with no usable times is no interval.
+// Every wait as [from, to] in ms: answered questions, the one still asked, permission prompts, stops (stopWaits) and gaps no
+// write broke (idleWaits), an open one up to `until`. A record with no usable times is no interval.
 function waitIntervals(ledger, until) {
   const list = (value) => (Array.isArray(value) ? value : []);
   const gates = ledger?.gates && typeof ledger.gates === "object" ? Object.values(ledger.gates) : [];
   const answered = [...gates, ...list(ledger?.gateWaits)].filter((record) => typeof record?.askedAt === "string").map(({ askedAt, answeredAt }) => [Date.parse(askedAt), Date.parse(answeredAt)]);
   const asked = typeof ledger?.needsHuman?.askedAt === "string" ? [[Date.parse(ledger.needsHuman.askedAt), until]] : [];
-  const openable = [...list(ledger?.permissionWaits), ...list(ledger?.stopWaits)].filter((wait) => typeof wait?.askedAt === "string").map(({ askedAt, answeredAt }) => [Date.parse(askedAt), answeredAt === undefined ? until : Date.parse(answeredAt)]);
+  const openable = [...list(ledger?.permissionWaits), ...list(ledger?.stopWaits), ...list(ledger?.idleWaits)].filter((wait) => typeof wait?.askedAt === "string").map(({ askedAt, answeredAt }) => [Date.parse(askedAt), answeredAt === undefined ? until : Date.parse(answeredAt)]);
   return [...answered, ...asked, ...openable].filter(([from, to]) => Number.isFinite(from) && Number.isFinite(to) && to > from);
 }
 
@@ -112,7 +112,7 @@ export function waitedBetween(ledger, from, until, { clipEnd = false } = {}) {
 
 // The seconds a run waited on the human: its questions, each answered one from askedAt to answeredAt (kept on its gate's
 // record, or in gateWaits once a redo removed the record) and the one still asked from its askedAt to `until`, Claude
-// Code's permission prompts (permissionWaits) and its stops (stopWaits) the same way. A ledger written before these stamps waited 0.
+// Code's permission prompts (permissionWaits), its stops (stopWaits) and its idle gaps (idleWaits) the same way. A ledger written before these stamps waited 0.
 export function waitedSeconds(ledger, until) {
   return waitedBetween(ledger, -Infinity, until);
 }

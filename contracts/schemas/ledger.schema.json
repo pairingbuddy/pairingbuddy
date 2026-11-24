@@ -194,6 +194,19 @@
         }
       }
     },
+    "idleWaits": {
+      "description": "Each gap of more than an hour between two ledger writes, oldest first: from the last write (askedAt) to the write that ended it (answeredAt). Every step, test run and owner's tool call writes the ledger, so nothing ran then (a night, a closed session). The ledger write sets them. May be absent.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["askedAt", "answeredAt"],
+        "properties": {
+          "askedAt": { "type": "string", "format": "date-time" },
+          "answeredAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
     "permissionWaits": {
       "description": "Claude Code's own permission prompts that stood unanswered during the run, oldest first: hooks/permission.mjs opens one on the prompt's Notification (notification_type permission_prompt) and closes it with answeredAt on the next tool call, the turn's end or the human's next prompt. The last one, while it has no answeredAt, is open: the run needs the human. The time from askedAt to answeredAt (or to now, while open) is waiting, no working time. May be absent.",
       "type": "array",

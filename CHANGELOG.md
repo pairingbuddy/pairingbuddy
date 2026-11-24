@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- SPENT and the report's Spent leave out any gap of more than an hour between two ledger writes (T4d run: SPENT read 22:52:56 for a couple of hours of work, as the code run's overnight stop and the stops between sessions came before stops were stamped). Every step, test run and owner's tool call writes the ledger, so nothing ran then; the write that ends the gap keeps it in the ledger's `idleWaits`.
+
 ## [0.8.0-exp.4] - 2026-11-24
 
 - The PLAN block has at most one cut row at each end (the real plan: `… 2 tasks done above`, `… 4 tasks done` and `… 5 tasks done` were stacked above a later unit). One row opens the block and counts every hidden task above the focus, such as `… 6 tasks done above`. The only cut row between shown rows is inside the focus's unit, when its own earlier tasks are cut, so its first shown task does not read as its first.

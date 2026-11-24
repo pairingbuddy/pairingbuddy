@@ -162,6 +162,7 @@ JS_TEST_FILES = [
     "tests/js/spent-agents.test.mjs",
     "tests/js/spent-paused.test.mjs",
     "tests/js/stop-waits.test.mjs",
+    "tests/js/idle-waits.test.mjs",
     "tests/js/stranded.test.mjs",
     "tests/js/t4a-broken-copy-helper.test.mjs",
     "tests/js/t4a-lab-setup.test.mjs",
