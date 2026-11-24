@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0-exp.4] - 2026-11-24
+
 - The PLAN block has at most one cut row at each end (the real plan: `… 2 tasks done above`, `… 4 tasks done` and `… 5 tasks done` were stacked above a later unit). One row opens the block and counts every hidden task above the focus, such as `… 6 tasks done above`. The only cut row between shown rows is inside the focus's unit, when its own earlier tasks are cut, so its first shown task does not read as its first.
 
 - A narrow pane cuts a plan tracer's title at a word, marked by `…`, as unit and task titles are (the real plan at 60 columns: `T0: Live probes — Every untested platform assumpti…` was cut mid-word by the terminal).
