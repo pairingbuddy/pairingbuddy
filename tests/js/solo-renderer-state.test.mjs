@@ -41,6 +41,11 @@ function renderWithFiles(files) {
   }
 }
 
+// Turns events into the JSONL text of a captured claude stream: one JSON object per line, newline-terminated.
+function jsonl(events) {
+  return events.map((event) => `${JSON.stringify(event)}\n`).join("");
+}
+
 test("shows-unit-branch-and-task-count-from-unit-json", () => {
   const unit = {
     unit: "solo-renderer",
@@ -127,15 +132,13 @@ test("no-longer-reads-guardian-hooks-file", () => {
 });
 
 test("shows-latest-task-progress-description", () => {
-  const stream = [
+  const stream = jsonl([
     { type: "system", subtype: "task_progress", description: "Reading the scenarios" },
     { type: "system", subtype: "task_progress", description: "Writing the failing test" },
     { type: "system", subtype: "task_progress", description: "Running the test suite" },
-  ]
-    .map((event) => JSON.stringify(event))
-    .join("\n");
+  ]);
 
-  const result = renderWithFiles({ "solo-stream.jsonl": `${stream}\n` });
+  const result = renderWithFiles({ "solo-stream.jsonl": stream });
 
   assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
   assert.match(
