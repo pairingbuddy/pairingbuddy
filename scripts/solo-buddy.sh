@@ -294,14 +294,21 @@ render_status() {
     fi
 
     # Show the description of the latest task_progress event in the captured claude stream
-    local agent_line
-    agent_line=$(read_state_line ".pairingbuddy/solo-stream.jsonl" '
-        let last = "";
+    # `events` is every system event of the stream; a partial or invalid line is skipped.
+    local stream_events='
+        const events = [];
         for (const line of text.split("\n")) {
             try {
                 const event = JSON.parse(line);
-                if (event.type === "system" && event.subtype === "task_progress" && event.description) last = event.description;
+                if (event.type === "system") events.push(event);
             } catch (error) { /* skip a partial or invalid line */ }
+        }
+    '
+    local agent_line
+    agent_line=$(read_state_line ".pairingbuddy/solo-stream.jsonl" "${stream_events}"'
+        let last = "";
+        for (const event of events) {
+            if (event.subtype === "task_progress" && event.description) last = event.description;
         }
         if (last) console.log(last);
     ')
@@ -311,16 +318,14 @@ render_status() {
 
     # Sum the tokens the task_notification events report in their usage
     local spend_line
-    spend_line=$(read_state_line ".pairingbuddy/solo-stream.jsonl" '
+    spend_line=$(read_state_line ".pairingbuddy/solo-stream.jsonl" "${stream_events}"'
         let total = 0, seen = false;
-        for (const line of text.split("\n")) {
-            try {
-                const event = JSON.parse(line);
-                if (event.type === "system" && event.subtype === "task_notification" && event.usage) {
-                    total += Number(event.usage.total_tokens) || 0;
-                    seen = true;
-                }
-            } catch (error) { /* skip a partial or invalid line */ }
+        for (const event of events) {
+            if (event.subtype !== "task_notification" || !event.usage) continue;
+            const tokens = Number(event.usage.total_tokens);
+            if (!Number.isFinite(tokens)) continue;
+            total += tokens;
+            seen = true;
         }
         if (seen) console.log(`${total} tokens`);
     ')
