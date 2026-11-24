@@ -170,7 +170,7 @@ test('spent-counts-the-whole-unit-when-the-publish-run-starts', async ($, on) =>
   await rig.clock.advance(Date.parse('2026-11-14T10:03:35.000Z') - Date.parse('2026-11-14T10:00:32.000Z'))
   await $.agent.spawn({ prompt: 'p', description: 'pb1 pr-draft - draft-pull-request - r1', subagentType: 'pairingbuddy:draft-pull-request', workflow: { runId: 'wf_2', agentIndex: 1 } })
 
-  expect(rowOf(await paneLines($), 'SPENT'), 'agents and time both count from the code run on').toBe('SPENT    2 agents · 3:35')
+  expect(rowOf(await paneLines($), 'SPENT'), 'agents and time both count the code run, its 2:50 and the publish run\'s 0:35, not the 10 s between').toBe('SPENT    2 agents · 3:25')
 })
 
 test('after-the-run-no-test-is-current-and-the-last-review-stays', async ($, on) => {

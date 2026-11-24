@@ -191,9 +191,15 @@ function spentTime(startedAt, now, ranFor, waited, paused) {
   return paused && !time.endsWith(UNKNOWN) ? `${time} ${PAUSED}` : time;
 }
 
-function bandSpent({ ledger, spawns, agents: recorded, earlierAgents, now, since, waited, paused }) {
+// The seconds a live run has run since its start; none while its start is not known yet (no stage has begun).
+function ownRan(startedAt, until) {
+  const seconds = (until - Date.parse(startedAt)) / 1000;
+  return Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+}
+
+function bandSpent({ ledger, spawns, agents: recorded, earlierAgents, now, since, ranFor, waited, paused }) {
   const agents = agentsOf(spawns, recorded, ledger, earlierAgents);
-  return [spentTime(since ?? runStart(ledger), now, undefined, waited, paused), plural(agents, "agent")].filter((part) => !part.endsWith(UNKNOWN)).join(" · ");
+  return [spentTime(since ?? runStart(ledger), now, ranFor, waited, paused), plural(agents, "agent")].filter((part) => !part.endsWith(UNKNOWN)).join(" · ");
 }
 
 const STOPPED = "stopped";
@@ -227,10 +233,11 @@ function bandNeedsYou(ledger) {
 const known = (id, text) => (text === undefined ? [] : [{ id, text }]);
 
 // A retry is told where the step is (NOW, the pane's STATUS), so the band has no looping segment.
-function bandSegments({ ledger, spawns, agents, earlierAgents, tests, now, since, waited, paused, complete }, step) {
+// taskRan: the whole task's run time when earlier runs add to it, so the band's time is SPENT's.
+function bandSegments({ ledger, spawns, agents, earlierAgents, tests, now, since, taskRan, waited, paused, complete }, step) {
   return [
     { id: "where", text: bandWhere(step, tests, ledger, complete) },
-    { id: "spent", text: bandSpent({ ledger, spawns, agents, earlierAgents, now, since, waited, paused }) },
+    { id: "spent", text: bandSpent({ ledger, spawns, agents, earlierAgents, now, since, ranFor: taskRan, waited, paused }) },
     ...known("left", bandLeft(step, tests, complete)),
     bandNeedsYou(ledger),
   ];
@@ -293,7 +300,9 @@ function unknownLabels(spawns) {
 // waited: the seconds the time spent waited on the human, left out of it; by default the ledger's own waits (waitedSeconds).
 // earlierWaited: the seconds the task's earlier runs waited (since reaching back to their start), left out too.
 // pausedAt: when a live run stopped working (pausedAtOf), in ms; SPENT's time stops there and says "paused".
-export function glance({ ledger, spawns, agents, earlierAgents, tests, now, ranFor, since, waited, earlierWaited = 0, pausedAt, testsComplete = false, leaveOutUnknown = false } = {}) {
+// earlierRan: the seconds the task's earlier runs ran, each its own span (taskRan); the live run's own time, from since, is
+// added to it, so the time between runs, which ran nothing, is left out.
+export function glance({ ledger, spawns, agents, earlierAgents, tests, now, ranFor, since, waited, earlierWaited = 0, earlierRan, pausedAt, testsComplete = false, leaveOutUnknown = false } = {}) {
   const list = Array.isArray(spawns) ? spawns : [];
   const names = Array.isArray(tests) ? tests : [];
   const step = currentStep(list, stageOf(ledger));
@@ -301,10 +310,11 @@ export function glance({ ledger, spawns, agents, earlierAgents, tests, now, ranF
   const paused = Number.isFinite(pausedAt) && !(pausedAt < Date.parse(since ?? runStart(ledger)));
   const until = paused && Number.isFinite(now) ? Math.min(now, pausedAt) : now;
   const wait = (Number.isFinite(waited) ? waited : waitedSeconds(ledger, until)) + (Number.isFinite(earlierWaited) ? earlierWaited : 0);
-  const spent = { ledger, spawns: list, agents, earlierAgents, now: until, since, waited: wait, paused };
+  const taskRan = Number.isFinite(earlierRan) ? earlierRan + ownRan(since ?? runStart(ledger), until) : undefined;
+  const spent = { ledger, spawns: list, agents, earlierAgents, now: until, since, taskRan, waited: wait, paused };
   const rows = {
     now: nowRow(step, names, ledger, testsComplete),
-    spent: spentRow({ ...spent, ranFor, leaveOutUnknown }),
+    spent: spentRow({ ...spent, ranFor: taskRan ?? ranFor, leaveOutUnknown }),
     left: leftRow(step, names, testsComplete),
   };
   return { rows, band: bandSegments({ ...spent, tests: names, complete: testsComplete }, step), unknownLabels: unknownLabels(list) };

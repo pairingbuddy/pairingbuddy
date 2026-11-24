@@ -43,11 +43,15 @@ export const taskEnded = (runs) => runs.length > 0 && runs.every((run) => Number
 // The seconds the task's runs waited on the human, each run's waits to its own end: no working time.
 export const taskWaited = (runs, now) => runs.reduce((total, run) => total + waitedSeconds(run.ledger, Number.isFinite(Date.parse(run.endedAt)) ? Date.parse(run.endedAt) : now), 0);
 
-// What the pane shows of a task once every run of it has ended, from the runs pb kept (taskRuns): what it spent, from its
-// first run's start to its last run's end less the time it waited on the human, every return its runs kept, which the review
-// is read from, and the pull request its publish run opened. Null while a run of it has not ended, or when no run is kept.
+// The seconds the task's runs ran, each from its own start to its end, added up: the time between two runs (a person doing a
+// [HUMAN] task, a new session) ran nothing. Their waits are still in it (taskWaited). NaN when a run's start or end is unknown.
+export const taskRan = (runs) => runs.reduce((total, run) => total + (Date.parse(run.endedAt) - Date.parse(runStart(run.ledger))) / 1000, 0);
+
+// What the pane shows of a task once every run of it has ended, from the runs pb kept (taskRuns): what it spent, the time its
+// runs ran (ran) less the time they waited on the human, every return its runs kept, which the review is read from, and the
+// pull request its publish run opened. Null while a run of it has not ended, or when no run is kept.
 export function endedTaskFacts(runs) {
   if (!Array.isArray(runs) || !taskEnded(runs)) return null;
   const prUrl = runs.findLast((run) => typeof run.prUrl === "string" && run.prUrl !== "")?.prUrl ?? null;
-  return { spend: taskSpend(runs), startedAt: runStart(runs[0].ledger) ?? null, endedAt: runs.at(-1).endedAt, waited: taskWaited(runs), calls: runs.flatMap((run) => (Array.isArray(run.calls) ? run.calls : [])), prUrl };
+  return { spend: taskSpend(runs), startedAt: runStart(runs[0].ledger) ?? null, endedAt: runs.at(-1).endedAt, ran: taskRan(runs), waited: taskWaited(runs), calls: runs.flatMap((run) => (Array.isArray(run.calls) ? run.calls : [])), prUrl };
 }

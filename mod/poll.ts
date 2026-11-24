@@ -1,6 +1,6 @@
 import type { EngineInterface, PluginOptions } from 'claude-code'
 import { pollInputs, readKeptRuns, type EarlierSpend, type KeptRun, type Polled, type TaskFacts } from './inputs'
-import { endedTaskFacts, taskRuns, taskSpend, taskWaited } from '../shared-node/task-runs.mjs'
+import { endedTaskFacts, taskRan, taskRuns, taskSpend, taskWaited } from '../shared-node/task-runs.mjs'
 import { alertOn, openOnRunStart } from './alert'
 import { runStart } from '../shared-node/glance.mjs'
 import { codeRunOf, isUnitDone } from '../shared-node/end-state.mjs'
@@ -93,7 +93,14 @@ async function earlierSpend($: EngineInterface, state: PollerState, polled: Poll
   const earlier = runs.filter(run => run.ledger !== ledger && run.ledger?.runId !== ledger.runId)
   if (earlier.length === 0) return null
   const { agents, tokens, tokensKnown } = taskSpend(earlier)
-  return { agents, tokens, tokensKnown, startedAt: (runStart(earlier[0].ledger) as string | undefined) ?? null, waited: taskWaited(earlier, undefined), calls: earlier.flatMap(run => run.calls) }
+  return { agents, tokens, tokensKnown, startedAt: (runStart(earlier[0].ledger) as string | undefined) ?? null, ran: taskRan(earlier), waited: taskWaited(earlier, undefined), calls: earlier.flatMap(run => run.calls) }
+}
+
+// Where SPENT's time counts from: the live run's own start when the earlier runs' own time is known (it is added to it, so
+// the time between runs is left out); else the unit's first start this session or the earliest kept run's.
+function sinceOf(unitStarted: string | null, read: Polled, earlier: EarlierSpend | null): string | null {
+  if (earlier && Number.isFinite(earlier.ran)) return (runStart(read.ledger as Parameters<typeof runStart>[0]) as string | undefined) ?? null
+  return earliest(unitStarted, earlier?.startedAt)
 }
 
 // The earlier of two run starts, either of which may be unknown.
@@ -113,7 +120,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
     try {
       const read = await pollInputs($, state.spawns, state.kept)
       const earlier = await earlierSpend($, state, read)
-      const polled = { ...read, since: earliest(unitStart(state, read), earlier?.startedAt), ...(await unitRecord($, state, read)), task: await endedTask($, state, read), earlierAgents: earlier?.agents ?? 0, earlier }
+      const polled = { ...read, since: sinceOf(unitStart(state, read), read, earlier), ...(await unitRecord($, state, read)), task: await endedTask($, state, read), earlierAgents: earlier?.agents ?? 0, earlier }
       await $.state.set(INPUTS, polled)
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.
       await alertOn($, polled.ledger, options, doneRunOf(polled))

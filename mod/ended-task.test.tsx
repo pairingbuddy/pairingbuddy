@@ -86,7 +86,18 @@ test('ended-task-spent-leaves-out-the-time-its-questions-waited', async ($, on) 
 
   const spent = row(await paneLines($), 'SPENT')
 
-  expect(spent, 'the task\'s 4:26:07 less the 4:01:20 the publish question waited').toMatch(/^SPENT\s+41 agents · 24:47 · 39856 output tokens$/)
+  expect(spent, 'the runs\' 4:26:02 less the 4:01:20 the publish question waited').toMatch(/^SPENT\s+41 agents · 24:42 · 39856 output tokens$/)
+})
+
+// Scenario S6: SPENT's time ran on between the code run's end and the publish run's start (a person doing the [HUMAN] task,
+// a new session). Nothing ran then, so an ended task's time is each run's own, from its start to its end, added up.
+test('ended-task-spent-leaves-out-the-time-between-its-runs', async ($, on) => {
+  const rig = setupReplay(on)
+  await endTheTask($, rig)
+
+  const spent = row(await paneLines($), 'SPENT')
+
+  expect(spent, 'the code run\'s 24:23 and the publish run\'s 4:01:38, not the 5 s between them').toMatch(/^SPENT\s+41 agents · 4:26:02 · /)
 })
 
 // A reload while the publish run is live empties the session's agents; the code run pb kept still counts toward SPENT.
@@ -159,7 +170,7 @@ test('live-publish-run-spent-counts-the-kept-code-run-time-and-tokens-too', asyn
 
   const spent = row(await paneLines($), 'SPENT')
 
-  expect(spent, 'the code run\'s 32 agents, its start at 15:17:53 and its 27779 tokens, with the publish run\'s none yet').toBe('SPENT    32 agents · 25:08 · 27779 output tokens')
+  expect(spent, 'the code run\'s 32 agents, its 24:23 and its 27779 tokens, with the publish run\'s none yet').toBe('SPENT    32 agents · 25:03 · 27779 output tokens')
 })
 
 // Scenario S6: REVIEW read the PR draft's review while unit A's PR was drafted, and the code review once unit B's draft was
@@ -178,6 +189,22 @@ test('live-publish-run-review-is-the-code-review-its-code-run-kept', async ($, o
   const review = lines.slice(lines.findIndex(line => line.startsWith('REVIEW')))
 
   expect(review[0], 'the safety-net review, not the PR draft\'s').toBe('REVIEW   review: 1 issue, all left as is')
+})
+
+// Scenario S6 unit A, frame 03: while the publish run drafted, SPENT's time counted from the code run's start, so the time
+// between the runs (a person doing the [HUMAN] task, a new session) counted too. It is the code run's span and the live run's own.
+test('live-publish-run-spent-leaves-out-the-time-between-the-runs', async ($, on) => {
+  const rig = setupReplay(on)
+  const live = { ...PUBLISH_RUN, stage: { ...PUBLISH_RUN.stage, status: 'active' }, stages: [], spend: { agents: 0, tokens: 0, tokensKnown: true } }
+  const codeRunKept = Object.fromEntries(Object.entries(KEPT_FILES).filter(([path]) => path.includes(CODE_RUN.runId)))
+  serve(rig, { [LEDGER]: live, [UNIT]: UNIT_FILE, [CHANGED_PATH]: CHANGED, ...codeRunKept })
+  await rig.clock.set(Date.parse('2026-11-16T15:43:00.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const spent = row(await paneLines($), 'SPENT')
+
+  expect(spent, 'the code run\'s 24:23 and the publish run\'s 0:39 from 15:42:22, not the 5 s between them').toMatch(/^SPENT\s+32 agents · 25:03 · /)
 })
 
 // Scenario S6 unit A, frame 03: the publish run had closed no attempt yet, so its spend carried no tokensKnown, and SPENT

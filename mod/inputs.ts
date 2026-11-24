@@ -53,13 +53,15 @@ export type Published = { url?: string; result?: string; codeRunId?: string | nu
 // changed: the paths run/changed.json lists (null when it does not read); prUrl: the unit's pull request as the poller last saw it.
 // unitOpen: whether a unit is open now, for a finished run drawn from its snapshot (whose unit is the one it last saw).
 // task: what the runs pb kept say of the whole task once it has ended (endedTaskFacts in shared-node/task-runs.mjs).
+// ran: the seconds its runs ran, each from its own start to its end, so the time between runs is left out (NaN when unknown).
 // waited: the seconds its runs waited on the human, which SPENT leaves out.
-export type TaskFacts = { spend: Spend; startedAt: string | null; endedAt: string; waited?: number; calls: Call[]; prUrl: string | null }
+export type TaskFacts = { spend: Spend; startedAt: string | null; endedAt: string; ran?: number; waited?: number; calls: Call[]; prUrl: string | null }
 // earlierAgents: what the live run's task spent in agents in its earlier runs, the ones pb kept; earlier: all they spent.
 // planUnit: the open unit the PLAN tree reads, when it is not `unit` (an ended run's view keeps the unit it last saw, the tree the one open now).
-// What a live run's task spent in its earlier runs pb kept: agents and tokens summed, when the first began, its waits, and the returns they kept.
-export type EarlierSpend = { agents: number; tokens: number; tokensKnown: boolean; startedAt: string | null; waited: number; calls: Call[] }
-export type Inputs = { earlierAgents?: number; earlier?: EarlierSpend | null; plan?: PlanRead | null; planPath?: string | null; planUnit?: Unit | null; task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
+// What a live run's task spent in its earlier runs pb kept: agents and tokens summed, when the first began, the seconds they
+// ran (each its own span, NaN when unknown), their waits, and the returns they kept.
+export type EarlierSpend = { agents: number; tokens: number; tokensKnown: boolean; startedAt: string | null; ran?: number; waited: number; calls: Call[] }
+export type Inputs = { earlierAgents?: number; earlier?: EarlierSpend | null; plan?: PlanRead | null; planPath?: string | null; planUnit?: Unit | null; task?: TaskFacts | null; unitOpen?: boolean; ledger: Ledger; spawns: Spawn[]; calls?: Call[]; tests: string[]; testsComplete: boolean; now: number | undefined; unit?: Unit | null; since?: string; ranFor?: number; waited?: number; changed?: string[] | null; codeRun?: CodeRun | null; prUrl?: string | null; published?: Published | null }
 
 // Never throws: an absent, empty, truncated or unreadable file reads as undefined.
 async function readJson($: EngineInterface, relative: string): Promise<unknown> {

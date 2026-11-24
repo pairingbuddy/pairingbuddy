@@ -321,7 +321,8 @@ export function buildView(inputs: Inputs): View {
 // (from the task's start, since) and the tokens all cover the whole task.
 // waited: what an ended task's runs waited on the human; else glance reads the live ledger's own waits.
 // live: a run read now, whose clock stops while it waits on the human or is stopped (pausedAtOf); an ended run's never runs on.
-const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, waited, earlierAgents, earlier }: Inputs, agents?: number, live = false) => glance({ ledger: live ? withEarlierTokens(ledger, earlier) : ledger, spawns, agents, tests, now, since, waited, testsComplete, leaveOutUnknown: true, ...(live ? { pausedAt: pausedAtOf(ledger), earlierAgents, earlierWaited: earlier?.waited ?? 0 } : {}) })
+// ranFor: the seconds an ended task's runs ran, each its own span, so the time between them is left out.
+const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, ranFor, waited, earlierAgents, earlier }: Inputs, agents?: number, live = false) => glance({ ledger: live ? withEarlierTokens(ledger, earlier) : ledger, spawns, agents, tests, now, since, ranFor, waited, testsComplete, leaveOutUnknown: true, ...(live ? { pausedAt: pausedAtOf(ledger), earlierAgents, earlierWaited: earlier?.waited ?? 0, earlierRan: earlier?.ran } : {}) })
 
 // The live ledger with its task's earlier runs' tokens added, known only when every run knew its own. A live spend with no
 // tokensKnown has counted no attempt yet, so it is still known, as addSpend in stage-run.mjs reads it.
@@ -338,7 +339,7 @@ function keptTask(inputs: Inputs): Inputs {
   const { task } = inputs
   if (!task) return inputs
   const end = Date.parse(task.endedAt)
-  return { ...inputs, ledger: inputs.ledger && { ...inputs.ledger, spend: task.spend }, spawns: [], calls: task.calls, earlier: null, since: task.startedAt ?? inputs.since, waited: task.waited, prUrl: inputs.prUrl ?? task.prUrl, ...(Number.isNaN(end) ? {} : { now: end }) }
+  return { ...inputs, ledger: inputs.ledger && { ...inputs.ledger, spend: task.spend }, spawns: [], calls: task.calls, earlier: null, since: task.startedAt ?? inputs.since, ...(Number.isFinite(task.ran) ? { ranFor: task.ran } : {}), waited: task.waited, prUrl: inputs.prUrl ?? task.prUrl, ...(Number.isNaN(end) ? {} : { now: end }) }
 }
 
 function buildPlainView(inputs: Inputs): View {
