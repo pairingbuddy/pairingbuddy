@@ -10,15 +10,19 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SOLO_SCRIPT = join(REPO_ROOT, "scripts", "solo-buddy.sh");
 
-function claudeArgsLine() {
-  const lines = readFileSync(SOLO_SCRIPT, "utf8").split("\n");
-  return lines.find((line) => line.startsWith("CLAUDE_ARGS=")) ?? "";
+// Every CLAUDE_ARGS=(...) and CLAUDE_ARGS+=(...) block, which may span lines.
+function claudeArgsBlocks() {
+  const source = readFileSync(SOLO_SCRIPT, "utf8");
+  return [...source.matchAll(/^\s*CLAUDE_ARGS\+?=\(([^)]*)\)/gm)].map((match) => match[1]);
 }
 
 test("claude-args-use-output-format-per-p14", () => {
-  const line = claudeArgsLine();
+  const blocks = claudeArgsBlocks();
+  assert.ok(blocks.length > 0, "solo-buddy.sh must define CLAUDE_ARGS");
 
-  assert.match(line, /--output-format stream-json\b/, `CLAUDE_ARGS must carry --output-format stream-json, got: ${line}`);
+  const formats = blocks.flatMap((block) => [...block.matchAll(/--output-format[ =]+(\S+)/g)].map((match) => match[1]));
+
+  assert.deepEqual(formats, ["stream-json"], `CLAUDE_ARGS must carry exactly one --output-format, stream-json, got: ${blocks.join(" | ")}`);
 });
 
 test("claude-output-captured-to-stream-file", () => {
