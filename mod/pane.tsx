@@ -1,5 +1,6 @@
 import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
 import { endReviewLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
+import { commitRows, gapWords, planFocus, PLAN_ROWS, problemRows, STATE_SEPARATOR, taskMark, unitWords, WAITING_ON_PERSON, windowRows } from '../shared-node/plan-window.mjs'
 import { resolveOpenUnit } from './view'
 import type { RowTones, Status, StatusState, Tags, View } from './view'
 
@@ -133,17 +134,14 @@ function topRows(view: View, columns: number) {
 }
 
 // The plan as a tree: each tracer, its units nested under it, each unit's tasks under that, in plan order.
-const TASK_MARKS = { ticked: '✓', unticked: '○', inProgress: '▸' } as const
 const NEST = '  '
 const SHORT_SHA = 7
-const STATE_SEPARATOR = ' · '
-const WAITING_ON_PERSON = 'waiting on a person'
-// The open unit's branch, base and commits, each on its own line.
+// The open unit's branch, base and commits, each on its own line; a unit of many commits shows its latest (commitRows).
 function openUnitLines(open: NonNullable<View['planOpen']>, indent: string): Part[][] {
   const facts = [
     ...(open.branch ? [`branch ${open.branch}`] : []),
     ...(open.base ? [`base ${open.base}`] : []),
-    ...(open.commits ?? []).map(sha => `commit ${sha.slice(0, SHORT_SHA)}`),
+    ...commitRows(open.commits ?? []).map((row: { sha?: string; earlier?: number }) => (row.sha ? `commit ${row.sha.slice(0, SHORT_SHA)}` : `${ELLIPSIS} ${row.earlier} earlier commits`)),
   ]
   return facts.map(text => [{ text: `${indent}${text}` }])
 }
@@ -159,19 +157,7 @@ function unitOnlyLines(open: NonNullable<View['planOpen']>, pr?: string): Part[]
 }
 
 type PlanUnit = NonNullable<View['plan']>['units'][number]
-
-// A unit's state in plain words: unitStates' "open" (it has boxes left) reads open only for the unit pb has open; any
-// other unit with boxes left has its work to do.
-// "unpublished" (every box ticked, no PR yet) says what happens: the open unit's pull request is being written while a
-// publish run is live, else it is not opened yet.
-const TO_DO = 'to do'
-const WRITING_PR = 'writing the pull request'
-const PR_NOT_OPENED = 'pull request not opened yet'
-function stateWords(state: string | undefined, isOpen: boolean, publishing: boolean): string | undefined {
-  if (state === 'open' && !isOpen) return TO_DO
-  if (state === 'unpublished') return isOpen && publishing ? WRITING_PR : PR_NOT_OPENED
-  return state
-}
+type Gap = { tasks: number; done: number; first: number; last: number; edge?: 'above' | 'below' }
 
 // A tree row too wide for the room cuts its title, at a word and marked by …, never its lead (indent and mark) or the state
 // words after it. No room given cuts nothing.
@@ -183,30 +169,37 @@ function titleRow(lead: string, title: string, tail: string, width: number): str
   return `${lead}${cut === title ? cut : `${cut}${ELLIPSIS}`}${tail}`
 }
 
-// One unit's rows: its name and state, then what it is based on, the open unit's facts, its PR and its tasks.
-// building: the title of the task the live run builds; publishing: a live publish run writes the open unit's pull request;
-// width: the room each row has.
-function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpen'], indent: string, building?: string, width = 0, publishing = false): Part[][] {
+// A tree row with what the window needs of it: the rows it needs shown beside it (a task its tracer, unit and facts), and its
+// task's tick and its unit's position (group) when it is a task, and its indent, which an ellipsis row standing for it takes.
+type TreeRow = { parts: Part[]; needs: number[]; indent: string; task?: { checked: boolean }; group?: number }
+
+// One unit's rows: its name and state, then what it is based on, the open unit's facts, its PR and its tasks, each a row of
+// the tree at `rows`' end. building: the title of the task the live run builds; publishing: a live publish run writes the
+// open unit's pull request; width: the room each row has. The focus task's row is noted in `focus`.
+function unitRows(rows: TreeRow[], unit: PlanUnit, group: number, state: string | undefined, open: View['planOpen'], indent: string, context: number[], focus: { task?: PlanUnit['tasks'][number]; row?: number }, building?: string, width = 0, publishing = false) {
   const contentIndent = indent + NEST
   const isOpen = Boolean(open && open.unit === unit.unit)
-  const words = stateWords(state, isOpen, publishing)
+  const words = unitWords(state, isOpen, publishing)
   const next = unit.tasks.find(task => !task.checked)
-  return [
-    [{ text: titleRow(indent, unit.unit, words ? `${STATE_SEPARATOR}${words}` : '', width) }],
+  const push = (parts: Part[], needs: number[], task?: TreeRow['task'], at = contentIndent) => rows.push({ parts, needs, indent: at, ...(task ? { task, group } : {}) }) - 1
+  const unitRow = push([{ text: titleRow(indent, unit.unit, words ? `${STATE_SEPARATOR}${words}` : '', width) }], context, undefined, indent)
+  const header = [...context, unitRow]
+  const facts = [
     ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
     ...(open && isOpen ? openUnitLines(open, contentIndent) : []),
     ...prRows(unit.pr, contentIndent),
-    ...unit.tasks.map(task => {
-      const inProgress = !task.checked && task.title === building
-      return [{ text: taskRow(task, inProgress, task === next, contentIndent, width), ...(inProgress ? { props: LIT } : {}) }]
-    }),
-  ]
+  ].map(parts => push(parts, header))
+  for (const task of unit.tasks) {
+    const inProgress = !task.checked && task.title === building
+    const row = push([{ text: taskRow(task, inProgress, task === next, contentIndent, width), ...(inProgress ? { props: LIT } : {}) }], [...header, ...facts], { checked: task.checked })
+    if (task === focus.task) focus.row = row
+  }
 }
 
 // A task's mark and title: ▸ for the one being built, as STEPS marks its running step. A [HUMAN] task that is its unit's
 // next unticked one also says it waits on a person; one behind another unticked task is not reached yet.
 function taskRow(task: PlanUnit['tasks'][number], inProgress: boolean, isNext: boolean, indent: string, width: number): string {
-  const mark = task.checked ? TASK_MARKS.ticked : inProgress ? TASK_MARKS.inProgress : TASK_MARKS.unticked
+  const mark = taskMark(task, inProgress)
   const waiting = task.human && isNext ? `${STATE_SEPARATOR}${WAITING_ON_PERSON}` : ''
   return titleRow(`${indent}${mark} `, task.title, waiting, width)
 }
@@ -224,14 +217,36 @@ function tracerGroups(units: PlanUnit[]): TracerGroup[] {
   return groups
 }
 
+// How to see the whole plan, named on an ellipsis row: in full, else its short form, else not at all, as fits the room.
+const PLAN_HINTS = [' · /pb-plan shows all', ' · /pb-plan']
+const withPlanHint = (text: string, width: number) => [...PLAN_HINTS.map(hint => `${text}${hint}`), text].find(line => !(width > 0) || cells(line) <= width) ?? text
+
+// The PLAN block: the tree, in at most PLAN_ROWS rows with the plan's problems under it. A tree too long for its room is a
+// window around its focus (planFocus, windowRows), each cut a dim row that counts what it hides.
 function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen'], building?: string, width = 0, publishing = false): Part[][] {
   // The same unit the states resolved: a record naming only its tracer shows its facts under that tracer's first unit.
   const open = rawOpen && resolveOpenUnit(plan.units, rawOpen)
-  const tree = tracerGroups(plan.units).flatMap(({ tracer, units }) => [
-    ...(tracer ? [[{ text: tracer }]] : []),
-    ...units.flatMap(({ unit, index }) => unitRows(unit, states[index], open, tracer ? NEST : '', building, width, publishing)),
-  ])
-  return [...tree, ...(plan.problems ?? []).map((problem: string) => [{ text: problem }])]
+  const at = planFocus(plan.units, building)
+  const focus: { task?: PlanUnit['tasks'][number]; row?: number } = { task: at ? plan.units[at.unit].tasks[at.task] : undefined }
+  const rows: TreeRow[] = []
+  for (const { tracer, units } of tracerGroups(plan.units)) {
+    const context = tracer ? [rows.push({ parts: [{ text: tracer }], needs: [], indent: '' }) - 1] : []
+    for (const { unit, index } of units) unitRows(rows, unit, index, states[index], open, tracer ? NEST : '', context, focus, building, width, publishing)
+  }
+  // The problems are told first, so the tree has the room they leave.
+  const problems = problemRows(plan.problems ?? [])
+  const shown = windowRows(rows, { focus: focus.row ?? rows.length - 1, room: PLAN_ROWS - problems.length })
+  // An ellipsis row is indented as the shallowest row it hides.
+  const gapIndent = ({ first, last }: Gap) => rows.slice(first, last + 1).reduce((least, row) => (row.indent.length < least.length ? row.indent : least), rows[first].indent)
+  // The hint sits on the cut at the tree's end, else the one at its start: a cut between shown rows hides only a little.
+  const gaps = shown.flatMap((entry: { row: number } | { gap: Gap }) => ('gap' in entry ? [entry.gap] : []))
+  const hinted = gaps.find(gap => gap.edge === 'below') ?? gaps.find(gap => gap.edge === 'above')
+  const gapRow = (gap: Gap) => {
+    const text = `${gapIndent(gap)}${gapWords(gap)}`
+    return [{ text: gap === hinted ? withPlanHint(text, width) : text, props: { dimColor: true } }]
+  }
+  const tree = shown.map((entry: { row: number } | { gap: Gap }) => ('row' in entry ? rows[entry.row].parts : gapRow(entry.gap)))
+  return [...tree, ...problems.map((problem: string) => [{ text: problem }])]
 }
 
 // The details under the rule, read after the first glance.

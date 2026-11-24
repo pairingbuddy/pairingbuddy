@@ -5,6 +5,7 @@ import { newPollerState, startPoller, type PollerState } from './poll'
 import { Band } from './band'
 import { Pane } from './pane'
 import { openReport, reportLine } from './report'
+import { openPlan, planLine } from './plan-page'
 import { PANE_ID, type PbToggle, togglePane } from './pane-open'
 import { buildEndedView, buildView, type Tags, type View } from './view'
 
@@ -31,6 +32,7 @@ const publishedAtom = atom({ plugin: 'pairingbuddy', key: 'published' }, null)
 async function startWatching($: EngineInterface, poller: PollerState, options: PluginOptions) {
   await $.command.register({ name: 'pb', description: 'Open or close the Pairing Buddy pane', immediate: true })
   await $.command.register({ name: 'pb-report', description: 'Write the Pairing Buddy run report and open it', immediate: true })
+  await $.command.register({ name: 'pb-plan', description: 'Write the whole Pairing Buddy plan as a page and open it', immediate: true })
   await startPoller($, poller, options)
 }
 
@@ -49,6 +51,12 @@ function drawGlance(
 
   const tags = $.ui.resolve(e)
 
+  return viewNow($, spawns, calls).then(({ view, opened, note }) => draw(tags, view, opened, note))
+}
+
+// The view the band and the pane draw now, from what the poller last read, and what the pane's note and opened state say.
+// planPath: where the plan the view holds is.
+function viewNow($: EngineInterface, spawns: Spawn[], calls: Call[]): Promise<{ view: View; opened: boolean; note: string | null; planPath: string | null }> {
   // Until the first poll lands there is nothing to draw from, so the view is the idle one.
   return Promise.all([read($, inputsAtom), read($, openedAtom), read($, noteAtom), read($, lastRunAtom), read($, endedAtAtom), read($, publishedAtom)]).then(([polled, opened, note, lastRun, endedAt, published]) => {
     const live = fromPolled(polled, spawns, calls, published as Published | null)
@@ -61,8 +69,7 @@ function drawGlance(
     // The plan tree is read now too: a person ticks a box, and pb publish writes its PR: line, after the run has ended.
     const ended = { ...snapshot, unitOpen: live.unit !== null, task: live.task, plan: live.plan, planPath: live.planPath, planUnit: live.unit, ...(Number.isNaN(endedMs) ? {} : { now: endedMs }) }
     const view = live.ledger || !snapshot.ledger ? buildView(live) : buildEndedView(ended)
-    const reportNote = typeof note === 'string' ? note : null
-    return draw(tags, view, opened === true, reportNote)
+    return { view, opened: opened === true, note: typeof note === 'string' ? note : null, planPath: live.planPath ?? null }
   })
 }
 
@@ -115,6 +122,7 @@ export const register: Register = (on, options) => {
   on('command.run', ($, e, next) => {
     if (e.command === 'pb') return togglePane($, pbToggle).then(done => ({ text: `Pairing Buddy pane ${done}` }))
     if (e.command === 'pb-report') return openReport($, spawns, calls).then(outcome => ({ text: reportLine(outcome) }))
+    if (e.command === 'pb-plan') return Promise.all([viewNow($, spawns, calls), $.clock.now()]).then(([{ view, planPath }, now]) => openPlan($, view, planPath, now)).then(outcome => ({ text: planLine(outcome) }))
     return next(e)
   })
 

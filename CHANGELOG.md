@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The pane's PLAN block keeps to 24 rows, whatever the plan's size (the real plan's 150 tasks drew a tree of 200 rows, the task being built far below the ticked ones). It shows a window around the task being built, else the next unticked one, else the plan's end, with that task's tracer and unit rows and the open unit's facts. Each cut is a dim row that counts what it hides, such as `… 113 tasks done above`. The open unit shows at most four commit rows and the plan's problems at most three. `/pb-plan` writes the whole plan as a page, with the same states, and opens it, as `/pb-report` does. The cut at the tree's end names it.
+
 - The band's done line and the done notice name the plan's next unit, as STATUS does (S6 run: after unit A's PR opened they still read `ready for your next task` while unit B was to do). They read `done · next in the plan: Discounted totals`, and `ready for your next task` only once no unit has boxes left.
 
 - The report's Spent counts only the time the task's runs ran, as SPENT does (S6 run: the report still counted from the code run's start to the publish run's end, with the [HUMAN] task and the new session between them). It now adds up each run's own time, less its waits.

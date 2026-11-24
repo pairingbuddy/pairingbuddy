@@ -430,3 +430,13 @@ What changed:
 - **A stranded stage needs you.** An active stage that nothing has moved for 10 minutes (not its owner, its start, a ledger write or an agent of this session, none still running) reads `▲ NEEDS YOU · take over the run: its session is gone`. The rule and why it reads the ledger's last write are in `shared-node/stranded.mjs`.
 - **SPENT stops while nothing runs.** Its time ticked on through a stranded stage or a wait for the human, as if agents and tokens were being spent. While the run is stopped (the safety checks off included), needs you or is stranded, the time stops where the work did (the question's askedAt, the permission prompt's, the stranded stage's last move, the broken file's time, else the ledger's last write) and reads `paused`: `0 agents · 3:04 paused` in the pane, `3:04 paused · 0 agents` in the band. Dim as the rest of SPENT; STATUS already says why.
 - **The band says why, also once the pane opened.** Live check on b3878b1: the pane read `✕ STOPPED · safety checks are off`, the band `✕ STOPPED · opened details`. A question, a stop, safety checks off and a stranded stage now lead the band with what they need or why, whether or not the alert opened the pane. This replaces "opened details" in "Chosen direction", "The band" and decision 7 of "Hierarchy".
+
+## The plan window (2026-11-24)
+
+The real plan has 150 tasks. The PLAN tree drew every one, so it ran past 200 rows and the task being built sat far below the ticked ones. The human's direction:
+
+- **The PLAN block has a fixed most rows** (`PLAN_ROWS`, 24), whatever the plan's size. A plan that fits reads whole, as before.
+- **It shows a window around the focus:** the task being built, else the next unticked task (a `[HUMAN]` one waiting on a person too), else the plan's end. The focus keeps its tracer and unit rows and the open unit's facts; a unit of many tasks is windowed under them. Two rows below for each above, and a unit above comes whole or not at all.
+- **Each cut is a dim ellipsis row** with a plain count, only where something was cut: `… 113 tasks done above`, `… 34 tasks to do below`, `… 4 tasks done` between shown rows. The cut at the tree's end names `/pb-plan` (`· /pb-plan shows all`, `· /pb-plan` when narrow).
+- **Everything is bounded:** at most four commit rows for the open unit (`… 3 earlier commits` and the latest three) and three rows of plan problems (the first two and `… N more plan problems`).
+- **`/pb-plan`** writes the whole tree as a page beside the reports, with the same states (done, open, to do, being built, waiting on a person, PRs), opens it and answers with its path, as `/pb-report` does. It is a command of its own, not a section of the report, because a plan spans many tasks and exists with no run to report.
