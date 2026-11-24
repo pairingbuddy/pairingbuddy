@@ -310,9 +310,9 @@ render_status() {
         if (last) console.log(`Agent: ${last}`);
         console.log(`Spend: ${seen ? `${total} tokens` : "unknown"}`);
     ')
-    if [[ -n "$stream_lines" ]]; then
-        content="${content}${stream_lines}${NL}"
-    fi
+    # No stream file yet: the spend is unknown
+    [[ -n "$stream_lines" ]] || stream_lines="Spend: unknown"
+    content="${content}${stream_lines}${NL}"
 
     # Fallback if nothing to display
     if [[ -z "$content" ]]; then
