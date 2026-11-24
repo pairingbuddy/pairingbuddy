@@ -183,7 +183,7 @@ FINAL_RENDERED=""
 read_state_line() {
     local file="$1" body="$2"
     [[ -f "$file" ]] || return 0
-    node -e "const text = require('fs').readFileSync(process.argv[1], 'utf8'); let state; try { state = JSON.parse(text); } catch (error) {} ${body}" "$file" 2>/dev/null || true
+    node -e "const text = require('fs').readFileSync(process.argv[1], 'utf8'); let state; try { state = JSON.parse(text); } catch (error) {} const clip = (value, max = 60) => { const plain = String(value).replace(/[\\u0000-\\u001f\\u007f-\\u009f]+/g, ' ').trim(); return plain.length > max ? plain.slice(0, max - 1) + '…' : plain; }; ${body}" "$file" 2>/dev/null || true
 }  # end read_state_line
 
 render_status() {
@@ -275,7 +275,7 @@ render_status() {
     unit_line=$(read_state_line ".pairingbuddy/run/unit.json" '
         const n = Array.isArray(state.tasks) ? state.tasks.length : 0;
         const count = `(${n} ${n === 1 ? "task" : "tasks"})`;
-        console.log(state.branch ? `${state.branch} ${count}` : count);
+        console.log(state.branch ? `${clip(state.branch)} ${count}` : count);
     ')
     if [[ -n "$unit_line" ]]; then
         content="${content}Unit: ${dim}${unit_line}${reset}${NL}"
@@ -286,9 +286,9 @@ render_status() {
     ledger_line=$(read_state_line ".pairingbuddy/run/task/ledger.json" '
         const s = state.stage;
         const attempt = s && s.attempt !== undefined ? `(attempt ${s.attempt})` : "";
-        if (state.stop && state.stop.reason) console.log(`Stopped: ${state.stop.reason}`);
-        else if (s && s.name) console.log(`Stage: ${[s.name, s.status, attempt].filter(Boolean).join(" ")}`);
-        if (state.needsHuman && state.needsHuman.gate) console.log(`Waiting on: ${state.needsHuman.gate}`);
+        if (state.stop && state.stop.reason) console.log(`Stopped: ${clip(state.stop.reason)}`);
+        else if (s && s.name) console.log(`Stage: ${[clip(s.name, 30), clip(s.status ?? "", 30), attempt].filter(Boolean).join(" ")}`);
+        if (state.needsHuman && state.needsHuman.gate) console.log(`Waiting on: ${clip(state.needsHuman.gate)}`);
     ')
     if [[ -n "$ledger_line" ]]; then
         content="${content}${ledger_line}${NL}"
@@ -301,9 +301,9 @@ render_status() {
         const events = text.split("\n").map((line) => { try { return JSON.parse(line); } catch (error) { return null; } });
         const system = events.filter((event) => event && event.type === "system");
         const progress = system.filter((event) => event.subtype === "task_progress" && event.description);
-        const last = progress.length ? progress[progress.length - 1].description : "";
+        const last = progress.length ? clip(progress[progress.length - 1].description) : "";
         const tokens = system
-            .filter((event) => event.subtype === "task_notification" && event.usage)
+            .filter((event) => event.subtype === "task_notification" && event.usage && event.usage.total_tokens !== null && event.usage.total_tokens !== undefined)
             .map((event) => Number(event.usage.total_tokens))
             .filter(Number.isFinite);
         const total = tokens.reduce((sum, count) => sum + count, 0);
