@@ -236,7 +236,21 @@ test("shows-unknown-spend-with-no-notifications", () => {
 });
 
 test("task-notification-without-usage-adds-nothing", () => {
-  assert.fail("not implemented: A task_notification with no usage field does not break the sum or add to it");
+  const stream = jsonl([
+    { type: "system", subtype: "task_notification", usage: { total_tokens: 1200 } },
+    { type: "system", subtype: "task_notification", summary: "Finished without usage" },
+    { type: "system", subtype: "task_notification", usage: { total_tokens: 3300 } },
+  ]);
+
+  const result = renderWithFiles({ "solo-stream.jsonl": stream });
+
+  assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /^Spend: 4500 tokens$/m,
+    "the Spend line sums only the notifications that carry usage, and the one without adds nothing",
+  );
+  assert.doesNotMatch(result.stdout, /NaN|null|undefined/, "the missing usage does not leak into the output");
 });
 
 test("missing-unit-json-does-not-crash", () => {
