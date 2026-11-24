@@ -126,3 +126,9 @@ test("above the focus the cut rows collapse into one at the top; the focus unit'
   assert.deepEqual(gaps.map(([edge]) => edge), ["above", undefined, "below"], "one cut above, one inside the focus unit, one below");
   assert.equal(gaps[0][1], 8, "the cut above counts every hidden task of the other units: tracer A's four and tracer B's first unit's four");
 });
+
+test("a unit whose pull request is being written, or waits to be opened, is the focus: its last task", () => {
+  const unitA = { ...UNITS[0] };
+  assert.deepEqual(planFocus([unitA, UNITS[1], UNITS[2]], undefined, 0), { unit: 0, task: 1 }, "unit A is ticked; its last task, not unit B's next one");
+  assert.deepEqual(planFocus(UNITS, "Task 4", undefined), { unit: 1, task: 1 }, "with no such unit, as before");
+});

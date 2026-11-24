@@ -232,7 +232,10 @@ const withPlanHint = (text: string, width: number) => [...PLAN_HINTS.map(hint =>
 function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen'], building?: string, width = 0, publishing = false, room = PLAN_ROWS): Part[][] {
   // The same unit the states resolved: a record naming only its tracer shows its facts under that tracer's first unit.
   const open = rawOpen && resolveOpenUnit(plan.units, rawOpen)
-  const at = planFocus(plan.units, building)
+  // The open unit whose pull request is being written, or is not opened yet, is the focus while it waits on that.
+  const openIndex = open ? plan.units.findIndex(unit => unit.unit === open.unit) : -1
+  const awaitingPr = openIndex !== -1 && (publishing || states[openIndex] === 'unpublished') ? openIndex : undefined
+  const at = planFocus(plan.units, building, awaitingPr)
   const focus: { task?: PlanUnit['tasks'][number]; row?: number } = { task: at ? plan.units[at.unit].tasks[at.task] : undefined }
   const rows: TreeRow[] = []
   for (const { tracer, units } of tracerGroups(plan.units)) {

@@ -129,9 +129,12 @@ export function gapWords({ tasks, done, edge }) {
   return `… ${count}${where}, ${done} done`;
 }
 
-// Where the window is: the unticked task the live run builds (building, its title), else the plan's next unticked task (a
+// Where the window is: the open unit whose pull request is being written or not opened yet (publishing, its index), at its
+// last task; else the unticked task the live run builds (building, its title), else the plan's next unticked task (a
 // [HUMAN] one waits on a person), else, all ticked, the plan's last task. As { unit, task } indices; null with no task.
-export function planFocus(units, building) {
+export function planFocus(units, building, publishing) {
+  const published = publishing === undefined ? undefined : units[publishing];
+  if (published?.tasks.length) return { unit: publishing, task: published.tasks.length - 1 };
   const at = (match) => {
     for (const [u, { tasks }] of units.entries()) {
       const t = tasks.findIndex(match);

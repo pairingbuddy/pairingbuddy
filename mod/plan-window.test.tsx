@@ -111,3 +111,13 @@ test('in a narrow pane the hint on the cut gives way to its short form, and neve
 
   expect(narrow[0], 'all done: the only cut is above, and it carries the hint').toBe('PLAN     … 135 tasks done above · /pb-plan')
 })
+
+// The open unit once pb has built and ticked all its tasks (first..last): its pull request is not opened yet.
+const openUnit = (name: string, tracer: string, first: number, last: number) => JSON.stringify({ unit: name, plan: 'docs/plans/shop.md', tracer, branch: 'feat/t3b', base: 'main', baseSha: 'abc', tasks: Array.from({ length: last - first + 1 }, (_, i) => ({ title: `Task ${first + i}: Do step ${first + i}` })), commits: [] })
+
+test('an open unit whose pull request is not opened yet is the focus, not the next unticked task', async ($, on) => {
+  const rows = await planBlock($, on, bigPlan(15, 100), { '.pairingbuddy/run/unit.json': openUnit('T3b Unit', 'T3: Tracer 3', 26, 30) })
+
+  expect(rows, `the open unit's title and its last task show:\n${rows.join('\n')}`).toEqual(expect.arrayContaining(['           T3b Unit · pull request not opened yet', '             ✓ Task 30: Do step 30']))
+  expect(rows.some(row => row.includes('Task 101')), 'the next unticked task is far below, cut').toBe(false)
+})
