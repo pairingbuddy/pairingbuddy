@@ -82,6 +82,18 @@ test('tests-leads-with-how-many-are-done-of-the-total', async ($, on) => {
   expect(row.slice(1).map(line => line.trim().slice(0, 2)), 'then one line per test').toEqual(['▸ ', '· '])
 })
 
+// Scenario S6 at 60 columns: `▸ apply discount 100 10 returns` read as if whole, its "90" cut with no mark. A test name too long
+// for the room is cut at a word and ends in …, as plan titles and REVIEW titles are.
+test('a-test-name-too-long-for-the-room-is-cut-at-a-word-and-ends-in-an-ellipsis', async ($, on) => {
+  await serve($, on, building, { [`${ARTIFACTS}/${PLACEHOLDERS_KEY}.json`]: placeholders }, `pb1 code-tdd GREEN implement-code ${FIRST} r1`)
+
+  const narrow = testsRow(await paneLines($, { bodyColumns: 40 }))
+  const wider = testsRow(await paneLines($, { bodyColumns: 50 }))
+
+  expect(narrow[2], `the waiting test, cut: ${JSON.stringify(narrow)}`).toBe('         · order total of no lines is…')
+  expect(wider[1], `the current test, cut before its cycle marker: ${JSON.stringify(wider)}`).toMatch(/^ {9}▸ order[^…]*…  ✓RED/)
+})
+
 const passedRecord = { ...record, exitCodes: [0] }
 const selectorOf = (id: string) => ({ runner_id: 'pytest', test_file: 'tests/test_cart.py', test_function: id })
 const built = {

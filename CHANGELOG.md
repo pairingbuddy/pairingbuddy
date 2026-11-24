@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A TESTS name too long for the room is cut at a word and marked by `…` (S6 run at 60 columns: `▸ apply discount 100 10 returns` read as if whole, its `90` cut with no mark). Plan and REVIEW titles are cut the same way. The report's SCENARIOS still holds every name whole.
+
 - A plan unit with every box ticked and no PR yet says what is happening in plain words (S6 run: `Discounted totals · unpublished` while unit B's pull request was being written). While the publish run is live it reads `writing the pull request`, otherwise `pull request not opened yet`.
 
 - A done unit's STATUS names the plan's next unit when the plan has one left (S6 run: once unit A's PR opened it read `ready for your next task`, as if the plan were over, while unit B was still to do). It now reads `next in the plan: Discounted totals`, and `ready for your next task` only once no unit has boxes left.

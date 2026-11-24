@@ -33,10 +33,12 @@ function rowLines(name: string, lines: Part[][], labelProps: Props = DETAIL_LABE
 }
 
 const cells = (text: string) => [...text].length
+// What marks a cut title or name.
+const ELLIPSIS = '…'
 
-// A test line stays one line, so a long name is cut at the last word that fits, never with an ellipsis (the report's SCENARIOS
-// holds it whole); no room given cuts nothing.
-const cutName = (name: string, room: number) => cutAtWord(name, room)
+// A test line stays one line, so a long name is cut at the last word that fits and marked by …, as plan and REVIEW titles are
+// (the report's SCENARIOS holds it whole); no room given cuts nothing.
+const cutName = (name: string, room: number) => (!(room > 0) || cells(name) <= room ? name : `${cutAtWord(name, room - ELLIPSIS.length)}${ELLIPSIS}`)
 
 // The current test's cycle marker and step age, as parts.
 function cycleParts(test: NonNullable<View['test']>): Part[] {
@@ -173,7 +175,6 @@ function stateWords(state: string | undefined, isOpen: boolean, publishing: bool
 
 // A tree row too wide for the room cuts its title, at a word and marked by …, never its lead (indent and mark) or the state
 // words after it. No room given cuts nothing.
-const ELLIPSIS = '…'
 function titleRow(lead: string, title: string, tail: string, width: number): string {
   const whole = `${lead}${title}${tail}`
   if (!(width > 0) || cells(whole) <= width) return whole

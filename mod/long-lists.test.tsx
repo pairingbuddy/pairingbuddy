@@ -127,7 +127,7 @@ for (const columns of WIDTHS) {
     expect(tests.length, `TESTS is at most 5 lines: ${JSON.stringify(tests)}`).toBeLessThanOrEqual(5)
     expect(tests[0], 'the done tests fold into the count of the total').toBe('TESTS    10 of 40 done')
     expect(tests.at(-1), 'the waiting tests past the shown ones are counted').toBe(`${' '.repeat(LABEL_WIDTH)}+27 more`)
-    // A test line stays one line: a long name is cut at a word, never with an ellipsis; the report's SCENARIOS holds it whole.
+    // A test line stays one line: a long name is cut at a word and marked by …; the report's SCENARIOS holds it whole.
     // Only a finding's title, too long for the room, is cut, at a word and marked by …; what happens to it stays whole.
     expect(lines.filter(line => line.includes('…')).every(line => /^ +left as is · \S.*\S…$/.test(line)), `only finding titles are cut with an ellipsis: ${JSON.stringify(lines)}`).toBe(true)
   })
