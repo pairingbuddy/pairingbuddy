@@ -266,7 +266,6 @@ function runOpen(args) {
   const planPath = flagValue(args, "--plan");
   const hasPlan = args.includes("--plan");
   if (hasPlan && (kind !== "code" || planPath === undefined || planPath.startsWith("-"))) throw new UsageError("usage: pb run open --kind code [--plan <plan.md>]");
-  if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Refusal("Solo stays on the old path until T10, so no run was opened");
   const root = toplevel();
   assertNotStopped(root);
   if (kind === "publish") assertPublishable(root);

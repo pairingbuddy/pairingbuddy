@@ -108,7 +108,7 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_stop_if_run_open()` | The check in An Open Run Comes First. |
 | `_stop_if_unit_open()` | If `.pairingbuddy/run/unit.json` exists, stop and tell the human the open unit's branch (read from unit.json) and that the old path cannot run inside a unit. They can finish the unit's work on the new path, or leave it by running `pb human abandon` (human-only: they type `!cd <project root> && node <root>/cli/pb.mjs human abandon`, which removes the unit and task state and keeps every commit). |
 | `_write_task(task)` | Write the new task to `.pairingbuddy/task.json`. It waits for cleanup: curation reads the just-completed task from that file, and cleanup deletes it. |
-| `_curating_guidance(task)` | Runs the curating-guidance skill in the main context, before cleanup, outside Solo (plan tasks included). With no human it carries guidance over silently. |
+| `_curating_guidance(task)` | Runs the curating-guidance skill in the main context, before cleanup, outside Solo and in every plan task (plan tasks included, Solo's too). Solo's non-plan tasks use the `curate_guidance` agent. With no human it carries guidance over silently. |
 | `_setting_up_spike(task)` | Runs the setting-up-spike skill in the main context. It runs inside `_run_new_path(task)`, after G:type, for a spike. |
 | `_run_plan_loop(plan_path)` | Runs a plan, in Solo too, one task at a time, on the new path. See Plan Loop. |
 | `_run_new_path(task)` | Runs a migrated type through its workflow stages. See Migrated-Types Router. |
@@ -136,7 +136,7 @@ if _detect_plan_file(task):
 # Curate guidance from previous session (always runs - handles review and bootstrap, and with no human
 # it carries over silently and asks nothing)
 if _is_solo():
-    human_guidance = curate_guidance(human_guidance, task)  # Solo keeps the agent until T10
+    human_guidance = curate_guidance(human_guidance, task)  # Solo's non-plan tasks keep the agent; plan tasks use the skill in the Plan Loop
 else:
     _curating_guidance(task)  # the curating-guidance skill, in the main context
 
@@ -150,7 +150,7 @@ if not _is_solo():
     _run_new_path(task)
     _stop("Task complete.")
 
-# Solo only: classify here and take the old branches
+# Solo's non-plan tasks only: classify here and take the old branches
 task_classification = classify_task(task)
 task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refactoring" | "config_change" | "spike"
 
@@ -327,7 +327,7 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 ### State File Management
 
 1. At cycle start, verify `.pairingbuddy/` is in `.gitignore`
-2. Curate guidance (before cleanup). The curating-guidance skill does this outside Solo, plan tasks included; the `curate_guidance` agent does it only in Solo:
+2. Curate guidance (before cleanup). The curating-guidance skill does this outside Solo and in every plan task, Solo's too; the `curate_guidance` agent does it only for Solo's non-plan tasks:
    - If `human-guidance.json` has entries: review/curate existing guidance
    - If empty or missing: offer to add new persistent guidance
    - Approved entries get `"persistent": true` flag

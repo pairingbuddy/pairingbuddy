@@ -5,7 +5,7 @@
 // one next action is told once per session, however many turns pass, and only a changed action blocks again. Each
 // session keeps its own notice, so one cannot erase what another was told. A chain of changing actions ends at
 // MAX_CHAIN, which bounds a loop that a changing action would not. A session that does not own the run is told nothing,
-// unless the run has no owner, and Solo is told nothing because it stays on the old path until T10.
+// unless the run has no owner, and Solo is told nothing, because its own Plan Loop drives the stages.
 // stop_hook_active cannot be the guard: it stays true down the chain, so it would leave a second stage untold.
 // Any failure stays silent, because a hook that errors here must not cost a turn. Built-ins only outside a run.
 import { readFileSync, writeFileSync } from "node:fs";

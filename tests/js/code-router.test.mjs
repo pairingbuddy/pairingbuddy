@@ -83,13 +83,14 @@ test("a plan run does not read the coding classification", (t) => {
   assert.equal(ledgerOf(root).taskType, null);
 });
 
-test("Solo stays on the old path: no run opens under it, even for a config change", (t) => {
+test("Solo opens a run like any session, for a config change", (t) => {
   const root = makeRepo(t);
   classifyAs(root, "config_change");
 
   const r = pb(root, OPEN, { env: { ...process.env, PAIRINGBUDDY_SOLO: "true" } });
 
-  assertRefusedWithNoRunState(root, r, /Solo.*old path/);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(ledgerOf(root).taskType, null);
 });
 
 test("PAIRINGBUDDY_SOLO=false is not Solo", (t) => {
