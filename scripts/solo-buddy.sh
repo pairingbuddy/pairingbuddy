@@ -23,7 +23,7 @@ STATUS_FILE=".pairingbuddy/solo-status"
 RENDER_INTERVAL=0.08
 
 # Build invocation arguments
-CLAUDE_ARGS=(-p --dangerously-skip-permissions --output-format json)
+CLAUDE_ARGS=(-p --dangerously-skip-permissions --output-format stream-json --verbose)
 
 require_arg() {
     local flag="$1"
