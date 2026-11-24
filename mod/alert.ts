@@ -2,7 +2,7 @@ import type { EngineInterface, PluginOptions } from 'claude-code'
 import type { Ledger } from './inputs'
 import { openPane } from './pane-open'
 import { needsYouLine, stopLine } from '../shared-node/glance.mjs'
-import { DONE_WORDS } from '../shared-node/end-state.mjs'
+import { doneWords } from '../shared-node/end-state.mjs'
 
 const OPENED = { plugin: 'pairingbuddy', key: 'opened' }
 
@@ -29,8 +29,9 @@ function quietly(effect: () => unknown) {
 type Event = { ledger: NonNullable<Ledger> } | { done: string }
 
 // Raises the alert for what the ledger shows, or, with no ledger, for a unit done with nothing left to do (done: the code run's
-// id). Never throws and never waits for the clip: a failed or slow alert must not break or block the poll or a hook.
-export async function alertOn($: EngineInterface, ledger: Ledger | null, options: PluginOptions = {}, done: string | null = null) {
+// id; next: the plan's next unit, which the done notice names). Never throws and never waits for the clip: a failed or slow
+// alert must not break or block the poll or a hook.
+export async function alertOn($: EngineInterface, ledger: Ledger | null, options: PluginOptions = {}, done: string | null = null, next?: string) {
   const event: Event | null = ledger ? { ledger } : done ? { done } : null
   await clearStaleStatus($, event)
   if (!event) return
@@ -41,7 +42,7 @@ export async function alertOn($: EngineInterface, ledger: Ledger | null, options
   // Read as the alert fires; an absent option means on.
   if (options.alertSound !== false) quietly(() => $.audio.play(SOUND))
   quietly(() => setStatus($, event))
-  if (!('ledger' in event)) quietly(() => $.ui.notify(DONE_WORDS, { title: NOTICE_TITLE }))
+  if (!('ledger' in event)) quietly(() => $.ui.notify(doneWords(next), { title: NOTICE_TITLE }))
   quietly(() => markStatusSet($, event))
   quietly(() => $.state.set(OPENED, false).then(() => openAndRecord($)))
 }

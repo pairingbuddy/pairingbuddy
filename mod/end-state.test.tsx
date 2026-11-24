@@ -2,7 +2,7 @@
 // (docs/design/progress-mod/DIRECTION.md, "The end state answers ..."). The rows are always drawn; before the end they read a dash.
 import { expect, test } from 'claude-code/testing'
 import { PANE, paneLines, setupReplay, type Rig } from './testing/replay'
-import { LEDGER, ROOT, SNAPSHOT_RUNNING, start } from './testing/band'
+import { LEDGER, ROOT, SNAPSHOT_RUNNING, bandTexts, start } from './testing/band'
 import { POLL_MS } from './poll'
 import { publishedOf } from './published'
 
@@ -260,4 +260,27 @@ test('done with a unit left in the plan, STATUS names that unit as next', async 
   await rig.clock.advance(POLL_MS * 2)
 
   expect(rowOf(await paneLines($), 'STATUS')).toBe('STATUS   ✓ DONE · PR #7 opened · next in the plan: Tax')
+})
+
+// Scenario S6 frame 04: the band's done line and the done notice still read "ready for your next task" while STATUS named
+// unit B. They name the plan's next unit too.
+test('done with a unit left in the plan, the band and the done notice name that unit as next', async ($, on) => {
+  const rig = setupReplay(on)
+  const notices: string[] = []
+  on('ui.notify', (_: unknown, e: { text: string }) => { notices.push(e.text); return { value: undefined } })
+  const signedOff = { ...codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), plan: { path: PLAN, title: 'Task 1: Add order_total' } }
+  serve(rig, { [LEDGER]: signedOff, [UNIT]: { ...planUnit, unit: 'Order total', tracer: 'T1: Cart' }, [PLAN]: TWO_UNITS })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await lensReturn($, 'corpus-misalignment', [])
+  await rig.clock.advance(POLL_MS * 2)
+  rig.toolResults.set('Bash', { stdout: '{"ok":true,"result":"published","url":"https://github.com/o/r/pull/7","warnings":[]}\n', stderr: '' })
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'tu-publish', command: 'node /plugin/cli/pb.mjs publish' })
+  const kept = '.pairingbuddy/reports/runs/code-run'
+  serve(rig, { [PLAN]: TWO_UNITS, [`${kept}/ledger.json`]: signedOff, [`${kept}/kept.json`]: { unit: 'feat/order-total abc', endedAt: '2026-11-14T10:02:31.000Z' } })
+  await rig.clock.advance(POLL_MS * 2)
+
+  expect((await bandTexts($, { bodyColumns: 120 })).join(''), 'the band names the next unit').toContain('✓ DONE · next in the plan: Tax')
+  // This rig keeps no store, so the once-per-run record does not hold: only the wording is checked here.
+  expect([...new Set(notices)], 'the done notice names it too').toEqual(['done · next in the plan: Tax'])
 })

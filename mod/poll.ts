@@ -3,7 +3,7 @@ import { pollInputs, readKeptRuns, type EarlierSpend, type KeptRun, type Polled,
 import { endedTaskFacts, taskRan, taskRuns, taskSpend, taskWaited } from '../shared-node/task-runs.mjs'
 import { alertOn, openOnRunStart } from './alert'
 import { runStart } from '../shared-node/glance.mjs'
-import { codeRunOf, isUnitDone } from '../shared-node/end-state.mjs'
+import { codeRunOf, isUnitDone, nextUnitOf } from '../shared-node/end-state.mjs'
 import type { CodeRun, Spawn } from './inputs'
 
 export const POLL_MS = 1000
@@ -123,7 +123,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
       const polled = { ...read, since: sinceOf(unitStart(state, read), read, earlier), ...(await unitRecord($, state, read)), task: await endedTask($, state, read), earlierAgents: earlier?.agents ?? 0, earlier }
       await $.state.set(INPUTS, polled)
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.
-      await alertOn($, polled.ledger, options, doneRunOf(polled))
+      await alertOn($, polled.ledger, options, doneRunOf(polled), nextUnitOf(polled.plan))
       await openOnRunStart($, polled.ledger)
       // The last ledger read is kept as the snapshot; a new one overwrites it, and a gone ledger leaves it.
       if (polled.ledger) {

@@ -1,5 +1,5 @@
 import { fitBand, SEPARATOR } from '../shared-node/glance.mjs'
-import { READY, goalGist } from '../shared-node/end-state.mjs'
+import { goalGist, nextWords } from '../shared-node/end-state.mjs'
 import { PHASES } from '../shared-node/labels.mjs'
 import { ACCENT_COLOUR, PHASE_COLOURS, STATUS_LOOKS } from './pane'
 import type { Segment, Tags } from './view'
@@ -58,16 +58,17 @@ function segmentTexts(Text: Tags['Text'], segment: Segment) {
 
 // The band's one quiet line, when no step shows: its head, the words after it, and whether they are dim.
 // Between steps the run is still at work: the working mark leads, then the dim line; the goal row above names the session, so
-// it needs no "Pairing Buddy" label. Done leads with STATUS's done head, then the call to action, plain and not dim.
-function quietLine({ between, ended, done }: { between?: string; ended?: boolean; done?: boolean }): { head?: string; headProps?: Record<string, unknown>; words: string; dim: boolean } {
+// it needs no "Pairing Buddy" label. Done leads with STATUS's done head, then the call to action, plain and not dim: the plan's
+// next unit (next) when it has one left, as STATUS says it.
+function quietLine({ between, ended, done, next }: { between?: string; ended?: boolean; done?: boolean; next?: string }): { head?: string; headProps?: Record<string, unknown>; words: string; dim: boolean } {
   const { working, done: finished } = STATUS_LOOKS
   if (between) return { head: `${working.bandHead} `, headProps: working.headProps, words: between, dim: true }
-  if (ended && done) return { head: finished.bandHead, headProps: finished.headProps, words: `${finished.sep}${READY}`, dim: false }
+  if (ended && done) return { head: finished.bandHead, headProps: finished.headProps, words: `${finished.sep}${nextWords(next)}`, dim: false }
   return { words: ended ? ENDED : IDLE, dim: true }
 }
 
 // While a stage is active or a question waits, only the segments that fit; otherwise the quiet line. The commands hint follows.
-export function Band({ Box, Text, band, goal, columns, running, waiting, ended, done, between }: Pick<Tags, 'Box' | 'Text'> & {
+export function Band({ Box, Text, band, goal, columns, running, waiting, ended, done, between, next }: Pick<Tags, 'Box' | 'Text'> & {
   band: Segment[]
   goal?: string
   columns: number
@@ -76,6 +77,7 @@ export function Band({ Box, Text, band, goal, columns, running, waiting, ended, 
   ended?: boolean
   done?: boolean
   between?: string
+  next?: string
 }) {
   // A question or a stop leads with what it needs or why, also once the alert opened the pane: the band is what a human
   // cycling sessions reads, and "opened details" told them nothing (live check, 2026-11-22).
@@ -84,7 +86,7 @@ export function Band({ Box, Text, band, goal, columns, running, waiting, ended, 
   const content = running || waiting ? fitBand(source, bandColumns(columns)) : undefined
   const hint = [HINT, SHORT_HINT].find(candidate => JSON.stringify(fitBand(source, bandColumns(columns, candidate))) === JSON.stringify(content))
   const shown = content
-  const quiet = quietLine({ between, ended, done })
+  const quiet = quietLine({ between, ended, done, next })
   // The hint gives way first when the width is short; with no width known yet it stays.
   const room = columns > 0 ? columns - CONTROL_WIDTH - (quiet.head?.length ?? 0) : Infinity
   const quietText = [`${quiet.words}${IDLE_SEPARATOR}${HINT}`, `${quiet.words}${IDLE_SEPARATOR}${SHORT_HINT}`, quiet.words].find(text => text.length <= room) ?? quiet.words

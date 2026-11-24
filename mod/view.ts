@@ -7,7 +7,7 @@ import type { LensRound } from '../shared-node/lens-round.mjs'
 import { unitStates } from '../shared-node/plan.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { cycleMarker, progressRow, shortName, stepAge, testCounts } from '../shared-node/now-building.mjs'
-import { doneStatus, endRows, goalOf, isUnitDone, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
+import { doneStatus, endRows, goalOf, isUnitDone, nextUnitOf, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
 import type { Inputs, Ledger, OpenUnit } from './inputs'
 import { STATUS_LOOKS } from './pane'
 
@@ -67,6 +67,8 @@ export type View = {
   planBuilding?: string
   // A live publish run is writing the open unit's pull request.
   planPublishing?: boolean
+  // The plan's next unit to build, which a done unit names as what comes next.
+  planNext?: string
 }
 
 type PlannedUnits = NonNullable<Inputs['plan']>['units']
@@ -97,10 +99,10 @@ function planStatesOf(inputs: Inputs): string[] | undefined {
 // The open unit the PLAN tree reads: the one open now when the view is told it apart, else the view's own.
 const treeUnit = (inputs: Inputs) => (inputs.planUnit !== undefined ? inputs.planUnit : inputs.unit)
 
-// What the PLAN tree reads: the plan, each unit's state, and the open unit with its PR link.
-function planFields(inputs: Inputs): Pick<View, 'plan' | 'planStates' | 'planOpen' | 'planOpenPr'> {
+// What the PLAN tree reads: the plan, each unit's state, the open unit with its PR link, and the plan's next unit.
+function planFields(inputs: Inputs): Pick<View, 'plan' | 'planStates' | 'planOpen' | 'planOpenPr' | 'planNext'> {
   const unit = treeUnit(inputs)
-  return { plan: inputs.plan, planStates: planStatesOf(inputs), planOpen: unit?.open, planOpenPr: unit?.prUrl }
+  return { plan: inputs.plan, planStates: planStatesOf(inputs), planOpen: unit?.open, planOpenPr: unit?.prUrl, planNext: nextUnitOf(inputs.plan) }
 }
 
 export type EndRows = Record<'done' | 'pr', string>
@@ -270,13 +272,9 @@ function endState(inputs: Inputs, running: boolean, live: boolean): Pick<View, '
   const finished = inputs.codeRun?.taskEndPassed === true && (!running || isPublishRun(inputs.ledger)) && round !== undefined
   const unitOpen = inputs.unitOpen ?? Boolean(inputs.unit)
   const done = isUnitDone({ live, codeRun: inputs.codeRun, unitOpen, pr })
-  return { end, ...(finished ? { endRound: round } : {}), done, ...(done ? { doneStatus: doneStatus({ codeRun: inputs.codeRun, round, pr, nextUnit: nextPlanUnit(inputs) }) } : {}) }
+  return { end, ...(finished ? { endRound: round } : {}), done, ...(done ? { doneStatus: doneStatus({ codeRun: inputs.codeRun, round, pr, nextUnit: nextUnitOf(inputs.plan) }) } : {}) }
 }
 
-// The plan's next unit to build: the first with boxes left, or undefined when the plan has none left, or there is no plan.
-function nextPlanUnit(inputs: Inputs): string | undefined {
-  return inputs.plan?.units.find(planned => planned.tasks.some(task => !task.checked))?.unit
-}
 
 const STATUS_PART = ' · '
 const NEXT_PUBLISH = `next: ${plainName(PUBLISH_STEP)}`

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The band's done line and the done notice name the plan's next unit, as STATUS does (S6 run: after unit A's PR opened they still read `ready for your next task` while unit B was to do). They read `done · next in the plan: Discounted totals`, and `ready for your next task` only once no unit has boxes left.
+
 - The report's Spent counts only the time the task's runs ran, as SPENT does (S6 run: the report still counted from the code run's start to the publish run's end, with the [HUMAN] task and the new session between them). It now adds up each run's own time, less its waits.
 
 - A TESTS name too long for the room is cut at a word and marked by `…` (S6 run at 60 columns: `▸ apply discount 100 10 returns` read as if whole, its `90` cut with no mark). Plan and REVIEW titles are cut the same way. The report's SCENARIOS still holds every name whole.

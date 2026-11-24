@@ -314,7 +314,7 @@ The human's findings:
 What changed:
 - **Two tiers.** GOAL and STATUS are the first glance, above the rule, with bold labels. The details sit under the rule with dim labels and full-strength values. See "Fixed layout", still the single truth.
 - **STATUS leads with a head** that draws the eye in proportion to urgency: a yellow block `▲ NEEDS YOU` (the strongest), a red block `✕ STOPPED` (as strong), a bold uncoloured `✓ DONE … ready for your next task` (a call to action, not an alarm), a calm accent `● working`, and a dim `○` for between runs, ended and no run.
-- **Done reads "ready for your next task"** in STATUS, the band and the notice alike, in place of "nothing left to do".
+- **Done reads "ready for your next task"** in STATUS, the band and the notice alike, in place of "nothing left to do". While the plan has a unit left, all three name it instead: "next in the plan: <unit>".
 - **The band leads with the same head** in the same colours, then the details. The calm `needs you: no` is gone. A narrow band keeps a question's or a stop's mark and what (`▲ your sign-off at the end`) before it cuts anything: a segment can carry its own short form, which `fitBand` takes first. Between steps the quiet line leads with `●` and drops its "Pairing Buddy" label. See "The band".
 - **Colour means one thing** gained the block: only needs-you and a stop are blocks, and yellow and red appear only in STATUS and at the head of the band. See "Colour means one thing".
 

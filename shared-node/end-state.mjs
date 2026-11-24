@@ -180,8 +180,16 @@ function prOutcome(pr) {
 
 // The call to action once the unit is done with nothing left to do.
 export const READY = "ready for your next task";
+
+// The plan's next unit to build: the first with boxes left; undefined when the plan has none left, or there is no plan.
+export const nextUnitOf = (plan) => plan?.units?.find((unit) => unit.tasks.some((task) => !task.checked))?.unit;
+
+// What comes once the unit is done: the plan's next unit when it has one left (nextUnit), else that it is ready for the next
+// task. STATUS, the band and the native notice all say it so.
+export const nextWords = (nextUnit) => (typeof nextUnit === "string" && nextUnit !== "" ? `next in the plan: ${nextUnit}` : READY);
+
 // The one wording for a unit done with nothing left to do, shared by the band and the native notice.
-export const DONE_WORDS = `done · ${READY}`;
+export const doneWords = (nextUnit) => `done · ${nextWords(nextUnit)}`;
 
 // The unit's work is over with nothing left to run: no run is live, the task was signed off, and either the pull request's
 // fate is known or no unit is open that would still publish.
@@ -195,6 +203,5 @@ export function isUnitDone({ live = false, codeRun, unitOpen = false, pr } = {})
 export function doneStatus({ codeRun, round, pr, nextUnit } = {}) {
   const goal = goalText(codeRun, round);
   const doubt = goal?.startsWith(IN_DOUBT);
-  const next = typeof nextUnit === "string" && nextUnit !== "" ? `next in the plan: ${nextUnit}` : READY;
-  return [goal && `goal ${goal}`, prOutcome(pr), doubt ? undefined : next].filter(Boolean).join(PART_BREAK);
+  return [goal && `goal ${goal}`, prOutcome(pr), doubt ? undefined : nextWords(nextUnit)].filter(Boolean).join(PART_BREAK);
 }
