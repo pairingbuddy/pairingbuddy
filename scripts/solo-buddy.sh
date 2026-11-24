@@ -176,13 +176,14 @@ SPINNER_INDEX=0
 FINAL_RENDERED=""
 
 render_status() {
-    # Print what a JS snippet says about a JSON state file, bound to `state`.
-    # Prints nothing when the file is missing or unreadable: node exits non-zero on bad JSON or a
+    # Print what a JS snippet says about a state file: `text` is its contents, `state` its parsed JSON
+    # (undefined when the file is not one JSON document, as a JSONL stream is not).
+    # Prints nothing when the file is missing or unreadable: node exits non-zero on a throwing snippet or a
     # missing binary, and `|| true` keeps set -e quiet. Defined here so render_status stays self-contained.
     read_state_line() {
         local file="$1" body="$2"
         [[ -f "$file" ]] || return 0
-        node -e "const state = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')); ${body}" "$file" 2>/dev/null || true
+        node -e "const text = require('fs').readFileSync(process.argv[1], 'utf8'); let state; try { state = JSON.parse(text); } catch (error) {} ${body}" "$file" 2>/dev/null || true
     }  # end read_state_line
 
     local spinner_chars=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
@@ -293,20 +294,17 @@ render_status() {
     fi
 
     # Show the description of the latest task_progress event in the captured claude stream
-    local stream_file=".pairingbuddy/solo-stream.jsonl"
-    local agent_line=""
-    if [[ -f "$stream_file" ]]; then
-        agent_line=$(node -e '
-            let last = "";
-            for (const line of require("fs").readFileSync(process.argv[1], "utf8").split("\n")) {
-                try {
-                    const event = JSON.parse(line);
-                    if (event.type === "system" && event.subtype === "task_progress" && event.description) last = event.description;
-                } catch (error) { /* skip a partial or invalid line */ }
-            }
-            if (last) console.log(last);
-        ' "$stream_file" 2>/dev/null || true)
-    fi
+    local agent_line
+    agent_line=$(read_state_line ".pairingbuddy/solo-stream.jsonl" '
+        let last = "";
+        for (const line of text.split("\n")) {
+            try {
+                const event = JSON.parse(line);
+                if (event.type === "system" && event.subtype === "task_progress" && event.description) last = event.description;
+            } catch (error) { /* skip a partial or invalid line */ }
+        }
+        if (last) console.log(last);
+    ')
     if [[ -n "$agent_line" ]]; then
         content="${content}Agent: ${agent_line}${NL}"
     fi
