@@ -158,6 +158,9 @@ export const register: Register = (on, options) => {
       Text={Text}
       view={view}
       columns={e.props.bodyColumns}
+      room={e.props.scroll?.bodyRows}
+      offset={e.props.scroll?.offset}
+      focused={e.props.isFocused}
       unknownLabels={view.unknownLabels}
       note={note}
     />

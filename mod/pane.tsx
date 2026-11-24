@@ -1,6 +1,7 @@
-import { cutAtWord, lensLines } from '../shared-node/lens-round.mjs'
-import { endReviewLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
+import { cutAtWord, lensLines, lensSummaryLines } from '../shared-node/lens-round.mjs'
+import { endReviewLines, endReviewSummaryLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
 import { commitRows, gapWords, planFocus, PLAN_ROWS, problemRows, STATE_SEPARATOR, taskMark, unitWords, WAITING_ON_PERSON, windowRows } from '../shared-node/plan-window.mjs'
+import { hiddenRows, moreRowsLine, paneBudget } from '../shared-node/pane-height.mjs'
 import { resolveOpenUnit } from './view'
 import type { RowTones, Status, StatusState, Tags, View } from './view'
 
@@ -64,7 +65,8 @@ function countLine({ total, done, covered, settled }: NonNullable<NonNullable<Vi
 
 // One TESTS row, a line per test: the folded counts first, then each test by its mark, the current one with its cycle marker and
 // step age, then "+n more" ("+n more so far" while the total is unknown). The current test's name gives way first, so its marker and age always fit the width.
-function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: number): Part[][] {
+// short, for a short pane: the counts and the current test only.
+function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: number, short = false): Part[][] {
   const folded = [progress?.folded ? `${MARKS.done} ${progress.folded} done` : '', progress?.coveredFolded ? `${MARKS.covered} ${progress.coveredFolded} covered` : ''].filter(Boolean)
   // Once the total is known its count leads, always on the first line, and stands for the folded tests too.
   const head = progress?.count ? [countLine(progress.count)] : folded.length ? [folded.join('   ')] : []
@@ -80,12 +82,13 @@ function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: 
   const settled = progress?.count?.settled === true
   const entryText = ({ mark, name }: { mark: keyof typeof MARKS; name: string }) => (settled && mark === 'covered' ? `${MARKS.done} ${name} · covered` : `${MARKS[mark]} ${name}`)
   for (const entry of entries) {
-    lines.push(entry.mark === 'current' ? currentLine(entry.name) : [{ text: cutName(entryText(entry), width) }])
+    if (entry.mark === 'current') lines.push(currentLine(entry.name))
+    else if (!short) lines.push([{ text: cutName(entryText(entry), width) }])
   }
   // A current test the list does not hold still gets its line.
   if (test?.current && !entries.some(entry => entry.mark === 'current')) lines.push(currentLine(test.current))
   // With the total not known yet, the count is of the tests seen so far.
-  if (progress?.more) lines.push([{ text: `+${progress.more} more${progress.known ? '' : ' so far'}`, props: { dimColor: true } }])
+  if (progress?.more && !short) lines.push([{ text: `+${progress.more} more${progress.known ? '' : ' so far'}`, props: { dimColor: true } }])
   return lines
 }
 
@@ -224,9 +227,9 @@ function tracerGroups(units: PlanUnit[]): TracerGroup[] {
 const PLAN_HINTS = [' · /pb-plan shows all', ' · /pb-plan']
 const withPlanHint = (text: string, width: number) => [...PLAN_HINTS.map(hint => `${text}${hint}`), text].find(line => !(width > 0) || cells(line) <= width) ?? text
 
-// The PLAN block: the tree, in at most PLAN_ROWS rows with the plan's problems under it. A tree too long for its room is a
-// window around its focus (planFocus, windowRows), each cut a dim row that counts what it hides.
-function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen'], building?: string, width = 0, publishing = false): Part[][] {
+// The PLAN block: the tree, in at most `room` rows (PLAN_ROWS, fewer in a short pane) with the plan's problems under it. A
+// tree too long for its room is a window around its focus (planFocus, windowRows), each cut a dim row that counts what it hides.
+function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen'], building?: string, width = 0, publishing = false, room = PLAN_ROWS): Part[][] {
   // The same unit the states resolved: a record naming only its tracer shows its facts under that tracer's first unit.
   const open = rawOpen && resolveOpenUnit(plan.units, rawOpen)
   const at = planFocus(plan.units, building)
@@ -238,7 +241,7 @@ function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOp
   }
   // The problems are told first, so the tree has the room they leave.
   const problems = problemRows(plan.problems ?? [])
-  const shown = windowRows(rows, { focus: focus.row ?? rows.length - 1, room: PLAN_ROWS - problems.length })
+  const shown = windowRows(rows, { focus: focus.row ?? rows.length - 1, room: room - problems.length })
   // An ellipsis row is indented as the shallowest row it hides.
   const gapIndent = ({ first, last }: Gap) => rows.slice(first, last + 1).reduce((least, row) => (row.indent.length < least.length ? row.indent : least), rows[first].indent)
   // The hint sits on the cut at the tree's end, else the one at its start: a cut between shown rows hides only a little.
@@ -252,48 +255,95 @@ function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOp
   return [...tree, ...problems.map((problem: string) => [{ text: problem }])]
 }
 
-// The details under the rule, read after the first glance.
-function paneRows(view: View, columns: number) {
+// A step to come, as STEPS marks it.
+const STEP_TO_COME = '○'
+
+// STEPS on one line, for a short pane: how many are done, the running step, and how many are to come.
+function stepsFolded(steps: string[]): Part[][] {
+  const count = (mark: string) => steps.filter(line => line.startsWith(mark)).length
+  const current = steps.find(line => line.startsWith(MARKS.current))
+  const parts: Part[] = [
+    ...(count(MARKS.done) ? [{ text: `${MARKS.done} ${count(MARKS.done)} done` }] : []),
+    ...(current ? [{ text: current, props: LIT }] : []),
+    ...(count(STEP_TO_COME) ? [{ text: `${count(STEP_TO_COME)} to come` }] : []),
+  ]
+  return parts.length ? [parts.flatMap((part, i) => (i > 0 ? [{ text: STATE_SEPARATOR }, part] : [part]))] : []
+}
+
+type Rows = ReturnType<typeof rowLines>
+
+// The details under the rule, read after the first glance. room: the rows the pane's body shows at once, when the platform
+// says; fixed: the rows drawn above and below these that never fold. A short room folds STEPS, then TESTS, then REVIEW, and
+// gives the PLAN block what is left (paneBudget).
+function paneRows(view: View, columns: number, room?: number, fixed = 0): Rows {
   const { rows, rowTones = {} as RowTones } = view
   const width = columns > 0 ? columns - LABEL_WIDTH : 0
   const review = view.endRound ? endReviewLines(view.endRound, width) : lensLines(view.lensRound, width)
-  return [
+  const reviewSummary = view.endRound ? endReviewSummaryLines(view.endRound, width) : lensSummaryLines(view.lensRound, width)
+  const reviewRow = (lines: { text: string; tone?: string }[]) => rowLines('REVIEW', lines.map(line => [{ text: line.text, props: toneProps(line.tone) }]))
+  const head = [
     ...rowLines('PR', wrapped(view.end.pr, width)),
     ...rowLines('BUILT', wrapped(view.end.done, width)),
     ...rowLines('SPENT', one(rows.spent, toneProps(rowTones.spent))),
-    ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
-    ...rowLines('TESTS', testsParts(view, width)),
-    ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
-    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen, view.planBuilding, width, view.planPublishing === true)) : []),
+  ]
+  const sections = [
+    { full: rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])), folded: rowLines('STEPS', stepsFolded(view.steps)) },
+    { full: rowLines('TESTS', testsParts(view, width)), folded: rowLines('TESTS', testsParts(view, width, true)) },
+    { full: reviewRow(review), folded: reviewRow(reviewSummary) },
+  ]
+  const plan = (planRoom: number): Rows => [
+    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen, view.planBuilding, width, view.planPublishing === true, planRoom)) : []),
     ...(!view.plan && view.planOpen ? rowLines('PLAN', unitOnlyLines(view.planOpen, view.planOpenPr)) : []),
+  ]
+  const tallest = plan(PLAN_ROWS)
+  const budget = paneBudget({
+    room,
+    fixed: fixed + head.length,
+    sections: sections.map(({ full, folded }) => ({ full: full.length, folded: folded.length })),
+    plan: tallest.length,
+  })
+  return [
+    ...head,
+    ...sections.flatMap((section, i) => (budget.fold[i] ? section.folded : section.full)),
+    ...(budget.planRoom < PLAN_ROWS ? plan(budget.planRoom) : tallest),
   ]
 }
 
-export function Pane({ Box, Text, view, columns = 0, unknownLabels, note = null }: Tags & {
+// The most raw labels pb could not read that the pane lists, the latest ones; the count under them counts all of them.
+const UNKNOWN_LABEL_ROWS = 3
+const shownLabels = (unknownLabels: string[]) => unknownLabels.slice(-UNKNOWN_LABEL_ROWS)
+
+export function Pane({ Box, Text, view, columns = 0, room, offset = 0, focused = false, unknownLabels, note = null }: Tags & {
   view: View
   columns?: number
+  // The rows the pane's body shows at once (its scroll's bodyRows); unknown keeps the layout drawn for a tall room.
+  room?: number
+  // The first row the body's window shows, and whether the pane has the keys.
+  offset?: number
+  focused?: boolean
   unknownLabels: string[]
   note?: string | null
 }) {
-  return (
-    <Box flexDirection="column">
-      {topRows(view, columns).map(({ label: name, labelProps, parts }, row) => (
-        <Box key={`top-${row}`}>
-          <Text key="label" wrap="truncate-end" {...labelProps}>{name}</Text>
-          {parts.map((part, i) => <Text key={`part-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)}
-        </Box>
-      ))}
-      <Text key="top-rule" dimColor wrap="truncate-end">{goalRule(columns)}</Text>
-      {paneRows(view, columns).map(({ label: name, labelProps, parts }, row) => (
-        <Box key={`row-${row}`}>
-          <Text key="label" wrap="truncate-end" {...labelProps}>{name}</Text>
-          {parts.map((part, i) => <Text key={`part-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)}
-        </Box>
-      ))}
-      {unknownLabels.map((raw, i) => <Text key={`unknown-${i}`}>{raw}</Text>)}
-      {unknownLabels.length > 0 && <Text dimColor>{`${unknownLabels.length} label${unknownLabels.length === 1 ? '' : 's'} unknown`}</Text>}
-      <Text key="gap"> </Text>
-      {note && <Text>{note}</Text>}
+  const top = topRows(view, columns)
+  // Under the details: the raw labels pb could not read and their count, the gap, and the note.
+  const tail = [
+    ...shownLabels(unknownLabels).map((raw, i) => <Text key={`unknown-${i}`}>{raw}</Text>),
+    ...(unknownLabels.length > 0 ? [<Text key="unknown-count" dimColor>{`${unknownLabels.length} label${unknownLabels.length === 1 ? '' : 's'} unknown`}</Text>] : []),
+    <Text key="gap"> </Text>,
+    ...(note ? [<Text key="note">{note}</Text>] : []),
+  ]
+  // The top rows, the rule and the tail never fold.
+  const rows = paneRows(view, columns, room, top.length + 1 + tail.length)
+  // One labelled row: its label, then its parts, each a Text cut at the body's edge.
+  const labelled = (prefix: string) => ({ label: name, labelProps, parts }: Rows[number], row: number) => (
+    <Box key={`${prefix}-${row}`}>
+      <Text key="label" wrap="truncate-end" {...labelProps}>{name}</Text>
+      {parts.map((part, i) => <Text key={`part-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)}
     </Box>
   )
+  const drawn = [...top.map(labelled('top')), <Text key="top-rule" dimColor wrap="truncate-end">{goalRule(columns)}</Text>, ...rows.map(labelled('row')), ...tail]
+  // The platform draws no "more" hint, so while the window is at the top its last row counts the rows below it.
+  const hidden = offset > 0 ? 0 : hiddenRows(drawn.length, room)
+  if (hidden > 0 && room !== undefined) drawn.splice(room - 1, 0, <Text key="more" dimColor wrap="truncate-end">{moreRowsLine(hidden, focused)}</Text>)
+  return <Box flexDirection="column">{drawn}</Box>
 }

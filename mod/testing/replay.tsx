@@ -253,6 +253,8 @@ async function finish($: any, recorded: Recorded, agentId: string | undefined): 
 }
 
 // The pane as the engine mounts it, minus the surface; the id is the one the mod opens it under.
+// No `scroll`: the room is not known, so the pane keeps the layout it draws when it has room for every row (pane-height
+// tests give it one).
 export const PANE = {
   plugin: 'pairingbuddy',
   component: 'Pane',
@@ -262,7 +264,6 @@ export const PANE = {
     isFocused: false,
     bodyColumns: 80,
     placement: 'dock',
-    scroll: { offset: 0, bodyRows: 30 },
     view: {},
   },
 } as const

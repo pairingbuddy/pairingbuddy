@@ -491,10 +491,22 @@ export function fit({ text, whole = false, at = PART_FOLDS, ...rest }, columns) 
 // counts, the summary (left out while a lens still runs and nothing is found yet), then one line per finding. No line carries a colour: colour marks only a phase, needs-you or a stop.
 export function lensLines(round, columns = 0) {
   if (!round) return [];
+  const { lenses, summary } = lensHead(round, columns);
+  return [...lenses, ...summary, ...findingLines(round.findings, columns).flatMap((line) => fit(line, columns))];
+}
+
+// The round's lines above its findings: what was checked, and the summary.
+function lensHead(round, columns) {
   const lenses = round.lenses.length ? [{ text: lensParts(round.lenses).join(PART_BREAK), at: LENS_FOLDS }] : [];
   // A review still running has not found nothing yet, so "no issues found" waits for its end; issues it found already show.
   const running = round.lenses.some((lens) => lens.state === LENS_STATES.running);
   const summary = running && !round.findings.length ? [] : [{ text: findingsSummary(round.findings) }];
-  const lines = [...lenses, ...summary, ...findingLines(round.findings, columns)];
-  return lines.flatMap((line) => fit(line, columns));
+  return { lenses: lenses.flatMap((line) => fit(line, columns)), summary: summary.flatMap((line) => fit(line, columns)) };
+}
+
+// The round for a short pane: its summary, or while it runs with nothing found yet, what it checks.
+export function lensSummaryLines(round, columns = 0) {
+  if (!round) return [];
+  const { lenses, summary } = lensHead(round, columns);
+  return summary.length ? summary : lenses;
 }

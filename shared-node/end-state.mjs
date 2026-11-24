@@ -73,13 +73,21 @@ function prText(pr) {
 // The review once the work is finished: one summary line, then the findings by their gist.
 export function endReviewLines(round, columns = 0) {
   if (!round) return [];
-  const findings = Array.isArray(round.findings) ? round.findings : [];
+  return [...endReviewSummaryLines(round, columns), ...findingLines(findingsOf(round), columns)];
+}
+
+const findingsOf = (round) => (Array.isArray(round.findings) ? round.findings : []);
+
+// The end review's summary line, alone for a short pane.
+export function endReviewSummaryLines(round, columns = 0) {
+  if (!round) return [];
+  const findings = findingsOf(round);
   if (!findings.length) return [{ text: "review: no issues found" }];
   const counted = Object.values(FINDING_WORDS).map((word) => [word, findings.filter((finding) => finding.word === word).length]).filter(([, count]) => count > 0);
   const issues = `review: ${plural(findings.length, "issue")}`;
   // One outcome for all reads as one phrase; several are parts the line folds at when it is too long.
   const summary = counted.length === 1 ? `${issues}, all ${counted[0][0]}` : [issues, ...counted.map(([word, count]) => `${count} ${word}`)].join(PART_BREAK);
-  return [...fit({ text: summary }, columns), ...findingLines(findings, columns)];
+  return fit({ text: summary }, columns);
 }
 
 // The pull request's title: the last one the pr-draft stage's draft or its redrafts returned; undefined when none was seen.

@@ -107,6 +107,7 @@ JS_TEST_FILES = [
     "tests/js/plan-boxes-safeguards.test.mjs",
     "tests/js/plan-parse.test.mjs",
     "tests/js/plan-step.test.mjs",
+    "tests/js/pane-height.test.mjs",
     "tests/js/plan-window.test.mjs",
     "tests/js/plan-page.test.mjs",
     "tests/js/stack-rule.test.mjs",
