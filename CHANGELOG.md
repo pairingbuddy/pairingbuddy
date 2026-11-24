@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0-exp.3] - 2026-11-24
+
 - A REVIEW finding too long for the room is cut at a word and marked by `…` (S6 run at 60 columns: `left as is · Needless alias sut in regression` read as if whole). What happens to it is never cut.
 
 - A narrow pane cuts a plan row's title, never its state words (S6 run at 60 columns: `Task 2: [HUMAN] Check the fix by hand · waiting on a person` read `· wait…`). A task or unit row too wide for the room keeps its mark and its `· waiting on a person` or `· to do`, and cuts the title at a word, marked by `…`.
