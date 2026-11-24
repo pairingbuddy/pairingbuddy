@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,25 +22,30 @@ function writeExecutable(path, body) {
 // the environment it was started with. Returns what claude saw.
 function runSoloOnFeatureBranch() {
   const dir = mkdtempSync(join(tmpdir(), "solo-new-"));
-  const binDir = join(dir, "bin");
-  const repoDir = join(dir, "repo");
-  const envFile = join(dir, "claude-env.txt");
-  const planFile = join(dir, "plan.md");
-  spawnSync("mkdir", ["-p", binDir, repoDir]);
-  writeExecutable(join(binDir, "claude"), `#!/usr/bin/env bash\nenv > "${envFile}"\nexit 0\n`);
-  writeExecutable(join(binDir, "gh"), "#!/usr/bin/env bash\nexit 0\n");
-  writeFileSync(planFile, "# Plan\n");
-  spawnSync("git", ["init", "-b", "feature/solo-test"], { cwd: repoDir });
-  const env = { ...process.env, PATH: `${binDir}:${process.env.PATH}` };
-  delete env.PAIRINGBUDDY_GATE_POLICY;
-  const result = spawnSync(SOLO_SCRIPT, [planFile], { cwd: repoDir, env, encoding: "utf8" });
-  let claudeEnv = "";
   try {
-    claudeEnv = readFileSync(envFile, "utf8");
-  } catch {
-    claudeEnv = "";
+    const binDir = join(dir, "bin");
+    const repoDir = join(dir, "repo");
+    const envFile = join(dir, "claude-env.txt");
+    const planFile = join(dir, "plan.md");
+    mkdirSync(binDir, { recursive: true });
+    mkdirSync(repoDir, { recursive: true });
+    writeExecutable(join(binDir, "claude"), `#!/usr/bin/env bash\nenv > "${envFile}"\nexit 0\n`);
+    writeExecutable(join(binDir, "gh"), "#!/usr/bin/env bash\nexit 0\n");
+    writeFileSync(planFile, "# Plan\n");
+    const init = spawnSync("git", ["init", "-b", "feature/solo-test"], { cwd: repoDir, encoding: "utf8" });
+    assert.equal(init.status, 0, `git init failed: ${init.stderr}`);
+    // Only what the script needs: nothing from the host's solo flags or API keys leaks in.
+    const env = {
+      PATH: `${binDir}:${process.env.PATH}`,
+      HOME: process.env.HOME,
+      TMPDIR: process.env.TMPDIR,
+    };
+    const result = spawnSync(SOLO_SCRIPT, [planFile], { cwd: repoDir, env, encoding: "utf8" });
+    const claudeEnv = readFileSync(envFile, "utf8");
+    return { result, claudeEnv };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-  return { result, claudeEnv };
 }
 
 test("exports-gate-policy-auto", () => {
