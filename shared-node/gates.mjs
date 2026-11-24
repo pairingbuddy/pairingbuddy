@@ -720,12 +720,35 @@ export function voidPublish(ledger, reason) {
 // the call. Otherwise it could put "approve" on a description that says something else.
 export const isGateQuestionCall = (asked, questions) => asked !== null && Array.isArray(questions) && questions.length === 1 && isDeepStrictEqual(questions[0], asked);
 
-// The approve, redo or stop that a finished AskUserQuestion gave the pending gate, or null.
+// A choice's word typed alone ("Approve", or "approve" where the question offers publish) says no more than a choice,
+// and may be a choice this question does not offer, so it is taken as no answer, never as a note.
+const CHOICE_WORDS = new Set([...GATE_OPTIONS, ...PUBLISH_OPTIONS].map(({ label }) => label.toLowerCase()));
+
+// What the human typed in place of a listed choice, or null when they picked a choice or wrote nothing.
+function typedText(asked, toolResponse) {
+  const answer = toolResponse.answers?.[asked.question];
+  if (typeof answer !== "string" || answer.trim() === "") return null;
+  if (asked.options.some(({ label }) => label === answer) || CHOICE_WORDS.has(answer.trim().toLowerCase())) return null;
+  return answer.trim();
+}
+
+// The approve, redo or stop that a finished AskUserQuestion gave the pending gate, or null. Typed words that are none of
+// the choices send the step back where redo is a choice, with the words as its note: free text never approves anything.
 export function gateAnswer(ledger, toolResponse) {
   const asked = pendingQuestion(ledger);
   if (!isGateQuestionCall(asked, toolResponse?.questions)) return null;
   const answer = toolResponse.answers?.[asked.question];
-  return asked.options.some(({ label }) => label === answer) ? answer : null;
+  if (asked.options.some(({ label }) => label === answer)) return answer;
+  return typedText(asked, toolResponse) !== null && asked.options.some(({ label }) => label === "redo") ? "redo" : null;
+}
+
+// Typed words this question could not take, since redo is none of its choices, or null. The tap says so, so the
+// question is asked again with a listed choice and does not come back unexplained.
+export function untakenTypedAnswer(ledger, toolResponse) {
+  const asked = pendingQuestion(ledger);
+  if (!isGateQuestionCall(asked, toolResponse?.questions) || gateAnswer(ledger, toolResponse) !== null) return null;
+  const typed = typedText(asked, toolResponse);
+  return typed === null ? null : { typed, labels: asked.options.map(({ label }) => label) };
 }
 
 // A redo sends the stage back and leaves no record, so the gate comes due again when the stage finishes.
@@ -797,7 +820,8 @@ function guidanceFile(path) {
 // next attempt that the last one was sent back.
 function redoFeedback(gate, stage, attempt, toolResponse, asked) {
   const notes = toolResponse.annotations?.[asked.question]?.notes;
-  if (typeof notes === "string" && notes.trim() !== "") return notes.trim();
+  const written = [typedText(asked, toolResponse), typeof notes === "string" && notes.trim() !== "" ? notes.trim() : null].filter((text) => text !== null);
+  if (written.length > 0) return written.join("\n");
   return `The human sent ${stage} back at ${gate} with no note, after attempt ${attempt}. Do not repeat that result.`;
 }
 

@@ -740,7 +740,7 @@ describe("the tap records AskUserQuestion answers", () => {
   });
 
   const NOT_RECORDED = [
-    { name: "a free-text answer", payload: (repo, q) => recordedAnswer(repo, q, "yes, go on") },
+    { name: "a typed answer that is only a choice's word", payload: (repo, q) => recordedAnswer(repo, q, "Approve") },
     { name: "the question under another header", payload: (repo, q) => recordedAnswer(repo, { ...q, header: "Approve" }, "approve") },
     { name: "another gate's question", payload: (repo) => recordedAnswer(repo, gateQuestion("G:publish", { reason: "the gate policy is default, not auto" }), "publish") },
     { name: "the right header on another question", payload: (repo, q) => recordedAnswer(repo, { ...q, question: "Shall I go on?" }, "approve") },
@@ -938,6 +938,19 @@ describe("a human's stop sets ledger.stop", () => {
     assert.notEqual(ledger.stop, null);
     assert.equal(ledger.needsHuman, null);
     assert.equal(ledger.gates[G_FIRST].answer, "stop");
+  });
+
+  test("typed words at the go-on question change nothing, and the tap says to pick one of the listed answers", () => {
+    const repo = stopped();
+    const { question } = JSON.parse(runPb(repo).stdout);
+
+    const tapped = runTap(repo, recordedAnswer(repo, question, "keep going please"));
+
+    const ledger = repo.ledger();
+    assert.notEqual(ledger.needsHuman, null, "the question still waits");
+    assert.notEqual(ledger.stop, null, "the stop stands");
+    assert.match(tapped.stdout, /keep going please/);
+    assert.match(tapped.stdout, /Go on/);
   });
 
   test("a Workflow deny names the human's way on: gate eval asks them, and the approve line is the fallback", () => {

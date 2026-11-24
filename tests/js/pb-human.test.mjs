@@ -286,6 +286,18 @@ describe("pb human approve is the way out of a redo or a stop", () => {
     assert.notEqual(decisionOf(result)?.permissionDecision, "deny", result.stdout);
   });
 
+  test("a typed answer that is none of the choices sends the stage back with the human's words as its note", () => {
+    const { repo } = askedRepo();
+    const typed = "Use the existing pb plan next refusal for the stop.";
+    const tapped = spawnSync(process.execPath, [join(PLUGIN, "hooks", "tap.mjs")], { cwd: repo.dir, input: JSON.stringify(gateAnswerPayload(repo, G_FIRST, typed)), env: { ...process.env, CLAUDE_PLUGIN_ROOT: PLUGIN }, encoding: "utf8" });
+    assert.equal(tapped.status, 0, tapped.stderr);
+
+    assert.equal(repo.ledger().needsHuman, null, "the typed answer closed the question");
+    assert.ok(repo.ledger().stages.some(({ name, status }) => name === FIRST && status === "redo"), "the stage goes back with the note");
+    const guidance = JSON.parse(readFileSync(join(repo.dir, ".pairingbuddy", "human-guidance.json"), "utf8")).guidance;
+    assert.equal(guidance.at(-1).feedback, typed);
+  });
+
   test("once the redo has restarted the stage, its gate is no longer the human's to pass", () => {
     const repo = makeRepo({ ledger: { stage: { name: FIRST, status: "active", runId: "wf_2", attempt: 2, startedAt: null }, stages: [{ name: FIRST, status: "redo" }] } });
 

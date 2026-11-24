@@ -133,7 +133,7 @@ function tapQuestion(modules, root, ledgerPath, toolResponse) {
   const ledger = readLedger(ledgerPath);
   // Recorded only on an exact match with the question gate eval issued and stored for the waiting gate.
   const answer = modules.gateAnswer(ledger, toolResponse);
-  if (answer === null) return;
+  if (answer === null) return sayUntaken(modules, ledger, toolResponse);
   // A wait outside the gates (a changed test-config) has its own answers, recorded against the question pb stored.
   if (modules.isHumanWait(ledger)) return tapWaitAnswer(modules, root, ledgerPath, ledger, answer);
   let binding;
@@ -149,6 +149,14 @@ function tapQuestion(modules, root, ledgerPath, toolResponse) {
   updateLedger(ledgerPath, (current) => withAnswer(modules, current, toolResponse, binding));
   if (answer === "redo") appendRedoFeedback(root, ledger, runGates(modules, ledger), toolResponse);
   if (answer === KEEP_LOCAL_LABEL) closeKeptLocal(modules, root, ledger);
+}
+
+// Typed words a question cannot take are not lost in silence: the session hears them and that only a listed choice counts.
+function sayUntaken(modules, ledger, toolResponse) {
+  const untaken = modules.untakenTypedAnswer(ledger, toolResponse);
+  if (untaken === null) return;
+  const choices = untaken.labels.map((label) => `"${label}"`).join(", ");
+  say(`Pairing Buddy did not record the typed answer "${untaken.typed}": this question takes only one of ${choices}. Ask it again with the same question, and pass on what the human wrote.`);
 }
 
 // The answer lands only while the same wait still asks. A file no test run can use is no acceptance: the wait stands and the hook says why.
@@ -197,7 +205,7 @@ function tapRun(modules, root, input) {
 }
 
 try {
-  const { KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, gateAnswer, gatesFor, isBindingRefusal, publishBinding, recordAnswer } = await import("../shared-node/gates.mjs");
+  const { KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, gateAnswer, gatesFor, isBindingRefusal, publishBinding, recordAnswer, untakenTypedAnswer } = await import("../shared-node/gates.mjs");
   const { parseKey } = await import("../shared-node/keys.mjs");
   const { isPublishRun, readLedger, updateLedger } = await import("../shared-node/ledger.mjs");
   const { pbCommand } = await import("../shared-node/verbs.mjs");
@@ -207,7 +215,7 @@ try {
   const { isHumanWait, recordWaitAnswer } = await import("../shared-node/human-waits.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
   const root = findSessionRoot(input.cwd, input.session_id);
-  if (root !== null) tapRun({ isHumanWait, recordWaitAnswer, KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, keepRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, updateLedger, migratedType }, root, input);
+  if (root !== null) tapRun({ isHumanWait, recordWaitAnswer, KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, keepRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, untakenTypedAnswer, updateLedger, migratedType }, root, input);
 } catch {
   // not a run situation
 }
