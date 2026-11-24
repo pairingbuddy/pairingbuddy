@@ -41,6 +41,13 @@ function renderWithFiles(files) {
   }
 }
 
+// Renders like renderWithFiles, asserts the render exited 0, and returns stdout.
+function renderStdout(files, situation) {
+  const result = renderWithFiles(files);
+  assert.equal(result.status, 0, `render_status must exit 0 ${situation}: ${result.stderr}`);
+  return result.stdout;
+}
+
 // Turns events into the JSONL text of a captured claude stream: one JSON object per line, newline-terminated.
 function jsonl(events) {
   return events.map((event) => `${JSON.stringify(event)}\n`).join("");
@@ -301,16 +308,15 @@ test("missing-ledger-does-not-crash", () => {
 test("missing-stream-file-does-not-crash", () => {
   const ledger = { stage: { name: "implement-tests", status: "running", attempt: 2 } };
 
-  const result = renderWithFiles({ "run/task/ledger.json": ledger });
+  const stdout = renderStdout({ "run/task/ledger.json": ledger }, "without a stream file");
 
-  assert.equal(result.status, 0, `render_status must exit 0 without a stream file: ${result.stderr}`);
   assert.match(
-    result.stdout,
+    stdout,
     /^Stage: implement-tests running \(attempt 2\)$/m,
     "the Stage line from the ledger still shows",
   );
-  assert.doesNotMatch(result.stdout, /^Agent: /m, "no Agent line shows when there is no stream");
-  assert.match(result.stdout, /^Spend: unknown$/m, "the Spend line says unknown when there is no stream");
+  assert.doesNotMatch(stdout, /^Agent: /m, "no Agent line shows when there is no stream");
+  assert.match(stdout, /^Spend: unknown$/m, "the Spend line says unknown when there is no stream");
 });
 
 test("malformed-json-state-does-not-crash", () => {
