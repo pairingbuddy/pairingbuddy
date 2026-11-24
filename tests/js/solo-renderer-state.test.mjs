@@ -335,5 +335,10 @@ test("malformed-json-state-does-not-crash", () => {
 });
 
 test("no-files-shows-initializing", () => {
-  assert.fail("not implemented: With no unit.json, ledger or stream, render_status exits 0 and shows the initializing message");
+  const stdout = renderStdout({}, "with no unit.json, ledger or stream");
+
+  assert.match(stdout, /Initializing autonomous execution/, "the initializing view shows when no state file exists");
+  assert.doesNotMatch(stdout, /^Unit: /m, "no Unit line shows without a unit.json");
+  assert.doesNotMatch(stdout, /^Stage: /m, "no Stage line shows without a ledger");
+  assert.doesNotMatch(stdout, /^Agent: /m, "no Agent line shows without a stream");
 });
