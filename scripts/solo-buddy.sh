@@ -295,8 +295,9 @@ render_status() {
 
     # Read the captured claude stream once: show the description of the latest task_progress event and sum the
     # tokens the task_notification events report in their usage. A partial or invalid line is skipped.
+    local spend_unknown="Spend: unknown"
     local stream_lines
-    stream_lines=$(read_state_line ".pairingbuddy/solo-stream.jsonl" '
+    stream_lines=$(SPEND_UNKNOWN="$spend_unknown" read_state_line ".pairingbuddy/solo-stream.jsonl" '
         const events = text.split("\n").map((line) => { try { return JSON.parse(line); } catch (error) { return null; } });
         const system = events.filter((event) => event && event.type === "system");
         const progress = system.filter((event) => event.subtype === "task_progress" && event.description);
@@ -308,15 +309,14 @@ render_status() {
         const total = tokens.reduce((sum, count) => sum + count, 0);
         const seen = tokens.length > 0;
         if (last) console.log(`Agent: ${last}`);
-        console.log(`Spend: ${seen ? `${total} tokens` : "unknown"}`);
+        console.log(seen ? `Spend: ${total} tokens` : process.env.SPEND_UNKNOWN);
     ')
-    # No stream file yet: the spend is unknown
-    [[ -n "$stream_lines" ]] || stream_lines="Spend: unknown"
-    content="${content}${stream_lines}${NL}"
 
-    # Fallback if nothing to display
-    if [[ -z "$content" ]]; then
+    # Fallback if nothing to display; otherwise add the spend, unknown while there is no stream file yet
+    if [[ -z "$content" && -z "$stream_lines" ]]; then
         content="  ${cyan}→${reset} ${bold_white:-}Initializing autonomous execution...${reset:-}${NL}"
+    else
+        content="${content}${stream_lines:-$spend_unknown}${NL}"
     fi
 
     # Replace → with spinner char
