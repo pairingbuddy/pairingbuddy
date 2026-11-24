@@ -1,6 +1,5 @@
 """Tests for render_status reading source files (plan + hooks) instead of STATUS_FILE."""
 
-import json
 import os
 import re
 import subprocess
@@ -79,17 +78,6 @@ class TestRenderStatusSourceReading:
             "render_status must reference $PLAN_FILE to read the plan"
         )
 
-    def test_render_status_reads_hooks_dir(self, script_content):
-        """render_status function body reads .pairingbuddy/hooks directory for agent info."""
-        function_body = extract_shell_function(script_content, "render_status")
-        assert function_body, "render_status function must exist in the script"
-
-        # Should reference hooks and .json files
-        assert re.search(r"\.pairingbuddy/hooks", function_body), (
-            "render_status must read from .pairingbuddy/hooks directory"
-        )
-        assert re.search(r"\.json", function_body), "render_status must read .json hook files"
-
     def test_render_status_no_status_file_dependency(self, script_content):
         """render_status function body does NOT read STATUS_FILE (except write_final_status)."""
         function_body = extract_shell_function(script_content, "render_status")
@@ -135,41 +123,6 @@ class TestRenderStatusBehavior:
             # Should show some indication of progress (2/3 ratio or similar)
             assert "2" in result.stdout or "3" in result.stdout, (
                 "render_status must show task counts from plan"
-            )
-
-    def test_render_shows_agent_from_hooks_file(self, script_path):
-        """render_status reads guardian hooks file and displays lastAgent and lastDescription."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            plan_file = os.path.join(tmpdir, "plan.md")
-            with open(plan_file, "w") as f:
-                f.write("# Plan\n\n- [ ] Task 1\n")
-
-            hooks_dir = os.path.join(tmpdir, ".pairingbuddy", "hooks")
-            os.makedirs(hooks_dir)
-
-            session_file = os.path.join(hooks_dir, "test-session.json")
-            with open(session_file, "w") as f:
-                json.dump(
-                    {
-                        "lastAgent": "pairingbuddy:implement-tests",
-                        "lastDescription": "Implement unit tests",
-                    },
-                    f,
-                )
-
-            bash_code = build_render_status_script(script_path, tmpdir)
-            result = subprocess.run(
-                ["bash", "-c", bash_code],
-                capture_output=True,
-                text=True,
-            )
-
-            # Should display agent name and description from hooks
-            assert "implement-tests" in result.stdout, (
-                "render_status must display lastAgent from hooks file"
-            )
-            assert "Implement unit tests" in result.stdout or "tests" in result.stdout.lower(), (
-                "render_status must display lastDescription from hooks file"
             )
 
     def test_render_degrades_when_no_files(self, script_path):

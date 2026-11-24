@@ -1020,7 +1020,7 @@ Solo Buddy is an autonomous execution mode where Pairing Buddy executes a pre-es
 
 Four components are Solo-aware:
 
-1. **Shell script** (`scripts/solo-buddy.sh`) — Sets env var, invokes `claude -p --dangerously-skip-permissions --output-format json`. On success, creates a GitHub PR via `gh pr create` using the sanitized branch name as the title and `SOLO_BUDDY_REPORT.md` as the body when present
+1. **Shell script** (`scripts/solo-buddy.sh`) — Sets env var, invokes `claude -p --dangerously-skip-permissions --output-format stream-json --verbose`, with stdout captured to `.pairingbuddy/solo-stream.jsonl`. On success, creates a GitHub PR via `gh pr create` using the sanitized branch name as the title and `SOLO_BUDDY_REPORT.md` as the body when present
 2. **Guardian hook** (`hooks/guardian.mjs`) — Detects `PAIRINGBUDDY_SOLO`, injects Solo constraint prompt on SessionStart, uses halved injection interval (2.5 min) and short Solo reminder for PostToolUse
 3. **15 agents** — Agents with AskUserQuestion (Step 3 Human Review) check `PAIRINGBUDDY_SOLO` and skip review, assuming approval
 4. **Coding orchestrator** (`skills/coding/SKILL.md`) — `_ask_human` auto-returns `true` in Solo mode. Solo Mode section defines strict scope, sequential execution, resource exhaustion before stopping, bug handling, quality compliance, report generation, and push-to-remote
@@ -1033,9 +1033,9 @@ Solo sessions produce `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally — hea
 
 Solo sessions run unattended, so real-time progress visibility is essential. Two mechanisms provide observability:
 
-**Guardian-based tracking (primary, reliable):**
-- The guardian hook (`hooks/guardian.mjs`) writes agent info to its session file (`.pairingbuddy/hooks/{sessionId}.json`) on every PostToolUse call: `lastTool`, `lastAgent`, `lastDescription`
-- The terminal renderer reads this file directly to show the current agent
+**Stream and state tracking (primary):**
+- `claude -p` runs with `--output-format stream-json --verbose`, and its stdout is captured to `.pairingbuddy/solo-stream.jsonl`
+- The terminal renderer reads that stream for the latest `task_progress` description and sums spend from `task_notification` usage
 
 **Progress hook (secondary, append-only log):**
 - `hooks/solo-progress.mjs` filters for Agent tool invocations and appends timestamped entries to `.pairingbuddy/solo-progress.log` for post-session analysis
@@ -1045,8 +1045,10 @@ Solo sessions run unattended, so real-time progress visibility is essential. Two
 - `solo-buddy.sh` starts a background process that builds the display by reading source-of-truth files directly:
   - Plan MD file → checkbox count for progress bar and task list
   - `.pairingbuddy/task.json` → current task description
-  - Guardian session file → current agent name and proof of life
-- Renders a styled display with colored progress bar, task list (✓ done, → current, ○ pending), spinner on active task, and agent name
+  - `.pairingbuddy/run/unit.json` → the unit's branch and task count; the ledger → run progress
+  - `.pairingbuddy/solo-stream.jsonl` → current activity (`task_progress`) and spend (`task_notification` usage)
+- Renders a styled display with colored progress bar, task list (✓ done, → current, ○ pending), spinner on active task, and current activity and spend
+- A missing file never crashes the renderer
 - Output is written to `/dev/tty` so it remains visible even when `claude -p` stdout is captured
 - The renderer cleans up gracefully when the solo session ends (no orphan processes)
 - On completion, displays final status with 100% progress bar and PR/report links
@@ -1080,7 +1082,7 @@ Solo Buddy uses `caffeinate -s` to prevent macOS from suspending the process whe
 
 - **macOS only** — Solo Buddy currently only works on macOS (caffeinate, /dev/tty assumptions)
 - **VPN interference** — VPN causes sessions to terminate after 1-4 tasks due to connection timeouts. Disable VPN before running. Without VPN, 29-task plans complete in a single session
-- **Output format** — Must use `--output-format json`. The `text` format causes early session termination after 1 task
+- **Output format** — Must use `--output-format stream-json --verbose`, captured to `.pairingbuddy/solo-stream.jsonl`. The `text` format causes early session termination after 1 task
 - **API key safety** — The script unsets `ANTHROPIC_API_KEY` by default. If present in the environment, it silently overrides Max/Pro subscription billing. Use `--use-api-key` only for explicit API billing
 - **Session resumability** — Plan MD checkboxes are the durable state. Restarting the script picks up from the first unchecked task. The report preserves entries from previous sessions and reconciles against the current plan
 
