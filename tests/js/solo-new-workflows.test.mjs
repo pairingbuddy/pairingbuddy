@@ -102,6 +102,10 @@ test("exports-gate-policy-auto", () => {
   );
 });
 
+test("gate-policy-set-before-claude-starts", () => {
+  assert.fail("not implemented: the PAIRINGBUDDY_GATE_POLICY export must appear in scripts/solo-buddy.sh before the claude invocation");
+});
+
 test("still-exports-solo-flag", () => {
   const { claudeEnv } = runSoloSucceeding();
 
