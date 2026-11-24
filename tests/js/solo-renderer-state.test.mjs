@@ -254,7 +254,27 @@ test("task-notification-without-usage-adds-nothing", () => {
 });
 
 test("missing-unit-json-does-not-crash", () => {
-  assert.fail("not implemented: With no run/unit.json but a ledger and stream, render_status exits 0 and still shows the other parts");
+  const ledger = { stage: { name: "implement-tests", status: "running", attempt: 2 } };
+  const stream = jsonl([
+    { type: "system", subtype: "task_progress", description: "Writing the failing test" },
+    { type: "system", subtype: "task_notification", usage: { total_tokens: 1200 } },
+  ]);
+
+  const result = renderWithFiles({ "run/task/ledger.json": ledger, "solo-stream.jsonl": stream });
+
+  assert.equal(result.status, 0, `render_status must exit 0 without a unit.json: ${result.stderr}`);
+  assert.doesNotMatch(result.stdout, /^Unit: /m, "no Unit line shows when there is no unit.json");
+  assert.match(
+    result.stdout,
+    /^Stage: implement-tests running \(attempt 2\)$/m,
+    "the Stage line from the ledger still shows",
+  );
+  assert.match(
+    result.stdout,
+    /^Agent: Writing the failing test$/m,
+    "the Agent line from the stream still shows",
+  );
+  assert.match(result.stdout, /^Spend: 1200 tokens$/m, "the Spend line from the stream still shows");
 });
 
 test("missing-ledger-does-not-crash", () => {
