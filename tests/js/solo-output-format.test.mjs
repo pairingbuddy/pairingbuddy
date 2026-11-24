@@ -25,18 +25,35 @@ test("claude-args-use-output-format-per-p14", () => {
   assert.deepEqual(formats, ["stream-json"], `CLAUDE_ARGS must carry exactly one --output-format, stream-json, got: ${blocks.join(" | ")}`);
 });
 
+// The script with backslash line continuations joined, so a multi-line command reads as one line.
+function scriptLines() {
+  return readFileSync(SOLO_SCRIPT, "utf8").replace(/\\\n\s*/g, " ").split("\n");
+}
+
+// A shell word without its surrounding single or double quotes.
+const unquote = (word) => word.replace(/^(["'])(.*)\1$/, "$2");
+
+// The file a command line writes its stdout to: the word after `>`, `>>` or `tee [-a]`, quotes removed.
+function stdoutTarget(line) {
+  const words = line.trim().split(/\s+/);
+  const at = words.findIndex((word) => /^(>>?|tee|-a)$/.test(word) || /^>>?\S/.test(word));
+  if (at === -1) return undefined;
+  const word = words[at];
+  if (/^>>?\S/.test(word)) return unquote(word.replace(/^>>?/, ""));
+  return unquote(words[word === "tee" && words[at + 1] === "-a" ? at + 2 : at + 1] ?? "");
+}
+
 test("claude-output-captured-to-stream-file", () => {
-  const source = readFileSync(SOLO_SCRIPT, "utf8");
-  const invocation = source.split("\n").find((line) => /^\s*claude\s+"\$\{CLAUDE_ARGS\[@\]\}"/.test(line));
+  const lines = scriptLines();
+  const invocation = lines.find((line) => /^\s*claude\s+"\$\{CLAUDE_ARGS\[@\]\}"/.test(line));
   assert.ok(invocation, "solo-buddy.sh must invoke claude with CLAUDE_ARGS");
 
-  const written = invocation.match(/(?:>>?|\btee\s+(?:-a\s+)?)\s*"?(\.pairingbuddy\/[^\s"|;&]+)/);
-  assert.ok(written, `the claude invocation must write its output under .pairingbuddy, got: ${invocation.trim()}`);
+  const streamFile = stdoutTarget(invocation);
+  assert.ok(streamFile?.startsWith(".pairingbuddy/"), `the claude invocation must write its output under .pairingbuddy, got: ${invocation.trim()}`);
 
-  const streamFile = written[1];
-  const renderer = source.match(/read_state_line\s+"([^"]+)"/g) ?? [];
+  const rendererReads = lines.flatMap((line) => [...line.matchAll(/\bread_state_line\s+(\S+)/g)].map((match) => unquote(match[1])));
   assert.ok(
-    renderer.some((call) => call.includes(`"${streamFile}"`)),
-    `the renderer must read the file claude writes to (${streamFile}); renderer reads: ${renderer.join(", ")}`,
+    rendererReads.includes(streamFile),
+    `the renderer must read the file claude writes to (${streamFile}) as the first argument of read_state_line; it reads: ${rendererReads.join(", ")}`,
   );
 });
