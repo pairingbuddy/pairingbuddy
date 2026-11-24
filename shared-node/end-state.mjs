@@ -189,10 +189,12 @@ export function isUnitDone({ live = false, codeRun, unitOpen = false, pr } = {})
   return !live && codeRun?.taskEndPassed === true && (prOutcome(pr) !== undefined || !unitOpen);
 }
 
-// What STATUS says after "done" once the unit is done: the goal's verdict, the pull request, and that it is ready for the next
-// task. A goal in doubt leaves the call to action out: the doubt is the human's to look at first.
-export function doneStatus({ codeRun, round, pr } = {}) {
+// What STATUS says after "done" once the unit is done: the goal's verdict, the pull request, and what comes next: the plan's
+// next unit when it has one left (nextUnit), else that it is ready for the next task. A goal in doubt leaves the call to
+// action out: the doubt is the human's to look at first.
+export function doneStatus({ codeRun, round, pr, nextUnit } = {}) {
   const goal = goalText(codeRun, round);
   const doubt = goal?.startsWith(IN_DOUBT);
-  return [goal && `goal ${goal}`, prOutcome(pr), doubt ? undefined : READY].filter(Boolean).join(PART_BREAK);
+  const next = typeof nextUnit === "string" && nextUnit !== "" ? `next in the plan: ${nextUnit}` : READY;
+  return [goal && `goal ${goal}`, prOutcome(pr), doubt ? undefined : next].filter(Boolean).join(PART_BREAK);
 }

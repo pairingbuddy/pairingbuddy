@@ -235,3 +235,29 @@ test('once a person ticks the unit\'s last [HUMAN] task, the pull request is nex
 
   expect(rowOf(await paneLines($), 'STATUS'), "another unit's [HUMAN] task is not this unit's").toBe('STATUS   ● working · next: write the pull request')
 })
+
+// Scenario S6 frame 04: once unit A's PR opened, STATUS read "ready for your next task" while unit B was still to do in the
+// plan. With a unit left in the plan, STATUS names it as what comes next.
+const TWO_UNITS = [
+  '# Cart', '', '## Tasks', '', '### T1: Cart', '',
+  '#### PR: Order total', '', '- [x] **Task 1: Add order_total**', '',
+  '#### PR: Tax', '', '- [ ] **Task 2: Add tax**', '',
+].join('\n')
+
+test('done with a unit left in the plan, STATUS names that unit as next', async ($, on) => {
+  const rig = setupReplay(on)
+  const signedOff = { ...codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), plan: { path: PLAN, title: 'Task 1: Add order_total' } }
+  serve(rig, { [LEDGER]: signedOff, [UNIT]: { ...planUnit, unit: 'Order total', tracer: 'T1: Cart' }, [PLAN]: TWO_UNITS })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await lensReturn($, 'corpus-misalignment', [])
+  await rig.clock.advance(POLL_MS * 2)
+  // pb publish opens the pull request and closes the unit; the code run is kept, naming the plan.
+  rig.toolResults.set('Bash', { stdout: '{"ok":true,"result":"published","url":"https://github.com/o/r/pull/7","warnings":[]}\n', stderr: '' })
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'tu-publish', command: 'node /plugin/cli/pb.mjs publish' })
+  const kept = '.pairingbuddy/reports/runs/code-run'
+  serve(rig, { [PLAN]: TWO_UNITS, [`${kept}/ledger.json`]: signedOff, [`${kept}/kept.json`]: { unit: 'feat/order-total abc', endedAt: '2026-11-14T10:02:31.000Z' } })
+  await rig.clock.advance(POLL_MS * 2)
+
+  expect(rowOf(await paneLines($), 'STATUS')).toBe('STATUS   ✓ DONE · PR #7 opened · next in the plan: Tax')
+})

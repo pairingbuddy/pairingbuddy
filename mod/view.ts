@@ -268,7 +268,12 @@ function endState(inputs: Inputs, running: boolean, live: boolean): Pick<View, '
   const finished = inputs.codeRun?.taskEndPassed === true && (!running || isPublishRun(inputs.ledger)) && round !== undefined
   const unitOpen = inputs.unitOpen ?? Boolean(inputs.unit)
   const done = isUnitDone({ live, codeRun: inputs.codeRun, unitOpen, pr })
-  return { end, ...(finished ? { endRound: round } : {}), done, ...(done ? { doneStatus: doneStatus({ codeRun: inputs.codeRun, round, pr }) } : {}) }
+  return { end, ...(finished ? { endRound: round } : {}), done, ...(done ? { doneStatus: doneStatus({ codeRun: inputs.codeRun, round, pr, nextUnit: nextPlanUnit(inputs) }) } : {}) }
+}
+
+// The plan's next unit to build: the first with boxes left, or undefined when the plan has none left, or there is no plan.
+function nextPlanUnit(inputs: Inputs): string | undefined {
+  return inputs.plan?.units.find(planned => planned.tasks.some(task => !task.checked))?.unit
 }
 
 const STATUS_PART = ' · '
