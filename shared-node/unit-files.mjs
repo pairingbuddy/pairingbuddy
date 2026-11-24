@@ -34,10 +34,8 @@ const jsonOf = (path) => {
 };
 
 // The unit a run belongs to, as the pane names it: its branch and base. Null with no unit open.
-const unitKeyOf = (runDir) => {
-  const unit = jsonOf(join(runDir, "unit.json"));
-  return typeof unit?.branch === "string" ? `${unit.branch} ${unit.baseSha}` : null;
-};
+const keyOf = (unit) => (typeof unit?.branch === "string" ? `${unit.branch} ${unit.baseSha}` : null);
+const unitKeyOf = (runDir) => keyOf(jsonOf(join(runDir, "unit.json")));
 
 // How many ended tasks keep their runs under reports/runs/: older tasks' runs are removed when a run is kept.
 export const MAX_KEPT_TASKS = 20;
@@ -64,6 +62,24 @@ function keptTasks(runsDir) {
     tasks.set(task, { task, runIds: [...seen.runIds, record.runId], endedAt: Math.max(seen.endedAt, endedAtOf(record)) });
   }
   return [...tasks.values()].sort((a, b) => b.endedAt - a.endedAt);
+}
+
+// The test-config hash the human last accepted in this unit's kept runs: the acceptances are followed from the unit's own
+// hash, run by run in the order they ended, so only a chain that starts at the unit counts. Null when there is none. Runs
+// of other units never count.
+export function keptAcceptedConfigHash(root, unit) {
+  const runsDir = join(root, ".pairingbuddy", ...KEPT_RUNS);
+  const key = keyOf(unit);
+  if (key === null || !existsSync(runsDir)) return null;
+  const acceptances = keptRecords(runsDir)
+    .filter(({ kept }) => kept.unit === key)
+    .sort((a, b) => endedAtOf(a) - endedAtOf(b))
+    .flatMap(({ runId }) => {
+      const recorded = jsonOf(join(runsDir, runId, "ledger.json"))?.configAcceptances;
+      return Array.isArray(recorded) ? [...recorded].sort((a, b) => a?.seq - b?.seq) : [];
+    });
+  const last = acceptances.reduce((hash, accepted) => (accepted?.oldHash === hash && typeof accepted.newHash === "string" ? accepted.newHash : hash), unit.configHash);
+  return last === unit.configHash ? null : last;
 }
 
 // The task of the run just kept counts first, so it is never the one removed.

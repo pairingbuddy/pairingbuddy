@@ -186,6 +186,36 @@ describe("publish-evidence-refusals", () => {
     }
   });
 
+  // The live T4d publish: the human accepted a changed test-config.json in the unit's code run, which then ended and was
+  // kept under reports/runs/. The publish run opened with the new hash; the unit still had the old one.
+  const acceptedInKeptRun = (unitKeyOf) => {
+    const unit = publishableUnit();
+    const { configHash } = readUnitRecord(unit.repo);
+    const configPath = join(unit.repo.dir, ".pairingbuddy", "test-config.json");
+    appendFileSync(configPath, "\n");
+    const newHash = sha256(readFileSync(configPath, "utf8"));
+    changeLedger(unit.repo, () => ({ configHash: newHash }));
+    const kept = join(unit.repo.dir, ".pairingbuddy", "reports", "runs", "code-run-1");
+    mkdirSync(kept, { recursive: true });
+    writeFileSync(join(kept, "ledger.json"), JSON.stringify({ kind: "code", configHash: newHash, configAcceptances: [{ oldHash: configHash, newHash, seq: 7 }] }));
+    writeFileSync(join(kept, "kept.json"), JSON.stringify({ unit: unitKeyOf(readUnitRecord(unit.repo)), endedAt: "2026-11-23T20:28:07.351Z" }));
+    return unit;
+  };
+
+  test("a test-config change the human accepted in this unit's kept run does not refuse", () => {
+    const unit = acceptedInKeptRun(({ branch, baseSha }) => `${branch} ${baseSha}`);
+
+    const { result } = publishUnit(unit);
+
+    assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
+  });
+
+  test("a test-config change accepted in another unit's kept run still refuses", () => {
+    const unit = acceptedInKeptRun(({ baseSha }) => `feat/other ${baseSha}`);
+
+    assert.match(refused(unit), /test-config\.json/, "the refusal names test-config.json");
+  });
+
   test("refuses-after-stop", () => {
     const unit = publishableUnit();
     changeLedger(unit.repo, (ledger) => ({ stop: { code: "human-stopped", reason: "the build keeps failing on CI parity", seq: ledger.seq + 1 } }));

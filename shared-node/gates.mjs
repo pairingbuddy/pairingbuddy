@@ -517,12 +517,12 @@ function retriesStop({ retries }) {
 }
 
 // The config files whose hash is not the one recorded: test-config.json and git-config.json, in that order. A missing
-// test-config.json counts as changed. git-config.json is tracked only when the unit recorded a hash; then a missing file
-// counts as changed too.
-export function changedConfigs({ configHash, gitConfigHash }, root) {
-  const differs = (path, recorded) => !existsSync(path) || fileHash(path) !== recorded;
+// test-config.json counts as changed; acceptedConfigHash, a test-config hash the human accepted since, counts as unchanged.
+// git-config.json is tracked only when the unit recorded a hash; then a missing file counts as changed too.
+export function changedConfigs({ configHash, gitConfigHash, acceptedConfigHash = null }, root) {
+  const differs = (path, ...recorded) => !existsSync(path) || !recorded.includes(fileHash(path));
   return [
-    ...(differs(join(root, ".pairingbuddy", "test-config.json"), configHash) ? ["test-config.json"] : []),
+    ...(differs(join(root, ".pairingbuddy", "test-config.json"), configHash, ...(acceptedConfigHash === null ? [] : [acceptedConfigHash])) ? ["test-config.json"] : []),
     ...(gitConfigHash !== undefined && differs(gitConfigPath(root), gitConfigHash) ? ["git-config.json"] : []),
   ];
 }
