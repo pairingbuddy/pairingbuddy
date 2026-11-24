@@ -20,7 +20,7 @@ test('replaying the recorded S6 run draws a tree whose units, tracers, task stat
     '             PR https://github.com/example/repo/pull/1',
     '             ✓ Task 1: Fix apply_discount',
     '             ✓ Task 2: [HUMAN] Check the fix by hand',
-    '           Discounted totals · unpublished',
+    '           Discounted totals · pull request not opened yet',
     '             based on Discount fix',
     '             branch feat/discounted-totals',
     '             base fix/discount-fix',

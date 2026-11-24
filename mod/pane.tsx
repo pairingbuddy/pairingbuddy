@@ -160,8 +160,16 @@ type PlanUnit = NonNullable<View['plan']>['units'][number]
 
 // A unit's state in plain words: unitStates' "open" (it has boxes left) reads open only for the unit pb has open; any
 // other unit with boxes left has its work to do.
+// "unpublished" (every box ticked, no PR yet) says what happens: the open unit's pull request is being written while a
+// publish run is live, else it is not opened yet.
 const TO_DO = 'to do'
-const stateWords = (state: string | undefined, isOpen: boolean) => (state === 'open' && !isOpen ? TO_DO : state)
+const WRITING_PR = 'writing the pull request'
+const PR_NOT_OPENED = 'pull request not opened yet'
+function stateWords(state: string | undefined, isOpen: boolean, publishing: boolean): string | undefined {
+  if (state === 'open' && !isOpen) return TO_DO
+  if (state === 'unpublished') return isOpen && publishing ? WRITING_PR : PR_NOT_OPENED
+  return state
+}
 
 // A tree row too wide for the room cuts its title, at a word and marked by …, never its lead (indent and mark) or the state
 // words after it. No room given cuts nothing.
@@ -175,11 +183,12 @@ function titleRow(lead: string, title: string, tail: string, width: number): str
 }
 
 // One unit's rows: its name and state, then what it is based on, the open unit's facts, its PR and its tasks.
-// building: the title of the task the live run builds; width: the room each row has.
-function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpen'], indent: string, building?: string, width = 0): Part[][] {
+// building: the title of the task the live run builds; publishing: a live publish run writes the open unit's pull request;
+// width: the room each row has.
+function unitRows(unit: PlanUnit, state: string | undefined, open: View['planOpen'], indent: string, building?: string, width = 0, publishing = false): Part[][] {
   const contentIndent = indent + NEST
   const isOpen = Boolean(open && open.unit === unit.unit)
-  const words = stateWords(state, isOpen)
+  const words = stateWords(state, isOpen, publishing)
   const next = unit.tasks.find(task => !task.checked)
   return [
     [{ text: titleRow(indent, unit.unit, words ? `${STATE_SEPARATOR}${words}` : '', width) }],
@@ -214,12 +223,12 @@ function tracerGroups(units: PlanUnit[]): TracerGroup[] {
   return groups
 }
 
-function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen'], building?: string, width = 0): Part[][] {
+function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOpen?: View['planOpen'], building?: string, width = 0, publishing = false): Part[][] {
   // The same unit the states resolved: a record naming only its tracer shows its facts under that tracer's first unit.
   const open = rawOpen && resolveOpenUnit(plan.units, rawOpen)
   const tree = tracerGroups(plan.units).flatMap(({ tracer, units }) => [
     ...(tracer ? [[{ text: tracer }]] : []),
-    ...units.flatMap(({ unit, index }) => unitRows(unit, states[index], open, tracer ? NEST : '', building, width)),
+    ...units.flatMap(({ unit, index }) => unitRows(unit, states[index], open, tracer ? NEST : '', building, width, publishing)),
   ])
   return [...tree, ...(plan.problems ?? []).map((problem: string) => [{ text: problem }])]
 }
@@ -236,7 +245,7 @@ function paneRows(view: View, columns: number) {
     ...rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])),
     ...rowLines('TESTS', testsParts(view, width)),
     ...rowLines('REVIEW', review.map((line: { text: string; tone?: string }) => [{ text: line.text, props: toneProps(line.tone) }])),
-    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen, view.planBuilding, width)) : []),
+    ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen, view.planBuilding, width, view.planPublishing === true)) : []),
     ...(!view.plan && view.planOpen ? rowLines('PLAN', unitOnlyLines(view.planOpen, view.planOpenPr)) : []),
   ]
 }

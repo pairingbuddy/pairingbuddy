@@ -98,7 +98,7 @@ const ONE_UNIT_PER_STATE = [
   '',
 ].join('\n')
 
-// The open unit is Done, with a record of its one task, so only it can read as unpublished.
+// The open unit is Done, with a record of its one task, so only it can read as unpublished (pull request not opened yet).
 const OPEN_UNIT_DONE = JSON.stringify({ unit: 'Done', plan: PLAN_PATH, tracer: 'Tracer 3: Done', branch: 'feat/done', base: 'main', baseSha: 'abc123', tasks: [{ title: 'Task 4: Built' }], commits: [] })
 
 test('each unit shows the state unitStates gives it: to do, hand-ticked, unpublished, published, accepted or legacy', async ($, on) => {
@@ -113,7 +113,7 @@ test('each unit shows the state unitStates gives it: to do, hand-ticked, unpubli
     '             ✓ Task 2: Ticked by hand',
     '             ○ Task 3: Still to do',
     '         Tracer 3: Done',
-    '           Tracer 3: Done · unpublished',
+    '           Tracer 3: Done · pull request not opened yet',
     '             branch feat/done',
     '             base main',
     '             ✓ Task 4: Built',
@@ -128,6 +128,20 @@ test('each unit shows the state unitStates gives it: to do, hand-ticked, unpubli
     '           Tracer 6: Old · legacy',
     '             ✓ Task 7: Before pb',
   ])
+})
+
+// Scenario S6 frames 03 and 07: while the publish run wrote a unit's pull request, the unit read "unpublished", a word that
+// says nothing of what happens. It says the pull request is being written.
+test('while the publish run writes the open unit\'s pull request, the unit says so in plain words', async ($, on) => {
+  const { rig } = setupPlanReplay(on, ONE_UNIT_PER_STATE)
+  rig.served.set(`${ROOT}/.pairingbuddy/run/unit.json`, OPEN_UNIT_DONE)
+  rig.served.set(LEDGER_PATH, JSON.stringify({ ...SNAPSHOT_RUNNING, kind: 'publish', taskType: 'publish', stage: { ...SNAPSHOT_RUNNING.stage, name: 'pr-draft' }, stages: [] }))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const unitRow = planRows(await paneLines($)).find(line => line.includes('Tracer 3: Done ·'))
+
+  expect(unitRow).toBe('           Tracer 3: Done · writing the pull request')
 })
 
 const RECEIPT_DEPENDS_ON_PAY = [

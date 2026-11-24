@@ -65,6 +65,8 @@ export type View = {
   planOpenPr?: string
   // The title of the plan task the live code run is building, which the tree marks in progress.
   planBuilding?: string
+  // A live publish run is writing the open unit's pull request.
+  planPublishing?: boolean
 }
 
 type PlannedUnits = NonNullable<Inputs['plan']>['units']
@@ -304,9 +306,11 @@ function endedStatus(inputs: Inputs, end: { doneStatus?: string }): Status {
   return { state: 'quiet', what: `ended${STATUS_PART}not signed off` }
 }
 
-// The plan task a live code run builds: the title its ledger's plan names, else its task's first line. A publish run builds none.
-function buildingTask(ledger: Ledger): Pick<View, 'planBuilding'> {
-  if (!ledger || isPublishRun(ledger)) return {}
+// The plan task a live code run builds: the title its ledger's plan names, else its task's first line. A live publish run
+// builds none; it writes the open unit's pull request.
+function buildingTask(ledger: Ledger): Pick<View, 'planBuilding' | 'planPublishing'> {
+  if (!ledger) return {}
+  if (isPublishRun(ledger)) return { planPublishing: true }
   const title = ledger.plan?.title || ledger.task?.split('\n')[0]?.trim()
   return title ? { planBuilding: title } : {}
 }

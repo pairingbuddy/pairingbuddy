@@ -45,7 +45,7 @@ test('a publish run, whose ledger names no plan, shows the plan the open unit.js
 
   expect(planRows(await paneLines($)), 'the tree of the plan unit.json names, with Pay\'s branch, base and commit').toEqual([
     'PLAN     Tracer 1: Checkout',
-    '           Pay · unpublished',
+    '           Pay · writing the pull request',
     '             branch feat/pay',
     '             base main',
     '             commit 1111111',
