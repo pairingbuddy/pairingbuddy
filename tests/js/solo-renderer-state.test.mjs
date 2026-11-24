@@ -203,7 +203,20 @@ test("skips-partial-or-invalid-stream-line", () => {
 });
 
 test("sums-usage-across-task-notifications", () => {
-  assert.fail("not implemented: With two task_notification events carrying usage, the output shows their summed tokens");
+  const stream = jsonl([
+    { type: "system", subtype: "task_notification", usage: { total_tokens: 1200, tool_uses: 3, duration_ms: 4000 } },
+    { type: "system", subtype: "task_progress", description: "Writing the failing test" },
+    { type: "system", subtype: "task_notification", usage: { total_tokens: 3300, tool_uses: 5, duration_ms: 9000 } },
+  ]);
+
+  const result = renderWithFiles({ "solo-stream.jsonl": stream });
+
+  assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /^Spend: 4500 tokens$/m,
+    "the Spend line shows the total tokens summed across both task_notification events",
+  );
 });
 
 test("shows-unknown-spend-with-no-notifications", () => {
