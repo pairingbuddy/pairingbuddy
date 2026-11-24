@@ -349,10 +349,11 @@ test("code-safety-net-lens-prompts-name-the-snapshot-subject-diff-and-changed-fi
 
 // Scenario: stage-wiring. code-safety-net and code-scenarios wire the fix loop and handle its stop reasons
 // Test case: safety-net-wires-commit-mode-agents
-test("Safety net fix agents are pairingbuddy:refactor-tests for the tests lens and pairingbuddy:refactor-code otherwise, in order lens round, fixes, docs, finish", async () => {
-  const FIXERS = ["pairingbuddy:refactor-code", "pairingbuddy:refactor-tests"];
-  const order = [];
-  const agent = async (prompt, opts) => {
+const FIXERS = ["pairingbuddy:refactor-code", "pairingbuddy:refactor-tests"];
+
+// A round where the code and tests lenses each keep one finding, the fixers fix it, and the checker finds it better.
+const twoGroupFixingAgent = (order = []) =>
+  async (prompt, opts) => {
     const { agentType } = opts;
     const role = runnerRole(prompt, agentType);
     order.push(`start ${role}`);
@@ -368,7 +369,22 @@ test("Safety net fix agents are pairingbuddy:refactor-tests for the tests lens a
     return {};
   };
 
-  const { calls } = await runStage(ARGS, agent);
+test("Safety net fixers are told a fix that rewords what tests pin updates those tests, keeping what they check", async () => {
+  const { calls } = await runStage(ARGS, twoGroupFixingAgent());
+
+  const fixes = calls.filter(({ opts }) => FIXERS.includes(opts.agentType));
+  assert.equal(fixes.length, 2);
+  for (const { prompt } of fixes) {
+    const instructions = prompt.split("<paths>")[0];
+    assert.match(instructions, /tests check by its exact wording/i, instructions);
+    assert.match(instructions, /same fix/i, instructions);
+    assert.match(instructions, /still check what they checked/i, instructions);
+  }
+});
+
+test("Safety net fix agents are pairingbuddy:refactor-tests for the tests lens and pairingbuddy:refactor-code otherwise, in order lens round, fixes, docs, finish", async () => {
+  const order = [];
+  const { calls } = await runStage(ARGS, twoGroupFixingAgent(order));
 
   const fixes = calls.filter(({ opts }) => FIXERS.includes(opts.agentType));
   assert.deepEqual(fixes.map(({ opts }) => opts.agentType), ["pairingbuddy:refactor-code", "pairingbuddy:refactor-tests"], "the code group goes to refactor-code and the tests group to refactor-tests");

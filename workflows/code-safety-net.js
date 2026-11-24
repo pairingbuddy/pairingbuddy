@@ -1927,7 +1927,7 @@ const lensResult = await lensAttack({
     agentType: 'pairingbuddy:refactor-code',
     agentTypeByLens: { tests: 'pairingbuddy:refactor-tests' },
     schemaByAgentType: { 'pairingbuddy:refactor-code': REFACTOR_CODE_SCHEMA, 'pairingbuddy:refactor-tests': REFACTOR_TESTS_SCHEMA },
-    instruction: 'Fix the findings below. Change only what the findings name.',
+    instruction: 'Fix the findings below. Change only what the findings name. The full suite must pass after your fix, or it is rolled back: when the fix rewords text that tests check by its exact wording (a skill, a doc, a message), find those tests and update them in the same fix, so they still check what they checked.',
     paths: { test_config: '.pairingbuddy/test-config.json', human_guidance: '.pairingbuddy/human-guidance.json' },
   },
 });
