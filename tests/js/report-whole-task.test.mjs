@@ -99,7 +99,8 @@ describe("report-of-the-whole-task", () => {
 
     assert.ok(headerOf(html).includes("DONE"), "the task is done");
     assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Task type<\/strong> new feature/, "the task type is the code run's");
-    assert.ok(spentOf(html).includes("14:00"), `the time runs from the code run's start to the publish run's end, got ${spentOf(html)}`);
+    // The code run ran 9:00 and the publish run 4:30; the half minute between them ran nothing.
+    assert.ok(spentOf(html).includes("13:30"), `the time is each run's own time added up, got ${spentOf(html)}`);
   });
 
   test("STEPS lists every step of both runs, timed from the task's start", () => {
@@ -197,7 +198,7 @@ describe("report-of-the-whole-task", () => {
     const section = sectionOf(report(), "AT A GLANCE");
 
     assert.match(section, /<strong>Where it is<\/strong> finished/);
-    assert.match(section, /<strong>Spent<\/strong> 43 agents · 14:00 · 16248 output tokens/, "both runs' tokens over the whole task's time");
+    assert.match(section, /<strong>Spent<\/strong> 43 agents · 13:30 · 16248 output tokens/, "both runs' tokens over the whole task's time");
     assert.doesNotMatch(section, /Left|Looping|Off track/);
     assert.doesNotMatch(section, /<\/strong> unknown<\/p>/, "no row is unknown as a whole");
   });

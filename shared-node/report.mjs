@@ -45,16 +45,23 @@ function glanceLabels(ledger) {
   return { type: "Task type", now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", waited: "Waited", left: "Left" };
 }
 
-// The run's length: endedAt (or the last stage end) minus the first start; NaN when either is missing.
+// The run's length: endedAt (or the last stage end) minus its start; NaN when either is missing.
 // A run that has not ended (no end, no stage end, not DONE/STOPPED) is measured to `now`.
-// A task of several runs is measured from its first run's start (`first`) to its last run's end.
-function runSeconds(ledger, endedAt, now, first = ledger) {
+function runSeconds(ledger, endedAt, now) {
   const stages = Array.isArray(ledger?.stages) ? ledger.stages : [];
   const ends = stages.map((stage) => Date.parse(stage?.end)).filter(Number.isFinite);
   const live = outcome(ledger) === "RUNNING" && Number.isFinite(now) ? now : NaN;
   const end = Number.isFinite(Date.parse(endedAt)) ? Date.parse(endedAt) : ends.length > 0 ? Math.max(...ends) : live;
-  const seconds = (end - Date.parse(runStart(first))) / 1000;
+  const seconds = (end - Date.parse(runStart(ledger))) / 1000;
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : NaN;
+}
+
+// The task's length: each run's own length added up, as SPENT counts it, so the time between runs (a person doing a [HUMAN]
+// task, a new session) is left out. The last run is measured with `ledger` (its permission ask read in) and, when it was not
+// kept, the given end. NaN when a run's length is unknown.
+function taskSeconds(task, ledger, endedAt, now) {
+  const last = task.length - 1;
+  return task.reduce((total, run, i) => total + (i === last ? runSeconds(ledger, run.endedAt ?? endedAt, now) : runSeconds(run.ledger, run.endedAt, now)), 0);
 }
 
 // Left only means something while the run goes, so a finished run has no such row.
@@ -744,7 +751,7 @@ export function renderReport({ ledger: given, spawns, calls, timing, commits, te
   // Claude Code's permission prompt, while it stands, is the question waiting on the human.
   const ledger = withPermissionAsk(last.ledger);
   const code = codeRunIn(task).ledger;
-  const ranFor = runSeconds(ledger, last.endedAt ?? endedAt, now, task[0].ledger);
+  const ranFor = taskSeconds(task, ledger, endedAt, now);
   const url = taskPrUrl(task, prUrl);
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Run report</title>

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The report's Spent counts only the time the task's runs ran, as SPENT does (S6 run: the report still counted from the code run's start to the publish run's end, with the [HUMAN] task and the new session between them). It now adds up each run's own time, less its waits.
+
 - A TESTS name too long for the room is cut at a word and marked by `…` (S6 run at 60 columns: `▸ apply discount 100 10 returns` read as if whole, its `90` cut with no mark). Plan and REVIEW titles are cut the same way. The report's SCENARIOS still holds every name whole.
 
 - A plan unit with every box ticked and no PR yet says what is happening in plain words (S6 run: `Discounted totals · unpublished` while unit B's pull request was being written). While the publish run is live it reads `writing the pull request`, otherwise `pull request not opened yet`.

@@ -185,7 +185,7 @@ describe("report-leads-with-what-you-need", () => {
     const waited = { ...publish, ledger: { ...publish.ledger, gates: { "G:publish": { ...publish.ledger.gates["G:publish"], askedAt: "2026-11-16T15:42:30.000Z", answeredAt: "2026-11-16T19:43:50.000Z" } } } };
     const html = report({ runs: [RUNS[0], waited] });
 
-    assert.ok(spentOf(html).includes(" · 24:47 · "), `the task's 4:26:07 less the 4:01:20 wait, got ${spentOf(html)}`);
+    assert.ok(spentOf(html).includes(" · 24:42 · "), `its runs' own 4:26:02 less the 4:01:20 wait, got ${spentOf(html)}`);
     assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Waited<\/strong> 4h 1m waiting for you/);
   });
 
@@ -195,7 +195,7 @@ describe("report-leads-with-what-you-need", () => {
     const waited = { ...publish, ledger: { ...publish.ledger, permissionWaits: [{ askedAt: "2026-11-16T15:42:30.000Z", seq: 3, tool: "Workflow", answeredAt: "2026-11-16T19:43:50.000Z" }] } };
     const html = report({ runs: [RUNS[0], waited] });
 
-    assert.ok(spentOf(html).includes(" · 24:47 · "), `the task's 4:26:07 less the 4:01:20 wait, got ${spentOf(html)}`);
+    assert.ok(spentOf(html).includes(" · 24:42 · "), `its runs' own 4:26:02 less the 4:01:20 wait, got ${spentOf(html)}`);
     assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Waited<\/strong> 4h 1m waiting for you/);
   });
 
