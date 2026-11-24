@@ -179,3 +179,19 @@ test('live-publish-run-review-is-the-code-review-its-code-run-kept', async ($, o
 
   expect(review[0], 'the safety-net review, not the PR draft\'s').toBe('REVIEW   review: 1 issue, all left as is')
 })
+
+// Scenario S6 unit A, frame 03: the publish run had closed no attempt yet, so its spend carried no tokensKnown, and SPENT
+// dropped the code run's known tokens. No attempt counted is still known (addSpend in stage-run.mjs).
+test('live-publish-run-with-no-attempt-closed-still-shows-the-kept-code-run-tokens', async ($, on) => {
+  const rig = setupReplay(on)
+  const live = { ...PUBLISH_RUN, stage: { ...PUBLISH_RUN.stage, status: 'active' }, stages: [], spend: { agents: 0, tokens: 0 } }
+  const codeRunKept = Object.fromEntries(Object.entries(KEPT_FILES).filter(([path]) => path.includes(CODE_RUN.runId)))
+  serve(rig, { [LEDGER]: live, [UNIT]: UNIT_FILE, [CHANGED_PATH]: CHANGED, ...codeRunKept })
+  await rig.clock.set(Date.parse('2026-11-16T15:43:00.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const spent = row(await paneLines($), 'SPENT')
+
+  expect(spent, 'the code run\'s 27779 tokens, the publish run having counted none yet').toMatch(/ · 27779 output tokens$/)
+})

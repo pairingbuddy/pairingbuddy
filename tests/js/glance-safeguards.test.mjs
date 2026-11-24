@@ -40,6 +40,14 @@ test("for-the-pane-unknown-tokens-and-plan-share-are-left-out-of-spent", () => {
   assert.equal(rows.spent, "0 agents · 0:05");
 });
 
+// Scenario S6 unit B, frames 07 and 08: one attempt's tokens were unknown (the killed session's), the rest were counted, and
+// SPENT dropped them all. The pane shows the counted ones as a floor.
+test("for-the-pane-tokens-known-only-in-part-read-as-at-least-their-count", () => {
+  const { rows } = glance({ ledger: { spend: { tokens: 50205, tokensKnown: false } }, spawns: [], ranFor: 5, leaveOutUnknown: true });
+
+  assert.equal(rows.spent, "0 agents · 0:05 · at least 50205 output tokens");
+});
+
 test("the-band-has-no-looping-segment-even-on-a-retry", () => {
   for (const spawns of [[], tries(2), tries(3)]) {
     const { band } = glance({ ledger: {}, spawns, tests: ["t1"] });

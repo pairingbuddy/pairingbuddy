@@ -139,7 +139,10 @@ export const runStart = (ledger) => (ledger?.stages?.length > 0 ? ledger.stages[
 function spentRow({ ledger, spawns, agents: recorded, earlierAgents, now, ranFor, since, waited, paused, leaveOutUnknown }) {
   const agents = agentsOf(spawns, recorded, ledger, earlierAgents);
   const known = ledger?.spend?.tokensKnown === true;
-  const tokens = known ? `${ledger.spend.tokens} ${TOKENS_UNIT}` : "tokens unknown";
+  // A sum with an unknown attempt in it counts the known ones only (addSpend in stage-run.mjs), so the pane says it as a floor.
+  const counted = Number(ledger?.spend?.tokens);
+  const floor = leaveOutUnknown && !known && Number.isInteger(counted) && counted > 0;
+  const tokens = known ? `${ledger.spend.tokens} ${TOKENS_UNIT}` : floor ? `at least ${counted} ${TOKENS_UNIT}` : "tokens unknown";
   const parts = [plural(agents, "agent"), spentTime(since ?? runStart(ledger), now, ranFor, waited, paused), tokens];
   return (leaveOutUnknown ? parts.filter((part) => !part.endsWith(UNKNOWN)) : parts).join(" · ");
 }

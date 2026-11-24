@@ -323,11 +323,12 @@ export function buildView(inputs: Inputs): View {
 // live: a run read now, whose clock stops while it waits on the human or is stopped (pausedAtOf); an ended run's never runs on.
 const glanceOf = ({ ledger, spawns, tests, testsComplete, now, since, waited, earlierAgents, earlier }: Inputs, agents?: number, live = false) => glance({ ledger: live ? withEarlierTokens(ledger, earlier) : ledger, spawns, agents, tests, now, since, waited, testsComplete, leaveOutUnknown: true, ...(live ? { pausedAt: pausedAtOf(ledger), earlierAgents, earlierWaited: earlier?.waited ?? 0 } : {}) })
 
-// The live ledger with its task's earlier runs' tokens added, known only when every run knew its own.
+// The live ledger with its task's earlier runs' tokens added, known only when every run knew its own. A live spend with no
+// tokensKnown has counted no attempt yet, so it is still known, as addSpend in stage-run.mjs reads it.
 function withEarlierTokens(ledger: Ledger, earlier: Inputs['earlier']): Ledger {
   if (!ledger || !earlier) return ledger
   const own = ledger.spend
-  return { ...ledger, spend: { agents: own?.agents ?? 0, tokens: (Number(own?.tokens) || 0) + earlier.tokens, tokensKnown: own?.tokensKnown === true && earlier.tokensKnown } }
+  return { ...ledger, spend: { agents: own?.agents ?? 0, tokens: (Number(own?.tokens) || 0) + earlier.tokens, tokensKnown: own?.tokensKnown !== false && earlier.tokensKnown } }
 }
 
 // An ended task as its kept runs tell it: the agents and tokens they recorded, from the first run's start to the last run's

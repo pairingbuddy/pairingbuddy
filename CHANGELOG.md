@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- SPENT shows the tokens it knows (S6 run: no tokens showed while unit A's PR was drafted, nor anywhere in unit B). A publish run that has closed no step yet has counted nothing, so it no longer hides the code run's tokens. When one step's tokens are unknown (the killed session's), the pane shows the counted ones as `at least N output tokens`.
+
 ## [0.8.0-exp.3] - 2026-11-24
 
 - A REVIEW finding too long for the room is cut at a word and marked by `…` (S6 run at 60 columns: `left as is · Needless alias sut in regression` read as if whole). What happens to it is never cut.
