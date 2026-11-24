@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Accepting a changed test-config.json in the session, as well as with `pb human accept`, pins it in the open unit too, so `pb publish` does not refuse it later (the tap's Accept updated only the run's ledger).
+
 - A refused stage start says the running stage "is still running" and, when stuck, that the human clears it with pb stage fail, instead of "is active at attempt N" (T4d: the refusal read as jargon). A stage with no recorded run says to start it again, with no attempt number.
 
 - A safety-net fixer is told that the full suite must pass after its fix, so a fix that rewords text tests check word for word updates those tests in the same fix, keeping what they check (T4d Task 109: five fixes reworded the coding skill, broke the router tests that pin its wording, were all rolled back, and the run stopped at its cap of 5).

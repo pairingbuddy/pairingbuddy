@@ -21,7 +21,7 @@ import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, forei
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
-import { SPIKE_SETUP_FILE, abandonRun, closeUnit, endRun, keepRun, keptAcceptedConfigHash } from "../shared-node/unit-files.mjs";
+import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, closeUnit, endRun, keepRun, keptAcceptedConfigHash } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
@@ -673,15 +673,13 @@ function acceptedConfig(root, path) {
     accepted = { oldHash: ledger.configHash, newHash, seq: ledger.seq + 1 };
     return { ...ledger, configHash: newHash, configAcceptances: [...(ledger.configAcceptances ?? []), accepted] };
   });
-  acceptInUnit(root, accepted);
+  try {
+    acceptConfigInUnit(root, accepted);
+  } catch (e) {
+    if (e instanceof UnitConfigRefused) throw new Refusal(e.message);
+    throw e;
+  }
   return accepted;
-}
-
-function acceptInUnit(root, { newHash, seq }) {
-  const unit = readUnitJson(root, "the unit cannot pin the accepted test-config", "The run's ledger has pinned it");
-  if (unit === null || unit.configHash === newHash) return;
-  const configAcceptances = [...(unit.configAcceptances ?? []), { oldHash: unit.configHash, newHash, seq }];
-  writeJsonAtomic(unitPathOf(root), { ...unit, configHash: newHash, configAcceptances });
 }
 
 // The repo toplevel, the plan's resolved path and its text, for the verbs that read a plan.
