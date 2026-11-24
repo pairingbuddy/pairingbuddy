@@ -73,7 +73,20 @@ test("gate-policy-set-before-claude-starts", () => {
 });
 
 test("still-exports-solo-flag", () => {
-  notImplemented("still-exports-solo-flag");
+  const { result, claudeEnv } = runSoloOnFeatureBranch();
+
+  assert.equal(result.status, 0, `solo-buddy.sh should run on a feature branch: ${result.stderr}`);
+  assert.match(claudeEnv, /^PAIRINGBUDDY_SOLO=true$/m, "claude must still see PAIRINGBUDDY_SOLO=true");
+  assert.match(
+    claudeEnv,
+    /^PAIRINGBUDDY_SOLO_MAX_RETRIES=5$/m,
+    "claude must still see PAIRINGBUDDY_SOLO_MAX_RETRIES with the default of 5",
+  );
+  assert.match(
+    claudeEnv,
+    /^PAIRINGBUDDY_PLAN_PATH=.*plan\.md$/m,
+    "claude must still see PAIRINGBUDDY_PLAN_PATH naming the plan file",
+  );
 });
 
 test("prompt-invokes-code-on-plan", () => {
