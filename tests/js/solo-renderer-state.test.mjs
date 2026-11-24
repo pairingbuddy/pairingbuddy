@@ -8,23 +8,14 @@ import { fileURLToPath } from "node:url";
 
 // Solo renderer (render_status in scripts/solo-buddy.sh) reads run/unit.json, the ledger,
 // the captured claude stream and task_progress / task_notification events.
-// Placeholders: each test fails until implement-tests writes the real assertion.
+// Tests not yet implemented are placeholders that fail until implement-tests writes the real assertion.
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SOLO_SCRIPT = join(REPO_ROOT, "scripts", "solo-buddy.sh");
 
-// Loads render_status out of solo-buddy.sh and runs it once inside a temp project
-// whose .pairingbuddy/run/unit.json holds `unit`. Returns the spawn result.
-function renderWithUnit(unit) {
-  return renderWithFiles({ "run/unit.json": unit });
-}
-
-// Same, with a ledger at .pairingbuddy/run/task/ledger.json.
-function renderWithLedger(ledger) {
-  return renderWithFiles({ "run/task/ledger.json": ledger });
-}
-
-// Writes each entry of `files` (path under .pairingbuddy -> JSON value) and runs render_status.
+// Loads render_status out of solo-buddy.sh and runs it once inside a temp project.
+// Writes each entry of `files` (path under .pairingbuddy -> JSON value) first,
+// e.g. { "run/unit.json": unit, "run/task/ledger.json": ledger }. Returns the spawn result.
 function renderWithFiles(files) {
   const dir = mkdtempSync(join(tmpdir(), "solo-render-"));
   try {
@@ -58,7 +49,7 @@ test("shows-unit-branch-and-task-count-from-unit-json", () => {
     commits: [],
   };
 
-  const result = renderWithUnit(unit);
+  const result = renderWithFiles({ "run/unit.json": unit });
 
   assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
   assert.match(
@@ -69,13 +60,9 @@ test("shows-unit-branch-and-task-count-from-unit-json", () => {
 });
 
 test("shows-current-stage-from-ledger", () => {
-  const ledger = {
-    stage: { name: "implement-tests", status: "running", attempt: 2, runId: null },
-    stop: null,
-    needsHuman: null,
-  };
+  const ledger = { stage: { name: "implement-tests", status: "running", attempt: 2 } };
 
-  const result = renderWithLedger(ledger);
+  const result = renderWithFiles({ "run/task/ledger.json": ledger });
 
   assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
   assert.match(
