@@ -293,44 +293,25 @@ render_status() {
         content="${content}${ledger_line}${NL}"
     fi
 
-    # Show the description of the latest task_progress event in the captured claude stream
-    # `events` is every system event of the stream; a partial or invalid line is skipped.
-    local stream_events='
-        const events = [];
-        for (const line of text.split("\n")) {
-            try {
-                const event = JSON.parse(line);
-                if (event.type === "system") events.push(event);
-            } catch (error) { /* skip a partial or invalid line */ }
-        }
-    '
-    local agent_line
-    agent_line=$(read_state_line ".pairingbuddy/solo-stream.jsonl" "${stream_events}"'
-        let last = "";
-        for (const event of events) {
-            if (event.subtype === "task_progress" && event.description) last = event.description;
-        }
-        if (last) console.log(last);
+    # Read the captured claude stream once: show the description of the latest task_progress event and sum the
+    # tokens the task_notification events report in their usage. A partial or invalid line is skipped.
+    local stream_lines
+    stream_lines=$(read_state_line ".pairingbuddy/solo-stream.jsonl" '
+        const events = text.split("\n").map((line) => { try { return JSON.parse(line); } catch (error) { return null; } });
+        const system = events.filter((event) => event && event.type === "system");
+        const progress = system.filter((event) => event.subtype === "task_progress" && event.description);
+        const last = progress.length ? progress[progress.length - 1].description : "";
+        const tokens = system
+            .filter((event) => event.subtype === "task_notification" && event.usage)
+            .map((event) => Number(event.usage.total_tokens))
+            .filter(Number.isFinite);
+        const total = tokens.reduce((sum, count) => sum + count, 0);
+        const seen = tokens.length > 0;
+        if (last) console.log(`Agent: ${last}`);
+        console.log(`Spend: ${seen ? `${total} tokens` : "unknown"}`);
     ')
-    if [[ -n "$agent_line" ]]; then
-        content="${content}Agent: ${agent_line}${NL}"
-    fi
-
-    # Sum the tokens the task_notification events report in their usage
-    local spend_line
-    spend_line=$(read_state_line ".pairingbuddy/solo-stream.jsonl" "${stream_events}"'
-        let total = 0, seen = false;
-        for (const event of events) {
-            if (event.subtype !== "task_notification" || !event.usage) continue;
-            const tokens = Number(event.usage.total_tokens);
-            if (!Number.isFinite(tokens)) continue;
-            total += tokens;
-            seen = true;
-        }
-        console.log(seen ? `${total} tokens` : "unknown");
-    ')
-    if [[ -n "$spend_line" ]]; then
-        content="${content}Spend: ${spend_line}${NL}"
+    if [[ -n "$stream_lines" ]]; then
+        content="${content}${stream_lines}${NL}"
     fi
 
     # Fallback if nothing to display
