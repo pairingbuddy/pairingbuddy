@@ -548,7 +548,7 @@ start_renderer
 start_caffeinate
 trap cleanup EXIT SIGTERM SIGINT
 
-claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
+claude "${CLAUDE_ARGS[@]}" -- "$PROMPT" > .pairingbuddy/solo-stream.jsonl
 CLAUDE_EXIT=$?
 
 # Stop the renderer before writing final status
