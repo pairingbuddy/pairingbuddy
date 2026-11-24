@@ -279,17 +279,17 @@ render_status() {
         content="${content}Unit: ${dim}${unit_line}${reset}${NL}"
     fi
 
-    # Read the stop reason or the current stage from the task ledger
-    local stage_line
-    stage_line=$(read_state_line ".pairingbuddy/run/task/ledger.json" '
+    # Read the stop reason or the current stage, and the human gate it waits on, from the task ledger
+    local ledger_line
+    ledger_line=$(read_state_line ".pairingbuddy/run/task/ledger.json" '
         const s = state.stage;
         const attempt = s && s.attempt !== undefined ? `(attempt ${s.attempt})` : "";
         if (state.stop && state.stop.reason) console.log(`Stopped: ${state.stop.reason}`);
         else if (s && s.name) console.log(`Stage: ${[s.name, s.status, attempt].filter(Boolean).join(" ")}`);
         if (state.needsHuman && state.needsHuman.gate) console.log(`Waiting on: ${state.needsHuman.gate}`);
     ')
-    if [[ -n "$stage_line" ]]; then
-        content="${content}${stage_line}${NL}"
+    if [[ -n "$ledger_line" ]]; then
+        content="${content}${ledger_line}${NL}"
     fi
 
     # Read agent info from guardian session file
