@@ -278,7 +278,24 @@ test("missing-unit-json-does-not-crash", () => {
 });
 
 test("missing-ledger-does-not-crash", () => {
-  assert.fail("not implemented: With a unit.json but no ledger, render_status exits 0 and still shows the unit");
+  const unit = {
+    unit: "solo-renderer",
+    branch: "feat/solo-renderer",
+    tasks: [{ title: "Task 1" }, { title: "Task 2" }],
+    commits: [],
+  };
+
+  const result = renderWithFiles({ "run/unit.json": unit });
+
+  assert.equal(result.status, 0, `render_status must exit 0 without a ledger: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /^Unit: feat\/solo-renderer \(2 tasks\)$/m,
+    "the Unit line from unit.json still shows",
+  );
+  assert.doesNotMatch(result.stdout, /^Stage: /m, "no Stage line shows when there is no ledger");
+  assert.doesNotMatch(result.stdout, /^Stopped: /m, "no Stopped line shows when there is no ledger");
+  assert.doesNotMatch(result.stdout, /^Waiting on: /m, "no Waiting line shows when there is no ledger");
 });
 
 test("missing-stream-file-does-not-crash", () => {
