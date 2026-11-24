@@ -263,12 +263,12 @@ render_status() {
     local unit_file=".pairingbuddy/run/unit.json"
     if [[ -f "$unit_file" ]]; then
         local unit_line
+        # One error layer: node exits non-zero on unreadable JSON or a missing binary, and `|| true` keeps set -e quiet
         unit_line=$(node -e '
-            try {
-                const u = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-                const n = Array.isArray(u.tasks) ? u.tasks.length : 0;
-                console.log(`${u.branch || ""} (${n} ${n === 1 ? "task" : "tasks"})`);
-            } catch (e) {}
+            const u = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const n = Array.isArray(u.tasks) ? u.tasks.length : 0;
+            const count = `(${n} ${n === 1 ? "task" : "tasks"})`;
+            console.log(u.branch ? `${u.branch} ${count}` : count);
         ' "$unit_file" 2>/dev/null || true)
         if [[ -n "$unit_line" ]]; then
             content="${content}Unit: ${dim}${unit_line}${reset}${NL}"
