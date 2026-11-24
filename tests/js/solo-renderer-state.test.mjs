@@ -94,7 +94,19 @@ test("shows-stop-reason-from-ledger", () => {
 });
 
 test("shows-needs-human-gate-from-ledger", () => {
-  assert.fail("not implemented: With a ledger whose needsHuman names a gate, the output shows that the run is waiting on that gate");
+  const ledger = {
+    stage: { name: "pr-draft", status: "running", attempt: 1 },
+    needsHuman: { gate: "pr-review", reason: "the pull request draft needs a human look" },
+  };
+
+  const result = renderWithFiles({ "run/task/ledger.json": ledger });
+
+  assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /^Waiting on: pr-review$/m,
+    "the Waiting line names the gate the ledger needsHuman holds",
+  );
 });
 
 test("no-longer-reads-guardian-hooks-file", () => {
