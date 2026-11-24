@@ -204,9 +204,9 @@ test("skips-partial-or-invalid-stream-line", () => {
 
 test("sums-usage-across-task-notifications", () => {
   const stream = jsonl([
-    { type: "system", subtype: "task_notification", usage: { total_tokens: 1200, tool_uses: 3, duration_ms: 4000 } },
+    { type: "system", subtype: "task_notification", usage: { total_tokens: 1200 } },
     { type: "system", subtype: "task_progress", description: "Writing the failing test" },
-    { type: "system", subtype: "task_notification", usage: { total_tokens: 3300, tool_uses: 5, duration_ms: 9000 } },
+    { type: "system", subtype: "task_notification", usage: { total_tokens: 3300 } },
   ]);
 
   const result = renderWithFiles({ "solo-stream.jsonl": stream });
