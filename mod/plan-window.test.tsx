@@ -46,15 +46,16 @@ test('a 150-task plan draws a window around the next task in at most PLAN_ROWS r
   expect(rows.at(-1), 'the last row says what is cut below').toMatch(/^ {9}… \d+ tasks to do below/)
 })
 
-test('an ellipsis row sits at the depth of what it hides: a cut of units under a shown tracer is indented as a unit is', async ($, on) => {
+test('above the focus one ellipsis row opens the block, however many units it hides, even one under a shown tracer', async ($, on) => {
   const rows = await planBlock($, on, bigPlan(15, 100))
 
-  expect(rows.slice(0, 4), 'T10a is cut under its tracer; the cut of whole tracers above is not indented').toEqual([
-    'PLAN     … 90 tasks done above',
+  expect(rows.slice(0, 4), 'T10a, cut under its tracer, is counted in the one row above, not given a row of its own').toEqual([
+    'PLAN     … 95 tasks done above',
     '         T10: Tracer 10',
-    '           … 5 tasks done',
     '           T10b Unit',
+    '             ✓ Task 96: Do step 96',
   ])
+  expect(rows.filter(row => row.includes('…')).length, 'one cut above and one below').toBe(2)
 })
 
 const ONE_UNIT = ['# Shop', '', '## Tasks', '', '### T1: Pay', '', '- [x] Task 1: Take payment', '- [ ] Task 2: Refund', ''].join('\n')
@@ -108,5 +109,5 @@ test('the cut at the tree\'s end names /pb-plan, which shows the whole plan, sho
 test('in a narrow pane the hint on the cut gives way to its short form, and never runs past the width', async ($, on) => {
   const narrow = await planBlock($, on, bigPlan(15, 150), {}, 50)
 
-  expect(narrow[0], 'all done: the only cut is above, and it carries the hint').toBe('PLAN     … 130 tasks done above · /pb-plan')
+  expect(narrow[0], 'all done: the only cut is above, and it carries the hint').toBe('PLAN     … 135 tasks done above · /pb-plan')
 })

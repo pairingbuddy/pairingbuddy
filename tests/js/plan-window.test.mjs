@@ -102,3 +102,27 @@ test("growing up into another unit takes the unit whole or not at all, so the to
 
   assert.deepEqual(shown, ["…16/16", 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35], "the unit above is whole; the one above that does not fit, so none of it shows");
 });
+
+test("above the focus the cut rows collapse into one at the top; the focus unit's own cut tasks keep one row of their own", () => {
+  // Tracer A with two units of two tasks, then tracer B with a unit of four tasks and the focus unit of twenty.
+  const rows = [];
+  const unitOf = (tracer, group, checks) => {
+    const unitRow = rows.push({ needs: [tracer] }) - 1;
+    for (const checked of checks) rows.push({ needs: [tracer, unitRow], task: { checked }, group });
+  };
+  const a = rows.push({ needs: [] }) - 1;
+  unitOf(a, 0, [true, true]);
+  unitOf(a, 1, [true, true]);
+  const b = rows.push({ needs: [] }) - 1;
+  unitOf(b, 2, [true, true, true, true]);
+  unitOf(b, 3, [...Array(12).fill(true), ...Array(8).fill(false)]);
+  const focus = rows.findIndex((row) => row.group === 3 && !row.task.checked);
+
+  const shown = windowRows(rows, { focus, room: 12 });
+  const gaps = shown.filter((entry) => "gap" in entry).map(({ gap }) => [gap.edge, gap.tasks]);
+
+  assert.ok(shown.length <= 12);
+  assert.deepEqual(shown[0], { gap: shown[0].gap }, "the block opens with the one cut above");
+  assert.deepEqual(gaps.map(([edge]) => edge), ["above", undefined, "below"], "one cut above, one inside the focus unit, one below");
+  assert.equal(gaps[0][1], 8, "the cut above counts every hidden task of the other units: tracer A's four and tracer B's first unit's four");
+});

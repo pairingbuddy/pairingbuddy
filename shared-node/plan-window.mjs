@@ -40,25 +40,40 @@ export const OPEN_COMMIT_ROWS = 4;
 // is done.
 const BELOW_PER_ABOVE = 2;
 
-// The shown rows in tree order, with an ellipsis row for each run of hidden rows: the tasks it hides, how many are ticked,
-// the first and last rows it stands for, and its edge: "above" when it opens the tree, "below" when it ends it, none between shown rows.
-function entriesOf(rows, shown) {
+// The shown rows in tree order, with at most one ellipsis row at each end of the block and one inside the focus's unit,
+// each counting the tasks it hides, how many are ticked, and the first and last rows it stands for.
+// Above the focus every hidden row of another unit is told by one row that opens the block ("above"), so the rows go to
+// what is shown. The focus unit's own hidden tasks keep one row where they are cut, between its facts and its shown tasks:
+// without it the unit's first shown task would read as its first. It opens the block itself ("above") when nothing shows
+// before it. Every hidden row after the focus is one row that ends the block ("below").
+function entriesOf(rows, shown, focus) {
+  const group = rows[focus].group;
+  const newGap = (row) => ({ tasks: 0, done: 0, first: row, last: row });
+  const count = (gap, row) => {
+    gap.last = row;
+    if (rows[row].task) {
+      gap.tasks += 1;
+      if (rows[row].task.checked) gap.done += 1;
+    }
+  };
+  let above = null;
+  let inUnit = null;
+  let below = null;
   const entries = [];
-  let gap = null;
-  for (const [row, { task }] of rows.entries()) {
+  for (const row of rows.keys()) {
     if (shown.has(row)) {
-      gap = null;
       entries.push({ row });
       continue;
     }
-    if (!gap) entries.push({ gap: (gap = { tasks: 0, done: 0, first: row, ...(row === 0 ? { edge: "above" } : {}) }) });
-    gap.last = row;
-    if (task) {
-      gap.tasks += 1;
-      if (task.checked) gap.done += 1;
-    }
+    if (row > focus) count((below ??= newGap(row)), row);
+    else if (rows[row].task && rows[row].group === group) {
+      if (!inUnit) entries.push({ gap: (inUnit = newGap(row)) });
+      count(inUnit, row);
+    } else count((above ??= newGap(row)), row);
   }
-  if (gap && !gap.edge) gap.edge = "below";
+  if (above) entries.unshift({ gap: { ...above, edge: "above" } });
+  else if (inUnit && "gap" in entries[0]) inUnit.edge = "above";
+  if (below) entries.push({ gap: { ...below, edge: "below" } });
   return entries;
 }
 
@@ -94,7 +109,7 @@ export function windowRows(rows, { focus, room }) {
     const taken = entering ? rows.flatMap((row, index) => (row.task && row.group === rows[next].group ? [index] : [])) : [next];
     const added = [...new Set(taken.flatMap(withNeeds))];
     for (const row of added) shown.add(row);
-    if (entriesOf(rows, shown).length > room) {
+    if (entriesOf(rows, shown, focus).length > room) {
       for (const row of added) shown.delete(row);
       open.delete(side);
       continue;
@@ -102,7 +117,7 @@ export function windowRows(rows, { focus, room }) {
     edges[side] = Math.min(next, ...taken);
     grown[side] += added.length;
   }
-  return entriesOf(rows, shown);
+  return entriesOf(rows, shown, focus);
 }
 
 // An ellipsis row's words: the tasks it hides, done or to do (or how many of them are done), and where it cuts.

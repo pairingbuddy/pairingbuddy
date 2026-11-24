@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The PLAN block has at most one cut row at each end (the real plan: `… 2 tasks done above`, `… 4 tasks done` and `… 5 tasks done` were stacked above a later unit). One row opens the block and counts every hidden task above the focus, such as `… 6 tasks done above`. The only cut row between shown rows is inside the focus's unit, when its own earlier tasks are cut, so its first shown task does not read as its first.
+
 - A narrow pane cuts a plan tracer's title at a word, marked by `…`, as unit and task titles are (the real plan at 60 columns: `T0: Live probes — Every untested platform assumpti…` was cut mid-word by the terminal).
 
 - The pane's PLAN block keeps to 24 rows, whatever the plan's size (the real plan's 150 tasks drew a tree of 200 rows, the task being built far below the ticked ones). It shows a window around the task being built, else the next unticked one, else the plan's end, with that task's tracer and unit rows and the open unit's facts. Each cut is a dim row that counts what it hides, such as `… 113 tasks done above`. The open unit shows at most four commit rows and the plan's problems at most three. `/pb-plan` writes the whole plan as a page, with the same states, and opens it, as `/pb-report` does. The cut at the tree's end names it.
