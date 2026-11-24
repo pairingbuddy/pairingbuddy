@@ -220,7 +220,24 @@ test("sums-usage-across-task-notifications", () => {
 });
 
 test("shows-unknown-spend-with-no-notifications", () => {
-  assert.fail("not implemented: With a stream holding no task_notification, spend is shown as unknown rather than zero");
+  const stream = jsonl([
+    { type: "system", subtype: "task_progress", description: "Writing the failing test" },
+    { type: "system", subtype: "task_progress", description: "Running the test suite" },
+  ]);
+
+  const result = renderWithFiles({ "solo-stream.jsonl": stream });
+
+  assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /^Spend: unknown$/m,
+    "the Spend line says unknown when the stream holds no task_notification",
+  );
+  assert.doesNotMatch(
+    result.stdout,
+    /^Spend: 0/m,
+    "unknown spend is not shown as zero tokens",
+  );
 });
 
 test("task-notification-without-usage-adds-nothing", () => {
