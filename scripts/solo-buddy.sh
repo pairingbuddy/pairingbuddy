@@ -281,12 +281,17 @@ render_status() {
     if [[ -f "$ledger_file" ]]; then
         local stage_line
         stage_line=$(node -e '
-            const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).stage;
-            const attempt = s && s.attempt !== undefined ? `(attempt ${s.attempt})` : "";
-            if (s && s.name) console.log([s.name, s.status, attempt].filter(Boolean).join(" "));
+            const ledger = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const s = ledger.stage;
+            if (ledger.stop && ledger.stop.reason) {
+                console.log(`Stopped: ${ledger.stop.reason}`);
+            } else if (s && s.name) {
+                const attempt = s.attempt !== undefined ? `(attempt ${s.attempt})` : "";
+                console.log(`Stage: ${[s.name, s.status, attempt].filter(Boolean).join(" ")}`);
+            }
         ' "$ledger_file" 2>/dev/null || true)
         if [[ -n "$stage_line" ]]; then
-            content="${content}Stage: ${dim}${stage_line}${reset}${NL}"
+            content="${content}${stage_line}${NL}"
         fi
     fi
 
