@@ -102,8 +102,16 @@ test("exports-gate-policy-auto", () => {
   );
 });
 
-test("gate-policy-set-before-claude-starts", () => {
-  assert.fail("not implemented: the PAIRINGBUDDY_GATE_POLICY export must appear in scripts/solo-buddy.sh before the claude invocation");
+test("script-sets-gate-policy-but-never-reads-it", () => {
+  const lines = readFileSync(SOLO_SCRIPT, "utf8").split("\n").filter((line) => !line.trim().startsWith("#"));
+  const mentions = lines.filter((line) => line.includes("PAIRINGBUDDY_GATE_POLICY"));
+
+  assert.ok(mentions.length > 0, "solo-buddy.sh must set PAIRINGBUDDY_GATE_POLICY");
+  assert.deepEqual(
+    mentions.filter((line) => /\$\{?PAIRINGBUDDY_GATE_POLICY/.test(line)),
+    [],
+    "solo-buddy.sh must only set the policy: reading it is for the hooks",
+  );
 });
 
 test("still-exports-solo-flag", () => {
