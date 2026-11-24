@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0-exp.5] - 2026-11-24
+
 - The PLAN window centres on the unit whose pull request is being written, or not opened yet, instead of the next unticked task (live at 20 and 30 rows the unit being published had dropped out of view). In a short pane the details also fold while PLAN would get fewer than 12 rows; TESTS only once the build is over, and REVIEW first once the work is finished, as the report holds its findings. A short PLAN block shows the open unit's commits on two rows.
 
 - The pane fits the rows the terminal gives it, so PLAN shows without scrolling (live: PLAN sat under STEPS, TESTS and REVIEW, below a 20 to 45-row window, with no hint it was there). In a short pane STEPS folds to one line (`✓ 4 done · ▸ write the pull request`), then TESTS to its count and the running test, then REVIEW to its summary, until PLAN has at least 7 rows; PLAN gets the rest, up to 24. A pane still too tall ends its window with `↓ 12 more rows · ctrl+x tab, then arrows`. The pane lists at most three labels pb could not read, the latest, under their count.
