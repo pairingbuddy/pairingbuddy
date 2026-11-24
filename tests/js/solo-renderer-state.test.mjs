@@ -22,7 +22,7 @@ function renderWithFiles(files) {
     for (const [path, value] of Object.entries(files)) {
       const full = join(dir, ".pairingbuddy", path);
       mkdirSync(dirname(full), { recursive: true });
-      writeFileSync(full, JSON.stringify(value));
+      writeFileSync(full, typeof value === "string" ? value : JSON.stringify(value));
     }
     // Paths travel as positional arguments, so the shell never parses them.
     const script = [
@@ -127,7 +127,27 @@ test("no-longer-reads-guardian-hooks-file", () => {
 });
 
 test("shows-latest-task-progress-description", () => {
-  assert.fail("not implemented: With a stream holding several task_progress events, the output shows the description of the last one");
+  const stream = [
+    { type: "system", subtype: "task_progress", description: "Reading the scenarios" },
+    { type: "system", subtype: "task_progress", description: "Writing the failing test" },
+    { type: "system", subtype: "task_progress", description: "Running the test suite" },
+  ]
+    .map((event) => JSON.stringify(event))
+    .join("\n");
+
+  const result = renderWithFiles({ "solo-stream.jsonl": `${stream}\n` });
+
+  assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /^Agent: Running the test suite$/m,
+    "the Agent line shows the description of the last task_progress event",
+  );
+  assert.doesNotMatch(
+    result.stdout,
+    /Reading the scenarios|Writing the failing test/,
+    "earlier task_progress descriptions are not shown",
+  );
 });
 
 test("ignores-non-progress-stream-lines", () => {
