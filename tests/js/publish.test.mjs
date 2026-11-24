@@ -11,6 +11,7 @@ import { targetBranch } from "../../shared-node/publish.mjs";
 import { FAKE_PR_URL, flagValues, GH_FAILURE, viewEnv } from "./gh-shim-fixture.mjs";
 import { pb, pushFromSecondClone } from "./cli-repo-fixture.mjs";
 import { sha256 } from "./tap-fixture.mjs";
+import { violations } from "./schema-check.mjs";
 import { CLEAN_BODY, CLEAN_TITLE, DRAFT_KEY, commitMore, approvedThroughTap, evalGate, git, gitConfigPath, readUnitRecord, REFUSED, unitFile } from "./publish-fixture.mjs";
 import {
   OTHER_UNIT_REF, PLAN, RUN_FILES, SAFETY_NET,
@@ -214,6 +215,26 @@ describe("publish-evidence-refusals", () => {
     const unit = acceptedInKeptRun(({ baseSha }) => `feat/other ${baseSha}`);
 
     assert.match(refused(unit), /test-config\.json/, "the refusal names test-config.json");
+  });
+
+  test("pb human accept with a unit open moves the unit's hash too, so publish does not refuse", () => {
+    const unit = publishableUnit();
+    const { configHash } = readUnitRecord(unit.repo);
+    const configPath = join(unit.repo.dir, ".pairingbuddy", "test-config.json");
+    appendFileSync(configPath, "\n");
+    const newHash = sha256(readFileSync(configPath, "utf8"));
+
+    const accepted = pb(unit.repo, "human", "accept");
+
+    assert.equal(accepted.code, 0, `pb human accept: ${accepted.stderr}`);
+    const record = readUnitRecord(unit.repo);
+    assert.equal(record.configHash, newHash, "the unit pins the accepted hash");
+    assert.deepEqual(record.configAcceptances, [JSON.parse(accepted.stdout).config], "the unit records the acceptance");
+    assert.equal(record.configAcceptances[0].oldHash, configHash, "from the hash the unit opened with");
+    const schema = JSON.parse(readFileSync(new URL("../../contracts/schemas/unit.schema.json", import.meta.url), "utf8"));
+    assert.deepEqual(violations(schema, record), [], "the record validates against the unit schema");
+    const { result } = publishUnit(unit);
+    assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
   });
 
   test("refuses-after-stop", () => {

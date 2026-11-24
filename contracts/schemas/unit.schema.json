@@ -14,6 +14,15 @@
     "baseSha": { "type": "string" },
     "configHash": { "type": "string" },
     "gitConfigHash": { "type": "string" },
+    "configAcceptances": {
+      "description": "The test-config changes the human accepted with pb human accept while the unit was open, oldest first; configHash is the last newHash. May be absent (none accepted).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["oldHash", "newHash", "seq"],
+        "properties": { "oldHash": { "type": "string" }, "newHash": { "type": "string" }, "seq": { "type": "integer" } }
+      }
+    },
     "tasks": {
       "type": "array",
       "items": {

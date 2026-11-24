@@ -663,6 +663,7 @@ function acceptedEdit(path) {
 }
 
 // A human's own change to test-config. Only a config every test run can use is pinned, so this cannot strand the run.
+// The open unit pins it too, so pb publish, which checks the unit's hash after this run has ended, sees the acceptance.
 function acceptedConfig(root, path) {
   const configPath = join(root, ".pairingbuddy", "test-config.json");
   if (!existsSync(configPath) || fileHash(configPath) === readLedger(path).configHash) return null;
@@ -672,7 +673,15 @@ function acceptedConfig(root, path) {
     accepted = { oldHash: ledger.configHash, newHash, seq: ledger.seq + 1 };
     return { ...ledger, configHash: newHash, configAcceptances: [...(ledger.configAcceptances ?? []), accepted] };
   });
+  acceptInUnit(root, accepted);
   return accepted;
+}
+
+function acceptInUnit(root, { newHash, seq }) {
+  const unit = readUnitJson(root, "the unit cannot pin the accepted test-config", "The run's ledger has pinned it");
+  if (unit === null || unit.configHash === newHash) return;
+  const configAcceptances = [...(unit.configAcceptances ?? []), { oldHash: unit.configHash, newHash, seq }];
+  writeJsonAtomic(unitPathOf(root), { ...unit, configHash: newHash, configAcceptances });
 }
 
 // The repo toplevel, the plan's resolved path and its text, for the verbs that read a plan.
