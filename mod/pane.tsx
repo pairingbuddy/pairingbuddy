@@ -1,7 +1,7 @@
 import { cutAtWord, lensLines, lensSummaryLines } from '../shared-node/lens-round.mjs'
 import { endReviewLines, endReviewSummaryLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
-import { commitRows, gapWords, planFocus, PLAN_ROWS, problemRows, STATE_SEPARATOR, taskMark, unitWords, WAITING_ON_PERSON, windowRows } from '../shared-node/plan-window.mjs'
-import { hiddenRows, moreRowsLine, paneBudget } from '../shared-node/pane-height.mjs'
+import { commitRows, gapWords, OPEN_COMMIT_ROWS, planFocus, PLAN_ROWS, problemRows, SHORT_COMMIT_ROWS, STATE_SEPARATOR, taskMark, unitWords, WAITING_ON_PERSON, windowRows } from '../shared-node/plan-window.mjs'
+import { hiddenRows, moreRowsLine, paneBudget, PLAN_TARGET } from '../shared-node/pane-height.mjs'
 import { resolveOpenUnit } from './view'
 import type { RowTones, Status, StatusState, Tags, View } from './view'
 
@@ -142,12 +142,13 @@ function topRows(view: View, columns: number) {
 // The plan as a tree: each tracer, its units nested under it, each unit's tasks under that, in plan order.
 const NEST = '  '
 const SHORT_SHA = 7
-// The open unit's branch, base and commits, each on its own line; a unit of many commits shows its latest (commitRows).
-function openUnitLines(open: NonNullable<View['planOpen']>, indent: string): Part[][] {
+// The open unit's branch, base and commits, each on its own line; a unit of many commits shows its latest (commitRows), at
+// most commitMost rows of them.
+function openUnitLines(open: NonNullable<View['planOpen']>, indent: string, commitMost = OPEN_COMMIT_ROWS): Part[][] {
   const facts = [
     ...(open.branch ? [`branch ${open.branch}`] : []),
     ...(open.base ? [`base ${open.base}`] : []),
-    ...commitRows(open.commits ?? []).map((row: { sha?: string; earlier?: number }) => (row.sha ? `commit ${row.sha.slice(0, SHORT_SHA)}` : `${ELLIPSIS} ${row.earlier} earlier commits`)),
+    ...commitRows(open.commits ?? [], commitMost).map((row: { sha?: string; earlier?: number }) => (row.sha ? `commit ${row.sha.slice(0, SHORT_SHA)}` : `${ELLIPSIS} ${row.earlier} earlier commits`)),
   ]
   return facts.map(text => [{ text: `${indent}${text}` }])
 }
@@ -182,7 +183,7 @@ type TreeRow = { parts: Part[]; needs: number[]; indent: string; task?: { checke
 // One unit's rows: its name and state, then what it is based on, the open unit's facts, its PR and its tasks, each a row of
 // the tree at `rows`' end. building: the title of the task the live run builds; publishing: a live publish run writes the
 // open unit's pull request; width: the room each row has. The focus task's row is noted in `focus`.
-function unitRows(rows: TreeRow[], unit: PlanUnit, group: number, state: string | undefined, open: View['planOpen'], indent: string, context: number[], focus: { task?: PlanUnit['tasks'][number]; row?: number }, building?: string, width = 0, publishing = false) {
+function unitRows(rows: TreeRow[], unit: PlanUnit, group: number, state: string | undefined, open: View['planOpen'], indent: string, context: number[], focus: { task?: PlanUnit['tasks'][number]; row?: number }, building?: string, width = 0, publishing = false, commitMost = OPEN_COMMIT_ROWS) {
   const contentIndent = indent + NEST
   const isOpen = Boolean(open && open.unit === unit.unit)
   const words = unitWords(state, isOpen, publishing)
@@ -192,7 +193,7 @@ function unitRows(rows: TreeRow[], unit: PlanUnit, group: number, state: string 
   const header = [...context, unitRow]
   const facts = [
     ...(unit.dependsOn ? [[{ text: `${contentIndent}based on ${unit.dependsOn}` }]] : []),
-    ...(open && isOpen ? openUnitLines(open, contentIndent) : []),
+    ...(open && isOpen ? openUnitLines(open, contentIndent, commitMost) : []),
     ...prRows(unit.pr, contentIndent),
   ].map(parts => push(parts, header))
   for (const task of unit.tasks) {
@@ -237,10 +238,12 @@ function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOp
   const awaitingPr = openIndex !== -1 && (publishing || states[openIndex] === 'unpublished') ? openIndex : undefined
   const at = planFocus(plan.units, building, awaitingPr)
   const focus: { task?: PlanUnit['tasks'][number]; row?: number } = { task: at ? plan.units[at.unit].tasks[at.task] : undefined }
+  // A block short of its target keeps the open unit's commits to fewer rows, so its tasks still fit.
+  const commitMost = room < PLAN_TARGET ? SHORT_COMMIT_ROWS : OPEN_COMMIT_ROWS
   const rows: TreeRow[] = []
   for (const { tracer, units } of tracerGroups(plan.units)) {
     const context = tracer ? [rows.push({ parts: [{ text: titleRow('', tracer, '', width) }], needs: [], indent: '' }) - 1] : []
-    for (const { unit, index } of units) unitRows(rows, unit, index, states[index], open, tracer ? NEST : '', context, focus, building, width, publishing)
+    for (const { unit, index } of units) unitRows(rows, unit, index, states[index], open, tracer ? NEST : '', context, focus, building, width, publishing, commitMost)
   }
   // The problems are told first, so the tree has the room they leave.
   const problems = problemRows(plan.problems ?? [])
@@ -276,8 +279,8 @@ function stepsFolded(steps: string[]): Part[][] {
 type Rows = ReturnType<typeof rowLines>
 
 // The details under the rule, read after the first glance. room: the rows the pane's body shows at once, when the platform
-// says; fixed: the rows drawn above and below these that never fold. A short room folds STEPS, then TESTS, then REVIEW, and
-// gives the PLAN block what is left (paneBudget).
+// says; fixed: the rows drawn above and below these that never fold. A short room folds STEPS, then TESTS, then REVIEW (REVIEW
+// first once the work is finished), and gives the PLAN block what is left (paneBudget).
 function paneRows(view: View, columns: number, room?: number, fixed = 0): Rows {
   const { rows, rowTones = {} as RowTones } = view
   const width = columns > 0 ? columns - LABEL_WIDTH : 0
@@ -289,11 +292,12 @@ function paneRows(view: View, columns: number, room?: number, fixed = 0): Rows {
     ...rowLines('BUILT', wrapped(view.end.done, width)),
     ...rowLines('SPENT', one(rows.spent, toneProps(rowTones.spent))),
   ]
-  const sections = [
-    { full: rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])), folded: rowLines('STEPS', stepsFolded(view.steps)) },
-    { full: rowLines('TESTS', testsParts(view, width)), folded: rowLines('TESTS', testsParts(view, width, true)) },
-    { full: reviewRow(review), folded: reviewRow(reviewSummary) },
-  ]
+  const steps = { full: rowLines('STEPS', view.steps.map(line => [{ text: line, props: stepProps(line) }])), folded: rowLines('STEPS', stepsFolded(view.steps)) }
+  // While the build runs its tests are what to watch: TESTS folds then only for the plan's floor.
+  const tests = { full: rowLines('TESTS', testsParts(view, width)), folded: rowLines('TESTS', testsParts(view, width, true)), forTarget: view.progress?.count?.settled === true }
+  const reviewed = { full: reviewRow(review), folded: reviewRow(reviewSummary) }
+  // Once the work is finished the report holds the review's findings, so REVIEW folds first.
+  const order = view.endRound ? [reviewed, steps, tests] : [steps, tests, reviewed]
   const plan = (planRoom: number): Rows => [
     ...(view.plan ? rowLines('PLAN', planLines(view.plan, view.planStates, view.planOpen, view.planBuilding, width, view.planPublishing === true, planRoom)) : []),
     ...(!view.plan && view.planOpen ? rowLines('PLAN', unitOnlyLines(view.planOpen, view.planOpenPr)) : []),
@@ -302,12 +306,12 @@ function paneRows(view: View, columns: number, room?: number, fixed = 0): Rows {
   const budget = paneBudget({
     room,
     fixed: fixed + head.length,
-    sections: sections.map(({ full, folded }) => ({ full: full.length, folded: folded.length })),
+    sections: order.map(({ full, folded, forTarget }: { full: Rows; folded: Rows; forTarget?: boolean }) => ({ full: full.length, folded: folded.length, forTarget })),
     plan: tallest.length,
   })
   return [
     ...head,
-    ...sections.flatMap((section, i) => (budget.fold[i] ? section.folded : section.full)),
+    ...[steps, tests, reviewed].flatMap(section => (budget.fold[order.indexOf(section)] ? section.folded : section.full)),
     ...(budget.planRoom < PLAN_ROWS ? plan(budget.planRoom) : tallest),
   ]
 }

@@ -115,3 +115,15 @@ test('labels pb cannot read take at most three rows, the latest ones, with the c
   expect(rows.filter(row => row.startsWith('not a pb1 label')), 'the latest three').toEqual(raws.slice(3))
   expect(rows, 'then the count of all six').toContain('6 labels unknown')
 })
+
+test('at the end of a run REVIEW folds to its summary first, since the report holds its findings', async ($, on) => {
+  const rig = setupReplay(on)
+  await bigEnd($, rig)
+  const whole = await bodyRows($, undefined)
+
+  // One row short: one fold is enough.
+  const rows = await bodyRows($, whole.length - 1)
+
+  expect(rowLinesOf(rows, 'REVIEW'), `REVIEW folds first:\n${rows.join('\n')}`).toEqual([expect.stringMatching(/^REVIEW   review: 8 issues/)])
+  expect(rowLinesOf(rows, 'STEPS'), 'STEPS stays whole').toEqual(rowLinesOf(whole, 'STEPS'))
+})

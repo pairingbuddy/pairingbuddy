@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { gapWords, planFocus, windowRows } from "../../shared-node/plan-window.mjs";
+import { commitRows, gapWords, planFocus, SHORT_COMMIT_ROWS, windowRows } from "../../shared-node/plan-window.mjs";
 
 // A flat list of tree rows, each a task (ticked or not) with nothing it needs shown beside it.
 const tasks = (checks) => checks.map((checked) => ({ needs: [], task: { checked } }));
@@ -131,4 +131,12 @@ test("a unit whose pull request is being written, or waits to be opened, is the 
   const unitA = { ...UNITS[0] };
   assert.deepEqual(planFocus([unitA, UNITS[1], UNITS[2]], undefined, 0), { unit: 0, task: 1 }, "unit A is ticked; its last task, not unit B's next one");
   assert.deepEqual(planFocus(UNITS, "Task 4", undefined), { unit: 1, task: 1 }, "with no such unit, as before");
+});
+
+test("in a short PLAN block the open unit's commits take fewer rows: the count of the earlier ones and the latest", () => {
+  const commits = ["a", "b", "c", "d", "e", "f"];
+
+  assert.deepEqual(commitRows(commits, SHORT_COMMIT_ROWS), [{ earlier: 5 }, { sha: "f" }]);
+  assert.deepEqual(commitRows(["a", "b"], SHORT_COMMIT_ROWS), [{ sha: "a" }, { sha: "b" }], "two fit whole");
+  assert.equal(commitRows(commits).length, 4, "by default, OPEN_COMMIT_ROWS");
 });

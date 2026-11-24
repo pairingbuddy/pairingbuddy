@@ -147,10 +147,13 @@ export function planFocus(units, building, publishing) {
   return built ?? at((task) => !task.checked) ?? (last === -1 ? null : { unit: last, task: units[last].tasks.length - 1 });
 }
 
-// The commit rows the open unit shows, oldest first: every one while they fit OPEN_COMMIT_ROWS, else a count of the earlier
-// ones and the latest that fit beside it.
-export function commitRows(commits) {
-  if (commits.length <= OPEN_COMMIT_ROWS) return commits.map((sha) => ({ sha }));
-  const latest = commits.slice(commits.length - (OPEN_COMMIT_ROWS - 1));
+// The open unit's commit rows in a PLAN block short of its target (a short pane): the earlier ones counted, and the latest.
+export const SHORT_COMMIT_ROWS = 2;
+
+// The commit rows the open unit shows, oldest first: every one while they fit `most` (OPEN_COMMIT_ROWS), else a count of the
+// earlier ones and the latest that fit beside it.
+export function commitRows(commits, most = OPEN_COMMIT_ROWS) {
+  if (commits.length <= most) return commits.map((sha) => ({ sha }));
+  const latest = commits.slice(commits.length - (most - 1));
   return [{ earlier: commits.length - latest.length }, ...latest.map((sha) => ({ sha }))];
 }

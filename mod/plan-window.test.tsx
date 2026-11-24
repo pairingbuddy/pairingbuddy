@@ -28,12 +28,13 @@ function bigPlan(tracers: number, ticked: number): string {
   return lines.join('\n')
 }
 
-async function planBlock($: Harness, on: On, planText: string, files: Record<string, string> = {}, columns = 140): Promise<string[]> {
+// room: the pane's body rows, when the test gives the pane one.
+async function planBlock($: Harness, on: On, planText: string, files: Record<string, string> = {}, columns = 140, room?: number): Promise<string[]> {
   const { rig } = setupPlanReplay(on, planText)
   for (const [path, content] of Object.entries(files)) rig.served.set(`${ROOT}/${path}`, content)
   await start($)
   await rig.clock.advance(POLL_MS * 2)
-  const lines = await paneLines($, { bodyColumns: columns })
+  const lines = await paneLines($, { bodyColumns: columns, ...(room === undefined ? {} : { scroll: { offset: 0, bodyRows: room } }) })
   return lines.slice(lines.findIndex(line => line.startsWith('PLAN')))
 }
 
@@ -120,4 +121,10 @@ test('an open unit whose pull request is not opened yet is the focus, not the ne
 
   expect(rows, `the open unit's title and its last task show:\n${rows.join('\n')}`).toEqual(expect.arrayContaining(['           T3b Unit · pull request not opened yet', '             ✓ Task 30: Do step 30']))
   expect(rows.some(row => row.includes('Task 101')), 'the next unticked task is far below, cut').toBe(false)
+})
+
+test('in a short pane the open unit shows two commit rows, the earlier ones counted, so its tasks still fit', async ($, on) => {
+  const rows = await planBlock($, on, ONE_UNIT, { '.pairingbuddy/run/unit.json': openWithCommits(12) }, 140, 14)
+
+  expect(rows.filter(row => /commit/.test(row)), `the latest commit, the rest counted:\n${rows.join('\n')}`).toEqual(['             … 11 earlier commits', '             commit 0000012'])
 })
