@@ -292,6 +292,25 @@ render_status() {
         content="${content}${ledger_line}${NL}"
     fi
 
+    # Show the description of the latest task_progress event in the captured claude stream
+    local stream_file=".pairingbuddy/solo-stream.jsonl"
+    local agent_line=""
+    if [[ -f "$stream_file" ]]; then
+        agent_line=$(node -e '
+            let last = "";
+            for (const line of require("fs").readFileSync(process.argv[1], "utf8").split("\n")) {
+                try {
+                    const event = JSON.parse(line);
+                    if (event.type === "system" && event.subtype === "task_progress" && event.description) last = event.description;
+                } catch (error) { /* skip a partial or invalid line */ }
+            }
+            if (last) console.log(last);
+        ' "$stream_file" 2>/dev/null || true)
+    fi
+    if [[ -n "$agent_line" ]]; then
+        content="${content}Agent: ${agent_line}${NL}"
+    fi
+
     # Fallback if nothing to display
     if [[ -z "$content" ]]; then
         content="  ${cyan}→${reset} ${bold_white:-}Initializing autonomous execution...${reset:-}${NL}"
