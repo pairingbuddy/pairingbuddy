@@ -73,7 +73,24 @@ test("shows-current-stage-from-ledger", () => {
 });
 
 test("shows-stop-reason-from-ledger", () => {
-  assert.fail("not implemented: With a ledger whose stop is {reason, code}, the output shows the stop reason instead of a running stage");
+  const ledger = {
+    stage: { name: "implement-tests", status: "running", attempt: 2 },
+    stop: { reason: "tests would not fail for the right reason", code: "wrong-failure" },
+  };
+
+  const result = renderWithFiles({ "run/task/ledger.json": ledger });
+
+  assert.equal(result.status, 0, `render_status must exit 0: ${result.stderr}`);
+  assert.match(
+    result.stdout,
+    /^Stopped: tests would not fail for the right reason$/m,
+    "the Stopped line names the ledger stop reason",
+  );
+  assert.doesNotMatch(
+    result.stdout,
+    /^Stage: /m,
+    "a stopped run shows no running Stage line",
+  );
 });
 
 test("shows-needs-human-gate-from-ledger", () => {
