@@ -7,7 +7,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "n
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
+import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, CommitHookRefused, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
 import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
@@ -849,10 +849,24 @@ function noChange({ step, key, path, record }, withEvidence) {
   return { ok: true, step, key, committed: false };
 }
 
+// A fix the commit hook refused is the fixer's mistake, as a red suite is: nothing stays staged, the change stays in the
+// tree for pb rollback, and the run goes on.
+function hookRefusalOfFix(root, path, key, commit) {
+  try {
+    return commit();
+  } catch (e) {
+    if (!(e instanceof CommitHookRefused)) throw e;
+    execFileSync("git", ["reset", "-q"], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    updateLedger(path, (ledger) => ({ ...ledger, fixes: { rollbacks: [], ...ledger.fixes, hookRefusals: [...(ledger.fixes?.hookRefusals ?? []), { key, output: e.output }] } }));
+    throw new Refusal(`the commit hook refused the fix, so nothing was committed: ${e.output}`);
+  }
+}
+
 // The attempt can end while the tests run, so that is looked at again here.
 function commitPlan({ step, key, root, path, branch, record }, plan, head, evidenceFor) {
   assertCommitAllowed(step, key, readLedger(path));
-  const { sha, hookRetried } = orStop(path, { step, key }, COMMIT_FAILED, () => commitPaths(root, { ...plan, branch, head }));
+  const commit = () => (step === "fix" ? hookRefusalOfFix(root, path, key, () => commitPaths(root, { ...plan, branch, head })) : commitPaths(root, { ...plan, branch, head }));
+  const { sha, hookRetried } = orStop(path, { step, key }, COMMIT_FAILED, commit);
   recordCheckpoint(path, { step, key, committed: true, sha, ...record }, evidenceFor?.(sha));
   return { ok: true, step, key, committed: true, sha, message: plan.message, paths: plan.paths, hookRetried };
 }
@@ -2418,8 +2432,8 @@ function assertRollbackAllowed(key, parts, ledger, root) {
 // outside the group's own paths may be dirty (dirty is the tree's dirty paths, read once by the caller). record is the fix's checkpoint, or undefined for an uncommitted (red) fix,
 // which also needs a failed test run and at least one of its listed paths changed. A repeated fix (repeated true) skips
 // both checks, because the repeated approach is itself the reason to roll it back.
-function assertTreeRollsBack(root, record, own, ledger, key, repeated, dirty) {
-  if (record === undefined && !repeated) {
+function assertTreeRollsBack(root, record, own, ledger, key, repeated, dirty, hookRefused = false) {
+  if (record === undefined && !repeated && !hookRefused) {
     // Uncommitted work is only undone after a failed (red) test run: without one there is nothing to roll back.
     if (ledger.tests.checkpoint?.passed !== false) throw new Refusal(`${key} has no commit and no red test run, so there is nothing to roll back and nothing was touched`);
     // A red fix that changed none of its listed paths has nothing to undo.
@@ -2455,11 +2469,12 @@ function rollback(args) {
   // A recorded checkpoint means the fix was committed; otherwise it was only in the working tree (red).
   const record = artifactForm ? undefined : (ledger.checkpoints ?? []).find((c) => c.key === key);
   const repeated = artifactForm || record ? null : repeatedApproach(root, ledger, key);
-  const kind = artifactForm ? "artifact" : record ? "commit" : repeated !== null ? "repeated" : "red";
+  const refusal = artifactForm || record ? undefined : (ledger.fixes?.hookRefusals ?? []).findLast((r) => r.key === key);
+  const kind = artifactForm ? "artifact" : record ? "commit" : repeated !== null ? "repeated" : refusal !== undefined ? "hook" : "red";
   const own = kind === "artifact" ? [] : kind === "commit" ? pathsOfCommit(root, record.sha) : pathsOfArtifact(root, key);
   const dirty = artifactForm ? [] : remainingFiles(root);
   const ownChanged = dirty.some((p) => own.includes(p));
-  if (!artifactForm) assertTreeRollsBack(root, record, own, ledger, key, repeated !== null, dirty);
+  if (!artifactForm) assertTreeRollsBack(root, record, own, ledger, key, repeated !== null, dirty, refusal !== undefined);
   const failedAttempts = failedAttemptsOf(ledger, parts.stage);
   const prefix = rollbackPrefix(branch, parts.stage);
   // Per kind: the note's account of what went wrong, and how the work is undone (the ledger entry it leaves).
@@ -2469,6 +2484,8 @@ function rollback(args) {
     artifact: { wrong: () => artifactAccount(root, parts, key), undo: () => rollbackArtifactStep(root, key, parts, ledger, none) },
     commit: { wrong: () => checkerAccount(root, parts), undo: () => rollbackCommitted(root, { key, prefix, sha: record.sha }) },
     red: { wrong: () => failedRunsExcerpts(ledger.tests.checkpoint), undo: () => rollbackUncommitted(root, { key, prefix, paths: own }) },
+    // The hook's own words tell the next fixer what to change, as the failing runs do for a red fix.
+    hook: { wrong: () => `The commit hook refused the fix:\n${refusal.output}`, undo: () => rollbackUncommitted(root, { key, prefix, paths: own }) },
     repeated: {
       wrong: () => `The fix repeated an approach already rolled back for this group: ${repeated}`,
       // Nothing of its own is dirty: record only, with the base at HEAD.

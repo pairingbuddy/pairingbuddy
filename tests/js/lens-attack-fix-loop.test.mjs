@@ -305,6 +305,22 @@ test("A checkpoint refusal 'the tests failed' rolls back with no checker spawned
   assert.ok(secondFix, "a retry fix call happens");
   assert.ok(secondFix.prompt.includes(`Return pb_key exactly as: ${fixKeyFor(config, "g1", 2)}`), "the retry is g1's fix attempt 2");
 });
+// Test case: hook-refused-commit-rolls-back-without-checker
+test("A checkpoint refusal 'the commit hook refused the fix' rolls back like red tests, with no checker, and the retry carries the hook's words", async () => {
+  const config = baseConfig();
+  const refusal = "pb: the commit hook refused the fix, so nothing was committed: E501 line too long (101 > 100)";
+  const note = "The commit hook refused the fix:\nE501 line too long (101 > 100)";
+  const rollbacks = (n) => ({ cli_exit_code: 0, cli_output: JSON.stringify({ ok: true, key: "k", note, failedAttempts: n, maxAttempts: MAX_ATTEMPTS, stopped: false }) });
+  const { respond } = scriptedAgents({ lenses: { code: [finding("R1", "one")] }, checkpoints: [refusal, undefined], verdicts: ["better"], rollbacks });
+
+  const { calls, result } = await runFixLoop(config, respond);
+
+  assert.equal(result.stopReason, null, "the loop goes on");
+  assert.deepEqual(rollbackCallsOf(calls).map(({ prompt }) => commandsOf(prompt)[0]), [`node /plugin/cli/pb.mjs rollback --from ${fixKeyFor(config, "g1", 1)}`], "the refused fix is rolled back");
+  assert.equal(callsOf(calls, CHECKER).length, 1, "only the retry is checked");
+  const retry = fixCallsOf(calls)[1];
+  assert.ok(retry.prompt.includes("E501 line too long"), "the retry is told what the hook said");
+});
 // Test case: cap-stops-loop-without-sixth-fix
 test("When the rollback relay says stopped true the loop ends with attempt-cap and no further fix agent is spawned; attempts count across groups", async () => {
   const config = baseConfig();

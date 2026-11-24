@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A safety-net fix whose commit the repo's commit hook refuses is rolled back like a fix that fails the suite: nothing stays staged, it counts toward the 5-attempt cap, and the next fixer is told the hook's output. Fixers are told to run the lint and format checks the hook runs before they finish (T4d Task 110: a ruff line-too-long in a test docstring stopped the whole stage with "the commit failed" and left the change staged).
+
 - Accepting a changed test-config.json in the session, as well as with `pb human accept`, pins it in the open unit too, so `pb publish` does not refuse it later (the tap's Accept updated only the run's ledger).
 
 - A refused stage start says the running stage "is still running" and, when stuck, that the human clears it with pb stage fail, instead of "is active at attempt N" (T4d: the refusal read as jargon). A stage with no recorded run says to start it again, with no attempt number.
