@@ -1724,7 +1724,12 @@ function publish(args) {
   if (plan.refusals.length > 0) throw new Refusal(`not published: ${plan.refusals.join("; ")}`);
   // publishSteps only emits a push in a plan that also has open-pr, so open-pr alone marks a publishing plan.
   if (plan.steps.some((step) => step.do === "open-pr")) assertBaseCurrent(root, unit, gitConfig);
-  return executePublish(plan.steps, { root, unit, gitConfig, ledger, bound });
+  try {
+    return executePublish(plan.steps, { root, unit, gitConfig, ledger, bound });
+  } catch (e) {
+    if (e instanceof Refusal) updateLedger(path, (current) => ({ ...current, retries: { ...current.retries, publish: { used: (current.retries.publish?.used ?? 0) + 1, max: 2 } } }));
+    throw e;
+  }
 }
 
 // The human answered keep local at G:publish: nothing is pushed or opened, no unit or git state is read, and whatever the
