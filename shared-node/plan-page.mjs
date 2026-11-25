@@ -94,7 +94,8 @@ function unitSection(unit, { state, open, building, publishing, focusTask, reach
   const words = unitWords(state, isOpen, publishing);
   const facts = [...(unit.dependsOn ? [escape(`based on ${unit.dependsOn}`)] : []), ...(isOpen ? openFacts(open).map(escape) : []), ...(unit.pr ? [`PR ${prLink(unit.pr)}`] : [])];
   const tasks = unit.tasks.map((task) => taskItem(task, { inProgress: !task.checked && task.title === building, reached, isFocus: task === focusTask }));
-  return `<details>
+  const holdsFocus = unit.tasks.includes(focusTask);
+  return `<details${holdsFocus ? " open" : ""}>
 <summary><h3>${escape(unit.unit)}${words ? escape(`${STATE_SEPARATOR}${words}`) : ""}</h3></summary>
 <ul>
 ${facts.map((fact) => `<li class="facts">${fact}</li>`).join("\n")}${facts.length ? "\n" : ""}${tasks.join("\n")}
@@ -109,9 +110,9 @@ function tracerIntro(intro) {
 }
 
 // One tracer's group: a details whose summary is its name, opening to its intro and then its units.
-function tracerSection(tracer, intro, body) {
+function tracerSection(tracer, intro, body, holdsFocus) {
   if (!tracer) return `<section>\n${body}\n</section>`;
-  return `<section>\n<details>\n<summary><h2>${escape(tracer)}</h2></summary>\n${tracerIntro(intro)}${body}\n</details>\n</section>`;
+  return `<section>\n<details${holdsFocus ? " open" : ""}>\n<summary><h2>${escape(tracer)}</h2></summary>\n${tracerIntro(intro)}${body}\n</details>\n</section>`;
 }
 
 // plan: parsePlan's result; states: each unit's state, by position (unitStates); open: the open unit's record, resolved to
@@ -126,7 +127,8 @@ export function renderPlanPage({ plan, states = [], open, building, publishing =
   const done = all.filter(({ checked }) => checked).length;
   const groups = tracerGroups(units).map(({ tracer, units: grouped }) => {
     const body = grouped.map(({ unit, index }) => unitSection(unit, { state: states[index], open, building, publishing, focusTask, reached })).join("\n");
-    return tracerSection(tracer, plan?.tracers?.find(({ name }) => name === tracer), body);
+    const holdsFocus = grouped.some(({ unit }) => unit.tasks.includes(focusTask));
+    return tracerSection(tracer, plan?.tracers?.find(({ name }) => name === tracer), body, holdsFocus);
   });
   const problems = plan?.problems ?? [];
   const problemList = problems.length ? `<section class="problems">\n<h2>Plan problems</h2>\n<ul>\n${problems.map((problem) => `<li>${escape(problem)}</li>`).join("\n")}\n</ul>\n</section>\n` : "";

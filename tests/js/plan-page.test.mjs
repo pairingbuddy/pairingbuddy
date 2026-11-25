@@ -115,3 +115,12 @@ test("a tracer opens to its Goal and Verification, then its units; a unit opens 
   assert.ok(t1.includes("<strong>Goal:</strong> A shopper fills a cart.") && t1.includes("<strong>Verification:</strong> <code>npm test</code> passes."), "its Goal and Verification");
   assert.match(t1, /<details[^>]*>\s*<summary><h3>Add[^<]*<\/h3><\/summary>/, "each unit is a details of its own, under the tracer");
 });
+
+test("the page opens on the path to the task being built; every other tracer, unit and task starts folded", () => {
+  const plan = parsePlan(DRILL_PLAN);
+
+  const html = renderPlanPage({ plan, building: "Task 2: Remove an item" });
+
+  const opened = [...html.matchAll(/<details( open)?>\s*<summary>(?:<h[23]>)?([^<]*)/g)].filter(([, open]) => open).map(([, , head]) => head.trim());
+  assert.deepEqual(opened, ["T1: Cart", "Add", "▸ Task 2: Remove an item"], "the focus's tracer, unit and task, and only those");
+});
