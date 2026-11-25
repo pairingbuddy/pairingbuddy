@@ -1027,7 +1027,7 @@ Four components are Solo-aware:
 
 ### Report
 
-Solo sessions produce `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally — header at session start, task entry after each completion, stopped entry when blocked. The `_update_solo_report` function in the workflow pseudocode ensures report generation is a first-class workflow step.
+Solo sessions produce `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally — header at session start, task entry after each completion, stopped entry when blocked. It is a run report only: the script no longer reads it as a PR body. The `_update_solo_report` function in the workflow pseudocode ensures report generation is a first-class workflow step.
 
 ### Observability
 
