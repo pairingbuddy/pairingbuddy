@@ -7,14 +7,14 @@ const SCRIPT_PATH = fileURLToPath(new URL("../../scripts/solo-buddy.sh", import.
 
 // Task 111: solo-buddy.sh no longer pushes or opens PRs (publish stages own that),
 // SOLO_BUDDY_REPORT.md is no longer a PR body, and tests/test_solo_buddy_pr_creation.py is retired.
-// Placeholders: each body fails until implement-tests writes the real assertion.
+// Tests whose body is assert.fail("placeholder...") still wait for implement-tests.
 
 test("no-gh-pr-create-in-script", () => {
   const source = readFileSync(SCRIPT_PATH, "utf8");
 
-  const matches = source.split("\n").filter((line) => /gh\s+pr\s+create/.test(line));
+  const found = source.match(/gh\s+pr\s+create/);
 
-  assert.deepEqual(matches, [], "solo-buddy.sh must not contain any `gh pr create`; publish stages own PR creation");
+  assert.equal(found, null, `solo-buddy.sh must not contain \`gh pr create\`, found: ${found?.[0]}`);
 });
 
 test("no-git-push-in-script", () => {
