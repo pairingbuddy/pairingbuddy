@@ -114,7 +114,37 @@ test("report-file-not-passed-as-body", () => {
 });
 
 test("exit-summary-has-no-pr-lines", () => {
-  assert.fail("placeholder: not implemented");
+  const dir = mkdtempSync(join(tmpdir(), "solo-summary-"));
+  try {
+    const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+    const repo = join(dir, "repo");
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    mkdirSync(repo);
+    execFileSync(realGit, ["init", "-q", "-b", "feature/x", repo]);
+    writeFileSync(join(repo, "plan.md"), "# plan\n");
+    writeFileSync(join(bin, "claude"), "#!/usr/bin/env bash\nexit 0\n");
+    chmodSync(join(bin, "claude"), 0o755);
+
+    const result = spawnSync("bash", [SCRIPT_PATH, "plan.md"], {
+      cwd: repo,
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        PR_URL: "https://example.test/pull/1",
+        PR_ERROR: "push rejected",
+      },
+      encoding: "utf8",
+      timeout: 60000,
+    });
+
+    const output = `${result.stdout}${result.stderr}`;
+    const prLines = output.split("\n").filter((line) => /^\s*(⚠ )?PR:/.test(line));
+    assert.ok(output.includes("Session complete"), `the exit summary must print, output: ${output}`);
+    assert.deepEqual(prLines, [], "the exit summary must not print PR URL or PR error lines");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("pr-creation-test-file-removed", () => {
