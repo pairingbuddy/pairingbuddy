@@ -1727,9 +1727,18 @@ function publish(args) {
   try {
     return executePublish(plan.steps, { root, unit, gitConfig, ledger, bound });
   } catch (e) {
-    if (e instanceof Refusal) updateLedger(path, (current) => ({ ...current, retries: { ...current.retries, publish: { used: (current.retries.publish?.used ?? 0) + 1, max: 2 } } }));
+    if (e instanceof Refusal) updateLedger(path, recordPublishFailure);
     throw e;
   }
+}
+
+// A publish may be attempted twice: the first try and one retry.
+const PUBLISH_ATTEMPTS = 2;
+
+// The ledger with one more failed publish counted against the attempts.
+function recordPublishFailure(ledger) {
+  const used = (ledger.retries?.publish?.used ?? 0) + 1;
+  return { ...ledger, retries: { ...ledger.retries, publish: { used, max: PUBLISH_ATTEMPTS } } };
 }
 
 // The human answered keep local at G:publish: nothing is pushed or opened, no unit or git state is read, and whatever the
