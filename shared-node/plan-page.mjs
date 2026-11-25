@@ -94,10 +94,24 @@ function unitSection(unit, { state, open, building, publishing, focusTask, reach
   const words = unitWords(state, isOpen, publishing);
   const facts = [...(unit.dependsOn ? [escape(`based on ${unit.dependsOn}`)] : []), ...(isOpen ? openFacts(open).map(escape) : []), ...(unit.pr ? [`PR ${prLink(unit.pr)}`] : [])];
   const tasks = unit.tasks.map((task) => taskItem(task, { inProgress: !task.checked && task.title === building, reached, isFocus: task === focusTask }));
-  return `<h3>${escape(unit.unit)}${words ? escape(`${STATE_SEPARATOR}${words}`) : ""}</h3>
+  return `<details>
+<summary><h3>${escape(unit.unit)}${words ? escape(`${STATE_SEPARATOR}${words}`) : ""}</h3></summary>
 <ul>
 ${facts.map((fact) => `<li class="facts">${fact}</li>`).join("\n")}${facts.length ? "\n" : ""}${tasks.join("\n")}
-</ul>`;
+</ul>
+</details>`;
+}
+
+// A tracer's Goal and Verification lines, as the plan wrote them, or nothing when it has neither.
+function tracerIntro(intro) {
+  const lines = [["Goal", intro?.goal], ["Verification", intro?.verification]].filter(([, words]) => words);
+  return lines.length ? `<div class="intro">\n${lines.map(([label, words]) => `<p>${inline(`**${label}:** ${words}`)}</p>`).join("\n")}\n</div>\n` : "";
+}
+
+// One tracer's group: a details whose summary is its name, opening to its intro and then its units.
+function tracerSection(tracer, intro, body) {
+  if (!tracer) return `<section>\n${body}\n</section>`;
+  return `<section>\n<details>\n<summary><h2>${escape(tracer)}</h2></summary>\n${tracerIntro(intro)}${body}\n</details>\n</section>`;
 }
 
 // plan: parsePlan's result; states: each unit's state, by position (unitStates); open: the open unit's record, resolved to
@@ -112,7 +126,7 @@ export function renderPlanPage({ plan, states = [], open, building, publishing =
   const done = all.filter(({ checked }) => checked).length;
   const groups = tracerGroups(units).map(({ tracer, units: grouped }) => {
     const body = grouped.map(({ unit, index }) => unitSection(unit, { state: states[index], open, building, publishing, focusTask, reached })).join("\n");
-    return `<section>\n${tracer ? `<h2>${escape(tracer)}</h2>\n` : ""}${body}\n</section>`;
+    return tracerSection(tracer, plan?.tracers?.find(({ name }) => name === tracer), body);
   });
   const problems = plan?.problems ?? [];
   const problemList = problems.length ? `<section class="problems">\n<h2>Plan problems</h2>\n<ul>\n${problems.map((problem) => `<li>${escape(problem)}</li>`).join("\n")}\n</ul>\n</section>\n` : "";

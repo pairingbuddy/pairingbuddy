@@ -104,3 +104,14 @@ test("a task with a body is a row that opens to its explanation: Goal, criteria 
   assert.match(task1, /<ul>\s*<li>The cart shows the item\.<\/li>\s*<li>The total grows\.<\/li>\s*<\/ul>/, "its criteria as a list");
   assert.ok(task1.includes("<code>cart.mjs</code>"), "inline code");
 });
+
+test("a tracer opens to its Goal and Verification, then its units; a unit opens to its tasks", () => {
+  const plan = parsePlan(DRILL_PLAN);
+
+  const html = renderPlanPage({ plan });
+
+  const t1 = html.slice(html.indexOf("T1: Cart") - 200, html.indexOf("T2: Pay"));
+  assert.match(t1, /<details[^>]*>\s*<summary><h2>T1: Cart[^<]*<\/h2><\/summary>/, "the tracer's title is the summary of its details");
+  assert.ok(t1.includes("<strong>Goal:</strong> A shopper fills a cart.") && t1.includes("<strong>Verification:</strong> <code>npm test</code> passes."), "its Goal and Verification");
+  assert.match(t1, /<details[^>]*>\s*<summary><h3>Add[^<]*<\/h3><\/summary>/, "each unit is a details of its own, under the tracer");
+});
