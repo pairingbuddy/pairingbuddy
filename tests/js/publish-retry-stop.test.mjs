@@ -11,7 +11,6 @@ import { installPrePushHook, ledgerFile, PLAN, planFile, publishRun, publishUnit
 
 // Task 111: a failed publish retries once, then stops. A stop pushes nothing,
 // and units published before the stop keep their PRs and recorded state.
-// Tests not yet implemented are placeholders that fail until their real assertion is written.
 
 const readLedger = (repo) => JSON.parse(readFileSync(ledgerFile(repo), "utf8"));
 
@@ -66,7 +65,6 @@ test("stop-makes-no-push", () => {
   const remoteBefore = remoteRef(unit.repo, `refs/heads/${unit.branch}`);
 
   const { result: third } = publishUnit(unit);
-  statusAction(unit.repo);
 
   assert.equal(third.code, REFUSED, `the stopped run refuses a third pb publish, stdout ${third.stdout}`);
   assert.equal(existsSync(pushLog), false, "no git push runs once the run has stopped");

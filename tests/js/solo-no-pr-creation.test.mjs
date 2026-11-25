@@ -10,7 +10,6 @@ const SCRIPT_PATH = fileURLToPath(new URL("../../scripts/solo-buddy.sh", import.
 
 // Task 111: solo-buddy.sh no longer pushes or opens PRs (publish stages own that),
 // SOLO_BUDDY_REPORT.md is no longer a PR body, and tests/test_solo_buddy_pr_creation.py is retired.
-// Tests whose body is assert.fail("placeholder...") still wait for implement-tests.
 
 test("no-gh-pr-create-in-script", () => {
   const source = readFileSync(SCRIPT_PATH, "utf8");

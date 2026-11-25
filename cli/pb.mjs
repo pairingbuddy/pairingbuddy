@@ -52,9 +52,9 @@ const TESTS_ROLE = "create-test-placeholders";
 const SCOPE_ROLE = "scope-refactoring";
 const SCOPE_STAGE = "code-refactor-scope";
 const SPIKE_UNIT_STAGE = "code-spike-unit";
+const SPIKE_SETUP_PATH = `.pairingbuddy/run/task/${SPIKE_SETUP_FILE}`;
 // A publish may be attempted twice: the first try and one retry.
 const PUBLISH_ATTEMPTS = 2;
-const SPIKE_SETUP_PATH =`.pairingbuddy/run/task/${SPIKE_SETUP_FILE}`;
 
 class UsageError extends Error {}
 class Refusal extends Error {}
