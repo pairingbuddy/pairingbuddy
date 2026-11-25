@@ -28,3 +28,16 @@ test("draft-pull-request-model-is-sonnet", () => {
   assert.ok(entry, "draft-pull-request is in agent-config.yaml");
   assert.match(entry[1], /^ {4}model: sonnet$/m);
 });
+
+// The drafter is told the lint's rules up front, with the default numbers, so a draft passes the first time (T10a pr-draft:
+// the body named a .pairingbuddy/ path, the lint refused it, and the stage stopped).
+test("draft-pull-request-instructions-state-the-pr-lint-rules-up-front", () => {
+  const agent = readFileSync(join(ROOT, "agents", "draft-pull-request.md"), "utf8");
+  const defaults = JSON.parse(readFileSync(join(ROOT, "contracts", "pr-lint.json"), "utf8"));
+  const instructions = agent.slice(agent.indexOf("## Instructions"), agent.indexOf("## Output"));
+
+  assert.match(instructions, /`\.pairingbuddy\/`/, "a .pairingbuddy/ path is named as refused");
+  assert.ok(instructions.includes(`${defaults.body_max_words} words`), "the body's word cap is named");
+  assert.ok(instructions.includes(`${defaults.title_max_length} characters`), "the title's length cap is named");
+  for (const term of ["trailer", "task number", "file paths", "this PR"]) assert.ok(instructions.includes(term), `the rule on ${term} is named`);
+});

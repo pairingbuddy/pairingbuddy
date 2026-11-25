@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A PR draft whose lint fails is redrafted instead of stopping the stage: a failing lint verdict counts whatever exit code the runner relays, and each finding gives the redraft the failing body line and the lint's remedy. The drafter is told the lint's rules up front, `.pairingbuddy/` paths among them (T10a pr-draft: the runner relayed exit 1 with the lint's failing verdict on a `.pairingbuddy/` line, and the stage stopped step-failed with no redraft).
+
 - Solo's terminal renderer reads the new state (Task 110): the unit's branch and task count from `run/unit.json`, run progress from the ledger, the latest `task_progress` description and spend summed from `task_notification` usage in the stream. `claude -p` runs with `--output-format stream-json --verbose`, stdout captured to `.pairingbuddy/solo-stream.jsonl`. A missing, empty or malformed file does not crash the renderer, and text it shows is bounded and sanitized.
 - Solo enters the new workflows (Task 109): `solo-buddy.sh` sets `PAIRINGBUDDY_GATE_POLICY=auto`, read only by hooks, and starts `/pairingbuddy:code` on the plan, which runs the Plan Loop (`pb plan next`, `pb task end`, again) as outside Solo. The T7b router check is lifted. Caffeinate, the branch guard (no start on main or master) and API key handling are unchanged, and a `[HUMAN]` task stops the run with a clear message.
 
