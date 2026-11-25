@@ -26,6 +26,11 @@ ul{list-style:none;padding:0 0 0 2ch}
 .problems li{color:var(--needs-you)}
 @media (max-width:600px){body{padding:28px 16px 48px}}`;
 
+// Expand all and Collapse all: hidden in the markup, shown by the page's own script, so a page whose script does not run
+// shows no button that does nothing; its folds still open by hand.
+const CONTROLS = `<p class="controls" hidden><button type="button" data-open="true">Expand all</button> <button type="button" data-open="false">Collapse all</button></p>`;
+const CONTROLS_SCRIPT = `<script>(() => { const c = document.querySelector(".controls"); c.removeAttribute("hidden"); c.addEventListener("click", (e) => { const open = e.target.dataset && e.target.dataset.open; if (open) document.querySelectorAll("details").forEach((d) => { d.open = open === "true"; }); }); })();</script>`;
+
 // Consecutive units of one tracer form a group, as the pane groups them; a unit under no tracer is its own group.
 function tracerGroups(units) {
   const groups = [];
@@ -143,7 +148,9 @@ ${STYLE}
 <header>
 <h1>PLAN</h1>
 <p>${escape(path ?? "")}${path ? STATE_SEPARATOR : ""}${done} of ${all.length} tasks done${focusTask ? `${STATE_SEPARATOR}<a href="#now">where the plan is</a>` : ""}</p>
+${CONTROLS}
 </header>
 ${problemList}${groups.join("\n")}
+${CONTROLS_SCRIPT}
 </body></html>`;
 }

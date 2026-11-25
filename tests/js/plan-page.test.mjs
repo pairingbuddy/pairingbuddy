@@ -133,3 +133,20 @@ test("a folded tracer still tells how far it is: its tasks done out of its tasks
   assert.match(html, /<summary><h2>T1: Cart · 1 of 2 done<\/h2><\/summary>/);
   assert.match(html, /<summary><h2>T2: Pay · 0 of 1 done<\/h2><\/summary>/);
 });
+
+test("plan text never reaches the page as markup: tags in a body, a Goal or code are shown as text", () => {
+  const plan = parsePlan(DRILL_PLAN.replace("An item leaves the cart.", '<img src=x onerror=alert(1)> **<b>bold</b>** `<i>`').replace("A shopper pays.", "<script>alert(1)</script>"));
+
+  const html = renderPlanPage({ plan });
+
+  assert.ok(!/<img|<b>|<i>|<script>alert/.test(html), "no tag from the plan");
+  assert.ok(html.includes("&lt;img src=x onerror=alert(1)&gt; <strong>&lt;b&gt;bold&lt;/b&gt;</strong> <code>&lt;i&gt;</code>"), "shown as text, bold and code still read");
+  assert.ok(html.includes("&lt;script&gt;alert(1)&lt;/script&gt;"), "a tracer's Goal too");
+});
+
+test("Expand all and Collapse all show only where script runs; without it the page still folds and opens by hand", () => {
+  const html = renderPlanPage({ plan: parsePlan(DRILL_PLAN) });
+
+  assert.match(html, /<p class="controls" hidden><button type="button" data-open="true">Expand all<\/button> <button type="button" data-open="false">Collapse all<\/button><\/p>/, "the controls start hidden");
+  assert.match(html, /<script>[^<]*removeAttribute\("hidden"\)[^<]*<\/script>/, "the page's own script shows them");
+});
