@@ -45,13 +45,48 @@ function openFacts(open) {
   return [...(open.branch ? [`branch ${open.branch}`] : []), ...(open.base ? [`base ${open.base}`] : []), ...(open.commits ?? []).map((sha) => `commit ${sha.slice(0, 7)}`)];
 }
 
+// A line of plan text as HTML: escaped first, then `code` and **bold** only, so no markup in the plan reaches the page.
+function inline(text) {
+  return text
+    .split(/(`[^`]+`)/)
+    .map((part) => (/^`[^`]+`$/.test(part) ? `<code>${escape(part.slice(1, -1))}</code>` : escape(part).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")))
+    .join("");
+}
+
+const LIST_ITEM = /^\s*(?:[-*]|\d+\.)\s+(.*)$/;
+
+// A task body as HTML: paragraphs and lists, with inline code and bold; a blank line ends a paragraph, a "- " or "1. " line is
+// a list item, and an indented line under an item continues it. Nothing else of markdown is read.
+function bodyHtml(body) {
+  const blocks = [];
+  let block = null;
+  for (const line of body.split("\n")) {
+    const item = LIST_ITEM.exec(line);
+    if (!line.trim()) block = null;
+    else if (item) {
+      if (block?.kind !== "list") blocks.push((block = { kind: "list", lines: [] }));
+      block.lines.push(item[1]);
+    } else if (block?.kind === "list" && /^\s/.test(line)) block.lines[block.lines.length - 1] += ` ${line.trim()}`;
+    else {
+      if (block?.kind !== "para") blocks.push((block = { kind: "para", lines: [] }));
+      block.lines.push(line.trim());
+    }
+  }
+  return blocks
+    .map(({ kind, lines }) => (kind === "list" ? `<ul>\n${lines.map((text) => `<li>${inline(text)}</li>`).join("\n")}\n</ul>` : `<p>${inline(lines.join(" "))}</p>`))
+    .join("\n");
+}
+
 // One task's row: its mark and title, ▸ and lit for the one being built, and lit in the needs-you colour with humanWords for
 // an unticked [HUMAN] task. The focus is the row the page opens at.
 function taskItem(task, { inProgress, reached, isFocus }) {
   const human = inProgress ? "" : humanWords(task, reached);
   const kind = task.checked ? "ticked" : inProgress ? "building" : human ? "waiting" : "unticked";
   const words = human ? `${STATE_SEPARATOR}${human}` : "";
-  return `<li class="${kind}"${isFocus ? ' id="now"' : ""}>${taskMark(task, inProgress)} ${escape(task.title)}${words}</li>`;
+  const row = `${taskMark(task, inProgress)} ${escape(task.title)}${words}`;
+  const attrs = `class="${kind}"${isFocus ? ' id="now"' : ""}`;
+  if (!task.body?.trim()) return `<li ${attrs}>${row}</li>`;
+  return `<li ${attrs}><details${isFocus ? " open" : ""}>\n<summary>${row}</summary>\n<div class="body">\n${bodyHtml(task.body)}\n</div>\n</details></li>`;
 }
 
 function unitSection(unit, { state, open, building, publishing, focusTask, reached }) {

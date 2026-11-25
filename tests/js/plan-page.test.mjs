@@ -76,3 +76,31 @@ test("while the publish run writes the open unit's pull request, the page says s
 
   assert.ok(text.includes("Pay · writing the pull request"));
 });
+
+const DRILL_PLAN = [
+  "# Shop", "", "## Tasks", "",
+  "### T1: Cart", "", "**Goal:** A shopper fills a cart.", "", "**Verification:** `npm test` passes.", "",
+  "#### PR: Add", "",
+  "- [x] **Task 1: Add an item**", "",
+  "  **Goal:** An item lands in the cart.", "",
+  "  **Acceptance criteria:**", "  - The cart shows the item.", "  - The total grows.", "",
+  "  **Files likely involved:** `cart.mjs`", "",
+  "- [ ] **Task 2: Remove an item**", "",
+  "  **Goal:** An item leaves the cart.", "",
+  "### T2: Pay", "", "**Goal:** A shopper pays.", "",
+  "#### PR: Charge", "",
+  "- [ ] **Task 3: Charge the card**", "",
+  "  **Goal:** The card is charged.", "",
+].join("\n");
+
+test("a task with a body is a row that opens to its explanation: Goal, criteria as a list, files", () => {
+  const plan = parsePlan(DRILL_PLAN);
+
+  const html = renderPlanPage({ plan });
+
+  const task1 = html.slice(html.indexOf("Task 1: Add an item") - 200, html.indexOf("Task 2: Remove an item"));
+  assert.match(task1, /<details[^>]*>\s*<summary>✓ Task 1: Add an item<\/summary>/, "the task's row is the summary of its own details");
+  assert.ok(task1.includes("<strong>Goal:</strong> An item lands in the cart."), "its Goal, with the label in bold");
+  assert.match(task1, /<ul>\s*<li>The cart shows the item\.<\/li>\s*<li>The total grows\.<\/li>\s*<\/ul>/, "its criteria as a list");
+  assert.ok(task1.includes("<code>cart.mjs</code>"), "inline code");
+});
