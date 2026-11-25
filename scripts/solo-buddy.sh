@@ -394,14 +394,6 @@ print_exit_summary() {
     else
         output="✗ Session interrupted (exit code $CLAUDE_EXIT)"
     fi
-    if [[ -n "${PR_URL:-}" ]]; then
-        output="${output}
-  PR: ${PR_URL}"
-    fi
-    if [[ -n "${PR_ERROR:-}" ]]; then
-        output="${output}
-  ⚠ PR: ${PR_ERROR}"
-    fi
     if [[ -n "${REPORT_FILE:-}" ]] && [[ -f "${REPORT_FILE}" ]]; then
         output="${output}
   Report: ${REPORT_FILE}"
