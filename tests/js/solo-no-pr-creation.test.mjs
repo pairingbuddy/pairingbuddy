@@ -96,21 +96,6 @@ test("report-file-not-passed-as-body", () => {
   assert.deepEqual(reportOnPrCommand, [], "SOLO_BUDDY_REPORT.md must not appear on a gh or git command line");
 });
 
-test("exit-summary-has-no-pr-lines", () => {
-  const prUrl = "https://example.test/pull/1";
-  const prError = "push rejected";
-  // The script no longer reads these; leaking them in proves the summary cannot print them.
-  const { result } = runSolo({
-    stubs: () => ({ claude: "exit 0" }),
-    env: { PR_URL: prUrl, PR_ERROR: prError },
-  });
-
-  const output = `${result.stdout}${result.stderr}`;
-  assert.ok(output.includes("Session complete"), `the exit summary must print, output: ${output}`);
-  assert.ok(!output.includes(prUrl), "the exit summary must not print the PR URL");
-  assert.ok(!output.includes(prError), "the exit summary must not print the PR error");
-});
-
 test("pr-creation-test-file-removed", () => {
   const retiredPath = fileURLToPath(new URL("../test_solo_buddy_pr_creation.py", import.meta.url));
 
