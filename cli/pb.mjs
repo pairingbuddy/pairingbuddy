@@ -1738,7 +1738,10 @@ const PUBLISH_ATTEMPTS = 2;
 // The ledger with one more failed publish counted against the attempts.
 function recordPublishFailure(ledger) {
   const used = (ledger.retries?.publish?.used ?? 0) + 1;
-  return { ...ledger, retries: { ...ledger.retries, publish: { used, max: PUBLISH_ATTEMPTS } } };
+  const recorded = { ...ledger, retries: { ...ledger.retries, publish: { used, max: PUBLISH_ATTEMPTS } } };
+  if (used < PUBLISH_ATTEMPTS) return recorded;
+  const reason = `${ATTEMPT_CAP}: pb publish failed ${used} times, its cap of ${PUBLISH_ATTEMPTS} attempts`;
+  return { ...recorded, stop: { reason, seq: ledger.seq + 1, code: ATTEMPT_CAP } };
 }
 
 // The human answered keep local at G:publish: nothing is pushed or opened, no unit or git state is read, and whatever the
