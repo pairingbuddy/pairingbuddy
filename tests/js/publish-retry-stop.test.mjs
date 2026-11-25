@@ -30,13 +30,13 @@ test("first-publish-failure-retries-once", () => {
 test("second-publish-failure-stops", () => {
   const unit = publishRun();
   publishUnit(unit, { GH_SHIM_FAIL: "pr create" });
-  const { result: second } = publishUnit(unit, { GH_SHIM_FAIL: "pr create" });
-  assert.equal(second.code, REFUSED, `the retry fails too, stdout ${second.stdout}`);
 
+  const { result: second } = publishUnit(unit, { GH_SHIM_FAIL: "pr create" });
   const ledger = readLedger(unit.repo);
   const action = statusAction(unit.repo);
   const { gh, result: third } = publishUnit(unit);
 
+  assert.equal(second.code, REFUSED, `the retry fails too, stdout ${second.stdout}`);
   assert.equal(ledger.retries.publish.used, 2, "both attempts are recorded as used");
   assert.notEqual(ledger.stop, null, "the second failed publish stops the run");
   assert.match(action, /The run has stopped/, `the action reports the stop: ${action}`);
