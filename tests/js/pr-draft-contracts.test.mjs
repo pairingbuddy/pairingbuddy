@@ -36,7 +36,8 @@ test("draft-pull-request-instructions-state-the-pr-lint-rules-up-front", () => {
   const defaults = JSON.parse(readFileSync(join(ROOT, "contracts", "pr-lint.json"), "utf8"));
   const instructions = agent.slice(agent.indexOf("## Instructions"), agent.indexOf("## Output"));
 
-  assert.match(instructions, /`\.pairingbuddy\/`/, "a .pairingbuddy/ path is named as refused");
+  // The agent text may not spell the state folder itself (paths-mode-no-ask), so the rule names it in words.
+  assert.ok(instructions.includes("hidden pairingbuddy state folder"), "a path into the state folder is named as refused");
   assert.ok(instructions.includes(`${defaults.body_max_words} words`), "the body's word cap is named");
   assert.ok(instructions.includes(`${defaults.title_max_length} characters`), "the title's length cap is named");
   for (const term of ["trailer", "task number", "file paths", "this PR"]) assert.ok(instructions.includes(term), `the rule on ${term} is named`);

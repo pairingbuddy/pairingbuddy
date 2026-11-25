@@ -47,8 +47,8 @@ Look at files with Read. Find and search with Glob and Grep when they exist, oth
    - any attribution line or trailer (`Co-Authored-By:`, `Signed-off-by:`, a "Generated with" footer);
    - hype words (such as seamless, robust, comprehensive, leverage) and stock phrases (such as "this change introduces", "worth noting", "aims to");
    - a list of three or more file paths;
-   - text that expires at merge: "this PR", "this pull request", "for now", "WIP", "temporary fix", a plan task number such as "Task 110", any `.pairingbuddy/` path, and `TODO`.
-   The git config's `pr.lint` can add to these lists. Rewrite a task title that carries a task number or a `.pairingbuddy/` path.
+   - text that expires at merge: "this PR", "this pull request", "for now", "WIP", "temporary fix", a plan task number such as "Task 110", any path into the hidden pairingbuddy state folder (the folder your input paths live in), and `TODO`.
+   The git config's `pr.lint` can add to these lists. Rewrite a task title that carries a task number or a state-folder path.
 5. Put anything true only while the pull request is open in `coordination`. Use null when there is none.
 6. Copy `base` from the unit record's `base`. Do not choose it.
 7. Do not push, open the pull request or post the comment. A later stage does that.
