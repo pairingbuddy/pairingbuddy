@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { failedRunsText, fullSuitePlans } from "../../shared-node/test-run.mjs";
+import { TestRunRefused, failedRunsText, fullSuitePlans } from "../../shared-node/test-run.mjs";
 
 const tempDirs = [];
 after(() => {
@@ -50,6 +50,26 @@ describe("the full-suite plan", () => {
 
     assert.deepEqual(plan.argv, ["pytest", "tests/js"]);
   });
+
+  test("each lint command runs after the tests, as part of the full suite", () => {
+    const root = repoWith(["tests/js/test_a.py"]);
+
+    const plans = fullSuitePlans({ ...config({ command: "pytest" }), lint_commands: ["uv run ruff check .", "uv run ruff format --check ."] }, root);
+
+    assert.deepEqual(plans.map(({ runner, argv }) => ({ runner, argv })), [
+      { runner: "r", argv: ["pytest", "tests/js"] },
+      { runner: "lint", argv: ["uv", "run", "ruff", "check", "."] },
+      { runner: "lint", argv: ["uv", "run", "ruff", "format", "--check", "."] },
+    ]);
+  });
+
+  test("lint_commands that is not a list of commands is refused, naming the field", () => {
+    const root = repoWith(["tests/js/test_a.py"]);
+
+    for (const bad of ["ruff check .", [], [""], ["   "], [3]]) {
+      assert.throws(() => fullSuitePlans({ ...config({ command: "pytest" }), lint_commands: bad }, root), (e) => e instanceof TestRunRefused && /lint_commands/.test(e.message), JSON.stringify(bad));
+    }
+  });
 });
 
 describe("a failed run, in words", () => {
@@ -65,6 +85,12 @@ describe("a failed run, in words", () => {
     const text = failedRunsText([run({ timedOut: true, durationMs: 9_600 })], [{ test_id: "t9", test_function: "f9", test_file: "tests/a.mjs" }]);
 
     assert.match(text, /test t9 \(f9 in tests\/a\.mjs\) timed out after 10s/, text);
+  });
+
+  test("a failing lint run is named as the lint check it ran", () => {
+    const text = failedRunsText([run({ runner: "lint", argv: ["uv", "run", "ruff", "check", "."], excerpt: "E501 line too long" })]);
+
+    assert.match(text, /^lint check `uv run ruff check \.` failed with exit code 1\. Its output:\nE501 line too long$/, text);
   });
 
   test("a passing run is not named", () => {

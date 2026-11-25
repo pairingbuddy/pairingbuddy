@@ -202,6 +202,50 @@ describe("the exit code recorded matches the process", IN_PARALLEL, () => {
   });
 });
 
+describe("the lint commands in a full run", IN_PARALLEL, () => {
+  const linted = (lintBody) => {
+    const repo = makeRepo({ config: { ...singleRunner(), lint_commands: ["node lint.mjs --check"] } });
+    writeFileSync(join(repo.dir, "lint.mjs"), lintBody);
+    return repo;
+  };
+
+  test("a failing lint fails the full run, though every test passed", () => {
+    const repo = linted(`console.log("E501 line too long"); process.exit(1);`);
+
+    const printed = recorded(repo, "--full");
+
+    assert.equal(printed.passed, false);
+    const lint = printed.runs.find(({ runner: id }) => id === "lint");
+    assert.deepEqual(lint.argv, ["node", "lint.mjs", "--check"]);
+    assert.match(lint.excerpt, /E501 line too long/);
+    assert.equal(repo.ledger().tests.full.passed, false);
+  });
+
+  test("with no lint configured, the full run says so in the ledger rather than passing in silence", () => {
+    const repo = makeRepo();
+
+    const printed = recorded(repo, "--full");
+
+    assert.equal(printed.lint, "no lint configured");
+    assert.equal(repo.ledger().tests.full.lint, "no lint configured");
+  });
+
+  test("with no lint configured but a commit hook in the repo, the note names the hook to copy checks from", () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo.dir, ".pre-commit-config.yaml"), "repos: []\n");
+
+    const { lint } = recorded(repo, "--full");
+
+    assert.match(lint, /^no lint configured: \.pre-commit-config\.yaml runs checks at commit that the full suite does not; add them to lint_commands in test-config\.json$/, lint);
+  });
+
+  test("with lint configured, the record carries no such note", () => {
+    const repo = linted(`process.exit(0);`);
+
+    assert.equal(recorded(repo, "--full").lint, undefined);
+  });
+});
+
 describe("the head a run saw", IN_PARALLEL, () => {
   const committedRepo = (body) => {
     const repo = makeRepo({ body });

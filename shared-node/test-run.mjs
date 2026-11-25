@@ -168,10 +168,33 @@ function suitePaths(runner, filePattern, root) {
 // for a runner that is given its test files by name.
 export function fullSuitePlans(config, root) {
   checkedRunner(config, config?.default_runner);
-  return Object.keys(config.runners).map((id) => {
+  const tests = Object.keys(config.runners).map((id) => {
     const runner = checkedRunner(config, id);
     return planFor(runner, suitePaths(runner, config.runners[id].file_pattern, root));
   });
+  return [...tests, ...lintPlans(config)];
+}
+
+// The project's lint and format checks run with the full suite, so a clean suite means a clean build: a commit the
+// repo's hook would refuse, or a pull request on code its CI would reject, never starts from a "passing" suite.
+const LINT_RUNNER = "lint";
+
+// Where a repo keeps checks it runs at commit. They are named, not run: a hook may fix files in place (ruff --fix, a
+// formatter), and a check that rewrites the tree is no check.
+const COMMIT_HOOK_FILES = [".pre-commit-config.yaml", ".husky/pre-commit"];
+
+// What a full run's record says when the project names no lint, so a suite that checked no lint is never read as clean.
+export function lintNote({ lint_commands: commands }, root) {
+  if (commands !== undefined) return {};
+  const hook = COMMIT_HOOK_FILES.find((file) => root !== undefined && existsSync(join(root, file)));
+  return { lint: hook ? `no lint configured: ${hook} runs checks at commit that the full suite does not; add them to lint_commands in test-config.json` : "no lint configured" };
+}
+
+function lintPlans({ lint_commands: commands }) {
+  if (commands === undefined) return [];
+  const words = Array.isArray(commands) ? commands.map((command) => (typeof command === "string" ? tokenize(command) : [])) : [];
+  if (words.length === 0 || words.some((argv) => argv.length === 0)) throw new TestRunRefused("test-config.json needs lint_commands to be a list of commands, each a non-empty string");
+  return words.map((argv) => ({ runner: LINT_RUNNER, argv, failureCodes: DEFAULT_FAILURE_EXIT_CODES, timeoutMs: DEFAULT_TIMEOUT_SECONDS * 1000 }));
 }
 
 // ---------- the tests artifact ----------
@@ -400,6 +423,8 @@ function howItFailed(run) {
   return `failed with exit code ${run.exitCode}`;
 }
 
+const runName = ({ runner, argv = [] }) => (runner === LINT_RUNNER ? `lint check \`${argv.join(" ")}\`` : `runner ${runner}`);
+
 // Each failing run by name, how it failed and its output, so whoever reads the refusal (the next agent's try, the human)
 // knows what broke and why. rows: the tests the runs selected, in the same order, to name each by its test; else each
 // run is named by its runner.
@@ -407,7 +432,7 @@ export function failedRunsText(runs, rows = null) {
   return runs
     .map((run, i) => ({ run, row: rows?.[i] }))
     .filter(({ run }) => run.exitCode !== 0 || run.timedOut)
-    .map(({ run, row }) => `${row ? `test ${row.test_id} (${row.test_function} in ${row.test_file})` : `runner ${run.runner}`} ${howItFailed(run)}. Its output:\n${String(run.excerpt ?? "").slice(-FAILED_RUN_TAIL)}`)
+    .map(({ run, row }) => `${row ? `test ${row.test_id} (${row.test_function} in ${row.test_file})` : runName(run)} ${howItFailed(run)}. Its output:\n${String(run.excerpt ?? "").slice(-FAILED_RUN_TAIL)}`)
     .join("\n\n");
 }
 
