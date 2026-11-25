@@ -436,14 +436,20 @@ test('the task the live run is building is marked in progress, lit as the runnin
 
 const BUILD_THEN_HUMAN = PLAN_WITH_HUMAN_TASK.replace('- [ ] Task 1: [HUMAN] Approve the pricing page', '- [ ] Task 1: Build the pricing page\n- [ ] Task 2: [HUMAN] Approve the pricing page')
 
-// A person's task waits on them only once the unit reaches it: before that, the task ahead of it is still to be done.
-test('a [HUMAN] task behind an unticked task is not yet waiting on a person', async ($, on) => {
+// A person's task waits on them only once the plan reaches it; before that it still reads as a person's work, lit alike, so
+// every [HUMAN] task ahead stands out, not only the first.
+test('a [HUMAN] task behind an unticked task needs a person, lit in the warning colour, and is not yet waited on', async ($, on) => {
   const lines = await showPlan($, on, BUILD_THEN_HUMAN)
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const texts: any[] = await pane.findAll({ type: 'Text' })
+  await pane.unmount()
+  const human = texts.find(node => String(node.text ?? '').includes('Task 2: [HUMAN] Approve the pricing page'))
 
-  expect(lines.slice(-2), 'Task 1 comes first, so Task 2 reads as any task not yet reached').toEqual([
+  expect(lines.slice(-2), 'Task 1 comes first, so Task 2 needs a person but is not waited on yet').toEqual([
     '             ○ Task 1: Build the pricing page',
-    '             ○ Task 2: [HUMAN] Approve the pricing page',
+    '             ○ Task 2: [HUMAN] Approve the pricing page · needs a person',
   ])
+  expect(human?.props, 'in the warning colour, bold, as NEEDS YOU draws its words').toMatchObject({ color: 'warning', bold: true })
 })
 
 // A narrow pane cuts a task's title, never the words that say what it waits on.

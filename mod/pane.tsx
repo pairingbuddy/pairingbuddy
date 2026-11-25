@@ -1,6 +1,6 @@
 import { cutAtWord, lensLines, lensSummaryLines } from '../shared-node/lens-round.mjs'
 import { endReviewLines, endReviewSummaryLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
-import { commitRows, gapWords, OPEN_COMMIT_ROWS, planFocus, PLAN_ROWS, problemRows, SHORT_COMMIT_ROWS, STATE_SEPARATOR, taskMark, unitWords, WAITING_ON_PERSON, windowRows } from '../shared-node/plan-window.mjs'
+import { commitRows, firstUnticked, gapWords, humanWords, OPEN_COMMIT_ROWS, planFocus, PLAN_ROWS, problemRows, SHORT_COMMIT_ROWS, STATE_SEPARATOR, taskMark, unitWords, windowRows } from '../shared-node/plan-window.mjs'
 import { hiddenRows, moreRowsLine, paneBudget, PLAN_TARGET } from '../shared-node/pane-height.mjs'
 import { resolveOpenUnit } from './view'
 import type { RowTones, Status, StatusState, Tags, View } from './view'
@@ -183,11 +183,10 @@ type TreeRow = { parts: Part[]; needs: number[]; indent: string; task?: { checke
 // One unit's rows: its name and state, then what it is based on, the open unit's facts, its PR and its tasks, each a row of
 // the tree at `rows`' end. building: the title of the task the live run builds; publishing: a live publish run writes the
 // open unit's pull request; width: the room each row has. The focus task's row is noted in `focus`.
-function unitRows(rows: TreeRow[], unit: PlanUnit, group: number, state: string | undefined, open: View['planOpen'], indent: string, context: number[], focus: { task?: PlanUnit['tasks'][number]; row?: number }, building?: string, width = 0, publishing = false, commitMost = OPEN_COMMIT_ROWS) {
+function unitRows(rows: TreeRow[], unit: PlanUnit, group: number, state: string | undefined, open: View['planOpen'], indent: string, context: number[], focus: PlanFocus, building?: string, width = 0, publishing = false, commitMost = OPEN_COMMIT_ROWS) {
   const contentIndent = indent + NEST
   const isOpen = Boolean(open && open.unit === unit.unit)
   const words = unitWords(state, isOpen, publishing)
-  const next = unit.tasks.find(task => !task.checked)
   const push = (parts: Part[], needs: number[], task?: TreeRow['task'], at = contentIndent) => rows.push({ parts, needs, indent: at, ...(task ? { task, group } : {}) }) - 1
   const unitRow = push([{ text: titleRow(indent, unit.unit, words ? `${STATE_SEPARATOR}${words}` : '', width) }], context, undefined, indent)
   const header = [...context, unitRow]
@@ -198,18 +197,25 @@ function unitRows(rows: TreeRow[], unit: PlanUnit, group: number, state: string 
   ].map(parts => push(parts, header))
   for (const task of unit.tasks) {
     const inProgress = !task.checked && task.title === building
-    const row = push([{ text: taskRow(task, inProgress, task === next, contentIndent, width), ...(inProgress ? { props: LIT } : {}) }], [...header, ...facts], { checked: task.checked })
+    const human = inProgress ? '' : humanWords(task, focus.reached)
+    const props = inProgress ? LIT : human ? NEEDS_PERSON_PROPS : undefined
+    const row = push([{ text: taskRow(task, inProgress, human, contentIndent, width), ...(props ? { props } : {}) }], [...header, ...facts], { checked: task.checked })
     if (task === focus.task) focus.row = row
   }
 }
 
-// A task's mark and title: ▸ for the one being built, as STEPS marks its running step. A [HUMAN] task that is its unit's
-// next unticked one also says it waits on a person; one behind another unticked task is not reached yet.
-function taskRow(task: PlanUnit['tasks'][number], inProgress: boolean, isNext: boolean, indent: string, width: number): string {
-  const mark = taskMark(task, inProgress)
-  const waiting = task.human && isNext ? `${STATE_SEPARATOR}${WAITING_ON_PERSON}` : ''
-  return titleRow(`${indent}${mark} `, task.title, waiting, width)
+// A task's mark and title: ▸ for the one being built, as STEPS marks its running step, then an unticked [HUMAN] task's words
+// (humanWords), kept whole while the title gives way.
+function taskRow(task: PlanUnit['tasks'][number], inProgress: boolean, human: string, indent: string, width: number): string {
+  return titleRow(`${indent}${taskMark(task, inProgress)} `, task.title, human ? `${STATE_SEPARATOR}${human}` : '', width)
 }
+
+// An unticked [HUMAN] task's row, in the colour NEEDS YOU's words take, so every person's task ahead stands out.
+const NEEDS_PERSON_PROPS: Props = { color: 'warning', bold: true }
+
+// The PLAN block's focus task and its row once drawn, and the plan's first unticked task (firstUnticked), which a [HUMAN]
+// task waits on a person at.
+type PlanFocus = { task?: PlanUnit['tasks'][number]; row?: number; reached: PlanUnit['tasks'][number] | null }
 
 // Consecutive units of one tracer form a group; a unit under no tracer is its own group, unindented.
 type TracerGroup = { tracer: string | null | undefined; units: { unit: PlanUnit; index: number }[] }
@@ -237,7 +243,7 @@ function planLines(plan: NonNullable<View['plan']>, states: string[] = [], rawOp
   const openIndex = open ? plan.units.findIndex(unit => unit.unit === open.unit) : -1
   const awaitingPr = openIndex !== -1 && (publishing || states[openIndex] === 'unpublished') ? openIndex : undefined
   const at = planFocus(plan.units, building, awaitingPr)
-  const focus: { task?: PlanUnit['tasks'][number]; row?: number } = { task: at ? plan.units[at.unit].tasks[at.task] : undefined }
+  const focus: PlanFocus = { task: at ? plan.units[at.unit].tasks[at.task] : undefined, reached: firstUnticked(plan.units) }
   // A block short of its target keeps the open unit's commits to fewer rows, so its tasks still fit.
   const commitMost = room < PLAN_TARGET ? SHORT_COMMIT_ROWS : OPEN_COMMIT_ROWS
   const rows: TreeRow[] = []
