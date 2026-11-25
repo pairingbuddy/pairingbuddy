@@ -9,7 +9,9 @@ import { ledgerFile, publishRun, publishUnit, statusAction } from "./publishable
 
 // Task 111: a failed publish retries once, then stops. A stop pushes nothing,
 // and units published before the stop keep their PRs and recorded state.
-// Placeholders: each body fails until implement-tests writes the real assertion.
+// Tests not yet implemented are placeholders that fail until their real assertion is written.
+
+const readLedger = (repo) => JSON.parse(readFileSync(ledgerFile(repo), "utf8"));
 
 test("first-publish-failure-retries-once", () => {
   const unit = publishRun();
@@ -17,11 +19,12 @@ test("first-publish-failure-retries-once", () => {
   assert.equal(result.code, REFUSED, `the first pb publish fails, stdout ${result.stdout}`);
 
   const action = statusAction(unit.repo);
+  const ledger = readLedger(unit.repo);
 
-  const ledger = JSON.parse(readFileSync(ledgerFile(unit.repo), "utf8"));
+  assert.equal(ledger.retries.publish.used, 1, "the failed publish is recorded as one retry used");
   assert.equal(ledger.stop, null, "one failed publish does not stop the run");
   assert.ok(action.includes(pbCommand("publish")), `the action names pb publish for the retry: ${action}`);
-  assert.match(action, /retry/i, `the action says this is the retry: ${action}`);
+  assert.match(action, /once more as the retry/, `the action says this is the retry: ${action}`);
 });
 
 test("second-publish-failure-stops", () => {
