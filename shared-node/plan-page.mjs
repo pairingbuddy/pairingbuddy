@@ -24,6 +24,18 @@ ul{list-style:none;padding:0 0 0 2ch}
 .building{color:var(--accent);font-weight:700}
 .waiting{color:var(--needs-you);font-weight:700}
 .problems li{color:var(--needs-you)}
+summary{cursor:pointer}
+summary h2,summary h3{display:inline}
+summary::marker{color:var(--muted)}
+.intro,.body{color:var(--fg);border-left:2px solid var(--rule);margin:4px 0 8px 1ch;padding:2px 0 2px 2ch;font-weight:400}
+.intro{color:var(--muted)}
+.body p,.intro p{margin:0 0 6px}
+.body ul{list-style:disc;padding-left:3ch;margin:0 0 6px}
+.ticked .body,.waiting .body,.building .body{color:var(--fg);font-weight:400}
+code{background:var(--rule);border-radius:3px;padding:0 3px}
+.controls{margin-top:6px}
+.controls button{font:inherit;color:var(--link);background:none;border:1px solid var(--rule);border-radius:4px;padding:1px 8px;cursor:pointer}
+.controls button:hover{border-color:var(--link)}
 @media (max-width:600px){body{padding:28px 16px 48px}}`;
 
 // Expand all and Collapse all: hidden in the markup, shown by the page's own script, so a page whose script does not run
