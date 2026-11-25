@@ -19,6 +19,17 @@ export function problemRows(problems) {
 export const TASK_MARKS = { ticked: "✓", unticked: "○", inProgress: "▸" };
 export const STATE_SEPARATOR = " · ";
 export const WAITING_ON_PERSON = "waiting on a person";
+export const NEEDS_PERSON = "needs a person";
+
+// The plan's first unticked task: the one the plan has reached, which a run halts at when it is a [HUMAN] task; null once every box is ticked.
+export const firstUnticked = (units) => units.flatMap(({ tasks }) => tasks).find((task) => !task.checked) ?? null;
+
+// A [HUMAN] task's words: waiting on a person for the one the plan is stopped on (reached: firstUnticked), needs a person for
+// every other unticked one, so each reads as a person's work however far off; none for a ticked or agent task.
+export function humanWords(task, reached) {
+  if (!task.human || task.checked) return "";
+  return task === reached ? WAITING_ON_PERSON : NEEDS_PERSON;
+}
 
 // A unit's state in plain words: unitStates' "open" (it has boxes left) reads open only for the unit pb has open; any
 // other unit with boxes left has its work to do.

@@ -1,6 +1,6 @@
 // The whole plan as a page: every tracer, unit and task, with the states the pane's PLAN block gives them, which shows only a
 // window of it. /pb-plan writes it under the reports folder and opens it. Pure; no I/O, no node: imports.
-import { planFocus, STATE_SEPARATOR, taskMark, unitWords, WAITING_ON_PERSON } from "./plan-window.mjs";
+import { firstUnticked, humanWords, planFocus, STATE_SEPARATOR, taskMark, unitWords } from "./plan-window.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
@@ -45,21 +45,20 @@ function openFacts(open) {
   return [...(open.branch ? [`branch ${open.branch}`] : []), ...(open.base ? [`base ${open.base}`] : []), ...(open.commits ?? []).map((sha) => `commit ${sha.slice(0, 7)}`)];
 }
 
-// One task's row: its mark and title, ▸ and lit for the one being built, and waiting on a person for a [HUMAN] task that is
-// its unit's next unticked one. The focus is the row the page opens at.
-function taskItem(task, { inProgress, isNext, isFocus }) {
-  const waiting = task.human && isNext && !task.checked;
-  const kind = task.checked ? "ticked" : inProgress ? "building" : waiting ? "waiting" : "unticked";
-  const words = waiting ? `${STATE_SEPARATOR}${WAITING_ON_PERSON}` : "";
+// One task's row: its mark and title, ▸ and lit for the one being built, and lit in the needs-you colour with humanWords for
+// an unticked [HUMAN] task. The focus is the row the page opens at.
+function taskItem(task, { inProgress, reached, isFocus }) {
+  const human = inProgress ? "" : humanWords(task, reached);
+  const kind = task.checked ? "ticked" : inProgress ? "building" : human ? "waiting" : "unticked";
+  const words = human ? `${STATE_SEPARATOR}${human}` : "";
   return `<li class="${kind}"${isFocus ? ' id="now"' : ""}>${taskMark(task, inProgress)} ${escape(task.title)}${words}</li>`;
 }
 
-function unitSection(unit, { state, open, building, publishing, focusTask }) {
+function unitSection(unit, { state, open, building, publishing, focusTask, reached }) {
   const isOpen = Boolean(open && open.unit === unit.unit);
   const words = unitWords(state, isOpen, publishing);
-  const next = unit.tasks.find((task) => !task.checked);
   const facts = [...(unit.dependsOn ? [escape(`based on ${unit.dependsOn}`)] : []), ...(isOpen ? openFacts(open).map(escape) : []), ...(unit.pr ? [`PR ${prLink(unit.pr)}`] : [])];
-  const tasks = unit.tasks.map((task) => taskItem(task, { inProgress: !task.checked && task.title === building, isNext: task === next, isFocus: task === focusTask }));
+  const tasks = unit.tasks.map((task) => taskItem(task, { inProgress: !task.checked && task.title === building, reached, isFocus: task === focusTask }));
   return `<h3>${escape(unit.unit)}${words ? escape(`${STATE_SEPARATOR}${words}`) : ""}</h3>
 <ul>
 ${facts.map((fact) => `<li class="facts">${fact}</li>`).join("\n")}${facts.length ? "\n" : ""}${tasks.join("\n")}
@@ -73,10 +72,11 @@ export function renderPlanPage({ plan, states = [], open, building, publishing =
   const units = plan?.units ?? [];
   const at = planFocus(units, building);
   const focusTask = at ? units[at.unit].tasks[at.task] : undefined;
+  const reached = firstUnticked(units);
   const all = units.flatMap(({ tasks }) => tasks);
   const done = all.filter(({ checked }) => checked).length;
   const groups = tracerGroups(units).map(({ tracer, units: grouped }) => {
-    const body = grouped.map(({ unit, index }) => unitSection(unit, { state: states[index], open, building, publishing, focusTask })).join("\n");
+    const body = grouped.map(({ unit, index }) => unitSection(unit, { state: states[index], open, building, publishing, focusTask, reached })).join("\n");
     return `<section>\n${tracer ? `<h2>${escape(tracer)}</h2>\n` : ""}${body}\n</section>`;
   });
   const problems = plan?.problems ?? [];

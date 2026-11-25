@@ -55,8 +55,18 @@ test("the page tells each unit and task as the pane does: states, PR links, the 
   assert.ok(text.includes("Receipt · to do"), "a unit pb has not opened has its work to do");
   for (const fact of ["based on Add", "branch feat/pay", "base feat/add", "commit 1111111", "commit 6666666"]) assert.ok(text.includes(fact), `the open unit's ${fact}`);
   assert.match(html, /<li class="building" id="now">▸ Task 3: Refund<\/li>/, "the task being built, which the page opens at");
-  assert.ok(text.includes("○ Task 4: [HUMAN] Check it\n"), "a [HUMAN] task behind an unticked one is not waiting yet");
-  assert.ok(text.includes("○ Task 5: [HUMAN] Approve the receipt · waiting on a person"), "a [HUMAN] task its unit has next waits on a person");
+  assert.match(html, /<li class="waiting">○ Task 4: \[HUMAN\] Check it · needs a person<\/li>/, "a [HUMAN] task the plan has not reached is lit and needs a person");
+  assert.match(html, /<li class="waiting">○ Task 5: \[HUMAN\] Approve the receipt · needs a person<\/li>/, "every unticked [HUMAN] task reads alike, not just its unit's next");
+  assert.ok(!text.includes("waiting on a person"), "no [HUMAN] task waits while the plan is on an agent task");
+});
+
+test("the [HUMAN] task the plan is stopped on waits on a person; the ones after it still need a person", () => {
+  const plan = parsePlan(STATES_PLAN.replace("- [ ] Task 3", "- [x] Task 3"));
+
+  const html = renderPlanPage({ plan, states: ["published", "open", "open"], open: OPEN_PAY });
+
+  assert.match(html, /<li class="waiting" id="now">○ Task 4: \[HUMAN\] Check it · waiting on a person<\/li>/, "the plan's first unticked task is a [HUMAN] one");
+  assert.match(html, /<li class="waiting">○ Task 5: \[HUMAN\] Approve the receipt · needs a person<\/li>/, "a later [HUMAN] task is not waited on yet");
 });
 
 test("while the publish run writes the open unit's pull request, the page says so, as the pane does", () => {
