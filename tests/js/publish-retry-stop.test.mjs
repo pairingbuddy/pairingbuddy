@@ -1,10 +1,10 @@
 import "./isolated-tmpdir.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import { pbCommand } from "../../shared-node/verbs.mjs";
-import { REFUSED } from "./publish-fixture.mjs";
+import { REFUSED, unitFile } from "./publish-fixture.mjs";
 import { ledgerFile, publishRun, publishUnit, statusAction } from "./publishable-unit-fixture.mjs";
 
 // Task 111: a failed publish retries once, then stops. A stop pushes nothing,
@@ -45,7 +45,14 @@ test("second-publish-failure-stops", () => {
 });
 
 test("retry-success-continues", () => {
-  assert.fail("placeholder: not implemented");
+  const unit = publishRun();
+  publishUnit(unit, { GH_SHIM_FAIL: "pr create" });
+
+  const { gh, result: retry } = publishUnit(unit);
+
+  assert.equal(retry.code, 0, `the retry succeeds, stderr ${retry.stderr}`);
+  assert.equal(gh.prCreates().length, 1, "the retry opens the PR");
+  assert.equal(existsSync(unitFile(unit.repo)), false, "the unit is published and closed");
 });
 
 test("stop-makes-no-push", () => {
