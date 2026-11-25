@@ -18,7 +18,11 @@ test("no-gh-pr-create-in-script", () => {
 });
 
 test("no-git-push-in-script", () => {
-  assert.fail("placeholder: not implemented");
+  const source = readFileSync(SCRIPT_PATH, "utf8");
+
+  const found = source.match(/git\s+push/);
+
+  assert.equal(found, null, `solo-buddy.sh must not contain \`git push\`, found: ${found?.[0]}`);
 });
 
 test("success-run-makes-no-gh-or-push-call", () => {
