@@ -4,9 +4,10 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { FAKE_PR_URL } from "./gh-shim-fixture.mjs";
 import { pbCommand } from "../../shared-node/verbs.mjs";
-import { REFUSED, unitFile } from "./publish-fixture.mjs";
-import { installPrePushHook, ledgerFile, publishRun, publishUnit, remoteRef, statusAction } from "./publishable-unit-fixture.mjs";
+import { REFUSED, git, unitFile } from "./publish-fixture.mjs";
+import { installPrePushHook, ledgerFile, PLAN, planFile, publishRun, publishUnit, remoteRef, statusAction, withPlan } from "./publishable-unit-fixture.mjs";
 
 // Task 111: a failed publish retries once, then stops. A stop pushes nothing,
 // and units published before the stop keep their PRs and recorded state.
@@ -73,5 +74,18 @@ test("stop-makes-no-push", () => {
 });
 
 test("published-units-stand-after-stop", () => {
-  assert.fail("placeholder: not implemented");
+  const unit = publishRun();
+  const earlierBranch = "feat/earlier-unit";
+  const earlierLine = `PR: ${FAKE_PR_URL} branch: ${earlierBranch}`;
+  withPlan(unit.repo, `${PLAN}\n#### PR: Earlier\n\n${earlierLine}\n\n- [x] Task Z\n`);
+  git(unit.repo, "push", "-q", "origin", `main:refs/heads/${earlierBranch}`);
+  const earlierRemote = remoteRef(unit.repo, `refs/heads/${earlierBranch}`);
+  publishUnit(unit, { GH_SHIM_FAIL: "pr create" });
+
+  publishUnit(unit, { GH_SHIM_FAIL: "pr create" });
+  const action = statusAction(unit.repo);
+
+  assert.match(action, /The run has stopped/, `the second failure stops the run: ${action}`);
+  assert.match(readFileSync(planFile(unit.repo), "utf8"), new RegExp(`^${earlierLine.replace(/[.]/g, "\\.")}$`, "m"), "the earlier unit keeps its PR: line in the plan");
+  assert.equal(remoteRef(unit.repo, `refs/heads/${earlierBranch}`), earlierRemote, "the earlier unit's branch is untouched on the remote");
 });
