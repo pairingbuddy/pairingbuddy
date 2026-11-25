@@ -358,8 +358,8 @@ class TestStrandedStage:
         assert ledger_of(clone)["stage"]["status"] == "active"
         assert ledger_of(clone)["stage"]["runId"] is not None
         wedged = denial(workflow_call(clone, tmp_path, "code-safety-net", 1))
-        assert "is active at attempt 1" in wedged
-        assert "cleared by the human running pb stage fail" in wedged
+        assert "is still running" in wedged
+        assert "the human clears it with pb stage fail" in wedged
 
         recover(clone, tmp_path, "stranded-stage")
 
@@ -428,9 +428,7 @@ class TestSecondSession:
         assert ledger_of(clone)["owner"]["sessionId"] == first
         assert ledger_of(clone)["policy"]["mode"] == "default"
         assert pb(clone, tmp_path, "run", "open", "--kind", "code").returncode == 1
-        assert "is active at attempt 1" in denial(
-            workflow_call(clone, tmp_path, "code-safety-net", 1)
-        )
+        assert "is still running" in denial(workflow_call(clone, tmp_path, "code-safety-net", 1))
 
         recover(clone, tmp_path, "second-session")
 

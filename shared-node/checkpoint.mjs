@@ -42,6 +42,15 @@ export class CheckpointRefused extends Error {}
 // A failure that needs a human: the verb records it as the run's stop.
 export class CheckpointStopped extends Error {}
 
+// A commit the repo's own hook refused (a lint or format check), with the hook's output. Other steps stop on it; a fix
+// group treats it like a red suite, since the fixer's change is what the hook refused.
+export class CommitHookRefused extends CheckpointStopped {
+  constructor(message, output) {
+    super(message);
+    this.output = output;
+  }
+}
+
 export const checkpointSteps = () => Object.keys(STEPS);
 // The steps the generic checkpoint verb runs: a step with a verb of its own is written by that verb.
 export const checkpointVerbSteps = () => Object.keys(STEPS).filter((step) => STEPS[step].verb === undefined);
@@ -355,7 +364,7 @@ function checkedHookChanges(root, changed) {
 // already dirty is someone's work in progress, so it stays out of the retry. A hook that changed nothing would fail alike.
 function retryPaths(root, before, failed) {
   const changed = dirtyInWorktree(root).filter((path) => !before.includes(path));
-  if (changed.length === 0) throw new CheckpointStopped(`the commit failed: ${failureText(failed)}`);
+  if (changed.length === 0) throw new CommitHookRefused(`the commit failed: ${failureText(failed)}`, failureText(failed));
   return checkedHookChanges(root, changed);
 }
 
@@ -369,7 +378,7 @@ export function commitPaths(root, plan, timeout = COMMIT_TIMEOUT_MS) {
   if (hookRetried) {
     stage(root, retryPaths(root, before, first));
     const second = tryCommit(root, message, timeout);
-    if (second.status !== 0) throw new CheckpointStopped(`the commit failed after one retry: ${failureText(second)}`);
+    if (second.status !== 0) throw new CommitHookRefused(`the commit failed after one retry: ${failureText(second)}`, failureText(second));
   }
   return { sha: git(root, "rev-parse", "HEAD").trim(), hookRetried };
 }

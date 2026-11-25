@@ -1,5 +1,5 @@
 // Closing a unit on disk (D19): the I/O half of the unit rules in unit.mjs, which stays pure. Node built-ins only.
-import { cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // The files that belong to one unit: its record and the PR draft's body and lint result.
@@ -80,6 +80,34 @@ export function keptAcceptedConfigHash(root, unit) {
     });
   const last = acceptances.reduce((hash, accepted) => (accepted?.oldHash === hash && typeof accepted.newHash === "string" ? accepted.newHash : hash), unit.configHash);
   return last === unit.configHash ? null : last;
+}
+
+// An open unit's record that cannot take the accepted test-config. The run's ledger has pinned it already.
+export class UnitConfigRefused extends Error {}
+
+const unitRecordFor = (path) => {
+  const why = "the unit cannot pin the accepted test-config. The run's ledger has pinned it";
+  let unit;
+  try {
+    unit = JSON.parse(readFileSync(path, "utf8"));
+  } catch (e) {
+    throw new UnitConfigRefused(`run/unit.json is unreadable, so ${why}: ${e.message}`);
+  }
+  if (!Array.isArray(unit?.tasks)) throw new UnitConfigRefused(`run/unit.json has no tasks list, so ${why}`);
+  return unit;
+};
+
+// A test-config the human accepted while a unit is open is pinned in the unit too, so its hash never falls behind the
+// run's ledger and pb publish does not refuse it. pb human accept and the tap's Accept both come here.
+export function acceptConfigInUnit(root, { newHash, seq }) {
+  const path = join(root, ".pairingbuddy", "run", "unit.json");
+  if (!existsSync(path)) return;
+  const unit = unitRecordFor(path);
+  if (unit.configHash === newHash) return;
+  const configAcceptances = [...(unit.configAcceptances ?? []), { oldHash: unit.configHash, newHash, seq }];
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify({ ...unit, configHash: newHash, configAcceptances }, null, 2)}\n`);
+  renameSync(temp, path);
 }
 
 // The task of the run just kept counts first, so it is never the one removed.

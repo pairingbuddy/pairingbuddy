@@ -215,7 +215,7 @@ const WEDGES = {
   "stranded-stage": {
     recipe: "Stranded active stage",
     force: startStage,
-    sees: `stage ${STAGE} is active at attempt 1 with a recorded run that will never finish.`,
+    sees: `stage ${STAGE} still running, with a recorded run that will never finish.`,
   },
   "killed-session": {
     recipe: "Killed session mid-stage",

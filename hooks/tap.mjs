@@ -133,7 +133,7 @@ function tapQuestion(modules, root, ledgerPath, toolResponse) {
   const ledger = readLedger(ledgerPath);
   // Recorded only on an exact match with the question gate eval issued and stored for the waiting gate.
   const answer = modules.gateAnswer(ledger, toolResponse);
-  if (answer === null) return;
+  if (answer === null) return sayUntaken(modules, ledger, toolResponse);
   // A wait outside the gates (a changed test-config) has its own answers, recorded against the question pb stored.
   if (modules.isHumanWait(ledger)) return tapWaitAnswer(modules, root, ledgerPath, ledger, answer);
   let binding;
@@ -151,15 +151,36 @@ function tapQuestion(modules, root, ledgerPath, toolResponse) {
   if (answer === KEEP_LOCAL_LABEL) closeKeptLocal(modules, root, ledger);
 }
 
+// Typed words a question cannot take are not lost in silence: the session hears them and that only a listed choice counts.
+function sayUntaken(modules, ledger, toolResponse) {
+  const untaken = modules.untakenTypedAnswer(ledger, toolResponse);
+  if (untaken === null) return;
+  const choices = untaken.labels.map((label) => `"${label}"`).join(", ");
+  say(`Pairing Buddy did not record the typed answer "${untaken.typed}": this question takes only one of ${choices}. Ask it again with the same question, and pass on what the human wrote.`);
+}
+
 // The answer lands only while the same wait still asks. A file no test run can use is no acceptance: the wait stands and the hook says why.
 function tapWaitAnswer(modules, root, ledgerPath, ledger, answer) {
   const { isHumanWait, recordWaitAnswer, updateLedger } = modules;
   const asked = ledger.needsHuman;
   const gates = runGates(modules, ledger);
+  let accepted = null;
   try {
-    updateLedger(ledgerPath, (current) => (current.needsHuman?.seq === asked.seq && isHumanWait(current) ? recordWaitAnswer(current, answer, { root, gates }) : current));
+    updateLedger(ledgerPath, (current) => {
+      if (current.needsHuman?.seq !== asked.seq || !isHumanWait(current)) return current;
+      const next = recordWaitAnswer(current, answer, { root, gates });
+      accepted = next.configAcceptances?.length > (current.configAcceptances?.length ?? 0) ? next.configAcceptances.at(-1) : null;
+      return next;
+    });
   } catch (e) {
     say(`Pairing Buddy did not record the answer "${answer}": ${e.message}. The run still waits on the human.`);
+    return;
+  }
+  if (accepted === null) return;
+  try {
+    modules.acceptConfigInUnit(root, accepted);
+  } catch (e) {
+    say(`Pairing Buddy recorded "${answer}", but ${e.message}.`);
   }
 }
 
@@ -197,17 +218,17 @@ function tapRun(modules, root, input) {
 }
 
 try {
-  const { KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, gateAnswer, gatesFor, isBindingRefusal, publishBinding, recordAnswer } = await import("../shared-node/gates.mjs");
+  const { KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, gateAnswer, gatesFor, isBindingRefusal, publishBinding, recordAnswer, untakenTypedAnswer } = await import("../shared-node/gates.mjs");
   const { parseKey } = await import("../shared-node/keys.mjs");
   const { isPublishRun, readLedger, updateLedger } = await import("../shared-node/ledger.mjs");
   const { pbCommand } = await import("../shared-node/verbs.mjs");
-  const { closeUnit, endRun, keepRun } = await import("../shared-node/unit-files.mjs");
+  const { acceptConfigInUnit, closeUnit, endRun, keepRun } = await import("../shared-node/unit-files.mjs");
   const { findSessionRoot } = await import("../shared-node/run-root.mjs");
   const { loadStages, migratedType } = await import("../shared-node/stages.mjs");
   const { isHumanWait, recordWaitAnswer } = await import("../shared-node/human-waits.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
   const root = findSessionRoot(input.cwd, input.session_id);
-  if (root !== null) tapRun({ isHumanWait, recordWaitAnswer, KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, keepRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, updateLedger, migratedType }, root, input);
+  if (root !== null) tapRun({ acceptConfigInUnit, isHumanWait, recordWaitAnswer, KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, keepRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, untakenTypedAnswer, updateLedger, migratedType }, root, input);
 } catch {
   // not a run situation
 }

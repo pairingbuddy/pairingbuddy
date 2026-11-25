@@ -18,7 +18,7 @@ export const KINDS = ["code", "plan", "publish", "refresh"];
 // Kinds whose taskType must equal the kind.
 const PR_KINDS = ["publish", "refresh"];
 // How a rolled-back fix group was kept: a fix commit, uncommitted work (red), a saved artifact with no git ref, or uncommitted work that repeated an approach already rolled back (repeated).
-export const ROLLBACK_KINDS = ["commit", "red", "artifact", "repeated"];
+export const ROLLBACK_KINDS = ["commit", "red", "artifact", "repeated", "hook"];
 
 // The one predicate for a publish run: kind and taskType agree (the validator holds them to it), so either says it.
 export const isPublishRun = (ledger) => ledger.kind === "publish";
@@ -193,7 +193,10 @@ export function validateLedger(ledger) {
         checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"], askedAt: [isTimestamp, "an ISO 8601 timestamp"], shown: [isObject, "an object"], question: [isObject, "an object"], doubts: [isDoubts, "a non-empty array of { step, ambiguity } non-empty strings"], fix: [isNonEmptyString, "a non-empty string"], wait: [isNonEmptyString, "a non-empty string"] }, errors, { optional: ["askedAt", "shown", "question", "doubts", "fix", "wait"] });
         break;
       case "fixes":
-        checkObject(ledger.fixes, "fixes", { rollbacks: [Array.isArray, "an array"] }, errors);
+        checkObject(ledger.fixes, "fixes", { rollbacks: [Array.isArray, "an array"], hookRefusals: [Array.isArray, "an array"] }, errors, { optional: ["hookRefusals"] });
+        if (isObject(ledger.fixes) && Array.isArray(ledger.fixes.hookRefusals)) {
+          ledger.fixes.hookRefusals.forEach((r, i) => checkObject(r, `fixes.hookRefusals.${i}`, { key: [isNonEmptyString, "a non-empty string"], output: [isString, "a string"] }, errors));
+        }
         if (isObject(ledger.fixes) && Array.isArray(ledger.fixes.rollbacks)) {
           ledger.fixes.rollbacks.forEach((r, i) => checkObject(r, `fixes.rollbacks.${i}`, {
             key: [isNonEmptyString, "a non-empty string"], kind: [(x) => ROLLBACK_KINDS.includes(x), `one of ${ROLLBACK_KINDS.join(", ")}`],
