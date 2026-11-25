@@ -6,7 +6,7 @@ import { PANE_ID } from './pane-open'
 import { ACCENT_COLOUR } from './pane'
 import { POLL_MS } from './poll'
 
-const IDLE = 'Pairing Buddy · idle · /pb details · /pb-report report'
+const IDLE = 'Pairing Buddy · idle · details: /pb · report: /pb-report · plan: /pb-plan'
 
 // The classic renderer has no mouse, and reaching a band button takes ctrl+x tab, tab, enter: the band names commands instead.
 test('the band draws no button, in any state', async ($, on) => {
@@ -230,7 +230,7 @@ test('between-steps-the-pane-and-the-band-lead-with-the-working-mark', async ($,
 
   expect(now, `STATUS reads the plain state: ${now}`).toBe('STATUS   ● working · between steps · next: build test by test')
   expect([mark.text, mark.props.color], 'the band leads with the working mark in the accent').toEqual(['● ', ACCENT_COLOUR])
-  expect([rest.text, rest.props.dimColor], 'then the quiet line, dim, with no "Pairing Buddy" label: the goal row above names the session').toEqual(['between steps · next: build test by test · /pb details · /pb-report report', true])
+  expect([rest.text, rest.props.dimColor], 'then the quiet line, dim, with no "Pairing Buddy" label: the goal row above names the session').toEqual(['between steps · next: build test by test · details: /pb · report: /pb-report · plan: /pb-plan', true])
 })
 
 test('pane-now-run-open-has-no-band-label', async ($, on) => {

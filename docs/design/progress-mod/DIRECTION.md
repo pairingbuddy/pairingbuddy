@@ -140,17 +140,17 @@ Fix this bug in discount.py
 The step row in each state, at 80 columns (the hint gives way first, so a long step row has none):
 
 ```
-● GREEN · ten percent off · 1/2 │ 0:50 · 10 agents │ /pb details · /pb-report report
-▲ NEEDS YOU · your sign-off at the end │ /pb details · /pb-report report
+● GREEN · ten percent off · 1/2 │ 0:50 · 10 agents │ details: /pb · report: /pb-report · plan: /pb-plan
+▲ NEEDS YOU · your sign-off at the end │ details: /pb · report: /pb-report · plan: /pb-plan
 ✕ STOPPED · a step kept failing │ RED · zero percent keeps price
-✓ DONE · ready for your next task · /pb details · /pb-report report
-● between steps · next: build test by test · /pb details · /pb-report report
+✓ DONE · ready for your next task · details: /pb · report: /pb-report · plan: /pb-plan
+● between steps · next: build test by test · details: /pb · report: /pb-report · plan: /pb-plan
 ```
 
 - **The goal row** is the goal's gist, bold as the pane's GOAL and not coloured: the whole first sentence when it fits beside the [-] control, else cut at the last clause break (`: `, `; `, `, ` outside brackets and backticks), else the last word, never with "…". It is drawn from the first ledger to the end of the run (also once the run is over, so the done band says what was done), and only while idle is there none.
 - **The goal has its own row** at every width, so the step row stays where the eye learnt to find it. At 139 columns most goals are whole; at 80 and 50 the gist is often the goal's first clause.
 - **The step row leads with the status,** in STATUS's heads and colours, so the band answers "am I needed now?" before any detail. A question leads as `▲ NEEDS YOU · <what>` and a stop as `✕ STOPPED · <why>`, each head a block; the step behind them is a plain detail, no longer lit. Once the alert opened the pane, what reads `opened details`. While nothing waits on you, the step leads behind STATUS's `●` alone (the word "working" would cost the step its room), and the calm `needs you: no` is gone: the mark already says it.
-- **Then the details:** the step (or the phase, the current test's name as TESTS names it, and its place `3/12` once the total is known), spent and left, dropping segments by priority, then the commands hint `/pb details · /pb-report report`, which shortens to `/pb · /pb-report` and is the first thing dropped. A question or stop is never dropped. When it alone does not fit whole, it keeps its mark and what (`▲ your sign-off at the end`, the block on the mark); only past that is it cut.
+- **Then the details:** the step (or the phase, the current test's name as TESTS names it, and its place `3/12` once the total is known), spent and left, dropping segments by priority, then the commands hint `details: /pb · report: /pb-report · plan: /pb-plan`, which drops whole commands from the right (plan, then report) and goes first. A question or stop is never dropped. When it alone does not fit whole, it keeps its mark and what (`▲ your sign-off at the end`, the block on the mark); only past that is it cut.
 - **With no stage active** the row is one quiet line. Between steps: `● between steps · next: …` (or `● run open`, `● all steps done`), the mark in the accent and the words dim, with no "Pairing Buddy" label since the goal row names the session. Done: `✓ DONE · ready for your next task`, the head bold, the words plain. Idle and last run finished: `Pairing Buddy · idle`, dim. The commands hint follows the quiet line too, while it fits.
 
 ## Fourth watched run (2026-11-14): show what you ask about, gist before detail
@@ -376,7 +376,7 @@ In a watched run the human could not use the band's `[ ▸ details ]` button. Th
 
 - **`/pb`** opens the pane with focus (since 2026-11-17 it toggles: see below). **`/pb-report`** writes the run report and answers with one transcript line: the report's absolute path and whether it opened (`Pairing Buddy report: <path> · opened in your browser`, or `· couldn't open it`), so the path can be opened by hand. It works for a live run and for an ended one (from the last polled ledger and the kept runs), and says `Pairing Buddy: no run to report yet` when there is none.
 - **Both are immediate,** so they run while Claude is working, with no model turn.
-- **The band's hint** reads `/pb details · /pb-report report`, shortens to `/pb · /pb-report`, and is the first thing dropped at narrow widths. With the button gone the step gets its room.
+- **The band's hint** reads `details: /pb · report: /pb-report · plan: /pb-plan`, each command after its label so no word reads as an argument to type (live, 2026-11-25: `/pb details` read as one command). At narrow widths it drops whole commands from the right, plan first, then report, then details, and it goes before any segment is cut; a command is never cut mid-word. With the button gone the step gets its room.
 - **The pane kept `r open report`** at first, with `or /pb-report, no focus needed` beside it; it has gone since (see below).
 - **Why bare names.** From the mod docs (code.claude.com/docs/en/plugins/mods: api.md, interface.md, reference.md): a mod-registered command is a bare name of letters, digits, `_` and `-`, so `/pb:report` is not possible; a `command.run` hook runs mod code with no model turn and returns `{}` or `{ text }`; `$.ui.open({ id, focus: true })` from a command gets focus; `immediate: true` lets it run mid-turn.
 

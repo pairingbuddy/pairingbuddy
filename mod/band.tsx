@@ -4,10 +4,14 @@ import { PHASES } from '../shared-node/labels.mjs'
 import { ACCENT_COLOUR, PHASE_COLOURS, STATUS_LOOKS } from './pane'
 import type { Segment, Tags } from './view'
 
-// The band names commands, not a button: the classic renderer has no mouse, and a band button is reached only by ctrl+x tab.
-export const HINT = '/pb details · /pb-report report'
-export const SHORT_HINT = '/pb · /pb-report'
 const IDLE_SEPARATOR = ' · '
+
+// The band names commands, not a button: the classic renderer has no mouse, and a band button is reached only by ctrl+x tab.
+// Each command follows its label ("details: /pb"), so no word reads as an argument to type ("/pb details" did, live 2026-11-25).
+const COMMANDS = [['details', '/pb'], ['report', '/pb-report'], ['plan', '/pb-plan']] as const
+// Every form the hint takes, longest first: a narrow band drops whole commands from the right, never one cut mid-word.
+export const HINTS = COMMANDS.map((_, i) => COMMANDS.slice(0, COMMANDS.length - i).map(([label, command]) => `${label}: ${command}`).join(IDLE_SEPARATOR))
+export const HINT = HINTS[0]
 const IDLE = 'Pairing Buddy · idle'
 const ENDED = 'Pairing Buddy · last run finished'
 const RULE_FALLBACK_WIDTH = 40
@@ -84,12 +88,12 @@ export function Band({ Box, Text, band, goal, columns, running, waiting, ended, 
   const source = band
   // The hint is the lowest priority: it gives way to its short form, then to nothing, before any segment is cut.
   const content = running || waiting ? fitBand(source, bandColumns(columns)) : undefined
-  const hint = [HINT, SHORT_HINT].find(candidate => JSON.stringify(fitBand(source, bandColumns(columns, candidate))) === JSON.stringify(content))
+  const hint = content && HINTS.find(candidate => JSON.stringify(fitBand(source, bandColumns(columns, candidate))) === JSON.stringify(content))
   const shown = content
   const quiet = quietLine({ between, ended, done, next })
   // The hint gives way first when the width is short; with no width known yet it stays.
   const room = columns > 0 ? columns - CONTROL_WIDTH - (quiet.head?.length ?? 0) : Infinity
-  const quietText = [`${quiet.words}${IDLE_SEPARATOR}${HINT}`, `${quiet.words}${IDLE_SEPARATOR}${SHORT_HINT}`, quiet.words].find(text => text.length <= room) ?? quiet.words
+  const quietText = [...HINTS.map(form => `${quiet.words}${IDLE_SEPARATOR}${form}`), quiet.words].find(text => text.length <= room) ?? quiet.words
   // The goal leads on its own row, so the step below it stays where the eye learnt to find it: two rows at most.
   const gist = bandGoal(goal, columns)
 
