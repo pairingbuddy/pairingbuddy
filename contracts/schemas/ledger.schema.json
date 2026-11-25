@@ -278,8 +278,29 @@
               "kind": { "enum": ["commit", "red", "artifact", "repeated", "hook"] },
               "ref": { "type": ["string", "null"] },
               "sha": { "type": ["string", "null"] },
-              "base": { "type": ["string", "null"] }
+              "base": { "type": ["string", "null"] },
+              "removed": {
+                "description": "Untracked files the fix created without listing them (a sed backup, say), removed by the rollback and kept under ref. Absent when there were none.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["ref", "paths"],
+                "properties": {
+                  "ref": { "type": "string", "minLength": 1 },
+                  "paths": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+                }
+              }
             }
+          }
+        },
+        "untrackedAtStart": {
+          "description": "The untracked files present when the stage's snapshot ran (stage and attempt name it). A rollback of that stage and attempt removes any untracked file not listed here, keeping it under a rollback ref, and never touches a listed one. Absent when the snapshot found more than MAX_UNTRACKED_BASELINE files, so no untracked file counts as the fix's.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["stage", "attempt", "paths"],
+          "properties": {
+            "stage": { "type": "string", "minLength": 1 },
+            "attempt": { "type": "integer", "minimum": 0 },
+            "paths": { "type": "array", "items": { "type": "string", "minLength": 1 } }
           }
         },
         "hookRefusals": {

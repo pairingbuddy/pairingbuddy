@@ -538,6 +538,44 @@ describe("pb rollback", () => {
     }
   });
 
+  test("an untracked file the fix created is removed with the fix, and kept under a rollback ref", () => {
+    const repo = makeRepo();
+    repo.updateLedger((ledger) => { ledger.fixes = { rollbacks: [], untrackedAtStart: { stage: STAGE, attempt: ATTEMPT, paths: [] } }; });
+    writeFileSync(join(repo.dir, "src.mjs-e"), "sed backup\n");
+
+    const result = rollback(repo, "--from", FIX_KEY);
+
+    assert.equal(result.code, 0, `rolls back: ${result.stderr}`);
+    assert.equal(existsSync(join(repo.dir, "src.mjs-e")), false, "the stray backup is gone");
+    assert.equal(repo.head(), repo.seed, "HEAD is back on the seed");
+    assert.equal(outsidePairingbuddy(repo.dir), "", "the tree is clean");
+    const [entry] = repo.ledger().fixes.rollbacks;
+    assert.deepEqual(entry.removed, { ref: rollbackRef(2), paths: ["src.mjs-e"] }, "the ledger lists the removed file and its ref");
+    assert.equal(git(repo.dir, "show", `${rollbackRef(2)}:src.mjs-e`), "sed backup", "the removed file is kept under that ref");
+    assert.match(readFileSync(notePath(repo), "utf8"), /src\.mjs-e[\s\S]*never sed -i/, "the note names the file and the Edit-tool rule");
+  });
+
+  test("an untracked file there before the stage's snapshot is never touched, and does not block the rollback", () => {
+    const repo = makeRepo();
+    writeFileSync(join(repo.dir, "notes.txt"), "my own notes\n");
+    repo.updateLedger((ledger) => { ledger.fixes = { rollbacks: [], untrackedAtStart: { stage: STAGE, attempt: ATTEMPT, paths: ["notes.txt"] } }; });
+
+    const result = rollback(repo, "--from", FIX_KEY);
+
+    assert.equal(result.code, 0, `rolls back: ${result.stderr}`);
+    assert.equal(readFileSync(join(repo.dir, "notes.txt"), "utf8"), "my own notes\n", "notes.txt keeps its content");
+    assert.equal(repo.ledger().fixes.rollbacks[0].removed, undefined, "nothing is listed as removed");
+  });
+
+  test("an untracked file counts as the human's when the snapshot record is for another stage attempt", () => {
+    const repo = makeRepo();
+    repo.updateLedger((ledger) => { ledger.fixes = { rollbacks: [], untrackedAtStart: { stage: STAGE, attempt: ATTEMPT + 1, paths: [] } }; });
+    writeFileSync(join(repo.dir, "notes.txt"), "my own notes\n");
+    const before = snapshot(repo);
+
+    assertRefused(repo, before, rollback(repo, "--from", FIX_KEY), /dirty outside the fix group/);
+  });
+
   test("a protected branch and a detached HEAD are both refused", () => {
     const cases = [
       {

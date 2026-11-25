@@ -7,7 +7,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "n
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, CommitHookRefused, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, writesDiff } from "../shared-node/checkpoint.mjs";
+import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, CommitHookRefused, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, untrackedFiles, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
 import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
@@ -23,7 +23,7 @@ import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, closeUnit, endRun, keepRun, keptAcceptedConfigHash } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
-import { RollbackRefused, pathsOfCommit, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
+import { RollbackRefused, pathsOfCommit, removeCreated, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
 import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
 import { StackRefused, dependencyChainOf, stackFor } from "../shared-node/stack.mjs";
@@ -2281,8 +2281,23 @@ function snapshot(args) {
   const paths = buildCorpus(insideRepo(root, [...inRepoDocs(root), ...conventionPaths(root), "CLAUDE.md", ...named, ...nearest]), (p) => existsSync(join(root, p)));
   const runDir = join(root, ".pairingbuddy", "run");
   replaceFiles([[join(runDir, SUBJECT_DIFF_FILE), diff], [join(runDir, CHANGED_FILE), jsonText(changed)], [join(runDir, CORPUS_FILE), jsonText({ paths })]]);
+  if (ledger !== null && ledger.stage.name !== "") recordUntrackedAtStart(ledgerPath, root, ledger.stage);
   const taskType = ledger === null ? null : ledger.taskType;
   return { ok: true, paths, taskType, rolledBack: ledger === null ? 0 : rolledBackCount(ledger, ledger.stage.name) };
+}
+
+// More untracked files than this and none is recorded, so no untracked file counts as a fix's: a rollback then refuses
+// over them, as it did before the record existed, rather than keep an unbounded list in the ledger.
+const MAX_UNTRACKED_BASELINE = 1000;
+
+// The untracked files present as the stage starts, so a rollback can remove the ones a fix creates and leave these be.
+function recordUntrackedAtStart(ledgerPath, root, { name, attempt }) {
+  const paths = untrackedFiles(root);
+  updateLedger(ledgerPath, (current) => {
+    const { untrackedAtStart: _old, ...fixes } = current.fixes ?? { rollbacks: [] };
+    const record = paths.length <= MAX_UNTRACKED_BASELINE ? { untrackedAtStart: { stage: name, attempt, paths } } : {};
+    return { ...current, fixes: { ...fixes, ...record } };
+  });
 }
 
 function insideRepo(root, candidates) {
@@ -2487,7 +2502,8 @@ function rollback(args) {
   const refusal = artifactForm || record ? undefined : (ledger.fixes?.hookRefusals ?? []).findLast((r) => r.key === key);
   const kind = artifactForm ? "artifact" : record ? "commit" : repeated !== null ? "repeated" : refusal !== undefined ? "hook" : "red";
   const own = kind === "artifact" ? [] : kind === "commit" ? pathsOfCommit(root, record.sha) : pathsOfArtifact(root, key);
-  const dirty = artifactForm ? [] : remainingFiles(root);
+  const { created, kept } = artifactForm ? { created: [], kept: [] } : untrackedSinceStart(root, ledger, parts);
+  const dirty = artifactForm ? [] : remainingFiles(root).filter((p) => !created.includes(p) && !kept.includes(p));
   const ownChanged = dirty.some((p) => own.includes(p));
   if (!artifactForm) assertTreeRollsBack(root, record, own, ledger, key, repeated !== null, dirty, refusal !== undefined);
   const failedAttempts = failedAttemptsOf(ledger, parts.stage);
@@ -2507,9 +2523,11 @@ function rollback(args) {
       undo: () => (ownChanged ? rollbackUncommitted(root, { key, prefix, paths: own }) : { ...none, base: headOf(root) }),
     },
   };
-  const wrong = steps[kind].wrong();
+  const account = steps[kind].wrong();
   const done = steps[kind].undo();
-  const entry = { key, kind, ref: done.ref, sha: done.sha, base: done.base };
+  const removed = removeCreated(root, { key, prefix, paths: created.filter((p) => !own.includes(p)) });
+  const entry = { key, kind, ref: done.ref, sha: done.sha, base: done.base, ...(removed ? { removed } : {}) };
+  const wrong = removed ? `${account}\n\nThe fix also left files it did not list, now removed (kept under ${removed.ref}): ${removed.paths.join(", ")}. Edit files with the Edit tool, never sed -i.` : account;
   appendRollbackNote(root, parts.stage, failedAttempts, key, wrong);
   // The lenses contract test pins maxAttempts at 5, so it is always present here.
   const maxAttempts = LENS_MAP.maxAttempts;
@@ -2519,6 +2537,16 @@ function rollback(args) {
   recordRollback(path, entry, { droppedSha: record?.sha, capReason, ...restored });
   if (stopped) writeReport(reportPathOf(root), buildReport(readLedger(path), artifactsDirOf(root)));
   return { ok: true, key, note: wrong, failedAttempts, maxAttempts, stopped };
+}
+
+// The untracked files that appeared since this stage attempt's snapshot (created: the fix's, removed on rollback) and the
+// ones already there (kept: never touched). With no snapshot record for this stage and attempt, neither list has
+// anything, so every untracked file counts as the human's and a rollback refuses over it.
+function untrackedSinceStart(root, ledger, { stage, attempt }) {
+  const start = ledger.fixes?.untrackedAtStart;
+  if (!start || start.stage !== stage || start.attempt !== attempt) return { created: [], kept: [] };
+  const now = untrackedFiles(root);
+  return { created: now.filter((p) => !start.paths.includes(p)), kept: now.filter((p) => start.paths.includes(p)) };
 }
 
 function keptTypeOf(root, attempt) {

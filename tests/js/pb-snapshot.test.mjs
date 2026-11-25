@@ -365,3 +365,47 @@ test("snapshot_corpus_holds_files_the_task_names_when_nothing_changed", () => {
   const corpus = JSON.parse(readFileSync(join(runDir, "corpus.json"), "utf8"));
   assert.ok(corpus.paths.includes("a.txt"), "the tracked file the task names is in the corpus");
 });
+
+// Test case: snapshot-records-untracked-at-start. The stage's untracked files are recorded, so a later rollback can tell
+// the files a fix created from the ones that were already there.
+test("snapshot_records_the_untracked_files_present_at_stage_start", () => {
+  const repo = makeRepo({ openTask: true, remote: true, ledger: { stage: { name: "code-safety-net", status: "active", runId: "wf_1", attempt: 2, startedAt: null } } });
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
+  assert.equal(opened.code, 0, `setup: pb unit open, stderr: ${opened.stderr}`);
+  writeFileSync(join(repo.dir, "notes.txt"), "mine\n");
+
+  const result = pb(repo, "snapshot");
+
+  assert.equal(result.code, 0, `pb snapshot succeeds, stderr: ${result.stderr}`);
+  const ledger = JSON.parse(readFileSync(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"), "utf8"));
+  assert.deepEqual(ledger.fixes.untrackedAtStart, { stage: "code-safety-net", attempt: 2, paths: ["notes.txt"] }, "the ledger records the stage attempt and its untracked files");
+});
+
+// Test case: snapshot-records-no-untracked-when-idle. With no active stage there is no attempt to tie the record to.
+test("snapshot_records_no_untracked_files_without_an_active_stage", () => {
+  const repo = makeRepo({ openTask: true, remote: true, ledger: { stage: { name: "", status: "idle", runId: null, attempt: 0, startedAt: null } } });
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
+  assert.equal(opened.code, 0, `setup: pb unit open, stderr: ${opened.stderr}`);
+  writeFileSync(join(repo.dir, "notes.txt"), "mine\n");
+
+  const result = pb(repo, "snapshot");
+
+  assert.equal(result.code, 0, `pb snapshot succeeds, stderr: ${result.stderr}`);
+  const ledger = JSON.parse(readFileSync(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"), "utf8"));
+  assert.equal(ledger.fixes?.untrackedAtStart, undefined, "no record without a stage");
+});
+
+// Test case: snapshot-untracked-record-is-bounded. Past MAX_UNTRACKED_BASELINE files nothing is recorded.
+test("snapshot_records_no_untracked_files_past_the_bound", () => {
+  const repo = makeRepo({ openTask: true, remote: true, ledger: { stage: { name: "code-safety-net", status: "active", runId: "wf_1", attempt: 1, startedAt: null } } });
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
+  assert.equal(opened.code, 0, `setup: pb unit open, stderr: ${opened.stderr}`);
+  mkdirSync(join(repo.dir, "junk"));
+  for (let i = 0; i <= 1000; i += 1) writeFileSync(join(repo.dir, "junk", `f${i}.txt`), "");
+
+  const result = pb(repo, "snapshot");
+
+  assert.equal(result.code, 0, `pb snapshot succeeds, stderr: ${result.stderr}`);
+  const ledger = JSON.parse(readFileSync(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"), "utf8"));
+  assert.equal(ledger.fixes?.untrackedAtStart, undefined, "1001 untracked files are past the bound, so none is recorded");
+});
