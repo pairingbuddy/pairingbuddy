@@ -11,9 +11,7 @@
 #   --use-api-key         Use ANTHROPIC_API_KEY for billing (default: unset to use subscription)
 #   -h, --help            Show this help and exit
 #
-# On success, creates a GitHub PR via `gh pr create`. The PR title is derived
-# from the current branch name (e.g. feature/my-thing -> My thing). When
-# .pairingbuddy/SOLO_BUDDY_REPORT.md exists it is used as the PR body.
+# Pushing and opening PRs belong to the publish stages, not to this script.
 
 set -euo pipefail
 
@@ -75,9 +73,7 @@ Usage: $(basename "$0") [OPTIONS] <plan_file>
 
 Run Solo Buddy: autonomous execution of a tracer bullets plan.
 
-On success, creates a GitHub PR via \`gh pr create\`. The PR title is derived
-from the current branch name (e.g. feature/my-thing -> My thing). When
-.pairingbuddy/SOLO_BUDDY_REPORT.md exists it is used as the PR body.
+Pushing and opening PRs belong to the publish stages, not to this script.
 
 Options:
   -n <retries>          Max retries (default: 5)
@@ -562,33 +558,6 @@ FINAL_RENDERED=true
 PR_URL=""
 PR_ERROR=""
 REPORT_FILE=".pairingbuddy/SOLO_BUDDY_REPORT.md"
-
-if [[ $CLAUDE_EXIT -eq 0 ]]; then
-    BRANCH=$(git branch --show-current)
-
-    # Never push to main/master
-    if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
-        PR_ERROR="refusing to push/create PR on $BRANCH"
-    else
-        # Push branch to remote first (gh pr create needs it)
-        git push -u origin "$BRANCH" 2>/dev/null || true
-
-        PR_TITLE=$(sanitize_branch_name "$BRANCH")
-        if [[ -f "$REPORT_FILE" ]]; then
-            if ! PR_URL=$(gh pr create --title "$PR_TITLE" --body-file "$REPORT_FILE" 2>&1); then
-                PR_ERROR="$PR_URL"
-                PR_URL=""
-                echo "Warning: gh pr create failed" >&2
-            fi
-        else
-            if ! PR_URL=$(gh pr create --title "$PR_TITLE" 2>&1); then
-                PR_ERROR="$PR_URL"
-                PR_URL=""
-                echo "Warning: gh pr create failed" >&2
-            fi
-        fi
-    fi
-fi
 
 print_exit_summary
 
