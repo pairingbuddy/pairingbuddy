@@ -99,7 +99,18 @@ test("exit-code-still-matches-claude", () => {
 });
 
 test("report-file-not-passed-as-body", () => {
-  assert.fail("placeholder: not implemented");
+  const source = readFileSync(SCRIPT_PATH, "utf8");
+  const lines = source.split("\n");
+
+  const bodyFlagLines = lines.filter((line) => /--body(-file)?\b|\s-F\s/.test(line));
+  const prBodyMentions = lines.filter((line) => /\bPR\s+body\b|pull request body/i.test(line));
+  const reportOnPrCommand = lines.filter(
+    (line) => /(gh|git)\b.*(REPORT_FILE|SOLO_BUDDY_REPORT)|(REPORT_FILE|SOLO_BUDDY_REPORT).*\bgh\b/.test(line),
+  );
+
+  assert.deepEqual(bodyFlagLines, [], "the script must not pass a body or body-file to any PR command");
+  assert.deepEqual(prBodyMentions, [], "the header and usage text must not call the report a PR body");
+  assert.deepEqual(reportOnPrCommand, [], "SOLO_BUDDY_REPORT.md must not appear on a gh or git command line");
 });
 
 test("exit-summary-has-no-pr-lines", () => {
