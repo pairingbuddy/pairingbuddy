@@ -51,22 +51,6 @@ require_positive_number() {
     fi
 }
 
-sanitize_branch_name() {
-    local branch="$1"
-    # Strip common prefixes (feature/, fix/, bugfix/, hotfix/, chore/, etc.)
-    local name="${branch#*/}"
-    if [[ "$name" == "$branch" ]]; then
-        # No prefix found, use as-is
-        name="$branch"
-    fi
-    # Replace hyphens and underscores with spaces
-    name="${name//-/ }"
-    name="${name//_/ }"
-    # Capitalize first letter (portable, works with bash 3)
-    name="$(printf '%s' "$name" | awk '{$1=toupper(substr($1,1,1)) substr($1,2); print}')"
-    echo "$name"
-}
-
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS] <plan_file>
@@ -555,8 +539,6 @@ write_final_status
 render_status
 FINAL_RENDERED=true
 
-PR_URL=""
-PR_ERROR=""
 REPORT_FILE=".pairingbuddy/SOLO_BUDDY_REPORT.md"
 
 print_exit_summary
