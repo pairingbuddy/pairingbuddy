@@ -110,9 +110,9 @@ function tracerIntro(intro) {
 }
 
 // One tracer's group: a details whose summary is its name, opening to its intro and then its units.
-function tracerSection(tracer, intro, body, holdsFocus) {
+function tracerSection(tracer, intro, body, { holdsFocus, done, total }) {
   if (!tracer) return `<section>\n${body}\n</section>`;
-  return `<section>\n<details${holdsFocus ? " open" : ""}>\n<summary><h2>${escape(tracer)}</h2></summary>\n${tracerIntro(intro)}${body}\n</details>\n</section>`;
+  return `<section>\n<details${holdsFocus ? " open" : ""}>\n<summary><h2>${escape(tracer)}${STATE_SEPARATOR}${done} of ${total} done</h2></summary>\n${tracerIntro(intro)}${body}\n</details>\n</section>`;
 }
 
 // plan: parsePlan's result; states: each unit's state, by position (unitStates); open: the open unit's record, resolved to
@@ -128,7 +128,9 @@ export function renderPlanPage({ plan, states = [], open, building, publishing =
   const groups = tracerGroups(units).map(({ tracer, units: grouped }) => {
     const body = grouped.map(({ unit, index }) => unitSection(unit, { state: states[index], open, building, publishing, focusTask, reached })).join("\n");
     const holdsFocus = grouped.some(({ unit }) => unit.tasks.includes(focusTask));
-    return tracerSection(tracer, plan?.tracers?.find(({ name }) => name === tracer), body, holdsFocus);
+    const tasks = grouped.flatMap(({ unit }) => unit.tasks);
+    const progress = { holdsFocus, done: tasks.filter(({ checked }) => checked).length, total: tasks.length };
+    return tracerSection(tracer, plan?.tracers?.find(({ name }) => name === tracer), body, progress);
   });
   const problems = plan?.problems ?? [];
   const problemList = problems.length ? `<section class="problems">\n<h2>Plan problems</h2>\n<ul>\n${problems.map((problem) => `<li>${escape(problem)}</li>`).join("\n")}\n</ul>\n</section>\n` : "";

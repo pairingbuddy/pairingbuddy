@@ -122,5 +122,14 @@ test("the page opens on the path to the task being built; every other tracer, un
   const html = renderPlanPage({ plan, building: "Task 2: Remove an item" });
 
   const opened = [...html.matchAll(/<details( open)?>\s*<summary>(?:<h[23]>)?([^<]*)/g)].filter(([, open]) => open).map(([, , head]) => head.trim());
-  assert.deepEqual(opened, ["T1: Cart", "Add", "▸ Task 2: Remove an item"], "the focus's tracer, unit and task, and only those");
+  assert.deepEqual(opened, ["T1: Cart · 1 of 2 done", "Add", "▸ Task 2: Remove an item"], "the focus's tracer, unit and task, and only those");
+});
+
+test("a folded tracer still tells how far it is: its tasks done out of its tasks", () => {
+  const plan = parsePlan(DRILL_PLAN);
+
+  const html = renderPlanPage({ plan });
+
+  assert.match(html, /<summary><h2>T1: Cart · 1 of 2 done<\/h2><\/summary>/);
+  assert.match(html, /<summary><h2>T2: Pay · 0 of 1 done<\/h2><\/summary>/);
 });
