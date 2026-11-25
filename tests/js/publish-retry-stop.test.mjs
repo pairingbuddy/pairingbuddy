@@ -2,10 +2,11 @@ import "./isolated-tmpdir.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { pbCommand } from "../../shared-node/verbs.mjs";
 import { REFUSED, unitFile } from "./publish-fixture.mjs";
-import { ledgerFile, publishRun, publishUnit, statusAction } from "./publishable-unit-fixture.mjs";
+import { installPrePushHook, ledgerFile, publishRun, publishUnit, remoteRef, statusAction } from "./publishable-unit-fixture.mjs";
 
 // Task 111: a failed publish retries once, then stops. A stop pushes nothing,
 // and units published before the stop keep their PRs and recorded state.
@@ -56,7 +57,19 @@ test("retry-success-continues", () => {
 });
 
 test("stop-makes-no-push", () => {
-  assert.fail("placeholder: not implemented");
+  const unit = publishRun();
+  publishUnit(unit, { GH_SHIM_FAIL: "pr create" });
+  publishUnit(unit, { GH_SHIM_FAIL: "pr create" });
+  const pushLog = join(unit.repo.dir, "pushes.log");
+  installPrePushHook(unit.repo, `echo pushed >> "${pushLog}"`);
+  const remoteBefore = remoteRef(unit.repo, `refs/heads/${unit.branch}`);
+
+  const { result: third } = publishUnit(unit);
+  statusAction(unit.repo);
+
+  assert.equal(third.code, REFUSED, `the stopped run refuses a third pb publish, stdout ${third.stdout}`);
+  assert.equal(existsSync(pushLog), false, "no git push runs once the run has stopped");
+  assert.equal(remoteRef(unit.repo, `refs/heads/${unit.branch}`), remoteBefore, "the remote branch is where the stop left it");
 });
 
 test("published-units-stand-after-stop", () => {
