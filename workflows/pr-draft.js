@@ -1343,12 +1343,14 @@ function relayedJson(text) {
   }
 }
 
-// The verdict of a relayed 'pr lint' run as { ok, failures }, or null when the step is broken: the exit code is not 0, the JSON is unreadable, ok is not a boolean, or ok is false without a failures array. failures is [] when ok is true.
+// The verdict of a relayed 'pr lint' run as { ok, failures }, or null when the step is broken: the JSON is unreadable, ok is
+// not a boolean, ok is false without a failures array, or a pass comes with an exit code other than 0. failures is [] when ok
+// is true. pb prints the lint's JSON only when the lint ran, so a failing verdict stands whatever exit the runner claims (T10a
+// pr-draft: the runner relayed exit 1 with the failing verdict, and the stage stopped instead of redrafting).
 function lintReportOf(relay) {
-  if (relay.cli_exit_code !== 0) return null;
   const report = relayedJson(relay.cli_output ?? '');
   if (typeof report?.ok !== 'boolean') return null;
-  if (report.ok) return { ok: true, failures: [] };
+  if (report.ok) return relay.cli_exit_code === 0 ? { ok: true, failures: [] } : null;
   return Array.isArray(report.failures) ? { ok: false, failures: report.failures } : null;
 }
 
@@ -1830,13 +1832,16 @@ let lintLoop = null;
 let lintFindings = [];
 if (!lintReport.ok) {
   // The ids are `${LINT_LENS}-<n>`: the fix loop finds the lint group by that name.
-  lintFindings = lintReport.failures.map(({ rule, text }, i) => ({
+  // The body line and the lint's remedy go with each finding, so the redraft fixes that line the way the lint asks.
+  lintFindings = lintReport.failures.map(({ rule, text, message, line }, i) => ({
     id: `${LINT_LENS}-${i + 1}`,
     rule,
     claim: text,
     where: 'pr-body.md',
     severity: 'high',
     kind: 'fix-here',
+    ...(Number.isInteger(line) ? { line } : {}),
+    ...(typeof message === 'string' ? { remedy: message } : {}),
   }));
   lintLoop = await fixLoop({
     stage,
