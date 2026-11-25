@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -120,5 +120,13 @@ test("pr-creation-test-file-removed", () => {
 });
 
 test("other-solo-tests-remain", () => {
-  assert.fail("placeholder: not implemented");
+  const testsDir = fileURLToPath(new URL("..", import.meta.url));
+  const kept = ["test_solo_buddy.py", "test_solo_mode_guard.py"].map((name) => join(testsDir, name));
+  const scriptsDir = join(testsDir, "scripts");
+
+  const missing = kept.filter((path) => !existsSync(path));
+  const scriptTests = readdirSync(scriptsDir).filter((name) => /^test_solo_buddy_.*\.py$/.test(name));
+
+  assert.deepEqual(missing, [], "the other Solo test files must stay until T12");
+  assert.notEqual(scriptTests.length, 0, "tests/scripts/test_solo_buddy_*.py must still exist");
 });
