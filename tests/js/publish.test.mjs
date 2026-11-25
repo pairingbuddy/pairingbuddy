@@ -10,7 +10,8 @@ import { join } from "node:path";
 import { targetBranch } from "../../shared-node/publish.mjs";
 import { FAKE_PR_URL, flagValues, GH_FAILURE, viewEnv } from "./gh-shim-fixture.mjs";
 import { pb, pushFromSecondClone } from "./cli-repo-fixture.mjs";
-import { sha256 } from "./tap-fixture.mjs";
+import { recordedAnswer, runTap, sha256 } from "./tap-fixture.mjs";
+import { ACCEPT_CONFIG, CONFIG_GATE, configQuestion } from "../../shared-node/config-wait.mjs";
 import { violations } from "./schema-check.mjs";
 import { CLEAN_BODY, CLEAN_TITLE, DRAFT_KEY, commitMore, approvedThroughTap, evalGate, git, gitConfigPath, readUnitRecord, REFUSED, unitFile } from "./publish-fixture.mjs";
 import {
@@ -233,6 +234,24 @@ describe("publish-evidence-refusals", () => {
     assert.equal(record.configAcceptances[0].oldHash, configHash, "from the hash the unit opened with");
     const schema = JSON.parse(readFileSync(new URL("../../contracts/schemas/unit.schema.json", import.meta.url), "utf8"));
     assert.deepEqual(violations(schema, record), [], "the record validates against the unit schema");
+    const { result } = publishUnit(unit);
+    assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
+  });
+
+  test("the human's Accept to the changed test-config, through the tap, moves the unit's hash too, so publish does not refuse", () => {
+    const unit = publishableUnit();
+    const { configHash } = readUnitRecord(unit.repo);
+    const configPath = join(unit.repo.dir, ".pairingbuddy", "test-config.json");
+    appendFileSync(configPath, "\n");
+    const newHash = sha256(readFileSync(configPath, "utf8"));
+    changeLedger(unit.repo, (ledger) => ({ needsHuman: { gate: CONFIG_GATE, reason: "test-config.json changed", seq: ledger.seq + 1, askedAt: new Date().toISOString(), question: configQuestion() } }));
+
+    runTap(unit.repo, recordedAnswer(unit.repo, configQuestion(), ACCEPT_CONFIG));
+
+    const record = readUnitRecord(unit.repo);
+    assert.equal(record.configHash, newHash, "the unit pins the accepted hash");
+    assert.equal(record.configAcceptances?.length, 1, "the unit records the acceptance");
+    assert.equal(record.configAcceptances[0].oldHash, configHash, "from the hash the unit opened with");
     const { result } = publishUnit(unit);
     assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
   });

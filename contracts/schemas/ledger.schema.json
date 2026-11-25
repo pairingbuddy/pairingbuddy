@@ -262,7 +262,7 @@
       "additionalProperties": { "type": "object" }
     },
     "fixes": {
-      "description": "Fix bookkeeping. rollbacks lists each rolled-back fix group, oldest first: its key, kind (commit, red, artifact or repeated, the last for a fix that repeated an approach already rolled back), the rollback ref that keeps the rejected work, sha (the commit that ref points at: the fix commit, or the commit holding the saved dirty paths), and base (HEAD after the rollback). ref is a string for kind commit or red, and for kind repeated when the fix changed something; it is null for kind artifact, which records no git ref, and for kind repeated when the fix changed nothing. May be absent; when present it has rollbacks and no other keys.",
+      "description": "Fix bookkeeping. rollbacks lists each rolled-back fix group, oldest first: its key, kind (commit, red, artifact, repeated for a fix that repeated an approach already rolled back, or hook for a fix the repo's commit hook refused), the rollback ref that keeps the rejected work, sha (the commit that ref points at: the fix commit, or the commit holding the saved dirty paths), and base (HEAD after the rollback). ref is a string for kind commit, red or hook, and for kind repeated when the fix changed something; it is null for kind artifact, which records no git ref, and for kind repeated when the fix changed nothing. hookRefusals lists each fix whose commit the repo's commit hook refused: its key and the hook's output, which its rollback note carries. May be absent; when present it has rollbacks, and hookRefusals once a hook refused a fix.",
       "type": "object",
       "additionalProperties": false,
       "required": ["rollbacks"],
@@ -275,10 +275,22 @@
             "required": ["key", "kind", "ref", "sha", "base"],
             "properties": {
               "key": { "type": "string", "minLength": 1 },
-              "kind": { "enum": ["commit", "red", "artifact", "repeated"] },
+              "kind": { "enum": ["commit", "red", "artifact", "repeated", "hook"] },
               "ref": { "type": ["string", "null"] },
               "sha": { "type": ["string", "null"] },
               "base": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "hookRefusals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "output"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "output": { "type": "string" }
             }
           }
         }

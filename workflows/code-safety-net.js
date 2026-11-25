@@ -1145,6 +1145,8 @@ const LINT_LENS = 'lint';
 // The most agents one fix attempt can spawn (see fixLoop): a code-mode checkpoint may run twice.
 const attemptAgents = (artifactMode) => (artifactMode ? 4 : 5);
 const TESTS_FAILED = /^pb: the tests failed, so nothing was committed/m;
+// The repo's commit hook (a lint or format check) refused the fix: the fixer's mistake, rolled back like red tests.
+const HOOK_REFUSED = /^pb: the commit hook refused the fix, so nothing was committed/m;
 const FIX_DIFF_PATH = '.pairingbuddy/run/fix.diff';
 // Survivors grouped by the lens that found them (lensOfFinding), in survivor order, as g1, g2, ...
 function fixGroupsOf(survivors) {
@@ -1164,6 +1166,7 @@ const fixArtifactPathOf = (key) => `.pairingbuddy/run/task/artifacts/${key}.json
 // Outcomes:
 //   'failed': no fix returned, the checkpoint was refused for a reason other than red tests, the lint relay (fix.lint) was not a readable verdict, or the checker gave no verdict (null); nothing is rolled back and the loop stops.
 //   'red': the tests failed, so the fix is rolled back (code mode only: artifact mode has no checkpoint, so it never goes red).
+//   'hook-refused': the repo's commit hook refused the fix's commit (code mode only), so it is rolled back as red is, its note the hook's output.
 //   'kept': the checker found it better, or (fix.lint, a LINT_LENS group) the lint passed, with no checker; in artifact mode the kept artifact becomes the next group's `before`.
 //   'lint-failed' (artifact mode with fix.lint only): the lint ran and reported ok false, so the redraft is rolled back without a checker.
 //   'rejected': any other verdict, rolled back.
@@ -1211,6 +1214,7 @@ async function fixGroup(config, attempt, spent) {
     }
     if (isBrokenRelay(relay)) return { outcome: 'failed', key };
     if (relay.cli_exit_code !== 0 && TESTS_FAILED.test(relay.cli_output ?? '')) return { outcome: 'red', key, approach };
+    if (relay.cli_exit_code !== 0 && HOOK_REFUSED.test(relay.cli_output ?? '')) return { outcome: 'hook-refused', key, approach };
     if (relay.cli_exit_code !== 0) return { outcome: 'failed', key };
     // No commit means fix.diff is stale (pb only accepts a no-change fix that says why: in no_change_reason, or as a doubt in ambiguity, which reaches the human), so skip the checker.
     if (relayedJson(relay.cli_output ?? '')?.committed === false) return { outcome: 'kept', key, approach, checked: false };
@@ -1243,6 +1247,7 @@ async function rollbackGroup(config, { group, fixAttempt, artifactMode }, fixKey
 function mistakeKeysOf(outcome, group, verdict) {
   if (outcome === 'red') return group.findings.map((finding) => mistakeKey(finding, 'tests-red'));
   if (outcome === 'lint-failed') return group.findings.map((finding) => mistakeKey(finding, 'lint-failed'));
+  if (outcome === 'hook-refused') return group.findings.map((finding) => mistakeKey(finding, 'hook-refused'));
   const finding = group.findings.find((f) => f.id === verdict.finding_id);
   return [mistakeKey(finding, verdict.mistake)];
 }
@@ -1927,7 +1932,7 @@ const lensResult = await lensAttack({
     agentType: 'pairingbuddy:refactor-code',
     agentTypeByLens: { tests: 'pairingbuddy:refactor-tests' },
     schemaByAgentType: { 'pairingbuddy:refactor-code': REFACTOR_CODE_SCHEMA, 'pairingbuddy:refactor-tests': REFACTOR_TESTS_SCHEMA },
-    instruction: 'Fix the findings below. Change only what the findings name.',
+    instruction: 'Fix the findings below. Change only what the findings name. The full suite must pass after your fix, or it is rolled back: when the fix rewords text that tests check by its exact wording (a skill, a doc, a message), find those tests and update them in the same fix, so they still check what they checked. A commit the repo\'s commit hook refuses is rolled back too: before you finish, run the project\'s lint and format checks on the files you changed, the ones its commit hook runs (see .pre-commit-config.yaml, .husky/ or .git/hooks/pre-commit) or the ones its CLAUDE.md or README names.',
     paths: { test_config: '.pairingbuddy/test-config.json', human_guidance: '.pairingbuddy/human-guidance.json' },
   },
 });

@@ -361,7 +361,7 @@ describe("a bound session is held to the run from any cwd", () => {
     const { session } = boundRepo();
     const nearer = makeRepo({ ledger: { stage: { name: CONFIG, status: "active", runId: "wf_1", attempt: 1, startedAt: null } } });
 
-    assertDenied(runGate(stage(nearer.dir, session, SAFETY_NET)), /Stage code-config is active/);
+    assertDenied(runGate(stage(nearer.dir, session, SAFETY_NET)), /Stage code-config is still running/);
   });
 
   test("a hook that cannot load the run-root module still denies a bound session", () => {

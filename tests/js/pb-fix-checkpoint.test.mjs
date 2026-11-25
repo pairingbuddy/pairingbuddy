@@ -217,3 +217,44 @@ test("A docs checkpoint that changed nothing succeeds when the test config no lo
   assert.equal(JSON.parse(result.stdout).committed, false, "nothing is committed");
   assert.equal(repo.ledger().stop, null, "no stop is recorded");
 });
+
+// A fix the repo's commit hook refuses is the fixer's mistake, like a red suite: the run goes on, the fix stays for its rollback.
+function failingHook(repo, script) {
+  const hooks = join(repo.dir, ".git", "hooks");
+  mkdirSync(hooks, { recursive: true });
+  writeFileSync(join(hooks, "pre-commit"), `#!/bin/sh\n${script}\n`, { mode: 0o755 });
+}
+
+// Test case: fix-refused-by-commit-hook-does-not-stop
+test("A fix the commit hook refuses commits nothing and does not stop the run: pb names the hook's output, and nothing stays staged", () => {
+  const repo = makeRepo();
+  failingHook(repo, "echo 'E501 line too long (101 > 100)' >&2\nexit 1");
+
+  const result = checkpointFix(repo);
+
+  assert.notEqual(result.code, 0, "the checkpoint is refused");
+  assert.match(result.stderr, /^pb: the commit hook refused the fix, so nothing was committed/m);
+  assert.match(result.stderr, /E501 line too long/);
+  assert.equal(repo.ledger().stop, null, "the run goes on");
+  assert.equal(repo.head(), repo.seed, "nothing was committed");
+  assert.equal(git(repo.dir, "diff", "--cached", "--name-only"), "", "nothing stays staged");
+  assert.equal(readFileSync(join(repo.dir, "src.mjs"), "utf8"), "fixed code\n", "the fix stays in the tree for its rollback");
+});
+
+// Test case: fix-refused-by-commit-hook-rolls-back-as-an-undone-attempt
+test("pb rollback undoes a fix the commit hook refused, counts it as an undone attempt, and its note is the hook's output", () => {
+  const repo = makeRepo();
+  failingHook(repo, "echo 'E501 line too long (101 > 100)' >&2\nexit 1");
+  checkpointFix(repo);
+
+  const result = pb(repo, "rollback", "--from", FIX_KEY);
+
+  assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+  const relayed = JSON.parse(result.stdout);
+  assert.equal(relayed.failedAttempts, 1, "it counts toward the attempt cap");
+  assert.match(relayed.note, /commit hook refused/);
+  assert.match(relayed.note, /E501 line too long/);
+  assert.equal(readFileSync(join(repo.dir, "src.mjs"), "utf8"), "original code\n", "the tree is back to HEAD");
+  assert.equal(git(repo.dir, "status", "--porcelain", "--untracked-files=no"), "", "nothing staged or changed is left");
+  assert.equal(repo.ledger().fixes.rollbacks.at(-1).kind, "hook");
+});
