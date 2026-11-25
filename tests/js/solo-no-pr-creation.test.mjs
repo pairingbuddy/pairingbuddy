@@ -116,7 +116,11 @@ test("exit-summary-has-no-pr-lines", () => {
 });
 
 test("pr-creation-test-file-removed", () => {
-  assert.fail("placeholder: not implemented");
+  const retiredPath = fileURLToPath(new URL("../test_solo_buddy_pr_creation.py", import.meta.url));
+
+  const stillThere = existsSync(retiredPath);
+
+  assert.equal(stillThere, false, `${retiredPath} must be retired (deleted)`);
 });
 
 test("other-solo-tests-remain", () => {
