@@ -767,3 +767,38 @@ describe("plan-depends-on", () => {
     assert.ok(problems.some((problem) => /Ghost/.test(problem)), "one problem names the unknown Ghost");
   });
 });
+
+describe("plan-tracer-intro", () => {
+  // A tracer's Goal and Verification lines, under its heading and before its first PR: group, are kept for the plan page
+  test("keeps-each-tracer-goal-and-verification", () => {
+    const text = [
+      "# Plan",
+      "",
+      "## Tasks",
+      "",
+      "### T1: Cart",
+      "",
+      "**Goal:** A shopper fills a cart.",
+      "",
+      "**Verification:** `npm test` passes.",
+      "",
+      "#### PR: Add",
+      "",
+      "**Goal:** Not the tracer's goal.",
+      "",
+      "- [ ] **Task 1: Add an item**",
+      "",
+      "### T2: Pay",
+      "",
+      "- [ ] **Task 2: Take payment**",
+      "",
+    ].join("\n");
+
+    const { tracers } = parsePlan(text);
+
+    assert.deepEqual(tracers, [
+      { name: "T1: Cart", goal: "A shopper fills a cart.", verification: "`npm test` passes." },
+      { name: "T2: Pay", goal: null, verification: null },
+    ]);
+  });
+});
