@@ -68,7 +68,34 @@ test("success-run-makes-no-gh-or-push-call", () => {
 });
 
 test("exit-code-still-matches-claude", () => {
-  assert.fail("placeholder: not implemented");
+  const dir = mkdtempSync(join(tmpdir(), "solo-exit-code-"));
+  try {
+    const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+    const remote = join(dir, "remote.git");
+    const repo = join(dir, "repo");
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    mkdirSync(repo);
+    execFileSync(realGit, ["init", "--bare", "-q", remote]);
+    execFileSync(realGit, ["init", "-q", "-b", "feature/x", repo]);
+    execFileSync(realGit, ["-C", repo, "remote", "add", "origin", remote]);
+    writeFileSync(join(repo, "plan.md"), "# plan\n");
+    writeFileSync(join(bin, "claude"), "#!/usr/bin/env bash\nexit 3\n");
+    chmodSync(join(bin, "claude"), 0o755);
+    writeFileSync(join(bin, "gh"), "#!/usr/bin/env bash\nexit 0\n");
+    chmodSync(join(bin, "gh"), 0o755);
+
+    const result = spawnSync("bash", [SCRIPT_PATH, "plan.md"], {
+      cwd: repo,
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      encoding: "utf8",
+      timeout: 60000,
+    });
+
+    assert.equal(result.status, 3, `script must exit with claude's exit code 3, stderr: ${result.stderr}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("report-file-not-passed-as-body", () => {
