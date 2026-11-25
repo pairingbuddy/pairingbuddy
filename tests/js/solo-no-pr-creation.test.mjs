@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_PATH = fileURLToPath(new URL("../../scripts/solo-buddy.sh", import.meta.url));
@@ -26,7 +29,42 @@ test("no-git-push-in-script", () => {
 });
 
 test("success-run-makes-no-gh-or-push-call", () => {
-  assert.fail("placeholder: not implemented");
+  const dir = mkdtempSync(join(tmpdir(), "solo-no-pr-"));
+  try {
+    const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+    const remote = join(dir, "remote.git");
+    const repo = join(dir, "repo");
+    const bin = join(dir, "bin");
+    const calls = join(dir, "calls.log");
+    mkdirSync(bin);
+    mkdirSync(repo);
+    execFileSync(realGit, ["init", "--bare", "-q", remote]);
+    execFileSync(realGit, ["init", "-q", "-b", "feature/x", repo]);
+    execFileSync(realGit, ["-C", repo, "remote", "add", "origin", remote]);
+    writeFileSync(join(repo, "plan.md"), "# plan\n");
+    const stub = (name, body) => {
+      writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`);
+      chmodSync(join(bin, name), 0o755);
+    };
+    stub("claude", "exit 0");
+    stub("gh", `echo "gh $*" >> "${calls}"\nexit 0`);
+    stub("git", `echo "git $*" >> "${calls}"\nexec "${realGit}" "$@"`);
+
+    const result = spawnSync("bash", [SCRIPT_PATH, "plan.md"], {
+      cwd: repo,
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      encoding: "utf8",
+      timeout: 60000,
+    });
+
+    const log = existsSync(calls) ? readFileSync(calls, "utf8") : "";
+    const forbidden = log.split("\n").filter((line) => /^gh\b|^git push\b/.test(line));
+    assert.equal(result.status, 0, `script should exit 0, stderr: ${result.stderr}`);
+    assert.ok(log.includes("git branch"), "the stubs were used, so the log must show the branch lookup");
+    assert.deepEqual(forbidden, [], "a successful run must not call gh or git push");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("exit-code-still-matches-claude", () => {
