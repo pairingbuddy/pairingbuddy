@@ -83,13 +83,14 @@ test("a plan run does not read the coding classification", (t) => {
   assert.equal(ledgerOf(root).taskType, null);
 });
 
-test("Solo stays on the old path: no run opens under it, even for a config change", (t) => {
+test("Solo opens a run like any session, for a config change", (t) => {
   const root = makeRepo(t);
   classifyAs(root, "config_change");
 
   const r = pb(root, OPEN, { env: { ...process.env, PAIRINGBUDDY_SOLO: "true" } });
 
-  assertRefusedWithNoRunState(root, r, /Solo.*old path/);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(ledgerOf(root).taskType, null);
 });
 
 test("PAIRINGBUDDY_SOLO=false is not Solo", (t) => {
@@ -162,7 +163,7 @@ test("the agents a graph uses but the old path still calls stay callable with no
 
 test("the router runs after the plan loop has left and before any classification and the old branches", () => {
   const code = pseudocode();
-  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
+  const planEnd = code.indexOf('_stop("Plan loop stopped.")');
   const classified = code.lastIndexOf("task_classification = classify_task(task)");
   const router = code.indexOf("if not _is_solo():\n    _run_new_path(task)");
   const oldBranches = code.indexOf('if task_type == "new_feature":');
@@ -199,35 +200,30 @@ const curateAt = (part) => [part.indexOf(CURATE), part.indexOf(SKILL_CURATE)].fi
 const CLEANUP = "_cleanup_state_files()";
 const CLASSIFY = "task_classification = classify_task(task)";
 
-test("guidance curation comes before cleanup and classification, in the plan loop and outside it", () => {
+test("guidance curation comes before cleanup and classification on the non-plan path", () => {
   const code = pseudocode();
-  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
+  const part = code.slice(code.indexOf('_stop("Plan loop stopped.")'));
+  const order = [curateAt(part), part.indexOf(CLEANUP), part.indexOf(CLASSIFY)];
 
-  for (const [name, from, to] of [["plan loop", 0, planEnd], ["non-plan path", planEnd, code.length]]) {
-    const part = code.slice(from, to);
-    const order = [curateAt(part), part.indexOf(CLEANUP), part.indexOf(CLASSIFY)];
-    assert.ok(!order.includes(-1), `${name} has all three steps`);
-    assert.deepEqual([...order].sort((a, b) => a - b), order, `${name}: curate, cleanup, classify`);
-  }
+  assert.ok(!order.includes(-1), "non-plan path has all three steps");
+  assert.deepEqual([...order].sort((a, b) => a - b), order, "non-plan path: curate, cleanup, classify");
 });
 
 test("curation runs once on the non-plan path, ahead of the router", () => {
   const code = pseudocode();
-  const nonPlan = code.slice(code.indexOf('_stop("Plan execution paused/complete.")'));
+  const nonPlan = code.slice(code.indexOf('_stop("Plan loop stopped.")'));
 
   assert.equal(nonPlan.split(CURATE).length, 2);
   assert.equal(nonPlan.split(SKILL_CURATE).length, 2);
   assert.ok(curateAt(nonPlan) < nonPlan.indexOf("_run_new_path(task)"));
 });
 
-test("the new task reaches task.json only after cleanup, in both orders", () => {
+test("the new task reaches task.json only after cleanup", () => {
   const code = pseudocode();
-  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
+  const part = code.slice(code.indexOf('_stop("Plan loop stopped.")'));
+  const written = part.indexOf("_write_task(task)");
 
-  for (const [name, part] of [["plan loop", code.slice(0, planEnd)], ["non-plan path", code.slice(planEnd)]]) {
-    const written = part.indexOf("_write_task(task)");
-    assert.ok(part.indexOf(CLEANUP) < written && written < part.indexOf(CLASSIFY), `${name}: cleanup, write, classify`);
-  }
+  assert.ok(part.indexOf(CLEANUP) < written && written < part.indexOf(CLASSIFY), "non-plan path: cleanup, write, classify");
 });
 
 test("State File Management tells the same order", () => {
@@ -243,26 +239,21 @@ test("curate-guidance asks nothing with no human, and takes the check before any
 
   assert.ok(check !== -1 && check < agent.indexOf("### Step 1: Read Inputs"));
   const section = agent.slice(check, agent.indexOf("### Step 1: Read Inputs"));
-  for (const word of ["PAIRINGBUDDY_GATE_POLICY", "CLAUDE_CODE_ENTRYPOINT", "sdk-cli", "PAIRINGBUDDY_SOLO", '{"guidance": []}']) assert.ok(section.includes(word), `names ${word}`);
+  for (const word of ["CLAUDE_CODE_ENTRYPOINT", "sdk-cli", "PAIRINGBUDDY_SOLO", '{"guidance": []}']) assert.ok(section.includes(word), `names ${word}`);
   assert.match(section, /ask nothing/i);
   assert.match(section, /offer nothing/i);
 });
 
 // ---------- the old path inside an open unit ----------
 
-test("old-path-stops-on-open-unit: the old path is guarded after the router and in the plan loop", () => {
+test("old-path-stops-on-open-unit: the old path is guarded after the router", () => {
   const code = pseudocode();
-  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
-  const planPart = code.slice(0, planEnd);
-  const nonPlan = code.slice(planEnd);
+  const nonPlan = code.slice(code.indexOf('_stop("Plan loop stopped.")'));
 
   const guard = nonPlan.indexOf("_stop_if_unit_open()");
   assert.ok(guard !== -1, "the non-plan path calls it");
   assert.ok(nonPlan.indexOf("_run_new_path(task)") < guard, "after the router");
   assert.ok(guard < nonPlan.indexOf("# Old path"), "before the old path");
-  const planGuard = planPart.indexOf("_stop_if_unit_open()");
-  assert.ok(planGuard !== -1, "the plan loop calls it");
-  assert.ok(planGuard < planPart.indexOf("same old-path branches"), "before each plan task's old-path work");
 });
 
 test("stop-rule-names-unit-file-and-abandon: the functions table row says what it checks and how to leave", () => {
@@ -314,11 +305,11 @@ test("Solo: a stage cannot start on a leftover run, and the Stop hook does not d
   assert.equal(stopped.stdout, "");
 });
 
-test("a run opens only inside the router, and the plan loop says it stays old", () => {
+test("a run opens only inside the router, and the plan branch hands the plan to the Plan Loop", () => {
   const code = pseudocode();
 
   assert.equal(code.match(/_run_new_path\(/g).length, 1, "one call site");
-  assert.match(code.slice(0, code.indexOf('_stop("Plan execution paused/complete.")')), /never the migrated-types router/);
+  assert.match(code.slice(0, code.indexOf('_stop("Plan loop stopped.")')), /_run_plan_loop\(plan_path\)/);
   assert.match(code, /elif task_type == "config_change":/, "the old branch stays for plan tasks and Solo");
 });
 
@@ -579,7 +570,7 @@ test("run open ignores the task classification file: taskType stays null and int
 });
 test("router-no-classify-task-outside-plan-and-solo", () => {
   const code = pseudocode();
-  const nonPlan = code.slice(code.indexOf('_stop("Plan execution paused/complete.")'));
+  const nonPlan = code.slice(code.indexOf('_stop("Plan loop stopped.")'));
   const run = nonPlan.indexOf("_run_new_path(task)");
   const classify = nonPlan.indexOf("classify_task(task)");
   const guard = nonPlan.slice(0, run).split("\n").reverse().find((line) => /^if .*:$/.test(line));
@@ -600,24 +591,21 @@ function curatingGuidanceRow() {
   return rows[0];
 }
 
-test("router-keeps-classify-task-for-plan-and-solo", () => {
+test("router-keeps-classify-task-for-solo", () => {
   const code = pseudocode();
-  const planStart = code.indexOf("for plan_task in plan_tasks:");
-  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
-  const planLoop = code.slice(planStart, planEnd);
+  const planEnd = code.indexOf('_stop("Plan loop stopped.")');
   const solo = code.slice(planEnd);
   const soloClassify = solo.indexOf("task_classification = classify_task(task)");
   const soloBranch = solo.indexOf('if task_type == "new_feature":');
 
-  assert.ok(planStart !== -1 && planEnd > planStart, "the plan loop is in the pseudocode");
-  assert.match(planLoop, /classify_task\(task\)/, "the plan loop still calls classify_task(task)");
+  assert.ok(planEnd !== -1, "the plan branch is in the pseudocode");
   assert.ok(soloClassify !== -1 && soloBranch !== -1, "Solo's old path classifies and branches");
   assert.ok(soloClassify < soloBranch, "Solo calls classify_task(task) before the old branches");
 });
 
 test("router-uses-skill-in-main-context: outside Solo, guidance is curated by the curating-guidance skill before cleanup", () => {
   const code = pseudocode();
-  const nonPlan = code.slice(code.indexOf('_stop("Plan execution paused/complete.")'));
+  const nonPlan = code.slice(code.indexOf('_stop("Plan loop stopped.")'));
   const row = curatingGuidanceRow();
 
   assert.ok(nonPlan.includes("_curating_guidance(task)"), "the non-plan path calls _curating_guidance(task)");
@@ -626,20 +614,19 @@ test("router-uses-skill-in-main-context: outside Solo, guidance is curated by th
   assert.ok(!elseBranch.includes("curate_guidance("), "the non-Solo branch does not call the curate_guidance agent");
   assert.match(row, /curating-guidance/, "the row names the curating-guidance skill");
 });
-test("router-keeps-agent-for-plan-and-solo: the plan loop and the Solo branch still call the curate_guidance agent, which stays registered", () => {
+test("router-keeps-agent-for-solo: the Solo branch still calls the curate_guidance agent, which stays registered", () => {
   const code = pseudocode();
-  const planEnd = code.indexOf('_stop("Plan execution paused/complete.")');
+  const planEnd = code.indexOf('_stop("Plan loop stopped.")');
   const nonPlan = code.slice(planEnd);
   const soloBranch = nonPlan.slice(nonPlan.indexOf("if _is_solo():"), nonPlan.indexOf("else:", nonPlan.indexOf("if _is_solo():")));
   const config = readFileSync(join(ROOT, "contracts", "agent-config.yaml"), "utf8");
 
-  assert.ok(code.slice(0, planEnd).includes(CURATE), "the plan loop calls curate_guidance(human_guidance, task)");
   assert.ok(soloBranch.includes(CURATE), "the Solo branch calls curate_guidance(human_guidance, task)");
   assert.ok(existsSync(join(ROOT, "agents", "curate-guidance.md")), "agents/curate-guidance.md still exists");
   assert.match(config, /^  curate-guidance:/m, "agent-config.yaml still lists curate-guidance");
 });
 
-test("outside-solo-plan-loop-uses-pb-plan-next-and-run-open-plan: the plan loop is driven by pb plan next and pb run open --plan, stops at any refusal it cannot act on, and the pseudocode calls it outside Solo", () => {
+test("outside-solo-plan-loop-uses-pb-plan-next-and-run-open-plan: the plan loop is driven by pb plan next and pb run open --plan, stops at any refusal it cannot act on, and the pseudocode calls it, in Solo too", () => {
   const section = planLoopSection();
 
   sentencesSaying("the loop runs pb plan next <plan> first", section, /first/, /`pb plan next <plan>`/);
@@ -653,16 +640,16 @@ test("outside-solo-plan-loop-uses-pb-plan-next-and-run-open-plan: the plan loop 
 
   const code = pseudocode();
   const call = code.indexOf("_run_plan_loop(plan_path)");
-  const guard = code.indexOf("if not _is_solo():", code.indexOf("if _detect_plan_file(task):"));
-  const loop = code.indexOf("for plan_task in plan_tasks:");
+  const branch = code.indexOf("if _detect_plan_file(task):");
+  const end = code.indexOf("# Normal (non-plan) execution");
 
   assert.ok(call !== -1, "the pseudocode calls _run_plan_loop(plan_path)");
-  assert.ok(guard !== -1 && guard < call, "the call sits after an `if not _is_solo():` in the plan branch");
-  assert.ok(call < loop, "the call comes before `for plan_task in plan_tasks:`");
-  assert.match(code.slice(guard, loop), /_run_plan_loop\(plan_path\)\n\s+_stop\(/, "the plan loop is stopped right after the call");
+  assert.ok(branch !== -1 && branch < call && call < end, "the call sits in the plan branch");
+  assert.doesNotMatch(code.slice(branch, end), /_is_solo\(\)/, "the plan branch does not treat Solo differently");
+  assert.match(code.slice(call, end), /_run_plan_loop\(plan_path\)\n\s+_stop\(/, "the plan loop is stopped right after the call");
 });
 
-test("solo-keeps-old-plan-loop-and-plan-tasks-curate-with-skill", () => {
+test("plan-tasks-curate-with-skill-and-solo-has-no-old-plan-loop", () => {
   const section = planLoopSection();
   const sentences = sentencesOf(section);
   const curate = sentences.findIndex((sentence) => /before each task/.test(sentence) && /curating-guidance/.test(sentence));
@@ -675,14 +662,20 @@ test("solo-keeps-old-plan-loop-and-plan-tasks-curate-with-skill", () => {
   assert.ok(open !== -1, "the Plan Loop runs pb run open --kind code --plan <plan>");
   assert.ok(curate <= clean && clean < open, "the Plan Loop curates guidance, then cleans the state files, before pb run open --kind code --plan");
   assert.doesNotMatch(section, /curate_guidance/, "the Plan Loop does not call the curate_guidance agent");
-  assert.match(row, /plan tasks included/, "the _curating_guidance row says it runs outside Solo, plan tasks included");
+  assert.doesNotMatch(pseudocode(), /for plan_task in plan_tasks:/, "Solo has no old plan loop of its own");
+  assert.match(row, /plan tasks included, Solo's too/, "the _curating_guidance row says plan tasks use the skill, Solo's too");
+  assert.match(row, /Solo's non-plan tasks use the `curate_guidance` agent/, "the row keeps the agent for Solo's non-plan tasks");
+});
 
-  const code = pseudocode();
-  const soloPlanLoop = code.slice(code.indexOf("for plan_task in plan_tasks:"), code.indexOf('_stop("Plan execution paused/complete.")'));
+test("solo-continues-an-open-plan-run-through-the-plan-loop", () => {
+  const text = skill();
+  const check = text.indexOf("## An Open Run Comes First");
+  const section = text.slice(check, text.indexOf("## State File Mappings"));
+  const solo = section.split("\n").find((line) => line.startsWith("Solo takes the same check"));
 
-  assert.ok(soloPlanLoop.includes(CURATE), "the Solo plan loop still calls curate_guidance(human_guidance, task)");
-  assert.match(soloPlanLoop, /classify_task\(task\)/, "the Solo plan loop still calls classify_task(task)");
-  assert.doesNotMatch(soloPlanLoop, /pb run open/, "the Solo plan loop does not call pb run open");
+  assert.ok(solo, "the open-run section has a paragraph for Solo");
+  assert.doesNotMatch(solo, /no stage starts under Solo/, "Solo does start stages now");
+  assert.match(solo, /plan it continues an open run through the Plan Loop/, "Solo continues an open plan run through the Plan Loop");
 });
 
 describe("router-asks-gates-with-the-question-box", () => {

@@ -373,19 +373,18 @@ The planning workflow produces a markdown plan document with checkboxes ready fo
 ```
 /pairingbuddy:code (with plan MD path)
     ↓
-_detect_plan_file → _read_plan_tasks → _hydrate_claude_tasks
+_run_plan_loop (Plan Loop in skills/coding/SKILL.md)
     ↓
-[for each unchecked task]
-    Write task.json → normal TDD workflow
-        ↓
-    _mark_task_complete (update MD checkbox)
-        ↓
-    _update_claude_task (mark visible task done)
-        ↓
-    [human checkpoint between tasks]
+pb plan next → next unchecked task (or stop / nothing left)
+    ↓
+pb unit open (when no unit is open) → pb run open --kind code --plan <plan.md>
+    ↓
+stages and G:task-end via pb status --action
+    ↓
+pb task end (ticks the MD checkbox, records the task) → pb plan next again
 ```
 
-When `/code` receives a plan MD file, it enters plan execution mode: iterates through unchecked tasks, runs the TDD workflow for each, updates checkboxes, and provides visibility via Claude Code Tasks. Cross-session recovery reads the MD checkboxes to determine progress.
+When `/code` receives a plan MD file, it runs `_run_plan_loop`, in Solo too: one task at a time, each as its own run. Cross-session recovery reads the MD checkboxes through `pb plan next`. A `[HUMAN]` task stops the loop, and Solo never does or ticks it.
 
 ---
 
@@ -988,7 +987,7 @@ At the start of each task, the orchestrator runs `_cleanup_state_files()` to del
 
 **Same-session resume (Task 101).** `pb stage start` records `scriptHash` (sha256 of the built bundle) in `ledger.stage` next to the stage's `runId` and attempt. A Workflow call carrying `resumeFromRunId` takes its own path in the gate and never resets the stage. It is allowed only when the named stage is the active stage, no stop is recorded, the stage has a recorded `runId` equal to `resumeFromRunId`, `args.attempt` equals the stage's attempt, `pluginRoot` is right, any supplied script matches the bundle, and the bundle's hash equals the recorded `scriptHash` (no recorded hash, or a changed bundle, is denied). Each denial names what to do: `pb status`, or redo with `pb stage fail` and then start by name at the next attempt. A human's redo answer clears the redone stage's `runId`, so a redone stage cannot be resumed.
 
-**Plan loop (Task 97).** Outside Solo, `/code` on a plan runs `_run_plan_loop` (the Plan Loop section of `skills/coding/SKILL.md`): `pb plan next`; `pb unit open` when no unit is open; the curating-guidance skill and state cleanup; `pb run open --kind code --plan <plan.md>`; the stages and G:task-end through `pb status --action`; `pb task end`; and again. A unit done but not published is published as in the router, and the loop goes on only when a PR opened; any other stop ends the loop for the human. `pb run open --plan` (only with `--kind code`) steps the plan through the same rule and refusals as `pb plan next` (format problems, then the stop, then nothing left), then needs an open unit: a fresh one (no name, no records) is named with the task's unit, repo-relative plan path and tracer after the claim, a named one must be that unit of that plan, and a fresh one holding a non-plan record refuses. The run's task is the plan task's title and body, and `ledger.plan` is `{ path, title }`, so `pb task end` ticks the box and `newTaskRecord` names the record by the plan title. Solo keeps the old prose plan loop until T10. Smoke S6 (`tests/smoke/s6.mjs`) runs a two-unit plan across three sessions: a `[HUMAN]` stop, a kill and adopt mid-task, and one independent and one stacked publish.
+**Plan loop (Task 97).** Outside Solo, `/code` on a plan runs `_run_plan_loop` (the Plan Loop section of `skills/coding/SKILL.md`): `pb plan next`; `pb unit open` when no unit is open; the curating-guidance skill and state cleanup; `pb run open --kind code --plan <plan.md>`; the stages and G:task-end through `pb status --action`; `pb task end`; and again. A unit done but not published is published as in the router, and the loop goes on only when a PR opened; any other stop ends the loop for the human. `pb run open --plan` (only with `--kind code`) steps the plan through the same rule and refusals as `pb plan next` (format problems, then the stop, then nothing left), then needs an open unit: a fresh one (no name, no records) is named with the task's unit, repo-relative plan path and tracer after the claim, a named one must be that unit of that plan, and a fresh one holding a non-plan record refuses. The run's task is the plan task's title and body, and `ledger.plan` is `{ path, title }`, so `pb task end` ticks the box and `newTaskRecord` names the record by the plan title. Solo runs the same loop, started by `solo-buddy.sh` with `PAIRINGBUDDY_GATE_POLICY=auto` set for the hooks. Smoke S6 (`tests/smoke/s6.mjs`) runs a two-unit plan across three sessions: a `[HUMAN]` stop, a kill and adopt mid-task, and one independent and one stacked publish.
 
 **Abandon and config-change approval.** `pb human abandon` (human-only) removes the unit and task state under `.pairingbuddy/run` and keeps commits, the branch and the working tree; it works after a stop. `pb task end` refuses a `config_change` whose diff (no rename detection, from the unit's last task head or base) touches files outside the git-config `config_globs` (`shared-node/glob-match.mjs`). With empty `config_globs` it asks the human to type `pb human approve-config` (human-only, per task). **Trust boundary.** Human-only ledger fields (gate answers, `configApproval`) are protected by the gate denying human verbs and ledger edits from tool calls, but the ledger sha is an unkeyed hash, so a model running arbitrary node code could forge them. This is a known limitation to address separately.
 | `plan/plan-config.json` | Plan name, output path, existing docs (persists across plans) |
@@ -1015,13 +1014,13 @@ Solo Buddy is an autonomous execution mode where Pairing Buddy executes a pre-es
 
 ### Entry Point
 
-`scripts/solo-buddy.sh` launches a `claude -p` session with `PAIRINGBUDDY_SOLO=true`. The script unsets `ANTHROPIC_API_KEY` by default to prevent unexpected API billing (use `--use-api-key` to opt in). The prompt tells Claude to use `/pairingbuddy:code` to execute the plan.
+`scripts/solo-buddy.sh` launches a `claude -p` session with `PAIRINGBUDDY_SOLO=true`. The script unsets `ANTHROPIC_API_KEY` by default to prevent unexpected API billing (use `--use-api-key` to opt in). The prompt tells Claude to use `/pairingbuddy:code` to execute the plan, which runs the Plan Loop on the new workflows. The script also exports `PAIRINGBUDDY_GATE_POLICY=auto`, which only the hooks read (agents and skills never do), and it still refuses to start on `main` or `master`. A `[HUMAN]` task stops the run with a message naming it, and Solo never does or ticks it.
 
 ### How It Works
 
 Four components are Solo-aware:
 
-1. **Shell script** (`scripts/solo-buddy.sh`) — Sets env var, invokes `claude -p --dangerously-skip-permissions --output-format json`. On success, creates a GitHub PR via `gh pr create` using the sanitized branch name as the title and `SOLO_BUDDY_REPORT.md` as the body when present
+1. **Shell script** (`scripts/solo-buddy.sh`) — Sets env var, invokes `claude -p --dangerously-skip-permissions --output-format stream-json --verbose`, with stdout captured to `.pairingbuddy/solo-stream.jsonl`. On success, creates a GitHub PR via `gh pr create` using the sanitized branch name as the title and `SOLO_BUDDY_REPORT.md` as the body when present
 2. **Guardian hook** (`hooks/guardian.mjs`) — Detects `PAIRINGBUDDY_SOLO`, injects Solo constraint prompt on SessionStart, uses halved injection interval (2.5 min) and short Solo reminder for PostToolUse
 3. **15 agents** — Agents with AskUserQuestion (Step 3 Human Review) check `PAIRINGBUDDY_SOLO` and skip review, assuming approval
 4. **Coding orchestrator** (`skills/coding/SKILL.md`) — `_ask_human` auto-returns `true` in Solo mode. Solo Mode section defines strict scope, sequential execution, resource exhaustion before stopping, bug handling, quality compliance, report generation, and push-to-remote
@@ -1034,9 +1033,9 @@ Solo sessions produce `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally — hea
 
 Solo sessions run unattended, so real-time progress visibility is essential. Two mechanisms provide observability:
 
-**Guardian-based tracking (primary, reliable):**
-- The guardian hook (`hooks/guardian.mjs`) writes agent info to its session file (`.pairingbuddy/hooks/{sessionId}.json`) on every PostToolUse call: `lastTool`, `lastAgent`, `lastDescription`
-- The terminal renderer reads this file directly to show the current agent
+**Stream and state tracking (primary):**
+- `claude -p` runs with `--output-format stream-json --verbose`, and its stdout is captured to `.pairingbuddy/solo-stream.jsonl`
+- The terminal renderer reads that stream for the latest `task_progress` description and sums spend from `task_notification` usage
 
 **Progress hook (secondary, append-only log):**
 - `hooks/solo-progress.mjs` filters for Agent tool invocations and appends timestamped entries to `.pairingbuddy/solo-progress.log` for post-session analysis
@@ -1046,8 +1045,10 @@ Solo sessions run unattended, so real-time progress visibility is essential. Two
 - `solo-buddy.sh` starts a background process that builds the display by reading source-of-truth files directly:
   - Plan MD file → checkbox count for progress bar and task list
   - `.pairingbuddy/task.json` → current task description
-  - Guardian session file → current agent name and proof of life
-- Renders a styled display with colored progress bar, task list (✓ done, → current, ○ pending), spinner on active task, and agent name
+  - `.pairingbuddy/run/unit.json` → the unit's branch and task count; the ledger → run progress
+  - `.pairingbuddy/solo-stream.jsonl` → current activity (`task_progress`) and spend (`task_notification` usage)
+- Renders a styled display with colored progress bar, task list (✓ done, → current, ○ pending), spinner on active task, and current activity and spend
+- A missing file never crashes the renderer
 - Output is written to `/dev/tty` so it remains visible even when `claude -p` stdout is captured
 - The renderer cleans up gracefully when the solo session ends (no orphan processes)
 - On completion, displays final status with 100% progress bar and PR/report links
@@ -1081,7 +1082,7 @@ Solo Buddy uses `caffeinate -s` to prevent macOS from suspending the process whe
 
 - **macOS only** — Solo Buddy currently only works on macOS (caffeinate, /dev/tty assumptions)
 - **VPN interference** — VPN causes sessions to terminate after 1-4 tasks due to connection timeouts. Disable VPN before running. Without VPN, 29-task plans complete in a single session
-- **Output format** — Must use `--output-format json`. The `text` format causes early session termination after 1 task
+- **Output format** — Must use `--output-format stream-json --verbose`, captured to `.pairingbuddy/solo-stream.jsonl`. The `text` format causes early session termination after 1 task
 - **API key safety** — The script unsets `ANTHROPIC_API_KEY` by default. If present in the environment, it silently overrides Max/Pro subscription billing. Use `--use-api-key` only for explicit API billing
 - **Session resumability** — Plan MD checkboxes are the durable state. Restarting the script picks up from the first unchecked task. The report preserves entries from previous sessions and reconciles against the current plan
 

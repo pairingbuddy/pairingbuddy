@@ -20,10 +20,11 @@ set -euo pipefail
 MAX_RETRIES=5
 USE_API_KEY=false
 STATUS_FILE=".pairingbuddy/solo-status"
+STREAM_FILE=".pairingbuddy/solo-stream.jsonl"
 RENDER_INTERVAL=0.08
 
 # Build invocation arguments
-CLAUDE_ARGS=(-p --dangerously-skip-permissions --output-format json)
+CLAUDE_ARGS=(-p --dangerously-skip-permissions --output-format stream-json --verbose)
 
 require_arg() {
     local flag="$1"
@@ -159,6 +160,7 @@ if [[ "$USE_API_KEY" != "true" ]]; then
 fi
 
 export PAIRINGBUDDY_SOLO=true
+export PAIRINGBUDDY_GATE_POLICY=auto
 export PAIRINGBUDDY_SOLO_MAX_RETRIES="$MAX_RETRIES"
 export PAIRINGBUDDY_PLAN_PATH="$PLAN_FILE"
 export FORCE_COLOR=1
@@ -173,6 +175,16 @@ fi
 LAST_RENDER_LINES=0
 SPINNER_INDEX=0
 FINAL_RENDERED=""
+
+# Print what a JS snippet says about a state file: `text` is its contents, `state` its parsed JSON
+# (undefined when the file is not one JSON document, as a JSONL stream is not).
+# Prints nothing when the file is missing or unreadable: node exits non-zero on a throwing snippet or a
+# missing binary, and `|| true` keeps set -e quiet.
+read_state_line() {
+    local file="$1" body="$2"
+    [[ -f "$file" ]] || return 0
+    node -e "const text = require('fs').readFileSync(process.argv[1], 'utf8'); let state; try { state = JSON.parse(text); } catch (error) {} const clip = (value, max = 60) => { const plain = String(value).replace(/[\\u0000-\\u001f\\u007f-\\u009f]+/g, ' ').trim(); return plain.length > max ? plain.slice(0, max - 1) + '…' : plain; }; ${body}" "$file" 2>/dev/null || true
+}  # end read_state_line
 
 render_status() {
     local spinner_chars=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
@@ -258,25 +270,53 @@ render_status() {
         content="${content}[${completed}/${total}] ${cyan}${filled_str}${reset}${dim}${empty_str}${reset} ${pct_str}${NL}"
     fi
 
-    # Read agent info from guardian session file
-    local agent_name="" agent_desc=""
-    local hooks_file
-    hooks_file=$(ls -t .pairingbuddy/hooks/*.json 2>/dev/null | head -1 || true)
-    if [[ -n "$hooks_file" && -f "$hooks_file" ]]; then
-        agent_name=$(grep -o '"lastAgent"[[:space:]]*:[[:space:]]*"[^"]*"' "$hooks_file" 2>/dev/null | sed 's/.*: *"//;s/"$//' || true)
-        agent_desc=$(grep -o '"lastDescription"[[:space:]]*:[[:space:]]*"[^"]*"' "$hooks_file" 2>/dev/null | sed 's/.*: *"//;s/"$//' || true)
+    # Read the unit's branch and task count from run/unit.json
+    local unit_line
+    unit_line=$(read_state_line ".pairingbuddy/run/unit.json" '
+        const n = Array.isArray(state.tasks) ? state.tasks.length : 0;
+        const count = `(${n} ${n === 1 ? "task" : "tasks"})`;
+        console.log(state.branch ? `${clip(state.branch)} ${count}` : count);
+    ')
+    if [[ -n "$unit_line" ]]; then
+        content="${content}Unit: ${dim}${unit_line}${reset}${NL}"
     fi
 
-    if [[ -n "$agent_name" ]]; then
-        content="${content}Agent: ${dim}${agent_name}${reset}${NL}"
-        if [[ -n "$agent_desc" ]]; then
-            content="${content}${dim}  ${agent_desc}${reset}${NL}"
-        fi
+    # Read the stop reason or the current stage, and the human gate it waits on, from the task ledger
+    local ledger_line
+    ledger_line=$(read_state_line ".pairingbuddy/run/task/ledger.json" '
+        const s = state.stage;
+        const attempt = s && s.attempt !== undefined ? `(attempt ${s.attempt})` : "";
+        if (state.stop && state.stop.reason) console.log(`Stopped: ${clip(state.stop.reason)}`);
+        else if (s && s.name) console.log(`Stage: ${[clip(s.name, 30), clip(s.status ?? "", 30), attempt].filter(Boolean).join(" ")}`);
+        if (state.needsHuman && state.needsHuman.gate) console.log(`Waiting on: ${clip(state.needsHuman.gate)}`);
+    ')
+    if [[ -n "$ledger_line" ]]; then
+        content="${content}${ledger_line}${NL}"
     fi
 
-    # Fallback if nothing to display
-    if [[ -z "$content" ]]; then
+    # Read the captured claude stream once: show the description of the latest task_progress event and sum the
+    # tokens the task_notification events report in their usage. A partial or invalid line is skipped.
+    local stream_lines
+    stream_lines=$(read_state_line "$STREAM_FILE" '
+        const events = text.split("\n").map((line) => { try { return JSON.parse(line); } catch (error) { return null; } });
+        const system = events.filter((event) => event && event.type === "system");
+        const progress = system.filter((event) => event.subtype === "task_progress" && event.description);
+        const last = progress.length ? clip(progress[progress.length - 1].description) : "";
+        const tokens = system
+            .filter((event) => event.subtype === "task_notification" && event.usage && event.usage.total_tokens !== null && event.usage.total_tokens !== undefined)
+            .map((event) => Number(event.usage.total_tokens))
+            .filter(Number.isFinite);
+        const total = tokens.reduce((sum, count) => sum + count, 0);
+        if (last) console.log(`Agent: ${last}`);
+        if (tokens.length > 0) console.log(`Spend: ${total} tokens`);
+    ')
+
+    # Fallback if nothing to display; otherwise add the stream lines, with the spend unknown until a task_notification reports it
+    if [[ -z "$content" && -z "$stream_lines" ]]; then
         content="  ${cyan}→${reset} ${bold_white:-}Initializing autonomous execution...${reset:-}${NL}"
+    else
+        [[ "$stream_lines" == *Spend:* ]] || stream_lines="${stream_lines:+${stream_lines}${NL}}Spend: unknown"
+        content="${content}${stream_lines}${NL}"
     fi
 
     # Replace → with spinner char
@@ -508,7 +548,7 @@ start_renderer
 start_caffeinate
 trap cleanup EXIT SIGTERM SIGINT
 
-claude "${CLAUDE_ARGS[@]}" -- "$PROMPT"
+claude "${CLAUDE_ARGS[@]}" -- "$PROMPT" > "$STREAM_FILE"
 CLAUDE_EXIT=$?
 
 # Stop the renderer before writing final status

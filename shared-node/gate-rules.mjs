@@ -362,7 +362,6 @@ function checkWorkflow({ ledgerPath, ledger, graph, payload }) {
   const scripts = suppliedScripts(toolInput, cwd);
   const stage = calledStage(toolInput);
   if (stage !== undefined) {
-    if (process.env.PAIRINGBUDDY_SOLO === "true") throw new Denied(`Solo stays on the old path until T10, so ${workflowName(stage)} cannot start. The run stays as it is: report pb status.`);
     if (toolInput.resumeFromRunId !== undefined) {
       resumeStage(ledgerPath, stage, payload, scripts);
       return;

@@ -24,7 +24,7 @@ Before anything else, run `pb status --action`. `<root>` is the plugin root the 
 - If it prints a status, a run is open. Do not clean state or classify, do not curate guidance, and do not start the new task. Cleanup would delete what the run still needs. Finish that run first: follow `pb status --action` as Plan Loop step 1 says (a stranded stage: `pb stage fail`, then restart it at `nextAttempt`). For a plan, then go on with the Plan Loop. Otherwise report the finished run and the new task you did not start.
 - If it refuses any other way, a run is there and cannot be read. Report the refusal and stop.
 
-Solo takes the same check but does not continue the run: no stage starts under Solo, so a run left open stops it here. Report the status's `action` and stop.
+Solo takes the same check. For a plan it continues an open run through the Plan Loop, as it does outside Solo. A non-plan Solo task never opens a run, so a run left open stops it here: report the status's `action` and stop.
 
 ## CRITICAL: Follow the Workflow Exactly
 
@@ -101,21 +101,16 @@ Functions prefixed with `_` are **orchestrator logic**, not agent calls. The orc
 | `_filter_pending(tests)` | Filter tests.json to return only tests not yet processed in this session |
 | `_filter_pending(spike_questions)` | Filter spike-questions.json units to return only units with status "pending" |
 | `_mark_unit_answered(spike_questions, unit_id)` | Update unit status to "answered" in spike-questions.json |
-| `_ask_human(question)` | **Interactive mode:** Present question to human, return true/false based on response. **Solo mode** (`PAIRINGBUDDY_SOLO=true`): Return `true` for all checkpoints (auto-yes). Exception: if the orchestrator has tracked N consecutive retry failures on the current task (where N = `PAIRINGBUDDY_SOLO_MAX_RETRIES` env var, default 5), return `false` to trigger a stop. |
+| `_ask_human(question)` | **Interactive mode:** Present question to human, return true/false based on response. **Solo mode** (`PAIRINGBUDDY_SOLO=true`): Return `true` for all checkpoints (auto-yes), except that auto-yes never covers a `[HUMAN]` task (see Solo Mode). Exception: if the orchestrator has tracked N consecutive retry failures on the current task (where N = `PAIRINGBUDDY_SOLO_MAX_RETRIES` env var, default 5), return `false` to trigger a stop. |
 | `_stop(message)` | Stop workflow execution and report message to human. In Solo mode, also write the stop reason to `.pairingbuddy/SOLO_BUDDY_REPORT.md` (see Solo Mode section below). |
 | `_detect_plan_file(task)` | Check if the task description references a plan MD file path. Returns true if a plan file is detected. |
-| `_read_plan_tasks(plan_path)` | Parse the plan MD, extract tasks with their checkbox state (checked/unchecked), index, title, and full description |
-| `_next_unchecked_task(plan_tasks)` | Return the first unchecked task from the parsed plan tasks |
-| `_mark_task_complete(plan_path, task_index)` | Update `- [ ]` to `- [x]` in the MD file for the given task index |
-| `_hydrate_claude_tasks(plan_tasks)` | Create Claude Code Tasks (TaskCreate) for all plan tasks, marking completed ones. Provides in-session visibility. |
-| `_update_claude_task(task_id)` | Mark a Claude Code Task as completed (TaskUpdate) |
 | `_is_solo()` | True when the `PAIRINGBUDDY_SOLO` env var is `true`. |
 | `_stop_if_run_open()` | The check in An Open Run Comes First. |
 | `_stop_if_unit_open()` | If `.pairingbuddy/run/unit.json` exists, stop and tell the human the open unit's branch (read from unit.json) and that the old path cannot run inside a unit. They can finish the unit's work on the new path, or leave it by running `pb human abandon` (human-only: they type `!cd <project root> && node <root>/cli/pb.mjs human abandon`, which removes the unit and task state and keeps every commit). |
 | `_write_task(task)` | Write the new task to `.pairingbuddy/task.json`. It waits for cleanup: curation reads the just-completed task from that file, and cleanup deletes it. |
-| `_curating_guidance(task)` | Runs the curating-guidance skill in the main context, before cleanup, outside Solo (plan tasks included). With no human it carries guidance over silently. |
+| `_curating_guidance(task)` | Runs the curating-guidance skill in the main context, before cleanup, outside Solo and in every plan task (plan tasks included, Solo's too). Solo's non-plan tasks use the `curate_guidance` agent. With no human it carries guidance over silently. |
 | `_setting_up_spike(task)` | Runs the setting-up-spike skill in the main context. It runs inside `_run_new_path(task)`, after G:type, for a spike. |
-| `_run_plan_loop(plan_path)` | Runs a plan outside Solo, one task at a time, on the new path. See Plan Loop. |
+| `_run_plan_loop(plan_path)` | Runs a plan, in Solo too, one task at a time, on the new path. See Plan Loop. |
 | `_run_new_path(task)` | Runs a migrated type through its workflow stages. See Migrated-Types Router. |
 | `_update_solo_report(event, details)` | **Solo mode only.** Create or append to `.pairingbuddy/SOLO_BUDDY_REPORT.md`. Called with event `"start"` (creates file if absent; on resume, **reconciles** existing entries against the current plan — drops entries for removed tasks, reorders to match plan, then appends session separator), `"task_complete"` (appends task entry), or `"stopped"` (appends stop entry, updates header). See Solo Mode section for report template. No-op in interactive mode. |
 
@@ -132,49 +127,16 @@ _stop_if_run_open()
 # Plan execution mode: iterate through tasks from a plan MD file
 if _detect_plan_file(task):
     plan_path = task.plan_file
-    # Outside Solo, a plan runs on the new path, one task at a time (see Plan Loop)
-    if not _is_solo():
-        _run_plan_loop(plan_path)
-        _stop("Plan loop stopped.")
-    # Solo only from here: the old plan loop stays until T10
-    plan_tasks = _read_plan_tasks(plan_path)
-    _hydrate_claude_tasks(plan_tasks)
-    _update_solo_report("start", {"plan_path": plan_path, "plan_tasks": plan_tasks})
-
-    for plan_task in plan_tasks:
-        if plan_task.checked:
-            continue
-
-        # The rich task description from the plan
-        task = {"description": plan_task.description, "context": plan_task.context}
-
-        # Run normal TDD workflow for this task (falls through to code below)
-        human_guidance = curate_guidance(human_guidance, task)
-        _cleanup_state_files()
-        _write_task(task)
-        task_classification = classify_task(task)
-        _stop_if_unit_open()
-        # ... (same old-path branches as below, based on task_type,
-        # never the migrated-types router: Solo plan tasks stay on the old path until T10) ...
-
-        # After successful completion:
-        _mark_task_complete(plan_path, plan_task.index)
-        _update_claude_task(plan_task.task_id)
-        _update_solo_report("task_complete", {"plan_task": plan_task})
-
-        # Human checkpoint between tasks
-        if not _ask_human(f"Task {plan_task.index} complete. Continue to next task?"):
-            _update_solo_report("stopped", {"plan_task": plan_task, "reason": "stopped"})
-            break
-
-    _stop("Plan execution paused/complete.")
+    # A plan runs on the new path, one task at a time, in Solo too (see Plan Loop)
+    _run_plan_loop(plan_path)
+    _stop("Plan loop stopped.")
 
 # Normal (non-plan) execution continues below
 
 # Curate guidance from previous session (always runs - handles review and bootstrap, and with no human
 # it carries over silently and asks nothing)
 if _is_solo():
-    human_guidance = curate_guidance(human_guidance, task)  # Solo keeps the agent until T10
+    human_guidance = curate_guidance(human_guidance, task)  # Solo's non-plan tasks keep the agent; plan tasks use the skill in the Plan Loop
 else:
     _curating_guidance(task)  # the curating-guidance skill, in the main context
 
@@ -188,7 +150,7 @@ if not _is_solo():
     _run_new_path(task)
     _stop("Task complete.")
 
-# Solo only: classify here and take the old branches
+# Solo's non-plan tasks only: classify here and take the old branches
 task_classification = classify_task(task)
 task_type = task_classification.task_type  # "new_feature" | "bug_fix" | "refactoring" | "config_change" | "spike"
 
@@ -322,7 +284,7 @@ if _ask_human("All tests pass. Commit changes?"):
 
 ### Migrated-Types Router
 
-Outside Solo, every non-plan task runs through workflow stages instead of the branches above. Plans outside Solo run through the Plan Loop below, which opens runs too. Only Solo, plan or not, stays on those branches and never opens a run, so it has no run state.
+Outside Solo, every non-plan task runs through workflow stages instead of the branches above. Plans, in Solo too, run through the Plan Loop below, which opens runs too. Only a non-plan Solo task stays on those branches and never opens a run, so it has no run state.
 
 `_run_new_path(task)`:
 
@@ -365,7 +327,7 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 ### State File Management
 
 1. At cycle start, verify `.pairingbuddy/` is in `.gitignore`
-2. Curate guidance (before cleanup). The curating-guidance skill does this outside Solo, plan tasks included; the `curate_guidance` agent does it only in Solo:
+2. Curate guidance (before cleanup). The curating-guidance skill does this outside Solo and in every plan task, Solo's too; the `curate_guidance` agent does it only for Solo's non-plan tasks:
    - If `human-guidance.json` has entries: review/curate existing guidance
    - If empty or missing: offer to add new persistent guidance
    - Approved entries get `"persistent": true` flag
@@ -388,7 +350,7 @@ After each refactor cycle:
 
 ### Plan Loop
 
-Outside Solo, `_run_plan_loop(plan_path)` runs a plan one task at a time:
+`_run_plan_loop(plan_path)` runs a plan one task at a time:
 
 1. Run `pb plan next <plan>` first. It says what to do next, or refuses. When it succeeds with no next task, the plan is done: report that and stop the loop.
    When it shows `openRun`, a run is already open: do not open a unit or a run, and leave the state files as they are. Follow `pb status --action` to finish that run (a stranded or killed stage: `pb stage fail`, then restart the stage at `nextAttempt`, which keeps the stage's fixes and notes), then continue at step 6 (code run) or 7 (publish run). A session that SessionStart says does not own the run never drives it: show the human the adopt line instead.
@@ -402,25 +364,6 @@ Outside Solo, `_run_plan_loop(plan_path)` runs a plan one task at a time:
 8. For any other refusal (a human task, hand-ticked boxes, a legacy unit), show it to the human with its options, and stop the loop.
 
 The model never ticks a box and never types a `pb human` command.
-
-### Plan Execution Mode
-
-This section describes Solo's old plan loop.
-
-When the task description references a plan MD file (produced by `/pairingbuddy:plan`), the orchestrator enters plan execution mode:
-
-1. **Detection:** `_detect_plan_file(task)` checks if the task references a `.md` file that contains plan-formatted content (TB headings with checkbox tasks)
-2. **Parsing:** `_read_plan_tasks(plan_path)` extracts all tasks from the plan MD with their checkbox state, title, and full description
-3. **Visibility:** `_hydrate_claude_tasks(plan_tasks)` creates Claude Code Tasks (via TaskCreate) for all plan tasks. Completed tasks (checked) are marked as done. This gives the human a visible progress view within the session.
-4. **Iteration:** For each unchecked task, the orchestrator:
-   a. Writes `task.json` with the plan task's rich description
-   b. Runs the normal TDD workflow (curate guidance, cleanup, classify, implement)
-   c. After successful completion, updates the MD checkbox (`- [ ]` → `- [x]`)
-   d. Marks the Claude Code Task as completed
-   e. Pauses for human confirmation before continuing to the next task
-5. **Cross-session recovery:** On a new session, the human says "continue executing plan at path/to/plan.md". The orchestrator reads the MD — checkboxes show what's done. It hydrates Claude Code Tasks from the current state and continues from the first unchecked task.
-
-**Note:** Claude Code Tasks are session-scoped (they don't persist across sessions). The MD checkboxes are the durable source of truth. Claude Code Tasks are hydrated fresh each session from the MD state.
 
 ### Resume and Plan Modifications
 
@@ -453,9 +396,10 @@ When `PAIRINGBUDDY_SOLO` environment variable is `true`, the orchestrator operat
 - No "best judgment" decisions
 
 **Sequential execution**
-- On task failure, the plan execution loop must `break` (not `continue`)
+- Solo follows the Plan Loop (`pb plan next`, one task at a time). On task failure, the loop must stop (not skip ahead)
 - The orchestrator MUST NOT skip to the next task
 - Stopping ensures the human reviews the situation
+- A `[HUMAN]` task stops the Solo run. Solo does not skip it to reach the next task. When `pb plan next` refuses on a `[HUMAN]` task, Solo reports a message that names the task and says a person must do and tick it, then stops. Auto-yes does not apply to a `[HUMAN]` task: Solo never does it and never ticks its box.
 
 **Resource exhaustion before stopping**
 Before stopping a Solo session due to a failure or ambiguity (not on normal completion or token exhaustion):

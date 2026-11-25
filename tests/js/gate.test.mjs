@@ -36,7 +36,6 @@ const MESSAGES = {
   agentAllDone: (agent) => `Direct Agent call for ${agent} is denied during this run. All stages for config_change are done.`,
   noRun: (stage) => `Stage ${stage} cannot start with no run open. Use /pairingbuddy:code, which opens the run.`,
   noRunAgent: (agent) => `Agent ${workflowName(agent)} runs only inside a stage, and no run is open. Use /pairingbuddy:code, which opens the run.`,
-  solo: (workflow) => `Solo stays on the old path until T10, so ${workflow} cannot start. The run stays as it is: report pb status.`,
   noHumanHere: "No human answers under the auto policy or claude -p, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.",
 };
 
@@ -320,13 +319,13 @@ async function withSolo(fn) {
   }
 }
 
-test("Solo denies starting a new-path stage on a run it found open, and marks nothing", () =>
+test("Solo starts a new-path stage on a run it found open", () =>
   withRepo({}, (repo) =>
-    withSolo(() => assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG), MESSAGES.solo(workflowName(CONFIG))))));
+    withSolo(async () => assertAllowed(await runGate(stageCall(repo.dir, CONFIG))))));
 
-test("Solo denies a stage's restart too", () =>
+test("Solo starts a stage's restart too", () =>
   withRepo({ ledger: makeLedger({ stage: unstartedStage(CONFIG) }) }, (repo) =>
-    withSolo(() => assertDeniedWithoutWrite(repo, stageCall(repo.dir, CONFIG), MESSAGES.solo(workflowName(CONFIG))))));
+    withSolo(async () => assertAllowed(await runGate(stageCall(repo.dir, CONFIG))))));
 
 test("PAIRINGBUDDY_SOLO=false starts a stage", () =>
   withRepo({}, async (repo) => {

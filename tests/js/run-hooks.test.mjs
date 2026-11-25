@@ -229,7 +229,7 @@ describe("Stop hook", () => {
     });
   }
 
-  test("Solo stays silent, because it stays on the old path", () => {
+  test("Solo stays silent, because its own Plan Loop drives the stages", () => {
     const env = { PAIRINGBUDDY_SOLO: "true", PAIRINGBUDDY_GATE_POLICY: "auto" };
     assert.equal(stop(makeRun().dir, {}, { env }), "");
     assert.equal(stop(makeRun({ stop: STOP }).dir, {}, { env }), "");

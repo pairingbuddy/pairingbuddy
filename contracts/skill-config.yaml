@@ -39,7 +39,7 @@ skills:
           - heading: "### Bootstrap test-config.json"
           - heading: "### State File Management"
           - heading: "### Human Checkpoints"
-          - heading: "### Plan Execution Mode"
+          - heading: "### Plan Loop"
           - heading: "### Resume and Plan Modifications"
           - heading: "### Error Handling"
 

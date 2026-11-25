@@ -170,9 +170,11 @@ def script_content_from_path(path: str) -> str:
 class TestOutputFormat:
     """Tests for CLAUDE_ARGS output format (scenario 1 from new specs)."""
 
-    def test_output_format_is_json(self, script_content):
-        """CLAUDE_ARGS contains --output-format json."""
-        assert "--output-format json" in script_content, "CLAUDE_ARGS must use --output-format json"
+    def test_output_format_is_stream_json(self, script_content):
+        """CLAUDE_ARGS contains --output-format stream-json (P14)."""
+        assert "--output-format stream-json" in script_content, (
+            "CLAUDE_ARGS must use --output-format stream-json"
+        )
 
 
 class TestRenderStatusSpinner:
