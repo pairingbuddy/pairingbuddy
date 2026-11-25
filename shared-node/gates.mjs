@@ -109,6 +109,9 @@ function builtLine({ files, tests, passing }, fullAt) {
   return [more > 0 ? `Built: ${parts.join("; ")}; + ${counted(more, "more file", "more files")}: ${fullAt}` : `Built: ${parts.join("; ")}.`];
 }
 
+// A full suite that checked no lint is said so, since "all passing" alone reads as a clean build.
+const lintLine = (note) => (typeof note === "string" && note !== "" ? [`Lint: ${note.replace(/[.\s]+$/, "")}.`] : []);
+
 function reviewLine(outcomes) {
   if (!Array.isArray(outcomes)) return [];
   if (outcomes.length === 0) return ["Review: no issues."];
@@ -131,7 +134,7 @@ const trimmed = (value) => (typeof value === "string" && value.trim() !== "" ? v
 // The goal's first sentence, whole: the question box wraps it. The full question file holds the whole goal.
 function taskEndLines({ facts, fullAt }) {
   const goal = fullAt === null ? trimmed(facts.goal) : firstSentence(facts.goal);
-  return [...(goal === null ? [] : [`Goal: ${goal}`]), ...builtLine(facts, fullAt), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck, fullAt)];
+  return [...(goal === null ? [] : [`Goal: ${goal}`]), ...builtLine(facts, fullAt), ...lintLine(facts.lint), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck, fullAt)];
 }
 
 const isHeading = (line) => /^#{1,6}\s/.test(line.trim());

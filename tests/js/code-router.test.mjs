@@ -148,6 +148,14 @@ test("the bootstrap of test-config has the skill ask for a selector_template", (
   assert.match(bootstrap, /selector_template/);
 });
 
+test("the bootstrap of test-config has the skill fill lint_commands with check-only commands from the commit hook", () => {
+  const bootstrap = /### Bootstrap test-config\.json\n([\s\S]*?)\n### /.exec(skill())[1];
+
+  assert.match(bootstrap, /lint_commands/);
+  assert.match(bootstrap, /\.pre-commit-config\.yaml/);
+  assert.match(bootstrap, /never fix files/);
+});
+
 test("a config that exists is used with no question, so no run ends waiting at the bootstrap", () => {
   const bootstrap = /### Bootstrap test-config\.json\n([\s\S]*?)\n### /.exec(skill())[1];
 

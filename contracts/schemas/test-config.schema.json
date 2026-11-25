@@ -61,6 +61,12 @@
     "default_runner": {
       "type": "string",
       "description": "Runner ID to use when not specified"
+    },
+    "lint_commands": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "description": "Lint and format checks that run with the full suite, each a command with no shell, after the tests. A check that fails fails the full suite. Check-only: a command that fixes files in place is no check. Omitted, the full run records that no lint was configured"
     }
   },
   "additionalProperties": false

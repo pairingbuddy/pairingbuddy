@@ -89,6 +89,13 @@ describe("G:task-end", () => {
     assert.deepEqual(facts, { goal: "Add order_total(lines) to cart.py.", files: ["cart.py", "tests/test_cart.py"], tests: 1, passing: true });
   });
 
+  test("carries the full run's lint note, so the human sees the suite checked no lint", () => {
+    const root = makeRoot();
+    const tests = { full: { stage: SAFETY_NET, attempt: 1, passed: true, head: "abc", lint: "no lint configured" } };
+
+    assert.equal(gateFacts("G:task-end", root, atStage(SAFETY_NET, { tests })).lint, "no lint configured");
+  });
+
   const finding = (claim, extra = {}) => ({ rule: "R", severity: "medium", kind: "fix-here", claim, where: "cart.py:3", ...extra });
 
   // The safety-net round of a new feature: the code lens found one issue, its refuter upheld it, and the check kept the fix;

@@ -102,6 +102,19 @@ describe("each gate asks in plain words", () => {
     ].join("\n"));
   });
 
+  test("G:task-end says when the full suite checked no lint", () => {
+    const facts = { goal: "Add order_total.", files: ["cart.py"], tests: 1, passing: true, lint: "no lint configured" };
+
+    const { question } = gateQuestion("G:task-end", { reason: POLICY, facts });
+
+    assert.equal(question, [
+      "Goal: Add order_total.",
+      "Built: cart.py; 1 test, all passing.",
+      "Lint: no lint configured.",
+      "Is the task done?",
+    ].join("\n"));
+  });
+
   test("G:task-end gives the goal check's gist when it had something to say", () => {
     const goalCheck = [{ gist: "The README does not name order_total", outcome: "fixed" }, { gist: "Plan says cents", outcome: "left as is" }];
     const { question } = gateQuestion("G:task-end", { reason: POLICY, facts: { review: ["fixed", "left as is"], goalCheck }, fullAt: FULL_AT });
