@@ -1832,13 +1832,16 @@ let lintLoop = null;
 let lintFindings = [];
 if (!lintReport.ok) {
   // The ids are `${LINT_LENS}-<n>`: the fix loop finds the lint group by that name.
-  lintFindings = lintReport.failures.map(({ rule, text }, i) => ({
+  // The body line and the lint's remedy go with each finding, so the redraft fixes that line the way the lint asks.
+  lintFindings = lintReport.failures.map(({ rule, text, message, line }, i) => ({
     id: `${LINT_LENS}-${i + 1}`,
     rule,
     claim: text,
     where: 'pr-body.md',
     severity: 'high',
     kind: 'fix-here',
+    ...(Number.isInteger(line) ? { line } : {}),
+    ...(typeof message === 'string' ? { remedy: message } : {}),
   }));
   lintLoop = await fixLoop({
     stage,

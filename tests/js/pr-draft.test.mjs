@@ -250,6 +250,19 @@ test("failing-lint-verdict-relayed-with-exit-1-starts-the-redraft", async () => 
   assert.notEqual(result.stopReason, "step-failed", "a failing verdict is not a broken step");
 });
 
+test("redraft-finding-carries-the-lint-line-and-how-to-fix-it", async () => {
+  const failure = { rule: "expiring-text", text: ".pairingbuddy/", message: "Reword so it stays true after merge.", line: 10 };
+  const lint = { cli_exit_code: 0, cli_output: JSON.stringify({ ok: false, failures: [failure], bodyHash: "h" }) };
+  const agent = async (prompt, opts) => (isLintRunner(prompt, opts) ? lint : standIn(prompt, opts));
+
+  const { calls } = await runStage(ARGS, agent);
+
+  const fix = calls.find(({ opts }) => opts.label === "pb1 pr-draft - fix g1 r2");
+  const [finding] = JSON.parse(blockOf(fix.prompt, "findings"));
+  assert.equal(finding.line, 10, "the redraft is told which body line failed");
+  assert.equal(finding.remedy, failure.message, "the redraft is told how the lint wants it fixed");
+});
+
 test("failed-lint-spawns-no-lens-and-starts-fix", async () => {
   const lintFailed = JSON.stringify({ ok: false, failures: [{ rule: "hype", text: "seamless" }, { rule: "title-form", text: "Added stuff" }], bodyHash: "h" });
   const agent = async (prompt, opts) => (isLintRunner(prompt, opts) ? { cli_exit_code: 0, cli_output: lintFailed } : standIn(prompt, opts));
