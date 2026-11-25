@@ -54,7 +54,8 @@ Also reads `.pairingbuddy/test-config.json`:
       "timeout_seconds": "optional number (pb test kills the process group after this long, default 540)"
     }
   },
-  "default_runner": "string (runner ID to use when not specified)"
+  "default_runner": "string (runner ID to use when not specified)",
+  "lint_commands": ["optional array of strings (lint and format checks the full suite runs after the tests, check-only)"]
 }
 ```
 

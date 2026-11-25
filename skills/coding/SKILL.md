@@ -321,8 +321,9 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 3. If missing, infer from: README, CLAUDE.md, plan docs, project structure
 4. Give each test command a `selector_template`: the argument words that select one test, for example `["{test_file}::{test_function}"]` for pytest and `["--test-name-pattern=^{test_function}$", "{test_file}"]` for `node --test`. Without it `pb run open` refuses a unit opened as `feat` or `fix`, before any agent runs, and names each test command that lacks it and what to add, because RED and GREEN could not speak for one test
    - A Claude Code mod's tests (`claude plugin test .`) have no name filter, so give that entry the shipped helper instead: `"command": "node <root>/cli/mod-test-one.mjs"`, `"run_args": []`, `"selector_template": ["{test_file}", "{test_function}"]`, with `test_directory` the mod's folder and `file_pattern` `*.test.tsx`. With a file and a test name it runs the suite and exits 0 only when every row of that test (each case of a parametrized one) passed in that file, and 1 when one failed or none was found; with no arguments it is the whole suite and its exit code. It removes the Vite cache the suite leaves under `node_modules/`, which would make the tree dirty for `pb unit open`; a project that runs `claude plugin test .` directly should ignore `node_modules/` in `.gitignore`
-5. Validate inferred config with human before writing
-6. If unable to infer, ask human directly
+5. Give it `lint_commands`: the project's lint and format checks, run with the full suite after the tests, so no task ends and no pull request starts on code the commit hook or CI would refuse. Take them from what the commit hook runs (`.pre-commit-config.yaml`, `.husky/pre-commit`) or what CLAUDE.md or the README names, as check-only commands that never fix files: `ruff check .` and `ruff format --check .`, not `ruff check --fix` or `ruff format`. With none found, leave it out, and the full run records that no lint was configured
+6. Validate inferred config with human before writing
+7. If unable to infer, ask human directly
 
 ### State File Management
 

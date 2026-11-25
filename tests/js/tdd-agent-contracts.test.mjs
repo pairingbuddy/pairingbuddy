@@ -159,6 +159,16 @@ test("the test config names the selector template, in the schema and in every ag
   for (const name of ["create-test-placeholders", "implement-tests", "implement-code"]) assert.match(read(`agents/${name}.md`), /"selector_template"/);
 });
 
+test("the test config may name lint commands, each a non-empty command, and they are optional", () => {
+  const schema = schemaOf("test-config.schema.json");
+  const lint = schema.properties.lint_commands;
+
+  assert.equal(lint.type, "array");
+  assert.equal(lint.minItems, 1);
+  assert.deepEqual(lint.items, { type: "string", minLength: 1 });
+  assert.ok(!schema.required.includes("lint_commands"));
+});
+
 test("an agent is told the optional tests path may be missing, and to keep its rows", () => {
   const text = read("agents/create-test-placeholders.md");
 

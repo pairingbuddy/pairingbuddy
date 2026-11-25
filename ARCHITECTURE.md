@@ -930,7 +930,7 @@ At the start of each task, the orchestrator runs `_cleanup_state_files()` to del
 **Files that persist across tasks:**
 | File | Why It Persists |
 |------|-----------------|
-| `test-config.json` | Project-specific test runner configuration |
+| `test-config.json` | Project-specific test runner configuration; optional `lint_commands` (check-only lint and format commands) run with every full suite after the tests, so a failing lint fails the suite like a failing test: the fix loop rolls it back, a checkpoint refuses the commit, and `pb publish` finds no green suite at HEAD. With none set, `pb test --full` records `lint: "no lint configured"` (naming `.pre-commit-config.yaml` or `.husky/pre-commit` when the repo has one; they are named, never run, since a hook may fix files in place) and `G:task-end` shows it as a `Lint:` line |
 | `doc-config.json` | Documentation locations |
 | `git-config.json` | Git rules for the run (D21); never overwritten once it exists |
 | `human-guidance.json` | Persistent operational knowledge (entries with `persistent: true`) |
