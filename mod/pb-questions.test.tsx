@@ -197,3 +197,16 @@ test('the session own question stays denied where the gate denies it: only this 
 
   expect(verdict).toEqual({ decision: 'deny', reason: GATE_DENY })
 })
+
+test('pb-questions opens the page instead when its dialog cannot open, and says so, rather than reading it as Esc', async ($, on) => {
+  const rig = setupReplay(on)
+  rig.served.set(UNIT, unitWith([question(1), question(2)]))
+  const { writes } = recordReportCalls(on)
+  rig.onToolCall = (e: any) => (e.tool === 'AskUserQuestion' ? { deny: 'no one to ask in a -p run' } : undefined)
+  await start($)
+
+  const result: any = await $.command.run({ command: 'pb-questions', args: '' })
+
+  expect(writes.length, 'the questions page').toBe(1)
+  expect(result?.text).toBe(`Pairing Buddy: couldn't open the dialog; opened the page instead: ${writes[0].path}`)
+})

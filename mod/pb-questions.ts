@@ -104,8 +104,8 @@ export async function runQuestions($: EngineInterface): Promise<string> {
   let choice: string
   try {
     choice = await $.ui.ask(`${count} ${count === 1 ? 'question' : 'questions'} for you. What would you like to do?`, { options: [ANSWER_NOW, SEE_FIRST], header: 'Questions' })
-  } catch {
-    return closed
+  } catch (error) {
+    return isDismissal(error) ? closed : dialogFailed($, unit)
   }
   if (choice === ANSWER_NOW) return walk($, unit)
   if (choice === SEE_FIRST) return seePage($, unit, `${count} ${count === 1 ? 'question' : 'questions'} for you`)
@@ -125,6 +125,22 @@ async function answeredOnly($: EngineInterface, unit: UnitRecord): Promise<strin
   }
   if (choice !== SEE_ANSWERED) return 'Pairing Buddy: closed'
   return seePage($, unit, `${answered} ${answered === 1 ? 'question' : 'questions'} you answered`, '')
+}
+
+// ui.ask rejects both when the person dismisses the dialog and when it cannot open (a deny, or no one to ask in a -p run).
+// Only a dismissal is the person's Esc; anything else leaves them the page, so a dialog that never showed is not read as a no.
+const DISMISSAL = /dismiss|cancel|abort|interrupt|reject|declin/i
+const isDismissal = (error: unknown) => DISMISSAL.test(error instanceof Error ? error.message : String(error))
+
+async function dialogFailed($: EngineInterface, unit: UnitRecord): Promise<string> {
+  const path = await writeQuestionsPage($, unit)
+  if (path === null) return "Pairing Buddy: couldn't open the dialog or write the questions page"
+  try {
+    await $.process.run(['open', path])
+  } catch {
+    // The line still names the page, opened or not.
+  }
+  return `Pairing Buddy: couldn't open the dialog; opened the page instead: ${path}`
 }
 
 // Writes the questions page and opens it, in one line: what it holds, where it is, and how to answer when some are open.
