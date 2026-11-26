@@ -1027,7 +1027,7 @@ Four components are Solo-aware:
 
 ### Report
 
-Solo sessions produce `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally — header at session start, task entry after each completion, stopped entry when blocked. It is a run report only: the script no longer reads it as a PR body. The `_update_solo_report` function in the workflow pseudocode ensures report generation is a first-class workflow step.
+Solo sessions produce `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally — header at session start, task entry after each completion, stopped entry when blocked. It is a run report only: the script no longer reads it as a PR body. The exit summary is built from the run's state, not from an exit code alone: `claude -p` exit 0 with a stop in the ledger, a human gate waiting or a stage still active is reported as a failure and the script exits 1. A stop at the attempt cap shows its attempts and each rollback's first lesson line, and the summary lists every `PR: <url> branch: <name>` link from the plan MD. Smoke S9 (`tests/smoke/s9.mjs`, by hand, capped at $6) runs Solo on a two-unit plan against the recording `gh` shim and asserts draft PRs, the report, and that a forced stop leaves its commits local. The `_update_solo_report` function in the workflow pseudocode ensures report generation is a first-class workflow step.
 
 ### Observability
 

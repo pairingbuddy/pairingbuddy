@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- An unfinished Solo run can no longer look finished (Task 112): when `claude -p` exits 0 but the ledger holds a stop, a human gate still waiting or a stage still active, `solo-buddy.sh` prints `Session stopped`/`Session unfinished`, shows the failure footer and exits 1. A stop at the attempt cap lists its attempts and the first lesson line of each rollback in the stage's notes, and the exit summary lists every `PR: <url> branch: <name>` link from the plan MD. Smoke S9 (`tests/smoke/s9.mjs`, run by hand within a $6 cap) drives Solo on a two-unit plan on the recording `gh` shim, and asserts two draft PRs, the report, and that a forced stop leaves its commits local.
+
 - Solo's script no longer pushes or opens pull requests (Task 111): the `git push` and `gh pr create` steps are gone from `solo-buddy.sh`, and the publish stages own both. Every Solo PR opens as a draft, and a failed publish is retried once before the run stops. A stop pushes nothing, and units already published stand. `SOLO_BUDDY_REPORT.md` is no longer a PR body, the exit summary has no PR lines, and `test_solo_buddy_pr_creation.py` is retired. The other Solo test files stay until T12.
 
 - Every unticked `[HUMAN]` task in the pane's PLAN block and on the `/pb-plan` page is lit in the needs-you colour and reads `needs a person`; `waiting on a person` is kept for the one the plan has reached, its first unticked task (live /pb-plan: of T13's four person's tasks only Task 135 was lit, as its unit's next, though the run was still on T10).
