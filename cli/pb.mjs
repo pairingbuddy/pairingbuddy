@@ -840,7 +840,7 @@ function answeredConfigWait(path) {
   return true;
 }
 
-// The human's answer to question n of the unit's questions for you, typed or sent from /pb-answer. Only a person runs it:
+// The human's answer to question n of the unit's questions for you, typed or sent from /pb-questions. Only a person runs it:
 // the gate refuses pb human from a model.
 function humanAnswer(args) {
   const [number, ...words] = args;

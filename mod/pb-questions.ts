@@ -70,7 +70,6 @@ async function walk($: EngineInterface, unit: UnitRecord): Promise<string> {
   const questions = Array.isArray(unit.questions) ? unit.questions : []
   const open = questions.map((question, i) => ({ question, n: i + 1 })).filter(({ question }) => !isAnswered(question))
   const more = Number.isInteger(unit.questionsMore) ? Number(unit.questionsMore) : 0
-  if (open.length + more === 0) return 'Pairing Buddy: no questions for you right now'
   let answered = 0
   for (const [i, { question, n }] of open.entries()) {
     let reply: string
