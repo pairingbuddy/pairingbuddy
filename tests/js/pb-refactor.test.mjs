@@ -305,4 +305,18 @@ describe("pb checkpoint --step refactor with renamed tests", IN_PARALLEL, () => 
 
     assert.deepEqual(repo.runs().at(-1), ["tests/a.mjs::bills_two_minutes"]);
   });
+
+  test("a declared split runs each new test, and the task keeps both as closed tests", () => {
+    const repo = makeRepo({ outcomes: { "tests/a.mjs::bills_61s_as_2": 0, "tests/a.mjs::bills_59s_as_1": 0 } });
+    repo.write("tests/a.mjs", "two tests\n");
+    renamedFix(repo, testsKey(), [{ test_id: "t1", to: [{ test_function: "bills_61s_as_2" }, { test_function: "bills_59s_as_1" }] }]);
+
+    assertPasses(refactor(repo, testsKey()));
+
+    assert.deepEqual(repo.runs(), [["tests/a.mjs::bills_61s_as_2"], ["tests/a.mjs::bills_59s_as_1"]]);
+    const { perTest } = repo.ledger().tests;
+    assert.deepEqual(Object.keys(perTest).sort(), ["t1", "t1-2"]);
+    assert.equal(perTest["t1-2"].selector.test_function, "bills_59s_as_1");
+    assert.equal(perTest["t1-2"].green.done, true);
+  });
 });
