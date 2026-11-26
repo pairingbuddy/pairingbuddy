@@ -95,4 +95,30 @@ describe("pb human cut-test", IN_PARALLEL, () => {
     assert.equal(done.code, 0, done.stderr);
     assert.equal(git(repo.dir, "show", "--name-status", "--format=", "HEAD"), "D\ttests/live.mjs");
   });
+
+  test("a planned test with no evidence yet can be cut too, and an id the run never planned is refused", () => {
+    const repo = makeRepo();
+    placeholders(repo, [row("kept"), row("live", "tests/live.mjs"), row("planned", "tests/live.mjs")], []);
+
+    const cut = pb(repo, "human", "cut-test", "live", "planned", "--reason", "live run only");
+    const unknown = pb(repo, "human", "cut-test", "nope", "--reason", "x");
+
+    assert.equal(cut.code, 0, cut.stderr);
+    assert.deepEqual(repo.ledger().tests.cut.map(({ id }) => id), ["live", "planned"]);
+    assert.equal(unknown.code, 1);
+    assert.match(unknown.stderr, /no test nope/);
+  });
+
+  test("a test an earlier tests artifact planned, already dropped from the newest one, can still be recorded as cut", () => {
+    const repo = makeRepo();
+    const older = `${STAGE}.create-test-placeholders.-.r1.a${ATTEMPT}`;
+    writeFileSync(join(repo.taskDir, "artifacts", `${older}.json`), JSON.stringify({ pb_key: older, ambiguity: "", commit_subject: "x", files_changed: [], tests: [row("kept"), row("gone", "tests/live.mjs")] }));
+    placeholders(repo, [row("kept")], []);
+
+    const cut = pb(repo, "human", "cut-test", "gone", "--reason", "live run only");
+
+    assert.equal(cut.code, 0, cut.stderr);
+    assert.deepEqual(repo.ledger().tests.cut.map(({ id, selector }) => ({ id, file: selector.test_file })), [{ id: "gone", file: "tests/live.mjs" }]);
+  });
 });
+
