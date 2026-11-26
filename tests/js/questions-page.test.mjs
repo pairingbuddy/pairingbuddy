@@ -1,4 +1,4 @@
-// The questions page /pb-answer opens: every question set aside for the human, in full, with the command that answers it.
+// The questions page /pb-questions opens: every question set aside for the human, in full, with the command that answers it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -28,8 +28,8 @@ test("the page sends the human to the walk: one plain line, no per-question comm
   const html = renderQuestionsPage({ unit: { unit: "T1a", questions: [question(1), question(2)] } });
 
   const text = textOf(html);
-  assert.ok(text.includes("Answer in the session: /pb-answer. It asks them one at a time, and you can stop whenever you like. An answer reaches the next step that starts."), text);
-  assert.ok(!html.includes("/pb-answer 2"), "no command per question");
+  assert.ok(text.includes("To answer, type /pb-questions in the session and choose Answer them now. You can stop whenever you like. An answer reaches the next step that starts."), text);
+  assert.ok(!html.includes("/pb-questions 2"), "no command per question");
   assert.ok(!/<button|<script/.test(html), "no button, no script");
   assert.ok(text.includes("2. Doubt 2?"), "numbers still shown");
 });

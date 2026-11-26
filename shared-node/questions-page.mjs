@@ -1,10 +1,10 @@
-// The questions page /pb-answer writes under the reports folder and opens: every question set aside for the human on the
-// open unit, in full, and those already answered. /pb-answer list opens it to look before answering; /pb-answer walks them.
+// The questions page /pb-questions writes under the reports folder and opens: every question set aside for the human on the
+// open unit, in full, and those already answered. /pb-questions opens it on See them all first, to look before answering.
 // Pure; no I/O.
 import { escape, STYLE } from "./plan-page.mjs";
 import { openQuestions, taskTitle } from "./questions.mjs";
 
-const HOW = "Answer in the session: /pb-answer. It asks them one at a time, and you can stop whenever you like. An answer reaches the next step that starts.";
+const HOW = "To answer, type /pb-questions in the session and choose Answer them now. You can stop whenever you like. An answer reaches the next step that starts.";
 
 const QUESTION_STYLE = `.question{margin:0 0 18px}`;
 
