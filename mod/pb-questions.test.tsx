@@ -97,8 +97,9 @@ test('pb-questions opens a menu, and Answer them now walks the open questions on
 
   const result: any = await $.command.run({ command: 'pb-questions', args: '' })
 
-  expect(asked[0], 'the menu').toEqual({ question: '3 questions for you. What would you like to do?', header: 'Questions', options: MENU })
+  expect(asked[0], 'the menu').toEqual({ question: '3 questions for you. Answer them now (one at a time, stop whenever you like), or see them all first on a page?', header: 'Questions', options: MENU })
   expect(asked.slice(1).map(a => a.header)).toEqual(['Q 1 of 3', 'Q 2 of 3'])
+  expect(asked[1].question, 'each question ends by saying how to answer it').toBe('Task 1: t1 · a reviewer:\nDoubt 1?\n\nTo answer, pick a suggestion or choose "Type something" and write your answer. "Skip this one" leaves it for later; "Stop answering" ends here.')
   expect(runs.filter(r => r.argv[0] === 'node').map(r => r.argv.slice(2))).toEqual([['human', 'answer', '1', 'Drafts, always.']])
   expect(result?.text).toBe('Pairing Buddy: answered 1 · 2 still open · /pb-questions to come back')
 })
@@ -163,4 +164,50 @@ test('pb-questions with none open but some answered offers to see what was answe
   expect(asked[0]).toEqual({ question: 'No questions are open. You answered 2.', header: 'Questions', options: ['See what you answered', 'Close'] })
   expect(writes.length).toBe(1)
   expect(result?.text).toBe(`Pairing Buddy: 2 questions you answered, opened in your browser: ${writes[0].path}`)
+})
+
+// Under auto mode with a run open, the gate denies the session's own AskUserQuestion. The bottom tool.check stands in for that
+// verdict, as the engine folds the PreToolUse hook's deny into it. The menu is this plugin's own dialog, so it still opens.
+const GATE_DENY = 'Under auto mode nobody is asked while a run or unit is open: only the question pb gate eval gives reaches the human.'
+function gateDeniesQuestions(on: Function) {
+  on('tool.check', (_: unknown, e: { tool: string }) => (e.tool === 'AskUserQuestion' ? { decision: 'deny', reason: GATE_DENY } : { decision: 'allow' }))
+}
+
+test('pb-questions opens its menu and walks the questions even where the gate denies the session its own questions', async ($, on) => {
+  const rig = setupReplay(on)
+  rig.served.set(UNIT, unitWith([question(1), question(2)]))
+  gateDeniesQuestions(on)
+  recordWrites(on)
+  const runs = recordRuns(on, { exitCode: 0, stdout: JSON.stringify({ ok: true, open: 1 }) })
+  const asked = playDialogs(rig, ['Answer them now', 'Yes.', 'Stop answering'])
+  await start($)
+
+  const result: any = await $.command.run({ command: 'pb-questions', args: '' })
+
+  expect(asked.map(a => a.header)).toEqual(['Questions', 'Q 1 of 2', 'Q 2 of 2'])
+  expect(runs.filter(r => r.argv[0] === 'node').map(r => r.argv[4])).toEqual(['1'])
+  expect(result?.text).toBe('Pairing Buddy: answered 1 · 1 still open · /pb-questions to come back')
+})
+
+test('the session own question stays denied where the gate denies it: only this plugin dialogs are let through', async ($, on) => {
+  setupReplay(on)
+  gateDeniesQuestions(on)
+  await start($)
+
+  const verdict: any = await $.tool.check({ tool: 'AskUserQuestion', input: { questions: [{ question: 'Go on?', header: 'Go on', options: [] }] } })
+
+  expect(verdict).toEqual({ decision: 'deny', reason: GATE_DENY })
+})
+
+test('pb-questions opens the page instead when its dialog cannot open, and says so, rather than reading it as Esc', async ($, on) => {
+  const rig = setupReplay(on)
+  rig.served.set(UNIT, unitWith([question(1), question(2)]))
+  const { writes } = recordReportCalls(on)
+  rig.onToolCall = (e: any) => (e.tool === 'AskUserQuestion' ? { deny: 'no one to ask in a -p run' } : undefined)
+  await start($)
+
+  const result: any = await $.command.run({ command: 'pb-questions', args: '' })
+
+  expect(writes.length, 'the questions page').toBe(1)
+  expect(result?.text).toBe(`Pairing Buddy: couldn't open the dialog; opened the page instead: ${writes[0].path}`)
 })

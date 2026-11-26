@@ -28,7 +28,7 @@ test("the page sends the human to the walk: one plain line, no per-question comm
   const html = renderQuestionsPage({ unit: { unit: "T1a", questions: [question(1), question(2)] } });
 
   const text = textOf(html);
-  assert.ok(text.includes("To answer, type /pb-questions in the session and choose Answer them now. You can stop whenever you like. An answer reaches the next step that starts."), text);
+  assert.ok(text.replaceAll("&quot;", '"').includes('To answer: type /pb-questions in the Claude Code session and choose "Answer them now". You can stop at any question.'), text);
   assert.ok(!html.includes("/pb-questions 2"), "no command per question");
   assert.ok(!/<button|<script/.test(html), "no button, no script");
   assert.ok(text.includes("2. Doubt 2?"), "numbers still shown");

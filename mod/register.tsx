@@ -112,6 +112,15 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // A question this plugin asks itself (the /pb-questions dialogs, through $.ui.ask) is the person's own choice to answer, not
+  // the session asking: the gate's deny of the session's questions under auto mode does not apply. The host sets next.origin
+  // from where the call came from, so the model cannot raise a call that reads as this plugin's; the model's own reads engine.
+  on('tool.check', { tool: 'AskUserQuestion' }, ($, e, next) => {
+    const raisedBy = (next as { origin?: { plugin?: string } }).origin?.plugin
+    if (raisedBy === undefined || raisedBy === 'engine') return next(e)
+    return Promise.resolve(next(e)).then(verdict => ({ ...verdict, decision: 'allow' as const }))
+  })
+
   // A pb publish call is read for what it opened once it has run; never held, denied or changed.
   on('tool.call', { tool: 'Bash' }, ($, e, next) => {
     const result = next(e)

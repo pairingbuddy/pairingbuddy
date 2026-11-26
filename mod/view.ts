@@ -319,9 +319,9 @@ function buildingTask(ledger: Ledger): Pick<View, 'planBuilding' | 'planPublishi
 function withQuestions(view: View, unit: Inputs['unit']): View {
   const line = questionsLine(unit?.questions ?? 0)
   if (!line) return view
-  const segment: Segment = { id: 'questions', text: `${line}${STATUS_PART}/pb-questions`, tone: 'warning' }
+  const segment: Segment = { id: 'questions', text: `${line}${STATUS_PART}type /pb-questions to answer`, tone: 'warning' }
   const band = view.band.length === 0 ? view.band : [view.band[0], segment, ...view.band.slice(1)]
-  return { ...view, band, status: { ...view.status, what: [view.status.what, line].filter(Boolean).join(STATUS_PART) } }
+  return { ...view, band, status: { ...view.status, what: [view.status.what, `${line}${STATUS_PART}type /pb-questions`].filter(Boolean).join(STATUS_PART) } }
 }
 
 // What the band and the pane show for what was read.
