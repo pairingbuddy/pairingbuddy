@@ -895,6 +895,28 @@ function questionSettle(args) {
   }
 }
 
+// pb guidance record --mode auto|human --kept N --dropped M [--doubt <words>]: the curating-guidance skill's record of how it
+// carried the guidance over, kept on the open unit until pb run open moves it onto the task's run.
+function guidanceRecord(args) {
+  const usage = "usage: pb guidance record --mode auto|human --kept <n> --dropped <n> [--doubt <words>]";
+  const mode = flagValue(args, "--mode");
+  const [kept, dropped] = ["--kept", "--dropped"].map((flag) => flagValue(args, flag));
+  if (!["auto", "human"].includes(mode) || ![kept, dropped].every((n) => /^\d+$/.test(n ?? ""))) throw new UsageError(usage);
+  const root = toplevel();
+  // The doubt's words run to the next flag, so an unquoted question still arrives whole.
+  const at = args.indexOf("--doubt");
+  const after = at === -1 ? [] : args.slice(at + 1);
+  const end = after.findIndex((arg) => arg.startsWith("--"));
+  const words = end === -1 ? after : after.slice(0, end);
+  const doubt = words.join(" ").trim();
+  if (at !== -1 && doubt === "") throw new UsageError(usage);
+  const curated = { mode, kept: Number(kept), dropped: Number(dropped), ...(doubt ? { doubt } : {}) };
+  if (!existsSync(unitPathOf(root))) return { ok: true, recorded: false, reason: "no unit is open, so there is no run to report it on" };
+  const unit = JSON.parse(readFileSync(unitPathOf(root), "utf8"));
+  writeJsonAtomic(unitPathOf(root), { ...unit, curated });
+  return { ok: true, recorded: true };
+}
+
 function humanAccept(args) {
   if (args.length > 0) return acceptLegacy(...legacyArgs(args));
   const { root, path } = runLedgerPath();
@@ -2737,7 +2759,7 @@ export const VERBS = {
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
-  "plan next": planNext, "question settle": questionSettle, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "plan next": planNext, "question settle": questionSettle, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 // The human changed test-config.json while a stage ran: the attempt ends and the run waits on the human, with no stop, so
