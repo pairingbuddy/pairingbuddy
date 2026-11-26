@@ -1,7 +1,7 @@
 // The whole plan as a page: every tracer, unit and task, with the states the pane's PLAN block gives them, which shows only a
 // window of it. /pb-plan writes it under the reports folder and opens it. Pure; no I/O, no node: imports.
 import { firstUnticked, holdsBuilding, humanWords, planFocus, STATE_SEPARATOR, taskMark, unitWords } from "./plan-window.mjs";
-import { openQuestions } from "./questions.mjs";
+import { openQuestions, taskTitle } from "./questions.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 export const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
@@ -148,7 +148,7 @@ function questionsItems(open) {
   const { kept, more, count } = openQuestions(open);
   if (count === 0) return [];
   const head = `<li class="waiting">${count} ${count === 1 ? "question" : "questions"} for you, asked before the pull request</li>`;
-  const each = kept.map(({ ambiguity, task }) => `<li class="facts">${escape(`${ambiguity}${task ? ` (${task})` : ""}`)}</li>`);
+  const each = kept.map(({ ambiguity, task }) => `<li class="facts">${escape(`${ambiguity}${task ? ` (${taskTitle(task)})` : ""}`)}</li>`);
   return [head, ...each, ...(more > 0 ? [`<li class="facts">+${more} more in the report</li>`] : [])];
 }
 

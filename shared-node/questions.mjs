@@ -70,7 +70,7 @@ export function reworkTask(unitName, k, { task, ambiguity, answer }) {
     "",
     "  **Goal:** Change the work already done so it follows the human's answer to a question set aside for them.",
     "",
-    `  **The question (from ${flat(task)}):** ${flat(ambiguity)}`,
+    `  **The question (from ${taskTitle(task)}):** ${flat(ambiguity)}`,
     "",
     `  **The human's answer:** ${flat(answer)}`,
     "",

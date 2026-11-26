@@ -127,3 +127,11 @@ describe("placing the rework task in the plan", () => {
     assert.throws(() => insertTaskInUnit(plan, "T9z Gone", "- [ ] **x**\n"), /no unit T9z Gone/);
   });
 });
+
+test("a rework task names the question's task by title even when an old record kept the task's whole plan text", async () => {
+  const { reworkTask } = await import("../../shared-node/questions.mjs");
+
+  const { text } = reworkTask("T1a", 1, { task: "Task 4: four\n\n**Goal:** Lots of text.", ambiguity: "Why?", answer: "Because." });
+
+  assert.ok(text.includes("**The question (from Task 4: four):** Why?"), text);
+});
