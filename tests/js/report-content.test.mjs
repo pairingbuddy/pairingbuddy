@@ -322,6 +322,12 @@ describe("report-content", () => {
 
   // An empty or partial recording must still give a whole page: every section present, every missing value worded as unknown.
   const SECTIONS = ["NEEDS YOU", "DONE", "AT A GLANCE", "STEPS", "TESTS", "COMMITS"];
+  test("a task type auto mode passed on likely says so beside the type", () => {
+    const html = renderReport({ ledger: { task: "Add a flag", taskType: "config_change", gates: { "G:type": { source: "auto", confidence: "likely" } } } });
+
+    assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Task type<\/strong> config change \(likely, not certain: auto mode went on\)/, "the type reads as not certain");
+  });
+
   const PARTIAL_RUNS = {
     "an empty object": {},
     "a null ledger": { ledger: null },
