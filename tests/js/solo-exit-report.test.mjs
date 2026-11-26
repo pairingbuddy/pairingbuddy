@@ -44,8 +44,9 @@ test("exit-zero-with-needs-human-in-ledger-reports-failure", () => {
 });
 
 test("exit-zero-with-unfinished-stage-reports-failure", () => {
+  const unfinishedStatus = "active"; // the ledger status under test: a stage that never finished (the sibling tests use "running")
   const ledger = {
-    stage: { name: "implement-tests", status: "active", attempt: 1 },
+    stage: { name: "implement-tests", status: unfinishedStatus, attempt: 1 },
     stop: null,
   };
 
@@ -56,8 +57,8 @@ test("exit-zero-with-unfinished-stage-reports-failure", () => {
 
   assert.match(
     result.stdout,
-    /^✗ Session unfinished: stage implement-tests is active$/m,
-    "the summary must carry the failure line that names the unfinished stage and its status",
+    new RegExp(`^✗ Session unfinished: stage implement-tests is ${unfinishedStatus}$`, "m"),
+    "the summary must carry the failure line that names the unfinished stage and the ledger status it is stuck in",
   );
   assert.doesNotMatch(result.stdout, /✓ Session complete/, "a run with an unfinished stage must not look complete");
 });
