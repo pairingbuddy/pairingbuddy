@@ -345,6 +345,17 @@
           "seq": { "type": "integer", "minimum": 0 }
         }
       }
+    },
+    "guidance": {
+      "description": "How the curating-guidance skill left human-guidance.json before this run opened: mode auto when nobody was asked (auto mode, claude -p, or nothing changed), human when the human approved; kept and dropped count the entries. May be absent.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "kept", "dropped"],
+      "properties": {
+        "mode": { "enum": ["auto", "human"] },
+        "kept": { "type": "integer", "minimum": 0 },
+        "dropped": { "type": "integer", "minimum": 0 }
+      }
     }
   }
 }

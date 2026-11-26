@@ -175,7 +175,7 @@ function assertPublishable(root) {
 }
 
 // Claims run/task and writes the first ledger; a failed write removes the claim.
-function claimRun({ root, kind, taskType, task, configHash, plan = { path: "", title: "" } }) {
+function claimRun({ root, kind, taskType, task, configHash, plan = { path: "", title: "" }, guidance = null }) {
   const runRoot = ensureRunRoot(root);
   const dir = join(runRoot, "task");
   // A non-recursive mkdir is the claim: exactly one concurrent opener wins, and an existing
@@ -197,6 +197,7 @@ function claimRun({ root, kind, taskType, task, configHash, plan = { path: "", t
       stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null },
       stages: [], gates: {}, tests: {}, commits: [], retries: {},
       spend: { agents: 0, tokens: 0 }, stop: null, needsHuman: null,
+      ...(guidance ? { guidance } : {}),
     });
   } catch (e) {
     rmSync(dir, { recursive: true, force: true });
@@ -283,13 +284,40 @@ function runOpen(args) {
   const planned = hasPlan ? planTask(planPath) : null;
   const task = planned ? planned.task : storedTask(root);
 
-  const dir = claimRun({ root, kind, taskType, task, configHash, plan: planned?.plan });
+  const curated = kind === "code" ? curatedGuidance(root) : null;
+  const dir = claimRun({ root, kind, taskType, task, configHash, plan: planned?.plan, guidance: curated && { mode: curated.mode, kept: curated.kept, dropped: curated.dropped } });
   // A failed write is a disk error that leaves the run unnamed; `pb plan next` then reads its ticked box as hand-ticked
   // and stops, which is the safe side.
   if (planned?.namedUnit) writeJsonAtomic(unitPathOf(root), planned.namedUnit);
+  if (curated) {
+    // A doubt the curation could not settle without a person waits on the unit with the gates' doubts, so the run goes on.
+    if (typeof curated.doubt === "string" && curated.doubt.trim() !== "" && existsSync(unitPathOf(root))) {
+      deferQuestionsInUnit(root, { gate: "guidance", task, doubts: [{ step: "guidance carried over", ambiguity: curated.doubt.trim() }] });
+    }
+    dropCurated(root);
+  }
   // The short pb a human's ! line names from here on.
   ensureShim(root);
   return { ok: true, kind, branch, runDir: dir };
+}
+
+// What the curating-guidance skill did before this run opened, from human-guidance.json's `curated`, or null when it left
+// nothing usable there. Read only: a bad record is ignored, never a refusal, since the guidance itself is still there.
+function curatedGuidance(root) {
+  try {
+    const curated = JSON.parse(readFileSync(join(root, ".pairingbuddy", "human-guidance.json"), "utf8"))?.curated;
+    const count = (x) => Number.isInteger(x) && x >= 0;
+    return (curated?.mode === "auto" || curated?.mode === "human") && count(curated.kept) && count(curated.dropped) ? curated : null;
+  } catch {
+    return null;
+  }
+}
+
+// The run now holds the record, so the file gives it up: the next task's run never reads this one's.
+function dropCurated(root) {
+  const path = join(root, ".pairingbuddy", "human-guidance.json");
+  const { curated: _taken, ...file } = JSON.parse(readFileSync(path, "utf8"));
+  writeJsonAtomic(path, file);
 }
 
 // Validates spike-config.json and spike-questions.json and trims them to what the run keeps: the config's goal, code

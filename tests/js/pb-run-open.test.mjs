@@ -846,3 +846,42 @@ test("open-lets-a-chore-run-without-selectors", (t) => {
 
   assert.equal(open(root).status, 0);
 });
+
+// The curating-guidance skill leaves what it did in human-guidance.json's `curated`, since no run is open yet when it runs.
+// The run takes it over, so the task's report can say what happened to the guidance.
+const guidancePath = (root) => join(root, ".pairingbuddy", "human-guidance.json");
+const ENTRY = { agent: "x", timestamp: "2026-11-26T10:00:00Z", context: "c", feedback: "Use node --test", persistent: true };
+
+test("run open records the guidance curation on the ledger", (t) => {
+  const dir = makeRepo(t);
+  writeFileSync(guidancePath(dir), `${JSON.stringify({ guidance: [ENTRY], curated: { mode: "auto", kept: 1, dropped: 2 } })}\n`);
+
+  const r = open(dir);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(readLedger(ledgerPath(dir)).guidance, { mode: "auto", kept: 1, dropped: 2 });
+});
+
+test("run open takes the curation record out of human-guidance.json and leaves the entries", (t) => {
+  const dir = makeRepo(t);
+  writeFileSync(guidancePath(dir), `${JSON.stringify({ guidance: [ENTRY], curated: { mode: "auto", kept: 1, dropped: 0 } })}\n`);
+
+  open(dir);
+
+  assert.deepEqual(JSON.parse(readFileSync(guidancePath(dir), "utf8")), { guidance: [ENTRY] }, "the next run never reads this task's record");
+});
+
+test("a doubt the curation left for the human becomes one of the open unit's questions for you", (t) => {
+  const dir = makeRepo(t);
+  mkdirSync(join(dir, ".pairingbuddy", "run"), { recursive: true });
+  openUnit(dir, "chore");
+  writeFileSync(join(dir, ".pairingbuddy", "task.json"), `${JSON.stringify({ description: "Task 4: Baseline\n\nGoal: more" })}\n`);
+  const doubt = "Entries 1 and 2 contradict: which test runner holds?";
+  writeFileSync(guidancePath(dir), `${JSON.stringify({ guidance: [ENTRY], curated: { mode: "auto", kept: 1, dropped: 0, doubt } })}\n`);
+
+  const r = open(dir);
+
+  assert.equal(r.status, 0, r.stderr);
+  const { questions } = JSON.parse(readFileSync(unitPath(dir), "utf8"));
+  assert.deepEqual(questions, [{ gate: "guidance", task: "Task 4: Baseline", step: "guidance carried over", ambiguity: doubt }]);
+});
