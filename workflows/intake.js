@@ -516,6 +516,15 @@ const LENS_SCHEMA = {
       ],
       "description": "Only a question a human must answer before the work can be trusted, phrased as a question, in plain words to the human, or null. It stops the gate. What you could not read or check goes in not_checked, and an explanation of a finding goes in the finding, never here"
     },
+    "ambiguity_options": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Up to three short answers you suggest for your ambiguity, which the human may pick instead of typing one. Leave it out when you have no ambiguity or no likely answer"
+    },
     "not_checked": {
       "type": [
         "string",
@@ -611,6 +620,15 @@ const REFUTER_SCHEMA = {
         "null"
       ],
       "description": "Only a question a human must answer before the work can be trusted, phrased as a question about the finding, in plain words to the human, or null. It stops the gate. What you could not read or check goes in not_checked, and an explanation of the verdict is not a question, so it never goes here"
+    },
+    "ambiguity_options": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Up to three short answers you suggest for your ambiguity, which the human may pick instead of typing one. Leave it out when you have no ambiguity or no likely answer"
     },
     "not_checked": {
       "type": [
