@@ -161,6 +161,8 @@ LEDGER_TEXT_CLIP=200
 NOTES_DIR=".pairingbuddy/run/task/notes"
 ROLLBACK_HEADING="## Rollback"
 ATTEMPT_CAP_CODE="attempt-cap"
+# Matches a plan line "PR: <url> branch: <name>" and captures the url
+PR_LINE_PATTERN='^PR: \([^ ]*\).*$'
 EXIT_UNFINISHED=1
 NEEDS_HUMAN_GATE=""
 UNFINISHED_STAGE=""
@@ -427,6 +429,16 @@ read_rollback_lessons() {
     "
 }  # end read_rollback_lessons
 
+# Print the pull requests block: one "- <url>" line per "PR: <url> branch: <name>" line of the plan.
+# Prints nothing when the plan holds no such line.
+read_pr_links() {
+    local links
+    links=$(sed -n "s/${PR_LINE_PATTERN}/- \\1/p" "$PLAN_FILE")
+    if [[ -n "$links" ]]; then
+        printf 'pull requests:\n%s' "$links"
+    fi
+}  # end read_pr_links
+
 print_exit_summary() {
     local output
     if session_unfinished; then
@@ -460,10 +472,9 @@ ${lessons}"
         fi
     fi
     local pr_links
-    pr_links=$(sed -n 's/^PR: \([^ ]*\).*$/- \1/p' "$PLAN_FILE")
+    pr_links=$(read_pr_links)
     if [[ -n "$pr_links" ]]; then
         output="${output}
-pull requests:
 ${pr_links}"
     fi
     if [[ -n "${REPORT_FILE:-}" ]] && [[ -f "${REPORT_FILE}" ]]; then
