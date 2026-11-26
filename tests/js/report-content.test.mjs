@@ -261,6 +261,19 @@ describe("report-content", () => {
     assert.ok(section.indexOf("no lines give zero") < section.indexOf("a bad line is refused"), "a scenario's tests sit under it, before the next scenario");
   });
 
+  test("report-final-checks: the final checks that stand are listed with their commands, as checks left to run live", async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "done" });
+    const key = "code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1";
+    const finalChecks = [{ check_id: "smokes", description: "S1 to S6 pass live within their caps", command: "node tests/smoke/run.mjs S1-S6", why: "about $21" }];
+    const calls = [...(input.calls ?? []), { input: { pb_key: key, ambiguity: "", scenarios: [], final_checks: finalChecks } }];
+
+    const section = sectionOf(renderReport({ ...input, calls }), "FINAL CHECKS");
+
+    assert.ok(section.includes("S1 to S6 pass live within their caps"), section);
+    assert.ok(section.includes("node tests/smoke/run.mjs S1-S6"), "its command");
+    assert.ok(section.includes("not built as tests"), "says why they are no tests");
+  });
+
   test("report-built: every changed file is listed", async () => {
     const input = await recordedReportInput("probe-2", { outcome: "done" });
     const changed = Array.from({ length: 7 }, (_, i) => `src/file_${i + 1}.py`);
