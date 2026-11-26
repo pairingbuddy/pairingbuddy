@@ -158,6 +158,8 @@ FINAL_RENDERED=""
 STOP_REASON=""
 LEDGER_FILE=".pairingbuddy/run/task/ledger.json"
 LEDGER_TEXT_CLIP=200
+NOTES_DIR=".pairingbuddy/run/task/notes"
+ROLLBACK_HEADING="## Rollback"
 ATTEMPT_CAP_CODE="attempt-cap"
 EXIT_UNFINISHED=1
 NEEDS_HUMAN_GATE=""
@@ -406,6 +408,25 @@ print_header() {
     printf '%s\n\n' "$header"
 }
 
+# Print the lessons block: the first text line under each rollback heading in the active stage's notes file.
+# Prints nothing when the ledger names no stage or the stage has no notes file yet.
+read_rollback_lessons() {
+    read_state_line "$LEDGER_FILE" "
+        const stageName = state.stage && state.stage.name;
+        const notesFile = '${NOTES_DIR}/' + stageName + '.md';
+        const fs = require('fs');
+        const lessons = [];
+        if (stageName && fs.existsSync(notesFile)) {
+            let afterHeading = false;
+            for (const line of fs.readFileSync(notesFile, 'utf8').split('\\n')) {
+                if (line.startsWith('${ROLLBACK_HEADING}')) { afterHeading = true; continue; }
+                if (afterHeading && line.trim()) { lessons.push('- ' + clip(line, ${LEDGER_TEXT_CLIP})); afterHeading = false; }
+            }
+        }
+        if (lessons.length) console.log('lessons:\\n' + lessons.join('\\n'));
+    "
+}  # end read_rollback_lessons
+
 print_exit_summary() {
     local output
     if session_unfinished; then
@@ -431,19 +452,8 @@ print_exit_summary() {
     if [[ -n "$attempts_line" ]]; then
         output="${output}
 ${attempts_line}"
-        # Each lesson is the first text line under a "## Rollback" heading in the stage's notes file
         local lessons
-        lessons=$(read_state_line "$LEDGER_FILE" "
-            const notesFile = '.pairingbuddy/run/task/notes/' + state.stage.name + '.md';
-            const lines = require('fs').readFileSync(notesFile, 'utf8').split('\\n');
-            const lessons = [];
-            let afterHeading = false;
-            for (const line of lines) {
-                if (/^## Rollback/.test(line)) { afterHeading = true; continue; }
-                if (afterHeading && line.trim()) { lessons.push('- ' + clip(line, ${LEDGER_TEXT_CLIP})); afterHeading = false; }
-            }
-            if (lessons.length) console.log('lessons:\\n' + lessons.join('\\n'));
-        ")
+        lessons=$(read_rollback_lessons)
         if [[ -n "$lessons" ]]; then
             output="${output}
 ${lessons}"
