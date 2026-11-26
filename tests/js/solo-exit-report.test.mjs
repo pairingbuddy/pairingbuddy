@@ -24,7 +24,23 @@ test("exit-zero-with-stop-in-ledger-reports-failure", () => {
 });
 
 test("exit-zero-with-needs-human-in-ledger-reports-failure", () => {
-  assert.fail("not implemented: exit-zero-with-needs-human-in-ledger-reports-failure");
+  const ledger = {
+    stage: { name: "code-scenarios", status: "running", attempt: 1 },
+    stop: null,
+    needsHuman: { gate: "approve-scenarios", seq: 4 },
+  };
+
+  const { result } = runSolo({
+    stubs: () => ({ claude: "exit 0" }),
+    files: { ".pairingbuddy/run/task/ledger.json": ledger },
+  });
+
+  assert.match(
+    result.stdout,
+    /^✗ .*approve-scenarios/m,
+    "the summary must carry a failure line that names the gate waiting on a human",
+  );
+  assert.doesNotMatch(result.stdout, /✓ Session complete/, "a run waiting on a human must not look complete");
 });
 
 test("exit-zero-with-unfinished-stage-reports-failure", () => {
