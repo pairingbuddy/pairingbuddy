@@ -96,13 +96,16 @@ test("exit-zero-with-finished-ledger-still-complete", () => {
 });
 
 test("attempt-cap-stop-shows-attempt-count", () => {
-  const maxAttempts = 5; // the cap in contracts/lenses.json
-  const stage = "code-scenarios";
-  const rollbacks = Array.from({ length: maxAttempts }, (_, i) => ({ key: `${stage}.fix.g1.r1.a${i + 1}` }));
   const ledger = {
-    stage: { name: stage, status: "running", attempt: 1 },
-    stop: { reason: `attempt-cap: stage ${stage} rolled back ${maxAttempts} fix attempts, its cap of ${maxAttempts}`, seq: 9, code: "attempt-cap" },
-    fixes: { rollbacks },
+    stage: { name: "code-scenarios", status: "running", attempt: 1 },
+    stop: { reason: "attempt-cap: stage code-scenarios rolled back 3 fix attempts, its cap of 5", seq: 9, code: "attempt-cap" },
+    fixes: {
+      rollbacks: [
+        { key: "code-scenarios.fix.g1.r1.a1" },
+        { key: "code-scenarios.fix.g1.r1.a2" },
+        { key: "code-scenarios.fix.g1.r1.a3" },
+      ],
+    },
   };
 
   const { result } = runSolo({
@@ -112,8 +115,8 @@ test("attempt-cap-stop-shows-attempt-count", () => {
 
   assert.match(
     result.stdout,
-    /^fixes: 5 tried, undone: 5 of 5 allowed$/m,
-    "the summary must show the attempts the stage made against its cap",
+    /^✗ Session stopped: attempt-cap: stage code-scenarios rolled back 3 fix attempts, its cap of 5\nfixes: 3 tried, undone: 3 of 5 allowed$/m,
+    "the summary must show the stop line, then the attempts made (3, from the rollbacks) against the cap (5, from the stop reason)",
   );
 });
 
