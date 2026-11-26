@@ -533,6 +533,24 @@ test("independent-unit-branches-from-base-with-earlier-pr-open", () => {
   assert.equal(unit.tracer, "Tracer 1: Skeleton", "unit.tracer is the plan tracer");
 });
 
+test("the-plan-key-fills-the-key-placeholder-and-key-flag-overrides-it", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  writeBranchTemplate(repo, "{key}-{slug}");
+  publishPlan(repo, ["# Shop", "", "**Key:** ABC-12", "", ...tracerPlan("Tracer 1: Skeleton", planUnit("First", { tasks: ["- [ ] **One**"] }))]);
+
+  const result = openPlanUnit(repo, "first");
+
+  assert.equal(result.code, 0, `pb unit open --plan ${exitMessage(result)}`);
+  assert.equal(gitIn(repo, "rev-parse", "--abbrev-ref", "HEAD"), "ABC-12-first", "the plan's key names the branch");
+
+  const other = makeRepo({ openTask: false, remote: true });
+  writeBranchTemplate(other, "{key}-{slug}");
+  publishPlan(other, ["# Shop", "", "**Key:** ABC-12", "", ...tracerPlan("Tracer 1: Skeleton", planUnit("First", { tasks: ["- [ ] **One**"] }))]);
+  const overridden = pbUnitOpen(other, installGhShim().env(), "--type", "feat", "--slug", "first", "--plan", "docs/plan.md", "--key", "XYZ-9");
+  assert.equal(overridden.code, 0, `pb unit open --key ${exitMessage(overridden)}`);
+  assert.equal(gitIn(other, "rev-parse", "--abbrev-ref", "HEAD"), "XYZ-9-first", "--key wins over the plan's key");
+});
+
 test("dependent-unit-with-open-pr-stacks-and-records-stackedOn", () => {
   const repo = makeRepo({ openTask: false, remote: true });
   publishPlan(repo, tracerPlan(

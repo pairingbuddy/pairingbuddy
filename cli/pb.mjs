@@ -225,17 +225,17 @@ function planTask(plan) {
 
 // Reads the plan and steps it, refusing on format problems; the stop is returned for the caller to act on.
 function planStepOf(plan) {
-  const { root, units, problems, context } = readPlanContext(plan);
+  const { root, units, problems, key, context } = readPlanContext(plan);
   refusePlanProblems(problems);
   const { next, stop } = planStep(units, context);
-  return { root, units, context, next, stop };
+  return { root, units, key, context, next, stop };
 }
 
 // planStepOf that also refuses on a stop: the shared start of run open and unit open.
 function steppedPlan(plan) {
-  const { root, units, context, next, stop } = planStepOf(plan);
+  const { root, units, key, context, next, stop } = planStepOf(plan);
   if (stop) throw new Refusal(planStopMessage(root, plan, stop));
-  return { next, context, units };
+  return { next, context, units, key };
 }
 
 // Refuses when the open unit cannot take the plan's next task: it is a different unit, or it is fresh but already holds
@@ -832,8 +832,8 @@ function readPlan(plan) {
 // The plan read under the repo toplevel with its parsed units and problems, and the context planStep and unitStates take.
 function readPlanContext(plan) {
   const { root, realPlan, text } = readPlan(plan);
-  const { units, problems } = parsePlan(text);
-  return { root, units, problems, context: { plan: relative(realpathSync(root), realPlan), openUnit: readOpenUnit(root) } };
+  const { units, problems, key } = parsePlan(text);
+  return { root, units, problems, key, context: { plan: relative(realpathSync(root), realPlan), openUnit: readOpenUnit(root) } };
 }
 
 // Refuses, writing nothing, when the plan has format problems.
@@ -2330,7 +2330,8 @@ function unitOpen(args) {
   const planned = plan === null ? null : steppedPlan(plan);
   if (planned && !planned.next) throw new Refusal(`the plan ${plan} has no task left, nothing was touched`);
   const gitConfig = loadGitConfigOrRefuse(root);
-  const key = keyFlag;
+  // --key wins over the plan's Key line.
+  const key = keyFlag ?? planned?.key ?? null;
   const branch = chosen ?? renderBranchOrRefuse(gitConfig.branch_template, { type, slug, ...(key ? { key } : {}) });
   assertUsableBranch(root, gitConfig, branch);
   if (branchExists(root, branch)) throw new Refusal(`branch ${branch} already exists; choose another name`);
