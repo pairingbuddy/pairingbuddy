@@ -138,3 +138,33 @@ test('pb-answer walks the open questions one dialog at a time and stops when tol
   expect(pbRuns.map(r => r.argv.slice(2))).toEqual([['human', 'answer', '1', 'Drafts, always.']])
   expect(result?.text).toMatch(/^Pairing Buddy: answered 1 · 2 left · page: .*-questions\.html$/)
 })
+
+test('pb-answer stops the walk at once when a dialog is dismissed, and records nothing more', async ($, on) => {
+  const rig = setupReplay(on)
+  rig.served.set(UNIT, unitWith([question(1), question(2), question(3)]))
+  recordWrites(on)
+  const runs = recordRuns(on, { exitCode: 0, stdout: JSON.stringify({ ok: true, open: 2 }) })
+  const asked = playDialogs(rig, ['Yes.', null, 'never asked'])
+  await start($)
+
+  const result: any = await $.command.run({ command: 'pb-answer', args: '' })
+
+  expect(asked.length, 'no dialog after the dismissed one').toBe(2)
+  expect(runs.filter(r => r.argv[0] === 'node').map(r => r.argv[4])).toEqual(['1'])
+  expect(result?.text).toMatch(/^Pairing Buddy: answered 1 · 2 left · page: /)
+})
+
+test('pb-answer skips a question when told and goes on to the next, leaving the skipped one open', async ($, on) => {
+  const rig = setupReplay(on)
+  rig.served.set(UNIT, unitWith([question(1), question(2, { answer: 'Done.', answeredAt: 't' }), question(3)]))
+  recordWrites(on)
+  const runs = recordRuns(on, { exitCode: 0, stdout: JSON.stringify({ ok: true, open: 1 }) })
+  const asked = playDialogs(rig, ['Skip this one', 'Only on main.'])
+  await start($)
+
+  const result: any = await $.command.run({ command: 'pb-answer', args: '' })
+
+  expect(asked.map(a => a.header), 'only open questions, counted among themselves').toEqual(['Q 1 of 2', 'Q 2 of 2'])
+  expect(runs.filter(r => r.argv[0] === 'node').map(r => r.argv.slice(4))).toEqual([['3', 'Only on main.']])
+  expect(result?.text).toMatch(/^Pairing Buddy: answered 1 · 1 left · page: /)
+})
