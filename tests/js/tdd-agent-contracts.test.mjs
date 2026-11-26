@@ -21,7 +21,7 @@ const AGENTS = [
   { name: "implement-code", paths: ["tests", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/code-state.json", legacySchema: "code-state.schema.json" },
   { name: "identify-test-issues", paths: ["tests", "test_config", "human_guidance"], fields: ISSUE_FIELDS, legacy: ".pairingbuddy/test-issues.json", legacySchema: "issues.schema.json" },
   { name: "identify-code-issues", paths: ["code", "test_config", "human_guidance"], fields: ISSUE_FIELDS, legacy: ".pairingbuddy/code-issues.json", legacySchema: "issues.schema.json" },
-  { name: "refactor-tests", paths: ["issues", "tests", "test_config", "human_guidance"], fields: REFACTOR_FIELDS, legacy: ".pairingbuddy/files-changed.json", legacySchema: "files-changed.schema.json" },
+  { name: "refactor-tests", paths: ["issues", "tests", "test_config", "human_guidance"], fields: REFACTOR_FIELDS, optional: ["renamed"], legacy: ".pairingbuddy/files-changed.json", legacySchema: "files-changed.schema.json" },
   { name: "refactor-code", paths: ["issues", "tests", "test_config", "human_guidance"], fields: REFACTOR_FIELDS, legacy: ".pairingbuddy/files-changed.json", legacySchema: "files-changed.schema.json" },
   { name: "verify-test-coverage", paths: ["scenarios", "tests", "test_config", "human_guidance"], fields: ["pb_key", "ambiguity", "notes", ...COVERAGE_FIELDS], legacy: ".pairingbuddy/coverage-report.json", legacySchema: "coverage-report.schema.json" },
 ];
