@@ -276,3 +276,67 @@ describe("pb checkpoint --step refactor", IN_PARALLEL, () => {
     assertRefused(repo, repo.head(), refactor(repo, key), /names no test/);
   });
 });
+
+// A refactor-tests fix may rename a test or split it in two. It declares that in its return's `renamed`, so pb selects
+// each test by its new name from then on. Without it, the old name selects nothing and the fix is refused.
+describe("pb checkpoint --step refactor with renamed tests", IN_PARALLEL, () => {
+  const renamedFix = (repo, key, renamed, files = ["tests/a.mjs"]) => writeArtifact(repo, key, { pb_key: key, ambiguity: "", commit_subject: "test: name the rule", files_changed: files, renamed });
+
+  test("a declared rename commits, and the test runs by its new name", () => {
+    const repo = makeRepo({ outcomes: { "tests/a.mjs::bills_two_minutes": 0 } });
+    repo.write("tests/a.mjs", "renamed test\n");
+    renamedFix(repo, testsKey(), [{ test_id: "t1", to: [{ test_function: "bills_two_minutes" }] }]);
+
+    const done = assertPasses(refactor(repo, testsKey()));
+
+    assert.equal(done.committed, true);
+    assert.deepEqual(repo.runs(), [["tests/a.mjs::bills_two_minutes"]], "the new name selects the test");
+  });
+
+  test("a later fix group runs the renamed test by its new name too", () => {
+    const repo = makeRepo({ outcomes: { "tests/a.mjs::bills_two_minutes": 0 } });
+    repo.write("tests/a.mjs", "renamed test\n");
+    renamedFix(repo, testsKey(), [{ test_id: "t1", to: [{ test_function: "bills_two_minutes" }] }]);
+    assertPasses(refactor(repo, testsKey()));
+    repo.write("src.mjs", "cleaner code\n");
+    fixed(repo, codeKey("t1", 2), ["src.mjs"]);
+
+    assertPasses(refactor(repo, codeKey("t1", 2)));
+
+    assert.deepEqual(repo.runs().at(-1), ["tests/a.mjs::bills_two_minutes"]);
+  });
+
+  test("a declared split runs each new test, and the task keeps both as closed tests", () => {
+    const repo = makeRepo({ outcomes: { "tests/a.mjs::bills_61s_as_2": 0, "tests/a.mjs::bills_59s_as_1": 0 } });
+    repo.write("tests/a.mjs", "two tests\n");
+    renamedFix(repo, testsKey(), [{ test_id: "t1", to: [{ test_function: "bills_61s_as_2" }, { test_function: "bills_59s_as_1" }] }]);
+
+    assertPasses(refactor(repo, testsKey()));
+
+    assert.deepEqual(repo.runs(), [["tests/a.mjs::bills_61s_as_2"], ["tests/a.mjs::bills_59s_as_1"]]);
+    const { perTest } = repo.ledger().tests;
+    assert.deepEqual(Object.keys(perTest).sort(), ["t1", "t1-2"]);
+    assert.equal(perTest["t1-2"].selector.test_function, "bills_59s_as_1");
+    assert.equal(perTest["t1-2"].green.done, true);
+  });
+
+  test("an undeclared rename is refused, and the refusal tells the fixer to declare it", () => {
+    const repo = makeRepo({ outcomes: { "tests/a.mjs::bills_two_minutes": 0 } });
+    const seed = repo.head();
+    repo.write("tests/a.mjs", "renamed test\n");
+    fixed(repo, testsKey(), ["tests/a.mjs"]);
+
+    const result = refactor(repo, testsKey());
+
+    assertRefused(repo, seed, result, /renamed or split a test, declare it in `renamed`/);
+  });
+
+  test("a rename of a test the task does not have is refused", () => {
+    const repo = makeRepo();
+    const seed = repo.head();
+    repo.write("tests/a.mjs", "renamed test\n");
+    renamedFix(repo, testsKey(), [{ test_id: "t9", to: [{ test_function: "bills_two_minutes" }] }]);
+
+    assertRefused(repo, seed, refactor(repo, testsKey()), /renames test t9, which is no closed test of this task/);
+  });
+});

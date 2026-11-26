@@ -38,6 +38,7 @@ import { stageRun } from "../shared-node/plain-names.mjs";
 import { needsTestSelection } from "../shared-node/stage-graph.mjs";
 import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, standingScenariosKey, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
+import { declaredRenames, splitId } from "../shared-node/test-renames.mjs";
 import { ConfigHashChanged, TestRunRefused, collectedNoTest, cycleRun, failedRunsText, ranNoTest, fullSuitePlans, hasSelector, lintNote, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
@@ -1126,7 +1127,7 @@ function assertSelectable(config, rows) {
 
 function checkedRows({ step, key, root, path, ledger }) {
   const config = readTestConfig(root, ledger.configHash);
-  const rows = testRows(config, artifactsDirOf(root), ledger.stage);
+  const rows = testRows(config, artifactsDirOf(root), ledger.stage, ledger.tests?.renamed);
   assertRowsKept(rows, ledger);
   orStop(path, { step, key }, NO_SELECTOR_TEMPLATE, () => assertSelectable(config, rows));
   return { rows, testDirectories: [...new Set(rows.map((row) => testDirectoryOf(config, row)))] };
@@ -1172,7 +1173,7 @@ function assertCycleOrder(step, id, { red, green, covered }) {
 }
 
 function selectedRow({ root, ledger }, config, id) {
-  const row = testRows(config, artifactsDirOf(root), ledger.stage).find(({ test_id: rowId }) => rowId === id);
+  const row = testRows(config, artifactsDirOf(root), ledger.stage, ledger.tests?.renamed).find(({ test_id: rowId }) => rowId === id);
   if (row === undefined) throw new Refusal(`test ${id} is not in the tests artifact, so there is nothing to select`);
   return row;
 }
@@ -1281,7 +1282,7 @@ async function requireClosedTestsPass({ root, path, ledger }, config, rows, key 
 // A GREEN must not break a test an earlier cycle closed: its own test passing says nothing of theirs. They run as a
 // refactor's do, each by its own selector, and a failure names the test, so implement-code fixes it in its next try.
 async function requireEarlierTestsPass(context, config, id) {
-  const rows = testRows(config, artifactsDirOf(context.root), context.ledger.stage).filter(({ test_id: rowId }) => rowId !== id);
+  const rows = testRows(config, artifactsDirOf(context.root), context.ledger.stage, context.ledger.tests?.renamed).filter(({ test_id: rowId }) => rowId !== id);
   try {
     await requireClosedTestsPass(context, config, rows, "closed");
   } catch (e) {
@@ -1296,12 +1297,40 @@ async function refactorCheckpoint(context) {
   const { item: id, role } = parseKey(key);
   if (!perTestOf(ledger, id).green?.done) throw new Refusal(`test ${id} has no GREEN, so its cycle has nothing to refactor yet`);
   const config = readTestConfig(root, ledger.configHash);
-  const rows = testRows(config, artifactsDirOf(root), ledger.stage);
+  const declared = role === REFACTOR_TESTS_ROLE ? declaredRenames(readReturnOf(root, key)) : {};
+  const unknown = Object.keys(declared).find((renamedId) => !isClosedCycle(perTestOf(ledger, renamedId)));
+  if (unknown !== undefined) throw new Refusal(`the fix renames test ${unknown}, which is no closed test of this task, so nothing was committed. Only a test whose cycle closed can be renamed`);
+  const renamed = { ...ledger.tests?.renamed, ...declared };
+  const rows = testRows(config, artifactsDirOf(root), ledger.stage, renamed);
   const plan = planFor(context, { testDirectories: [...new Set(rows.map((row) => testDirectoryOf(config, row)))], role });
   if (plan === null) return noChange(context);
   const head = headOf(root);
-  await requireClosedTestsPass(context, config, rows);
-  return commitPlan(context, plan, head);
+  const withRenames = (current) => renamedLedger(current, declared, rows);
+  try {
+    await requireClosedTestsPass({ ...context, ledger: withRenames(ledger) }, config, rows);
+  } catch (e) {
+    if (e instanceof Refusal && role === REFACTOR_TESTS_ROLE) throw new Refusal(`${e.message}\n\n${UNDECLARED_RENAME}`);
+    throw e;
+  }
+  return commitPlan(context, plan, head, () => withRenames);
+}
+
+// pb selects each test by the name it recorded, so a test the fix renamed selects nothing until the return says so.
+const UNDECLARED_RENAME = "If this fix renamed or split a test, declare it in `renamed` in your return: the test_id and each new test_function (and test_file, when it moved), so pb selects it by its new name.";
+
+// A fix's own return, which planCommit has already read and checked.
+const readReturnOf = (root, key) => JSON.parse(readFileSync(join(artifactsDirOf(root), `${key}.json`), "utf8"));
+
+// The ledger once a fix's renames hold: each renamed test keeps its evidence under its new selector, and each extra name
+// of a split gets a copy of it, so the task's closed tests are still every test it closed.
+function renamedLedger(ledger, declared, rows) {
+  if (Object.keys(declared).length === 0) return ledger;
+  const perTest = { ...ledger.tests?.perTest };
+  for (const [id, to] of Object.entries(declared)) {
+    const entry = perTest[id];
+    for (const newId of to.map((_, n) => splitId(id, n))) perTest[newId] = { ...entry, selector: selectorOf(rows.find(({ test_id: rowId }) => rowId === newId)) };
+  }
+  return { ...ledger, tests: { ...ledger.tests, perTest, renamed: { ...ledger.tests?.renamed, ...declared } } };
 }
 
 // The spike setup of the open run; it is missing until pb spike setup has run (after G:type passes).

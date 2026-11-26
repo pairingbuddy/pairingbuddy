@@ -9,6 +9,7 @@ import { basename, isAbsolute, join, relative } from "node:path";
 import { isOutside } from "./checkpoint.mjs";
 import { matchesGlob } from "./glob-match.mjs";
 import { returnFileKey } from "./stages.mjs";
+import { applyRenames } from "./test-renames.mjs";
 import { humanCommand } from "./verbs.mjs";
 
 // Under the Bash tool's 10-minute cap, so pb gets to record the timeout before the tool kills it.
@@ -238,8 +239,9 @@ function assertUnderTestDirectory({ test_id: id, test_file: file }, { id: runner
 }
 
 // Every row of this attempt's tests artifact, each one checked, since a model wrote them.
-export function testRows(config, artifactsDir, stage) {
-  const rows = readTests(latestTestsFile(artifactsDir, stage));
+// renamed: the renames refactor-tests fixes declared (ledger tests.renamed, by test id), applied before the checks.
+export function testRows(config, artifactsDir, stage, renamed = {}) {
+  const rows = applyRenames(readTests(latestTestsFile(artifactsDir, stage)), renamed);
   const seen = new Set();
   for (const row of rows) {
     checkRow(row);

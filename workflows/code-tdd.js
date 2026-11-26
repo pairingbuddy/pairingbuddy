@@ -785,6 +785,46 @@ const REFACTOR_TESTS_SCHEMA = {
         "type": "string",
         "pattern": "^(?!/)"
       }
+    },
+    "renamed": {
+      "type": "array",
+      "description": "Each test this fix renamed or split, so pb selects it by its new name from then on. Leave it out, or empty, when no test name changed. Only with a <test_id> in the prompt",
+      "items": {
+        "type": "object",
+        "required": [
+          "test_id",
+          "to"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "test_id": {
+            "type": "string",
+            "description": "The test_id of the renamed or split test, as the tests artifact gives it"
+          },
+          "to": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Its new name, or one entry per test it was split into",
+            "items": {
+              "type": "object",
+              "required": [
+                "test_function"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "test_function": {
+                  "type": "string",
+                  "description": "The new test_function"
+                },
+                "test_file": {
+                  "type": "string",
+                  "description": "The new test_file, only when the test moved to another file"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "additionalProperties": false
