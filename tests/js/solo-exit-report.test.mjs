@@ -151,34 +151,40 @@ test("attempt-cap-stop-shows-each-lesson", () => {
   );
 });
 
-test("summary-lists-every-pr-link", () => {
-  const plan = [
+// A ledger whose run finished with nothing stopped or waiting
+const finishedLedger = () => ({
+  stage: { name: "implement-tests", status: "done", attempt: 1 },
+  stop: null,
+  needsHuman: null,
+});
+
+// A plan with one published unit per url, in the given order
+const publishedPlan = (urls) =>
+  [
     "# Plan",
     "",
-    "#### PR: First unit",
-    "",
-    "PR: https://github.com/o/r/pull/11 branch: unit-first",
-    "",
-    "- [x] Task 1: First",
-    "",
-    "#### PR: Second unit",
-    "",
-    "PR: https://github.com/o/r/pull/12 branch: unit-second",
-    "",
-    "- [x] Task 2: Second",
-    "",
+    ...urls.flatMap((url, index) => [
+      `#### PR: Unit ${index + 1}`,
+      "",
+      `PR: ${url} branch: unit-${index + 1}`,
+      "",
+      `- [x] Task ${index + 1}: Unit ${index + 1}`,
+      "",
+    ]),
   ].join("\n");
-  const ledger = { stage: { name: "implement-tests", status: "done", attempt: 1 }, stop: null, needsHuman: null };
+
+test("summary-lists-every-pr-link", () => {
+  const plan = publishedPlan(["https://github.com/o/r/pull/11", "https://github.com/o/r/pull/12"]);
 
   const { result } = runSolo({
     stubs: () => ({ claude: "exit 0" }),
-    files: { "plan.md": plan, ".pairingbuddy/run/task/ledger.json": ledger },
+    files: { "plan.md": plan, ".pairingbuddy/run/task/ledger.json": finishedLedger() },
   });
 
   assert.match(
     result.stdout,
-    /^pull requests:\n- https:\/\/github\.com\/o\/r\/pull\/11\n- https:\/\/github\.com\/o\/r\/pull\/12$/m,
-    "the summary must list both PR urls from the plan, one per line, in plan order",
+    /^✓ Session complete\npull requests:\n- https:\/\/github\.com\/o\/r\/pull\/11\n- https:\/\/github\.com\/o\/r\/pull\/12$/m,
+    "the summary must list both PR urls from the plan right under its result line, one per line, in plan order",
   );
 });
 
