@@ -718,6 +718,29 @@ function reopenable(root, plan, titles) {
   }
 }
 
+// pb human cut-test <id>... --reason '<why>': the human takes tests off a code run's list, evidence and all, which nothing
+// else may do (assertRowsKept refuses an artifact that drops one). Each cut keeps its reason and evidence shas in
+// ledger.tests.cut, and becomes a final check: something a person still runs, which the report lists.
+function humanCutTest(args) {
+  const reasonAt = args.indexOf("--reason");
+  const reason = reasonAt === -1 ? undefined : args[reasonAt + 1];
+  const ids = reasonAt === -1 ? args : args.slice(0, reasonAt);
+  if (ids.length === 0 || !reason?.trim() || reason.startsWith("--") || args.length !== ids.length + 2) throw new UsageError("usage: pb human cut-test <test_id>... --reason '<why>'");
+  const { path } = runLedgerPath("no run here, so there is no test to cut");
+  const ledger = readLedger(path);
+  if (isPublishRun(ledger) || isRefreshRun(ledger)) throw new Refusal("this run publishes, so it has no tests to cut. Nothing was touched");
+  const perTest = ledger.tests?.perTest ?? {};
+  const unknown = ids.filter((id) => !Object.hasOwn(perTest, id));
+  if (unknown.length > 0) throw new Refusal(`no test ${unknown.join(", ")} in this run (it has ${Object.keys(perTest).join(", ") || "none"}). Nothing was touched`);
+  const at = new Date().toISOString();
+  const cuts = ids.map((id) => ({ id, reason: reason.trim(), at, selector: perTest[id].selector, ...(perTest[id].red?.sha ? { red: perTest[id].red.sha } : {}), ...(perTest[id].green?.sha ? { green: perTest[id].green.sha } : {}) }));
+  updateLedger(path, (current) => {
+    const kept = Object.fromEntries(Object.entries(current.tests?.perTest ?? {}).filter(([id]) => !ids.includes(id)));
+    return { ...current, tests: { ...current.tests, perTest: kept, cut: [...(current.tests?.cut ?? []), ...cuts] } };
+  });
+  return { ok: true, cut: cuts.map(({ id }) => id), reason: reason.trim() };
+}
+
 // Rebuilds a plan unit that a spike closed while the unit still had tasks to run: its ticked tasks have no record, so pb plan
 // next reads them as hand-ticked. Each such task must be a spike pb ran on the checked-out branch, kept under reports/runs,
 // with all its commits on HEAD; then run/unit.json is written again with those records, as the unit had before the close.
@@ -2843,7 +2866,7 @@ export const VERBS = {
   rollback,
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
-  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
+  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human cut-test": humanCutTest, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
   "plan next": planNext, "question settle": questionSettle, "question add": questionAdd, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
