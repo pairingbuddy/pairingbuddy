@@ -1,5 +1,5 @@
 import type { EngineInterface, PluginOptions } from 'claude-code'
-import type { Ledger } from './inputs'
+import type { Ledger, Unit } from './inputs'
 import { openPane } from './pane-open'
 import { needsYouLine, stopLine } from '../shared-node/glance.mjs'
 import { doneWords } from '../shared-node/end-state.mjs'
@@ -159,4 +159,38 @@ async function clearStaleStatus($: EngineInterface, event: Event | null) {
 // Records the run the status line was set for.
 async function markStatusSet($: EngineInterface, event: Event) {
   if (statusWords(event)) await $.state.set(STATUS_SET, runOfEvent(event))
+}
+
+// The mod-store key of how many questions for you a unit has been noticed for, per project.
+export function questionsSeenKey(root: string) {
+  return `questions-seen:${root}`
+}
+
+// How many quiet notices one poll sends at most; the rest are counted in the last one.
+const NOTICES_PER_POLL = 3
+
+const noticeText = (text: string) => `Question for you: ${text.replace(/\s+/g, ' ').trim()} · answer with /pb-answer`
+
+// The third alert level: the run goes on, and has questions for you when you have time. Each question the unit gains gets
+// one quiet notice, never repeated: no sound, no status line, no pane opened, which stay for real stops. The count noticed
+// is kept per unit in the mod's store, so a reload does not repeat them. Never throws.
+export async function noticeNewQuestions($: EngineInterface, unit: Unit | null) {
+  try {
+    if (!unit?.asked) return
+    const key = questionsSeenKey(await $.session.root())
+    const seen = (await $.store.get(key)) as { unit: string; count: number } | undefined
+    const from = seen?.unit === unit.key ? seen.count : 0
+    const { count, texts } = unit.asked
+    if (count <= from) return
+    await $.store.set(key, { unit: unit.key, count })
+    const fresh = Array.from({ length: count - from }, (_, i) => texts[from + i] ?? null)
+    const shown = fresh.slice(0, NOTICES_PER_POLL)
+    const rest = fresh.length - shown.length
+    shown.forEach((text, i) => {
+      const more = i === shown.length - 1 && rest > 0 ? ` (+${rest} more)` : ''
+      quietly(() => $.ui.notify(text === null ? `${count - from} new questions for you · answer with /pb-answer` : `${noticeText(text)}${more}`, { title: NOTICE_TITLE }))
+    })
+  } catch {
+    // A failed notice is dropped; the band still counts the questions.
+  }
 }

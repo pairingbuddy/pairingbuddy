@@ -32,7 +32,7 @@ test('the mod registers /pb at session start, and running it opens the same pane
 
   await $.command.run({ command: 'pb' })
 
-  expect(calls.registered.map(command => command.name), 'the mod registers /pb, /pb-report and /pb-plan at session start').toEqual(['pb', 'pb-report', 'pb-plan'])
+  expect(calls.registered.map(command => command.name), 'the mod registers /pb, /pb-report, /pb-plan and /pb-answer at session start').toEqual(['pb', 'pb-report', 'pb-plan', 'pb-answer'])
   expect(calls.opened.map(open => open.id), '/pb opens the pane under its id').toEqual([PANE_ID])
   expect(calls.opened[0].closeOnEscape, '/pb opens it closeable by esc too').toBe(true)
 })

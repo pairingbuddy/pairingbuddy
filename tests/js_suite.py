@@ -111,6 +111,7 @@ JS_TEST_FILES = [
     "tests/js/plan-window.test.mjs",
     "tests/js/plan-page.test.mjs",
     "tests/js/questions.test.mjs",
+    "tests/js/answer-any-time.test.mjs",
     "tests/js/stack-rule.test.mjs",
     "tests/js/pr-body-tap.test.mjs",
     "tests/js/pr-draft-contracts.test.mjs",

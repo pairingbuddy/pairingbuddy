@@ -657,6 +657,14 @@ test("outside-solo-plan-loop-uses-pb-plan-next-and-run-open-plan: the plan loop 
   assert.match(code.slice(call, end), /_run_plan_loop\(plan_path\)\n\s+_stop\(/, "the plan loop is stopped right after the call");
 });
 
+test("plan-loop-settles-the-human's-answers: when pb plan next shows answered questions the session settles each, rework or keep, before the next task", () => {
+  const section = planLoopSection();
+
+  sentencesSaying("an answered list is settled with pb question settle, as rework or keep", section, /`answered`/, /`pb question settle <n> --rework`/, /`pb question settle <n> --keep`/);
+  sentencesSaying("rework is for an answer that changes work already done", section, /--rework/, /work already done/);
+  sentencesSaying("then pb plan next runs again", section, /settle/, /`pb plan next`/, /again/);
+});
+
 test("plan-tasks-curate-with-skill-and-solo-has-no-old-plan-loop", () => {
   const section = planLoopSection();
   const sentences = sentencesOf(section);

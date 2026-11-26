@@ -6,6 +6,7 @@ import { Band } from './band'
 import { Pane } from './pane'
 import { openReport, reportLine } from './report'
 import { openPlan, planLine } from './plan-page'
+import { runAnswer } from './answer'
 import { PANE_ID, type PbToggle, togglePane } from './pane-open'
 import { buildEndedView, buildView, type Tags, type View } from './view'
 
@@ -33,6 +34,7 @@ async function startWatching($: EngineInterface, poller: PollerState, options: P
   await $.command.register({ name: 'pb', description: 'Open or close the Pairing Buddy pane', immediate: true })
   await $.command.register({ name: 'pb-report', description: 'Write the Pairing Buddy run report and open it', immediate: true })
   await $.command.register({ name: 'pb-plan', description: 'Write the whole Pairing Buddy plan as a page and open it', immediate: true })
+  await $.command.register({ name: 'pb-answer', description: 'List the Pairing Buddy questions for you, or answer one', argumentHint: '[number] [your answer]', immediate: true })
   await startPoller($, poller, options)
 }
 
@@ -123,6 +125,7 @@ export const register: Register = (on, options) => {
     if (e.command === 'pb') return togglePane($, pbToggle).then(done => ({ text: `Pairing Buddy pane ${done}` }))
     if (e.command === 'pb-report') return openReport($, spawns, calls).then(outcome => ({ text: reportLine(outcome) }))
     if (e.command === 'pb-plan') return Promise.all([viewNow($, spawns, calls), $.clock.now()]).then(([{ view, planPath }, now]) => openPlan($, view, planPath, now)).then(outcome => ({ text: planLine(outcome) }))
+    if (e.command === 'pb-answer') return runAnswer($, e.args ?? '').then(text => ({ text }))
     return next(e)
   })
 

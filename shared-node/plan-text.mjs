@@ -43,3 +43,22 @@ export const isHumanTitle = (title) => HUMAN_TITLE.test(title);
 
 // The unit's [HUMAN] tasks still unticked: only a person does one and ticks its box, and pb publish refuses while any is left.
 export const humanTasksLeft = (boxes) => (boxes ?? []).filter(({ label, ticked }) => !ticked && isHumanTitle(label)).map(({ label }) => label);
+
+const UNTICKED_BOX = /^[-*+]\s+\[ \]/;
+
+// The plan text with a task's markdown put into a unit: before the unit's first unticked task, so it runs next, or after
+// its last task when every one is ticked. Throws when the plan has no such unit.
+export function insertTaskInUnit(text, unit, taskText) {
+  const lines = text.split("\n");
+  const start = unitHeadingIndex(lines, unit);
+  if (start === -1) throw new Error(`the plan has no unit ${unit}`);
+  const level = HEADING.exec(lines[start])[1].length;
+  const found = lines.findIndex((line, i) => i > start && (HEADING.exec(line)?.[1].length ?? Infinity) <= level);
+  const end = found === -1 ? lines.length : found;
+  const unticked = lines.findIndex((line, i) => i > start && i < end && UNTICKED_BOX.test(line));
+  const added = taskText.replace(/\n+$/, "").split("\n");
+  if (unticked !== -1) return [...lines.slice(0, unticked), ...added, "", ...lines.slice(unticked)].join("\n");
+  let last = end - 1;
+  while (last > start && lines[last].trim() === "") last -= 1;
+  return [...lines.slice(0, last + 1), "", ...added, ...lines.slice(last + 1)].join("\n");
+}
