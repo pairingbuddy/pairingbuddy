@@ -198,13 +198,13 @@ describe("a commit comes from the step and the artifact", IN_PARALLEL, () => {
     });
   }
 
-  // A work-item key the model put first stays once, after the step's type, and the type never doubles.
+  // Leading type prefixes are peeled, so the step's type never doubles; anything after them stays as the model wrote it.
   for (const [subject, expected] of [
-    ["ABC-12: chore: set a", "chore: ABC-12: set a"],
-    ["chore: ABC-12: chore: set a", "chore: ABC-12: set a"],
-    ["ABC-12: set a", "chore: ABC-12: set a"],
+    ["chore: chore: set a", "chore: set a"],
+    ["fix(ci): chore: set a", "chore: set a"],
+    ["ABC-12: chore: set a", "chore: ABC-12: chore: set a"],
   ]) {
-    test(`a key in "${subject}" is kept once, after the step's type`, () => {
+    test(`"${subject}" keeps one type, the step's, and the rest as written`, () => {
       const repo = changedRepo();
       writeArtifact(repo, CONFIG_KEY, configArtifact({ commit_subject: subject }));
 

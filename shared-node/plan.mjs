@@ -187,20 +187,6 @@ function formatProblems(strays, misplacedUnits, units, repeatedDepends, text) {
   ];
 }
 
-// The plan's work-item key: a **Key:** line above the task area (the first ## Tasks heading), or null. It fills the
-// branch_template {key} of every unit the plan opens.
-const KEY_LINE = /^\*\*Key:\*\*\s*(\S+)\s*$/;
-function planKey(lines, hasTasks) {
-  for (const { line, fenced } of lines) {
-    if (fenced) continue;
-    const heading = headingOf(line);
-    if (hasTasks && heading && isTasksHeading(heading)) return null;
-    const found = KEY_LINE.exec(line.trim());
-    if (found) return found[1];
-  }
-  return null;
-}
-
 export function parsePlan(text) {
   const units = [];
   const strays = [];
@@ -271,7 +257,7 @@ export function parsePlan(text) {
   closeBody();
   const misplaced = directUnits.filter(({ owner }) => groupedTracers.has(owner)).map(({ opened }) => opened);
   const unitsOut = units.filter((u) => !misplaced.includes(u));
-  return { units: unitsOut, tracers, key: planKey(lines, hasTasks), next: firstUnchecked(unitsOut), problems: formatProblems(strays, misplaced, unitsOut, repeatedDepends, text) };
+  return { units: unitsOut, tracers, next: firstUnchecked(unitsOut), problems: formatProblems(strays, misplaced, unitsOut, repeatedDepends, text) };
 }
 
 // Titles of the tasks recorded for a unit: the open unit's records count only for that unit, in the same plan (paths compare normalised).

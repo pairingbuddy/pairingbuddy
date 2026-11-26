@@ -7,13 +7,23 @@
     "remote": { "type": "string" },
     "protected_branches": { "type": "array", "items": { "type": "string" } },
     "branch_template": { "type": "string" },
+    "branch_convention": {
+      "type": "object",
+      "description": "The repo's own branch naming convention, found in its docs or asked of the human once. The session names each unit's branch by it and passes the name with pb unit open --branch; pb refuses a name that fails pattern.",
+      "properties": {
+        "description": { "type": "string", "description": "The convention in words, as the repo states it." },
+        "examples": { "type": "array", "items": { "type": "string" } },
+        "pattern": { "type": "string", "description": "A regular expression every unit branch must match." }
+      },
+      "additionalProperties": true
+    },
     "config_globs": { "type": "array", "items": { "type": "string" } },
     "commit": {
       "type": "object",
       "properties": {
         "red_commits": { "type": "boolean" },
         "subject_template": { "type": "string" },
-        "key_pattern": { "type": ["string", "null"] },
+        "key_pattern": { "type": ["string", "null"], "description": "Ignored. Kept so files that still have it validate." },
         "require_signature": { "type": "boolean" },
         "conventions": { "type": "array", "items": { "type": "string" } }
       },

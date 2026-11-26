@@ -226,17 +226,17 @@ function planTask(plan) {
 
 // Reads the plan and steps it, refusing on format problems; the stop is returned for the caller to act on.
 function planStepOf(plan) {
-  const { root, units, problems, key, context } = readPlanContext(plan);
+  const { root, units, problems, context } = readPlanContext(plan);
   refusePlanProblems(problems);
   const { next, stop } = planStep(units, context);
-  return { root, units, key, context, next, stop };
+  return { root, units, context, next, stop };
 }
 
 // planStepOf that also refuses on a stop: the shared start of run open and unit open.
 function steppedPlan(plan) {
-  const { root, units, key, context, next, stop } = planStepOf(plan);
+  const { root, units, context, next, stop } = planStepOf(plan);
   if (stop) throw new Refusal(planStopMessage(root, plan, stop));
-  return { next, context, units, key };
+  return { next, context, units };
 }
 
 // Refuses when the open unit cannot take the plan's next task: it is a different unit, or it is fresh but already holds
@@ -833,8 +833,8 @@ function readPlan(plan) {
 // The plan read under the repo toplevel with its parsed units and problems, and the context planStep and unitStates take.
 function readPlanContext(plan) {
   const { root, realPlan, text } = readPlan(plan);
-  const { units, problems, key } = parsePlan(text);
-  return { root, units, problems, key, context: { plan: relative(realpathSync(root), realPlan), openUnit: readOpenUnit(root) } };
+  const { units, problems } = parsePlan(text);
+  return { root, units, problems, context: { plan: relative(realpathSync(root), realPlan), openUnit: readOpenUnit(root) } };
 }
 
 // Refuses, writing nothing, when the plan has format problems.
@@ -2190,9 +2190,26 @@ function chosenBranch(args) {
   return name;
 }
 
-// Refuses a protected branch name, and one git itself rejects, before anything changes.
+// Refuses a name that breaks the repo's branch convention (git-config branch_convention.pattern), saying what it expects.
+function assertFollowsConvention(gitConfig, branch) {
+  const convention = gitConfig.branch_convention;
+  if (typeof convention?.pattern !== "string") return;
+  let pattern;
+  try {
+    pattern = new RegExp(convention.pattern);
+  } catch {
+    throw new Refusal(`branch_convention.pattern is not a valid regular expression: ${convention.pattern}. Nothing was touched: fix it in .pairingbuddy/git-config.json`);
+  }
+  if (pattern.test(branch)) return;
+  const expects = typeof convention.description === "string" ? `: ${convention.description}` : "";
+  const examples = Array.isArray(convention.examples) && convention.examples.length ? ` (for example ${convention.examples.join(", ")})` : "";
+  throw new Refusal(`branch ${branch} does not follow this repo's branch convention${expects}${examples}. Nothing was touched: name the branch by the convention and pass it with --branch <name>`);
+}
+
+// Refuses a protected branch name, one that breaks the repo's convention, and one git itself rejects, before anything changes.
 function assertUsableBranch(root, gitConfig, branch) {
   if (isProtected(gitConfig, root, branch)) throw new Refusal(`branch ${branch} is protected; choose another name`);
+  assertFollowsConvention(gitConfig, branch);
   try {
     execFileSync("git", ["check-ref-format", "--branch", branch], { cwd: root, stdio: "ignore" });
   } catch {
@@ -2344,13 +2361,11 @@ function reconciledUnit(unit, result) {
 function unitOpen(args) {
   const type = flagValue(args, "--type");
   const slug = flagValue(args, "--slug");
-  const usage = "usage: pb unit open --type <type> --slug <slug> [--key <key>] [--branch <name>] [--plan <plan.md>]";
+  const usage = "usage: pb unit open --type <type> --slug <slug> [--branch <name>] [--plan <plan.md>]";
   if (args.includes("--yes")) throw new UsageError(`--yes is no longer accepted: pb unit open has no confirm step. ${usage}`);
   if (!type || !slug) throw new UsageError(usage);
   const plan = args.includes("--plan") ? flagValue(args, "--plan") : null;
   if (plan !== null && (!plan || plan.startsWith("--"))) throw new UsageError(usage);
-  const keyFlag = args.includes("--key") ? flagValue(args, "--key") : null;
-  if (keyFlag !== null && (!keyFlag || keyFlag.startsWith("--"))) throw new UsageError(usage);
   const chosen = chosenBranch(args);
   const root = toplevel();
   if (existsSync(unitPathOf(root))) throw new Refusal("a unit is already open (run/unit.json exists); nothing was touched");
@@ -2359,9 +2374,7 @@ function unitOpen(args) {
   const planned = plan === null ? null : steppedPlan(plan);
   if (planned && !planned.next) throw new Refusal(`the plan ${plan} has no task left, nothing was touched`);
   const gitConfig = loadGitConfigOrRefuse(root);
-  // --key wins over the plan's Key line.
-  const key = keyFlag ?? planned?.key ?? null;
-  const branch = chosen ?? renderBranchOrRefuse(gitConfig.branch_template, { type, slug, ...(key ? { key } : {}) });
+  const branch = chosen ?? renderBranchOrRefuse(gitConfig.branch_template, { type, slug });
   assertUsableBranch(root, gitConfig, branch);
   if (branchExists(root, branch)) throw new Refusal(`branch ${branch} already exists; choose another name`);
   const configHash = validatedConfigHash(root);
@@ -2374,7 +2387,7 @@ function unitOpen(args) {
   const parent = stackOn?.branch ?? base;
   const baseSha = git("rev-parse", `${gitConfig.remote}/${parent}`);
   ensureRunRoot(root);
-  const unit = { ...newUnit({ branch, base: parent, baseSha, configHash, gitConfigHash }), type, ...(key ? { key } : {}) };
+  const unit = { ...newUnit({ branch, base: parent, baseSha, configHash, gitConfigHash }), type };
   if (stackOn) unit.stackedOn = withoutDepth(stackOn);
   if (planned) Object.assign(unit, { unit: planned.next.unit, plan: planned.context.plan, tracer: planned.next.tracer });
   writeJsonAtomic(unitPathOf(root), unit, { exclusive: true });

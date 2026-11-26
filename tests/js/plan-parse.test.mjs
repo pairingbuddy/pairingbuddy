@@ -803,17 +803,11 @@ describe("plan-tracer-intro", () => {
   });
 });
 
-describe("plan-key", () => {
-  // A **Key:** line above the tasks names the work item every unit's branch carries (branch_template {key}).
-  test("a-key-line-above-the-tasks-is-the-plan-key", () => {
+describe("plan-no-key", () => {
+  // Work-item keys are the repo's convention, not the plan's: a plan carries no key field, whatever its lines say.
+  test("a-key-line-above-the-tasks-gives-the-plan-no-key", () => {
     const text = ["# Plan", "", "**Key:** ABC-12", "", "## Tasks", "", "### Tracer 1: Skeleton", "", "- [ ] **One**", ""].join("\n");
 
-    assert.equal(parsePlan(text).key, "ABC-12");
-  });
-
-  test("a-plan-with-no-key-line-has-no-key", () => {
-    const text = ["# Plan", "", "## Tasks", "", "### Tracer 1: Skeleton", "", "- [ ] **One**", "", "**Key:** inside a task area is not the plan key", ""].join("\n");
-
-    assert.equal(parsePlan(text).key, null);
+    assert.equal(Object.hasOwn(parsePlan(text), "key"), false);
   });
 });

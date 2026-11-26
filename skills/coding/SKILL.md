@@ -329,13 +329,15 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 
 ### Bootstrap git-config.json
 
-Do this before the first `pb unit open` when `.pairingbuddy/git-config.json` is missing, since `pb unit open` would otherwise write the defaults (`{type}/{slug}` branches, no key). When the file exists, use it and ask nothing.
+Do this before the first `pb unit open` when `.pairingbuddy/git-config.json` is missing, or exists with no `branch_convention` while the repo's branch names show one, since `pb unit open` would otherwise name branches `{type}/{slug}`. Do it once: when the file has a `branch_convention`, follow it and ask nothing.
 
-1. Look for the repo's own branch and commit conventions: CONTRIBUTING, CLAUDE.md, the docs, the repo's skills or commands that start work (for example a starting-work skill), the commit hooks, and the recent branch names from `git branch -r` and subjects from `git log`
-2. Set `branch_template` to match. Placeholders are `{type}`, `{slug}` and `{key}`. A convention that puts a work-item key in the branch (`ABC-12-short-name`) is `{key}-{slug}`; the key then comes from the plan's `**Key:** ABC-12` line above its tasks, or `pb unit open --key ABC-12`, and `pb unit open` refuses a `{key}` template with no key
-3. Set `commit.key_pattern` to the key's pattern (for example `[A-Z]+-\\d+`) when commits carry it. pb keeps a key the commit subject starts with once, after the step's type
-4. With no convention found, keep the defaults
-5. Write the file. Under auto (or with no human), write the inferred values and ask nothing; record what you found and why in one line of your report. Otherwise show the inferred values in one question before writing
+1. Identify the repo's own branch and commit-subject conventions where it works: CONTRIBUTING, CLAUDE.md, the docs, the repo's skills or commands that start work, the commit hooks, and the recent branch names from `git branch -r` and subjects from `git log`
+2. When the convention is clearly documented, record it without asking: `branch_convention` with `description` (the convention in the repo's words), `examples` (real names that follow it) and `pattern` (a regular expression every branch name matches), and a commit-subject convention in words in `commit.conventions`
+3. When it is not clearly documented (branch names disagree, or nothing states it), or it needs a value the task or plan does not give, ask the human once: show what you found and your reading of it, and record their answer the same way. Follow it from then on. Under auto this is a setup question before any run opens, so it may be asked
+4. With no convention found and none from the human, write no `branch_convention`: branches stay `{type}/{slug}`
+5. Write the file, and say in one line of your report what you recorded and where you found it
+
+When `branch_convention` is set, name each unit's branch by it yourself and pass the name with `pb unit open --branch <name>`; `pb unit open` refuses a name that fails its `pattern` and says what the convention expects. When the convention needs a value for the unit that you cannot derive from the task, the plan or the repo, ask the human for it before `pb unit open`, once per unit.
 
 ### State File Management
 

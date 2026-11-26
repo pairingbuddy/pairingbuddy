@@ -12,7 +12,6 @@ export const DEFAULTS = {
   commit: {
     red_commits: true,
     subject_template: "{type}: {subject}",
-    key_pattern: null,
     require_signature: false,
     conventions: [],
   },

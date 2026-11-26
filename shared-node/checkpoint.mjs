@@ -32,8 +32,6 @@ const STEPS = {
 const STATE_DIRECTORY = ".pairingbuddy";
 const REFUSED_DIRECTORIES = [STATE_DIRECTORY, ".git"];
 const TYPE_PREFIX = /^(?:feat|fix|docs|chore|test|refactor|style|perf|ci|build|revert)(?:\([^)]*\))?!?:\s*/i;
-// A work-item key such as ABC-12 at the front of a subject, with its colon.
-const KEY_PREFIX = /^([A-Z][A-Z0-9]+-\d+):\s*/;
 const BREAKS_LINE = /[\p{Cc}\p{Zl}\p{Zp}]/u;
 // Git writes the commit only after every hook has passed, so this line can only mean signing or the object store.
 const WRITE_FAILED = "fatal: failed to write commit object";
@@ -253,21 +251,11 @@ function commitType(step, taskType, paths, scope) {
 
 function commitMessage(step, subject, taskType, paths, scope) {
   if (typeof subject !== "string" || BREAKS_LINE.test(subject)) throw new CheckpointRefused(`commit_subject must be a single line: ${JSON.stringify(subject)}`);
-  // Peel the model's type and key prefixes in whatever order it wrote them; the key is kept once, after the step's type.
+  // Peel every leading type prefix the model wrote, so the step's type never doubles; the rest stays as written.
   let bare = subject.trim();
-  let key = null;
-  for (let peeled = true; peeled; ) {
-    const before = bare;
-    bare = bare.replace(TYPE_PREFIX, "").trim();
-    const found = KEY_PREFIX.exec(bare);
-    if (found && (key === null || key === found[1])) {
-      key = found[1];
-      bare = bare.slice(found[0].length).trim();
-    }
-    peeled = bare !== before;
-  }
+  for (let peeled = bare.replace(TYPE_PREFIX, "").trim(); peeled !== bare; peeled = bare.replace(TYPE_PREFIX, "").trim()) bare = peeled;
   if (bare === "") throw new CheckpointRefused(`commit_subject says nothing: ${JSON.stringify(subject)}`);
-  return `${commitType(step, taskType, paths, scope)}: ${key === null ? "" : `${key}: `}${bare}`;
+  return `${commitType(step, taskType, paths, scope)}: ${bare}`;
 }
 
 // ---------- the plan ----------

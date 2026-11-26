@@ -132,18 +132,8 @@ const writeBranchTemplate = (repo, branch_template) => {
   writeFileSync(join(repo.dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ branch_template }));
 };
 
-test("key-flag-fills-the-key-placeholder", () => {
-  const repo = makeRepo({ openTask: false, remote: true });
-  writeBranchTemplate(repo, "{key}-{slug}");
-
-  const created = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "ci-script", "--key", "ABC-12");
-
-  assert.equal(created.code, 0, `pb unit open exits 0: ${created.stderr}`);
-  assert.equal(gitIn(repo, "rev-parse", "--abbrev-ref", "HEAD"), "ABC-12-ci-script");
-  assert.equal(JSON.parse(readFileSync(unitPath(repo), "utf8")).key, "ABC-12", "the unit records its key");
-});
-
-test("a-key-template-with-no-key-refuses-naming-where-a-key-comes-from", () => {
+// Work-item keys are the repo's convention, not pb's: {key} is an unknown placeholder like any other.
+test("a-key-placeholder-is-unknown", () => {
   const repo = makeRepo({ openTask: false, remote: true });
   writeBranchTemplate(repo, "{key}-{slug}");
   const before = snapshotRepo(repo);
@@ -151,11 +141,53 @@ test("a-key-template-with-no-key-refuses-naming-where-a-key-comes-from", () => {
   const refused = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
 
   assert.equal(refused.code, 1, `a deliberate refusal: ${refused.stderr}`);
+  assert.ok((refused.stderr + refused.stdout).includes("branch_template has unknown placeholder {key}"));
+  assertUntouched(repo, before, "{key}");
+});
+
+const CONVENTION = { description: "<ticket>-<short-name>, the ticket the work is for", examples: ["ABC-1-add-banner"], pattern: "^[A-Z]+-[0-9]+-[a-z0-9-]+$" };
+const writeConvention = (repo, branch_convention) => {
+  mkdirSync(join(repo.dir, ".pairingbuddy"), { recursive: true });
+  writeFileSync(join(repo.dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ branch_convention }));
+};
+
+// The repo's branch convention lives in git-config; a name that does not match its pattern is refused, saying what it expects.
+test("a-branch-that-breaks-the-convention-pattern-is-refused-with-the-convention", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  writeConvention(repo, CONVENTION);
+  const before = snapshotRepo(repo);
+
+  const refused = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "add-banner");
+
+  assert.equal(refused.code, 1, `a deliberate refusal: ${refused.stderr}`);
   const said = refused.stderr + refused.stdout;
-  assert.match(said, /branch_template needs a key/, "says the template needs a key");
-  assert.match(said, /--key/, "names the flag");
-  assert.match(said, /\*\*Key:\*\*/, "names the plan's Key line");
-  assertUntouched(repo, before, "no key");
+  assert.match(said, /feat\/add-banner/, "names the refused branch");
+  assert.ok(said.includes(CONVENTION.description), "says what the convention expects");
+  assert.ok(said.includes("ABC-1-add-banner"), "gives the convention's example");
+  assert.match(said, /--branch/, "says how to pass a matching name");
+  assertUntouched(repo, before, "convention");
+});
+
+test("a-branch-named-by-the-convention-opens", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  writeConvention(repo, CONVENTION);
+
+  const created = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "add-banner", "--branch", "ABC-1-add-banner");
+
+  assert.equal(created.code, 0, `pb unit open exits 0: ${created.stderr}`);
+  assert.equal(gitIn(repo, "rev-parse", "--abbrev-ref", "HEAD"), "ABC-1-add-banner");
+});
+
+test("a-convention-pattern-that-is-not-a-regex-is-refused-by-name", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  writeConvention(repo, { ...CONVENTION, pattern: "([unclosed" });
+  const before = snapshotRepo(repo);
+
+  const refused = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--branch", "ABC-1-x");
+
+  assert.equal(refused.code, 1, `a deliberate refusal, not a crash: ${refused.stderr}`);
+  assert.match(refused.stderr + refused.stdout, /branch_convention\.pattern is not a valid regular expression/);
+  assertUntouched(repo, before, "bad pattern");
 });
 
 // Scenario: unit-open-without-flag
@@ -179,7 +211,7 @@ test("yes-flag-is-refused-as-unknown-and-touches-nothing", () => {
 
   const output = result.stderr + result.stdout;
   assert.equal(result.code, 2, "--yes is a usage error with exit code 2");
-  assert.match(output, /--yes is no longer accepted: pb unit open has no confirm step\. usage: pb unit open --type <type> --slug <slug> \[--key <key>\] \[--branch <name>\]/, "the message names --yes and shows the usage");
+  assert.match(output, /--yes is no longer accepted: pb unit open has no confirm step\. usage: pb unit open --type <type> --slug <slug> \[--branch <name>\]/, "the message names --yes and shows the usage");
   assertUntouched(repo, before, "--yes");
 });
 
@@ -531,24 +563,6 @@ test("independent-unit-branches-from-base-with-earlier-pr-open", () => {
   assert.equal(unit.unit, "Second", "unit.unit is the plan unit name");
   assert.equal(unit.plan, "docs/plan.md", "unit.plan is the plan path");
   assert.equal(unit.tracer, "Tracer 1: Skeleton", "unit.tracer is the plan tracer");
-});
-
-test("the-plan-key-fills-the-key-placeholder-and-key-flag-overrides-it", () => {
-  const repo = makeRepo({ openTask: false, remote: true });
-  writeBranchTemplate(repo, "{key}-{slug}");
-  publishPlan(repo, ["# Shop", "", "**Key:** ABC-12", "", ...tracerPlan("Tracer 1: Skeleton", planUnit("First", { tasks: ["- [ ] **One**"] }))]);
-
-  const result = openPlanUnit(repo, "first");
-
-  assert.equal(result.code, 0, `pb unit open --plan ${exitMessage(result)}`);
-  assert.equal(gitIn(repo, "rev-parse", "--abbrev-ref", "HEAD"), "ABC-12-first", "the plan's key names the branch");
-
-  const other = makeRepo({ openTask: false, remote: true });
-  writeBranchTemplate(other, "{key}-{slug}");
-  publishPlan(other, ["# Shop", "", "**Key:** ABC-12", "", ...tracerPlan("Tracer 1: Skeleton", planUnit("First", { tasks: ["- [ ] **One**"] }))]);
-  const overridden = pbUnitOpen(other, installGhShim().env(), "--type", "feat", "--slug", "first", "--plan", "docs/plan.md", "--key", "XYZ-9");
-  assert.equal(overridden.code, 0, `pb unit open --key ${exitMessage(overridden)}`);
-  assert.equal(gitIn(other, "rev-parse", "--abbrev-ref", "HEAD"), "XYZ-9-first", "--key wins over the plan's key");
 });
 
 test("dependent-unit-with-open-pr-stacks-and-records-stackedOn", () => {

@@ -354,6 +354,14 @@ test("between plan tasks, with a unit open, the session's own question is denied
     assertDenied(await runGate(sessionQuestion(repo.dir)), MESSAGES.sessionAsks);
   }));
 
+// The branch-convention question the skill asks before pb unit open: no unit and no run yet, so it reaches the human.
+test("under auto mode, before any unit opens, the session's setup question reaches the human", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    const { agent_id: _id, agent_type: _type, ...main } = question(repo.dir);
+    const setup = { ...main, tool_input: { questions: [{ header: "Branch name", question: "Branches here are named <ticket>-<short-name>. Which ticket is this work for?" }] } };
+    assertAllowed(await runGate(setup));
+  }));
+
 test("under auto mode the question pb's gate is waiting on still reaches the human", () => {
   const asked = { question: "Is this the right list to tidy up?", header: "Tidy-up", options: [{ label: "approve", description: "" }, { label: "redo", description: "" }], multiSelect: false };
   const needsHuman = { gate: "G:scope", reason: "the scope lens found the scope may not serve the stated intent", seq: 1, askedAt: "2026-11-26T15:06:21Z", question: asked };
