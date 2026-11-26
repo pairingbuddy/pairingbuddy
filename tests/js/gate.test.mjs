@@ -308,6 +308,30 @@ test("under the auto policy, every other question still reaches the human", () =
     assertAllowed(await runGate(fromTheMainContext));
   }));
 
+// The curating-guidance skill runs in the main context and marks its question with the header "Guidance". Under auto mode
+// the human chose not to be stopped, so the gate denies that one question and the skill carries the guidance over.
+const guidanceQuestion = (cwd, over = {}) => {
+  const { agent_id: _id, agent_type: _type, ...main } = question(cwd, over);
+  return { ...main, tool_input: { questions: [{ header: "Guidance", question: "Carry these entries over?" }] } };
+};
+
+test("the main context's guidance question asks nobody under the auto permission mode", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    assertDenied(await runGate(guidanceQuestion(repo.dir)), MESSAGES.noHumanHere);
+  }));
+
+test("between plan tasks, with a unit open, the guidance question still asks nobody under auto mode", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    mkdirSync(join(repo.dir, ".pairingbuddy", "run"), { recursive: true });
+    writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), "{}\n");
+    assertDenied(await runGate(guidanceQuestion(repo.dir)), MESSAGES.noHumanHere);
+  }));
+
+test("outside auto mode the guidance question reaches the human", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    assertAllowed(await runGate(guidanceQuestion(repo.dir, { permission_mode: "default" })));
+  }));
+
 // ---------- Solo ----------
 
 async function withSolo(fn) {
