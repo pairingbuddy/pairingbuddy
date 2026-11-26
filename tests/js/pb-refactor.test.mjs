@@ -292,4 +292,17 @@ describe("pb checkpoint --step refactor with renamed tests", IN_PARALLEL, () => 
     assert.equal(done.committed, true);
     assert.deepEqual(repo.runs(), [["tests/a.mjs::bills_two_minutes"]], "the new name selects the test");
   });
+
+  test("a later fix group runs the renamed test by its new name too", () => {
+    const repo = makeRepo({ outcomes: { "tests/a.mjs::bills_two_minutes": 0 } });
+    repo.write("tests/a.mjs", "renamed test\n");
+    renamedFix(repo, testsKey(), [{ test_id: "t1", to: [{ test_function: "bills_two_minutes" }] }]);
+    assertPasses(refactor(repo, testsKey()));
+    repo.write("src.mjs", "cleaner code\n");
+    fixed(repo, codeKey("t1", 2), ["src.mjs"]);
+
+    assertPasses(refactor(repo, codeKey("t1", 2)));
+
+    assert.deepEqual(repo.runs().at(-1), ["tests/a.mjs::bills_two_minutes"]);
+  });
 });
