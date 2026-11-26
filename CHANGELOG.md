@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The /pb-plan page shows a future tracer's tasks as soon as it is opened: every unit starts open, so only tracers and each task's explanation fold. Before, a unit outside the one being built started folded, so an opened future tracer showed unit names and no tasks.
+
 - A tidy-up of the tests may rename a test or split it in two. pb selects each test by its recorded name, so a rename made the old name select nothing, the fix was refused, and the run asked the human whether the recorded names could change (a real project). refactor-tests now declares each rename or split in its return's `renamed`; pb records it (ledger `tests.renamed`), selects the test by its new name from then on, gives each extra test of a split the original's evidence, and still runs every closed test before the commit. An undeclared rename is refused with a note telling the fixer to declare it, and a rename of a test the task never closed is refused.
 
 - The questions page keeps one list in number order: an answered question stays in its place, folded and dimmed as "N. ✓ Answered · <question>", and opens to the question, your answer, when, and the rework it led to (named by the rework task alone, not the question again). The header counts both, as "3 open · 2 answered".

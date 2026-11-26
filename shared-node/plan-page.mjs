@@ -157,8 +157,8 @@ function unitSection(unit, { state, open, building, publishing, focusTask, reach
   const words = unitWords(state, isOpen || holdsBuilding(unit, building), publishing);
   const facts = [...(unit.dependsOn ? [escape(`based on ${unit.dependsOn}`)] : []), ...(isOpen ? openFacts(open).map(escape) : []), ...(unit.pr ? [`PR ${prLink(unit.pr)}`] : [])];
   const tasks = [...(isOpen ? questionsItems(open) : []), ...unit.tasks.map((task) => taskItem(task, { inProgress: !task.checked && task.title === building, reached, isFocus: task === focusTask }))];
-  const holdsFocus = unit.tasks.includes(focusTask);
-  return `<details${holdsFocus ? " open" : ""}>
+  // A unit always starts open, so opening its tracer shows its tasks at once; the tracer and each task's body stay folded.
+  return `<details open>
 <summary><h3>${escape(unit.unit)}${words ? escape(`${STATE_SEPARATOR}${words}`) : ""}</h3></summary>
 <ul>
 ${[...facts.map((fact) => `<li class="facts">${fact}</li>`), ...(isOpen ? [commitsFold(open, subjects)].filter(Boolean) : []), ...tasks].join("\n")}

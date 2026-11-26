@@ -116,13 +116,23 @@ test("a tracer opens to its Goal and Verification, then its units; a unit opens 
   assert.match(t1, /<details[^>]*>\s*<summary><h3>Add[^<]*<\/h3><\/summary>/, "each unit is a details of its own, under the tracer");
 });
 
-test("the page opens on the path to the task being built; every other tracer, unit and task starts folded", () => {
+test("the page opens on the tracer and task being built; every other tracer and task starts folded, and units are always open", () => {
   const plan = parsePlan(DRILL_PLAN);
 
   const html = renderPlanPage({ plan, building: "Task 2: Remove an item" });
 
   const opened = [...html.matchAll(/<details( open)?>\s*<summary>(?:<h[23]>)?([^<]*)/g)].filter(([, open]) => open).map(([, , head]) => head.trim());
-  assert.deepEqual(opened, ["T1: Cart · 1 of 2 done", "Add", "▸ Task 2: Remove an item"], "the focus's tracer, unit and task, and only those");
+  assert.deepEqual(opened, ["T1: Cart · 1 of 2 done", "Add", "▸ Task 2: Remove an item", "Charge"], "the focus's tracer and task, and every unit");
+});
+
+test("opening a future tracer shows its tasks at once: its units start open", () => {
+  const plan = parsePlan(DRILL_PLAN);
+
+  const html = renderPlanPage({ plan, building: "Task 2: Remove an item" });
+
+  const t2 = html.slice(html.indexOf("T2: Pay"));
+  assert.match(t2, /<details open>\s*<summary><h3>Charge[^<]*<\/h3><\/summary>/, "the future tracer's unit is open inside its folded tracer");
+  assert.ok(t2.includes("Task 3: Charge the card"), "its task is listed");
 });
 
 test("a folded tracer still tells how far it is: its tasks done out of its tasks", () => {
