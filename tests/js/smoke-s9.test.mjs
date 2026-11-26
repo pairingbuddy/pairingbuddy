@@ -11,7 +11,7 @@ test("s9-two-unit-plan-opens-two-draft-prs", () => {
   const creates = [draftCreate("feat/b"), draftCreate("fix/a")];
   const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
 
-  const result = s9.assertDraftPrs({ creates, units });
+  const result = s9.summarizeDraftPrs({ creates, units });
 
   assert.deepEqual(result, { count: 2, heads: ["fix/a", "feat/b"] }, "two draft PRs, heads taken from the units in plan order, not from the order of the creates");
 });
