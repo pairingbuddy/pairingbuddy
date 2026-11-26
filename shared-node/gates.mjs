@@ -604,9 +604,13 @@ function selectorReason(root, ledger, contract) {
   return `${advice}. Once the human has added it, the run asks them to accept the changed file at its next test run, and goes on`;
 }
 
+// Under auto, a likely type with no question for the human passes: asking at every plan task cost more than it caught. An
+// unsure type, or one with a question, still asks, since the type picks the whole workflow and cannot wait for G:publish.
 function classifierReason(root, ledger) {
-  const confidence = keptIntakeReturn(artifactsDir(root), ledger.stage.attempt)?.content?.confidence;
-  return confidence === "certain" ? null : "the classifier does not report certain";
+  const content = keptIntakeReturn(artifactsDir(root), ledger.stage.attempt)?.content;
+  if (content?.confidence === "certain") return null;
+  const quiet = content?.confidence === "likely" && String(content.ambiguity ?? "").trim() === "";
+  return quiet && ledger.policy.mode === "auto" ? null : "the classifier does not report certain";
 }
 
 function lensReason(root, ledger) {
