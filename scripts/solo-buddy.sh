@@ -459,6 +459,13 @@ ${attempts_line}"
 ${lessons}"
         fi
     fi
+    local pr_links
+    pr_links=$(sed -n 's/^PR: \([^ ]*\).*$/- \1/p' "$PLAN_FILE")
+    if [[ -n "$pr_links" ]]; then
+        output="${output}
+pull requests:
+${pr_links}"
+    fi
     if [[ -n "${REPORT_FILE:-}" ]] && [[ -f "${REPORT_FILE}" ]]; then
         output="${output}
   Report: ${REPORT_FILE}"
