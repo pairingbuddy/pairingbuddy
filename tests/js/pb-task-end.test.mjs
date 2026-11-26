@@ -115,6 +115,17 @@ describe("a finished task ends", IN_PARALLEL, () => {
   });
 });
 
+describe("tests the human cut", IN_PARALLEL, () => {
+  test("the end names each cut test with the human's reason, as a check left to a person", () => {
+    const cut = [{ id: "live", reason: "needs a live run", at: "2026-11-26T19:00:00Z", selector: { runner_id: "fake", test_file: "tests/live.mjs", test_function: "live" } }];
+    const repo = makeRepo({ ledger: { ...FINISHED, tests: { cut } } });
+
+    const printed = ok(repo);
+
+    assert.deepEqual(printed.cut, [{ id: "live", reason: "needs a live run" }]);
+  });
+});
+
 describe("a dirty tree is refused, with the list, and nothing moves", IN_PARALLEL, () => {
   function dirtied() {
     const repo = makeRepo({ tracked: { "b.txt": "b\n", "c.txt": "c\n" } });

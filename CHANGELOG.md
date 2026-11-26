@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `pb human cut-test <test_id>... --reason '<why>'`: the human takes planned tests off a code run's list, even tests with recorded RED or GREEN, which nothing else may drop. A run stopped on a test only a live run could pass (Task 114 on this repo) had no way past the guard. Each cut is kept in ledger `tests.cut` with its reason, selector and evidence shas, the report lists it under FINAL CHECKS ("cut by you: <reason>"), and `pb task end` names it. The guard's refusal now names the exact cut-test line with every dropped id.
+
 - The /pb-plan page shows a future tracer's tasks as soon as it is opened: every unit starts open, so only tracers and each task's explanation fold. Before, a unit outside the one being built started folded, so an opened future tracer showed unit names and no tasks.
 
 - A tidy-up of the tests may rename a test or split it in two. pb selects each test by its recorded name, so a rename made the old name select nothing, the fix was refused, and the run asked the human whether the recorded names could change (a real project). refactor-tests now declares each rename or split in its return's `renamed`; pb records it (ledger `tests.renamed`), selects the test by its new name from then on, gives each extra test of a split the original's evidence, and still runs every closed test before the commit. An undeclared rename is refused with a note telling the fixer to declare it, and a rename of a test the task never closed is refused.

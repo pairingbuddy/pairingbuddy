@@ -328,10 +328,12 @@ function finalChecksSection({ task }) {
   const byKey = new Map(calls.map(({ input }) => [input?.pb_key, input]).filter(([key]) => typeof key === "string"));
   const ledger = codeRunIn(task)?.ledger ?? {};
   const key = newestKeyAmong([...byKey.keys()].map((pbKey) => `${pbKey}.json`), isStandingScenarios(ledger));
-  const rows = key === null ? undefined : finalCheckRows(byKey.get(key)?.final_checks);
-  if (rows === undefined) return "";
+  const rows = (key === null ? undefined : finalCheckRows(byKey.get(key)?.final_checks)) ?? [];
+  // A test the human took off the list with pb human cut-test is left to a person too, with their reason.
+  const cuts = (Array.isArray(ledger.tests?.cut) ? ledger.tests.cut : []).map(({ id, reason }) => ({ description: id, why: `cut by you: ${reason}` }));
+  if (rows.length + cuts.length === 0) return "";
   const item = ({ description, command, why }) => `<li>${escape(description)}${command ? `: <code>${escape(command)}</code>` : ""}${why ? ` (${escape(why)})` : ""}</li>`;
-  return section("FINAL CHECKS", `<p>Run live by a person: they need a live, paid or manual run, so they were not built as tests.</p>\n<ul>\n${rows.map(item).join("\n")}\n</ul>`);
+  return section("FINAL CHECKS", `<p>Run live by a person: they need a live, paid or manual run, so they were not built as tests.</p>\n<ul>\n${[...rows, ...cuts].map(item).join("\n")}\n</ul>`);
 }
 
 function scenariosSection({ scenarios }) {

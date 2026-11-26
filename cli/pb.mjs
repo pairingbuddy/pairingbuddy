@@ -718,6 +718,51 @@ function reopenable(root, plan, titles) {
   }
 }
 
+// Every test any tests artifact of this task planned, newest attempt and round first, so a test a later artifact already dropped still has
+// its selector. Unreadable files plan nothing.
+function plannedRows(root) {
+  const dir = artifactsDirOf(root);
+  if (!existsSync(dir)) return [];
+  const files = readdirSync(dir).filter((name) => /\.create-test-placeholders\..*\.json$/.test(name));
+  const order = (name) => { const [, round, attempt] = name.match(/\.r(\d+)\.a(\d+)\.json$/) ?? [, 0, 0]; return Number(attempt) * 1000 + Number(round); };
+  const byAge = files.sort((a, b) => order(b) - order(a)).map((name) => join(dir, name));
+  return byAge.flatMap((file) => {
+    try {
+      const tests = JSON.parse(readFileSync(file, "utf8")).tests;
+      return Array.isArray(tests) ? tests.filter((row) => typeof row?.test_id === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+// pb human cut-test <id>... --reason '<why>': the human takes tests off a code run's list, evidence and all, which nothing
+// else may do (assertRowsKept refuses an artifact that drops one). Each cut keeps its reason and evidence shas in
+// ledger.tests.cut, and becomes a final check: something a person still runs, which the report lists.
+function humanCutTest(args) {
+  const reasonAt = args.indexOf("--reason");
+  const reason = reasonAt === -1 ? undefined : args[reasonAt + 1];
+  const ids = reasonAt === -1 ? args : args.slice(0, reasonAt);
+  if (ids.length === 0 || !reason?.trim() || reason.startsWith("--") || args.length !== ids.length + 2) throw new UsageError("usage: pb human cut-test <test_id>... --reason '<why>'");
+  const { root, path } = runLedgerPath("no run here, so there is no test to cut");
+  const ledger = readLedger(path);
+  if (isPublishRun(ledger) || isRefreshRun(ledger)) throw new Refusal("this run publishes, so it has no tests to cut. Nothing was touched");
+  const perTest = ledger.tests?.perTest ?? {};
+  const planned = plannedRows(root);
+  const known = new Set([...Object.keys(perTest), ...planned.map(({ test_id: id }) => id)]);
+  const unknown = ids.filter((id) => !known.has(id));
+  if (unknown.length > 0) throw new Refusal(`no test ${unknown.join(", ")} in this run (it has ${[...known].join(", ") || "none"}). Nothing was touched`);
+  const at = new Date().toISOString();
+  const selectorFor = (id) => perTest[id]?.selector ?? selectorOf(planned.find(({ test_id: rowId }) => rowId === id));
+  const shas = (id) => ({ ...(perTest[id]?.red?.sha ? { red: perTest[id].red.sha } : {}), ...(perTest[id]?.green?.sha ? { green: perTest[id].green.sha } : {}) });
+  const cuts = ids.map((id) => ({ id, reason: reason.trim(), at, selector: selectorFor(id), ...shas(id) }));
+  updateLedger(path, (current) => {
+    const kept = Object.fromEntries(Object.entries(current.tests?.perTest ?? {}).filter(([id]) => !ids.includes(id)));
+    return { ...current, tests: { ...current.tests, perTest: kept, cut: [...(current.tests?.cut ?? []), ...cuts] } };
+  });
+  return { ok: true, cut: cuts.map(({ id }) => id), reason: reason.trim() };
+}
+
 // Rebuilds a plan unit that a spike closed while the unit still had tasks to run: its ticked tasks have no record, so pb plan
 // next reads them as hand-ticked. Each such task must be a spike pb ran on the checked-out branch, kept under reports/runs,
 // with all its commits on HEAD; then run/unit.json is written again with those records, as the unit had before the close.
@@ -1109,11 +1154,17 @@ const selectorOf = (row) => Object.fromEntries(SELECTOR_FIELDS.map((field) => [f
 
 // A row a step finished on is how a re-run knows what is done, so it cannot move, or a finished test would start again.
 // A row with only failed runs may: a wrong name is the likeliest reason it failed.
-function assertRowsKept(rows, { tests: { perTest = {} } }) {
-  for (const [id, { selector, red, green }] of Object.entries(perTest)) {
-    if (!red?.done && !green?.done) continue;
+// Only the human may take a test with evidence off the list: the refusal names their pb human cut-test line, with every
+// dropped id, so the session can show it.
+function assertRowsKept(rows, { tests: { perTest = {} } }, root) {
+  const finished = Object.entries(perTest).filter(([, { red, green }]) => red?.done || green?.done);
+  const dropped = finished.map(([id]) => id).filter((id) => !rows.some(({ test_id: rowId }) => rowId === id));
+  if (dropped.length > 0) {
+    const line = humanCommand(root, `cut-test ${dropped.join(" ")} --reason '<why>'`);
+    throw new Refusal(`${dropped.length === 1 ? `test ${dropped[0]} has` : `tests ${dropped.join(", ")} have`} evidence, and the tests artifact dropped ${dropped.length === 1 ? "it" : "them"}. Only the human can cut a test with evidence: they type ${line}`);
+  }
+  for (const [id, { selector }] of finished) {
     const row = rows.find(({ test_id: rowId }) => rowId === id);
-    if (row === undefined) throw new Refusal(`test ${id} has evidence, and the tests artifact dropped it`);
     if (!isDeepStrictEqual(selectorOf(row), selector)) throw new Refusal(`test ${id} has evidence for ${JSON.stringify(selector)}, and the tests artifact changed it`);
   }
 }
@@ -1128,7 +1179,7 @@ function assertSelectable(config, rows) {
 function checkedRows({ step, key, root, path, ledger }) {
   const config = readTestConfig(root, ledger.configHash);
   const rows = testRows(config, artifactsDirOf(root), ledger.stage, ledger.tests?.renamed);
-  assertRowsKept(rows, ledger);
+  assertRowsKept(rows, ledger, root);
   orStop(path, { step, key }, NO_SELECTOR_TEMPLATE, () => assertSelectable(config, rows));
   return { rows, testDirectories: [...new Set(rows.map((row) => testDirectoryOf(config, row)))] };
 }
@@ -1912,6 +1963,8 @@ function taskEnd(args) {
   assertConfigChangeInGlobs(root, path, ledger, opened);
   const plan = tickedPlan(root, ledger.plan);
   const branch = opened?.unit.branch ?? branchOf(root);
+  // Tests the human cut are left to a person: the end names them, with the human's reasons.
+  const cut = (Array.isArray(ledger.tests?.cut) ? ledger.tests.cut : []).map(({ id, reason }) => ({ id, reason }));
   appendTaskRecord(opened);
   const dir = taskDirOf(root);
   keepRun(join(root, ".pairingbuddy", "run"));
@@ -1921,7 +1974,7 @@ function taskEnd(args) {
     // In a plan the close is expected: the loop goes on, and the next unit opens from its own base, never from the spike's.
     return { ok: true, removed: dir, plan, closed: "kept-local", reason: `a spike publishes nothing: the unit is closed and its commits stay on ${branch}`, ...(plan ? { continue: true } : {}) };
   }
-  return { ok: true, removed: dir, plan };
+  return { ok: true, removed: dir, plan, ...(cut.length > 0 ? { cut } : {}) };
 }
 
 // The commits past the unit's base, oldest first. One rule for "nothing to publish", in gate eval and in pb publish.
@@ -2837,7 +2890,7 @@ export const VERBS = {
   rollback,
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
-  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
+  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human cut-test": humanCutTest, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
   "plan next": planNext, "question settle": questionSettle, "question add": questionAdd, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
