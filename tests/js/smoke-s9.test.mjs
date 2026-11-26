@@ -61,5 +61,7 @@ test("s9-forced-stop-summary-rejects-session-complete", () => {
 });
 
 test("s9-passes-six-dollar-cap-to-shared-clamp", () => {
-  assert.fail("not implemented: s9-passes-six-dollar-cap-to-shared-clamp");
+  const options = s9.parseOptions(["--budget-usd", "9"]);
+
+  assert.equal(options.budgetUsd, 6, "a requested budget of 9 is held at the $6 cap of S9");
 });
