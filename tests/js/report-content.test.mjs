@@ -274,6 +274,17 @@ describe("report-content", () => {
     assert.ok(section.includes("not built as tests"), "says why they are no tests");
   });
 
+  test("report-final-checks-cut: tests the human cut are final checks too, each with the human's reason", async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "done" });
+    const cut = [{ id: "s9-reruns-green", reason: "needs a live S9 run", at: "2026-11-26T19:00:00Z", selector: { runner_id: "node", test_file: "tests/js/smokes.test.mjs", test_function: "s9-reruns-green" }, red: "b".repeat(40) }];
+    const ledger = { ...input.ledger, tests: { ...input.ledger.tests, cut } };
+
+    const section = sectionOf(renderReport({ ...input, ledger }), "FINAL CHECKS");
+
+    assert.ok(section.includes("s9-reruns-green"), section);
+    assert.ok(section.includes("cut by you: needs a live S9 run"), "the human's reason");
+  });
+
   test("report-built: every changed file is listed", async () => {
     const input = await recordedReportInput("probe-2", { outcome: "done" });
     const changed = Array.from({ length: 7 }, (_, i) => `src/file_${i + 1}.py`);
