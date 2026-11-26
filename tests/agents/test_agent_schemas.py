@@ -468,6 +468,19 @@ def test_scenarios_agent_reads_the_code_the_task_builds_on_before_writing_expect
     assert "never restate a number that contradicts the task text" in instructions
 
 
+def test_scenarios_agent_puts_live_or_paid_criteria_in_final_checks_never_in_tests():
+    """Task 114 planned a test that passed only once live smoke results existed: no code could."""
+    content = (AGENTS_DIR / "enumerate-scenarios-and-test-cases.md").read_text()
+    instructions = content.split("## Instructions")[-1]
+    result_schema = SCHEMAS_DIR / "enumerate-scenarios-and-test-cases-result.schema.json"
+    schema = json.loads(result_schema.read_text())
+
+    assert "final_checks" in schema["properties"]
+    assert "final_checks" not in schema["required"]
+    assert "never a test case" in instructions
+    assert "final_checks" in instructions
+
+
 def test_refuter_never_knocks_down_a_factual_mismatch_as_not_a_real_problem():
     """A refuter called a scenario's wrong line totals "not a real problem"."""
     content = (AGENTS_DIR / "refuter.md").read_text()

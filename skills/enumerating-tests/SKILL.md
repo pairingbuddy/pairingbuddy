@@ -22,6 +22,7 @@ Reference material for discovering and listing test scenarios before writing cod
 | **Context variations** | "works when called from ServiceA" | Only test if behavior differs |
 | **Verification steps** | "verifies items are in order" | That's an assertion, not a test |
 | **Redundant variations** | 3 tests for "handles None/empty/missing" | One test: "treats missing values as zero" |
+| **Live-run criteria as tests** | "S1 to S6 pass live within their caps", "a file of live smoke results exists" | No code change can pass it: make it a final check, run live at the end. Test the code the live run uses instead |
 
 ### Enumeration Categories
 
