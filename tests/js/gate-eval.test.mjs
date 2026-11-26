@@ -540,10 +540,12 @@ describe("a model cannot supply the policy", () => {
     assertDenied(runGate(repo, payload), /answers/);
   });
 
-  test("the recorded AskUserQuestion, with no answers, is not denied", () => {
+  // The recording was made under auto mode, where a question no gate waits on is the session's own and is denied (it goes
+  // to pb question add); outside auto it reaches the human.
+  test("the recorded AskUserQuestion, with no answers, is not denied outside auto mode", () => {
     const repo = makeRepo();
 
-    assertNotDenied(runGate(repo, recordedQuestion(repo)));
+    assertNotDenied(runGate(repo, { ...recordedQuestion(repo), permission_mode: "default" }));
   });
 
   test("the emitted question, exactly, is not denied", () => {
