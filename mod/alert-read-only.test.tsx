@@ -19,6 +19,8 @@ for (const [standing, ledger] of Object.entries(STANDING)) {
     const run = alertEngine(on, { ledger: ledger(), play: 'reject', store: 'reject', open: 'reject' })
     // The test's own bottom hook answers the StructuredOutput call the mod's hook hands on.
     on('tool.call', () => ({ result: 'ok' }))
+    // And the engine's verdict on a question, which the mod's verdict hook reads and hands on.
+    on('tool.check', () => ({ decision: 'deny', reason: 'the gate' }))
 
     const started = await outcome(() => start($))
     const polled = await outcome(() => clock.advance(POLL_MS))
@@ -28,16 +30,17 @@ for (const [standing, ledger] of Object.entries(STANDING)) {
     const commanded = await outcome(() => $.command.run({ command: 'other', args: '' }))
     const turned = await outcome(() => $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 't1', agentId: 'a1', reason: 'answer' }))
     const toolCalled = await outcome(() => $.tool.call({ tool: 'StructuredOutput', tool_use_id: 'tu1', agentId: 'a1', pb_key: 'code-safety-net.lens.code.r1.a1', findings: [] }))
+    const checked = await outcome(() => $.tool.check({ tool: 'AskUserQuestion', input: { questions: [] } }))
     const band = await outcome(() => $.ui.mount({ ...BAND, surface: 'terminal' }))
     const pane = await outcome(() => $.ui.mount({ ...PANE, surface: 'terminal' }))
 
     expect(run.calls.played.length, `the alert tried the sound while the ${standing} stood, so the failing effects were exercised`).toBeGreaterThan(0)
-    const hooks = { 'session.start': started, poll: polled, 'agent.spawn': spawned, 'session.end clear': cleared, 'session.end other': ended, 'command.run': commanded, 'turn.complete': turned, 'tool.call': toolCalled, 'ui.render band': band, 'ui.render pane': pane }
+    const hooks = { 'session.start': started, poll: polled, 'agent.spawn': spawned, 'session.end clear': cleared, 'session.end other': ended, 'command.run': commanded, 'turn.complete': turned, 'tool.call': toolCalled, 'tool.check': checked, 'ui.render band': band, 'ui.render pane': pane }
     for (const [name, result] of Object.entries(hooks)) {
       expect(result.error, `${name} does not throw while the ${standing} stands and the alert's effects fail`).toBeUndefined()
       expect(isDeny(result.value), `${name} does not deny while the ${standing} stands and the alert's effects fail`).toBe(false)
     }
-    const driven = new Set(['session.start', 'session.end', 'agent.spawn', 'command.run', 'turn.complete', 'tool.call', 'ui.render'])
+    const driven = new Set(['session.start', 'session.end', 'agent.spawn', 'command.run', 'turn.complete', 'tool.call', 'tool.check', 'ui.render'])
     for (const { event } of recordHooks()) {
       expect(driven.has(event), `the mod registers a "${event}" hook this test does not drive: add it here`).toBe(true)
     }

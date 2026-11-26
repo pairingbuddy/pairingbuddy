@@ -68,6 +68,11 @@ export function eventsFor(event: string, matcher: Record<string, unknown>): Even
       }
       return { surveyed: call, idle: call }
     }
+    // The model's own question, raised by the engine: the mod's verdict hook hands it on untouched.
+    case 'tool.check': {
+      const check = { tool: 'AskUserQuestion', input: { questions: [] }, tool_use_id: 'tu1' }
+      return { surveyed: check, idle: check }
+    }
     default:
       throw new Error(`no representative events for the "${event}" hook: add a case to eventsFor`)
   }
