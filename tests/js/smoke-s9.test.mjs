@@ -25,11 +25,16 @@ test("s9-rejects-a-non-draft-pr", () => {
 
 test("s9-rejects-wrong-pr-count", () => {
   const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
-  const one = [draftCreate("fix/a")];
-  const three = [draftCreate("fix/a"), draftCreate("feat/b"), draftCreate("feat/c")];
+  const creates = [draftCreate("fix/a")];
 
-  assert.throws(() => s9.summarizeDraftPrs({ creates: one, units }), /\b1\b/, "one pr create for a two-unit plan is rejected and the error shows the count seen");
-  assert.throws(() => s9.summarizeDraftPrs({ creates: three, units }), /\b3\b/, "three pr creates for a two-unit plan are rejected and the error shows the count seen");
+  assert.throws(() => s9.summarizeDraftPrs({ creates, units }), /expected 2 pr creates, saw 1$/, "one pr create for a two-unit plan is rejected and the error shows the expected and seen counts");
+});
+
+test("s9-rejects-too-many-prs", () => {
+  const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
+  const creates = [draftCreate("fix/a"), draftCreate("feat/b"), draftCreate("feat/c")];
+
+  assert.throws(() => s9.summarizeDraftPrs({ creates, units }), /expected 2 pr creates, saw 3$/, "three pr creates for a two-unit plan are rejected and the error shows the expected and seen counts");
 });
 
 test("s9-accepts-report-with-both-pr-links", () => {
