@@ -1259,7 +1259,7 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
   const GUIDANCE = (repo) => join(repo.dir, ".pairingbuddy", "human-guidance.json");
   const guidanceOf = (repo) => JSON.parse(readFileSync(GUIDANCE(repo), "utf8")).guidance;
 
-  const scenariosRepo = ({ attempt = 1, mode = "auto", ambiguity = "" } = {}) => {
+  const scenariosRepo = ({ attempt = 1, mode = "auto", ambiguity = "", finalChecks } = {}) => {
     const repo = makeRepo({
       ledger: {
         taskType: "bug_fix", policy: { mode, source: "permission_mode" },
@@ -1268,12 +1268,12 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
         gates: withTypePassed(),
       },
     });
-    writeScenarios(repo, attempt, ambiguity);
+    writeScenarios(repo, attempt, ambiguity, finalChecks);
     return repo;
   };
 
-  function writeScenarios(repo, attempt, ambiguity) {
-    writeFileSync(join(repo.taskDir, "artifacts", `${keyAt(attempt)}.json`), JSON.stringify({ pb_key: keyAt(attempt), ambiguity, scenarios: [] }));
+  function writeScenarios(repo, attempt, ambiguity, finalChecks) {
+    writeFileSync(join(repo.taskDir, "artifacts", `${keyAt(attempt)}.json`), JSON.stringify({ pb_key: keyAt(attempt), ambiguity, scenarios: [], ...(finalChecks ? { final_checks: finalChecks } : {}) }));
   }
 
   const redo = (repo, asked, annotations = {}) => {
@@ -1341,6 +1341,22 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
     assert.deepEqual(repo.ledger().gates[G_SCENARIOS], { source: "auto", deferred: [{ step: "listing scenarios", ambiguity: "Does the fix cover the retry path?" }] });
     assert.equal(repo.ledger().needsHuman, null);
     assert.deepEqual(unitOf(repo).questions, [{ gate: G_SCENARIOS, task: "Task 26", step: "listing scenarios", ambiguity: "Does the fix cover the retry path?" }]);
+  });
+
+  test("with a unit open, final checks under auto pass the gate and ask the human, on the unit's questions, whether to run them live", () => {
+    const finalChecks = [{ check_id: "smokes", description: "S1 to S6 pass live within their caps", command: "node tests/smoke/run.mjs S1-S6", why: "about $21" }];
+    const repo = scenariosRepo({ finalChecks });
+    openUnit(repo);
+
+    const passed = gateEval(repo, "auto");
+
+    assert.deepEqual(passed, { ok: true, result: "auto-pass", gate: G_SCENARIOS, source: "auto", finalChecks: 1 });
+    assert.equal(repo.ledger().needsHuman, null, "final checks never stop the run");
+    assert.deepEqual(unitOf(repo).questions, [{
+      gate: G_SCENARIOS, task: "Task 26", step: "final checks",
+      ambiguity: "These checks need a live, paid or manual run, so no test covers them. Run them before the pull request?\n- S1 to S6 pass live within their caps: node tests/smoke/run.mjs S1-S6 (about $21)",
+      options: ["Run them before the PR", "Skip them this time"],
+    }]);
   });
 
   test("a doubt deferred at one gate is not deferred again at a later gate of the run", () => {

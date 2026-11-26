@@ -89,8 +89,31 @@ const MAX_SCENARIOS = 15;
 
 // Every scenario with its tests when they all fit the list's rows; otherwise one line per scenario with its test count, so no
 // scenario is cut off part way through its tests.
-function scenarioLines({ facts: { scenarios }, fullAt }) {
+function scenarioLines({ facts: { scenarios, finalChecks }, fullAt }) {
   if (!Array.isArray(scenarios) || scenarios.length === 0) return [];
+  return [...testLines(scenarios, fullAt), ...finalCheckLines(finalChecks, fullAt)];
+}
+
+// One final check per row: what it shows, then its command and why it is no test, when given.
+export const finalCheckRow = ({ description, command, why }) => `- ${description}${command ? `: ${command}` : ""}${why ? ` (${why})` : ""}`;
+
+// The checks only a live, paid or manual run can show, after the tests: they run at the end and are never built as tests.
+function finalCheckLines(finalChecks, fullAt) {
+  if (!Array.isArray(finalChecks) || finalChecks.length === 0) return [];
+  return [`Final checks, run live at the end, not built as tests (${finalChecks.length}):`, ...folded(finalChecks.map(finalCheckRow), MAX_FINAL_CHECKS, fullAt, (n) => ` ${n === 1 ? "final check" : "final checks"}`)];
+}
+
+const MAX_FINAL_CHECKS = 5;
+
+// The question auto mode leaves on the unit for the final checks: it never runs them (a live run costs money and time) and
+// never stops for them, so the human decides when they have time.
+export const finalChecksDoubt = (finalChecks) => ({
+  step: "final checks",
+  ambiguity: ["These checks need a live, paid or manual run, so no test covers them. Run them before the pull request?", ...finalChecks.slice(0, MAX_FINAL_CHECKS).map(finalCheckRow)].join("\n"),
+  options: ["Run them before the PR", "Skip them this time"],
+});
+
+function testLines(scenarios, fullAt) {
   const tests = scenarios.reduce((sum, { tests: cases }) => sum + cases.length, 0);
   const rows = scenarios.flatMap(({ description, tests: cases }) => [`- ${description}`, ...cases.map((test) => `    - ${test}`)]);
   const shown = fullAt === null || rows.length <= MAX_LIST_ROWS ? rows : folded(scenarios.map(({ description, tests: cases }) => `- ${description} (${counted(cases.length, "test")})`), MAX_SCENARIOS, fullAt, (n) => ` ${n === 1 ? "scenario" : "scenarios"}`);

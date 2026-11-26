@@ -10,7 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, CommitHookRefused, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, untrackedFiles, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
-import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, defersScope, scopeDoubts, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
+import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, finalChecksDoubt, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, defersScope, scopeDoubts, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, seenRecently, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
@@ -551,10 +551,21 @@ function gateEval(args) {
     deferQuestionsInUnit(root, { gate, task: readLedger(path).task, doubts: deferred });
     return { ok: true, result: "auto-pass", gate, source: "auto", deferred: deferred.length };
   }
-  if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto" };
+  if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto", ...deferFinalChecks(root, gate, path, contract) };
   writeWhole(fullAt, full);
   const asked = { ok: true, result: "needs-human", gate, reason, question, humanCommand: approveCommand(root, gate) };
   return gate === PUBLISH_GATE ? { ...asked, shown } : asked;
+}
+
+// Under auto with a unit open, G:scenarios passing leaves its final checks on the unit's questions: they need a live, paid or
+// manual run, which auto mode never starts and never waits for. Gives { finalChecks: n } when it left the question, else {}.
+function deferFinalChecks(root, gate, path, contract) {
+  if (gate !== "G:scenarios" || !unitIsOpen(root)) return {};
+  const ledger = readLedger(path);
+  const { finalChecks } = gateFacts(gate, root, ledger, contract);
+  if (!Array.isArray(finalChecks) || finalChecks.length === 0) return {};
+  deferQuestionsInUnit(root, { gate, task: ledger.task, doubts: [finalChecksDoubt(finalChecks)] });
+  return { finalChecks: finalChecks.length };
 }
 
 // A unit with no commits past its base has nothing to publish (D19): the gate is skipped and no approval is recorded.
