@@ -10,6 +10,13 @@ const stoppedLedger = () => ({
   stop: { reason: "implement-tests ran out of fix attempts", seq: 7, code: "attempt-cap" },
 });
 
+// A ledger whose stage code-scenarios stopped at the attempt cap after the given rollbacks
+const attemptCapLedger = (stopReason, rollbackKeys) => ({
+  stage: { name: "code-scenarios", status: "running", attempt: 1 },
+  stop: { reason: stopReason, seq: 9, code: "attempt-cap" },
+  fixes: { rollbacks: rollbackKeys.map((key) => ({ key })) },
+});
+
 test("exit-zero-with-stop-in-ledger-reports-failure", () => {
   const { result, status } = runSolo({
     stubs: () => ({ claude: "exit 0" }),
@@ -45,9 +52,8 @@ test("exit-zero-with-needs-human-in-ledger-reports-failure", () => {
 });
 
 test("exit-zero-with-unfinished-stage-reports-failure", () => {
-  const unfinishedStatus = "active"; // the ledger status under test: a stage that never finished (the sibling tests use "running")
   const ledger = {
-    stage: { name: "implement-tests", status: unfinishedStatus, attempt: 1 },
+    stage: { name: "implement-tests", status: "active", attempt: 1 },
     stop: null,
   };
 
@@ -58,7 +64,7 @@ test("exit-zero-with-unfinished-stage-reports-failure", () => {
 
   assert.match(
     result.stdout,
-    new RegExp(`^✗ Session unfinished: stage implement-tests is ${unfinishedStatus}$`, "m"),
+    /^✗ Session unfinished: stage implement-tests is active$/m,
     "the summary must carry the failure line that names the unfinished stage and the ledger status it is stuck in",
   );
   assert.doesNotMatch(result.stdout, /✓ Session complete/, "a run with an unfinished stage must not look complete");
@@ -96,17 +102,11 @@ test("exit-zero-with-finished-ledger-still-complete", () => {
 });
 
 test("attempt-cap-stop-shows-attempt-count", () => {
-  const ledger = {
-    stage: { name: "code-scenarios", status: "running", attempt: 1 },
-    stop: { reason: "attempt-cap: stage code-scenarios rolled back 3 fix attempts, its cap of 5", seq: 9, code: "attempt-cap" },
-    fixes: {
-      rollbacks: [
-        { key: "code-scenarios.fix.g1.r1.a1" },
-        { key: "code-scenarios.fix.g1.r1.a2" },
-        { key: "code-scenarios.fix.g1.r1.a3" },
-      ],
-    },
-  };
+  const ledger = attemptCapLedger("attempt-cap: stage code-scenarios rolled back 3 fix attempts, its cap of 5", [
+    "code-scenarios.fix.g1.r1.a1",
+    "code-scenarios.fix.g1.r1.a2",
+    "code-scenarios.fix.g1.r1.a3",
+  ]);
 
   const { result } = runSolo({
     stubs: () => ({ claude: "exit 0" }),
@@ -121,13 +121,10 @@ test("attempt-cap-stop-shows-attempt-count", () => {
 });
 
 test("attempt-cap-stop-shows-each-lesson", () => {
-  const ledger = {
-    stage: { name: "code-scenarios", status: "running", attempt: 1 },
-    stop: { reason: "attempt-cap: stage code-scenarios rolled back 2 fix attempts, its cap of 5", seq: 9, code: "attempt-cap" },
-    fixes: {
-      rollbacks: [{ key: "code-scenarios.fix.g1.r1.a1" }, { key: "code-scenarios.fix.g1.r1.a2" }],
-    },
-  };
+  const ledger = attemptCapLedger("attempt-cap: stage code-scenarios rolled back 2 fix attempts, its cap of 5", [
+    "code-scenarios.fix.g1.r1.a1",
+    "code-scenarios.fix.g1.r1.a2",
+  ]);
   const notes = [
     "## Rollback 1: code-scenarios.fix.g1.r1.a1",
     "",
@@ -149,8 +146,8 @@ test("attempt-cap-stop-shows-each-lesson", () => {
 
   assert.match(
     result.stdout,
-    /^lessons:\n- The fix merged two scenarios and lost a test case\.\n- The fix renamed an id that other files point to\.$/m,
-    "the summary must list each lesson of the stage that hit the cap, one per line, in rollback order",
+    /^✗ Session stopped: attempt-cap: stage code-scenarios rolled back 2 fix attempts, its cap of 5\nfixes undone: 2 of 5 allowed\nlessons:\n- The fix merged two scenarios and lost a test case\.\n- The fix renamed an id that other files point to\.$/m,
+    "the summary must show the stop line, the attempts line, then each lesson of the stage that hit the cap, one per line, in rollback order",
   );
 });
 
