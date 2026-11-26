@@ -15,7 +15,7 @@ const REFACTOR_FIELDS = [...FILE_FIELDS, "approach", "no_change_reason"];
 const ISSUE_FIELDS = ["pb_key", "ambiguity", "notes", "issues"];
 const COVERAGE_FIELDS = ["status", "scenarios_covered", "scenarios_total", "test_cases_covered", "test_cases_total", "gaps"];
 const AGENTS = [
-  { name: "enumerate-scenarios-and-test-cases", paths: ["test_config", "human_guidance"], fields: ["pb_key", "ambiguity", "notes", "scenarios"], legacy: ".pairingbuddy/scenarios.json", legacySchema: "scenarios.schema.json" },
+  { name: "enumerate-scenarios-and-test-cases", paths: ["test_config", "human_guidance"], fields: ["pb_key", "ambiguity", "notes", "scenarios"], optional: ["final_checks"], legacy: ".pairingbuddy/scenarios.json", legacySchema: "scenarios.schema.json" },
   { name: "create-test-placeholders", paths: ["scenarios", "test_config", "human_guidance", "tests", "coverage_report"], fields: [...FILE_FIELDS, "tests"], legacy: ".pairingbuddy/tests.json", legacySchema: "tests.schema.json" },
   { name: "implement-tests", paths: ["tests", "scenarios", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/test-state.json", legacySchema: "test-state.schema.json" },
   { name: "implement-code", paths: ["tests", "test_config", "human_guidance"], fields: FILE_FIELDS, legacy: ".pairingbuddy/code-state.json", legacySchema: "code-state.schema.json" },
@@ -64,11 +64,13 @@ for (const agent of AGENTS) {
   test(`${agent.name}: the return is exactly the schema, in the agent and in the contract`, () => {
     const schema = schemaOf(resultSchema(agent));
 
-    assert.deepEqual(Object.keys(schema.properties).sort(), [...agent.fields].sort());
-    assert.deepEqual([...schema.required].sort(), [...agent.fields].sort(), "every field is required");
+    const all = [...agent.fields, ...(agent.optional ?? [])];
+
+    assert.deepEqual(Object.keys(schema.properties).sort(), [...all].sort());
+    assert.deepEqual([...schema.required].sort(), [...agent.fields].sort(), "every field but the optional ones is required");
     assert.equal(schema.additionalProperties, false);
     assert.equal(schema.properties.ambiguity.type, "string");
-    assert.deepEqual(fieldsOfBlock(pathsOutput(agent)).sort(), [...agent.fields].sort(), "the inline schema matches");
+    assert.deepEqual(fieldsOfBlock(pathsOutput(agent)).sort(), [...all].sort(), "the inline schema matches");
     assert.match(configOf(agent.name), new RegExp(`schema: ${resultSchema(agent)}\\n\\s+return_only: true`));
     assert.ok(CONFIG.includes(`  - ${resultSchema(agent)}\n`), "the schema is registered");
   });
