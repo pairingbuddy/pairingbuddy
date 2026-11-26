@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import * as s9 from "../smoke/s9.mjs";
 
 // Tests for the pure helpers of the S9 smoke (tests/smoke/s9.mjs).
-// Bodies that still say "not implemented" are placeholders and fail until the real test is written.
 
 const draftCreate = (head) => ({ argv: ["pr", "create", "--head", head, "--draft"] });
 const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
@@ -61,7 +60,9 @@ test("s9-forced-stop-summary-rejects-session-complete", () => {
 });
 
 test("s9-passes-six-dollar-cap-to-shared-clamp", () => {
-  const options = s9.parseOptions(["--budget-usd", "9"]);
+  const above = s9.parseOptions(["--budget-usd", "9"]);
+  const below = s9.parseOptions(["--budget-usd", "2"]);
 
-  assert.equal(options.budgetUsd, 6, "a requested budget of 9 is held at the $6 cap of S9");
+  assert.equal(above.budgetUsd, 6, "a requested budget of 9 is held at the $6 cap of S9");
+  assert.equal(below.budgetUsd, 2, "a requested budget of 2 stays 2, so the cap is a clamp and not a constant");
 });
