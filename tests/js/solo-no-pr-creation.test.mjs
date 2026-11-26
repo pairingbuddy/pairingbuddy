@@ -1,12 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { execFileSync, spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-const SCRIPT_PATH = fileURLToPath(new URL("../../scripts/solo-buddy.sh", import.meta.url));
+import { runSolo, SCRIPT_PATH } from "./solo-script-fixture.mjs";
 
 // Task 111: solo-buddy.sh no longer pushes or opens PRs (publish stages own that),
 // SOLO_BUDDY_REPORT.md is no longer a PR body, and tests/test_solo_buddy_pr_creation.py is retired.
@@ -26,38 +23,6 @@ test("no-git-push-in-script", () => {
 
   assert.equal(found, null, `solo-buddy.sh must not contain \`git push\`, found: ${found?.[0]}`);
 });
-
-// Runs solo-buddy.sh in a throwaway repo with stubbed binaries on PATH.
-// `stubs` maps a binary name to its bash body; `env` adds environment variables.
-// Returns the spawn result and the stubs' call log.
-function runSolo({ stubs, env = {} }) {
-  const dir = mkdtempSync(join(tmpdir(), "solo-no-pr-"));
-  try {
-    const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
-    const repo = join(dir, "repo");
-    const bin = join(dir, "bin");
-    const calls = join(dir, "calls.log");
-    mkdirSync(bin);
-    mkdirSync(repo);
-    execFileSync(realGit, ["init", "-q", "-b", "feature/x", repo]);
-    writeFileSync(join(repo, "plan.md"), "# plan\n");
-    for (const [name, body] of Object.entries(stubs({ realGit, calls }))) {
-      writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`);
-      chmodSync(join(bin, name), 0o755);
-    }
-
-    const result = spawnSync("bash", [SCRIPT_PATH, "plan.md"], {
-      cwd: repo,
-      env: { ...process.env, ...env, PATH: `${bin}:${process.env.PATH}` },
-      encoding: "utf8",
-      timeout: 60000,
-    });
-
-    return { result, log: existsSync(calls) ? readFileSync(calls, "utf8") : "" };
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
 
 test("success-run-makes-no-gh-or-push-call", () => {
   const { result, log } = runSolo({
