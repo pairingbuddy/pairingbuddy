@@ -79,7 +79,20 @@ test("unfinished-exit-zero-script-exits-non-zero", () => {
 });
 
 test("exit-zero-with-finished-ledger-still-complete", () => {
-  assert.fail("not implemented: exit-zero-with-finished-ledger-still-complete");
+  const ledger = {
+    stage: { name: "implement-tests", status: "done", attempt: 1 },
+    stop: null,
+    needsHuman: null,
+  };
+
+  const { result } = runSolo({
+    stubs: () => ({ claude: "exit 0" }),
+    files: { ".pairingbuddy/run/task/ledger.json": ledger },
+  });
+
+  assert.match(result.stdout, /^✓ Session complete$/m, "a finished run must still report completion");
+  assert.doesNotMatch(result.stdout, /✗ Session/, "a finished run must carry no failure line");
+  assert.equal(result.status, 0, "a finished run must exit 0");
 });
 
 test("attempt-cap-stop-shows-attempt-count", () => {
