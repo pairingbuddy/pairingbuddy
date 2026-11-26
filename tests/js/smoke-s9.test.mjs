@@ -6,10 +6,10 @@ import * as s9 from "../smoke/s9.mjs";
 // Bodies that still say "not implemented" are placeholders and fail until the real test is written.
 
 const draftCreate = (head) => ({ argv: ["pr", "create", "--head", head, "--draft"] });
+const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
 
 test("s9-two-unit-plan-opens-two-draft-prs", () => {
   const creates = [draftCreate("feat/b"), draftCreate("fix/a")];
-  const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
 
   const result = s9.summarizeDraftPrs({ creates, units });
 
@@ -18,20 +18,17 @@ test("s9-two-unit-plan-opens-two-draft-prs", () => {
 
 test("s9-rejects-a-non-draft-pr", () => {
   const creates = [draftCreate("fix/a"), { argv: ["pr", "create", "--head", "feat/b"] }];
-  const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
 
   assert.throws(() => s9.summarizeDraftPrs({ creates, units }), /Unit B/, "a pr create without --draft is rejected and the error names the unit");
 });
 
 test("s9-rejects-wrong-pr-count", () => {
-  const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
   const creates = [draftCreate("fix/a")];
 
   assert.throws(() => s9.summarizeDraftPrs({ creates, units }), /expected 2 pr creates, saw 1$/, "one pr create for a two-unit plan is rejected and the error shows the expected and seen counts");
 });
 
 test("s9-rejects-too-many-prs", () => {
-  const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
   const creates = [draftCreate("fix/a"), draftCreate("feat/b"), draftCreate("feat/c")];
 
   assert.throws(() => s9.summarizeDraftPrs({ creates, units }), /expected 2 pr creates, saw 3$/, "three pr creates for a two-unit plan are rejected and the error shows the expected and seen counts");
