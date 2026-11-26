@@ -152,7 +152,34 @@ test("attempt-cap-stop-shows-each-lesson", () => {
 });
 
 test("summary-lists-every-pr-link", () => {
-  assert.fail("not implemented: summary-lists-every-pr-link");
+  const plan = [
+    "# Plan",
+    "",
+    "#### PR: First unit",
+    "",
+    "PR: https://github.com/o/r/pull/11 branch: unit-first",
+    "",
+    "- [x] Task 1: First",
+    "",
+    "#### PR: Second unit",
+    "",
+    "PR: https://github.com/o/r/pull/12 branch: unit-second",
+    "",
+    "- [x] Task 2: Second",
+    "",
+  ].join("\n");
+  const ledger = { stage: { name: "implement-tests", status: "done", attempt: 1 }, stop: null, needsHuman: null };
+
+  const { result } = runSolo({
+    stubs: () => ({ claude: "exit 0" }),
+    files: { "plan.md": plan, ".pairingbuddy/run/task/ledger.json": ledger },
+  });
+
+  assert.match(
+    result.stdout,
+    /^pull requests:\n- https:\/\/github\.com\/o\/r\/pull\/11\n- https:\/\/github\.com\/o\/r\/pull\/12$/m,
+    "the summary must list both PR urls from the plan, one per line, in plan order",
+  );
 });
 
 test("summary-lists-pr-links-on-failure-too", () => {
