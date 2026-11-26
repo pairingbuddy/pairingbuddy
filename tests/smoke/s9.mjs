@@ -1,6 +1,7 @@
 // Pure assertion helpers for the S9 smoke: Solo on a two-unit plan opens two draft PRs.
 
 import { parseArgs } from "node:util";
+import { clampBudget } from "./claude-run.mjs";
 
 export const S9_BUDGET_USD = 6;
 
@@ -62,6 +63,5 @@ export function assertReportHasPrLinks({ report, urls }) {
 
 export function parseOptions(argv) {
   const { values } = parseArgs({ args: argv, options: { "budget-usd": { type: "string" } } });
-  const budgetUsd = Math.min(Number(values["budget-usd"] ?? S9_BUDGET_USD), S9_BUDGET_USD);
-  return { budgetUsd };
+  return { budgetUsd: clampBudget(values["budget-usd"], S9_BUDGET_USD) };
 }
