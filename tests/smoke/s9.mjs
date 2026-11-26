@@ -2,6 +2,8 @@
 
 const HEAD_FLAG = "--head";
 const DRAFT_FLAG = "--draft";
+const COMPLETE_MARKER = "Session complete";
+const STOPPED_MARKER = "Session stopped";
 
 function headOf({ argv }) {
   const at = argv.indexOf(HEAD_FLAG);
@@ -14,7 +16,10 @@ export function summarizeDraftPrs({ creates, units }) {
   }
   for (const u of units) {
     const create = creates.find((c) => headOf(c) === u.branch);
-    if (create && !create.argv.includes(DRAFT_FLAG)) {
+    if (!create) {
+      throw new Error(`${u.unit}: no pr create for ${u.branch}`);
+    }
+    if (!create.argv.includes(DRAFT_FLAG)) {
       throw new Error(`${u.unit}: pr create for ${u.branch} is not a draft`);
     }
   }
@@ -35,10 +40,10 @@ export function assertForcedStopLocal({ remote, local, creates }) {
 }
 
 export function assertForcedStopSummary({ summary }) {
-  if (summary.includes("Session complete")) {
+  if (summary.includes(COMPLETE_MARKER)) {
     throw new Error("forced stop summary says Session complete");
   }
-  if (!summary.includes("Session stopped")) {
+  if (!summary.includes(STOPPED_MARKER)) {
     throw new Error("forced stop summary does not say Session stopped");
   }
 }
