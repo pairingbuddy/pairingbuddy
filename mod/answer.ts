@@ -1,5 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 import { renderQuestionsPage } from '../shared-node/questions-page.mjs'
+import { taskTitle } from '../shared-node/questions.mjs'
 import { stampOf } from './plan-page'
 import { REPORTS_DIR } from './report'
 
@@ -8,13 +9,13 @@ import { REPORTS_DIR } from './report'
 const UNIT = '.pairingbuddy/run/unit.json'
 const HOW = 'Answer with /pb-answer <number> <your answer>. Your answer reaches the next step that starts.'
 
-type Question = { task?: unknown; ambiguity?: unknown; answer?: unknown }
+type Question = { task?: unknown; step?: unknown; ambiguity?: unknown; answer?: unknown }
 type UnitRecord = { unit?: unknown; questions?: Question[]; questionsMore?: unknown }
 
 // The terminal shows only a few questions, each on one line cut at a fixed width; the page has them all in full.
 const LISTED = 3
 const WIDTH = 100
-const SHORT_HOW = 'Answer: /pb-answer <number> <your answer>'
+const SHORT_HOW = 'Answer them one by one: /pb-answer'
 const cut = (text: string) => (text.length <= WIDTH ? text : `${text.slice(0, WIDTH - 1).trimEnd()}…`)
 
 const oneLine = (text: unknown) => String(text ?? '').replace(/\s+/g, ' ').trim()
@@ -60,10 +61,73 @@ async function openQuestionsPage($: EngineInterface, unit: UnitRecord): Promise<
   }
 }
 
+// The walk's own choices, after any suggested answers; typed words are the answer itself.
+const SKIP = 'Skip this one'
+const STOP = 'Stop answering'
+
+// One dialog's question: the doubt in full, then the task and the step that raised it.
+function dialogText(question: Question): string {
+  const where = [taskTitle(question.task), oneLine(question.step)].filter(Boolean).join(' · ')
+  return where ? `${where}:\n${String(question.ambiguity ?? '')}` : String(question.ambiguity ?? '')
+}
+
+type Recorded = { ok: true } | { ok: false; why: string }
+
+// Records answer to question n through pb human answer, the one writer of answers.
+async function recordAnswer($: EngineInterface, n: number | string, answer: string): Promise<Recorded> {
+  try {
+    const ran = await $.process.run(['node', `${$.plugin.root}/cli/pb.mjs`, 'human', 'answer', String(n), answer], { cwd: await $.session.root() })
+    return ran.exitCode === 0 ? { ok: true } : { ok: false, why: oneLine(ran.stderr).replace(/^pb:\s*/, '') }
+  } catch (e) {
+    return { ok: false, why: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+// Writes the questions page without opening it; its path, or null when it could not be written.
+async function writeQuestionsPage($: EngineInterface, unit: UnitRecord): Promise<string | null> {
+  try {
+    const path = `${await $.session.root()}/${REPORTS_DIR}/${stampOf(await $.clock.now())}-questions.html`
+    await $.fs.write(path, renderQuestionsPage({ unit }))
+    return path
+  } catch {
+    return null
+  }
+}
+
+// /pb-answer with no words: the open questions one dialog at a time. Stop answering, or Esc, ends the walk at once and leaves
+// the rest open; Skip this one leaves that one open and goes on.
+async function walk($: EngineInterface, unit: UnitRecord): Promise<string> {
+  const questions = Array.isArray(unit.questions) ? unit.questions : []
+  const open = questions.map((question, i) => ({ question, n: i + 1 })).filter(({ question }) => !isAnswered(question))
+  const more = Number.isInteger(unit.questionsMore) ? Number(unit.questionsMore) : 0
+  if (open.length + more === 0) return 'Pairing Buddy: no questions for you right now'
+  let answered = 0
+  for (const [i, { question, n }] of open.entries()) {
+    let reply: string
+    try {
+      reply = await $.ui.ask(dialogText(question), { options: [SKIP, STOP], header: `Q ${i + 1} of ${open.length}` })
+    } catch {
+      break
+    }
+    if (reply === STOP) break
+    if (reply === SKIP || reply.trim() === '') continue
+    const recorded = await recordAnswer($, n, reply.trim())
+    if (!recorded.ok) return `Pairing Buddy: answered ${answered}, then question ${n} was not recorded: ${recorded.why}`
+    answered++
+  }
+  const page = await writeQuestionsPage($, (await unitRecord($)) ?? unit)
+  return `Pairing Buddy: answered ${answered} · ${open.length + more - answered} left · ${page ? `page: ${page}` : "couldn't write the questions page"}`
+}
+
 // What /pb-answer prints for its words: the list with none, else the outcome of recording the answer.
 export async function runAnswer($: EngineInterface, args: string): Promise<string> {
   const words = args.trim()
   if (words === '') {
+    const unit = await unitRecord($)
+    if (unit === null) return 'Pairing Buddy: no unit is open, so there are no questions for you'
+    return walk($, unit)
+  }
+  if (words === 'list') {
     const unit = await unitRecord($)
     if (unit === null) return 'Pairing Buddy: no unit is open, so there are no questions for you'
     return questionList(unit, await openQuestionsPage($, unit))
