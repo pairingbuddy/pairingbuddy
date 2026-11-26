@@ -36,9 +36,13 @@ const suggested = (question: Question) => (Array.isArray(question.options) ? que
   .slice(0, SUGGESTED)
 
 // One dialog's question: the doubt in full, then the task and the step that raised it.
+// The dialog's free-text choice is the engine's own, labelled "Type something", so the how line names it as drawn.
+export const HOW_TO_ANSWER = 'To answer, pick a suggestion or choose "Type something" and write your answer. "Skip this one" leaves it for later; "Stop answering" ends here.'
+
 function dialogText(question: Question): string {
   const where = [taskTitle(question.task), oneLine(question.step)].filter(Boolean).join(' · ')
-  return where ? `${where}:\n${String(question.ambiguity ?? '')}` : String(question.ambiguity ?? '')
+  const asked = where ? `${where}:\n${String(question.ambiguity ?? '')}` : String(question.ambiguity ?? '')
+  return `${asked}\n\n${HOW_TO_ANSWER}`
 }
 
 type Recorded = { ok: true } | { ok: false; why: string }
@@ -103,7 +107,7 @@ export async function runQuestions($: EngineInterface): Promise<string> {
   const closed = `Pairing Buddy: closed. Your ${count} ${count === 1 ? 'question is' : 'questions are'} still open · /pb-questions to come back`
   let choice: string
   try {
-    choice = await $.ui.ask(`${count} ${count === 1 ? 'question' : 'questions'} for you. What would you like to do?`, { options: [ANSWER_NOW, SEE_FIRST], header: 'Questions' })
+    choice = await $.ui.ask(`${count} ${count === 1 ? 'question' : 'questions'} for you. Answer them now (one at a time, stop whenever you like), or see them all first on a page?`, { options: [ANSWER_NOW, SEE_FIRST], header: 'Questions' })
   } catch (error) {
     return isDismissal(error) ? closed : dialogFailed($, unit)
   }

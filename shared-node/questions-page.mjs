@@ -4,7 +4,7 @@
 import { escape, STYLE } from "./plan-page.mjs";
 import { openQuestions, taskTitle } from "./questions.mjs";
 
-const HOW = "To answer, type /pb-questions in the session and choose Answer them now. You can stop whenever you like. An answer reaches the next step that starts.";
+const HOW = 'To answer: type /pb-questions in the Claude Code session and choose "Answer them now". You can stop at any question.';
 
 const QUESTION_STYLE = `.question{margin:0 0 18px}`;
 

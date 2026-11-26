@@ -97,8 +97,9 @@ test('pb-questions opens a menu, and Answer them now walks the open questions on
 
   const result: any = await $.command.run({ command: 'pb-questions', args: '' })
 
-  expect(asked[0], 'the menu').toEqual({ question: '3 questions for you. What would you like to do?', header: 'Questions', options: MENU })
+  expect(asked[0], 'the menu').toEqual({ question: '3 questions for you. Answer them now (one at a time, stop whenever you like), or see them all first on a page?', header: 'Questions', options: MENU })
   expect(asked.slice(1).map(a => a.header)).toEqual(['Q 1 of 3', 'Q 2 of 3'])
+  expect(asked[1].question, 'each question ends by saying how to answer it').toBe('Task 1: t1 · a reviewer:\nDoubt 1?\n\nTo answer, pick a suggestion or choose "Type something" and write your answer. "Skip this one" leaves it for later; "Stop answering" ends here.')
   expect(runs.filter(r => r.argv[0] === 'node').map(r => r.argv.slice(2))).toEqual([['human', 'answer', '1', 'Drafts, always.']])
   expect(result?.text).toBe('Pairing Buddy: answered 1 · 2 still open · /pb-questions to come back')
 })

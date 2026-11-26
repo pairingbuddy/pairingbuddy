@@ -28,20 +28,28 @@ async function shown($: any, on: Function, unit: unknown) {
   return { lines: await paneLines($), band: (await bandTexts($)).join('') }
 }
 
+// The STATUS row with its wrapped continuation lines, joined as one text: the pane wraps a long STATUS at a part boundary.
+function statusText(lines: string[]): string {
+  const at = lines.findIndex(line => line.startsWith('STATUS'))
+  const rest = lines.slice(at + 1)
+  const more = rest.slice(0, Math.max(0, rest.findIndex(line => !line.startsWith(' '))))
+  return [lines[at], ...more.map(line => line.trim())].join(' · ').replace(/\s+/g, ' ')
+}
+
 test('questions-the-unit-holds-are-counted-in-status-and-the-band', async ($, on) => {
   const { lines, band } = await shown($, on, unitWith([question(1), question(2)], 1))
 
-  const status = lines.find(line => line.startsWith('STATUS'))
-  expect(status, `STATUS adds the count after what the run is doing: ${JSON.stringify(lines)}`).toMatch(/· 3 questions for you$/)
-  expect(band, 'the band counts them too, and says how to answer').toContain('3 questions for you · /pb-questions')
+  const status = statusText(lines)
+  expect(status, `STATUS adds the count after what the run is doing, and how to answer: ${JSON.stringify(lines)}`).toMatch(/· 3 questions for you · type \/pb-questions$/)
+  expect(band, 'the band counts them too, and says how to answer').toContain('3 questions for you · type /pb-questions to answer')
 })
 
 test('a question the human answered is no longer counted', async ($, on) => {
   const { lines, band } = await shown($, on, unitWith([question(1), { ...question(2), answer: 'Yes.', answeredAt: 't' }]))
 
-  const status = lines.find(line => line.startsWith('STATUS'))
-  expect(status, `only the open one counts: ${JSON.stringify(lines)}`).toMatch(/· 1 question for you$/)
-  expect(band).toContain('1 question for you · /pb-questions')
+  const status = statusText(lines)
+  expect(status, `only the open one counts: ${JSON.stringify(lines)}`).toMatch(/· 1 question for you · type \/pb-questions$/)
+  expect(band).toContain('1 question for you · type /pb-questions to answer')
 })
 
 test('a new question sends one quiet notice, never repeated, with no sound and no status line', async ($, on) => {
