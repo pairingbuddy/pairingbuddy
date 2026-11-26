@@ -1,5 +1,9 @@
 // Pure assertion helpers for the S9 smoke: Solo on a two-unit plan opens two draft PRs.
 
+import { parseArgs } from "node:util";
+
+export const S9_BUDGET_USD = 6;
+
 const HEAD_FLAG = "--head";
 const DRAFT_FLAG = "--draft";
 const COMPLETE_MARKER = "Session complete";
@@ -54,4 +58,10 @@ export function assertReportHasPrLinks({ report, urls }) {
       throw new Error(`report is missing PR link ${url}`);
     }
   }
+}
+
+export function parseOptions(argv) {
+  const { values } = parseArgs({ args: argv, options: { "budget-usd": { type: "string" } } });
+  const budgetUsd = Math.min(Number(values["budget-usd"] ?? S9_BUDGET_USD), S9_BUDGET_USD);
+  return { budgetUsd };
 }
