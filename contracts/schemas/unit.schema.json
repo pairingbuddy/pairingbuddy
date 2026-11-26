@@ -40,6 +40,18 @@
       }
     },
     "questionsMore": { "description": "How many more deferred doubts came past the 20 kept in full; their text stays in the kept runs' gate records. May be absent (none).", "type": "integer", "minimum": 1 },
+    "curated": {
+      "description": "How the curating-guidance skill carried the guidance over before the next task's run opened (pb guidance record): mode auto when nobody was asked, human when the human approved, the entries kept and dropped, and a doubt left for the human. pb run open moves it onto the run's ledger and adds the doubt to questions. May be absent.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "kept", "dropped"],
+      "properties": {
+        "mode": { "enum": ["auto", "human"] },
+        "kept": { "type": "integer", "minimum": 0 },
+        "dropped": { "type": "integer", "minimum": 0 },
+        "doubt": { "type": "string", "minLength": 1 }
+      }
+    },
     "tasks": {
       "type": "array",
       "items": {
