@@ -330,4 +330,13 @@ describe("pb checkpoint --step refactor with renamed tests", IN_PARALLEL, () => 
 
     assertRefused(repo, seed, result, /renamed or split a test, declare it in `renamed`/);
   });
+
+  test("a rename of a test the task does not have is refused", () => {
+    const repo = makeRepo();
+    const seed = repo.head();
+    repo.write("tests/a.mjs", "renamed test\n");
+    renamedFix(repo, testsKey(), [{ test_id: "t9", to: [{ test_function: "bills_two_minutes" }] }]);
+
+    assertRefused(repo, seed, refactor(repo, testsKey()), /renames test t9, which is no closed test of this task/);
+  });
 });

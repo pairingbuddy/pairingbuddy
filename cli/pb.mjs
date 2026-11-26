@@ -1298,6 +1298,8 @@ async function refactorCheckpoint(context) {
   if (!perTestOf(ledger, id).green?.done) throw new Refusal(`test ${id} has no GREEN, so its cycle has nothing to refactor yet`);
   const config = readTestConfig(root, ledger.configHash);
   const declared = role === REFACTOR_TESTS_ROLE ? declaredRenames(readReturnOf(root, key)) : {};
+  const unknown = Object.keys(declared).find((renamedId) => !isClosedCycle(perTestOf(ledger, renamedId)));
+  if (unknown !== undefined) throw new Refusal(`the fix renames test ${unknown}, which is no closed test of this task, so nothing was committed. Only a test whose cycle closed can be renamed`);
   const renamed = { ...ledger.tests?.renamed, ...declared };
   const rows = testRows(config, artifactsDirOf(root), ledger.stage, renamed);
   const plan = planFor(context, { testDirectories: [...new Set(rows.map((row) => testDirectoryOf(config, row)))], role });
