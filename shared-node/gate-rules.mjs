@@ -485,12 +485,18 @@ const PLAIN_WORD = /^[A-Za-z0-9_][A-Za-z0-9_.\/:=@+,-]*$|^--?[A-Za-z0-9][A-Za-z0
 // The main context's own pb command, by itself: this plugin's CLI, one of the verbs, plain words one space apart.
 function isMainCommand({ tool_name: tool, tool_input: toolInput, ...payload }, verbs = MAIN_AUTO_VERBS) {
   if (tool !== "Bash" || isSubagentCall(payload) || typeof toolInput?.command !== "string" || !toolInput.command.startsWith(PB_START)) return false;
-  const words = toolInput.command.slice(PB_START.length).split(" ");
+  const rest = toolInput.command.slice(PB_START.length);
+  if (QUOTED_QUESTION.test(rest)) return verbs.includes("question add");
+  const words = rest.split(" ");
   return words.every((word) => PLAIN_WORD.test(word)) && verbs.includes(matchVerb(words));
 }
 
+// pb question add's doubt is free words, so it alone may end in one single-quoted argument with no quote inside, which the
+// shell takes literally: nothing in it runs.
+const QUOTED_QUESTION = /^question add --text '[^'\n]+'$/;
+
 // Before a run exists the main context starts or inspects one with these, so they need no prompt either.
-const NO_RUN_VERBS = ["status", "unit open", "unit status", "run open", "plan next", "question settle", "guidance record"];
+const NO_RUN_VERBS = ["status", "unit open", "unit status", "run open", "plan next", "question settle", "question add", "guidance record"];
 
 // With no run open, the reason to allow the main context's exact pb command, or null.
 export const noRunAllowReason = (payload) => (isMainCommand(payload, NO_RUN_VERBS) ? NO_RUN_AUTO_ALLOW_REASON : null);

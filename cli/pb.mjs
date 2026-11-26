@@ -897,6 +897,26 @@ function questionSettle(args) {
   }
 }
 
+// pb question add --text <words>: a doubt the session has, inside or between tasks. Under auto the session never asks the
+// human itself: the doubt joins the open unit's questions (/pb-questions), the run keeps going, and the answer is weighed at
+// the next task boundary like any other.
+// The task a ledger runs, by its plan title, else the first line of its description.
+const taskTitleOf = (ledger) => ledger.plan?.title || String(ledger.task?.description ?? ledger.task ?? "").split("\n")[0];
+
+function questionAdd(args) {
+  const usage = "usage: pb question add --text <words>";
+  const at = args.indexOf("--text");
+  const text = at === -1 ? "" : args.slice(at + 1).join(" ").trim();
+  if (at !== 0 || text === "") throw new UsageError(usage);
+  const root = toplevel();
+  if (!existsSync(unitPathOf(root))) throw new Refusal("no unit is open, so there is no list of questions to add it to. Nothing was touched");
+  const path = ledgerPathOf(root);
+  const task = existsSync(path) ? taskTitleOf(readLedger(path)) : "between tasks";
+  deferQuestionsInUnit(root, { gate: "session", task, doubts: [{ step: "the session", ambiguity: text }] });
+  const unit = JSON.parse(readFileSync(unitPathOf(root), "utf8"));
+  return { ok: true, added: true, open: (unit.questions?.length ?? 0) + (unit.questionsMore ?? 0) };
+}
+
 // pb guidance record --mode auto|human --kept N --dropped M [--doubt <words>]: the curating-guidance skill's record of how it
 // carried the guidance over, kept on the open unit until pb run open moves it onto the task's run.
 function guidanceRecord(args) {
@@ -2761,7 +2781,7 @@ export const VERBS = {
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
-  "plan next": planNext, "question settle": questionSettle, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "plan next": planNext, "question settle": questionSettle, "question add": questionAdd, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 // The human changed test-config.json while a stage ran: the attempt ends and the run waits on the human, with no stop, so

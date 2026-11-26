@@ -25,7 +25,7 @@ const PB = `node ${CLI}`;
 
 // D5, written out here so the test does not read its answer from the table it checks.
 const RUNNER_VERBS = ["test", "checkpoint", "stage finish", "stage stop", "tdd state", "refactor state", "spike state", "spike write", "snapshot", "artifact check", "pr lint", "rollback"];
-const MAIN_VERBS = ["unit open", "unit status", "run open", "stage report", "stage fail", "stage release", "gate eval", "task end", "spike setup", "plan next", "question settle", "guidance record", "publish", "pr refresh", "status", "git doctor"];
+const MAIN_VERBS = ["unit open", "unit status", "run open", "stage report", "stage fail", "stage release", "gate eval", "task end", "spike setup", "plan next", "question settle", "question add", "guidance record", "publish", "pr refresh", "status", "git doctor"];
 const HUMAN_VERBS = ["human approve", "human abandon", "human approve-config", "human accept", "human adopt", "human answer", "human reopen"];
 
 // Rows of the class matrix. A human row carries an argument because the real calls have one, and so does stage stop,
@@ -832,6 +832,25 @@ describe("what counts as a run", IN_PARALLEL, () => {
   for (const args of ["unit open --type feat --slug order-total", "unit status", "run open --kind code --plan docs/plans/cart.md", "plan next docs/plans/cart.md", "question settle 2 --rework", "question settle 1 --keep", "guidance record --mode auto --kept 2 --dropped 0"]) {
     test(`outside a run the main context's exact pb ${args} is auto-allowed`, async () => {
       assertNoRunAutoAllowed(await runGate(bashCall(`${PB} ${args}`, { cwd: makeRepo(), session: NEVER_IN_A_RUN })));
+    });
+  }
+
+  // Under auto the session sets a doubt aside with pb question add instead of asking. The doubt is free words, so it comes
+  // as one single-quoted argument, which the shell takes literally; a prompt there would hold the run the verb keeps going.
+  const QUESTION_ADD = `${PB} question add --text 'Should the report count re-runs? (Task 5)'`;
+  test("outside a run the main context's pb question add with its single-quoted text is auto-allowed", async () => {
+    assertNoRunAutoAllowed(await runGate(bashCall(QUESTION_ADD, { cwd: makeRepo(), session: NEVER_IN_A_RUN })));
+  });
+  test("during a run the main context's pb question add with its single-quoted text is auto-allowed", async () => {
+    assertMainAutoAllowed(await runGate(bashCall(QUESTION_ADD)));
+  });
+  for (const [what, command] of [
+    ["a quote ending the text early", `${PB} question add --text 'a' && rm -rf src '`],
+    ["a quoted argument on another verb", `${PB} plan next 'docs/my plan.md'`],
+    ["text that is not quoted", `${PB} question add --text Should it? $(rm -rf src)`],
+  ]) {
+    test(`pb question add's quoted text is allowed only whole and only for that verb: ${what} gets no decision`, async () => {
+      assertSilent(await runGate(bashCall(command, { cwd: makeRepo(), session: NEVER_IN_A_RUN })));
     });
   }
 
