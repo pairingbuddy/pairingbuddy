@@ -431,6 +431,23 @@ print_exit_summary() {
     if [[ -n "$attempts_line" ]]; then
         output="${output}
 ${attempts_line}"
+        # Each lesson is the first text line under a "## Rollback" heading in the stage's notes file
+        local lessons
+        lessons=$(read_state_line "$LEDGER_FILE" "
+            const notesFile = '.pairingbuddy/run/task/notes/' + state.stage.name + '.md';
+            const lines = require('fs').readFileSync(notesFile, 'utf8').split('\\n');
+            const lessons = [];
+            let afterHeading = false;
+            for (const line of lines) {
+                if (/^## Rollback/.test(line)) { afterHeading = true; continue; }
+                if (afterHeading && line.trim()) { lessons.push('- ' + clip(line, ${LEDGER_TEXT_CLIP})); afterHeading = false; }
+            }
+            if (lessons.length) console.log('lessons:\\n' + lessons.join('\\n'));
+        ")
+        if [[ -n "$lessons" ]]; then
+            output="${output}
+${lessons}"
+        fi
     fi
     if [[ -n "${REPORT_FILE:-}" ]] && [[ -f "${REPORT_FILE}" ]]; then
         output="${output}
