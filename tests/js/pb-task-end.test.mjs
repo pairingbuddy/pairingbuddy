@@ -573,24 +573,14 @@ describe("the real verbs carry a no-change docs step to the end", () => {
     assert.equal(git(repo.dir, "log", "-1", "--format=%s"), "chore: set a");
   });
 
-  test("a no-change config step with an ambiguity reaches the gate, which asks a human", () => {
+  test("a no-change config step with an ambiguity stops the run before the gate, naming its question", () => {
     const repo = makeRepo({ ledger: { stage: { name: CONFIG, status: "active", runId: "wf_1", attempt: 1, startedAt: null } } });
     writeReturn(repo, CONFIG_KEY, { ambiguity: "The edit was refused.", commit_subject: "", files_changed: [] });
 
-    assert.equal(run(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY).committed, false);
-    run(repo, "stage", "finish");
+    const result = pb(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY);
 
-    const ledger = repo.ledger();
-    writeLedger(repo.ledgerPath, { ...ledger, stage: { name: NET, status: "active", runId: "wf_2", attempt: 1, startedAt: null } });
-    writeReturn(repo, DOCS_KEY, { commit_subject: "", files_changed: [] });
-    run(repo, "checkpoint", "--step", "docs", "--from", DOCS_KEY);
-    run(repo, "test", "--full");
-    run(repo, "stage", "finish");
-
-    const gate = run(repo, "gate", "eval");
-
-    assert.equal(gate.result, "needs-human");
-    assert.match(gate.reason, /ambiguity/);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(repo.ledger().stop?.reason ?? "", /the config change changed nothing: The edit was refused\./);
   });
 });
 
