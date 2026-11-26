@@ -623,6 +623,13 @@ function lensReason(root, ledger) {
   return blockingSurvivors(report).length > 0 && !fixed ? "the classification lens has an open finding" : null;
 }
 
+// The confidence a G:type auto pass stood on when it was less than certain, for the gate record and the report; else null.
+export function typePassedOn(root, ledger, gate) {
+  if (gate !== TYPE_GATE) return null;
+  const confidence = keptIntakeReturn(artifactsDir(root), ledger.stage.attempt)?.content?.confidence;
+  return confidence === "likely" ? confidence : null;
+}
+
 const typeReason = (root, ledger, contract) => selectorReason(root, ledger, contract) ?? classifierReason(root, ledger) ?? lensReason(root, ledger);
 
 // The reasons only one gate has, by gate name.

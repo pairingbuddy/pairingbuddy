@@ -74,6 +74,23 @@ test("gate-type-passes-when-likely-with-no-doubt-under-auto", () => {
   assert.deepEqual(JSON.parse(result.stdout), { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto" }, "a likely classification with no open question passes G:type under auto");
 });
 
+test("gate-type-records-a-pass-on-likely-so-the-report-can-say-so", () => {
+  const repo = repoAtTypeGate({ confidence: "likely" });
+
+  pb(repo, "gate", "eval");
+
+  const ledger = readLedger(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"));
+  assert.deepEqual(ledger.gates[G_TYPE], { source: "auto", confidence: "likely" }, "the gate record keeps the confidence it passed on");
+});
+
+test("gate-type-asks-a-likely-type-under-a-non-auto-policy", () => {
+  const repo = repoAtTypeGate({ confidence: "likely", mode: "default" });
+
+  const out = evalNeedsHuman(repo);
+
+  assert.match(out.reason, /classifier does not report certain/, "outside auto, a likely type still asks, as before");
+});
+
 test("gate-type-asks-a-likely-type-with-a-question-even-with-a-unit-open-under-auto", () => {
   const repo = repoAtTypeGate({ confidence: "likely", ambiguity: "Is this a config change or a new feature?" });
   writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit: "T1a", tasks: [], commits: [] }));
