@@ -17,7 +17,10 @@ test("s9-two-unit-plan-opens-two-draft-prs", () => {
 });
 
 test("s9-rejects-a-non-draft-pr", () => {
-  assert.fail("not implemented: s9-rejects-a-non-draft-pr");
+  const creates = [draftCreate("fix/a"), { argv: ["pr", "create", "--head", "feat/b"] }];
+  const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
+
+  assert.throws(() => s9.summarizeDraftPrs({ creates, units }), /Unit B/, "a pr create without --draft is rejected and the error names the unit");
 });
 
 test("s9-rejects-wrong-pr-count", () => {
