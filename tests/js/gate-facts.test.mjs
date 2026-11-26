@@ -72,6 +72,16 @@ describe("G:scenarios", () => {
 
     assert.deepEqual(gateFacts("G:scenarios", root, atStage("code-scenarios")), {});
   });
+
+  test("gives the final checks that stand beside the tests: live or paid runs no test can pass, each with its command", () => {
+    const root = makeRoot();
+    const finalChecks = [{ check_id: "s1-to-s6-live", description: "S1 to S6 pass live\n within their caps", command: "node tests/smoke/run.mjs S1-S6", why: "smoke runs against a real model, about $21" }];
+    writeReturn(root, "code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1", { scenarios: [scenario("order total", "sums")], final_checks: finalChecks });
+
+    assert.deepEqual(gateFacts("G:scenarios", root, atStage("code-scenarios")).finalChecks, [
+      { description: "S1 to S6 pass live within their caps", command: "node tests/smoke/run.mjs S1-S6", why: "smoke runs against a real model, about $21" },
+    ]);
+  });
 });
 
 const writeState = (root, name, body) => writeFileSync(join(root, ".pairingbuddy", name), typeof body === "string" ? body : JSON.stringify(body));

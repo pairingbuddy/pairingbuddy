@@ -10,7 +10,7 @@ import { mostOpen, samePlaceGroups } from "./lens-round.mjs";
 import { plainName } from "./plain-names.mjs";
 import { returnFileKey } from "./stages.mjs";
 import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt, standingScenariosKey } from "./stage-run.mjs";
-import { scenarioRows } from "./standing-scenarios.mjs";
+import { finalCheckRows, scenarioRows } from "./standing-scenarios.mjs";
 
 const artifactsDirOf = (root) => join(root, ".pairingbuddy", "run", "task", "artifacts");
 
@@ -25,8 +25,10 @@ function typeFacts(root, ledger) {
 function scenarioFacts(root, ledger) {
   const dir = artifactsDirOf(root);
   const key = standingScenariosKey(dir, ledger);
-  const scenarios = key === null ? undefined : scenarioRows(readReturn(dir, key)?.scenarios);
-  return scenarios === undefined ? {} : { scenarios };
+  const standing = key === null ? undefined : readReturn(dir, key);
+  const scenarios = scenarioRows(standing?.scenarios);
+  const finalChecks = finalCheckRows(standing?.final_checks);
+  return { ...(scenarios === undefined ? {} : { scenarios }), ...(finalChecks === undefined ? {} : { finalChecks }) };
 }
 
 // One fact, or undefined when it cannot be read: one broken file leaves only its own line out.

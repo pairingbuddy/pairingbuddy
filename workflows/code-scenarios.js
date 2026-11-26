@@ -68,6 +68,36 @@ const RESULT_SCHEMA = {
         },
         "additionalProperties": false
       }
+    },
+    "final_checks": {
+      "type": "array",
+      "description": "Optional. Acceptance criteria only a live, paid or manual run can show (a smoke run against a real model, a cost cap, a deploy, a human verdict, a file of live-run results), so no test can pass them. They run at the end and are never built as tests",
+      "items": {
+        "type": "object",
+        "required": [
+          "check_id",
+          "description"
+        ],
+        "properties": {
+          "check_id": {
+            "type": "string",
+            "description": "Unique identifier for the check"
+          },
+          "description": {
+            "type": "string",
+            "description": "What the check shows, in the task's words"
+          },
+          "command": {
+            "type": "string",
+            "description": "The command a person runs for it, when the task or the repo names one"
+          },
+          "why": {
+            "type": "string",
+            "description": "Why no test can show it, with its cost or time when known"
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": false
@@ -223,7 +253,8 @@ const LENSES = {
       "lenses": [
         {
           "name": "necessity",
-          "model": "sonnet"
+          "model": "sonnet",
+          "brief": "Check that every test case is needed for what the task asks, and that each one can be made to pass by a code change. Flag any test case that only a live, paid or manual run could pass (a smoke run against a real model, a cost cap, a deploy, a human verdict, or a file of live-run results that must exist): the build would stop on it, so it belongs in final_checks, not in the tests."
         },
         {
           "name": "pyramid-level",

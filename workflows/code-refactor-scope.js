@@ -249,7 +249,8 @@ const LENSES = {
       "lenses": [
         {
           "name": "necessity",
-          "model": "sonnet"
+          "model": "sonnet",
+          "brief": "Check that every test case is needed for what the task asks, and that each one can be made to pass by a code change. Flag any test case that only a live, paid or manual run could pass (a smoke run against a real model, a cost cap, a deploy, a human verdict, or a file of live-run results that must exist): the build would stop on it, so it belongs in final_checks, not in the tests."
         },
         {
           "name": "pyramid-level",

@@ -169,3 +169,10 @@ test("permanence-brief-asks-year-reader-needs-each-sentence", () => {
   assert.match(brief, /each sentence/i, "the brief goes sentence by sentence");
   assert.match(brief, /each sentence.*would need/i, "the brief asks whether a reader a year from now would need it");
 });
+
+test("the scenarios lens that runs flags a test that only a live, paid or manual run could pass, as a final check", () => {
+  const [{ brief }] = wiredLensConfig(REAL_LENS_MAP, "code-scenarios").lenses;
+
+  assert.match(brief ?? "", /live/);
+  assert.match(brief ?? "", /final_checks/);
+});

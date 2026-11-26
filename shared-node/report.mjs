@@ -14,6 +14,7 @@ import { taskEnded, taskSpend, taskWaited } from "./task-runs.mjs";
 import { shortName } from "./now-building.mjs";
 import { goalOf } from "./end-state.mjs";
 import { permissionLine, withPermissionAsk } from "./permission-wait.mjs";
+import { finalCheckRows, isStandingScenarios, newestKeyAmong } from "./standing-scenarios.mjs";
 
 const TASK_END = "G:task-end";
 
@@ -319,6 +320,19 @@ function stepsSection({ task }) {
 // Every scenario the run stands on, each with its tests under it: the scenarios question folds a long list into this.
 // `scenarios` is [{ description, tests: [description] }], as the scenarios gate reads them; absent reads as unknown.
 const scenarioItem = ({ description, tests }) => `<li>${escape(description)}\n<ul>\n${tests.map((test) => `<li>${escape(test)}</li>`).join("\n")}\n</ul></li>`;
+
+// The final checks the standing scenarios return names: criteria only a live, paid or manual run can show, so the run built
+// no test for them and the human runs them. No section when there are none.
+function finalChecksSection({ task }) {
+  const calls = task.flatMap((run) => (Array.isArray(run.calls) ? run.calls : []));
+  const byKey = new Map(calls.map(({ input }) => [input?.pb_key, input]).filter(([key]) => typeof key === "string"));
+  const ledger = codeRunIn(task)?.ledger ?? {};
+  const key = newestKeyAmong([...byKey.keys()].map((pbKey) => `${pbKey}.json`), isStandingScenarios(ledger));
+  const rows = key === null ? undefined : finalCheckRows(byKey.get(key)?.final_checks);
+  if (rows === undefined) return "";
+  const item = ({ description, command, why }) => `<li>${escape(description)}${command ? `: <code>${escape(command)}</code>` : ""}${why ? ` (${escape(why)})` : ""}</li>`;
+  return section("FINAL CHECKS", `<p>Run live by a person: they need a live, paid or manual run, so they were not built as tests.</p>\n<ul>\n${rows.map(item).join("\n")}\n</ul>`);
+}
 
 function scenariosSection({ scenarios }) {
   const body = Array.isArray(scenarios) ? `<ul>\n${scenarios.map(scenarioItem).join("\n")}\n</ul>` : `<p>${UNKNOWN}</p>`;
@@ -784,7 +798,7 @@ ${goalSection(code?.task ?? ledger?.task)}
 ${statusSection({ ledger, task, url })}
 </header>
 ${needsYouSection({ ledger, task, spawns, tests })}
-${doneSection({ task, changed })}${changesSection({ task, spawns })}
+${finalChecksSection({ task })}${doneSection({ task, changed })}${changesSection({ task, spawns })}
 <details>
 <summary>HOW IT RAN</summary>
 ${taskSection(code?.task ?? ledger?.task)}${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${doubtsSection({ task })}

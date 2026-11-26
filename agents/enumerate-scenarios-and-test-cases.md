@@ -103,6 +103,7 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
 4. Identify scenarios (distinct feature areas or behaviors)
 5. For each scenario, enumerate test cases (specific conditions to verify)
 6. Use kebab-case IDs (e.g., `user-login`, `add-positive-numbers`)
+7. A criterion that only a live, paid or manual run can show is never a test case: a smoke run against a real model, "passes within its $ cap", a deploy, a human's verdict, or anything that passes only once a file of live-run results exists. No code change can make such a test pass, so the build would stop on it. With a `<paths>` block, list each in `final_checks` instead, with the command a person runs for it when the task or the repo names one, and why it is no test (its cost or time when known). It runs at the end, and the human decides when. A test of the code that a live run uses (the smoke runner's parsing, the cap check on a recorded run) is still a test case.
 
 ### Step 3: Human Review
 
@@ -211,9 +212,19 @@ With a `<paths>` block, return the result as your StructuredOutput with exactly 
         }
       ]
     }
+  ],
+  "final_checks": [
+    {
+      "check_id": "string (unique identifier)",
+      "description": "string (what the check shows, in the task's words)",
+      "command": "string (optional: the command a person runs for it)",
+      "why": "string (optional: why no test can show it, with its cost or time when known)"
+    }
   ]
 }
 ```
+
+`final_checks` is optional: leave it out when every criterion is a test.
 
 With no `<paths>` block:
 

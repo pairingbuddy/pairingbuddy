@@ -31,3 +31,12 @@ export function scenarioRows(scenarios) {
   const rows = scenarios.map((s) => ({ description: oneLine(s?.description), tests: Array.isArray(s?.test_cases) ? s.test_cases.map((c) => oneLine(c?.description)) : [undefined] }));
   return rows.every(({ description, tests }) => description !== undefined && !tests.includes(undefined)) ? rows : undefined;
 }
+
+// The final checks beside the tests: criteria only a live, paid or manual run can show (a smoke run against a real model, a
+// cost cap, a deploy, a human verdict), so no test can pass them. Each keeps its command, when given, and why it is not a
+// test. A malformed list drops the whole list, as scenarioRows does.
+export function finalCheckRows(checks) {
+  if (!Array.isArray(checks) || checks.length === 0) return undefined;
+  const rows = checks.map((c) => ({ description: oneLine(c?.description), ...(oneLine(c?.command) ? { command: oneLine(c.command) } : {}), ...(oneLine(c?.why) ? { why: oneLine(c.why) } : {}) }));
+  return rows.every(({ description }) => description !== undefined) ? rows : undefined;
+}

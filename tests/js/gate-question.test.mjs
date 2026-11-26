@@ -36,6 +36,19 @@ describe("each gate asks in plain words", () => {
     ].join("\n"));
   });
 
+  test("G:scenarios lists the final checks after the tests: run live at the end, never built as a test", () => {
+    const scenarios = [{ description: "order total sums the lines", tests: ["two lines add up"] }];
+    const finalChecks = [{ description: "S1 to S6 pass live within their caps", command: "node tests/smoke/run.mjs S1-S6", why: "about $21" }, { description: "the human's verdict" }];
+    const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios, finalChecks } });
+
+    assert.deepEqual(question.split("\n").slice(3), [
+      "Final checks, run live at the end, not built as tests (2):",
+      "- S1 to S6 pass live within their caps: node tests/smoke/run.mjs S1-S6 (about $21)",
+      "- the human's verdict",
+      "Start building these?",
+    ]);
+  });
+
   test("G:scenarios that do not fit 12 lines with their tests show one line per scenario with its test count", () => {
     const scenarios = Array.from({ length: 5 }, (_, i) => ({ description: `scenario ${i + 1}`, tests: i === 0 ? ["test 1a"] : [`test ${i + 1}a`, `test ${i + 1}b`] }));
     const { question } = gateQuestion("G:scenarios", { reason: POLICY, facts: { scenarios } });
