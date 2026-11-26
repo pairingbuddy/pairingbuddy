@@ -38,7 +38,10 @@ test("s9-rejects-too-many-prs", () => {
 });
 
 test("s9-accepts-report-with-both-pr-links", () => {
-  assert.fail("not implemented: s9-accepts-report-with-both-pr-links");
+  const urls = ["https://github.com/acme/shim/pull/1", "https://github.com/acme/shim/pull/2"];
+  const report = `Session complete\nPR: ${urls[0]} branch: fix/a\nPR: ${urls[1]} branch: feat/b\n`;
+
+  assert.doesNotThrow(() => s9.assertReportHasPrLinks({ report, urls }), "a report holding both PR URLs is accepted");
 });
 
 test("s9-forced-stop-leaves-commits-local", () => {
