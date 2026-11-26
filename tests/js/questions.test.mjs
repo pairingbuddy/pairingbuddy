@@ -15,6 +15,16 @@ describe("the unit's questions list", () => {
     assert.deepEqual(openQuestions(next), { kept: next.questions, more: 0, count: 1 });
   });
 
+  test("a doubt's suggested answers ride on its question: at most three, each a short line, none when it has none", () => {
+    const long = "word ".repeat(30).trim();
+    const doubts = [{ ...doubt(1), options: ["Always draft", " Draft on main only ", "", 7, long, "Never"] }, doubt(2)];
+
+    const next = addQuestions(unit(), { gate: "G:task-end", task: "Task 1: one", doubts });
+
+    assert.deepEqual(next.questions[0].options, ["Always draft", "Draft on main only", `${long.slice(0, 59).trimEnd()}…`]);
+    assert.equal("options" in next.questions[1], false, "no options key when the doubt has none");
+  });
+
   test("a question keeps only its task's title, never the task's whole plan text", () => {
     const task = "Task 113: Critique the code path\n\n**Goal:** A full critique.\n\n**Acceptance criteria:**\n- Findings cite captures.";
 

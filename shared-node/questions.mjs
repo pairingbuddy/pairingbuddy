@@ -10,10 +10,26 @@ export const QUESTIONS_KEPT = 20;
 // question names its task by title only; an old record with the whole text reads the same way.
 export const taskTitle = (task) => String(task ?? "").trim().split("\n")[0].replace(/\*\*/g, "").trim();
 
+// A doubt's suggested answers, as the dialog offers them: at most OPTIONS_KEPT, each one short line.
+export const OPTIONS_KEPT = 3;
+const OPTION_MAX = 60;
+function suggestedAnswers(options) {
+  if (!Array.isArray(options)) return [];
+  return options
+    .filter((option) => typeof option === "string")
+    .map((option) => option.replace(/\s+/g, " ").trim())
+    .filter((option) => option !== "")
+    .map((option) => (option.length <= OPTION_MAX ? option : `${option.slice(0, OPTION_MAX - 1).trimEnd()}…`))
+    .slice(0, OPTIONS_KEPT);
+}
+
 // The unit with the gate's deferred doubts added, each with the gate and the task that raised it.
 export function addQuestions(unit, { gate, task, doubts }) {
   const kept = Array.isArray(unit.questions) ? unit.questions : [];
-  const added = doubts.map(({ step, ambiguity }) => ({ gate, task: taskTitle(task), step, ambiguity }));
+  const added = doubts.map(({ step, ambiguity, options }) => {
+    const suggested = suggestedAnswers(options);
+    return { gate, task: taskTitle(task), step, ambiguity, ...(suggested.length > 0 ? { options: suggested } : {}) };
+  });
   const room = Math.max(0, QUESTIONS_KEPT - kept.length);
   const more = (unit.questionsMore ?? 0) + Math.max(0, added.length - room);
   return { ...unit, questions: [...kept, ...added.slice(0, room)], ...(more > 0 ? { questionsMore: more } : {}) };
