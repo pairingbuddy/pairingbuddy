@@ -45,7 +45,10 @@ test("s9-accepts-report-with-both-pr-links", () => {
 });
 
 test("s9-forced-stop-leaves-commits-local", () => {
-  assert.fail("not implemented: s9-forced-stop-leaves-commits-local");
+  const remote = { before: ["refs/heads/main"], after: ["refs/heads/main"] };
+  const local = { branch: "fix/a", aheadOfRemote: 2 };
+
+  assert.doesNotThrow(() => s9.assertForcedStopLocal({ remote, local, creates: [] }), "a remote with no new refs, a local branch ahead of it and no pr create is accepted as commits left local");
 });
 
 test("s9-forced-stop-summary-reports-failure", () => {
