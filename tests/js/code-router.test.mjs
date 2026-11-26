@@ -777,14 +777,25 @@ test("the skill runs each pb call as a command of its own, with nothing around i
   sentencesSaying("why: the gate lets only the bare form through", opening, /gate/, /permission prompt/);
 });
 
-test("the bootstrap of git-config has the skill match the repo's own branch and commit conventions before the first unit opens", () => {
+test("the bootstrap of git-config records the repo's own branch convention, asking once only when it is not clearly documented", () => {
   const bootstrap = /### Bootstrap git-config\.json\n([\s\S]*?)\n### /.exec(skill())[1];
 
   assert.match(bootstrap, /before the first `pb unit open`/, "it runs before pb would write the defaults");
-  assert.match(bootstrap, /branch_template/);
-  assert.match(bootstrap, /key_pattern/);
-  assert.match(bootstrap, /\{key\}/, "a key-carrying convention uses the {key} placeholder");
+  assert.match(bootstrap, /branch_convention/);
+  assert.match(bootstrap, /description/);
+  assert.match(bootstrap, /examples/);
+  assert.match(bootstrap, /pattern/);
   assert.match(bootstrap, /git branch -r/, "recent remote branch names are evidence");
-  assert.match(bootstrap, /\*\*Key:\*\*/, "the plan's Key line gives the key");
-  assert.match(bootstrap, /auto/, "under auto it writes the inferred convention and asks nothing");
+  assert.match(bootstrap, /clearly documented/, "a documented convention is recorded without asking");
+  assert.match(bootstrap, /ask the human once/, "an undocumented one is asked once and recorded");
+  assert.match(bootstrap, /auto/);
+  assert.doesNotMatch(bootstrap, /\{key\}|key_pattern|\*\*Key:\*\*/, "no work-item key concept of pb's own");
+});
+
+test("each unit's branch is named by the repo's convention and passed with --branch; a value the session cannot derive is asked at unit open", () => {
+  const text = skill();
+
+  assert.match(text, /branch_convention[\s\S]{0,400}--branch/, "the session names the branch by the convention and passes it");
+  assert.match(text, /cannot derive[\s\S]{0,300}ask/, "a per-unit value it cannot derive is asked");
+  assert.doesNotMatch(text, /\bjira\b/i, "no tracker named");
 });
