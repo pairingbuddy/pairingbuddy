@@ -59,7 +59,7 @@ function makeRepo({ perTest, kind = "code" } = {}) {
   writeFileSync(join(dir, ".pairingbuddy", "test-config.json"), configText);
   const ledgerPath = join(taskDir, "ledger.json");
   writeLedger(ledgerPath, {
-    v: 1, seq: 0, sha: "0".repeat(64), kind, taskType: "new_feature",
+    v: 1, seq: 0, sha: "0".repeat(64), kind, taskType: kind === "publish" ? "publish" : "new_feature",
     owner: { sessionId: null, lastSeen: null }, task: "Task 9", plan: { path: "", title: "" },
     configHash: createHash("sha256").update(configText).digest("hex"), policy: { mode: "", source: "" },
     stage: { name: STAGE, status: "active", runId: "wf_1", attempt: ATTEMPT, startedAt: null },
@@ -119,6 +119,20 @@ describe("pb human cut-test", IN_PARALLEL, () => {
 
     assert.equal(cut.code, 0, cut.stderr);
     assert.deepEqual(repo.ledger().tests.cut.map(({ id, selector }) => ({ id, file: selector.test_file })), [{ id: "gone", file: "tests/live.mjs" }]);
+  });
+
+  test("refuses with no reason, and outside a code run, touching nothing", () => {
+    const repo = makeRepo();
+    const publish = makeRepo({ kind: "publish" });
+
+    const noReason = pb(repo, "human", "cut-test", "live");
+    const inPublish = pb(publish, "human", "cut-test", "live", "--reason", "x");
+
+    assert.equal(noReason.code, 2, noReason.stderr);
+    assert.equal(inPublish.code, 1, inPublish.stderr);
+    assert.match(inPublish.stderr, /publishes/);
+    assert.equal(repo.ledger().tests.cut, undefined);
+    assert.equal(publish.ledger().tests.cut, undefined);
   });
 });
 
