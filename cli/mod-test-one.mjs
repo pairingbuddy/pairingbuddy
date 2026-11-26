@@ -4,6 +4,7 @@
 // row of that name in that file passed (a parametrized test's cases are `<name>: <case>`), and 1 when one failed or none
 // was found. With no arguments it is the whole suite, with the suite's own exit code.
 import { spawnSync } from "node:child_process";
+import { OUTPUT_MAX_BUFFER } from "../shared-node/output-buffer.mjs";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { normalize } from "node:path";
 
@@ -32,7 +33,7 @@ export function rowsFor(output, file, name) {
 function runSuite() {
   const hadModules = existsSync("node_modules");
   const hadCache = existsSync("node_modules/.vite");
-  const run = spawnSync("claude", ["plugin", "test", "."], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const run = spawnSync("claude", ["plugin", "test", "."], { encoding: "utf8", maxBuffer: OUTPUT_MAX_BUFFER });
   if (!hadCache) rmSync("node_modules/.vite", { recursive: true, force: true });
   if (!hadModules && existsSync("node_modules") && readdirSync("node_modules").length === 0) rmSync("node_modules", { recursive: true, force: true });
   return run;

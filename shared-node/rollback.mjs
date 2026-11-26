@@ -2,6 +2,7 @@
 // before the tree goes back, and git runs with no shell. The caller passes the ref prefix in, so nothing here reads
 // the current branch. Node built-ins only.
 import { spawnSync } from "node:child_process";
+import { OUTPUT_MAX_BUFFER } from "./output-buffer.mjs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,10 +10,9 @@ import { join } from "node:path";
 // A git failure the caller reports as an expected refusal, not a crash.
 export class RollbackRefused extends Error {}
 
-const GIT_BUFFER_BYTES = 64 * 1024 * 1024;
 
 function git(root, args, env = {}) {
-  const result = spawnSync("git", args, { cwd: root, shell: false, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: GIT_BUFFER_BYTES, env: { ...process.env, ...env } });
+  const result = spawnSync("git", args, { cwd: root, shell: false, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: OUTPUT_MAX_BUFFER, env: { ...process.env, ...env } });
   if (result.error || result.status !== 0) {
     const why = String(result.stderr ?? "").trim() || result.error?.message || `exit ${result.status}`;
     throw new RollbackRefused(`git ${args.join(" ")} failed: ${why}`);

@@ -2141,6 +2141,7 @@ function settleFocuses(ruleFocusNames, changes, lightReview) {
 const GIT_ENV = { LC_ALL: "C" };
 const GIT_RAW = ["-c", "core.quotepath=off"];
 const subjectDiffArgv = (baseSha) => [...GIT_RAW, "diff", "--no-color", "--no-ext-diff", "--no-textconv", `${baseSha}..HEAD`];
+const subjectStatArgv = (baseSha) => [...GIT_RAW, "diff", "--stat=120", "--no-color", "--no-ext-diff", "--no-textconv", `${baseSha}..HEAD`];
 const SUBJECT_DIFF_FILE = "subject.diff";
 const CHANGED_FILE = "changed.json";
 const CORPUS_FILE = "corpus.json";
@@ -2204,6 +2205,42 @@ const namedFiles = (tracked, taskText) => {
   const names = new Set(words.map((w) => w.replace(/^(\.\/)+/, "").replace(/\.+$/, "")).filter(Boolean));
   const named = tracked.filter((t) => names.has(t) || names.has(baseOf(t)));
   return [...new Set(named)].sort(byCodePoint).slice(0, NEAREST_TOTAL_CAP);
+};
+
+// How much of the unit's diff the agents get in subject.diff. A whole diff of tens of thousands of lines buries the change
+// and has crashed a step; past these bounds the file holds the diffstat and each file's diff cut short.
+const SUBJECT_DIFF_MAX_LINES = 8000;
+const SUBJECT_FILE_MAX_LINES = 400;
+
+const lineCount = (text) => text.split("\n").length;
+const nameOfChunk = (chunk) => chunk.slice(0, chunk.indexOf("\n")).replace(/^diff --git a\/.* b\//, "");
+
+// One file's diff, cut after its first SUBJECT_FILE_MAX_LINES lines with a line that says how many it left out.
+const cutChunk = (chunk) => {
+  const lines = chunk.replace(/\n$/, "").split("\n");
+  if (lines.length <= SUBJECT_FILE_MAX_LINES) return lines.join("\n");
+  return [...lines.slice(0, SUBJECT_FILE_MAX_LINES), `… ${lines.length - SUBJECT_FILE_MAX_LINES} more lines of ${nameOfChunk(chunk)}`].join("\n");
+};
+
+// The diff the agents read: whole while within SUBJECT_DIFF_MAX_LINES; past it, a note, the diffstat, then each file's
+// diff in git's order, cut at SUBJECT_FILE_MAX_LINES, until the bound, and a last line counting the files left out.
+const boundDiff = (diff, stat, baseSha) => {
+  if (lineCount(diff) <= SUBJECT_DIFF_MAX_LINES) return diff;
+  const whole = `git diff ${baseSha}..HEAD`;
+  const head = [`This change is too big to show whole (${lineCount(diff)} lines). Below: the diffstat, then each file's diff cut at ${SUBJECT_FILE_MAX_LINES} lines. Run ${whole} for the rest.`, "", stat.replace(/\n$/, ""), ""];
+  const chunks = diff.split(/^(?=diff --git )/m).filter((chunk) => chunk.startsWith("diff --git "));
+  const out = [...head];
+  let used = lineCount(head.join("\n"));
+  let shown = 0;
+  for (const chunk of chunks) {
+    const cut = cutChunk(chunk);
+    if (used + lineCount(cut) > SUBJECT_DIFF_MAX_LINES) break;
+    out.push(cut);
+    used += lineCount(cut);
+    shown += 1;
+  }
+  if (shown < chunks.length) out.push(`… ${chunks.length - shown} more files, see ${whole}`);
+  return `${out.join("\n")}\n`;
 };
 
 const missing = missingArgument();

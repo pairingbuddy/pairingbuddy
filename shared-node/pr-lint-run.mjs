@@ -6,6 +6,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { readGitConfig } from "./gitconf.mjs";
+import { OUTPUT_MAX_BUFFER } from "./output-buffer.mjs";
 import { lintDraft } from "./pr-lint.mjs";
 import { returnsAt } from "./stage-run.mjs";
 
@@ -67,7 +68,7 @@ export function readDraftArtifact(root, stage) {
 function diffLinesSince(root, baseSha) {
   let out;
   try {
-    out = execFileSync("git", ["diff", "--numstat", `${baseSha}...HEAD`], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    out = execFileSync("git", ["diff", "--numstat", `${baseSha}...HEAD`], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: OUTPUT_MAX_BUFFER }).trim();
   } catch (e) {
     throw new PrLintRunRefused(`git diff --numstat ${baseSha}...HEAD failed: ${String(e.stderr ?? "").trim() || e.message}`);
   }

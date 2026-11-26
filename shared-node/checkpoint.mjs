@@ -1,6 +1,7 @@
 // pb checkpoint: what a step may commit and how. The step fixes the type, the artifact supplies only the subject and
 // the paths, and git runs with no shell. A model wrote the artifact, so nothing in it is trusted. Node built-ins only.
 import { spawnSync } from "node:child_process";
+import { OUTPUT_MAX_BUFFER } from "./output-buffer.mjs";
 import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { dirname, basename, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 
@@ -36,7 +37,6 @@ const BREAKS_LINE = /[\p{Cc}\p{Zl}\p{Zp}]/u;
 const WRITE_FAILED = "fatal: failed to write commit object";
 const COMMIT_TIMEOUT_MS = 300_000;
 const REASON_CHARS = 500;
-const GIT_BUFFER_BYTES = 64 * 1024 * 1024;
 
 export class CheckpointRefused extends Error {}
 // A failure that needs a human: the verb records it as the run's stop.
@@ -98,7 +98,7 @@ export function keyFitsStep(step, key) {
 
 // ---------- git ----------
 
-const runGit = (root, args, options = {}) => spawnSync("git", args, { cwd: root, shell: false, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: GIT_BUFFER_BYTES, ...options });
+const runGit = (root, args, options = {}) => spawnSync("git", args, { cwd: root, shell: false, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: OUTPUT_MAX_BUFFER, ...options });
 
 function git(root, ...args) {
   const { status, stdout, stderr, error } = runGit(root, args);
