@@ -46,7 +46,8 @@ export type Call = { agentId?: unknown; at?: string; input: Record<string, unkno
 // open: the unit record as unitStates reads it, to tell each plan unit's state.
 export type OpenUnit = { unit?: string; plan?: string; tracer?: string; tasks: { title: string; headSha?: string }[]; branch?: string; base?: string; commits?: string[]; questions?: unknown[]; questionsMore?: number }
 // questions: how many doubts auto passes set aside for the human, waiting on the unit until G:publish asks them.
-export type Unit = { key: string; taskStages: string[]; prUrl?: string; humanLeft?: string[]; open?: OpenUnit; questions?: number }
+// asked: every question the unit was ever given, answered or not, with the text of those kept in full, for the quiet notice.
+export type Unit = { key: string; taskStages: string[]; prUrl?: string; humanLeft?: string[]; open?: OpenUnit; questions?: number; asked?: { count: number; texts: string[] } }
 // What the pane keeps of the unit's last code run (shared-node/end-state.mjs codeRunOf), so the end state outlives its ledger.
 export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; testsPassing: number; perTest?: Record<string, { green?: { passed: boolean }; covered?: { done: boolean } }>; safetyNet: { attempt?: number; startedAt?: string } | null; rollbacks: unknown[] }
 // What the last pb publish printed: the url it opened, or the result when it opened none; codeRunId ties it to the code run it
@@ -218,7 +219,9 @@ export function unitOf(file: unknown): Unit | null {
   const { kept, more, count } = openQuestions(file)
   // The questions ride on the open unit too, so the /pb-plan page lists them under it (bounded by QUESTIONS_KEPT).
   if (count > 0) Object.assign(open, { questions: kept, ...(more > 0 ? { questionsMore: more } : {}) })
-  return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}), open, ...(count > 0 ? { questions: count } : {}) }
+  const listed = Array.isArray((file as { questions?: unknown }).questions) ? ((file as { questions: { ambiguity?: unknown }[] }).questions) : []
+  const asked = { count: listed.length + more, texts: listed.map(question => String(question?.ambiguity ?? '')) }
+  return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}), open, ...(count > 0 ? { questions: count } : {}), ...(asked.count > 0 ? { asked } : {}) }
 }
 
 // A plan path the unit record names is read only inside the repo: relative, with no ".." part.
