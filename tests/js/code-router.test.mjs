@@ -797,5 +797,7 @@ test("each unit's branch is named by the repo's convention and passed with --bra
 
   assert.match(text, /branch_convention[\s\S]{0,400}--branch/, "the session names the branch by the convention and passes it");
   assert.match(text, /cannot derive[\s\S]{0,300}ask/, "a per-unit value it cannot derive is asked");
-  assert.doesNotMatch(text, /\bjira\b/i, "no tracker named");
+  const banned = ["jira", "linear", "ticket", "asana", "trello", "youtrack", "glimra"].filter((word) => new RegExp(`\\b${word}\\b`, "i").test(text));
+  assert.deepEqual(banned, [], "no issue tracker named in the coding skill");
+  assert.doesNotMatch(text, /\b[A-Z]{2,}-\d+\b/, "no tracker-key example like ABC-12");
 });
