@@ -24,6 +24,18 @@ export function summarizeDraftPrs({ creates, units }) {
   return { count: heads.length, heads };
 }
 
+export function assertForcedStopLocal({ remote, local, creates }) {
+  if (remote.after.length !== remote.before.length || remote.after.some((ref) => !remote.before.includes(ref))) {
+    throw new Error("forced stop pushed a ref to the remote");
+  }
+  if (local.aheadOfRemote < 1) {
+    throw new Error(`${local.branch} has no commits ahead of the remote`);
+  }
+  if (creates.length !== 0) {
+    throw new Error(`forced stop opened ${creates.length} pr creates`);
+  }
+}
+
 export function assertReportHasPrLinks({ report, urls }) {
   for (const url of urls) {
     if (!report.includes(url)) {
