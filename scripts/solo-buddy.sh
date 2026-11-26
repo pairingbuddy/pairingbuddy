@@ -158,6 +158,7 @@ FINAL_RENDERED=""
 STOP_REASON=""
 STOP_REASON_CLIP=200
 GATE_CLIP=200
+STAGE_CLIP=200
 NEEDS_HUMAN_GATE=""
 UNFINISHED_STAGE=""
 
@@ -515,7 +516,7 @@ write_final_status() {
     local footer
     if session_stopped; then
         footer="Session stopped"
-    elif session_waiting_on_human; then
+    elif session_waiting_on_human || session_stage_unfinished; then
         footer="Session unfinished"
     elif [[ "$CLAUDE_EXIT" -eq 0 ]]; then
         footer="Session complete"
@@ -562,7 +563,7 @@ CLAUDE_EXIT=$?
 # An exit 0 with a stop in the task ledger is an unfinished run
 STOP_REASON=$(read_ledger_text stop reason "$STOP_REASON_CLIP")
 NEEDS_HUMAN_GATE=$(read_ledger_text needsHuman gate "$GATE_CLIP")
-UNFINISHED_STAGE=$(read_state_line ".pairingbuddy/run/task/ledger.json" "if (state.stage && state.stage.status === 'active' && state.stage.name) console.log(clip(state.stage.name, ${GATE_CLIP}));")
+UNFINISHED_STAGE=$(read_state_line ".pairingbuddy/run/task/ledger.json" "if (state.stage && state.stage.status === 'active' && state.stage.name) console.log(clip(state.stage.name, ${STAGE_CLIP}));")
 
 # Stop the renderer before writing final status
 kill "$RENDERER_PID" 2>/dev/null || true
