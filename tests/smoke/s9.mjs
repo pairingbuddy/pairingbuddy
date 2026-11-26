@@ -9,6 +9,7 @@ function headOf({ argv }) {
 }
 
 export function summarizeDraftPrs({ creates, units }) {
+  // Order matters: a unit with no matching create is skipped here, and the count check below catches it.
   for (const u of units) {
     const create = creates.find((c) => headOf(c) === u.branch);
     if (create && !create.argv.includes(DRAFT_FLAG)) {
@@ -19,5 +20,5 @@ export function summarizeDraftPrs({ creates, units }) {
     throw new Error(`expected ${units.length} pr creates, saw ${creates.length}`);
   }
   const heads = units.map((u) => u.branch);
-  return { count: creates.length, heads };
+  return { count: heads.length, heads };
 }
