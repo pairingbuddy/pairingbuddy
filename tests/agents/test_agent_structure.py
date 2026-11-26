@@ -332,7 +332,7 @@ def test_agent_section_content_matches_canonical(agent_name, section_heading, co
 
 RESTRICTED_AGENT_TOOLS = {
     "runner": ["Bash"],
-    "apply-config-change": ["Read", "Edit"],
+    "apply-config-change": ["Read", "Edit", "Write"],
     "lens": ["Read", "Grep", "Glob"],
     "refuter": ["Read", "Grep", "Glob"],
     "synthesizer": ["Read", "Grep", "Glob"],

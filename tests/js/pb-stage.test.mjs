@@ -417,15 +417,13 @@ describe("stage finish", IN_PARALLEL, () => {
     assert.deepEqual([report.stage, report.attempt, report.runId], [CONFIG, ATTEMPT, "wf_1"]);
   });
 
-  test("a config checkpoint with no change is evidence when the return says why", () => {
+  test("a config checkpoint with no change stops the run on the return's question, so the stage cannot finish", () => {
     const repo = makeRepo();
     writeReturn(repo, CONFIG_KEY, { files_changed: [], ambiguity: "Which file did the task mean?" });
-    assert.equal(ok(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY).committed, false);
 
-    ok(repo, "stage", "finish");
+    assertRefused(pb(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY), /changed nothing: Which file did the task mean\?/);
 
-    assert.deepEqual(repo.report().ran.checkpoints.map(({ committed }) => committed), [false]);
-    assert.equal(repo.ledger().stage.status, "done");
+    assert.match(repo.ledger().stop?.reason ?? "", /changed nothing/);
   });
 
   test("a docs checkpoint with no change is evidence as it stands", () => {
@@ -965,13 +963,13 @@ describe("a return counts only from the agent its key names", IN_PARALLEL, () =>
     assertRefused(pb(repo, "stage", "finish"), /artifact:apply-config-change/);
   });
 
-  test("the named agent's return is captured and carries the stage to its finish", () => {
+  test("the named agent's return is captured and the checkpoint reads it", () => {
     const repo = makeRepo();
 
     deliverReturn(repo, CONFIG_KEY, { commit_subject: "", files_changed: [], ambiguity: "Which file did the task mean?" });
-    ok(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY);
 
-    ok(repo, "stage", "finish");
+    assert.equal(artifactExists(repo, CONFIG_KEY), true);
+    assertRefused(pb(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY), /Which file did the task mean\?/);
   });
 });
 

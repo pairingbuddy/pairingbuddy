@@ -74,7 +74,7 @@ agents:
   apply-config-change:
     color: magenta
     model: haiku
-    tools: [Read, Edit]
+    tools: [Read, Edit, Write]
     skills: []
     inputs: {}
     outputs:

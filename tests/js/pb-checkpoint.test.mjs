@@ -5,8 +5,8 @@
 // Output contract: a commit prints {ok, step, key, committed: true, sha, message, paths, hookRetried}, and no change
 // prints {ok, step, key, committed: false}. Both exit 0. A refusal exits 1 and commits nothing, except that an attempt
 // ending during the commit itself leaves that commit listed in ledger.commits and no evidence. A stop exits 1 and sets
-// ledger.stop. Bad arguments exit 2. The config step takes no change only from a return with an empty list and a
-// non-empty ambiguity, and stops on any other return that changed nothing. The docs step takes no change as it is.
+// ledger.stop. Bad arguments exit 2. The config step stops on any return that changed nothing, naming its ambiguity
+// when it gives one, so a config task is never ticked with nothing built. The docs step takes no change as it is.
 import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -338,19 +338,15 @@ const docsArgs = ["--step", "docs", "--from", DOCS_KEY];
 const docsArtifact = (over = {}) => ({ pb_key: DOCS_KEY, ambiguity: "", commit_subject: "note a", files_changed: ["a.txt"], ...over });
 
 describe("the config step must prove a no-change", IN_PARALLEL, () => {
-  test("an empty list with an ambiguity commits nothing and runs no tests", () => {
+  // A config task exists to change something: a return that changed nothing stops the run with its question, so the task
+  // is never ticked with nothing built (under auto mode the question would otherwise wait until the pull request).
+  test("an empty list with an ambiguity stops the run with the question and runs no tests", () => {
     const repo = changedRepo();
     writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: [], ambiguity: OPEN_QUESTION }));
-    const seed = repo.head();
 
-    const result = checkpoint(repo);
-
-    assert.equal(result.committed, false);
-    assert.equal(repo.head(), seed);
-    assert.deepEqual(repo.ledger().commits, []);
+    assertStops(repo, /the config change changed nothing: Which file did the task mean\?/);
+    assert.deepEqual(repo.ledger().checkpoints ?? [], [], "no evidence is recorded");
     assert.equal(repo.testRuns(), 0);
-    assert.equal(repo.ledger().stop, null);
-    assert.deepEqual(repo.ledger().checkpoints.map(({ committed }) => committed), [false]);
   });
 
   const STOPS = [
@@ -440,11 +436,11 @@ describe("no change makes no commit", IN_PARALLEL, () => {
     assert.deepEqual(repo.ledger().commits, [committed]);
   });
 
-  test("the unchanged artifact need not have a usable subject when it asks for nothing", () => {
+  test("an unchanged artifact with no usable subject stops on its question, not on the subject", () => {
     const repo = makeRepo();
     writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: [], commit_subject: "", ambiguity: OPEN_QUESTION }));
 
-    assert.equal(checkpoint(repo).committed, false);
+    assertStops(repo, /changed nothing: Which file/);
   });
 });
 

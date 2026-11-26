@@ -271,7 +271,11 @@ const isSaid = (text) => typeof text === "string" && text.trim() !== "";
 function assertChangeProven(step, { ambiguity, no_change_reason: noChangeReason }, listed, paths) {
   const unchanged = listed.filter((path) => !paths.includes(path));
   if (unchanged.length > 0) throw new CheckpointStopped(`step ${step} lists files that did not change: ${unchanged.join(", ")}. pb stage fail clears this`);
-  if (listed.length > 0 || isSaid(ambiguity) || isSaid(noChangeReason)) return;
+  if (listed.length > 0) return;
+  // A config change exists to change something, so a config step that changed nothing stops with its question: carrying
+  // on would tick the task with nothing built, and under auto mode the question would wait until the pull request.
+  if (step === "config") throw new CheckpointStopped(`the config change changed nothing: ${isSaid(ambiguity) ? ambiguity.trim() : "its return gives no ambiguity to say why"}. pb stage fail clears this`);
+  if (isSaid(ambiguity) || isSaid(noChangeReason)) return;
   throw new CheckpointStopped(`step ${step} changed nothing and its return gives no no_change_reason or ambiguity to say why. pb stage fail clears this`);
 }
 
