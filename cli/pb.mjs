@@ -21,7 +21,7 @@ import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, forei
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
-import { QuestionRefused, answeredQuestions } from "../shared-node/questions.mjs";
+import { QuestionRefused, addQuestions, answeredQuestions } from "../shared-node/questions.mjs";
 import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, answerQuestionInUnit, clearQuestionsInUnit, settleQuestionInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, KEPT_RUNS, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
 import { OUTPUT_MAX_BUFFER } from "../shared-node/output-buffer.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, boundDiff, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, subjectStatArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
@@ -289,23 +289,17 @@ function runOpen(args) {
   // A failed write is a disk error that leaves the run unnamed; `pb plan next` then reads its ticked box as hand-ticked
   // and stops, which is the safe side.
   if (planned?.namedUnit) writeJsonAtomic(unitPathOf(root), planned.namedUnit);
-  if (curated) {
-    // A doubt the curation could not settle without a person waits on the unit with the gates' doubts, so the run goes on.
-    if (typeof curated.doubt === "string" && curated.doubt.trim() !== "" && existsSync(unitPathOf(root))) {
-      deferQuestionsInUnit(root, { gate: "guidance", task, doubts: [{ step: "guidance carried over", ambiguity: curated.doubt.trim() }] });
-    }
-    dropCurated(root);
-  }
+  if (curated) takeCurated(root, curated, task);
   // The short pb a human's ! line names from here on.
   ensureShim(root);
   return { ok: true, kind, branch, runDir: dir };
 }
 
-// What the curating-guidance skill did before this run opened, from human-guidance.json's `curated`, or null when it left
-// nothing usable there. Read only: a bad record is ignored, never a refusal, since the guidance itself is still there.
+// What the curating-guidance skill recorded on the open unit (pb guidance record) before this run opened, or null when there
+// is no usable record. A bad record is ignored, never a refusal: the guidance itself is untouched.
 function curatedGuidance(root) {
   try {
-    const curated = JSON.parse(readFileSync(join(root, ".pairingbuddy", "human-guidance.json"), "utf8"))?.curated;
+    const curated = JSON.parse(readFileSync(unitPathOf(root), "utf8"))?.curated;
     const count = (x) => Number.isInteger(x) && x >= 0;
     return (curated?.mode === "auto" || curated?.mode === "human") && count(curated.kept) && count(curated.dropped) ? curated : null;
   } catch {
@@ -313,11 +307,13 @@ function curatedGuidance(root) {
   }
 }
 
-// The run now holds the record, so the file gives it up: the next task's run never reads this one's.
-function dropCurated(root) {
-  const path = join(root, ".pairingbuddy", "human-guidance.json");
-  const { curated: _taken, ...file } = JSON.parse(readFileSync(path, "utf8"));
-  writeJsonAtomic(path, file);
+// The run now holds the record, so the unit gives it up, and a doubt in it waits with the gates' doubts as a question for
+// the human, so the run goes on. The next task's run never reads this one's record.
+function takeCurated(root, curated, task) {
+  const unit = JSON.parse(readFileSync(unitPathOf(root), "utf8"));
+  const { curated: _taken, ...rest } = unit;
+  const doubt = typeof curated.doubt === "string" ? curated.doubt.trim() : "";
+  writeJsonAtomic(unitPathOf(root), doubt === "" ? rest : addQuestions(rest, { gate: "guidance", task, doubts: [{ step: "guidance carried over", ambiguity: doubt }] }));
 }
 
 // Validates spike-config.json and spike-questions.json and trims them to what the run keeps: the config's goal, code

@@ -847,14 +847,17 @@ test("open-lets-a-chore-run-without-selectors", (t) => {
   assert.equal(open(root).status, 0);
 });
 
-// The curating-guidance skill leaves what it did in human-guidance.json's `curated`, since no run is open yet when it runs.
-// The run takes it over, so the task's report can say what happened to the guidance.
-const guidancePath = (root) => join(root, ".pairingbuddy", "human-guidance.json");
-const ENTRY = { agent: "x", timestamp: "2026-11-26T10:00:00Z", context: "c", feedback: "Use node --test", persistent: true };
+// The curating-guidance skill records what it did with pb guidance record, onto the open unit, since no run is open yet
+// when it runs. The run takes it over, so the task's report can say what happened to the guidance.
+const unitWith = (root, curated) => {
+  openUnit(root, "chore");
+  const unit = JSON.parse(readFileSync(unitPath(root), "utf8"));
+  writeFileSync(unitPath(root), JSON.stringify({ ...unit, curated }));
+};
 
 test("run open records the guidance curation on the ledger", (t) => {
   const dir = makeRepo(t);
-  writeFileSync(guidancePath(dir), `${JSON.stringify({ guidance: [ENTRY], curated: { mode: "auto", kept: 1, dropped: 2 } })}\n`);
+  unitWith(dir, { mode: "auto", kept: 1, dropped: 2 });
 
   const r = open(dir);
 
@@ -862,22 +865,20 @@ test("run open records the guidance curation on the ledger", (t) => {
   assert.deepEqual(readLedger(ledgerPath(dir)).guidance, { mode: "auto", kept: 1, dropped: 2 });
 });
 
-test("run open takes the curation record out of human-guidance.json and leaves the entries", (t) => {
+test("run open takes the curation record off the unit", (t) => {
   const dir = makeRepo(t);
-  writeFileSync(guidancePath(dir), `${JSON.stringify({ guidance: [ENTRY], curated: { mode: "auto", kept: 1, dropped: 0 } })}\n`);
+  unitWith(dir, { mode: "auto", kept: 1, dropped: 0 });
 
   open(dir);
 
-  assert.deepEqual(JSON.parse(readFileSync(guidancePath(dir), "utf8")), { guidance: [ENTRY] }, "the next run never reads this task's record");
+  assert.equal(JSON.parse(readFileSync(unitPath(dir), "utf8")).curated, undefined, "the next run never reads this task's record");
 });
 
 test("a doubt the curation left for the human becomes one of the open unit's questions for you", (t) => {
   const dir = makeRepo(t);
-  mkdirSync(join(dir, ".pairingbuddy", "run"), { recursive: true });
-  openUnit(dir, "chore");
   writeFileSync(join(dir, ".pairingbuddy", "task.json"), `${JSON.stringify({ description: "Task 4: Baseline\n\nGoal: more" })}\n`);
   const doubt = "Entries 1 and 2 contradict: which test runner holds?";
-  writeFileSync(guidancePath(dir), `${JSON.stringify({ guidance: [ENTRY], curated: { mode: "auto", kept: 1, dropped: 0, doubt } })}\n`);
+  unitWith(dir, { mode: "auto", kept: 1, dropped: 0, doubt });
 
   const r = open(dir);
 
