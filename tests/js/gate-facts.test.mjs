@@ -181,6 +181,17 @@ describe("open doubts", () => {
     assert.deepEqual(gateFacts("G:task-end", root, tddDone(), CONTRACT).doubts, [{ step: "a reviewer", stage: SAFETY_NET, ambiguity: DOUBT }, { step: "a reviewer", stage: SAFETY_NET, ambiguity: "Is 0 a valid quantity?" }]);
   });
 
+  test("a doubt carries the suggested answers its return offers, as ambiguity_options; none when it offers none", () => {
+    const root = makeRoot();
+    writeReturn(root, `${SAFETY_NET}.lens.code.r1.a1`, { ambiguity: DOUBT, ambiguity_options: ["0", "None"], findings: [] });
+    writeReturn(root, `${SAFETY_NET}.lens.tests.r1.a1`, { ambiguity: "Is 0 a valid quantity?", findings: [] });
+
+    assert.deepEqual(gateFacts("G:task-end", root, tddDone(), CONTRACT).doubts, [
+      { step: "a reviewer", stage: SAFETY_NET, ambiguity: DOUBT, options: ["0", "None"] },
+      { step: "a reviewer", stage: SAFETY_NET, ambiguity: "Is 0 a valid quantity?" },
+    ]);
+  });
+
   test("what a reviewer could not check is no doubt: the gate shows only its ambiguity", () => {
     const root = makeRoot();
     writeReturn(root, `${SAFETY_NET}.lens.code.r1.a1`, { ambiguity: null, not_checked: "I did not read the full cart.py.", findings: [] });

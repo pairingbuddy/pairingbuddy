@@ -159,7 +159,8 @@
                 "properties": {
                   "step": { "type": "string", "minLength": 1 },
                   "stage": { "type": "string", "minLength": 1 },
-                  "ambiguity": { "type": "string", "minLength": 1 }
+                  "ambiguity": { "type": "string", "minLength": 1 },
+                  "options": { "description": "Answers the step suggested for its doubt, which /pb-answer offers as choices. May be absent.", "type": "array", "maxItems": 3, "items": { "type": "string", "minLength": 1 } }
                 }
               }
             }

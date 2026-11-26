@@ -2,6 +2,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
+import { readFileSync } from "node:fs";
+
+import { violations } from "./schema-check.mjs";
 import { QUESTIONS_KEPT, addQuestions, openQuestions, questionsLine } from "../../shared-node/questions.mjs";
 
 const doubt = (n) => ({ step: "a reviewer", ambiguity: `Doubt ${n}?` });
@@ -144,4 +147,26 @@ test("a rework task names the question's task by title even when an old record k
   const { text } = reworkTask("T1a", 1, { task: "Task 4: four\n\n**Goal:** Lots of text.", ambiguity: "Why?", answer: "Because." });
 
   assert.ok(text.includes("**The question (from Task 4: four):** Why?"), text);
+});
+
+describe("suggested answers in the records", () => {
+  const schemaOf = (name) => JSON.parse(readFileSync(new URL(`../../contracts/schemas/${name}`, import.meta.url), "utf8"));
+  // Every object schema that describes a doubt: it requires step and ambiguity.
+  const doubtSchemas = (node, found = []) => {
+    if (node && typeof node === "object") {
+      if (Array.isArray(node.required) && node.required.includes("step") && node.required.includes("ambiguity")) found.push(node);
+      for (const value of Object.values(node)) doubtSchemas(value, found);
+    }
+    return found;
+  };
+
+  test("the ledger's and the unit's doubt records accept the suggested answers", () => {
+    for (const name of ["ledger.schema.json", "unit.schema.json"]) {
+      const found = doubtSchemas(schemaOf(name));
+      assert.ok(found.length > 0, name);
+      for (const schema of found) {
+        assert.deepEqual(violations(schema, { gate: "G:task-end", task: "Task 1: one", step: "a reviewer", ambiguity: "Doubt?", options: ["Yes", "No"] }).filter((v) => !/gate|task/.test(v)), [], name);
+      }
+    }
+  });
 });
