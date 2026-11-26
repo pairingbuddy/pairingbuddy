@@ -1,5 +1,6 @@
 // Closing a unit on disk (D19): the I/O half of the unit rules in unit.mjs, which stays pure. Node built-ins, and the pure questions list.
-import { addQuestions } from "./questions.mjs";
+import { addQuestions, answerQuestion, openQuestions, QuestionRefused, REWORKS_PER_UNIT, reworkCount, reworkTask, settleQuestion } from "./questions.mjs";
+import { insertTaskInUnit } from "./plan-text.mjs";
 import { cpSync, existsSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -131,6 +132,51 @@ export function clearQuestionsInUnit(root) {
   const temp = `${path}.${process.pid}.tmp`;
   writeFileSync(temp, `${JSON.stringify(unit, null, 2)}\n`);
   renameSync(temp, path);
+}
+
+const writeJson = (path, value) => {
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`);
+  renameSync(temp, path);
+};
+
+// The human answered question n of the open unit (pb human answer, /pb-answer): the answer lands on the question, and as
+// guidance every step that starts from now reads, so it takes effect between steps and never mid-step. Returns the
+// question and how many stay open. Throws a QuestionRefused with no unit open, no such question or no answer.
+export function answerQuestionInUnit(root, n, text, at = new Date().toISOString()) {
+  const path = join(root, ".pairingbuddy", "run", "unit.json");
+  if (!existsSync(path)) throw new QuestionRefused("no unit is open, so there is no question for you to answer");
+  const unit = answerQuestion(JSON.parse(readFileSync(path, "utf8")), n, text, at);
+  writeJson(path, unit);
+  const question = unit.questions[n - 1];
+  const guidancePath = join(root, ".pairingbuddy", "human-guidance.json");
+  const file = existsSync(guidancePath) ? JSON.parse(readFileSync(guidancePath, "utf8")) : { guidance: [] };
+  const entry = { agent: "all", timestamp: at, context: `answer to a question for you, raised at ${question.gate} in ${question.task}`, feedback: `Question: ${question.ambiguity}\nAnswer: ${question.answer}` };
+  writeJson(guidancePath, { ...file, guidance: [...(Array.isArray(file.guidance) ? file.guidance : []), entry] });
+  return { question, open: openQuestions(unit).count };
+}
+
+// The session settled the human's answer to question n at a task boundary: "keep" only records it, as the answer already
+// guides the steps; "rework" adds a task to the unit in the plan, before its next task, that changes the work already done.
+// At most REWORKS_PER_UNIT per unit: past that it is refused, for the human to say whether the unit has become a re-plan.
+export function settleQuestionInUnit(root, n, how) {
+  const path = join(root, ".pairingbuddy", "run", "unit.json");
+  if (!existsSync(path)) throw new QuestionRefused("no unit is open, so there is no answer to settle");
+  const unit = JSON.parse(readFileSync(path, "utf8"));
+  if (how === "keep") {
+    writeJson(path, settleQuestion(unit, n, "keep"));
+    return { settled: "keep" };
+  }
+  settleQuestion(unit, n, "keep"); // refuses an unknown, unanswered or settled question before anything is written
+  if (typeof unit.plan !== "string" || unit.plan === "") throw new QuestionRefused(`unit ${unit.unit} names no plan, so a rework task has nowhere to go`);
+  const reworks = reworkCount(unit);
+  if (reworks >= REWORKS_PER_UNIT) throw new QuestionRefused(`unit ${unit.unit} already has ${reworks} rework tasks from answers, its cap of ${REWORKS_PER_UNIT}. Show the human the answer and ask whether the unit has become a re-plan`);
+  const { title, text } = reworkTask(unit.unit, reworks + 1, unit.questions[n - 1]);
+  const settled = settleQuestion(unit, n, "rework", title);
+  const planPath = join(root, unit.plan);
+  writeFileSync(planPath, insertTaskInUnit(readFileSync(planPath, "utf8"), unit.unit, text));
+  writeJson(path, settled);
+  return { settled: "rework", task: title };
 }
 
 export const unitIsOpen = (root) => existsSync(join(root, ".pairingbuddy", "run", "unit.json"));

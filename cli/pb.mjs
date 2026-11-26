@@ -21,7 +21,8 @@ import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, forei
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
-import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, clearQuestionsInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
+import { QuestionRefused, answeredQuestions } from "../shared-node/questions.mjs";
+import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, answerQuestionInUnit, clearQuestionsInUnit, settleQuestionInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, removeCreated, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
@@ -438,7 +439,8 @@ const reportPathOf = (root) => join(taskDirOf(root), "report.json");
 function publishQuestions(root) {
   if (!unitIsOpen(root)) return {};
   const doubts = unitQuestionDoubts(root);
-  return doubts.length === 0 ? {} : { doubts };
+  const handled = (readUnit(root).questions ?? []).filter(({ answer }) => typeof answer === "string").map(({ task, ambiguity, answer }) => ({ task, ambiguity, answer }));
+  return { ...(doubts.length === 0 ? {} : { doubts }), ...(handled.length === 0 ? {} : { handled }) };
 }
 
 // An auto pass that deferred the gate's doubts keeps them on its record: passed by the policy, not approved by a human.
@@ -761,6 +763,37 @@ function answeredConfigWait(path) {
     return { ...ledger, ...waits, needsHuman: null };
   });
   return true;
+}
+
+// The human's answer to question n of the unit's questions for you, typed or sent from /pb-answer. Only a person runs it:
+// the gate refuses pb human from a model.
+function humanAnswer(args) {
+  const [number, ...words] = args;
+  if (!/^\d+$/.test(number ?? "") || words.length === 0) throw new UsageError("usage: pb human answer <question number> <your answer>");
+  const n = Number(number);
+  try {
+    const { open } = answerQuestionInUnit(toplevel(), n, words.join(" "));
+    return { ok: true, n, open };
+  } catch (e) {
+    if (e instanceof QuestionRefused) throw new Refusal(`${e.message}. Nothing was recorded.`);
+    throw e;
+  }
+}
+
+// The session settles the human's answer to question n between tasks, as pb plan next asks: --rework adds a rework task
+// to the plan, --keep only records it.
+function questionSettle(args) {
+  const [number, flag] = args;
+  if (!/^\d+$/.test(number ?? "") || !["--rework", "--keep"].includes(flag) || args.length !== 2) throw new UsageError("usage: pb question settle <n> --rework | --keep");
+  const root = toplevel();
+  if (openRunOf(root) !== null) throw new Refusal("a task's run is open, so the answer waits: answers are settled between tasks, when pb plan next asks. Nothing was touched");
+  const n = Number(number);
+  try {
+    return { ok: true, n, ...settleQuestionInUnit(root, n, flag.slice(2)) };
+  } catch (e) {
+    if (e instanceof QuestionRefused) throw new Refusal(`${e.message}. Nothing was touched`);
+    throw e;
+  }
 }
 
 function humanAccept(args) {
@@ -1511,6 +1544,15 @@ function assertOpenRunTakes(open, next, planPath) {
 }
 
 // Reads the plan under the repo toplevel and reports its units, next task and format problems. Writes nothing.
+const SETTLE_WORDS = "The human answered questions set aside for them. Before the next task, settle each answer: run pb question settle <n> --rework when the answer means work already done must change (pb adds a rework task that runs next), else pb question settle <n> --keep (the answer already guides the steps from now on). Then run pb plan next again.";
+
+// The human's answers the session has not settled yet, at a task boundary with a unit open: what pb plan next asks it to
+// settle before the next task.
+function answersToSettle(root) {
+  if (!unitIsOpen(root)) return [];
+  return answeredQuestions(readUnit(root)).map(({ n, task, ambiguity, answer }) => ({ n, task, question: ambiguity, answer }));
+}
+
 function planNext(args) {
   const paths = args.filter((a) => !a.startsWith("-"));
   const dryRun = args.includes("--dry-run");
@@ -1520,6 +1562,8 @@ function planNext(args) {
     const { root, context, next, stop } = planStepOf(plan);
     const open = openRunOf(root);
     const openRun = open && { kind: open.kind, title: open.title };
+    const answered = open ? [] : answersToSettle(root);
+    if (answered.length > 0) return { ok: true, plan, next: null, answered, settle: SETTLE_WORDS };
     // An open publish run on a unit that is done but unpublished is what to resume: the stop is data, not a refusal.
     if (stop?.reason === "unpublished" && open?.kind === "publish") return { ok: true, plan, next: null, stop, openRun };
     if (stop) throw new Refusal(planStopMessage(root, plan, stop));
@@ -2582,8 +2626,8 @@ export const VERBS = {
   rollback,
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
-  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, test: runTests, checkpoint,
-  "plan next": planNext, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
+  "plan next": planNext, "question settle": questionSettle, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 // The human changed test-config.json while a stage ran: the attempt ends and the run waits on the human, with no stop, so

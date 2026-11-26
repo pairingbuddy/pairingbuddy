@@ -24,13 +24,19 @@
       }
     },
     "questions": {
-      "description": "Questions for you: the doubts a gate passed under the auto policy set aside instead of stopping the run, oldest first, at most 20 in full. G:publish asks them all before the unit's pull request goes out; its approval clears them. May be absent (none).",
+      "description": "Questions for you: the doubts a gate passed under the auto policy set aside instead of stopping the run, oldest first, at most 20 in full. The human may answer any of them at any time (pb human answer, /pb-answer); G:publish asks the ones still open, lists the answered ones as handled, and its approval clears them. May be absent (none).",
       "type": "array",
       "maxItems": 20,
       "items": {
         "type": "object",
         "required": ["gate", "task", "step", "ambiguity"],
-        "properties": { "gate": { "type": "string" }, "task": { "type": "string" }, "step": { "type": "string" }, "ambiguity": { "type": "string", "minLength": 1 } }
+        "properties": {
+          "gate": { "type": "string" }, "task": { "type": "string" }, "step": { "type": "string" }, "ambiguity": { "type": "string", "minLength": 1 },
+          "answer": { "description": "The human's answer, from pb human answer or /pb-answer; the question then no longer counts as open.", "type": "string", "minLength": 1 },
+          "answeredAt": { "type": "string" },
+          "settled": { "description": "How the session settled the answer at the next task boundary: rework (a rework task was added to the plan) or keep (it only guides the work to come).", "enum": ["rework", "keep"] },
+          "rework": { "description": "The title of the rework task a settled-as-rework answer added to the plan.", "type": "string" }
+        }
       }
     },
     "questionsMore": { "description": "How many more deferred doubts came past the 20 kept in full; their text stays in the kept runs' gate records. May be absent (none).", "type": "integer", "minimum": 1 },
