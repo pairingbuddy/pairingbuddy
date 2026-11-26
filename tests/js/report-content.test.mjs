@@ -328,6 +328,12 @@ describe("report-content", () => {
     assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Task type<\/strong> config change \(likely, not certain: auto mode went on\)/, "the type reads as not certain");
   });
 
+  test("the guidance the run started with says what was kept and dropped, and that nobody was asked under auto mode", () => {
+    const html = renderReport({ ledger: { task: "Add a flag", taskType: "config_change", guidance: { mode: "auto", kept: 3, dropped: 2 } } });
+
+    assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Guidance<\/strong> kept 3, dropped 2 \(auto\)/);
+  });
+
   const PARTIAL_RUNS = {
     "an empty object": {},
     "a null ledger": { ledger: null },
