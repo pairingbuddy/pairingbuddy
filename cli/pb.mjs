@@ -21,7 +21,7 @@ import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, forei
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
-import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
+import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, clearQuestionsInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, removeCreated, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
@@ -630,6 +630,7 @@ function humanApprove(args) {
   const [gate] = args;
   const { root, path } = runLedgerPath();
   updateLedger(path, (ledger) => approved(ledger, gate, root));
+  if (gate === PUBLISH_GATE) clearQuestionsInUnit(root);
   return { ok: true, gate, source: "human-cli" };
 }
 

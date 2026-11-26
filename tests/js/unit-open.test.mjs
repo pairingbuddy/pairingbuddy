@@ -90,6 +90,21 @@ test("unit-schema-rejects-bad-records", () => {
   assert.match(wrongType[0], /tasks/, "the rejection names tasks");
 });
 
+test("unit-schema-takes-the-questions-for-you", () => {
+  const schema = JSON.parse(readFileSync(new URL("../../contracts/schemas/unit.schema.json", import.meta.url), "utf8"));
+  const valid = {
+    unit: "x", plan: "p", tracer: "t", branch: "feat/x", base: "main",
+    baseSha: "a".repeat(40), configHash: "b".repeat(64), gitConfigHash: "c".repeat(64),
+    tasks: [], commits: [],
+  };
+  const question = { gate: "G:task-end", task: "Task 1: one", step: "a reviewer", ambiguity: "Drafts always?" };
+  assert.deepEqual(violations(schema, { ...valid, questions: [question], questionsMore: 2 }), [], "a unit holding questions validates");
+
+  const { ambiguity, ...noText } = question;
+  assert.match(violations(schema, { ...valid, questions: [noText] }).join("\n"), /ambiguity/, "a question with no text is refused");
+  assert.match(violations(schema, { ...valid, questions: Array(21).fill(question) }).join("\n"), /questions/, "more than 20 kept in full is refused");
+});
+
 test("custom-branch-template-is-honoured", () => {
   const writeTemplate = (repo, branch_template) => {
     mkdirSync(join(repo.dir, ".pairingbuddy"), { recursive: true });

@@ -1,4 +1,4 @@
-// Minimal draft-07 subset checker (no validator dependency in this repo): type, required, properties, items, enum, maxLength, additionalProperties:false.
+// Minimal draft-07 subset checker (no validator dependency in this repo): type, required, properties, items, maxItems, enum, maxLength, additionalProperties:false.
 const kindOf = (v) => (Array.isArray(v) ? "array" : v === null ? "null" : Number.isInteger(v) ? "integer" : typeof v);
 
 export function violations(schema, value, path = "$") {
@@ -23,6 +23,7 @@ export function violations(schema, value, path = "$") {
       if (key in value) out.push(...violations(sub, value[key], `${path}.${key}`));
     }
   }
+  if (kind === "array" && schema.maxItems !== undefined && value.length > schema.maxItems) out.push(`${path}: more than ${schema.maxItems} items`);
   if (kind === "array" && schema.items) {
     value.forEach((item, i) => out.push(...violations(schema.items, item, `${path}[${i}]`)));
   }

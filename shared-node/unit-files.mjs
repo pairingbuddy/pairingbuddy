@@ -121,6 +121,18 @@ export function deferQuestionsInUnit(root, { gate, task, doubts }) {
   renameSync(temp, path);
 }
 
+// The human approved G:publish over the unit's questions: they are answered, so they leave the unit. The gate record keeps
+// them (askedDoubts). No unit open, or none held, writes nothing.
+export function clearQuestionsInUnit(root) {
+  const path = join(root, ".pairingbuddy", "run", "unit.json");
+  if (!existsSync(path)) return;
+  const { questions, questionsMore, ...unit } = JSON.parse(readFileSync(path, "utf8"));
+  if (questions === undefined && questionsMore === undefined) return;
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify(unit, null, 2)}\n`);
+  renameSync(temp, path);
+}
+
 export const unitIsOpen = (root) => existsSync(join(root, ".pairingbuddy", "run", "unit.json"));
 
 // The task of the run just kept counts first, so it is never the one removed.
