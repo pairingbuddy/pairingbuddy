@@ -232,6 +232,7 @@ test("task-end-spike-closes-kept-local", (t) => {
   assert.equal(r.code, 0, `task end succeeds, stdout ${r.stdout}, stderr ${r.stderr}`);
   const out = JSON.parse(r.stdout);
   assert.equal(out.closed, "kept-local", "the spike unit is closed kept-local");
+  assert.equal("continue" in out, false, "a spike outside a plan ends there: nothing to go on to");
   assert.ok(out.reason.includes(branch), `the reason names the branch ${branch}, reason ${out.reason}`);
   for (const name of ["unit.json", "pr-body.md", "pr-lint.json"]) assert.equal(existsSync(join(runDir, name)), false, `run/${name} is removed`);
   assert.equal(existsSync(join(runDir, "task")), false, "run/task is removed");
@@ -245,6 +246,37 @@ test("task-end-spike-closes-kept-local", (t) => {
   assert.match(publish.stderr, /no unit is open \(.*unit\.json is missing\)/, `the refusal names the missing unit record, stderr ${publish.stderr}`);
   assert.doesNotMatch(publish.stderr, /unexpected failure/, `the refusal is an expected one, stderr ${publish.stderr}`);
 });
+// Scenario spike-close-in-plan: in a plan, the spike's close is expected, so pb says the plan loop goes on.
+
+test("task-end-spike-in-plan-says-the-loop-goes-on", (t) => {
+  const plugin = spikePlugin(t);
+  const title = "Task 3: Spike: which data answers U1";
+  const repo = makeRepo({
+    remote: true,
+    ledger: {
+      taskType: "spike",
+      stage: { name: "code-spike-document", status: "done", runId: "wf_1", attempt: 1, startedAt: null },
+      stages: [{ name: "code-spike-unit", status: "done", explored: ["u1"] }, { name: "code-spike-document", status: "done" }],
+      plan: { path: "plan.md", title },
+      gates: { "G:unit": { source: "auto" }, "G:task-end": { source: "auto" } },
+    },
+  });
+  const { git } = gitIn(repo);
+  writeFileSync(join(repo.dir, "plan.md"), `- [ ] **${title}**\n- [ ] **Task 4: Build it**\n`);
+  git("add", "plan.md");
+  git("commit", "-q", "-m", "docs: add the plan");
+  git("push", "-q", "origin", "HEAD");
+  const opened = pbFrom(plugin, repo, "unit", "open", "--type", "spike", "--slug", "data");
+  assert.equal(opened.code, 0, `unit open succeeds, stderr ${opened.stderr}`);
+
+  const r = pbFrom(plugin, repo, "task", "end");
+
+  assert.equal(r.code, 0, `task end succeeds, stdout ${r.stdout}, stderr ${r.stderr}`);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.closed, "kept-local", "the spike unit is closed kept-local");
+  assert.equal(out.continue, true, `a spike in a plan lets the plan loop go on, stdout ${r.stdout}`);
+});
+
 test("task-end-other-types-unchanged", (t) => {
   const plugin = spikePlugin(t);
   const repo = makeRepo({
