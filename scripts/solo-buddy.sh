@@ -577,4 +577,8 @@ REPORT_FILE=".pairingbuddy/SOLO_BUDDY_REPORT.md"
 
 print_exit_summary
 
+if session_stopped || session_waiting_on_human || session_stage_unfinished; then
+    exit 1
+fi
+
 exit $CLAUDE_EXIT
