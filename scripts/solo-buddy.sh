@@ -419,6 +419,16 @@ print_exit_summary() {
     else
         output="✗ Session interrupted (exit code $CLAUDE_EXIT)"
     fi
+    local attempts_line
+    attempts_line=$(read_state_line ".pairingbuddy/run/task/ledger.json" '
+        const cap = state.stop && state.stop.code === "attempt-cap" && /its cap of (\d+)/.exec(String(state.stop.reason));
+        const rollbacks = state.fixes && state.fixes.rollbacks;
+        if (cap && Array.isArray(rollbacks)) console.log(`fixes: ${rollbacks.length} tried, undone: ${rollbacks.length} of ${cap[1]} allowed`);
+    ')
+    if [[ -n "$attempts_line" ]]; then
+        output="${output}
+${attempts_line}"
+    fi
     if [[ -n "${REPORT_FILE:-}" ]] && [[ -f "${REPORT_FILE}" ]]; then
         output="${output}
   Report: ${REPORT_FILE}"
