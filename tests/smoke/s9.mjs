@@ -34,6 +34,15 @@ export function assertForcedStopLocal({ remote, local, creates }) {
   }
 }
 
+export function assertForcedStopSummary({ summary }) {
+  if (summary.includes("Session complete")) {
+    throw new Error("forced stop summary says Session complete");
+  }
+  if (!summary.includes("Session stopped")) {
+    throw new Error("forced stop summary does not say Session stopped");
+  }
+}
+
 export function assertReportHasPrLinks({ report, urls }) {
   for (const url of urls) {
     if (!report.includes(url)) {
