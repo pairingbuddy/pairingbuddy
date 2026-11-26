@@ -41,6 +41,9 @@ export function unitWords(state, isOpen, publishing) {
   return state;
 }
 
+// Whether a unit holds the task the live run builds: such a unit reads as the open unit does, record or not.
+export const holdsBuilding = (unit, building) => Boolean(building) && unit.tasks.some((task) => !task.checked && task.title === building);
+
 // A task's mark: ▸ for the one being built, as STEPS marks its running step.
 export const taskMark = (task, inProgress) => (task.checked ? TASK_MARKS.ticked : inProgress ? TASK_MARKS.inProgress : TASK_MARKS.unticked);
 

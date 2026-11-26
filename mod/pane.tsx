@@ -1,6 +1,6 @@
 import { cutAtWord, lensLines, lensSummaryLines } from '../shared-node/lens-round.mjs'
 import { endReviewLines, endReviewSummaryLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
-import { commitRows, firstUnticked, gapWords, humanWords, OPEN_COMMIT_ROWS, planFocus, PLAN_ROWS, problemRows, SHORT_COMMIT_ROWS, STATE_SEPARATOR, taskMark, unitWords, windowRows } from '../shared-node/plan-window.mjs'
+import { commitRows, firstUnticked, gapWords, holdsBuilding, humanWords, OPEN_COMMIT_ROWS, planFocus, PLAN_ROWS, problemRows, SHORT_COMMIT_ROWS, STATE_SEPARATOR, taskMark, unitWords, windowRows } from '../shared-node/plan-window.mjs'
 import { hiddenRows, moreRowsLine, paneBudget, PLAN_TARGET } from '../shared-node/pane-height.mjs'
 import { resolveOpenUnit } from './view'
 import type { RowTones, Status, StatusState, Tags, View } from './view'
@@ -186,7 +186,7 @@ type TreeRow = { parts: Part[]; needs: number[]; indent: string; task?: { checke
 function unitRows(rows: TreeRow[], unit: PlanUnit, group: number, state: string | undefined, open: View['planOpen'], indent: string, context: number[], focus: PlanFocus, building?: string, width = 0, publishing = false, commitMost = OPEN_COMMIT_ROWS) {
   const contentIndent = indent + NEST
   const isOpen = Boolean(open && open.unit === unit.unit)
-  const words = unitWords(state, isOpen, publishing)
+  const words = unitWords(state, isOpen || holdsBuilding(unit, building), publishing)
   const push = (parts: Part[], needs: number[], task?: TreeRow['task'], at = contentIndent) => rows.push({ parts, needs, indent: at, ...(task ? { task, group } : {}) }) - 1
   const unitRow = push([{ text: titleRow(indent, unit.unit, words ? `${STATE_SEPARATOR}${words}` : '', width) }], context, undefined, indent)
   const header = [...context, unitRow]

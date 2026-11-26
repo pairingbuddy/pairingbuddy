@@ -21,6 +21,7 @@ const FENCE = /^\s*(```|~~~)/;
 const LEGACY_LINE = /^Legacy: accepted\s*$/;
 const DEPENDS_LINE = /^Depends on:\s*(.+?)\s*$/;
 const TRACER_LEVEL = 3;
+const TRACER_INTRO_LINE = /^\*\*(Goal|Verification):\*\*\s*(.+?)\s*$/;
 const SECTION_LEVEL = 2;
 const TASKS_SECTION = "Tasks";
 const NON_TASK_SECTIONS = ["Requirements", "Architecture"];
@@ -88,6 +89,12 @@ function notePendingLine(pending, line) {
   if (!dependsOn) return;
   if (pending.dependsOn) pending.repeatedDepends = true;
   else pending.dependsOn = dependsOn;
+}
+
+// Records a tracer's Goal or Verification line, as written, while its intro is open.
+function noteIntroLine(intro, line) {
+  const [, label, words] = TRACER_INTRO_LINE.exec(line) ?? [];
+  if (label) intro[label.toLowerCase()] = words;
 }
 
 // A task body runs through blank and indented lines; a non-indented line, including a top-level fence, ends it.
@@ -186,6 +193,8 @@ export function parsePlan(text) {
   const directUnits = []; // { opened, owner } for each unit a tracer heading opened
   const repeatedDepends = new Set(); // opened units that had a second Depends on line
   const groupedTracers = new Set(); // tracer occurrences (not names) that own PR: groups
+  const tracers = []; // each tracer's name with its Goal and Verification lines, for the plan page
+  let intro = null; // the tracer whose heading is the last one seen, until any other heading
   let tracer = null;
   let unit = null;
   let pending = null;
@@ -219,15 +228,21 @@ export function parsePlan(text) {
       unit = null;
       pending = null;
     }
+    if (heading) intro = null;
     if (!inTaskArea(section, hasTasks)) continue;
     const opens = heading && unitHeading(heading);
     if (opens) {
       const { direct, name } = opens;
-      if (direct) tracer = { name };
+      if (direct) {
+        tracer = { name };
+        intro = { name, goal: null, verification: null };
+        tracers.push(intro);
+      }
       pending = direct || tracer ? opening(name, direct, index) : null; // a PR: group with no tracer opens no unit; any unit heading ends the previous one
       unit = null;
     }
     if (pending && !fenced) notePendingLine(pending, line);
+    if (intro && !fenced) noteIntroLine(intro, line);
     if (!box) continue;
     if (!unit && pending) unit = openUnit(pending, tracer);
     const title = boxLabel(box.label);
@@ -242,7 +257,7 @@ export function parsePlan(text) {
   closeBody();
   const misplaced = directUnits.filter(({ owner }) => groupedTracers.has(owner)).map(({ opened }) => opened);
   const unitsOut = units.filter((u) => !misplaced.includes(u));
-  return { units: unitsOut, next: firstUnchecked(unitsOut), problems: formatProblems(strays, misplaced, unitsOut, repeatedDepends, text) };
+  return { units: unitsOut, tracers, next: firstUnchecked(unitsOut), problems: formatProblems(strays, misplaced, unitsOut, repeatedDepends, text) };
 }
 
 // Titles of the tasks recorded for a unit: the open unit's records count only for that unit, in the same plan (paths compare normalised).

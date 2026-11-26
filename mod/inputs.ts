@@ -43,7 +43,7 @@ export type Call = { agentId?: unknown; at?: string; input: Record<string, unkno
 // prUrl: the pull request the unit record names, once pb publish has opened it.
 // humanLeft: the unit's [HUMAN] tasks its plan still has unticked, which a person does before pb publishes the unit.
 // open: the unit record as unitStates reads it, to tell each plan unit's state.
-export type OpenUnit = { unit?: string; plan?: string; tracer?: string; tasks: { title: string }[]; branch?: string; base?: string; commits?: string[] }
+export type OpenUnit = { unit?: string; plan?: string; tracer?: string; tasks: { title: string; headSha?: string }[]; branch?: string; base?: string; commits?: string[] }
 export type Unit = { key: string; taskStages: string[]; prUrl?: string; humanLeft?: string[]; open?: OpenUnit }
 // What the pane keeps of the unit's last code run (shared-node/end-state.mjs codeRunOf), so the end state outlives its ledger.
 export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; testsPassing: number; perTest?: Record<string, { green?: { passed: boolean }; covered?: { done: boolean } }>; safetyNet: { attempt?: number; startedAt?: string } | null; rollbacks: unknown[] }
@@ -203,10 +203,14 @@ export function unitOf(file: unknown): Unit | null {
   const stages = Array.isArray(last?.stages) ? last.stages.filter((name): name is string => typeof name === 'string') : []
   const url = ((file as { pr?: { url?: unknown } }).pr)?.url
   const { unit, plan, tracer, base, commits } = file as { unit?: unknown; plan?: unknown; tracer?: unknown; base?: unknown; commits?: unknown }
-  const titles = tasks.map(task => (task as { title?: unknown })?.title).filter((title): title is string => typeof title === 'string')
+  // Each task's title, with the last commit pb recorded for it, which tells the plan page whose commits are whose.
+  const named = tasks
+    .map(task => task as { title?: unknown; headSha?: unknown })
+    .filter((task): task is { title: string; headSha?: unknown } => typeof task?.title === 'string')
+    .map(({ title, headSha }) => (typeof headSha === 'string' ? { title, headSha } : { title }))
   const text = (value: unknown) => (typeof value === 'string' ? value : undefined)
   const open: OpenUnit = {
-    unit: text(unit), plan: text(plan), tracer: text(tracer), tasks: titles.map(title => ({ title })),
+    unit: text(unit), plan: text(plan), tracer: text(tracer), tasks: named,
     branch, base: text(base), commits: Array.isArray(commits) ? commits.filter((sha): sha is string => typeof sha === 'string') : [],
   }
   return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}), open }

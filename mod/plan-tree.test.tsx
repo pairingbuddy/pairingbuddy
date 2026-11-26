@@ -268,6 +268,18 @@ test('a unit with a PR: line shows its PR link', async ($, on) => {
   ])
 })
 
+// No unit.json yet, but the live run builds Receipt's task: the unit being built reads open, never to do.
+test('the unit holding the task the live run builds reads open, even before its unit record', async ($, on) => {
+  const { rig } = setupPlanReplay(on, PAY_WITH_PR)
+  rig.served.set(LEDGER_PATH, JSON.stringify({ ...SNAPSHOT_RUNNING, task: 'Task 2: Send receipt', plan: { path: PLAN_PATH, title: 'Task 2: Send receipt' } }))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  const lines = planRows(await paneLines($))
+
+  expect(lines.filter(line => /^ {11}\S/.test(line))).toEqual(['           Pay · published', '           Receipt · open'])
+})
+
 // Task 9 sits before any tracer, which parsePlan reports as a problem; the tracer below it is well formed.
 const PLAN_WITH_STRAY_TASK = [
   '# Shop',

@@ -1,6 +1,6 @@
 import type { EngineInterface } from 'claude-code'
 import { renderPlanPage } from '../shared-node/plan-page.mjs'
-import { REPORTS_DIR } from './report'
+import { readCommits, REPORTS_DIR } from './report'
 import { resolveOpenUnit, type View } from './view'
 
 // The pane's one note line, as mod state. Repeated on purpose: the kit needs the key spelled as literals in the file that
@@ -35,7 +35,8 @@ export async function openPlan($: EngineInterface, view: View, planPath: string 
   try {
     if (!view.plan) return { none: true }
     const open = view.planOpen && resolveOpenUnit(view.plan.units, view.planOpen)
-    const html = renderPlanPage({ plan: view.plan, states: view.planStates, open, building: view.planBuilding, publishing: view.planPublishing === true, path: planPath ?? undefined })
+    const subjects = await commitSubjects($, open ? open.commits ?? [] : [])
+    const html = renderPlanPage({ plan: view.plan, states: view.planStates, open, building: view.planBuilding, publishing: view.planPublishing === true, path: planPath ?? undefined, subjects })
     const path = `${await $.session.root()}/${REPORTS_DIR}/${stampOf(now)}-plan.html`
     try {
       await $.fs.write(path, html)
@@ -54,6 +55,13 @@ export async function openPlan($: EngineInterface, view: View, planPath: string 
   } catch {
     return { failed: "couldn't show the plan" }
   }
+}
+
+// The open unit's commit subjects by full hash, from one read-only git call, as /pb-report reads a run's. A failed read
+// gives none, and the page shows the bare hashes.
+async function commitSubjects($: EngineInterface, shas: string[]): Promise<Record<string, string>> {
+  const read = await readCommits($, shas)
+  return Object.fromEntries((read ?? []).filter(({ subject }) => subject !== '').map(({ sha, subject }) => [sha, subject]))
 }
 
 async function failed($: EngineInterface, words: string): Promise<PlanOutcome> {
