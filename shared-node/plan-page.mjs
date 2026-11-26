@@ -1,6 +1,6 @@
 // The whole plan as a page: every tracer, unit and task, with the states the pane's PLAN block gives them, which shows only a
 // window of it. /pb-plan writes it under the reports folder and opens it. Pure; no I/O, no node: imports.
-import { firstUnticked, humanWords, planFocus, STATE_SEPARATOR, taskMark, unitWords } from "./plan-window.mjs";
+import { firstUnticked, holdsBuilding, humanWords, planFocus, STATE_SEPARATOR, taskMark, unitWords } from "./plan-window.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
@@ -108,7 +108,7 @@ function taskItem(task, { inProgress, reached, isFocus }) {
 
 function unitSection(unit, { state, open, building, publishing, focusTask, reached }) {
   const isOpen = Boolean(open && open.unit === unit.unit);
-  const words = unitWords(state, isOpen, publishing);
+  const words = unitWords(state, isOpen || holdsBuilding(unit, building), publishing);
   const facts = [...(unit.dependsOn ? [escape(`based on ${unit.dependsOn}`)] : []), ...(isOpen ? openFacts(open).map(escape) : []), ...(unit.pr ? [`PR ${prLink(unit.pr)}`] : [])];
   const tasks = unit.tasks.map((task) => taskItem(task, { inProgress: !task.checked && task.title === building, reached, isFocus: task === focusTask }));
   const holdsFocus = unit.tasks.includes(focusTask);

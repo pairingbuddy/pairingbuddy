@@ -150,3 +150,12 @@ test("Expand all and Collapse all show only where script runs; without it the pa
   assert.match(html, /<p class="controls" hidden><button type="button" data-open="true">Expand all<\/button> <button type="button" data-open="false">Collapse all<\/button><\/p>/, "the controls start hidden");
   assert.match(html, /<script>[^<]*removeAttribute\("hidden"\)[^<]*<\/script>/, "the page's own script shows them");
 });
+
+test("the unit holding the task being built reads open, as the pane's open unit does, even with no unit record", () => {
+  const plan = parsePlan(DRILL_PLAN);
+
+  const html = renderPlanPage({ plan, states: ["open", "open"], building: "Task 2: Remove an item" });
+
+  assert.match(html, /<summary><h3>Add · open<\/h3><\/summary>/, "the unit being built is never to do");
+  assert.match(html, /<summary><h3>Charge · to do<\/h3><\/summary>/, "a unit with no task being built still has its work to do");
+});
