@@ -132,18 +132,8 @@ const writeBranchTemplate = (repo, branch_template) => {
   writeFileSync(join(repo.dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ branch_template }));
 };
 
-test("key-flag-fills-the-key-placeholder", () => {
-  const repo = makeRepo({ openTask: false, remote: true });
-  writeBranchTemplate(repo, "{key}-{slug}");
-
-  const created = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "ci-script", "--key", "ABC-12");
-
-  assert.equal(created.code, 0, `pb unit open exits 0: ${created.stderr}`);
-  assert.equal(gitIn(repo, "rev-parse", "--abbrev-ref", "HEAD"), "ABC-12-ci-script");
-  assert.equal(JSON.parse(readFileSync(unitPath(repo), "utf8")).key, "ABC-12", "the unit records its key");
-});
-
-test("a-key-template-with-no-key-refuses-naming-where-a-key-comes-from", () => {
+// Work-item keys are the repo's convention, not pb's: {key} is an unknown placeholder like any other.
+test("a-key-placeholder-is-unknown", () => {
   const repo = makeRepo({ openTask: false, remote: true });
   writeBranchTemplate(repo, "{key}-{slug}");
   const before = snapshotRepo(repo);
@@ -151,11 +141,8 @@ test("a-key-template-with-no-key-refuses-naming-where-a-key-comes-from", () => {
   const refused = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
 
   assert.equal(refused.code, 1, `a deliberate refusal: ${refused.stderr}`);
-  const said = refused.stderr + refused.stdout;
-  assert.match(said, /branch_template needs a key/, "says the template needs a key");
-  assert.match(said, /--key/, "names the flag");
-  assert.match(said, /\*\*Key:\*\*/, "names the plan's Key line");
-  assertUntouched(repo, before, "no key");
+  assert.ok((refused.stderr + refused.stdout).includes("branch_template has unknown placeholder {key}"));
+  assertUntouched(repo, before, "{key}");
 });
 
 // Scenario: unit-open-without-flag
@@ -179,7 +166,7 @@ test("yes-flag-is-refused-as-unknown-and-touches-nothing", () => {
 
   const output = result.stderr + result.stdout;
   assert.equal(result.code, 2, "--yes is a usage error with exit code 2");
-  assert.match(output, /--yes is no longer accepted: pb unit open has no confirm step\. usage: pb unit open --type <type> --slug <slug> \[--key <key>\] \[--branch <name>\]/, "the message names --yes and shows the usage");
+  assert.match(output, /--yes is no longer accepted: pb unit open has no confirm step\. usage: pb unit open --type <type> --slug <slug> \[--branch <name>\]/, "the message names --yes and shows the usage");
   assertUntouched(repo, before, "--yes");
 });
 
@@ -531,24 +518,6 @@ test("independent-unit-branches-from-base-with-earlier-pr-open", () => {
   assert.equal(unit.unit, "Second", "unit.unit is the plan unit name");
   assert.equal(unit.plan, "docs/plan.md", "unit.plan is the plan path");
   assert.equal(unit.tracer, "Tracer 1: Skeleton", "unit.tracer is the plan tracer");
-});
-
-test("the-plan-key-fills-the-key-placeholder-and-key-flag-overrides-it", () => {
-  const repo = makeRepo({ openTask: false, remote: true });
-  writeBranchTemplate(repo, "{key}-{slug}");
-  publishPlan(repo, ["# Shop", "", "**Key:** ABC-12", "", ...tracerPlan("Tracer 1: Skeleton", planUnit("First", { tasks: ["- [ ] **One**"] }))]);
-
-  const result = openPlanUnit(repo, "first");
-
-  assert.equal(result.code, 0, `pb unit open --plan ${exitMessage(result)}`);
-  assert.equal(gitIn(repo, "rev-parse", "--abbrev-ref", "HEAD"), "ABC-12-first", "the plan's key names the branch");
-
-  const other = makeRepo({ openTask: false, remote: true });
-  writeBranchTemplate(other, "{key}-{slug}");
-  publishPlan(other, ["# Shop", "", "**Key:** ABC-12", "", ...tracerPlan("Tracer 1: Skeleton", planUnit("First", { tasks: ["- [ ] **One**"] }))]);
-  const overridden = pbUnitOpen(other, installGhShim().env(), "--type", "feat", "--slug", "first", "--plan", "docs/plan.md", "--key", "XYZ-9");
-  assert.equal(overridden.code, 0, `pb unit open --key ${exitMessage(overridden)}`);
-  assert.equal(gitIn(other, "rev-parse", "--abbrev-ref", "HEAD"), "XYZ-9-first", "--key wins over the plan's key");
 });
 
 test("dependent-unit-with-open-pr-stacks-and-records-stackedOn", () => {

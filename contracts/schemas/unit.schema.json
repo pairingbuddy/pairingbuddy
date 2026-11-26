@@ -9,7 +9,6 @@
     "plan": { "type": ["string", "null"] },
     "tracer": { "type": ["string", "null"] },
     "branch": { "type": "string" },
-    "key": { "type": "string", "description": "The work-item key the unit's branch carries (branch_template {key}), from pb unit open --key or the plan's Key line." },
     "type": { "description": "The branch type pb unit open was given (feat, fix, chore, refactor, spike): the guess of the task type before intake, which pb run open checks the runners against. May be absent (units opened before it).", "type": "string" },
     "base": { "type": "string" },
     "baseSha": { "type": "string" },
