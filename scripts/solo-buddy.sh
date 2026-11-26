@@ -155,6 +155,13 @@ fi
 LAST_RENDER_LINES=0
 SPINNER_INDEX=0
 FINAL_RENDERED=""
+STOP_REASON=""
+STOP_REASON_CLIP=200
+
+# True when claude exited 0 yet the task ledger holds a stop: the run is unfinished
+session_stopped() {
+    [[ "$CLAUDE_EXIT" -eq 0 && -n "$STOP_REASON" ]]
+}
 
 # Print what a JS snippet says about a state file: `text` is its contents, `state` its parsed JSON
 # (undefined when the file is not one JSON document, as a JSONL stream is not).
@@ -389,7 +396,7 @@ print_header() {
 
 print_exit_summary() {
     local output
-    if [[ "$CLAUDE_EXIT" -eq 0 && -n "$STOP_REASON" ]]; then
+    if session_stopped; then
         output="✗ Session stopped: ${STOP_REASON}"
     elif [[ "$CLAUDE_EXIT" -eq 0 ]]; then
         output="✓ Session complete"
@@ -483,7 +490,7 @@ write_final_status() {
 
     # Footer message
     local footer
-    if [[ "$CLAUDE_EXIT" -eq 0 && -n "$STOP_REASON" ]]; then
+    if session_stopped; then
         footer="Session stopped"
     elif [[ "$CLAUDE_EXIT" -eq 0 ]]; then
         footer="Session complete"
@@ -528,7 +535,7 @@ claude "${CLAUDE_ARGS[@]}" -- "$PROMPT" > "$STREAM_FILE"
 CLAUDE_EXIT=$?
 
 # An exit 0 with a stop in the task ledger is an unfinished run
-STOP_REASON=$(read_state_line ".pairingbuddy/run/task/ledger.json" 'if (state.stop && state.stop.reason) console.log(clip(state.stop.reason, 200));')
+STOP_REASON=$(read_state_line ".pairingbuddy/run/task/ledger.json" "if (state.stop && state.stop.reason) console.log(clip(state.stop.reason, ${STOP_REASON_CLIP}));")
 
 # Stop the renderer before writing final status
 kill "$RENDERER_PID" 2>/dev/null || true
