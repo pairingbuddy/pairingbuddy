@@ -1,6 +1,7 @@
 // The whole plan as a page: every tracer, unit and task, with the states the pane's PLAN block gives them, which shows only a
 // window of it. /pb-plan writes it under the reports folder and opens it. Pure; no I/O, no node: imports.
 import { firstUnticked, holdsBuilding, humanWords, planFocus, STATE_SEPARATOR, taskMark, unitWords } from "./plan-window.mjs";
+import { openQuestions } from "./questions.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
@@ -141,11 +142,21 @@ function taskItem(task, { inProgress, reached, isFocus }) {
   return `<li ${attrs}><details${isFocus ? " open" : ""}>\n<summary>${row}</summary>\n<div class="body">\n${bodyHtml(task.body)}\n</div>\n</details></li>`;
 }
 
+// The open unit's questions for you: the doubts auto passes set aside, which G:publish asks before the pull request. The
+// unit keeps at most QUESTIONS_KEPT in full, so the list is bounded; the rest are counted.
+function questionsItems(open) {
+  const { kept, more, count } = openQuestions(open);
+  if (count === 0) return [];
+  const head = `<li class="waiting">${count} ${count === 1 ? "question" : "questions"} for you, asked before the pull request</li>`;
+  const each = kept.map(({ ambiguity, task }) => `<li class="facts">${escape(`${ambiguity}${task ? ` (${task})` : ""}`)}</li>`);
+  return [head, ...each, ...(more > 0 ? [`<li class="facts">+${more} more in the report</li>`] : [])];
+}
+
 function unitSection(unit, { state, open, building, publishing, focusTask, reached, subjects }) {
   const isOpen = Boolean(open && open.unit === unit.unit);
   const words = unitWords(state, isOpen || holdsBuilding(unit, building), publishing);
   const facts = [...(unit.dependsOn ? [escape(`based on ${unit.dependsOn}`)] : []), ...(isOpen ? openFacts(open).map(escape) : []), ...(unit.pr ? [`PR ${prLink(unit.pr)}`] : [])];
-  const tasks = unit.tasks.map((task) => taskItem(task, { inProgress: !task.checked && task.title === building, reached, isFocus: task === focusTask }));
+  const tasks = [...(isOpen ? questionsItems(open) : []), ...unit.tasks.map((task) => taskItem(task, { inProgress: !task.checked && task.title === building, reached, isFocus: task === focusTask }))];
   const holdsFocus = unit.tasks.includes(focusTask);
   return `<details${holdsFocus ? " open" : ""}>
 <summary><h3>${escape(unit.unit)}${words ? escape(`${STATE_SEPARATOR}${words}`) : ""}</h3></summary>

@@ -44,7 +44,7 @@ export type Call = { agentId?: unknown; at?: string; input: Record<string, unkno
 // prUrl: the pull request the unit record names, once pb publish has opened it.
 // humanLeft: the unit's [HUMAN] tasks its plan still has unticked, which a person does before pb publishes the unit.
 // open: the unit record as unitStates reads it, to tell each plan unit's state.
-export type OpenUnit = { unit?: string; plan?: string; tracer?: string; tasks: { title: string; headSha?: string }[]; branch?: string; base?: string; commits?: string[] }
+export type OpenUnit = { unit?: string; plan?: string; tracer?: string; tasks: { title: string; headSha?: string }[]; branch?: string; base?: string; commits?: string[]; questions?: unknown[]; questionsMore?: number }
 // questions: how many doubts auto passes set aside for the human, waiting on the unit until G:publish asks them.
 export type Unit = { key: string; taskStages: string[]; prUrl?: string; humanLeft?: string[]; open?: OpenUnit; questions?: number }
 // What the pane keeps of the unit's last code run (shared-node/end-state.mjs codeRunOf), so the end state outlives its ledger.
@@ -215,7 +215,9 @@ export function unitOf(file: unknown): Unit | null {
     unit: text(unit), plan: text(plan), tracer: text(tracer), tasks: named,
     branch, base: text(base), commits: Array.isArray(commits) ? commits.filter((sha): sha is string => typeof sha === 'string') : [],
   }
-  const { count } = openQuestions(file)
+  const { kept, more, count } = openQuestions(file)
+  // The questions ride on the open unit too, so the /pb-plan page lists them under it (bounded by QUESTIONS_KEPT).
+  if (count > 0) Object.assign(open, { questions: kept, ...(more > 0 ? { questionsMore: more } : {}) })
   return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}), open, ...(count > 0 ? { questions: count } : {}) }
 }
 

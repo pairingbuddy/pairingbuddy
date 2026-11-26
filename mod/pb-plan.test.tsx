@@ -65,3 +65,18 @@ test('pb-plan reads the open unit\'s commit subjects with git and groups the com
   expect(text, 'escaped subject').toContain('1111111 feat: add &lt;item&gt;')
   expect(text.indexOf('after the last finished task') < text.indexOf('Task 1: Add an item\n<ul>'), 'Task 1 holds its two commits; the third comes after it').toBe(true)
 })
+
+test('pb-plan lists the open unit questions for you on the page', async ($, on) => {
+  const { rig } = setupPlanReplay(on, PLAN)
+  const question = { gate: 'G:task-end', task: 'Task 1: Add an item', step: 'a reviewer', ambiguity: 'Should removing the last item empty the cart?' }
+  rig.served.set(`${ROOT}/.pairingbuddy/run/unit.json`, JSON.stringify({
+    unit: 'T1: Cart', plan: 'docs/plans/shop.md', tracer: 'T1: Cart', branch: 'feat/cart', base: 'main', baseSha: 'abc', tasks: [], commits: [], questions: [question],
+  }))
+  const { writes } = recordReportCalls(on)
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+
+  await $.command.run({ command: 'pb-plan', args: '' })
+
+  expect(writes[0]?.text, 'the question, with its task').toContain('Should removing the last item empty the cart? (Task 1: Add an item)')
+})
