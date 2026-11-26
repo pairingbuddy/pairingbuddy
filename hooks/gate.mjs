@@ -282,8 +282,18 @@ async function denyConfinedCallWithNoRun(payload, cwd, reads) {
   }
 }
 
-function denyQuestionWithNoHuman({ agent_type: agentType, permission_mode: mode }) {
-  if (agentType !== CURATOR || (mode !== "auto" && process.env[POLICY_ENV] !== "auto" && process.env.CLAUDE_CODE_ENTRYPOINT !== "sdk-cli")) return;
+// The curating-guidance skill, in the main context, marks its question with this header.
+const GUIDANCE_HEADER = "Guidance";
+const isGuidanceQuestion = ({ agent_type: agentType, tool_input: input }) =>
+  agentType === CURATOR || (agentType === undefined && Array.isArray(input?.questions) && input.questions.some((q) => q?.header === GUIDANCE_HEADER));
+
+const noHumanAnswers = ({ permission_mode: mode }) =>
+  mode === "auto" || process.env[POLICY_ENV] === "auto" || process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-cli";
+
+// Run or no run: between plan tasks a unit is open, and the guidance question must not stop the run there either.
+const isUnaskedGuidanceQuestion = (payload) => payload?.tool_name === "AskUserQuestion" && isGuidanceQuestion(payload) && noHumanAnswers(payload);
+
+function denyQuestionWithNoHuman() {
   decide("deny", "No human answers under the auto policy or claude -p, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.");
 }
 
@@ -330,7 +340,9 @@ try {
   const reads = readPaths(payload, cwd);
   targets.forEach(addRunRoot);
   if (payload?.tool_name === "Bash") await addCommandRunRoots(payload, cwd);
-  if (CONFINED_AGENT.test(payload?.agent_type) && runRoots.size === 0) {
+  if (isUnaskedGuidanceQuestion(payload)) {
+    denyQuestionWithNoHuman();
+  } else if (CONFINED_AGENT.test(payload?.agent_type) && runRoots.size === 0) {
     await denyConfinedCallWithNoRun(payload, cwd, reads);
   } else if (runRoots.size > 0) {
     if (importFailure !== null) throw importFailure;
@@ -345,8 +357,6 @@ try {
     await denyAgentWithNoRun(payload.tool_input ?? {});
   } else if (payload?.tool_name === "Bash") {
     if (!(await allowPbCommandWithNoRun(payload))) await denyD17WithNoRun(payload, cwd);
-  } else if (payload?.tool_name === "AskUserQuestion") {
-    denyQuestionWithNoHuman(payload);
   }
 } catch (e) {
   if (runRoots.size > 0) decide("deny", e.gateDenial ? e.message : `Gate error during a run, so the call is denied: ${e?.message ?? e}`);

@@ -21,7 +21,7 @@ import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, forei
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
-import { QuestionRefused, answeredQuestions } from "../shared-node/questions.mjs";
+import { QuestionRefused, addQuestions, answeredQuestions } from "../shared-node/questions.mjs";
 import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, answerQuestionInUnit, clearQuestionsInUnit, settleQuestionInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, KEPT_RUNS, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
 import { OUTPUT_MAX_BUFFER } from "../shared-node/output-buffer.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, boundDiff, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, subjectStatArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
@@ -175,7 +175,7 @@ function assertPublishable(root) {
 }
 
 // Claims run/task and writes the first ledger; a failed write removes the claim.
-function claimRun({ root, kind, taskType, task, configHash, plan = { path: "", title: "" } }) {
+function claimRun({ root, kind, taskType, task, configHash, plan = { path: "", title: "" }, guidance = null }) {
   const runRoot = ensureRunRoot(root);
   const dir = join(runRoot, "task");
   // A non-recursive mkdir is the claim: exactly one concurrent opener wins, and an existing
@@ -197,6 +197,7 @@ function claimRun({ root, kind, taskType, task, configHash, plan = { path: "", t
       stage: { name: "", status: "", runId: null, attempt: 0, startedAt: null },
       stages: [], gates: {}, tests: {}, commits: [], retries: {},
       spend: { agents: 0, tokens: 0 }, stop: null, needsHuman: null,
+      ...(guidance ? { guidance } : {}),
     });
   } catch (e) {
     rmSync(dir, { recursive: true, force: true });
@@ -283,13 +284,36 @@ function runOpen(args) {
   const planned = hasPlan ? planTask(planPath) : null;
   const task = planned ? planned.task : storedTask(root);
 
-  const dir = claimRun({ root, kind, taskType, task, configHash, plan: planned?.plan });
+  const curated = kind === "code" ? curatedGuidance(root) : null;
+  const dir = claimRun({ root, kind, taskType, task, configHash, plan: planned?.plan, guidance: curated && { mode: curated.mode, kept: curated.kept, dropped: curated.dropped } });
   // A failed write is a disk error that leaves the run unnamed; `pb plan next` then reads its ticked box as hand-ticked
   // and stops, which is the safe side.
   if (planned?.namedUnit) writeJsonAtomic(unitPathOf(root), planned.namedUnit);
+  if (curated) takeCurated(root, curated, task);
   // The short pb a human's ! line names from here on.
   ensureShim(root);
   return { ok: true, kind, branch, runDir: dir };
+}
+
+// What the curating-guidance skill recorded on the open unit (pb guidance record) before this run opened, or null when there
+// is no usable record. A bad record is ignored, never a refusal: the guidance itself is untouched.
+function curatedGuidance(root) {
+  try {
+    const curated = JSON.parse(readFileSync(unitPathOf(root), "utf8"))?.curated;
+    const count = (x) => Number.isInteger(x) && x >= 0;
+    return (curated?.mode === "auto" || curated?.mode === "human") && count(curated.kept) && count(curated.dropped) ? curated : null;
+  } catch {
+    return null;
+  }
+}
+
+// The run now holds the record, so the unit gives it up, and a doubt in it waits with the gates' doubts as a question for
+// the human, so the run goes on. The next task's run never reads this one's record.
+function takeCurated(root, curated, task) {
+  const unit = JSON.parse(readFileSync(unitPathOf(root), "utf8"));
+  const { curated: _taken, ...rest } = unit;
+  const doubt = typeof curated.doubt === "string" ? curated.doubt.trim() : "";
+  writeJsonAtomic(unitPathOf(root), doubt === "" ? rest : addQuestions(rest, { gate: "guidance", task, doubts: [{ step: "guidance carried over", ambiguity: doubt }] }));
 }
 
 // Validates spike-config.json and spike-questions.json and trims them to what the run keeps: the config's goal, code
@@ -869,6 +893,28 @@ function questionSettle(args) {
     if (e instanceof QuestionRefused) throw new Refusal(`${e.message}. Nothing was touched`);
     throw e;
   }
+}
+
+// pb guidance record --mode auto|human --kept N --dropped M [--doubt <words>]: the curating-guidance skill's record of how it
+// carried the guidance over, kept on the open unit until pb run open moves it onto the task's run.
+function guidanceRecord(args) {
+  const usage = "usage: pb guidance record --mode auto|human --kept <n> --dropped <n> [--doubt <words>]";
+  const mode = flagValue(args, "--mode");
+  const [kept, dropped] = ["--kept", "--dropped"].map((flag) => flagValue(args, flag));
+  if (!["auto", "human"].includes(mode) || ![kept, dropped].every((n) => /^\d+$/.test(n ?? ""))) throw new UsageError(usage);
+  const root = toplevel();
+  // The doubt's words run to the next flag, so an unquoted question still arrives whole.
+  const at = args.indexOf("--doubt");
+  const after = at === -1 ? [] : args.slice(at + 1);
+  const end = after.findIndex((arg) => arg.startsWith("--"));
+  const words = end === -1 ? after : after.slice(0, end);
+  const doubt = words.join(" ").trim();
+  if (at !== -1 && doubt === "") throw new UsageError(usage);
+  const curated = { mode, kept: Number(kept), dropped: Number(dropped), ...(doubt ? { doubt } : {}) };
+  if (!existsSync(unitPathOf(root))) return { ok: true, recorded: false, reason: "no unit is open, so there is no run to report it on" };
+  const unit = JSON.parse(readFileSync(unitPathOf(root), "utf8"));
+  writeJsonAtomic(unitPathOf(root), { ...unit, curated });
+  return { ok: true, recorded: true };
 }
 
 function humanAccept(args) {
@@ -2713,7 +2759,7 @@ export const VERBS = {
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
-  "plan next": planNext, "question settle": questionSettle, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "plan next": planNext, "question settle": questionSettle, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 // The human changed test-config.json while a stage ran: the attempt ends and the run waits on the human, with no stop, so

@@ -38,7 +38,7 @@ export const ADOPT_RECENT_MS = 10 * 60_000;
 
 // Whether the owner was seen within ADOPT_RECENT_MS.
 export const seenRecently = (lastSeen) => ownerAgeMs(lastSeen) < ADOPT_RECENT_MS;
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits", "guidance"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -157,7 +157,8 @@ export function validateLedger(ledger) {
     stopWaits: [Array.isArray, "an array"],
     idleWaits: [Array.isArray, "an array"],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
-  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits"] });
+    guidance: [isObject, "an object"],
+  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits", "guidance"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {
@@ -236,6 +237,11 @@ export function validateLedger(ledger) {
         break;
       case "configApproval":
         checkObject(ledger.configApproval, "configApproval", { source: [(x) => x === "human-cli" || x === "human", "human-cli or human"] }, errors);
+        break;
+      case "guidance":
+        checkObject(ledger.guidance, "guidance", {
+          mode: [(x) => x === "auto" || x === "human", "auto or human"], kept: [isCount, "a non-negative integer"], dropped: [isCount, "a non-negative integer"],
+        }, errors);
         break;
       case "configAcceptances":
         if (Array.isArray(ledger.configAcceptances)) {

@@ -25,7 +25,7 @@ const PB = `node ${CLI}`;
 
 // D5, written out here so the test does not read its answer from the table it checks.
 const RUNNER_VERBS = ["test", "checkpoint", "stage finish", "stage stop", "tdd state", "refactor state", "spike state", "spike write", "snapshot", "artifact check", "pr lint", "rollback"];
-const MAIN_VERBS = ["unit open", "unit status", "run open", "stage report", "stage fail", "stage release", "gate eval", "task end", "spike setup", "plan next", "question settle", "publish", "pr refresh", "status", "git doctor"];
+const MAIN_VERBS = ["unit open", "unit status", "run open", "stage report", "stage fail", "stage release", "gate eval", "task end", "spike setup", "plan next", "question settle", "guidance record", "publish", "pr refresh", "status", "git doctor"];
 const HUMAN_VERBS = ["human approve", "human abandon", "human approve-config", "human accept", "human adopt", "human answer", "human reopen"];
 
 // Rows of the class matrix. A human row carries an argument because the real calls have one, and so does stage stop,
@@ -829,7 +829,7 @@ describe("what counts as a run", IN_PARALLEL, () => {
     assertNoRunAutoAllowed(result);
   });
 
-  for (const args of ["unit open --type feat --slug order-total", "unit status", "run open --kind code --plan docs/plans/cart.md", "plan next docs/plans/cart.md", "question settle 2 --rework", "question settle 1 --keep"]) {
+  for (const args of ["unit open --type feat --slug order-total", "unit status", "run open --kind code --plan docs/plans/cart.md", "plan next docs/plans/cart.md", "question settle 2 --rework", "question settle 1 --keep", "guidance record --mode auto --kept 2 --dropped 0"]) {
     test(`outside a run the main context's exact pb ${args} is auto-allowed`, async () => {
       assertNoRunAutoAllowed(await runGate(bashCall(`${PB} ${args}`, { cwd: makeRepo(), session: NEVER_IN_A_RUN })));
     });

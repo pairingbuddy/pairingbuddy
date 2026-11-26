@@ -846,3 +846,43 @@ test("open-lets-a-chore-run-without-selectors", (t) => {
 
   assert.equal(open(root).status, 0);
 });
+
+// The curating-guidance skill records what it did with pb guidance record, onto the open unit, since no run is open yet
+// when it runs. The run takes it over, so the task's report can say what happened to the guidance.
+const unitWith = (root, curated) => {
+  openUnit(root, "chore");
+  const unit = JSON.parse(readFileSync(unitPath(root), "utf8"));
+  writeFileSync(unitPath(root), JSON.stringify({ ...unit, curated }));
+};
+
+test("run open records the guidance curation on the ledger", (t) => {
+  const dir = makeRepo(t);
+  unitWith(dir, { mode: "auto", kept: 1, dropped: 2 });
+
+  const r = open(dir);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(readLedger(ledgerPath(dir)).guidance, { mode: "auto", kept: 1, dropped: 2 });
+});
+
+test("run open takes the curation record off the unit", (t) => {
+  const dir = makeRepo(t);
+  unitWith(dir, { mode: "auto", kept: 1, dropped: 0 });
+
+  open(dir);
+
+  assert.equal(JSON.parse(readFileSync(unitPath(dir), "utf8")).curated, undefined, "the next run never reads this task's record");
+});
+
+test("a doubt the curation left for the human becomes one of the open unit's questions for you", (t) => {
+  const dir = makeRepo(t);
+  writeFileSync(join(dir, ".pairingbuddy", "task.json"), `${JSON.stringify({ description: "Task 4: Baseline\n\nGoal: more" })}\n`);
+  const doubt = "Entries 1 and 2 contradict: which test runner holds?";
+  unitWith(dir, { mode: "auto", kept: 1, dropped: 0, doubt });
+
+  const r = open(dir);
+
+  assert.equal(r.status, 0, r.stderr);
+  const { questions } = JSON.parse(readFileSync(unitPath(dir), "utf8"));
+  assert.deepEqual(questions, [{ gate: "guidance", task: "Task 4: Baseline", step: "guidance carried over", ambiguity: doubt }]);
+});

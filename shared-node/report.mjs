@@ -41,8 +41,15 @@ function awaitsSignOff(task) {
   return outcome(code) === "DONE" && code?.kind !== PUBLISH_KIND && !(code?.gates && isPassed(code, TASK_END));
 }
 
+// How the guidance was carried into this task: auto when nobody was asked, so the human can check it afterwards.
+function guidanceRow(ledger) {
+  const guidance = ledger?.guidance;
+  if (!Number.isInteger(guidance?.kept) || !Number.isInteger(guidance?.dropped)) return {};
+  return { guidance: `kept ${guidance.kept}, dropped ${guidance.dropped}${guidance.mode === "auto" ? " (auto)" : ""}` };
+}
+
 function glanceLabels(ledger) {
-  return { type: "Task type", now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", waited: "Waited", left: "Left" };
+  return { type: "Task type", guidance: "Guidance", now: ledger?.stop ? "Where it stopped" : "Where it is", spent: "Spent", waited: "Waited", left: "Left" };
 }
 
 // The run's length: endedAt (or the last stage end) minus its start; NaN when either is missing.
@@ -88,7 +95,7 @@ function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskTyp
   const labels = glanceLabels(ledger);
   // A type auto mode passed on likely (the G:type record keeps the confidence) reads as not certain, so the human can check it.
   const likely = ledger?.gates?.["G:type"]?.confidence === "likely" ? " (likely, not certain: auto mode went on)" : "";
-  const typed = { type: `${plainName(taskType) ?? UNKNOWN}${likely}`, ...rows };
+  const typed = { type: `${plainName(taskType) ?? UNKNOWN}${likely}`, ...guidanceRow(ledger), ...rows };
   const lines = Object.entries(typed).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
   return section("AT A GLANCE", lines.join("\n"), "glance");
 }

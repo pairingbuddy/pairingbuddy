@@ -36,9 +36,11 @@ Consolidate similar `general` entries by merging them into a single principle. F
 
 Prepare a proposal listing the entries to KEEP, the entries to DROP, and the proposed consolidations, each with its reason. Show the actual text of each entry, never a generic placeholder. For a consolidation, show both original entries and the merged text.
 
-If the guidance file is empty or missing, offer to bootstrap with persistent guidance, such as how to run tests, where to document changes, and coding preferences.
+Offer to bootstrap with persistent guidance, such as how to run tests, where to document changes, and coding preferences, only when the guidance file is missing. An empty file means the human already skipped that offer, so it is not made again.
 
-Then review with the human. Present the proposal with `AskUserQuestion`, with full detail: the actual text of each entry, the keep, drop or consolidate action, and the reason. For an empty or missing file, present the bootstrap offer the same way, and the human can add entries or skip.
+When every entry is already persistent and the proposal has nothing to drop and nothing to consolidate, ask nothing: the entries carry over as they are. Finish with one line saying so, then record the curation as Output says.
+
+Then review with the human. Present the proposal with `AskUserQuestion`, with the header `Guidance` on each question, since under auto mode the gate knows the question by that header and denies it, and with full detail: the actual text of each entry, the keep, drop or consolidate action, and the reason. For a missing file, present the bootstrap offer the same way, and the human can add entries or skip.
 
 The human can approve, modify entries (edit text, reclassify keep or drop), add new persistent guidance not captured during the session, or ask for a re-analysis with feedback.
 
@@ -55,8 +57,10 @@ Never go on to the output after feedback: always redo the analysis and ask again
 With no human, carry the guidance over silently. There is no human under the auto policy or `claude -p`, which the `<pairingbuddy-no-human>` block from SessionStart says. The same holds if `PAIRINGBUDDY_SOLO` is `true`, or if AskUserQuestion is ever denied with "No human answers". Then:
 
 1. Ask nothing and offer nothing: never ask in chat, and do not offer to bootstrap.
-2. Keep every persistent entry unchanged, field for field. Drop every entry with `task_scoped: true`, and rewrite `.pairingbuddy/human-guidance.json` with the Write tool, never bash, only when something is dropped. If the file is missing, write `{"guidance": []}`.
-3. Finish with one line saying the guidance was carried over, not a question, then return so the coding workflow goes on to cleanup.
+2. Keep every persistent entry unchanged, field for field. Drop every entry with `task_scoped: true`. If the file is missing, start from `{"guidance": []}`.
+3. If the entries hold a real doubt that only a person can settle, such as two entries that contradict each other, keep those entries unchanged, merging and dropping nothing more than step 2 says, and pass that doubt, phrased as one question, as the curation record's `--doubt` (see Output). The run then sets it aside as a question for the human and goes on.
+4. Write `.pairingbuddy/human-guidance.json` with the Write tool, never bash, only when something was dropped or the file is missing, then record the curation (see Output).
+5. Finish with one line saying the guidance was carried over, not a question, then return so the coding workflow goes on to cleanup.
 
 ## Output
 
@@ -77,3 +81,5 @@ After approval, write the carried-over entries to `.pairingbuddy/human-guidance.
 ```
 
 When the human skips and there is nothing to keep, write `{"guidance": []}`.
+
+Every way through this skill ends by recording the curation, with one plain Bash command: `pb guidance record --mode <mode> --kept <n> --dropped <n>`, where `pb` is the coding skill's `node <root>/cli/pb.mjs`. Add `--doubt <question>` only when a doubt is left for the human. The mode is `auto` when nobody was asked (no human, or nothing changed) and `human` when the human approved; the counts are the entries kept and dropped. No run is open yet, so pb keeps the record on the open unit, and `pb run open` moves it onto the task's run, where the report shows it. When pb answers that no unit is open, nothing is recorded and the task goes on.
