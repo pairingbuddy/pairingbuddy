@@ -44,7 +44,22 @@ test("exit-zero-with-needs-human-in-ledger-reports-failure", () => {
 });
 
 test("exit-zero-with-unfinished-stage-reports-failure", () => {
-  assert.fail("not implemented: exit-zero-with-unfinished-stage-reports-failure");
+  const ledger = {
+    stage: { name: "implement-tests", status: "active", attempt: 1 },
+    stop: null,
+  };
+
+  const { result } = runSolo({
+    stubs: () => ({ claude: "exit 0" }),
+    files: { ".pairingbuddy/run/task/ledger.json": ledger },
+  });
+
+  assert.match(
+    result.stdout,
+    /^✗ Session unfinished: stage implement-tests is active$/m,
+    "the summary must carry the failure line that names the unfinished stage and its status",
+  );
+  assert.doesNotMatch(result.stdout, /✓ Session complete/, "a run with an unfinished stage must not look complete");
 });
 
 test("unfinished-exit-zero-script-exits-non-zero", () => {
