@@ -49,7 +49,11 @@ test("s9-forced-stop-leaves-commits-local", () => {
 });
 
 test("s9-forced-stop-summary-reports-failure", () => {
-  assert.fail("not implemented: s9-forced-stop-summary-reports-failure");
+  const stopped = "✗ Session stopped: stage tdd hit its cap of 3\nfixes undone: 3 of 3 allowed\nlessons:\n- the stub always returned red";
+  const complete = "✓ Session complete\nfixes undone: 3 of 3 allowed\nlessons:\n- the stub always returned red";
+
+  assert.doesNotThrow(() => s9.assertForcedStopSummary({ summary: stopped }), "a summary that reports the stop as a failure and shows attempts and lessons is accepted");
+  assert.throws(() => s9.assertForcedStopSummary({ summary: complete }), /Session complete/, "a summary that says Session complete is rejected and the error names it");
 });
 
 test("s9-passes-six-dollar-cap-to-shared-clamp", () => {
