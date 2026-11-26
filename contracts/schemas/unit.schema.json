@@ -23,6 +23,17 @@
         "properties": { "oldHash": { "type": "string" }, "newHash": { "type": "string" }, "seq": { "type": "integer" } }
       }
     },
+    "questions": {
+      "description": "Questions for you: the doubts a gate passed under the auto policy set aside instead of stopping the run, oldest first, at most 20 in full. G:publish asks them all before the unit's pull request goes out; its approval clears them. May be absent (none).",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["gate", "task", "step", "ambiguity"],
+        "properties": { "gate": { "type": "string" }, "task": { "type": "string" }, "step": { "type": "string" }, "ambiguity": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "questionsMore": { "description": "How many more deferred doubts came past the 20 kept in full; their text stays in the kept runs' gate records. May be absent (none).", "type": "integer", "minimum": 1 },
     "tasks": {
       "type": "array",
       "items": {

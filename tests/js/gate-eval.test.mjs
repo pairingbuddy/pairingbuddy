@@ -1323,6 +1323,38 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
     assert.deepEqual(asked.question.options.map(({ label }) => label), ANSWERS);
   });
 
+  // ---------- with a unit open, auto defers the doubt to the unit's questions ----------
+
+  const UNIT_PATH = (repo) => join(repo.dir, ".pairingbuddy", "run", "unit.json");
+  const openUnit = (repo, over = {}) => writeFileSync(UNIT_PATH(repo), JSON.stringify({ unit: "T1a", tasks: [], commits: [], ...over }));
+  const unitOf = (repo) => JSON.parse(readFileSync(UNIT_PATH(repo), "utf8"));
+
+  test("with a unit open, a doubt under auto passes the gate and goes to the unit's questions", () => {
+    const repo = scenariosRepo({ ambiguity: "Does the fix cover the retry path?" });
+    openUnit(repo);
+
+    const passed = gateEval(repo, "auto");
+
+    assert.deepEqual(passed, { ok: true, result: "auto-pass", gate: G_SCENARIOS, source: "auto", deferred: 1 });
+    assert.deepEqual(repo.ledger().gates[G_SCENARIOS], { source: "auto", deferred: [{ step: "listing scenarios", ambiguity: "Does the fix cover the retry path?" }] });
+    assert.equal(repo.ledger().needsHuman, null);
+    assert.deepEqual(unitOf(repo).questions, [{ gate: G_SCENARIOS, task: "Task 26", step: "listing scenarios", ambiguity: "Does the fix cover the retry path?" }]);
+  });
+
+  test("a doubt deferred at one gate is not deferred again at a later gate of the run", () => {
+    const repo = scenariosRepo({ ambiguity: "Does the fix cover the retry path?" });
+    openUnit(repo);
+    gateEval(repo, "auto");
+    updateLedger(repo.ledgerPath, (ledger) => ({
+      ...ledger,
+      stage: { name: SAFETY_NET, status: "done", runId: "wf_2", attempt: 1, startedAt: null },
+      stages: [...ledger.stages, { name: "code-tdd", status: "done", attempt: 1 }, { name: SAFETY_NET, status: "done", attempt: 1 }],
+    }));
+
+    assertAutoPassed(repo, gateEval(repo, "auto"), TASK_END);
+    assert.equal(unitOf(repo).questions.length, 1);
+  });
+
   test("the question names the open doubt, and the ledger keeps it in full for the report", () => {
     const repo = scenariosRepo({ ambiguity: "Does the fix cover the retry path?" });
 
@@ -1653,6 +1685,27 @@ describe("code-scenarios and G:scenarios on the real contract", () => {
   const writeCoverage = (repo, round, gaps, attempt = 1) =>
     writeFileSync(join(repo.taskDir, "artifacts", `${coverageKey(round, attempt)}.json`), JSON.stringify({ pb_key: coverageKey(round, attempt), ambiguity: "", status: gaps.length === 0 ? "complete" : "incomplete", scenarios_covered: 1, scenarios_total: 1, test_cases_covered: 1, test_cases_total: 1 + gaps.length, gaps }));
   const coverageAtTaskEnd = () => atTaskEnd({ gates: { [G_SCENARIOS]: { source: "auto" } }, ambiguity: "" });
+
+  const withUnit = (repo) => {
+    writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit: "T1a", tasks: [], commits: [] }));
+    return repo;
+  };
+
+  test("a doubt beside coverage gaps still asks under auto with a unit open: the gaps stop the run", () => {
+    const repo = withUnit(atTaskEnd({ gates: { [G_SCENARIOS]: { source: "auto" } } }));
+    writeCoverage(repo, 1, [gap]);
+
+    const asked = gateEval(repo, "auto");
+
+    assertAsks(asked, TASK_END);
+    assert.equal(repo.ledger().gates[TASK_END], undefined);
+  });
+
+  test("outside auto a doubt asks at its gate as before, with a unit open", () => {
+    const repo = withUnit(atTaskEnd({ gates: { [G_SCENARIOS]: { source: "auto" } } }));
+
+    assertAsks(gateEval(repo, "default"), TASK_END);
+  });
 
   test("gaps the coverage loop left make G:task-end ask under auto", () => {
     const repo = coverageAtTaskEnd();

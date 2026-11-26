@@ -17,9 +17,12 @@ import {
   approvedThroughTap, commitMore, evalGate, git, keepLocalThroughTap, lintOf, publishRepo, reworded, setPolicyThroughGate, unitFile,
 } from "./publish-fixture.mjs";
 import { installGhShim } from "./gh-shim-fixture.mjs";
+import { changeUnit } from "./publishable-unit-fixture.mjs";
 import { recordedAnswer, runTap, sha256 } from "./tap-fixture.mjs";
 
 const ledgerPathOf = (runDir) => join(runDir, "task", "ledger.json");
+const QUESTION = { gate: "G:task-end", task: "Task 1: one", step: "a reviewer", ambiguity: "Should drafts open outside auto?" };
+const unitOf = (repo) => JSON.parse(readFileSync(unitFile(repo), "utf8"));
 const prBody = (runDir) => join(runDir, "pr-body.md");
 const gitConfigPath = (repo) => join(repo.dir, ".pairingbuddy", "git-config.json");
 
@@ -99,6 +102,39 @@ describe("publish-binding", () => {
     assert.equal(record.bodyHash, sha256(CLEAN_BODY));
     assert.equal(record.base, "main");
     assert.equal(record.target, "develop");
+  });
+
+  test("a publish answer to the unit's questions clears them from the unit and keeps them on the gate record", () => {
+    const { repo } = publishRepo();
+    changeUnit(repo, { questions: [QUESTION], questionsMore: 2 });
+    const { question } = evalGate(repo);
+
+    runTap(repo, recordedAnswer(repo, question, "publish"));
+
+    const unit = unitOf(repo);
+    assert.equal(Object.hasOwn(unit, "questions"), false, "the answered questions leave the unit");
+    assert.equal(Object.hasOwn(unit, "questionsMore"), false);
+    assert.deepEqual(repo.ledger().gates[GATE].doubts, [{ step: QUESTION.step, ambiguity: QUESTION.ambiguity, task: QUESTION.task }], "the gate record keeps what the human approved over");
+  });
+
+  test("pb human approve G:publish clears the unit's questions too", () => {
+    const { repo } = publishRepo();
+    changeUnit(repo, { questions: [QUESTION] });
+    evalGate(repo);
+
+    assert.equal(pb(repo, "human", "approve", GATE).code, 0);
+
+    assert.equal(Object.hasOwn(unitOf(repo), "questions"), false);
+  });
+
+  test("redo at G:publish leaves the unit's questions open, so the next ask shows them again", () => {
+    const { repo } = publishRepo();
+    changeUnit(repo, { questions: [QUESTION] });
+    const { question } = evalGate(repo);
+
+    runTap(repo, recordedAnswer(repo, question, "redo", { notes: "Drafts only under auto" }));
+
+    assert.deepEqual(unitOf(repo).questions, [QUESTION]);
   });
 
   test("pb human approve G:publish records the same binding with source human-cli", () => {

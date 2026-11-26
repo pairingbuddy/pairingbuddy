@@ -566,9 +566,20 @@ function uncoveredItems({ task }) {
   return gaps.map((gap) => `<li>Check by hand: a scenario has no test: ${escape(gap?.description)}.</li>`);
 }
 
+// The doubts an auto pass set aside for the human (a gate record's deferred), still open until the human approves
+// G:publish, which asks them all; that answer's record keeps them, and DOUBTS RAISED shows them as answered.
+const PUBLISH_GATE_NAME = "G:publish";
+const publishAnswered = (task) => task.some(({ ledger }) => ledger?.gates?.[PUBLISH_GATE_NAME]?.answer === "approve");
+function deferredItems({ task }) {
+  if (publishAnswered(task)) return [];
+  return task.flatMap(({ ledger }) =>
+    Object.values(ledger?.gates && typeof ledger.gates === "object" ? ledger.gates : {}).flatMap((record) => (Array.isArray(record?.deferred) ? record.deferred.filter(isDoubt) : [])),
+  ).map((doubt) => `<li>Decide before the pull request: ${escape(doubt.ambiguity)} <small>(set aside for you so the run went on; asked again before the pull request opens)</small></li>`);
+}
+
 function needsYouSection(context) {
   const { findings, doubts } = leftWithHuman(context);
-  const items = [...questionItem(context), ...stopItem(context), ...findings.map(leftItem), ...doubts.map(looseItem), ...coveredItems(context), ...uncoveredItems(context)];
+  const items = [...questionItem(context), ...stopItem(context), ...findings.map(leftItem), ...doubts.map(looseItem), ...deferredItems(context), ...coveredItems(context), ...uncoveredItems(context)];
   const nothing = outcome(context.ledger) === "RUNNING" ? "Nothing needs you right now: the run is still going." : "Nothing needs you.";
   const body = items.length > 0 ? `<ul>\n${items.join("\n")}\n</ul>` : `<p>${nothing}</p>`;
   return section("NEEDS YOU", body, "needs");

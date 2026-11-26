@@ -235,6 +235,7 @@ const WHYS = [
   ["the PR lint failed: title-length", "The pull request text has not passed its checks."],
   ["a pull request refresh is approved by a human", "Updating a pull request always asks you."],
   ["no lens record yet for the safety net", "Not every task has had its safety-net review."],
+  ["questions for you are open: 3", "Doubts were set aside for you while the run went on."],
 ];
 
 describe("the question says why it asks, in plain words", () => {
@@ -266,6 +267,13 @@ describe("a gate that asks over an open doubt says what the doubt is", () => {
     const { question } = gateQuestion("G:task-end", { reason: AMBIGUITY, facts: { doubts } });
 
     assert.equal(question, ["A reviewer was unsure: Should an empty cart total 0 or None?", "Is the task done despite this?"].join("\n"));
+  });
+
+  test("a question the unit kept for G:publish names the task that raised it", () => {
+    const doubts = [{ step: REVIEWER, ambiguity: "Should drafts open outside auto?", task: "Task 111: Many PRs" }, { step: "listing scenarios", ambiguity: "Is retry in scope?", task: "Task 112: Exit" }];
+    const lines = gateQuestion("G:task-end", { reason: "questions for you are open: 2", facts: { doubts } }).question.split("\n");
+
+    assert.deepEqual(lines.slice(0, 2), ["A reviewer was unsure (Task 111: Many PRs): Should drafts open outside auto?", "Unsure (listing scenarios, Task 112: Exit): Is retry in scope?"]);
   });
 
   test("a long doubt is shown whole on one line, its whitespace collapsed: the question box wraps it", () => {

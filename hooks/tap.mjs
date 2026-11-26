@@ -147,6 +147,8 @@ function tapQuestion(modules, root, ledgerPath, toolResponse) {
     }
   }
   updateLedger(ledgerPath, (current) => withAnswer(modules, current, toolResponse, binding));
+  // Only an approval that landed answers the unit's questions.
+  if (answer === PUBLISH_LABEL && readLedger(ledgerPath).gates[ledger.needsHuman.gate]?.answer === "approve") modules.clearQuestionsInUnit(root);
   if (answer === "redo") appendRedoFeedback(root, ledger, runGates(modules, ledger), toolResponse);
   if (answer === KEEP_LOCAL_LABEL) closeKeptLocal(modules, root, ledger);
 }
@@ -222,13 +224,13 @@ try {
   const { parseKey } = await import("../shared-node/keys.mjs");
   const { isPublishRun, readLedger, updateLedger } = await import("../shared-node/ledger.mjs");
   const { pbCommand } = await import("../shared-node/verbs.mjs");
-  const { acceptConfigInUnit, closeUnit, endRun, keepRun } = await import("../shared-node/unit-files.mjs");
+  const { acceptConfigInUnit, clearQuestionsInUnit, closeUnit, endRun, keepRun } = await import("../shared-node/unit-files.mjs");
   const { findSessionRoot } = await import("../shared-node/run-root.mjs");
   const { loadStages, migratedType } = await import("../shared-node/stages.mjs");
   const { isHumanWait, recordWaitAnswer } = await import("../shared-node/human-waits.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
   const root = findSessionRoot(input.cwd, input.session_id);
-  if (root !== null) tapRun({ acceptConfigInUnit, isHumanWait, recordWaitAnswer, KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, keepRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, untakenTypedAnswer, updateLedger, migratedType }, root, input);
+  if (root !== null) tapRun({ acceptConfigInUnit, clearQuestionsInUnit, isHumanWait, recordWaitAnswer, KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, keepRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, untakenTypedAnswer, updateLedger, migratedType }, root, input);
 } catch {
   // not a run situation
 }

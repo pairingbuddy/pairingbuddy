@@ -1,4 +1,5 @@
-// Closing a unit on disk (D19): the I/O half of the unit rules in unit.mjs, which stays pure. Node built-ins only.
+// Closing a unit on disk (D19): the I/O half of the unit rules in unit.mjs, which stays pure. Node built-ins, and the pure questions list.
+import { addQuestions } from "./questions.mjs";
 import { cpSync, existsSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -109,6 +110,30 @@ export function acceptConfigInUnit(root, { newHash, seq }) {
   writeFileSync(temp, `${JSON.stringify({ ...unit, configHash: newHash, configAcceptances }, null, 2)}\n`);
   renameSync(temp, path);
 }
+
+// The doubts an auto pass deferred, added to the open unit's questions so G:publish asks them before anything goes out.
+// With no unit open there is nowhere to keep them: the gate asks them then and there (unitIsOpen).
+export function deferQuestionsInUnit(root, { gate, task, doubts }) {
+  const path = join(root, ".pairingbuddy", "run", "unit.json");
+  const unit = JSON.parse(readFileSync(path, "utf8"));
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify(addQuestions(unit, { gate, task, doubts }), null, 2)}\n`);
+  renameSync(temp, path);
+}
+
+// The human approved G:publish over the unit's questions: they are answered, so they leave the unit. The gate record keeps
+// them (askedDoubts). No unit open, or none held, writes nothing.
+export function clearQuestionsInUnit(root) {
+  const path = join(root, ".pairingbuddy", "run", "unit.json");
+  if (!existsSync(path)) return;
+  const { questions, questionsMore, ...unit } = JSON.parse(readFileSync(path, "utf8"));
+  if (questions === undefined && questionsMore === undefined) return;
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify(unit, null, 2)}\n`);
+  renameSync(temp, path);
+}
+
+export const unitIsOpen = (root) => existsSync(join(root, ".pairingbuddy", "run", "unit.json"));
 
 // The task of the run just kept counts first, so it is never the one removed.
 function pruneKeptRuns(runsDir, keptRunId) {

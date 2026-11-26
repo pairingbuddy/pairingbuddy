@@ -57,6 +57,16 @@ describe("report-leads-with-what-you-need", () => {
     assert.ok(section.includes("Decide: Does an empty order total 0.0?"), "the doubt it asks over");
   });
 
+  test("NEEDS YOU lists the doubts an auto pass set aside, as questions asked before the pull request", () => {
+    const doubt = { step: "a reviewer", ambiguity: "Should drafts open outside auto?" };
+    const deferred = { ...CODE_RUN, gates: { ...CODE_RUN.gates, "G:task-end": { source: "auto", deferred: [doubt] } } };
+    const html = renderReport({ ledger: deferred, spawns: [] });
+    const section = sectionOf(html, "NEEDS YOU");
+
+    assert.ok(section.includes("Decide before the pull request: Should drafts open outside auto?"), `the set-aside question, got ${section}`);
+    assert.ok(!html.includes("DOUBTS RAISED"), "it is not counted as answered");
+  });
+
   test("NEEDS YOU asks for a check by hand of a test that never failed first", () => {
     const perTest = { ...CODE_RUN.tests.perTest, "empty-order-totals-zero": { red: { done: true, passed: true, exitCodes: [0] }, covered: { done: true, stage: "code-tdd", after: "order-total-sums-two-lines" } } };
     const covered = { ...CODE_RUN, tests: { perTest } };
