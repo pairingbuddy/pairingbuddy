@@ -6,10 +6,14 @@
 // records of the kept runs, where the report reads it.
 export const QUESTIONS_KEPT = 20;
 
+// A task's title: the first line of its plan text, without bold markers. The ledger keeps the task's whole text, and a
+// question names its task by title only; an old record with the whole text reads the same way.
+export const taskTitle = (task) => String(task ?? "").trim().split("\n")[0].replace(/\*\*/g, "").trim();
+
 // The unit with the gate's deferred doubts added, each with the gate and the task that raised it.
 export function addQuestions(unit, { gate, task, doubts }) {
   const kept = Array.isArray(unit.questions) ? unit.questions : [];
-  const added = doubts.map(({ step, ambiguity }) => ({ gate, task, step, ambiguity }));
+  const added = doubts.map(({ step, ambiguity }) => ({ gate, task: taskTitle(task), step, ambiguity }));
   const room = Math.max(0, QUESTIONS_KEPT - kept.length);
   const more = (unit.questionsMore ?? 0) + Math.max(0, added.length - room);
   return { ...unit, questions: [...kept, ...added.slice(0, room)], ...(more > 0 ? { questionsMore: more } : {}) };

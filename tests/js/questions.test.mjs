@@ -15,6 +15,14 @@ describe("the unit's questions list", () => {
     assert.deepEqual(openQuestions(next), { kept: next.questions, more: 0, count: 1 });
   });
 
+  test("a question keeps only its task's title, never the task's whole plan text", () => {
+    const task = "Task 113: Critique the code path\n\n**Goal:** A full critique.\n\n**Acceptance criteria:**\n- Findings cite captures.";
+
+    const next = addQuestions(unit(), { gate: "G:unit", task, doubts: [doubt(1)] });
+
+    assert.equal(next.questions[0].task, "Task 113: Critique the code path");
+  });
+
   test("past the bound the list keeps the first in full and only counts the rest", () => {
     const many = Array.from({ length: QUESTIONS_KEPT + 3 }, (_, i) => doubt(i + 1));
     const once = addQuestions(unit(), { gate: "G:task-end", task: "Task 1: one", doubts: many });
