@@ -18,7 +18,7 @@ import { needsTestSelection } from "./stage-graph.mjs";
 import { readTestConfig, selectorAdvice } from "./test-run.mjs";
 import { targetBranch, taskHasLensRecord } from "./publish.mjs";
 import { headOf } from "./checkpoint.mjs";
-import { openQuestions } from "./questions.mjs";
+import { openQuestions, taskTitle } from "./questions.mjs";
 import { PrLintConfigRefused } from "./pr-lint.mjs";
 import { PrLintRunRefused, isRefreshSubject, prBodyPath, prLintPath, readDraftArtifact, readPrSubject, readUnit, runPrLint, sha256 } from "./pr-lint-run.mjs";
 
@@ -245,7 +245,8 @@ export const QUESTION_FILE = ".pairingbuddy/run/question.md";
 export const REVIEWER = "a reviewer";
 
 // A question the unit kept for G:publish also names the task that raised it, as its doubts come from many tasks.
-const doubtLine = ({ step, ambiguity, task }) => {
+const doubtLine = ({ step, ambiguity, task: whole }) => {
+  const task = whole ? taskTitle(whole) : whole;
   if (step === REVIEWER) return `A reviewer was unsure${task ? ` (${task})` : ""}: ${doubtText(ambiguity)}`;
   return `Unsure (${step}${task ? `, ${task}` : ""}): ${doubtText(ambiguity)}`;
 };

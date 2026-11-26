@@ -15,6 +15,14 @@ describe("the unit's questions list", () => {
     assert.deepEqual(openQuestions(next), { kept: next.questions, more: 0, count: 1 });
   });
 
+  test("a question keeps only its task's title, never the task's whole plan text", () => {
+    const task = "Task 113: Critique the code path\n\n**Goal:** A full critique.\n\n**Acceptance criteria:**\n- Findings cite captures.";
+
+    const next = addQuestions(unit(), { gate: "G:unit", task, doubts: [doubt(1)] });
+
+    assert.equal(next.questions[0].task, "Task 113: Critique the code path");
+  });
+
   test("past the bound the list keeps the first in full and only counts the rest", () => {
     const many = Array.from({ length: QUESTIONS_KEPT + 3 }, (_, i) => doubt(i + 1));
     const once = addQuestions(unit(), { gate: "G:task-end", task: "Task 1: one", doubts: many });
@@ -118,4 +126,12 @@ describe("placing the rework task in the plan", () => {
 
     assert.throws(() => insertTaskInUnit(plan, "T9z Gone", "- [ ] **x**\n"), /no unit T9z Gone/);
   });
+});
+
+test("a rework task names the question's task by title even when an old record kept the task's whole plan text", async () => {
+  const { reworkTask } = await import("../../shared-node/questions.mjs");
+
+  const { text } = reworkTask("T1a", 1, { task: "Task 4: four\n\n**Goal:** Lots of text.", ambiguity: "Why?", answer: "Because." });
+
+  assert.ok(text.includes("**The question (from Task 4: four):** Why?"), text);
 });

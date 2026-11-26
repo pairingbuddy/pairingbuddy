@@ -1,13 +1,13 @@
 // The whole plan as a page: every tracer, unit and task, with the states the pane's PLAN block gives them, which shows only a
 // window of it. /pb-plan writes it under the reports folder and opens it. Pure; no I/O, no node: imports.
 import { firstUnticked, holdsBuilding, humanWords, planFocus, STATE_SEPARATOR, taskMark, unitWords } from "./plan-window.mjs";
-import { openQuestions } from "./questions.mjs";
+import { openQuestions, taskTitle } from "./questions.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
+export const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
 
 // The report's look: one monospace face, the pane's accent for the task being built, dim for what is done.
-const STYLE = `:root{color-scheme:light dark;--bg:#15161a;--fg:#e3e4e8;--muted:#8a8d96;--rule:#2b2d34;--link:#39c5cf;--accent:#39c5cf;--needs-you:#e3b341}
+export const STYLE = `:root{color-scheme:light dark;--bg:#15161a;--fg:#e3e4e8;--muted:#8a8d96;--rule:#2b2d34;--link:#39c5cf;--accent:#39c5cf;--needs-you:#e3b341}
 @media (prefers-color-scheme:light){:root{--bg:#fbfbf9;--fg:#1c1d21;--muted:#696c74;--rule:#e1e2e5;--link:#0a6f78;--accent:#0a6f78;--needs-you:#8a5a00}}
 *{font-size:inherit}
 body{background:var(--bg);color:var(--fg);font:14px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0 auto;padding:48px 32px 64px;max-width:110ch}
@@ -148,7 +148,7 @@ function questionsItems(open) {
   const { kept, more, count } = openQuestions(open);
   if (count === 0) return [];
   const head = `<li class="waiting">${count} ${count === 1 ? "question" : "questions"} for you, asked before the pull request</li>`;
-  const each = kept.map(({ ambiguity, task }) => `<li class="facts">${escape(`${ambiguity}${task ? ` (${task})` : ""}`)}</li>`);
+  const each = kept.map(({ ambiguity, task }) => `<li class="facts">${escape(`${ambiguity}${task ? ` (${taskTitle(task)})` : ""}`)}</li>`);
   return [head, ...each, ...(more > 0 ? [`<li class="facts">+${more} more in the report</li>`] : [])];
 }
 

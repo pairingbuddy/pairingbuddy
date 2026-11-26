@@ -10,7 +10,7 @@ const PANE_NOTE = { plugin: 'pairingbuddy', key: 'pane-note' }
 const pad = (n: number) => String(n).padStart(2, '0')
 
 // The user's local date and time of day (YYYY-MM-DD-HHMMSS), as a report's name has it, so each page gets its own file.
-function stampOf(ms: number): string {
+export function stampOf(ms: number): string {
   const d = new Date(ms)
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
 }

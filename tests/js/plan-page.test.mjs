@@ -196,3 +196,13 @@ test("the open unit lists the questions set aside for you, each with its task, a
   assert.ok(html.includes("Refund &lt;all&gt; or part? (Task 2: Take payment)"), "each question, escaped, with its task");
   assert.ok(text.includes("+3 more in the report"), "the rest are counted");
 });
+
+test("a question recorded with its task's whole plan text names the task by title on the page", () => {
+  const plan = parsePlan(STATES_PLAN);
+  const questions = [{ gate: "G:unit", task: "Task 2: Take payment\n\n**Goal:** Money moves.", step: "a reviewer", ambiguity: "Refund?" }];
+
+  const html = renderPlanPage({ plan, states: ["published", "open", "open"], open: { ...OPEN_PAY, questions } });
+
+  assert.ok(html.includes("Refund? (Task 2: Take payment)"));
+  assert.ok(!html.includes("Money moves."));
+});

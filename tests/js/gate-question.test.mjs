@@ -269,6 +269,13 @@ describe("a gate that asks over an open doubt says what the doubt is", () => {
     assert.equal(question, ["A reviewer was unsure: Should an empty cart total 0 or None?", "Is the task done despite this?"].join("\n"));
   });
 
+  test("a kept question whose record has its task's whole plan text names the task by title only", () => {
+    const doubts = [{ step: REVIEWER, ambiguity: "Drafts?", task: "Task 111: Many PRs\n\n**Goal:** Many PRs open." }];
+    const lines = gateQuestion("G:task-end", { reason: "questions for you are open: 1", facts: { doubts } }).question.split("\n");
+
+    assert.equal(lines[0], "A reviewer was unsure (Task 111: Many PRs): Drafts?");
+  });
+
   test("a question the unit kept for G:publish names the task that raised it", () => {
     const doubts = [{ step: REVIEWER, ambiguity: "Should drafts open outside auto?", task: "Task 111: Many PRs" }, { step: "listing scenarios", ambiguity: "Is retry in scope?", task: "Task 112: Exit" }];
     const lines = gateQuestion("G:task-end", { reason: "questions for you are open: 2", facts: { doubts } }).question.split("\n");
