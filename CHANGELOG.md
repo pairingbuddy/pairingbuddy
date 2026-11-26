@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A plan run goes on after a spike: `pb task end` on a spike in a plan adds `continue: true` to its `closed` result, and the plan loop runs `pb plan next`, so the next unit opens from its own base. Before, the loop stopped there and the session asked the human where to branch from (seen on a real project). The coding skill now says where a unit branches from is pb's decision, and never to ask a question pb's next action already answers. A spike outside a plan still ends the run.
+
 - Under auto mode, the task-type gate passes a `likely` type that has no question for the human, instead of asking at nearly every plan task (seen on a real project). An `unsure` type, or any question on the type, still asks, and never waits for the pull request: the type picks the whole workflow. Outside auto mode nothing changes. The gate record keeps `confidence: "likely"`, and the report shows the type as "likely, not certain".
 
 - A config change can create the files it names: `apply-config-change` has Write besides Read and Edit (still no Bash), so a setup task that scaffolds a package or adds a config file is no longer left with nothing done. A config step that changed nothing now stops the run with its question (`the config change changed nothing: <question>`) instead of going on to the safety net, where auto mode set the question aside and the task would be ticked with nothing built (seen on a real project: a scaffolding task classified as a config change).

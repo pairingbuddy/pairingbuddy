@@ -665,6 +665,21 @@ test("plan-loop-settles-the-human's-answers: when pb plan next shows answered qu
   sentencesSaying("then pb plan next runs again", section, /settle/, /`pb plan next`/, /again/);
 });
 
+test("plan-loop-goes-on-after-a-spike: a closed task end with continue runs pb plan next, and only a close without it stops", () => {
+  const section = planLoopSection();
+
+  sentencesSaying("a closed result with continue goes on with pb plan next", section, /`closed`/, /`continue`/, /`pb plan next`/);
+  sentencesSaying("a closed result without continue stops the loop", section, /`closed` without `continue`/, /stop the loop/);
+});
+
+test("plan-loop-asks-nothing-pb-decides: where a unit branches from is pb's, and no question is asked that pb already answers", () => {
+  const section = planLoopSection();
+
+  sentencesSaying("the branch base is pb's", section, /[Ww]here a unit branches from/, /pb/);
+  sentencesSaying("no question pb's defaults answer", section, /[Nn]ever ask/, /pb/);
+  sentencesSaying("the router holds the same rule", routerSection(), /[Nn]ever ask/, /pb/);
+});
+
 test("plan-tasks-curate-with-skill-and-solo-has-no-old-plan-loop", () => {
   const section = planLoopSection();
   const sentences = sentencesOf(section);
