@@ -51,3 +51,26 @@ test("skill-reviews-with-human-and-records-feedback", () => {
   sentencesSaying("it exits only on explicit approval", text, /explicit/i, /approv/i);
   sentencesSaying("it writes the file only after approval", text, /only/i, /approv/i, /writ/i);
 });
+
+// The gate knows the skill's question by its header, and denies it under auto mode so the run is never stopped there.
+test("skill-marks-its-question-for-the-gate", () => {
+  sentencesSaying("its AskUserQuestion carries the header Guidance", skillText(), /`AskUserQuestion`/, /header/i, /`Guidance`/);
+});
+
+// Asking at every task to approve the same entries broke the flow on a real project, so an unchanged carry-over asks nobody.
+test("skill-asks-nothing-when-nothing-changes", () => {
+  const text = skillText();
+
+  sentencesSaying("a proposal that changes nothing asks nothing", text, /nothing to drop/i, /ask nothing/i);
+  sentencesSaying("the bootstrap offer is made only when the file is missing", text, /bootstrap/i, /only/i, /missing/i);
+});
+
+// No run is open while the skill runs, so it records what it did on the open unit and pb run open moves it into the report.
+test("skill-leaves-a-curation-record", () => {
+  const text = skillText();
+
+  sentencesSaying("it records the curation with pb guidance record", text, /`pb guidance record --mode <mode> --kept <n> --dropped <n>`/);
+  sentencesSaying("mode auto means nobody was asked", text, /`auto`/, /nobody was asked/i);
+  sentencesSaying("a real doubt with no human goes in --doubt and the entries stay", text, /`--doubt/, /unchanged/i);
+  assert.doesNotMatch(text, /`curated`/, "the skill never writes the record into human-guidance.json");
+});
