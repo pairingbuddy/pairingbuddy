@@ -430,6 +430,20 @@ describe("auto-publish-gate-pass", () => {
     assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, "no auto-pass is recorded");
   });
 
+  test("an answered question is not asked again: G:publish lists it as handled and asks only the open one", () => {
+    const { repo, recorded } = publishRepo({ mode: "auto" });
+    seedTaskLensRecord(repo, recorded);
+    const open = { gate: "G:task-end", task: "Task 2: two", step: "a reviewer", ambiguity: "Is the retry path in scope?" };
+    const answered = { gate: "G:task-end", task: "Task 1: one", step: "a reviewer", ambiguity: "Should drafts open outside auto?", answer: "Yes, always.", answeredAt: "t", settled: "keep" };
+    changeUnit(repo, { questions: [answered, open] });
+
+    const asked = evalGate(repo);
+
+    assert.equal(asked.reason, "questions for you are open: 1");
+    assert.deepEqual(repo.ledger().needsHuman.doubts, [{ step: open.step, ambiguity: open.ambiguity, task: open.task }]);
+    assert.match(asked.question.question, /Answered by you \(Task 1: one\): Should drafts open outside auto\? → Yes, always\./);
+  });
+
   test("auto-lint-rerun-failure-keeps-asking", () => {
     const { repo, runDir, recorded, lint } = publishRepo({ mode: "auto" });
     assert.equal(lint.ok, true, "the lint on disk passed for the clean title");

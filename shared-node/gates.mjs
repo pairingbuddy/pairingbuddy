@@ -263,14 +263,20 @@ const unsureClassifier = (gate, reason, { ambiguity }) =>
 const despite = (asked, doubts) => `${asked.replace(/\?$/, "")} despite ${doubts.length === 1 ? "this" : "these"}?`;
 
 // The question's lines, then its ask. fullAt null gives the full question file's lines: no list folds.
+// The unit's questions the human already answered (pb human answer, /pb-answer): G:publish lists them as handled, each
+// with its answer, and asks only the open ones.
+const handledLine = ({ task, ambiguity, answer }) => `Answered by you${task ? ` (${task})` : ""}: ${doubtText(ambiguity)} → ${doubtText(answer)}`;
+const handledLines = ({ handled } = {}, fullAt) => (Array.isArray(handled) && handled.length > 0 ? folded(handled.map(handledLine), MAX_DOUBTS, fullAt) : []);
+
 function questionLines(gate, { reason = "", taskType = null, refresh = false, facts = {} }, fullAt) {
   const { ask, lines } = GATE_ASKS[gate] ?? OTHER_ASK;
   const context = { taskType, refresh, facts, fullAt };
+  const handled = handledLines(facts, fullAt);
   const doubts = questionDoubts(reason, facts);
-  if (doubts !== null) return [...(lines?.(context) ?? []), ...doubtLines(doubts, fullAt), despite(ask(context), doubts)];
+  if (doubts !== null) return [...(lines?.(context) ?? []), ...handled, ...doubtLines(doubts, fullAt), despite(ask(context), doubts)];
   const why = unsureClassifier(gate, reason, facts) ?? plainWhy(reason);
-  if (lines === undefined) return [`${ask(context)} ${why}`.trim()];
-  return [...lines(context), ...(why === "" ? [] : [why]), ask(context)];
+  if (lines === undefined) return [...handled, `${ask(context)} ${why}`.trim()];
+  return [...lines(context), ...handled, ...(why === "" ? [] : [why]), ask(context)];
 }
 
 // The question gate eval issues: pure, and stored in needsHuman, so the hooks match the answer against what was asked.

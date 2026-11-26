@@ -375,3 +375,23 @@ describe("the answers are plain too", () => {
     ]);
   });
 });
+
+describe("G:publish and the questions the human already answered", () => {
+  const handled = [{ task: "Task 1: one", ambiguity: "Drafts outside auto?", answer: "Yes, always." }];
+
+  test("asks only the open ones and lists the answered ones as handled, with their answers", () => {
+    const facts = { doubts: [{ step: REVIEWER, task: "Task 2: two", ambiguity: "Keep the old test?" }], handled };
+
+    const { question } = gateQuestion("G:publish", { reason: "questions for you are open: 1", facts, fullAt: FULL_AT });
+
+    assert.match(question, /A reviewer was unsure \(Task 2: two\): Keep the old test\?/);
+    assert.match(question, /Answered by you \(Task 1: one\): Drafts outside auto\? → Yes, always\./);
+    assert.doesNotMatch(question, /unsure \(Task 1: one\)/);
+  });
+
+  test("with every question answered it still lists them as handled", () => {
+    const { question } = gateQuestion("G:publish", { reason: POLICY, facts: { handled }, fullAt: FULL_AT });
+
+    assert.match(question, /Answered by you \(Task 1: one\): Drafts outside auto\? → Yes, always\./);
+  });
+});
