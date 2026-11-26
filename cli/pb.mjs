@@ -22,7 +22,7 @@ import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/un
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { QuestionRefused, answeredQuestions } from "../shared-node/questions.mjs";
-import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, answerQuestionInUnit, clearQuestionsInUnit, settleQuestionInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
+import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, answerQuestionInUnit, clearQuestionsInUnit, settleQuestionInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, KEPT_RUNS, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
 import { OUTPUT_MAX_BUFFER } from "../shared-node/output-buffer.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, boundDiff, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, subjectStatArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, removeCreated, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
@@ -639,6 +639,78 @@ function humanApprove(args) {
   updateLedger(path, (ledger) => approved(ledger, gate, root));
   if (gate === PUBLISH_GATE) clearQuestionsInUnit(root);
   return { ok: true, gate, source: "human-cli" };
+}
+
+// The spike runs pb kept under reports/runs, each with its ledger and the unit key ("<branch> <baseSha>") it ran in.
+function keptSpikeRuns(root) {
+  const runsDir = join(root, ".pairingbuddy", ...KEPT_RUNS);
+  if (!existsSync(runsDir)) return [];
+  return readdirSync(runsDir).flatMap((runId) => {
+    try {
+      const kept = JSON.parse(readFileSync(join(runsDir, runId, "kept.json"), "utf8"));
+      const ledger = readLedger(join(runsDir, runId, "ledger.json"));
+      const [branch, baseSha] = String(kept.unit ?? "").split(" ");
+      return ledger.taskType === "spike" && branch && baseSha ? [{ ledger, branch, baseSha }] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+// The kept spike run of each ticked task, on the checked-out branch, for this plan, with all its commits on HEAD: what tells
+// a tick pb made from a hand tick. Refuses, naming the first task it cannot vouch for.
+function spikeRunsFor(root, plan, titles) {
+  const branch = branchOf(root);
+  const kept = keptSpikeRuns(root).filter((run) => run.branch === branch && posix.normalize(run.ledger.plan?.path ?? "") === posix.normalize(plan));
+  return titles.map((title) => {
+    const run = kept.find(({ ledger }) => ledger.plan.title === title);
+    if (!run) throw new Refusal(`"${title}" has no spike run kept for branch ${branch}, so its tick cannot be told from a hand tick; nothing was touched`);
+    const missing = run.ledger.commits.filter((sha) => !isOnHead(root, sha));
+    if (missing.length > 0) throw new Refusal(`"${title}"'s commits are not on HEAD (${missing.join(", ")}); nothing was touched`);
+    return run;
+  });
+}
+
+// Whether pb human reopen would rebuild the unit: every ticked task without a record is a spike pb kept on this branch.
+function reopenable(root, plan, titles) {
+  try {
+    return spikeRunsFor(root, relative(realpathSync(root), realpathSync(resolve(plan))), titles).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+// Rebuilds a plan unit that a spike closed while the unit still had tasks to run: its ticked tasks have no record, so pb plan
+// next reads them as hand-ticked. Each such task must be a spike pb ran on the checked-out branch, kept under reports/runs,
+// with all its commits on HEAD; then run/unit.json is written again with those records, as the unit had before the close.
+function humanReopen(args) {
+  const plan = flagValue(args, "--plan");
+  if (!plan || plan.startsWith("--") || args.length !== 2) throw new UsageError("usage: pb human reopen --plan <plan.md>");
+  const root = toplevel();
+  if (existsSync(unitPathOf(root))) throw new Refusal("a unit is already open (run/unit.json exists); nothing was touched");
+  if (existsSync(taskDirOf(root))) throw new Refusal("a task is in flight (run/task exists), so no unit can be reopened; nothing was touched");
+  const { units, context } = readPlanContext(plan);
+  const { stop } = planStep(units, context);
+  if (stop?.reason !== "hand-ticked") throw new Refusal(`the plan has no unit with ticked tasks missing their record, so there is nothing to reopen; nothing was touched`);
+  const unit = units.find((u) => u.unit === stop.unit);
+  const branch = branchOf(root);
+  const runs = spikeRunsFor(root, context.plan, stop.tasks);
+  const baseShas = [...new Set(runs.map(({ baseSha }) => baseSha))];
+  if (baseShas.length !== 1) throw new Refusal(`the kept runs name different bases (${baseShas.join(", ")}); nothing was touched`);
+  const gitConfig = loadGitConfigOrRefuse(root);
+  const base = baseBranch(gitConfig, defaultBranchOf(root, gitConfig.remote));
+  if (base === null) throw new Refusal(unknownBaseMessage(root, gitConfig.remote));
+  const record = { ...newUnit({ branch, base, baseSha: baseShas[0], configHash: validatedConfigHash(root), gitConfigHash: fileHash(gitConfigPath(root)) }), type: branch.split("/")[0] };
+  Object.assign(record, {
+    unit: unit.unit,
+    plan: context.plan,
+    tracer: unit.tracer,
+    tasks: runs.map(({ ledger }) => newTaskRecord({ ledger, headSha: ledger.commits.at(-1) ?? baseShas[0], lessons: [] })),
+    commits: runs.flatMap(({ ledger }) => ledger.commits),
+  });
+  ensureRunRoot(root);
+  writeJsonAtomic(unitPathOf(root), record, { exclusive: true });
+  return { ok: true, reopened: unit.unit, branch, base, baseSha: baseShas[0], tasks: stop.tasks };
 }
 
 // Leaves the unit: everything under run/ goes except run/.gitignore. Commits, branch and working tree are not touched.
@@ -1524,7 +1596,9 @@ function planStopMessage(root, plan, { reason, unit, tasks, title, body, humanLe
   if (reason === "human") return `unit "${unit}"'s next task "${title}" is a human task: only a person does it and ticks its box. Nothing was written. Its steps:\n${body}`;
   if (reason === "legacy") return `unit "${unit}" is fully checked with no PR: line. Nothing was written: ask the human to type ${acceptCommand}`;
   if (reason === "hand-ticked") {
-    const message = `unit "${unit}" has ticked tasks with no task record: ${tasks.join(", ")}. A box ticked by hand earns nothing. Nothing was written`;
+    const ticked = `unit "${unit}" has ticked tasks with no task record: ${tasks.join(", ")}. A box ticked by hand earns nothing. Nothing was written`;
+    // A spike that closed its unit early left these ticks: pb kept its runs, so the human can rebuild the unit from them.
+    const message = reopenable(root, plan, tasks) ? `${ticked}. A spike pb ran closed this unit before its other tasks, and its runs are kept: the human types ${humanCommand(root, `reopen --plan ${shellWord(plan)}`)}` : ticked;
     if (humanLeft === undefined) return message;
     return `${message}. The only unticked tasks are human tasks (${humanLeft.join(", ")}): either do them and tick their boxes, then type ${acceptCommand}; or untick ${tasks.join(", ")} so they run again`;
   }
@@ -1704,6 +1778,16 @@ function assertConfigChangeInGlobs(root, path, ledger, opened) {
   if (outside.length > 0) throw new Refusal(`this config_change touches files outside config_globs (${globs.join(", ")}). Nothing was touched: ${outside.join(", ")}`);
 }
 
+// Whether the plan unit holding this task still has unticked tasks after it was ticked: a spike there is one task of the
+// unit, whose commits ride the unit's PR, so it does not close the unit. With no plan, or a plan with no unit around the
+// task, the spike is a unit of its own.
+function unitHasTasksLeft(root, { path, title }) {
+  if (path === "") return false;
+  const { units } = parsePlan(readFileSync(join(root, path), "utf8"));
+  const unit = units.find(({ tasks }) => tasks.some((task) => task.title === title));
+  return unit !== undefined && unit.tasks.some((task) => !task.checked);
+}
+
 // Appends the unit's task record, then removes run/task. The refusals all come first, including reading the unit and HEAD, so a refused call changes nothing.
 function taskEnd(args) {
   assertNoArgs(args, "task end");
@@ -1724,7 +1808,7 @@ function taskEnd(args) {
   const dir = taskDirOf(root);
   keepRun(join(root, ".pairingbuddy", "run"));
   rmSync(dir, { recursive: true });
-  if (ledger.taskType === "spike") {
+  if (ledger.taskType === "spike" && !unitHasTasksLeft(root, ledger.plan)) {
     closeUnit(join(root, ".pairingbuddy", "run"));
     // In a plan the close is expected: the loop goes on, and the next unit opens from its own base, never from the spike's.
     return { ok: true, removed: dir, plan, closed: "kept-local", reason: `a spike publishes nothing: the unit is closed and its commits stay on ${branch}`, ...(plan ? { continue: true } : {}) };
@@ -2628,7 +2712,7 @@ export const VERBS = {
   rollback,
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
-  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
+  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
   "plan next": planNext, "question settle": questionSettle, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
