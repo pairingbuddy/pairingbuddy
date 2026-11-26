@@ -145,6 +145,51 @@ test("a-key-placeholder-is-unknown", () => {
   assertUntouched(repo, before, "{key}");
 });
 
+const CONVENTION = { description: "<ticket>-<short-name>, the ticket the work is for", examples: ["ABC-1-add-banner"], pattern: "^[A-Z]+-[0-9]+-[a-z0-9-]+$" };
+const writeConvention = (repo, branch_convention) => {
+  mkdirSync(join(repo.dir, ".pairingbuddy"), { recursive: true });
+  writeFileSync(join(repo.dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ branch_convention }));
+};
+
+// The repo's branch convention lives in git-config; a name that does not match its pattern is refused, saying what it expects.
+test("a-branch-that-breaks-the-convention-pattern-is-refused-with-the-convention", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  writeConvention(repo, CONVENTION);
+  const before = snapshotRepo(repo);
+
+  const refused = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "add-banner");
+
+  assert.equal(refused.code, 1, `a deliberate refusal: ${refused.stderr}`);
+  const said = refused.stderr + refused.stdout;
+  assert.match(said, /feat\/add-banner/, "names the refused branch");
+  assert.ok(said.includes(CONVENTION.description), "says what the convention expects");
+  assert.ok(said.includes("ABC-1-add-banner"), "gives the convention's example");
+  assert.match(said, /--branch/, "says how to pass a matching name");
+  assertUntouched(repo, before, "convention");
+});
+
+test("a-branch-named-by-the-convention-opens", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  writeConvention(repo, CONVENTION);
+
+  const created = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "add-banner", "--branch", "ABC-1-add-banner");
+
+  assert.equal(created.code, 0, `pb unit open exits 0: ${created.stderr}`);
+  assert.equal(gitIn(repo, "rev-parse", "--abbrev-ref", "HEAD"), "ABC-1-add-banner");
+});
+
+test("a-convention-pattern-that-is-not-a-regex-is-refused-by-name", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  writeConvention(repo, { ...CONVENTION, pattern: "([unclosed" });
+  const before = snapshotRepo(repo);
+
+  const refused = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x", "--branch", "ABC-1-x");
+
+  assert.equal(refused.code, 1, `a deliberate refusal, not a crash: ${refused.stderr}`);
+  assert.match(refused.stderr + refused.stdout, /branch_convention\.pattern is not a valid regular expression/);
+  assertUntouched(repo, before, "bad pattern");
+});
+
 // Scenario: unit-open-without-flag
 
 test("policy-env-var-still-ignored", () => {

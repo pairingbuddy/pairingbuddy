@@ -19,7 +19,6 @@ test("first-use-writes-d21-defaults", (t) => {
     commit: {
       red_commits: true,
       subject_template: "{type}: {subject}",
-      key_pattern: null,
       require_signature: false,
       conventions: [],
     },

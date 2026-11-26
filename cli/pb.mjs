@@ -2190,9 +2190,26 @@ function chosenBranch(args) {
   return name;
 }
 
-// Refuses a protected branch name, and one git itself rejects, before anything changes.
+// Refuses a name that breaks the repo's branch convention (git-config branch_convention.pattern), saying what it expects.
+function assertFollowsConvention(gitConfig, branch) {
+  const convention = gitConfig.branch_convention;
+  if (typeof convention?.pattern !== "string") return;
+  let pattern;
+  try {
+    pattern = new RegExp(convention.pattern);
+  } catch {
+    throw new Refusal(`branch_convention.pattern is not a valid regular expression: ${convention.pattern}. Nothing was touched: fix it in .pairingbuddy/git-config.json`);
+  }
+  if (pattern.test(branch)) return;
+  const expects = typeof convention.description === "string" ? `: ${convention.description}` : "";
+  const examples = Array.isArray(convention.examples) && convention.examples.length ? ` (for example ${convention.examples.join(", ")})` : "";
+  throw new Refusal(`branch ${branch} does not follow this repo's branch convention${expects}${examples}. Nothing was touched: name the branch by the convention and pass it with --branch <name>`);
+}
+
+// Refuses a protected branch name, one that breaks the repo's convention, and one git itself rejects, before anything changes.
 function assertUsableBranch(root, gitConfig, branch) {
   if (isProtected(gitConfig, root, branch)) throw new Refusal(`branch ${branch} is protected; choose another name`);
+  assertFollowsConvention(gitConfig, branch);
   try {
     execFileSync("git", ["check-ref-format", "--branch", branch], { cwd: root, stdio: "ignore" });
   } catch {
