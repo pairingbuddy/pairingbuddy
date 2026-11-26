@@ -172,3 +172,15 @@ test("the open unit's commits sit in one folded row, newest first, each with its
   const rows = [...fold.matchAll(/<li>([^<]*(?:<[^/][^>]*>[^<]*<\/[^>]+>[^<]*)*)<\/li>/g)].map(([, row]) => row);
   assert.deepEqual(rows, ["6666666 fix: refund rounding", "5555555", "4444444", "3333333", "2222222", "1111111 feat: take &lt;b&gt;payment&lt;/b&gt;"]);
 });
+
+test("when the unit record tells each task's last commit, the commits fold groups them under their task, newest task first", () => {
+  const plan = parsePlan(STATES_PLAN);
+  const sha = (digit) => digit.repeat(40);
+  const open = { ...OPEN_PAY, tasks: [{ title: "Task 2: Take payment", headSha: sha("2") }, { title: "Task 3: Refund", headSha: sha("5") }] };
+
+  const html = renderPlanPage({ plan, states: ["published", "open", "open"], open });
+
+  const fold = html.slice(html.indexOf('<details class="commits">'), html.indexOf("</details>", html.indexOf('<details class="commits">')));
+  const lines = fold.replace(/<[^>]+>/g, "\n").split("\n").map((line) => line.trim()).filter(Boolean);
+  assert.deepEqual(lines, ["6 commits", "after the last finished task", "6666666", "Task 3: Refund", "5555555", "4444444", "3333333", "Task 2: Take payment", "2222222", "1111111"]);
+});

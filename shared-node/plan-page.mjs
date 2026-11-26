@@ -65,12 +65,36 @@ function openFacts(open) {
 // One commit's row: its short hash, then its subject when one is known.
 const commitRow = (sha, subjects) => `<li>${escape(sha.slice(0, 7))}${subjects[sha] ? ` ${escape(subjects[sha])}` : ""}</li>`;
 
-// The open unit's commits in one fold, folded, that counts them; inside, newest first. subjects: each commit's first line, by
-// its full hash, where the caller could read it.
-function commitsFold(commits = [], subjects = {}) {
+const AFTER_LAST_TASK = "after the last finished task";
+
+// The commits by the task they belong to, in order: a task's commits run up to its recorded last commit (headSha), the
+// commits after every task's last one under AFTER_LAST_TASK. Null when no task's last commit is among them, so the fold is
+// one flat list.
+function commitsByTask(commits, tasks = []) {
+  const ends = tasks.map(({ title, headSha }) => ({ title, end: commits.indexOf(headSha) })).filter(({ end }) => end >= 0).sort((a, b) => a.end - b.end);
+  if (ends.length === 0) return null;
+  let from = 0;
+  const groups = ends.map(({ title, end }) => {
+    const group = { title, commits: commits.slice(from, end + 1) };
+    from = Math.max(from, end + 1);
+    return group;
+  });
+  if (from < commits.length) groups.push({ title: AFTER_LAST_TASK, commits: commits.slice(from) });
+  return groups.filter((group) => group.commits.length > 0);
+}
+
+const newestFirst = (commits, subjects) => [...commits].reverse().map((sha) => commitRow(sha, subjects)).join("\n");
+
+// The open unit's commits in one fold, folded, that counts them; inside, newest first, under their task when the unit record
+// tells each task's last commit. subjects: each commit's first line, by its full hash, where the caller could read it.
+function commitsFold(open, subjects = {}) {
+  const commits = open.commits ?? [];
   if (commits.length === 0) return "";
-  const rows = [...commits].reverse().map((sha) => commitRow(sha, subjects));
-  return `<li class="facts"><details class="commits">\n<summary>${commits.length} commit${commits.length === 1 ? "" : "s"}</summary>\n<ul>\n${rows.join("\n")}\n</ul>\n</details></li>`;
+  const groups = commitsByTask(commits, open.tasks);
+  const list = groups
+    ? groups.reverse().map(({ title, commits: own }) => `<li class="task-commits">${escape(title)}\n<ul>\n${newestFirst(own, subjects)}\n</ul></li>`).join("\n")
+    : newestFirst(commits, subjects);
+  return `<li class="facts"><details class="commits">\n<summary>${commits.length} commit${commits.length === 1 ? "" : "s"}</summary>\n<ul>\n${list}\n</ul>\n</details></li>`;
 }
 
 // A line of plan text as HTML: escaped first, then `code` and **bold** only, so no markup in the plan reaches the page.
@@ -126,7 +150,7 @@ function unitSection(unit, { state, open, building, publishing, focusTask, reach
   return `<details${holdsFocus ? " open" : ""}>
 <summary><h3>${escape(unit.unit)}${words ? escape(`${STATE_SEPARATOR}${words}`) : ""}</h3></summary>
 <ul>
-${[...facts.map((fact) => `<li class="facts">${fact}</li>`), ...(isOpen ? [commitsFold(open.commits, subjects)].filter(Boolean) : []), ...tasks].join("\n")}
+${[...facts.map((fact) => `<li class="facts">${fact}</li>`), ...(isOpen ? [commitsFold(open, subjects)].filter(Boolean) : []), ...tasks].join("\n")}
 </ul>
 </details>`;
 }
