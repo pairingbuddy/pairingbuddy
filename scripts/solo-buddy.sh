@@ -159,6 +159,7 @@ STOP_REASON=""
 STOP_REASON_CLIP=200
 GATE_CLIP=200
 NEEDS_HUMAN_GATE=""
+UNFINISHED_STAGE=""
 
 # True when the session exited 0 yet the task ledger holds a stop: the run is unfinished
 session_stopped() {
@@ -168,6 +169,11 @@ session_stopped() {
 # True when the session exited 0 yet the task ledger waits on a human gate: the run is unfinished
 session_waiting_on_human() {
     [[ "$CLAUDE_EXIT" -eq 0 && -n "$NEEDS_HUMAN_GATE" ]]
+}
+
+# True when the session exited 0 yet the task ledger's stage is still active: the run is unfinished
+session_stage_unfinished() {
+    [[ "$CLAUDE_EXIT" -eq 0 && -n "$UNFINISHED_STAGE" ]]
 }
 
 # Print what a JS snippet says about a state file: `text` is its contents, `state` its parsed JSON
@@ -413,6 +419,8 @@ print_exit_summary() {
         output="✗ Session stopped: ${STOP_REASON}"
     elif session_waiting_on_human; then
         output="✗ Session unfinished: waiting on a human at ${NEEDS_HUMAN_GATE}"
+    elif session_stage_unfinished; then
+        output="✗ Session unfinished: stage ${UNFINISHED_STAGE} is active"
     elif [[ "$CLAUDE_EXIT" -eq 0 ]]; then
         output="✓ Session complete"
     else
@@ -554,6 +562,7 @@ CLAUDE_EXIT=$?
 # An exit 0 with a stop in the task ledger is an unfinished run
 STOP_REASON=$(read_ledger_text stop reason "$STOP_REASON_CLIP")
 NEEDS_HUMAN_GATE=$(read_ledger_text needsHuman gate "$GATE_CLIP")
+UNFINISHED_STAGE=$(read_state_line ".pairingbuddy/run/task/ledger.json" "if (state.stage && state.stage.status === 'active' && state.stage.name) console.log(clip(state.stage.name, ${GATE_CLIP}));")
 
 # Stop the renderer before writing final status
 kill "$RENDERER_PID" 2>/dev/null || true
