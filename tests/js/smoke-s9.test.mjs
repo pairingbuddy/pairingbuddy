@@ -2,18 +2,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as s9 from "../smoke/s9.mjs";
 
-// Placeholders for the pure helpers of the S9 smoke (tests/smoke/s9.mjs, not yet written).
-// Each body fails until the real test is written.
+// Tests for the pure helpers of the S9 smoke (tests/smoke/s9.mjs).
+// Bodies that still say "not implemented" are placeholders and fail until the real test is written.
 
-const create = (head, base) => ({ argv: ["pr", "create", "--title", "t", "--body-file", "/tmp/b", "--base", base, "--head", head, "--draft"] });
+const draftCreate = (head) => ({ argv: ["pr", "create", "--head", head, "--draft"] });
 
 test("s9-two-unit-plan-opens-two-draft-prs", () => {
-  const creates = [create("fix/a", "develop"), create("feat/b", "develop")];
+  const creates = [draftCreate("feat/b"), draftCreate("fix/a")];
   const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
 
   const result = s9.assertDraftPrs({ creates, units });
 
-  assert.deepEqual(result, { count: 2, heads: ["fix/a", "feat/b"] }, "two draft PRs, one per unit branch, in plan order");
+  assert.deepEqual(result, { count: 2, heads: ["fix/a", "feat/b"] }, "two draft PRs, heads taken from the units in plan order, not from the order of the creates");
 });
 
 test("s9-rejects-a-non-draft-pr", () => {
