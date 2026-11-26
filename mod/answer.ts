@@ -9,7 +9,7 @@ import { REPORTS_DIR } from './report'
 const UNIT = '.pairingbuddy/run/unit.json'
 const HOW = 'Answer with /pb-answer <number> <your answer>. Your answer reaches the next step that starts.'
 
-type Question = { task?: unknown; step?: unknown; ambiguity?: unknown; answer?: unknown }
+type Question = { task?: unknown; step?: unknown; ambiguity?: unknown; answer?: unknown; options?: unknown }
 type UnitRecord = { unit?: unknown; questions?: Question[]; questionsMore?: unknown }
 
 // The terminal shows only a few questions, each on one line cut at a fixed width; the page has them all in full.
@@ -65,6 +65,13 @@ async function openQuestionsPage($: EngineInterface, unit: UnitRecord): Promise<
 const SKIP = 'Skip this one'
 const STOP = 'Stop answering'
 
+// The dialog has room for four choices: at most two of the reviewer's suggested answers, then the walk's own two. A label
+// equal to one of the walk's own is left out, so choosing it can only mean skip or stop.
+const SUGGESTED = 2
+const suggested = (question: Question) => (Array.isArray(question.options) ? question.options : [])
+  .filter((option): option is string => typeof option === 'string' && option.trim() !== '' && option !== SKIP && option !== STOP)
+  .slice(0, SUGGESTED)
+
 // One dialog's question: the doubt in full, then the task and the step that raised it.
 function dialogText(question: Question): string {
   const where = [taskTitle(question.task), oneLine(question.step)].filter(Boolean).join(' · ')
@@ -105,7 +112,7 @@ async function walk($: EngineInterface, unit: UnitRecord): Promise<string> {
   for (const [i, { question, n }] of open.entries()) {
     let reply: string
     try {
-      reply = await $.ui.ask(dialogText(question), { options: [SKIP, STOP], header: `Q ${i + 1} of ${open.length}` })
+      reply = await $.ui.ask(dialogText(question), { options: [...suggested(question), SKIP, STOP], header: `Q ${i + 1} of ${open.length}` })
     } catch {
       break
     }

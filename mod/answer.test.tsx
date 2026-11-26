@@ -168,3 +168,17 @@ test('pb-answer skips a question when told and goes on to the next, leaving the 
   expect(runs.filter(r => r.argv[0] === 'node').map(r => r.argv.slice(4))).toEqual([['3', 'Only on main.']])
   expect(result?.text).toMatch(/^Pairing Buddy: answered 1 · 1 left · page: /)
 })
+
+test('pb-answer offers up to two of the reviewer suggested answers first, and records the one chosen as the answer', async ($, on) => {
+  const rig = setupReplay(on)
+  rig.served.set(UNIT, unitWith([question(1, { options: ['Always draft', 'Draft on main only', 'Never draft'] })]))
+  recordWrites(on)
+  const runs = recordRuns(on, { exitCode: 0, stdout: JSON.stringify({ ok: true, open: 0 }) })
+  const asked = playDialogs(rig, ['Draft on main only'])
+  await start($)
+
+  await $.command.run({ command: 'pb-answer', args: '' })
+
+  expect(asked[0].options).toEqual(['Always draft', 'Draft on main only', 'Skip this one', 'Stop answering'])
+  expect(runs.filter(r => r.argv[0] === 'node').map(r => r.argv.slice(4))).toEqual([['1', 'Draft on main only']])
+})
