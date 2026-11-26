@@ -7,14 +7,13 @@ import { renderQuestionsPage } from "../../shared-node/questions-page.mjs";
 const question = (n, extra = {}) => ({ gate: "G:task-end", task: `Task ${n}: t${n}`, step: "a reviewer", ambiguity: `Doubt ${n}?`, ...extra });
 const textOf = (html) => html.replace(/<(script|style)>[\s\S]*?<\/\1>/g, "").replace(/<[^>]+>/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ");
 
-test("each open question shows its number, its task's title, who raised it, its full text and the command that answers it", () => {
+test("each open question shows its number, its task's title, who raised it and its full text", () => {
   const html = renderQuestionsPage({ unit: { unit: "T1a", questions: [question(1), question(2)] } });
 
   const text = textOf(html);
   assert.ok(text.includes("1. Doubt 1?"), text);
   assert.ok(text.includes("Task 1: t1"), "the task's title");
   assert.ok(text.includes("a reviewer at G:task-end"), "the step and gate that raised it");
-  assert.ok(html.includes("<code>/pb-answer 2 </code>"), "the command, as text, works with no script");
 });
 
 test("the header counts the open questions, names the unit, and says how to answer and when an answer takes effect", () => {
@@ -22,16 +21,17 @@ test("the header counts the open questions, names the unit, and says how to answ
 
   const text = textOf(html);
   assert.ok(text.includes("5 questions for you · T1a Solo"), text);
-  assert.ok(text.includes("Answer in the session: /pb-answer <number> <your answer>. It reaches the next step that starts."), text);
   assert.ok(text.includes("+3 more, only counted: the report has their text"), "those past the bound are counted");
 });
 
-test("each open question has a Copy answer command button that only the page's own script shows", () => {
+test("the page sends the human to the walk: one plain line, no per-question command, no button and no script", () => {
   const html = renderQuestionsPage({ unit: { unit: "T1a", questions: [question(1), question(2)] } });
 
-  assert.match(html, /<button type="button" class="copy" data-command="\/pb-answer 2 " hidden>Copy answer command<\/button>/);
-  const script = html.match(/<script>([^<]*)<\/script>/)?.[1] ?? "";
-  assert.ok(script.includes('removeAttribute("hidden")') && script.includes("navigator.clipboard.writeText(b.dataset.command)"), "the script shows the buttons and copies");
+  const text = textOf(html);
+  assert.ok(text.includes("Answer in the session: /pb-answer. It asks them one at a time, and you can stop whenever you like. An answer reaches the next step that starts."), text);
+  assert.ok(!html.includes("/pb-answer 2"), "no command per question");
+  assert.ok(!/<button|<script/.test(html), "no button, no script");
+  assert.ok(text.includes("2. Doubt 2?"), "numbers still shown");
 });
 
 test("answered questions sit below in one folded group, each with its answer", () => {
