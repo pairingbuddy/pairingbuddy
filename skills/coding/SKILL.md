@@ -327,6 +327,16 @@ Never do a stage's work yourself, and never call its agents directly. Once a run
 6. Validate inferred config with human before writing
 7. If unable to infer, ask human directly
 
+### Bootstrap git-config.json
+
+Do this before the first `pb unit open` when `.pairingbuddy/git-config.json` is missing, since `pb unit open` would otherwise write the defaults (`{type}/{slug}` branches, no key). When the file exists, use it and ask nothing.
+
+1. Look for the repo's own branch and commit conventions: CONTRIBUTING, CLAUDE.md, the docs, the repo's skills or commands that start work (for example a starting-work skill), the commit hooks, and the recent branch names from `git branch -r` and subjects from `git log`
+2. Set `branch_template` to match. Placeholders are `{type}`, `{slug}` and `{key}`. A convention that puts a work-item key in the branch (`ABC-12-short-name`) is `{key}-{slug}`; the key then comes from the plan's `**Key:** ABC-12` line above its tasks, or `pb unit open --key ABC-12`, and `pb unit open` refuses a `{key}` template with no key
+3. Set `commit.key_pattern` to the key's pattern (for example `[A-Z]+-\\d+`) when commits carry it. pb keeps a key the commit subject starts with once, after the step's type
+4. With no convention found, keep the defaults
+5. Write the file. Under auto (or with no human), write the inferred values and ask nothing; record what you found and why in one line of your report. Otherwise show the inferred values in one question before writing
+
 ### State File Management
 
 1. At cycle start, verify `.pairingbuddy/` is in `.gitignore`
