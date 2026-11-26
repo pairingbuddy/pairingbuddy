@@ -10,7 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, CommitHookRefused, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, untrackedFiles, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
-import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
+import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, seenRecently, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
@@ -448,8 +448,10 @@ function recordDeferred(ledger, gate, doubts) {
   return { ...ledger, gates: { ...ledger.gates, [gate]: { source: "auto", deferred: doubts } } };
 }
 
-function recordAuto(ledger, gate, binding = {}) {
-  return { ...ledger, gates: { ...ledger.gates, [gate]: gate === PUBLISH_GATE ? approvalRecord("auto", binding) : { source: "auto" } } };
+// confidence: a G:type pass on a likely type keeps it, so the report says the type was not certain.
+function recordAuto(ledger, gate, binding = {}, confidence = null) {
+  const record = gate === PUBLISH_GATE ? approvalRecord("auto", binding) : { source: "auto", ...(confidence === null ? {} : { confidence }) };
+  return { ...ledger, gates: { ...ledger.gates, [gate]: record } };
 }
 
 // A file written whole or not at all, so a reader never sees half of it.
@@ -499,7 +501,7 @@ function gateEval(args) {
     if (gate === PUBLISH_GATE && shown === null) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
     reason = askReason(contract, open, due, root, voided);
     if (reason === null && gate === PUBLISH_GATE && autoBinding === undefined) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
-    if (reason === null) return repeatedAfter(contract, recordAuto(open, gate, autoBinding), gate, root);
+    if (reason === null) return repeatedAfter(contract, recordAuto(open, gate, autoBinding, typePassedOn(root, open, gate)), gate, root);
     // Under auto with a unit open, doubts alone do not stop the run: they wait on the unit's questions for G:publish.
     deferred = unitIsOpen(root) && defersDoubts(contract, open, due, root, reason) ? (gateFacts(gate, root, open, contract).doubts ?? null) : null;
     if (deferred !== null) {

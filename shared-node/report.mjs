@@ -86,7 +86,9 @@ function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskTyp
   if (done) rows.now = "finished";
   if (waited >= 1) rows.waited = `${waitWords(waited)} waiting for you`;
   const labels = glanceLabels(ledger);
-  const typed = { type: plainName(taskType) ?? UNKNOWN, ...rows };
+  // A type auto mode passed on likely (the G:type record keeps the confidence) reads as not certain, so the human can check it.
+  const likely = ledger?.gates?.["G:type"]?.confidence === "likely" ? " (likely, not certain: auto mode went on)" : "";
+  const typed = { type: `${plainName(taskType) ?? UNKNOWN}${likely}`, ...rows };
   const lines = Object.entries(typed).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
   return section("AT A GLANCE", lines.join("\n"), "glance");
 }

@@ -15,7 +15,7 @@ const G_TYPE = "G:type";
 
 // A run whose intake is done at attempt 1 and whose G:type has no record yet, with the intake classify-task return filed.
 // testConfig, when given, replaces the repo's test-config.json and the ledger's configHash follows it.
-function repoAtTypeGate({ confidence, taskType = "config_change", mode = "auto", stageAttempt = 1, returnAttempt = 1, testConfig, stop, extraReturns = [] }) {
+function repoAtTypeGate({ confidence, ambiguity = "", taskType = "config_change", mode = "auto", stageAttempt = 1, returnAttempt = 1, testConfig, stop, extraReturns = [] }) {
   const repo = makeRepo();
   const taskDir = join(repo.dir, ".pairingbuddy", "run", "task");
   const ledgerPath = join(taskDir, "ledger.json");
@@ -38,7 +38,7 @@ function repoAtTypeGate({ confidence, taskType = "config_change", mode = "auto",
   }
   if (confidence === undefined) return repo;
   const pbKey = buildKey({ stage: "intake", role: "classify-task", item: null, round: 1, attempt: returnAttempt });
-  writeFileSync(join(taskDir, "artifacts", `${pbKey}.json`), JSON.stringify({ pb_key: pbKey, ambiguity: "", task_type: taskType, confidence, rationale: "test" }));
+  writeFileSync(join(taskDir, "artifacts", `${pbKey}.json`), JSON.stringify({ pb_key: pbKey, ambiguity, task_type: taskType, confidence, rationale: "test" }));
   return repo;
 }
 
@@ -56,16 +56,58 @@ function evalNeedsHuman(repo) {
   return JSON.parse(result.stdout);
 }
 
-for (const confidence of ["likely", "unsure"]) {
-  test(`gate-type-asks-when-likely-or-unsure (${confidence})`, () => {
-    const repo = repoAtTypeGate({ confidence });
+test("gate-type-asks-when-unsure", () => {
+  const repo = repoAtTypeGate({ confidence: "unsure" });
 
-    const out = evalNeedsHuman(repo);
+  const out = evalNeedsHuman(repo);
 
-    assert.equal(out.result, "needs-human", `a ${confidence} classification asks at G:type`);
-    assert.match(out.reason, /classifier does not report certain/, "the reason names the classifier");
-  });
-}
+  assert.equal(out.result, "needs-human", "an unsure classification asks at G:type");
+  assert.match(out.reason, /classifier does not report certain/, "the reason names the classifier");
+});
+
+test("gate-type-passes-when-likely-with-no-doubt-under-auto", () => {
+  const repo = repoAtTypeGate({ confidence: "likely" });
+
+  const result = pb(repo, "gate", "eval");
+
+  assert.equal(result.code, 0, `pb gate eval exits 0, stderr ${result.stderr}`);
+  assert.deepEqual(JSON.parse(result.stdout), { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto" }, "a likely classification with no open question passes G:type under auto");
+});
+
+test("gate-type-records-a-pass-on-likely-so-the-report-can-say-so", () => {
+  const repo = repoAtTypeGate({ confidence: "likely" });
+
+  pb(repo, "gate", "eval");
+
+  const ledger = readLedger(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"));
+  assert.deepEqual(ledger.gates[G_TYPE], { source: "auto", confidence: "likely" }, "the gate record keeps the confidence it passed on");
+});
+
+test("gate-type-asks-a-likely-type-under-a-non-auto-policy", () => {
+  const repo = repoAtTypeGate({ confidence: "likely", mode: "default" });
+
+  const out = evalNeedsHuman(repo);
+
+  assert.match(out.reason, /classifier does not report certain/, "outside auto, a likely type still asks, as before");
+});
+
+test("gate-type-asks-a-likely-type-with-a-question-even-with-a-unit-open-under-auto", () => {
+  const repo = repoAtTypeGate({ confidence: "likely", ambiguity: "Is this a config change or a new feature?" });
+  writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit: "T1a", tasks: [], commits: [] }));
+
+  const out = evalNeedsHuman(repo);
+
+  assert.equal(out.result, "needs-human", "the type picks the workflow, so its question is never set aside for G:publish");
+});
+
+test("gate-type-asks-a-certain-type-with-a-question-even-with-a-unit-open-under-auto", () => {
+  const repo = repoAtTypeGate({ confidence: "certain", ambiguity: "Is this a config change or a new feature?" });
+  writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit: "T1a", tasks: [], commits: [] }));
+
+  const out = evalNeedsHuman(repo);
+
+  assert.equal(out.result, "needs-human", "a question on the type is asked now, whatever the confidence");
+});
 
 test("gate-type-asks-without-classification-return", () => {
   const repo = repoAtTypeGate({});
@@ -138,12 +180,12 @@ test("certain-kept-fix-after-likely-first-passes", () => {
   assert.equal(result.code, 0, `pb gate eval exits 0, stderr ${result.stderr}`);
   assert.deepEqual(JSON.parse(result.stdout), { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto" }, "the kept fix's certain classification, not the likely first one, decides G:type");
 });
-test("likely-kept-fix-after-certain-first-asks", () => {
-  const repo = repoAtTypeGate({ confidence: "certain", extraReturns: [{ role: "fix", item: "g1", round: 2, confidence: "likely" }] });
+test("unsure-kept-fix-after-certain-first-asks", () => {
+  const repo = repoAtTypeGate({ confidence: "certain", extraReturns: [{ role: "fix", item: "g1", round: 2, confidence: "unsure" }] });
 
   const out = evalNeedsHuman(repo);
 
-  assert.equal(out.result, "needs-human", "the kept fix's likely classification, not the certain first one, decides G:type");
+  assert.equal(out.result, "needs-human", "the kept fix's unsure classification, not the certain first one, decides G:type");
   assert.match(out.reason, /classifier does not report certain/, "the reason names the classifier");
 });
 
@@ -199,7 +241,7 @@ test("gate-type-names-the-missing-selector-before-the-lens", () => {
   assert.match(out.reason, /selector_template/, "the selector problem is the reason given");
 });
 test("gate-type-names-the-classifier-before-the-lens", () => {
-  const repo = repoAtTypeGate({ confidence: "likely" });
+  const repo = repoAtTypeGate({ confidence: "unsure" });
   writeReport(repo);
 
   const out = evalNeedsHuman(repo);
