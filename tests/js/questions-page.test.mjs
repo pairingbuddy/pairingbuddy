@@ -54,3 +54,16 @@ test("plan text never reaches the page as markup, and an old record's whole task
 test("with no open unit or no questions the page says so", () => {
   assert.ok(textOf(renderQuestionsPage({ unit: null })).includes("0 questions for you"));
 });
+
+test("an answered question tells when it was answered and, once settled, whether it led to rework", () => {
+  const html = renderQuestionsPage({ unit: { unit: "T1a", questions: [
+    question(1, { answer: "Drafts.", answeredAt: "2026-11-26T14:05:09.000Z", settled: "rework", rework: "Rework 1 in T1a: Doubt 1?" }),
+    question(2, { answer: "Fine.", answeredAt: "2026-11-26T14:06:00.000Z", settled: "keep" }),
+    question(3, { answer: "Later.", answeredAt: "2026-11-26T14:07:00.000Z" }),
+  ] } });
+
+  const text = textOf(html);
+  assert.ok(text.includes("answered 2026-11-26 14:05 UTC · led to rework: Rework 1 in T1a: Doubt 1?"), text);
+  assert.ok(text.includes("answered 2026-11-26 14:06 UTC · no rework needed"), text);
+  assert.ok(text.includes("answered 2026-11-26 14:07 UTC · not yet weighed"), text);
+});

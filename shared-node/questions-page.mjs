@@ -18,7 +18,23 @@ function openItem(question, n) {
 </li>`;
 }
 
-const answeredItem = (question, n) => `<li><p>${n}. ${escape(question.ambiguity)}</p><p class="facts">${escape(taskTitle(question.task))}</p><p>Your answer: ${escape(question.answer)}</p></li>`;
+// When it was answered, to the minute in UTC, as pb stamps answeredAt; nothing when the stamp does not read as a time.
+function whenAnswered(at) {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(String(at ?? ""));
+  return match ? `answered ${match[1]} ${match[2]} UTC` : "";
+}
+
+// What came of the answer: the rework task it led to, no rework, or not weighed yet (settled at the next task boundary).
+function outcome(question) {
+  if (question.settled === "rework") return `led to rework: ${question.rework ?? ""}`.trim();
+  if (question.settled === "keep") return "no rework needed";
+  return "not yet weighed";
+}
+
+const answeredItem = (question, n) => {
+  const facts = [whenAnswered(question.answeredAt), outcome(question)].filter(Boolean).join(" · ");
+  return `<li><p>${n}. ${escape(question.ambiguity)}</p><p class="facts">${escape(taskTitle(question.task))}</p><p>Your answer: ${escape(question.answer)}</p><p class="facts">${escape(facts)}</p></li>`;
+};
 
 // The questions already answered: one folded group under the open ones, so they stay out of the way.
 function answeredFold(answered) {
