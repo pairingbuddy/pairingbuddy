@@ -96,7 +96,25 @@ test("exit-zero-with-finished-ledger-still-complete", () => {
 });
 
 test("attempt-cap-stop-shows-attempt-count", () => {
-  assert.fail("not implemented: attempt-cap-stop-shows-attempt-count");
+  const maxAttempts = 5; // the cap in contracts/lenses.json
+  const stage = "code-scenarios";
+  const rollbacks = Array.from({ length: maxAttempts }, (_, i) => ({ key: `${stage}.fix.g1.r1.a${i + 1}` }));
+  const ledger = {
+    stage: { name: stage, status: "running", attempt: 1 },
+    stop: { reason: `attempt-cap: stage ${stage} rolled back ${maxAttempts} fix attempts, its cap of ${maxAttempts}`, seq: 9, code: "attempt-cap" },
+    fixes: { rollbacks },
+  };
+
+  const { result } = runSolo({
+    stubs: () => ({ claude: "exit 0" }),
+    files: { ".pairingbuddy/run/task/ledger.json": ledger },
+  });
+
+  assert.match(
+    result.stdout,
+    /^fixes: 5 tried, undone: 5 of 5 allowed$/m,
+    "the summary must show the attempts the stage made against its cap",
+  );
 });
 
 test("attempt-cap-stop-shows-each-lesson", () => {
