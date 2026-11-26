@@ -319,4 +319,15 @@ describe("pb checkpoint --step refactor with renamed tests", IN_PARALLEL, () => 
     assert.equal(perTest["t1-2"].selector.test_function, "bills_59s_as_1");
     assert.equal(perTest["t1-2"].green.done, true);
   });
+
+  test("an undeclared rename is refused, and the refusal tells the fixer to declare it", () => {
+    const repo = makeRepo({ outcomes: { "tests/a.mjs::bills_two_minutes": 0 } });
+    const seed = repo.head();
+    repo.write("tests/a.mjs", "renamed test\n");
+    fixed(repo, testsKey(), ["tests/a.mjs"]);
+
+    const result = refactor(repo, testsKey());
+
+    assertRefused(repo, seed, result, /renamed or split a test, declare it in `renamed`/);
+  });
 });

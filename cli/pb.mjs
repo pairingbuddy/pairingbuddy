@@ -1304,9 +1304,17 @@ async function refactorCheckpoint(context) {
   if (plan === null) return noChange(context);
   const head = headOf(root);
   const withRenames = (current) => renamedLedger(current, declared, rows);
-  await requireClosedTestsPass({ ...context, ledger: withRenames(ledger) }, config, rows);
+  try {
+    await requireClosedTestsPass({ ...context, ledger: withRenames(ledger) }, config, rows);
+  } catch (e) {
+    if (e instanceof Refusal && role === REFACTOR_TESTS_ROLE) throw new Refusal(`${e.message}\n\n${UNDECLARED_RENAME}`);
+    throw e;
+  }
   return commitPlan(context, plan, head, () => withRenames);
 }
+
+// pb selects each test by the name it recorded, so a test the fix renamed selects nothing until the return says so.
+const UNDECLARED_RENAME = "If this fix renamed or split a test, declare it in `renamed` in your return: the test_id and each new test_function (and test_file, when it moved), so pb selects it by its new name.";
 
 // A fix's own return, which planCommit has already read and checked.
 const readReturnOf = (root, key) => JSON.parse(readFileSync(join(artifactsDirOf(root), `${key}.json`), "utf8"));
