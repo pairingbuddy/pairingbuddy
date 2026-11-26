@@ -62,7 +62,7 @@ test('the-band-leads-with-done-and-ready-for-the-next-task', async ($, on) => {
   await band.unmount()
 
   expect([head.text, head.props.bold, head.props.color, head.props.inverse], 'the band leads with STATUS\'s done head: bold, uncoloured').toEqual(['✓ DONE', true, undefined, undefined])
-  expect([rest.text, rest.props.dimColor, rest.props.bold], 'the call to action follows, plain: not dim, not bold').toEqual([' · ready for your next task · /pb details · /pb-report report', undefined, undefined])
+  expect([rest.text, rest.props.dimColor, rest.props.bold], 'the call to action follows, plain: not dim, not bold').toEqual([' · ready for your next task · details: /pb · report: /pb-report', undefined, undefined])
   expect((await bandTexts($)).some(text => text.includes('last run finished')), 'not the vague "last run finished"').toBe(false)
   // At 50 columns the row has 46 cells beside the [-] control: the hint gives way, never the call to action.
   expect((await bandTexts($, { bodyColumns: 50 })).join(''), 'at 50 columns the hint gives way first').toBe('✓ DONE · ready for your next task')

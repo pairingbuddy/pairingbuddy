@@ -98,13 +98,14 @@ test("at a very small width the band is still no wider than the columns", () => 
 });
 
 test("with separators counted fitBand still returns segments whose joined width plus the commands hint fits the columns, at 167 and a narrow width", () => {
-  const HINT = " │ /pb details · /pb-report report ".length; // its separator, the hint and a trailing space
-  const drawnWidth = (segments) => widthOf(segments) + HINT;
+  // Its separator, the hint and a trailing space: the whole hint when wide, its shortest form (details alone) when narrow.
+  const FULL = " │ details: /pb · report: /pb-report · plan: /pb-plan ".length;
+  const SHORTEST = " │ details: /pb ".length;
 
-  for (const columns of [167, 60, 40]) {
-    const kept = fitBand(R4_1_BAND, columns - HINT);
+  for (const [columns, hint] of [[167, FULL], [60, SHORTEST], [40, SHORTEST]]) {
+    const kept = fitBand(R4_1_BAND, columns - hint);
 
-    assert.ok(drawnWidth(kept) <= columns, `the band plus the hint is no wider than ${columns} columns, got ${drawnWidth(kept)}`);
+    assert.ok(widthOf(kept) + hint <= columns, `the band plus the hint is no wider than ${columns} columns, got ${widthOf(kept) + hint}`);
   }
 });
 

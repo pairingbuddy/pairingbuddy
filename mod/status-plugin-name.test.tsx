@@ -47,5 +47,5 @@ test('status-clears-and-band-text-unchanged', async ($, on) => {
 
   expect(run.calls.status.length, 'one call set the line and one cleared it when the run ended').toBe(2)
   expect(run.calls.status[1].text, 'the second call clears the line with undefined text').toBeUndefined()
-  expect(band, 'the band still names the plugin in its own text').toContain('Pairing Buddy · last run finished · /pb details · /pb-report report')
+  expect(band, 'the band still names the plugin in its own text').toContain('Pairing Buddy · last run finished · details: /pb · report: /pb-report · plan: /pb-plan')
 })
