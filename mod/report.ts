@@ -38,7 +38,7 @@ export function commitsArgv(shas: string[]): string[] {
 
 // The run's commits come from the checkpoint shas the ledger records in ledger.commits. With none, git is not called, because git log defaults to HEAD when given no revisions.
 // One read-only git call. Any failure gives null, which the report shows as unknown, and never stops the report.
-async function readCommits($: EngineInterface, shas: string[]): Promise<{ sha: string; subject: string }[] | null> {
+export async function readCommits($: EngineInterface, shas: string[]): Promise<{ sha: string; subject: string }[] | null> {
   if (shas.length === 0) return []
   try {
     const result = await $.process.run(commitsArgv(shas))
