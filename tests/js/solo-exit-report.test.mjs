@@ -4,15 +4,16 @@ import { runSolo } from "./solo-script-fixture.mjs";
 
 // Tests for the Solo exit report. Each runs scripts/solo-buddy.sh in a throwaway repo with a stubbed claude.
 
-test("exit-zero-with-stop-in-ledger-reports-failure", () => {
-  const ledger = {
-    stage: { name: "implement-tests", status: "running", attempt: 2 },
-    stop: { reason: "implement-tests ran out of fix attempts", seq: 7, code: "attempt-cap" },
-  };
+// A ledger whose run stopped at the attempt cap
+const stoppedLedger = () => ({
+  stage: { name: "implement-tests", status: "running", attempt: 2 },
+  stop: { reason: "implement-tests ran out of fix attempts", seq: 7, code: "attempt-cap" },
+});
 
+test("exit-zero-with-stop-in-ledger-reports-failure", () => {
   const { result, status } = runSolo({
     stubs: () => ({ claude: "exit 0" }),
-    files: { ".pairingbuddy/run/task/ledger.json": ledger },
+    files: { ".pairingbuddy/run/task/ledger.json": stoppedLedger() },
   });
 
   assert.match(
@@ -64,17 +65,17 @@ test("exit-zero-with-unfinished-stage-reports-failure", () => {
 });
 
 test("unfinished-exit-zero-script-exits-non-zero", () => {
-  const ledger = {
-    stage: { name: "implement-tests", status: "running", attempt: 2 },
-    stop: { reason: "implement-tests ran out of fix attempts", seq: 7, code: "attempt-cap" },
-  };
-
   const { result } = runSolo({
     stubs: () => ({ claude: "exit 0" }),
-    files: { ".pairingbuddy/run/task/ledger.json": ledger },
+    files: { ".pairingbuddy/run/task/ledger.json": stoppedLedger() },
   });
 
-  assert.notEqual(result.status, 0, "an unfinished run must not exit 0, or a caller reads it as success");
+  assert.equal(result.status, 1, "an unfinished run must exit 1, or a caller reads it as success");
+  assert.match(
+    result.stdout,
+    /^✗ Session stopped: implement-tests ran out of fix attempts$/m,
+    "the exit must come from the unfinished-run branch, shown by the stop summary",
+  );
 });
 
 test("exit-zero-with-finished-ledger-still-complete", () => {
