@@ -64,7 +64,17 @@ test("exit-zero-with-unfinished-stage-reports-failure", () => {
 });
 
 test("unfinished-exit-zero-script-exits-non-zero", () => {
-  assert.fail("not implemented: unfinished-exit-zero-script-exits-non-zero");
+  const ledger = {
+    stage: { name: "implement-tests", status: "running", attempt: 2 },
+    stop: { reason: "implement-tests ran out of fix attempts", seq: 7, code: "attempt-cap" },
+  };
+
+  const { result } = runSolo({
+    stubs: () => ({ claude: "exit 0" }),
+    files: { ".pairingbuddy/run/task/ledger.json": ledger },
+  });
+
+  assert.notEqual(result.status, 0, "an unfinished run must not exit 0, or a caller reads it as success");
 });
 
 test("exit-zero-with-finished-ledger-still-complete", () => {
