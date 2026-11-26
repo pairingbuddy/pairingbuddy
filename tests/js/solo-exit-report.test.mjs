@@ -204,5 +204,19 @@ test("summary-lists-pr-links-on-failure-too", () => {
 });
 
 test("summary-with-pr-links-makes-no-gh-or-push-call", () => {
-  assert.fail("not implemented: summary-with-pr-links-makes-no-gh-or-push-call");
+  const plan = publishedPlan(["https://github.com/o/r/pull/31", "https://github.com/o/r/pull/32"]);
+
+  const { result, log } = runSolo({
+    stubs: ({ realGit, calls }) => ({
+      claude: "exit 0",
+      gh: `echo "gh $*" >> "${calls}"\nexit 0`,
+      git: `echo "git $*" >> "${calls}"\nexec "${realGit}" "$@"`,
+    }),
+    files: { "plan.md": plan, ".pairingbuddy/run/task/ledger.json": finishedLedger() },
+  });
+
+  const forbidden = log.split("\n").filter((line) => /^gh\b|^git push\b/.test(line));
+  assert.match(result.stdout, /^pull requests:$/m, "the summary must list the PR links, or the test proves nothing");
+  assert.notEqual(log, "", "the stubs must have been used, so the call log cannot be empty");
+  assert.deepEqual(forbidden, [], "listing PR links must not call gh or git push");
 });
