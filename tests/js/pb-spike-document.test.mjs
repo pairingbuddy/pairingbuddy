@@ -277,6 +277,45 @@ test("task-end-spike-in-plan-says-the-loop-goes-on", (t) => {
   assert.equal(out.continue, true, `a spike in a plan lets the plan loop go on, stdout ${r.stdout}`);
 });
 
+// Scenario spike-in-unit: a spike that is not its unit's last unticked task ends like any task: the unit stays open.
+
+const UNIT_PLAN = (spike) => ["## Tasks", "", "### T1: Critique", "", "#### PR: Critique and fixes", "", `- [ ] **${spike}**`, "", "- [ ] **Task 114: Apply the findings**", ""].join("\n");
+
+function spikeInUnitRepo(t, title) {
+  const plugin = spikePlugin(t);
+  const repo = makeRepo({
+    remote: true,
+    ledger: {
+      taskType: "spike",
+      stage: { name: "code-spike-document", status: "done", runId: "wf_1", attempt: 1, startedAt: null },
+      stages: [{ name: "code-spike-unit", status: "done", explored: ["u1"] }, { name: "code-spike-document", status: "done" }],
+      plan: { path: "plan.md", title },
+      gates: { "G:unit": { source: "auto" }, "G:task-end": { source: "auto" } },
+    },
+  });
+  const { git } = gitIn(repo);
+  writeFileSync(join(repo.dir, "plan.md"), UNIT_PLAN(title));
+  git("add", "plan.md");
+  git("commit", "-q", "-m", "docs: add the plan");
+  git("push", "-q", "origin", "HEAD");
+  const opened = pbFrom(plugin, repo, "unit", "open", "--type", "chore", "--slug", "critique", "--plan", "plan.md");
+  assert.equal(opened.code, 0, `unit open succeeds, stderr ${opened.stderr}`);
+  return { plugin, repo, git };
+}
+
+test("task-end-spike-with-tasks-left-in-its-unit-keeps-the-unit-open", (t) => {
+  const title = "Task 113: Critique the code path";
+  const { plugin, repo } = spikeInUnitRepo(t, title);
+
+  const r = pbFrom(plugin, repo, "task", "end");
+
+  assert.equal(r.code, 0, `task end succeeds, stdout ${r.stdout}, stderr ${r.stderr}`);
+  const out = JSON.parse(r.stdout);
+  assert.equal("closed" in out, false, `the unit is not closed, stdout ${r.stdout}`);
+  const unit = JSON.parse(readFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), "utf8"));
+  assert.deepEqual(unit.tasks.map(({ title: done }) => done), [title], "the spike's task record is kept in the open unit");
+});
+
 test("task-end-other-types-unchanged", (t) => {
   const plugin = spikePlugin(t);
   const repo = makeRepo({
