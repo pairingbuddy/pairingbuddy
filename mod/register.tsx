@@ -34,7 +34,7 @@ async function startWatching($: EngineInterface, poller: PollerState, options: P
   await $.command.register({ name: 'pb', description: 'Open or close the Pairing Buddy pane', immediate: true })
   await $.command.register({ name: 'pb-report', description: 'Write the Pairing Buddy run report and open it', immediate: true })
   await $.command.register({ name: 'pb-plan', description: 'Write the whole Pairing Buddy plan as a page and open it', immediate: true })
-  await $.command.register({ name: 'pb-answer', description: 'List the Pairing Buddy questions for you, or answer one', argumentHint: '[number] [your answer]', immediate: true })
+  await $.command.register({ name: 'pb-answer', description: 'Answer the Pairing Buddy questions for you one at a time, or list them on a page', argumentHint: '[list | number your answer]', immediate: true })
   await startPoller($, poller, options)
 }
 
