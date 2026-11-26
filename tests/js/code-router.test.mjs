@@ -776,3 +776,15 @@ test("the skill runs each pb call as a command of its own, with nothing around i
   sentencesSaying("no cd, redirect or echo around it", opening, /`cd`/, /`2>&1`/, /`echo/);
   sentencesSaying("why: the gate lets only the bare form through", opening, /gate/, /permission prompt/);
 });
+
+test("the bootstrap of git-config has the skill match the repo's own branch and commit conventions before the first unit opens", () => {
+  const bootstrap = /### Bootstrap git-config\.json\n([\s\S]*?)\n### /.exec(skill())[1];
+
+  assert.match(bootstrap, /before the first `pb unit open`/, "it runs before pb would write the defaults");
+  assert.match(bootstrap, /branch_template/);
+  assert.match(bootstrap, /key_pattern/);
+  assert.match(bootstrap, /\{key\}/, "a key-carrying convention uses the {key} placeholder");
+  assert.match(bootstrap, /git branch -r/, "recent remote branch names are evidence");
+  assert.match(bootstrap, /\*\*Key:\*\*/, "the plan's Key line gives the key");
+  assert.match(bootstrap, /auto/, "under auto it writes the inferred convention and asks nothing");
+});

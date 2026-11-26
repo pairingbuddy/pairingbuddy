@@ -198,6 +198,22 @@ describe("a commit comes from the step and the artifact", IN_PARALLEL, () => {
     });
   }
 
+  // A work-item key the model put first stays once, after the step's type, and the type never doubles.
+  for (const [subject, expected] of [
+    ["ABC-12: chore: set a", "chore: ABC-12: set a"],
+    ["chore: ABC-12: chore: set a", "chore: ABC-12: set a"],
+    ["ABC-12: set a", "chore: ABC-12: set a"],
+  ]) {
+    test(`a key in "${subject}" is kept once, after the step's type`, () => {
+      const repo = changedRepo();
+      writeArtifact(repo, CONFIG_KEY, configArtifact({ commit_subject: subject }));
+
+      checkpoint(repo);
+
+      assert.equal(repo.message(), expected);
+    });
+  }
+
   test("a subject that merely has a colon keeps it", () => {
     const repo = changedRepo();
     writeArtifact(repo, CONFIG_KEY, configArtifact({ commit_subject: "timeout: raise to 30" }));
