@@ -587,12 +587,25 @@ const SCOPE_GATE = "G:scope";
 // A lens survivor counts as open unless it is explicitly non-blocking (blocking: false).
 const blockingSurvivors = (report) => (report.survivors ?? []).filter((finding) => finding?.blocking !== false);
 
-// The scope lens may flag that the scope does not serve the stated intent; a blocking survivor asks even under auto.
+const SCOPE_REASON = "the scope lens found the scope may not serve the stated intent";
+
+// The scope lens may flag that the scope does not serve the stated intent; a blocking survivor asks, unless auto with a
+// unit open sets it aside as a question for the human (defersScope).
 function scopeReason(root, ledger) {
   const report = standingReport(taskReportPath(root), ledger);
   if (report === null) return null;
   const blocked = blockingSurvivors(report).length > 0;
-  return blocked ? "the scope lens found the scope may not serve the stated intent" : null;
+  return blocked ? SCOPE_REASON : null;
+}
+
+// The scope lens's blocking findings as doubts for the unit's questions, one per finding.
+export function scopeDoubts(root, ledger) {
+  const report = standingReport(taskReportPath(root), ledger);
+  if (report === null) return [];
+  return blockingSurvivors(report).map((finding) => ({
+    step: "checking the tidy-up list",
+    ambiguity: `A reviewer doubts the tidy-up fits the goal: ${doubtText(String(finding?.message ?? finding?.claim ?? "no reason given"))}. Is the tidy-up list right?`,
+  }));
 }
 
 const TYPE_GATE = "G:type";
@@ -658,6 +671,11 @@ export const isDoubtReason = (reason) => typeof reason === "string" && AMBIGUITY
 const NEVER_DEFERS = [PUBLISH_GATE, TYPE_GATE];
 export const defersDoubts = (contract, ledger, gate, root, reason) =>
   isDoubtReason(reason) && ledger.policy.mode === "auto" && !NEVER_DEFERS.includes(gate.name) && askReason(contract, ledger, gate, root, null, { skipDoubts: true }) === null;
+
+// Under auto, G:scope's only reason to ask being the scope lens's doubt, the tidy-up goes ahead and the doubt waits on the
+// unit's questions like any other: the tidy-up changes no behaviour, and the human's answer can still rework it.
+export const defersScope = (contract, ledger, gate, root, reason) =>
+  gate.name === SCOPE_GATE && reason === SCOPE_REASON && ledger.policy.mode === "auto" && stopReason(contract, ledger, root) === null;
 
 // ---------- G:publish ----------
 

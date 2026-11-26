@@ -10,7 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, CommitHookRefused, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, untrackedFiles, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
-import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
+import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, defersScope, scopeDoubts, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, seenRecently, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
@@ -528,7 +528,9 @@ function gateEval(args) {
     if (reason === null && gate === PUBLISH_GATE && autoBinding === undefined) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
     if (reason === null) return repeatedAfter(contract, recordAuto(open, gate, autoBinding, typePassedOn(root, open, gate)), gate, root);
     // Under auto with a unit open, doubts alone do not stop the run: they wait on the unit's questions for G:publish.
-    deferred = unitIsOpen(root) && defersDoubts(contract, open, due, root, reason) ? (gateFacts(gate, root, open, contract).doubts ?? null) : null;
+    const unitOpen = unitIsOpen(root);
+    if (unitOpen && defersDoubts(contract, open, due, root, reason)) deferred = gateFacts(gate, root, open, contract).doubts ?? null;
+    else if (unitOpen && defersScope(contract, open, due, root, reason)) deferred = scopeDoubts(root, open);
     if (deferred !== null) {
       reason = null;
       return repeatedAfter(contract, recordDeferred(open, gate, deferred), gate, root);
@@ -893,6 +895,26 @@ function questionSettle(args) {
     if (e instanceof QuestionRefused) throw new Refusal(`${e.message}. Nothing was touched`);
     throw e;
   }
+}
+
+// pb question add --text <words>: a doubt the session has, inside or between tasks. Under auto the session never asks the
+// human itself: the doubt joins the open unit's questions (/pb-questions), the run keeps going, and the answer is weighed at
+// the next task boundary like any other.
+// The task a ledger runs, by its plan title, else the first line of its description.
+const taskTitleOf = (ledger) => ledger.plan?.title || String(ledger.task?.description ?? ledger.task ?? "").split("\n")[0];
+
+function questionAdd(args) {
+  const usage = "usage: pb question add --text <words>";
+  const at = args.indexOf("--text");
+  const text = at === -1 ? "" : args.slice(at + 1).join(" ").trim();
+  if (at !== 0 || text === "") throw new UsageError(usage);
+  const root = toplevel();
+  if (!existsSync(unitPathOf(root))) throw new Refusal("no unit is open, so there is no list of questions to add it to. Nothing was touched");
+  const path = ledgerPathOf(root);
+  const task = existsSync(path) ? taskTitleOf(readLedger(path)) : "between tasks";
+  deferQuestionsInUnit(root, { gate: "session", task, doubts: [{ step: "the session", ambiguity: text }] });
+  const unit = JSON.parse(readFileSync(unitPathOf(root), "utf8"));
+  return { ok: true, added: true, open: (unit.questions?.length ?? 0) + (unit.questionsMore ?? 0) };
 }
 
 // pb guidance record --mode auto|human --kept N --dropped M [--doubt <words>]: the curating-guidance skill's record of how it
@@ -2759,7 +2781,7 @@ export const VERBS = {
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
-  "plan next": planNext, "question settle": questionSettle, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "plan next": planNext, "question settle": questionSettle, "question add": questionAdd, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 // The human changed test-config.json while a stage ran: the attempt ends and the run waits on the human, with no stop, so

@@ -540,10 +540,12 @@ describe("a model cannot supply the policy", () => {
     assertDenied(runGate(repo, payload), /answers/);
   });
 
-  test("the recorded AskUserQuestion, with no answers, is not denied", () => {
+  // The recording was made under auto mode, where a question no gate waits on is the session's own and is denied (it goes
+  // to pb question add); outside auto it reaches the human.
+  test("the recorded AskUserQuestion, with no answers, is not denied outside auto mode", () => {
     const repo = makeRepo();
 
-    assertNotDenied(runGate(repo, recordedQuestion(repo)));
+    assertNotDenied(runGate(repo, { ...recordedQuestion(repo), permission_mode: "default" }));
   });
 
   test("the emitted question, exactly, is not denied", () => {
@@ -1794,4 +1796,43 @@ test("unrefuted-low-or-medium-does-not-stop-gate", () => {
   const output = gateEval(repo, "auto");
 
   assertAutoPassed(repo, output);
+});
+
+// ---------- G:scope under auto with a unit open ----------
+
+const scopeRepo = (mode = "auto") => {
+  const repo = makeRepo({
+    ledger: {
+      taskType: "refactoring", policy: { mode, source: "permission_mode" },
+      stage: { name: "code-refactor-scope", status: "done", runId: "wf_1", attempt: 1, startedAt: null },
+      stages: [INTAKE_DONE, { name: "code-refactor-scope", status: "done", attempt: 1 }],
+      gates: withTypePassed(),
+    },
+  });
+  const finding = { id: "scope-1", class: "fix", blocking: true, rule: "scope-serves-intent", message: "the tidy-up renames helpers the task never mentions" };
+  writeFileSync(join(repo.taskDir, "report.json"), JSON.stringify({ stage: "code-refactor-scope", attempt: 1, survivors: [finding], gaps: [], uncovered: [], unrefuted: [] }));
+  return repo;
+};
+const openScopeUnit = (repo) => writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit: "T1a", tasks: [], commits: [] }));
+
+test("with a unit open, the scope lens's doubt under auto passes G:scope and goes to the unit's questions", () => {
+  const repo = scopeRepo();
+  openScopeUnit(repo);
+
+  const passed = gateEval(repo, "auto");
+
+  assert.deepEqual(passed, { ok: true, result: "auto-pass", gate: "G:scope", source: "auto", deferred: 1 });
+  const unit = JSON.parse(readFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), "utf8"));
+  assert.equal(unit.questions.length, 1);
+  assert.match(unit.questions[0].ambiguity, /renames helpers the task never mentions/);
+  assert.equal(repo.ledger().needsHuman, null);
+});
+
+test("outside auto, the scope lens's doubt still asks at G:scope, unit open or not", () => {
+  const repo = scopeRepo("default");
+  openScopeUnit(repo);
+
+  const asked = gateEval(repo);
+
+  assertAsks(asked, "G:scope");
 });

@@ -36,6 +36,7 @@ const MESSAGES = {
   agentAllDone: (agent) => `Direct Agent call for ${agent} is denied during this run. All stages for config_change are done.`,
   noRun: (stage) => `Stage ${stage} cannot start with no run open. Use /pairingbuddy:code, which opens the run.`,
   noRunAgent: (agent) => `Agent ${workflowName(agent)} runs only inside a stage, and no run is open. Use /pairingbuddy:code, which opens the run.`,
+  sessionAsks: "Under auto mode nobody is asked while a run or unit is open: only the question pb gate eval gives reaches the human. Set a doubt aside with pb question add --text '<your question, with no single quote>' and go on; a skill with a no-human path takes it.",
   noHumanHere: "No human answers under the auto policy or claude -p, so nothing is asked. Carry the guidance over as it stands, write the output, and finish.",
 };
 
@@ -330,6 +331,41 @@ test("between plan tasks, with a unit open, the guidance question still asks nob
 test("outside auto mode the guidance question reaches the human", () =>
   withRepo({ ledger: null }, async (repo) => {
     assertAllowed(await runGate(guidanceQuestion(repo.dir, { permission_mode: "default" })));
+  }));
+
+// ---------- the session's own questions under auto, with a run open ----------
+
+// Under auto mode the human chose not to be stopped. With a run open the session asks only a question pb gave (the ledger's
+// needsHuman); a doubt of its own goes to pb question add, and the run keeps going.
+const sessionQuestion = (cwd, over = {}) => {
+  const { agent_id: _id, agent_type: _type, ...main } = question(cwd, over);
+  return { ...main, tool_input: { questions: [{ header: "Push bug", question: "The report drops most pushes. Fix it in a new task?" }] } };
+};
+
+test("with a run open under auto mode, the session's own question is denied and pointed at pb question add", () =>
+  withRepo({}, async (repo) => {
+    assertDenied(await runGate(sessionQuestion(repo.dir)), MESSAGES.sessionAsks);
+  }));
+
+test("between plan tasks, with a unit open, the session's own question is denied under auto mode", () =>
+  withRepo({ ledger: null }, async (repo) => {
+    mkdirSync(join(repo.dir, ".pairingbuddy", "run"), { recursive: true });
+    writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), "{}\n");
+    assertDenied(await runGate(sessionQuestion(repo.dir)), MESSAGES.sessionAsks);
+  }));
+
+test("under auto mode the question pb's gate is waiting on still reaches the human", () => {
+  const asked = { question: "Is this the right list to tidy up?", header: "Tidy-up", options: [{ label: "approve", description: "" }, { label: "redo", description: "" }], multiSelect: false };
+  const needsHuman = { gate: "G:scope", reason: "the scope lens found the scope may not serve the stated intent", seq: 1, askedAt: "2026-11-26T15:06:21Z", question: asked };
+  return withRepo({ ledger: { ...makeLedger(), needsHuman } }, async (repo) => {
+    const { agent_id: _id, agent_type: _type, ...main } = question(repo.dir);
+    assertAllowed(await runGate({ ...main, tool_input: { questions: [asked] } }));
+  });
+});
+
+test("outside auto mode the session's own question reaches the human, run open or not", () =>
+  withRepo({}, async (repo) => {
+    assertAllowed(await runGate(sessionQuestion(repo.dir, { permission_mode: "default" })));
   }));
 
 // ---------- Solo ----------

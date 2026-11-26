@@ -407,11 +407,14 @@ function canRunPb({ text, words, run, span }, index, isFileName) {
 }
 
 // True when the shell rewrites text at or after a pb name in the same simple command.
+const SINGLE_QUOTED = /'[^']*'/g;
+
 function rewritesPbWords(simple) {
   return simple.words.some((word, index) => {
     const name = PB_WORD.exec(word);
     if (name === null || !canRunPb(simple, index, name[1] !== undefined)) return false;
-    return PB_THEN_EXPANSION.test(simple.text.slice(simple.span.words[index].start, simple.span.end));
+    // The shell expands nothing inside single quotes, so a single-quoted argument (pb question add's text) is literal.
+    return PB_THEN_EXPANSION.test(simple.text.slice(simple.span.words[index].start, simple.span.end).replace(SINGLE_QUOTED, "''"));
   });
 }
 

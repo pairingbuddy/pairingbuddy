@@ -446,11 +446,25 @@ function checkBash(payload, _ledgerPath, root) {
 // A question with the pending gate's text or header is that gate's question, so it must be the one asked, exactly.
 const asksGate = (asked, question) => question?.question === asked.question || question?.header === asked.header;
 
-function checkQuestion({ tool_input: toolInput }, ledgerPath) {
+const SESSION_ASKS = "Under auto mode nobody is asked while a run or unit is open: only the question pb gate eval gives reaches the human. Set a doubt aside with pb question add --text '<your question, with no single quote>' and go on; a skill with a no-human path takes it.";
+
+// Under auto, or claude -p, the human chose not to be stopped mid-run.
+const noHumanAsked = (payload) => observedPolicy(payload).mode === "auto" || process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-cli";
+
+function checkQuestion(payload, ledgerPath) {
+  const { tool_input: toolInput } = payload;
   if (toolInput?.answers !== undefined) throw new Denied("AskUserQuestion cannot carry its own answers: only a human answers a question.");
-  const asked = pendingQuestion(readableLedger(ledgerPath));
+  const ledger = readableLedger(ledgerPath);
+  const asked = pendingQuestion(ledger);
   const questions = toolInput?.questions;
-  if (asked === null || !Array.isArray(questions) || !questions.some((question) => asksGate(asked, question))) return;
+  const asksTheGate = asked !== null && Array.isArray(questions) && questions.some((question) => asksGate(asked, question));
+  if (!asksTheGate) {
+    // The main context's own question, with a run or unit open and nothing waiting on the human: under auto it goes to the
+    // unit's questions, not the human. A ledger that cannot be read keeps to its recovery route, so nothing is denied then.
+    const waiting = ledger === null ? existsSync(ledgerPath) : ledger.needsHuman !== null;
+    if (!waiting && !isSubagentCall(payload) && noHumanAsked(payload)) throw new Denied(SESSION_ASKS);
+    return;
+  }
   if (!isGateQuestionCall(asked, questions)) {
     throw new Denied(`The waiting gate takes one question, exactly as pb gate eval gave it, with nothing else in the call: ${JSON.stringify(asked)}`);
   }
@@ -485,12 +499,18 @@ const PLAIN_WORD = /^[A-Za-z0-9_][A-Za-z0-9_.\/:=@+,-]*$|^--?[A-Za-z0-9][A-Za-z0
 // The main context's own pb command, by itself: this plugin's CLI, one of the verbs, plain words one space apart.
 function isMainCommand({ tool_name: tool, tool_input: toolInput, ...payload }, verbs = MAIN_AUTO_VERBS) {
   if (tool !== "Bash" || isSubagentCall(payload) || typeof toolInput?.command !== "string" || !toolInput.command.startsWith(PB_START)) return false;
-  const words = toolInput.command.slice(PB_START.length).split(" ");
+  const rest = toolInput.command.slice(PB_START.length);
+  if (QUOTED_QUESTION.test(rest)) return verbs.includes("question add");
+  const words = rest.split(" ");
   return words.every((word) => PLAIN_WORD.test(word)) && verbs.includes(matchVerb(words));
 }
 
+// pb question add's doubt is free words, so it alone may end in one single-quoted argument with no quote inside, which the
+// shell takes literally: nothing in it runs.
+const QUOTED_QUESTION = /^question add --text '[^'\n]+'$/;
+
 // Before a run exists the main context starts or inspects one with these, so they need no prompt either.
-const NO_RUN_VERBS = ["status", "unit open", "unit status", "run open", "plan next", "question settle", "guidance record"];
+const NO_RUN_VERBS = ["status", "unit open", "unit status", "run open", "plan next", "question settle", "question add", "guidance record"];
 
 // With no run open, the reason to allow the main context's exact pb command, or null.
 export const noRunAllowReason = (payload) => (isMainCommand(payload, NO_RUN_VERBS) ? NO_RUN_AUTO_ALLOW_REASON : null);

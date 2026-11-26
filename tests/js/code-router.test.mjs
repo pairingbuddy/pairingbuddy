@@ -680,6 +680,15 @@ test("plan-loop-asks-nothing-pb-decides: where a unit branches from is pb's, and
   sentencesSaying("the router holds the same rule", routerSection(), /[Nn]ever ask/, /pb/);
 });
 
+test("auto-asks-nothing-of-its-own: under auto the loop never asks to continue, and a doubt goes to pb question add", () => {
+  const section = planLoopSection();
+
+  sentencesSaying("no continue question between tasks under auto", section, /auto/, /[Nn]ever ask/, /next task/);
+  sentencesSaying("a doubt of the session's own goes to pb question add and the run goes on", section, /`pb question add --text '/, /goes on|keeps going/);
+  sentencesSaying("the router holds the same rule", routerSection(), /`pb question add --text '/);
+  assert.doesNotMatch(skill(), /G:type passes only when the classifier reports certain/, "G:type also passes a likely type with no question under auto");
+});
+
 test("plan-tasks-curate-with-skill-and-solo-has-no-old-plan-loop", () => {
   const section = planLoopSection();
   const sentences = sentencesOf(section);
