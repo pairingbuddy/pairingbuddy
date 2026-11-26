@@ -45,7 +45,7 @@ const lensResult = await lensAttack({
     agentType: 'pairingbuddy:refactor-code',
     agentTypeByLens: { tests: 'pairingbuddy:refactor-tests' },
     schemaByAgentType: { 'pairingbuddy:refactor-code': REFACTOR_CODE_SCHEMA, 'pairingbuddy:refactor-tests': REFACTOR_TESTS_SCHEMA },
-    instruction: 'Fix the findings below. Change only what the findings name. The full suite must pass after your fix, or it is rolled back: when the fix rewords text that tests check by its exact wording (a skill, a doc, a message), find those tests and update them in the same fix, so they still check what they checked. A commit the repo\'s commit hook refuses is rolled back too: before you finish, run the project\'s lint and format checks on the files you changed, the ones its commit hook runs (see .pre-commit-config.yaml, .husky/ or .git/hooks/pre-commit) or the ones its CLAUDE.md or README names.',
+    instruction: 'Fix the findings below. Change only what the findings name. The full suite must pass after your fix, or it is rolled back: when the fix rewords text that tests check by its exact wording (a skill, a doc, a message), find those tests and update them in the same fix, so they still check what they checked. A commit the repo\'s commit hook refuses is rolled back too: before you finish, run the project\'s lint and format checks on the files you changed, the ones its commit hook runs (see .pre-commit-config.yaml, .husky/ or .git/hooks/pre-commit) or the ones its CLAUDE.md or README names. Edit files with the Edit tool, never sed -i: on macOS it leaves a backup file the fix did not list.',
     paths: { test_config: '.pairingbuddy/test-config.json', human_guidance: '.pairingbuddy/human-guidance.json' },
   },
 });

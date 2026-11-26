@@ -392,6 +392,16 @@ test("Safety net fixers are told to run the checks the commit hook runs before t
   }
 });
 
+test("Safety net fixers are told to edit with the Edit tool, never sed -i, since sed leaves backup files on macOS", async () => {
+  const { calls } = await runStage(ARGS, twoGroupFixingAgent());
+
+  for (const { prompt } of calls.filter(({ opts }) => FIXERS.includes(opts.agentType))) {
+    const instructions = prompt.split("<paths>")[0];
+    assert.match(instructions, /Edit tool/, instructions);
+    assert.match(instructions, /never sed -i/, instructions);
+  }
+});
+
 test("Safety net fix agents are pairingbuddy:refactor-tests for the tests lens and pairingbuddy:refactor-code otherwise, in order lens round, fixes, docs, finish", async () => {
   const order = [];
   const { calls } = await runStage(ARGS, twoGroupFixingAgent(order));

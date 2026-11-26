@@ -120,6 +120,9 @@ const dirtyInWorktree = (root) => statusEntries(root).filter(({ worktree }) => w
 // state directory is pb's own: a repo need not ignore it, and no checkpoint may stage it.
 export const remainingFiles = (root) => statusEntries(root).map(({ path }) => path).filter((path) => !path.startsWith(`${STATE_DIRECTORY}/`));
 
+// The untracked files, repo-relative, leaving out ignored files and pb's own state directory.
+export const untrackedFiles = (root) => statusEntries(root).filter(({ index }) => index === "?").map(({ path }) => path).filter((path) => !path.startsWith(`${STATE_DIRECTORY}/`));
+
 const stagedPaths = (root) => statusEntries(root).filter(({ index }) => index !== " " && index !== "?").map(({ path }) => path);
 
 const stage = (root, paths) => literalGit(root, "add", "--", ...paths);

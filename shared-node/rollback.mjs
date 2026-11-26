@@ -86,3 +86,14 @@ export function rollbackCommitted(root, { key, prefix, sha }) {
   git(root, ["reset", "--keep", `${sha}^`]);
   return withBase(root, saved);
 }
+
+// Untracked files a fix created but did not list (a `sed -i -e` backup, say): kept under the next rollback ref on top of
+// HEAD, then deleted, so nothing is lost and the tree is clean. Returns { ref, paths }, or null when there are none.
+export function removeCreated(root, { key, prefix, paths }) {
+  if (paths.length === 0) return null;
+  const saved = commitDirtyPaths(root, paths, `pairingbuddy rollback ${key}: files the fix created`);
+  const ref = nextRollbackRef(root, prefix);
+  git(root, ["update-ref", ref, saved, ""]);
+  for (const p of paths) rmSync(join(root, p), { force: true });
+  return { ref, paths };
+}

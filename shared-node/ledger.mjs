@@ -193,7 +193,10 @@ export function validateLedger(ledger) {
         checkNullableObject(ledger.needsHuman, "needsHuman", { gate: [isNonEmptyString, "a non-empty string"], reason: [isString, "a string"], seq: [isCount, "a non-negative integer"], askedAt: [isTimestamp, "an ISO 8601 timestamp"], shown: [isObject, "an object"], question: [isObject, "an object"], doubts: [isDoubts, "a non-empty array of { step, ambiguity } non-empty strings"], fix: [isNonEmptyString, "a non-empty string"], wait: [isNonEmptyString, "a non-empty string"] }, errors, { optional: ["askedAt", "shown", "question", "doubts", "fix", "wait"] });
         break;
       case "fixes":
-        checkObject(ledger.fixes, "fixes", { rollbacks: [Array.isArray, "an array"], hookRefusals: [Array.isArray, "an array"] }, errors, { optional: ["hookRefusals"] });
+        checkObject(ledger.fixes, "fixes", { rollbacks: [Array.isArray, "an array"], hookRefusals: [Array.isArray, "an array"], untrackedAtStart: [isObject, "an object"] }, errors, { optional: ["hookRefusals", "untrackedAtStart"] });
+        if (isObject(ledger.fixes) && isObject(ledger.fixes.untrackedAtStart)) {
+          checkObject(ledger.fixes.untrackedAtStart, "fixes.untrackedAtStart", { stage: [isNonEmptyString, "a non-empty string"], attempt: [isCount, "a non-negative integer"], paths: [(x) => Array.isArray(x) && x.every(isNonEmptyString), "an array of non-empty strings"] }, errors);
+        }
         if (isObject(ledger.fixes) && Array.isArray(ledger.fixes.hookRefusals)) {
           ledger.fixes.hookRefusals.forEach((r, i) => checkObject(r, `fixes.hookRefusals.${i}`, { key: [isNonEmptyString, "a non-empty string"], output: [isString, "a string"] }, errors));
         }
@@ -201,7 +204,8 @@ export function validateLedger(ledger) {
           ledger.fixes.rollbacks.forEach((r, i) => checkObject(r, `fixes.rollbacks.${i}`, {
             key: [isNonEmptyString, "a non-empty string"], kind: [(x) => ROLLBACK_KINDS.includes(x), `one of ${ROLLBACK_KINDS.join(", ")}`],
             ref: [isNullableString, "a string or null"], sha: [isNullableString, "a string or null"], base: [isNullableString, "a string or null"],
-          }, errors));
+            removed: [(x) => isObject(x) && isNonEmptyString(x.ref) && Array.isArray(x.paths) && x.paths.length > 0 && x.paths.every(isNonEmptyString), "an object with a ref and a non-empty array of paths"],
+          }, errors, { optional: ["removed"] }));
         }
         break;
       case "voidedGates":
