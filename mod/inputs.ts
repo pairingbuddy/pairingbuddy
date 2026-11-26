@@ -6,6 +6,7 @@ import { withStranded } from '../shared-node/stranded.mjs'
 import { readLabel } from '../shared-node/labels.mjs'
 import { boxesUnder, humanTasksLeft } from '../shared-node/plan-text.mjs'
 import { parsePlan } from '../shared-node/plan.mjs'
+import { openQuestions } from '../shared-node/questions.mjs'
 
 const TESTS = '.pairingbuddy/tests.json'
 const LEDGER = '.pairingbuddy/run/task/ledger.json'
@@ -44,7 +45,8 @@ export type Call = { agentId?: unknown; at?: string; input: Record<string, unkno
 // humanLeft: the unit's [HUMAN] tasks its plan still has unticked, which a person does before pb publishes the unit.
 // open: the unit record as unitStates reads it, to tell each plan unit's state.
 export type OpenUnit = { unit?: string; plan?: string; tracer?: string; tasks: { title: string; headSha?: string }[]; branch?: string; base?: string; commits?: string[] }
-export type Unit = { key: string; taskStages: string[]; prUrl?: string; humanLeft?: string[]; open?: OpenUnit }
+// questions: how many doubts auto passes set aside for the human, waiting on the unit until G:publish asks them.
+export type Unit = { key: string; taskStages: string[]; prUrl?: string; humanLeft?: string[]; open?: OpenUnit; questions?: number }
 // What the pane keeps of the unit's last code run (shared-node/end-state.mjs codeRunOf), so the end state outlives its ledger.
 export type CodeRun = { runId?: string; task?: string; taskEndPassed: boolean; testsPassing: number; perTest?: Record<string, { green?: { passed: boolean }; covered?: { done: boolean } }>; safetyNet: { attempt?: number; startedAt?: string } | null; rollbacks: unknown[] }
 // What the last pb publish printed: the url it opened, or the result when it opened none; codeRunId ties it to the code run it
@@ -213,7 +215,8 @@ export function unitOf(file: unknown): Unit | null {
     unit: text(unit), plan: text(plan), tracer: text(tracer), tasks: named,
     branch, base: text(base), commits: Array.isArray(commits) ? commits.filter((sha): sha is string => typeof sha === 'string') : [],
   }
-  return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}), open }
+  const { count } = openQuestions(file)
+  return { key: `${branch} ${String(baseSha)}`, taskStages: [...new Set(stages)], ...(typeof url === 'string' && url !== '' ? { prUrl: url } : {}), open, ...(count > 0 ? { questions: count } : {}) }
 }
 
 // A plan path the unit record names is read only inside the repo: relative, with no ".." part.

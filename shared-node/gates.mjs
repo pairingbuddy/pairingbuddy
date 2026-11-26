@@ -18,6 +18,7 @@ import { needsTestSelection } from "./stage-graph.mjs";
 import { readTestConfig, selectorAdvice } from "./test-run.mjs";
 import { targetBranch, taskHasLensRecord } from "./publish.mjs";
 import { headOf } from "./checkpoint.mjs";
+import { openQuestions } from "./questions.mjs";
 import { PrLintConfigRefused } from "./pr-lint.mjs";
 import { PrLintRunRefused, isRefreshSubject, prBodyPath, prLintPath, readDraftArtifact, readPrSubject, readUnit, runPrLint, sha256 } from "./pr-lint-run.mjs";
 
@@ -206,6 +207,7 @@ const PLAIN_WHYS = [
   [/^the PR lint /, "The pull request text has not passed its checks."],
   [/^a pull request refresh is approved by a human/, "Updating a pull request always asks you."],
   [/^no lens record yet for the safety net/, "Not every task has had its safety-net review."],
+  [/^questions for you are open/, "Doubts were set aside for you while the run went on."],
 ];
 
 // Names the runners a reason says lack selector_template, and the one fix: the run cannot build a test without it.
@@ -225,9 +227,11 @@ const plainWhy = (reason) => {
 };
 
 const AMBIGUITY_REASON = /open ambiguity/;
+// G:publish asking the doubts the unit collected (questionsReason).
+const QUESTIONS_REASON = /^questions for you are open: \d+$/;
 
 // The open doubts a question shows: the facts' doubts when the gate asks over them, else none.
-export const questionDoubts = (reason, { doubts } = {}) => (AMBIGUITY_REASON.test(reason) && Array.isArray(doubts) && doubts.length > 0 ? doubts : null);
+export const questionDoubts = (reason, { doubts } = {}) => ((AMBIGUITY_REASON.test(reason) || QUESTIONS_REASON.test(reason)) && Array.isArray(doubts) && doubts.length > 0 ? doubts : null);
 
 // A doubt whole on one line: the question box wraps a long line, and a cut sentence cannot be judged.
 const doubtText = (ambiguity) => ambiguity.trim().replace(/\s+/g, " ");
@@ -240,7 +244,11 @@ export const QUESTION_FILE = ".pairingbuddy/run/question.md";
 // The step name a lens or refuter doubt carries: the human needs no word for how the review was split up.
 export const REVIEWER = "a reviewer";
 
-const doubtLine = ({ step, ambiguity }) => (step === REVIEWER ? `A reviewer was unsure: ${doubtText(ambiguity)}` : `Unsure (${step}): ${doubtText(ambiguity)}`);
+// A question the unit kept for G:publish also names the task that raised it, as its doubts come from many tasks.
+const doubtLine = ({ step, ambiguity, task }) => {
+  if (step === REVIEWER) return `A reviewer was unsure${task ? ` (${task})` : ""}: ${doubtText(ambiguity)}`;
+  return `Unsure (${step}${task ? `, ${task}` : ""}): ${doubtText(ambiguity)}`;
+};
 
 const doubtLines = (doubts, fullAt) => folded(doubts.map(doubtLine), MAX_DOUBTS, fullAt);
 
@@ -382,6 +390,16 @@ function settledStages(contract, ledger) {
   return new Set(nodes.slice(0, last + 1).map(({ name }) => name));
 }
 
+// A gate the auto policy passed with its doubts deferred has put them on the unit's questions: for the doubts, it settles
+// its stage and every stage before it the way a human approval does, so no later gate defers or asks them again.
+// Coverage gaps and the rest are not doubts, and stay with settledStages.
+function doubtSettledStages(contract, ledger) {
+  const { nodes } = contract.taskTypes[graphFor(contract, ledger.taskType).taskType];
+  const deferred = (gate) => Array.isArray(ledger.gates[gate]?.deferred);
+  const last = nodes.findLastIndex(({ gate }) => gate !== null && (isHumanApproved(ledger, gate) || deferred(gate)));
+  return new Set(nodes.slice(0, last + 1).map(({ name }) => name));
+}
+
 const COVERED_ROLE = "implement-tests";
 
 // A pass at RED after an earlier GREEN is the CLI's call: once it recorded the test covered, a question about it is answered.
@@ -488,7 +506,7 @@ function ambiguityStop(dir, ledger, settled) {
 
 // The open ambiguities the gate's stop would name, by the same rule, as { file, ambiguity }; null when a return cannot be read.
 export function openDoubts(contract, ledger, root) {
-  const { open, unreadable } = openReturns(artifactsDir(root), ledger, settledStages(contract, ledger));
+  const { open, unreadable } = openReturns(artifactsDir(root), ledger, doubtSettledStages(contract, ledger));
   return unreadable === undefined ? open : null;
 }
 
@@ -534,11 +552,13 @@ const CONFIG_STOPS = { "test-config.json": "the config hash changed during the r
 
 const configStop = (hashes, root) => CONFIG_STOPS[changedConfigs(hashes, root)[0]] ?? null;
 
-function stopReason(contract, ledger, root) {
+// skipDoubts: the reason as it would stand with every open doubt answered, which is when an auto pass may defer them.
+function stopReason(contract, ledger, root, { skipDoubts = false } = {}) {
   if (ledger.stop !== null) return `the run stopped: ${ledger.stop.reason}`;
   const artifacts = artifactsDir(root);
   const settled = settledStages(contract, ledger);
-  return retriesStop(ledger) ?? configStop(ledger, root) ?? ambiguityStop(artifacts, ledger, settled) ?? coverageStop(artifacts, ledger, settled) ?? reportStop(taskReportPath(root), ledger);
+  const doubts = skipDoubts ? null : ambiguityStop(artifacts, ledger, doubtSettledStages(contract, ledger));
+  return retriesStop(ledger) ?? configStop(ledger, root) ?? doubts ?? coverageStop(artifacts, ledger, settled) ?? reportStop(taskReportPath(root), ledger);
 }
 
 // ---------- the decision ----------
@@ -606,8 +626,16 @@ const GATE_REASONS = {
 const gateOwnReason = (gate, args) => (GATE_REASONS[gate.name] ? GATE_REASONS[gate.name](args) : (CLASS_REASONS[gate.class] ?? null));
 
 // Why this gate must ask a human, or null when it passes under the recorded policy.
-export const askReason = (contract, ledger, gate, root, voided = null) =>
-  stopReason(contract, ledger, root) ?? gateOwnReason(gate, { root, ledger, voided, contract }) ?? policyReason(ledger);
+export const askReason = (contract, ledger, gate, root, voided = null, opts = {}) =>
+  stopReason(contract, ledger, root, opts) ?? gateOwnReason(gate, { root, ledger, voided, contract }) ?? policyReason(ledger);
+
+// Whether askReason gave a gate's open doubts as its reason.
+export const isDoubtReason = (reason) => typeof reason === "string" && AMBIGUITY_REASON.test(reason);
+
+// Under auto, a gate whose only reason to ask is open doubts passes, and its doubts wait on the unit's questions until
+// G:publish asks them (questions.mjs). Never G:publish itself, the gate that asks them.
+export const defersDoubts = (contract, ledger, gate, root, reason) =>
+  isDoubtReason(reason) && ledger.policy.mode === "auto" && gate.name !== PUBLISH_GATE && askReason(contract, ledger, gate, root, null, { skipDoubts: true }) === null;
 
 // ---------- G:publish ----------
 
@@ -647,12 +675,22 @@ function lintReason(root) {
 const everyTaskHasLensRecord = ({ tasks }) => tasks.length > 0 && tasks.every(taskHasLensRecord);
 
 // Whether the auto policy passes G:publish by itself: auto mode, an ok lint for the body on disk and the safety-net lens record of every task.
-export const autoPublishPasses = (ledger, root) => !isRefreshRun(ledger) && ledger.policy.mode === "auto" && publishLint(root).status === "ok" && everyTaskHasLensRecord(readUnit(root));
+export const autoPublishPasses = (ledger, root) => !isRefreshRun(ledger) && ledger.policy.mode === "auto" && publishLint(root).status === "ok" && everyTaskHasLensRecord(readUnit(root)) && openQuestions(readUnit(root)).count === 0;
+
+// The doubts auto passes deferred to the unit (questions.mjs): G:publish asks them all, under any policy, before anything goes out.
+function questionsReason(ledger, root) {
+  if (isRefreshRun(ledger)) return null;
+  const { count } = openQuestions(readUnit(root));
+  return count === 0 ? null : `questions for you are open: ${count}`;
+}
+
+// The unit's questions as the doubts G:publish shows and its record keeps, each with the task that raised it.
+export const unitQuestionDoubts = (root) => openQuestions(readUnit(root)).kept.map(({ step, ambiguity, task }) => ({ step, ambiguity, task }));
 
 // Why the publish gate asks whatever the policy says, or null. Under auto it passes once autoPublishPasses holds; any other policy is left to policyReason.
 function publishReason(ledger, root, voided) {
   if (voided === null && autoPublishPasses(ledger, root)) return null;
-  return voided ?? lintReason(root) ?? (isRefreshRun(ledger) ? "a pull request refresh is approved by a human" : null) ?? (ledger.policy.mode === "auto" ? "no lens record yet for the safety net" : null);
+  return voided ?? lintReason(root) ?? questionsReason(ledger, root) ?? (isRefreshRun(ledger) ? "a pull request refresh is approved by a human" : null) ?? (ledger.policy.mode === "auto" ? "no lens record yet for the safety net" : null);
 }
 
 const publishRecord = (ledger) => (Object.hasOwn(ledger.gates, PUBLISH_GATE) ? ledger.gates[PUBLISH_GATE] : undefined);

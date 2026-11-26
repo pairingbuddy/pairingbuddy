@@ -95,9 +95,9 @@ const isNullableString = (v) => v === null || typeof v === "string";
 const isNonEmptyString = (v) => typeof v === "string" && v !== "";
 const isTimestamp = (v) => typeof v === "string" && ISO_TIMESTAMP.test(v);
 const isNullableTimestamp = (v) => v === null || (typeof v === "string" && ISO_TIMESTAMP.test(v));
-// A reviewer's doubt also names the stage it reviewed.
-const DOUBT_KEYS = ["ambiguity,step", "ambiguity,stage,step"];
-const isDoubt = (v) => isObject(v) && DOUBT_KEYS.includes(Object.keys(v).sort().join()) && isNonEmptyString(v.step) && isNonEmptyString(v.ambiguity) && (!Object.hasOwn(v, "stage") || isNonEmptyString(v.stage));
+// A reviewer's doubt also names the stage it reviewed; a unit question G:publish asks names the task that raised it.
+const DOUBT_KEYS = ["ambiguity,step", "ambiguity,stage,step", "ambiguity,step,task"];
+const isDoubt = (v) => isObject(v) && DOUBT_KEYS.includes(Object.keys(v).sort().join()) && isNonEmptyString(v.step) && isNonEmptyString(v.ambiguity) && ["stage", "task"].every((key) => !Object.hasOwn(v, key) || isNonEmptyString(v[key]));
 const isDoubts = (v) => Array.isArray(v) && v.length > 0 && v.every(isDoubt);
 
 function checkObject(value, path, shape, errors, { closed = true, optional = [] } = {}) {

@@ -6,6 +6,7 @@ import { lensRound } from '../shared-node/lens-round.mjs'
 import type { LensRound } from '../shared-node/lens-round.mjs'
 import { unitStates } from '../shared-node/plan.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
+import { questionsLine } from '../shared-node/questions.mjs'
 import { cycleMarker, progressRow, shortName, stepAge, testCounts } from '../shared-node/now-building.mjs'
 import { doneStatus, endRows, goalOf, isUnitDone, nextUnitOf, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
 import type { Inputs, Ledger, OpenUnit } from './inputs'
@@ -313,6 +314,16 @@ function buildingTask(ledger: Ledger): Pick<View, 'planBuilding' | 'planPublishi
   return title ? { planBuilding: title } : {}
 }
 
+// The doubts set aside for the human, counted after what STATUS says and as the band's second segment, so a narrow band
+// drops the details after it first. Nothing when the unit holds none.
+function withQuestions(view: View, unit: Inputs['unit']): View {
+  const line = questionsLine(unit?.questions ?? 0)
+  if (!line) return view
+  const segment: Segment = { id: 'questions', text: line, tone: 'warning' }
+  const band = view.band.length === 0 ? view.band : [view.band[0], segment, ...view.band.slice(1)]
+  return { ...view, band, status: { ...view.status, what: [view.status.what, line].filter(Boolean).join(STATUS_PART) } }
+}
+
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
   const view = { ...toned(buildPlainView(inputs)), ...planFields(inputs), ...buildingTask(inputs.ledger) }
@@ -320,7 +331,7 @@ export function buildView(inputs: Inputs): View {
   if (!ledger) return view
   const { doneStatus: _done, ...end } = endState(inputs, view.running, true)
   const status = liveStatus(view, ledger, publishesAfter(inputs), inputs.unit)
-  return { ...view, goal: goalText(inputs), status, ...buildTestRows(inputs, false), steps: unitSteps(inputs, false), lensRound: lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns }), ...end }
+  return withQuestions({ ...view, goal: goalText(inputs), status, ...buildTestRows(inputs, false), steps: unitSteps(inputs, false), lensRound: lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns }), ...end }, inputs.unit)
 }
 
 // agents: the count the task's kept runs recorded, once it has ended; else the live ledger's, its running attempt's spawns and,

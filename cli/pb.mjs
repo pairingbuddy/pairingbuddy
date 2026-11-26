@@ -10,7 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, CommitHookRefused, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, untrackedFiles, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
-import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
+import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, seenRecently, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
@@ -21,7 +21,7 @@ import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, forei
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
-import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, closeUnit, endRun, keepRun, keptAcceptedConfigHash } from "../shared-node/unit-files.mjs";
+import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, removeCreated, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
@@ -433,6 +433,17 @@ const artifactsDirOf = (root) => join(taskDirOf(root), "artifacts");
 const notesDirOf = (root) => join(taskDirOf(root), "notes");
 const reportPathOf = (root) => join(taskDirOf(root), "report.json");
 
+// The unit's open questions, shown at G:publish as its doubts; none leaves the facts as they were.
+function publishQuestions(root) {
+  const doubts = unitQuestionDoubts(root);
+  return doubts.length === 0 ? {} : { doubts };
+}
+
+// An auto pass that deferred the gate's doubts keeps them on its record: passed by the policy, not approved by a human.
+function recordDeferred(ledger, gate, doubts) {
+  return { ...ledger, gates: { ...ledger.gates, [gate]: { source: "auto", deferred: doubts } } };
+}
+
 function recordAuto(ledger, gate, binding = {}) {
   return { ...ledger, gates: { ...ledger.gates, [gate]: gate === PUBLISH_GATE ? approvalRecord("auto", binding) : { source: "auto" } } };
 }
@@ -473,6 +484,7 @@ function gateEval(args) {
   let reason;
   let question;
   let full;
+  let deferred = null;
   const fullAt = join(ensureRunRoot(root), "question.md");
   // One transaction: the void of a stale approval, the due gate and the question, so no state sits between them.
   updateLedger(path, (ledger) => {
@@ -484,10 +496,16 @@ function gateEval(args) {
     reason = askReason(contract, open, due, root, voided);
     if (reason === null && gate === PUBLISH_GATE && autoBinding === undefined) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
     if (reason === null) return repeatedAfter(contract, recordAuto(open, gate, autoBinding), gate, root);
+    // Under auto with a unit open, doubts alone do not stop the run: they wait on the unit's questions for G:publish.
+    deferred = unitIsOpen(root) && defersDoubts(contract, open, due, root, reason) ? (gateFacts(gate, root, open, contract).doubts ?? null) : null;
+    if (deferred !== null) {
+      reason = null;
+      return repeatedAfter(contract, recordDeferred(open, gate, deferred), gate, root);
+    }
     const facts = gate === PUBLISH_GATE ? { shown: { headSha: shown.headSha, base: shown.base, target: shown.target } } : {};
     // The facts go into the stored text, so the session cannot change or misreport what the human judges by.
     // The body is named by its file, the exact bytes that go out, since a real body does not fit the question box.
-    const asked = gate === PUBLISH_GATE ? { title: shown.title, body: shown.body, bodyAt: resolve(prBodyPath(root)), ...gateFacts(gate, root, open, contract) } : gateFacts(gate, root, open, contract);
+    const asked = gate === PUBLISH_GATE ? { title: shown.title, body: shown.body, bodyAt: resolve(prBodyPath(root)), ...gateFacts(gate, root, open, contract), ...publishQuestions(root) } : gateFacts(gate, root, open, contract);
     const shape = { reason, taskType: open.taskType, refresh: isRefreshRun(open), facts: asked };
     question = gateQuestion(gate, { ...shape, fullAt });
     full = fullQuestion(gate, shape);
@@ -496,6 +514,10 @@ function gateEval(args) {
     // askedAt: the wait on the human starts here, and is no working time (the answer records when it ended).
     return { ...open, needsHuman: { gate, reason, seq: open.seq + 1, askedAt: new Date().toISOString(), question, ...facts, ...(doubts === null ? {} : { doubts }) } };
   });
+  if (deferred !== null) {
+    deferQuestionsInUnit(root, { gate, task: readLedger(path).task, doubts: deferred });
+    return { ok: true, result: "auto-pass", gate, source: "auto", deferred: deferred.length };
+  }
   if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto" };
   writeWhole(fullAt, full);
   const asked = { ok: true, result: "needs-human", gate, reason, question, humanCommand: approveCommand(root, gate) };
