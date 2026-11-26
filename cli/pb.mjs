@@ -1963,6 +1963,8 @@ function taskEnd(args) {
   assertConfigChangeInGlobs(root, path, ledger, opened);
   const plan = tickedPlan(root, ledger.plan);
   const branch = opened?.unit.branch ?? branchOf(root);
+  // Tests the human cut are left to a person: the end names them, with the human's reasons.
+  const cut = (Array.isArray(ledger.tests?.cut) ? ledger.tests.cut : []).map(({ id, reason }) => ({ id, reason }));
   appendTaskRecord(opened);
   const dir = taskDirOf(root);
   keepRun(join(root, ".pairingbuddy", "run"));
@@ -1972,7 +1974,7 @@ function taskEnd(args) {
     // In a plan the close is expected: the loop goes on, and the next unit opens from its own base, never from the spike's.
     return { ok: true, removed: dir, plan, closed: "kept-local", reason: `a spike publishes nothing: the unit is closed and its commits stay on ${branch}`, ...(plan ? { continue: true } : {}) };
   }
-  return { ok: true, removed: dir, plan };
+  return { ok: true, removed: dir, plan, ...(cut.length > 0 ? { cut } : {}) };
 }
 
 // The commits past the unit's base, oldest first. One rule for "nothing to publish", in gate eval and in pb publish.
