@@ -22,3 +22,11 @@ export function summarizeDraftPrs({ creates, units }) {
   const heads = units.map((u) => u.branch);
   return { count: heads.length, heads };
 }
+
+export function assertReportHasPrLinks({ report, urls }) {
+  for (const url of urls) {
+    if (!report.includes(url)) {
+      throw new Error(`report is missing PR link ${url}`);
+    }
+  }
+}
