@@ -157,6 +157,7 @@ SPINNER_INDEX=0
 FINAL_RENDERED=""
 STOP_REASON=""
 STOP_REASON_CLIP=200
+NEEDS_HUMAN_GATE=""
 
 # True when claude exited 0 yet the task ledger holds a stop: the run is unfinished
 session_stopped() {
@@ -398,6 +399,8 @@ print_exit_summary() {
     local output
     if session_stopped; then
         output="✗ Session stopped: ${STOP_REASON}"
+    elif [[ "$CLAUDE_EXIT" -eq 0 && -n "$NEEDS_HUMAN_GATE" ]]; then
+        output="✗ Session unfinished: waiting on a human at ${NEEDS_HUMAN_GATE}"
     elif [[ "$CLAUDE_EXIT" -eq 0 ]]; then
         output="✓ Session complete"
     else
@@ -536,6 +539,7 @@ CLAUDE_EXIT=$?
 
 # An exit 0 with a stop in the task ledger is an unfinished run
 STOP_REASON=$(read_state_line ".pairingbuddy/run/task/ledger.json" "if (state.stop && state.stop.reason) console.log(clip(state.stop.reason, ${STOP_REASON_CLIP}));")
+NEEDS_HUMAN_GATE=$(read_state_line ".pairingbuddy/run/task/ledger.json" "if (state.needsHuman && state.needsHuman.gate) console.log(clip(state.needsHuman.gate, ${STOP_REASON_CLIP}));")
 
 # Stop the renderer before writing final status
 kill "$RENDERER_PID" 2>/dev/null || true
