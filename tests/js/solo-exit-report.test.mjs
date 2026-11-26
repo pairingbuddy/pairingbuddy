@@ -37,8 +37,8 @@ test("exit-zero-with-needs-human-in-ledger-reports-failure", () => {
 
   assert.match(
     result.stdout,
-    /^✗ .*approve-scenarios/m,
-    "the summary must carry a failure line that names the gate waiting on a human",
+    /^✗ Session unfinished: waiting on a human at approve-scenarios$/m,
+    "the summary must carry the failure line that names the gate waiting on a human",
   );
   assert.doesNotMatch(result.stdout, /✓ Session complete/, "a run waiting on a human must not look complete");
 });
