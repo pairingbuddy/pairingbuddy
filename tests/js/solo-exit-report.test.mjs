@@ -121,7 +121,37 @@ test("attempt-cap-stop-shows-attempt-count", () => {
 });
 
 test("attempt-cap-stop-shows-each-lesson", () => {
-  assert.fail("not implemented: attempt-cap-stop-shows-each-lesson");
+  const ledger = {
+    stage: { name: "code-scenarios", status: "running", attempt: 1 },
+    stop: { reason: "attempt-cap: stage code-scenarios rolled back 2 fix attempts, its cap of 5", seq: 9, code: "attempt-cap" },
+    fixes: {
+      rollbacks: [{ key: "code-scenarios.fix.g1.r1.a1" }, { key: "code-scenarios.fix.g1.r1.a2" }],
+    },
+  };
+  const notes = [
+    "## Rollback 1: code-scenarios.fix.g1.r1.a1",
+    "",
+    "The fix merged two scenarios and lost a test case.",
+    "",
+    "## Rollback 2: code-scenarios.fix.g1.r1.a2",
+    "",
+    "The fix renamed an id that other files point to.",
+    "",
+  ].join("\n");
+
+  const { result } = runSolo({
+    stubs: () => ({ claude: "exit 0" }),
+    files: {
+      ".pairingbuddy/run/task/ledger.json": ledger,
+      ".pairingbuddy/run/task/notes/code-scenarios.md": notes,
+    },
+  });
+
+  assert.match(
+    result.stdout,
+    /^lessons:\n- The fix merged two scenarios and lost a test case\.\n- The fix renamed an id that other files point to\.$/m,
+    "the summary must list each lesson of the stage that hit the cap, one per line, in rollback order",
+  );
 });
 
 test("summary-lists-every-pr-link", () => {
