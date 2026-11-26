@@ -6,7 +6,7 @@ import { openQuestions, taskTitle } from "./questions.mjs";
 
 const HOW = 'To answer: type /pb-questions in the Claude Code session and choose "Answer them now". You can stop at any question.';
 
-const QUESTION_STYLE = `.question{margin:0 0 18px}`;
+const QUESTION_STYLE = `.question{margin:0 0 18px}.answered summary{opacity:.55;cursor:pointer}.answered details[open] summary{margin-bottom:6px}`;
 
 const isAnswered = (question) => typeof question.answer === "string";
 
@@ -24,37 +24,42 @@ function whenAnswered(at) {
   return match ? `answered ${match[1]} ${match[2]} UTC` : "";
 }
 
+// The rework task's name, without the question its title repeats after the unit's name ("Rework 1 in <unit>: <question>").
+function reworkName(title, unitName) {
+  const text = String(title ?? "");
+  const head = /^Rework \d+ in /.exec(text);
+  if (!head || !unitName || !text.startsWith(`${head[0]}${unitName}: `)) return text;
+  return `${head[0]}${unitName}`;
+}
+
 // What came of the answer: the rework task it led to, no rework, or not weighed yet (settled at the next task boundary).
-function outcome(question) {
-  if (question.settled === "rework") return `led to rework: ${question.rework ?? ""}`.trim();
+function outcome(question, unitName) {
+  if (question.settled === "rework") return `led to rework: ${reworkName(question.rework, unitName)}`.trim();
   if (question.settled === "keep") return "no rework needed";
   return "not yet weighed";
 }
 
-const answeredItem = (question, n) => {
-  const facts = [whenAnswered(question.answeredAt), outcome(question)].filter(Boolean).join(" · ");
-  return `<li><p>${n}. ${escape(question.ambiguity)}</p><p class="facts">${escape(taskTitle(question.task))}</p><p>Your answer: ${escape(question.answer)}</p><p class="facts">${escape(facts)}</p></li>`;
+// One line of a question, for the folded summary of an answered one.
+const oneLine = (text, width = 90) => {
+  const line = String(text ?? "").replace(/\s+/g, " ").trim();
+  return line.length > width ? `${line.slice(0, width - 1)}…` : line;
 };
 
-// The questions already answered: one folded group under the open ones, so they stay out of the way.
-function answeredFold(answered) {
-  if (answered.length === 0) return "";
-  return `<details class="answered">
-<summary>${answered.length} answered</summary>
-<ul>
-${answered.map(({ question, n }) => answeredItem(question, n)).join("\n")}
-</ul>
-</details>
-`;
-}
+// An answered question keeps its place in the list, folded and dimmed: opening it shows the question, the answer and what came of it.
+const answeredItem = (question, n, unitName) => {
+  const facts = [whenAnswered(question.answeredAt), outcome(question, unitName)].filter(Boolean).join(" · ");
+  return `<li class="question answered"><details>
+<summary>${n}. ✓ Answered · ${escape(oneLine(question.ambiguity))}</summary>
+<p>${escape(question.ambiguity)}</p><p class="facts">${escape(taskTitle(question.task))}</p><p>Your answer: ${escape(question.answer)}</p><p class="facts">${escape(facts)}</p>
+</details></li>`;
+};
 
 // unit: the open unit record (run/unit.json), or null when none is open.
 export function renderQuestionsPage({ unit } = {}) {
   const questions = Array.isArray(unit?.questions) ? unit.questions : [];
   const { more, count } = openQuestions(unit);
   const numbered = questions.map((question, i) => ({ question, n: i + 1 }));
-  const open = numbered.filter(({ question }) => !isAnswered(question));
-  const answered = numbered.filter(({ question }) => isAnswered(question));
+  const answeredCount = questions.filter(isAnswered).length;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Questions for you</title>
 <style>
@@ -64,12 +69,12 @@ ${QUESTION_STYLE}
 <body>
 <header>
 <h1>QUESTIONS FOR YOU</h1>
-<p>${count} ${count === 1 ? "question" : "questions"} for you${unit?.unit ? ` · ${escape(unit.unit)}` : ""}</p>
+<p>${count} open${answeredCount > 0 ? ` · ${answeredCount} answered` : ""}${unit?.unit ? ` · ${escape(unit.unit)}` : ""}</p>
 <p>${escape(HOW)}</p>
 </header>
 <ul>
-${open.map(({ question, n }) => openItem(question, n)).join("\n")}
+${numbered.map(({ question, n }) => (isAnswered(question) ? answeredItem(question, n, unit?.unit) : openItem(question, n))).join("\n")}
 </ul>
-${more > 0 ? `<p class="facts">+${more} more, only counted: the report has their text</p>\n` : ""}${answeredFold(answered)}
+${more > 0 ? `<p class="facts">+${more} more, only counted: the report has their text</p>\n` : ""}
 </body></html>`;
 }

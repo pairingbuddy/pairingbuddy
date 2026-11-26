@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The questions page keeps one list in number order: an answered question stays in its place, folded and dimmed as "N. ✓ Answered · <question>", and opens to the question, your answer, when, and the rework it led to (named by the rework task alone, not the question again). The header counts both, as "3 open · 2 answered".
+
 - Branches and commits follow the repo's own convention (a real project with `ABC-12-short-name` branches got `feat/short-name`, and one commit read `chore: ABC-12: chore: …`). `branch_template` takes a `{key}`: the plan's `**Key:** ABC-12` line above its tasks gives it, `pb unit open --key` overrides it, and a `{key}` template with no key refuses and says where a key comes from. The coding skill fits `git-config.json` to the repo's conventions (docs, its start-work skills, hooks, `git branch -r`) before the first unit, instead of pb writing the defaults; under auto it writes what it found and asks nothing. A commit keeps a key the model put at the front of its subject once, after the step's type, and the type no longer doubles.
 
 - A criterion only a live, paid or manual run can show (a smoke run, a cost cap, a deploy, a human verdict) is a final check, not a test: the scenarios step lists it apart, the scenarios question and the report show it with its command, and under auto mode it waits on the questions for you instead of stopping the build on a test no code can pass.

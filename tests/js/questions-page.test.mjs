@@ -20,7 +20,7 @@ test("the header counts the open questions, names the unit, and says how to answ
   const html = renderQuestionsPage({ unit: { unit: "T1a Solo", questions: [question(1), question(2)], questionsMore: 3 } });
 
   const text = textOf(html);
-  assert.ok(text.includes("5 questions for you · T1a Solo"), text);
+  assert.ok(text.includes("5 open · T1a Solo"), text);
   assert.ok(text.includes("+3 more, only counted: the report has their text"), "those past the bound are counted");
 });
 
@@ -34,13 +34,14 @@ test("the page sends the human to the walk: one plain line, no per-question comm
   assert.ok(text.includes("2. Doubt 2?"), "numbers still shown");
 });
 
-test("answered questions sit below in one folded group, each with its answer", () => {
+test("one list in number order: an answered question stays in its place, folded and dimmed, its answer inside", () => {
   const html = renderQuestionsPage({ unit: { unit: "T1a", questions: [question(1, { answer: "Yes, <always>.", answeredAt: "t" }), question(2)] } });
 
-  assert.match(html, /<details class="answered">\s*<summary>1 answered<\/summary>/, "folded, counted");
-  const fold = html.slice(html.indexOf('<details class="answered">'));
-  assert.ok(fold.includes("1. Doubt 1?") && fold.includes("Yes, &lt;always&gt;."), "the question with its answer, escaped");
-  assert.ok(html.indexOf("2. Doubt 2?") < html.indexOf('<details class="answered">'), "open questions come first");
+  assert.ok(!/<summary>\d+ answered<\/summary>/.test(html), "no separate answered group");
+  assert.ok(html.indexOf("Doubt 1?") < html.indexOf("Doubt 2?"), "number order kept");
+  assert.match(html, /<li class="question answered"><details>\s*<summary>1\. ✓ Answered · Doubt 1\?<\/summary>/, "folded, in place, marked");
+  const fold = html.slice(html.indexOf('<li class="question answered">'), html.indexOf("</details>"));
+  assert.ok(fold.includes("Yes, &lt;always&gt;."), "the answer inside, escaped");
 });
 
 test("plan text never reaches the page as markup, and an old record's whole task text shows as its title", () => {
@@ -51,8 +52,24 @@ test("plan text never reaches the page as markup, and an old record's whole task
   assert.ok(html.includes("Task 9: nine") && !html.includes("Goal:"), "the title only");
 });
 
+test("the header counts the answered questions beside the open ones", () => {
+  const html = renderQuestionsPage({ unit: { unit: "T1a", questions: [question(1, { answer: "Yes.", answeredAt: "t" }), question(2), question(3)] } });
+
+  assert.ok(textOf(html).includes("2 open · 1 answered · T1a"), textOf(html));
+});
+
+test("a rework of a unit whose name has a colon still shows the rework's name whole", () => {
+  const html = renderQuestionsPage({ unit: { unit: "TB1: Baseline", questions: [
+    question(1, { answer: "Yes.", answeredAt: "2026-11-26T14:05:09.000Z", settled: "rework", rework: "Rework 1 in TB1: Baseline: Doubt 1?" }),
+  ] } });
+
+  const text = textOf(html);
+  assert.ok(text.includes("led to rework: Rework 1 in TB1: Baseline "), text);
+  assert.ok(!text.includes("Baseline: Doubt 1?"), text);
+});
+
 test("with no open unit or no questions the page says so", () => {
-  assert.ok(textOf(renderQuestionsPage({ unit: null })).includes("0 questions for you"));
+  assert.ok(textOf(renderQuestionsPage({ unit: null })).includes("0 open"));
 });
 
 test("an answered question tells when it was answered and, once settled, whether it led to rework", () => {
@@ -63,7 +80,8 @@ test("an answered question tells when it was answered and, once settled, whether
   ] } });
 
   const text = textOf(html);
-  assert.ok(text.includes("answered 2026-11-26 14:05 UTC · led to rework: Rework 1 in T1a: Doubt 1?"), text);
+  assert.ok(text.includes("answered 2026-11-26 14:05 UTC · led to rework: Rework 1 in T1a ·") || text.includes("answered 2026-11-26 14:05 UTC · led to rework: Rework 1 in T1a "), text);
+  assert.ok(!text.includes("led to rework: Rework 1 in T1a: Doubt 1?"), "the rework's title only, not the question again");
   assert.ok(text.includes("answered 2026-11-26 14:06 UTC · no rework needed"), text);
   assert.ok(text.includes("answered 2026-11-26 14:07 UTC · not yet weighed"), text);
 });
