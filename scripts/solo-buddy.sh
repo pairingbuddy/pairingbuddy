@@ -157,11 +157,17 @@ SPINNER_INDEX=0
 FINAL_RENDERED=""
 STOP_REASON=""
 STOP_REASON_CLIP=200
+GATE_CLIP=200
 NEEDS_HUMAN_GATE=""
 
-# True when claude exited 0 yet the task ledger holds a stop: the run is unfinished
+# True when the session exited 0 yet the task ledger holds a stop: the run is unfinished
 session_stopped() {
     [[ "$CLAUDE_EXIT" -eq 0 && -n "$STOP_REASON" ]]
+}
+
+# True when the session exited 0 yet the task ledger waits on a human gate: the run is unfinished
+session_waiting_on_human() {
+    [[ "$CLAUDE_EXIT" -eq 0 && -n "$NEEDS_HUMAN_GATE" ]]
 }
 
 # Print what a JS snippet says about a state file: `text` is its contents, `state` its parsed JSON
@@ -173,6 +179,12 @@ read_state_line() {
     [[ -f "$file" ]] || return 0
     node -e "const text = require('fs').readFileSync(process.argv[1], 'utf8'); let state; try { state = JSON.parse(text); } catch (error) {} const clip = (value, max = 60) => { const plain = String(value).replace(/[\\u0000-\\u001f\\u007f-\\u009f]+/g, ' ').trim(); return plain.length > max ? plain.slice(0, max - 1) + '…' : plain; }; ${body}" "$file" 2>/dev/null || true
 }  # end read_state_line
+
+# Print one clipped text field of the task ledger: read_ledger_text <object> <field> <max>
+read_ledger_text() {
+    local object="$1" field="$2" max="$3"
+    read_state_line ".pairingbuddy/run/task/ledger.json" "if (state.${object} && state.${object}.${field}) console.log(clip(state.${object}.${field}, ${max}));"
+}  # end read_ledger_text
 
 render_status() {
     local spinner_chars=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
@@ -399,7 +411,7 @@ print_exit_summary() {
     local output
     if session_stopped; then
         output="✗ Session stopped: ${STOP_REASON}"
-    elif [[ "$CLAUDE_EXIT" -eq 0 && -n "$NEEDS_HUMAN_GATE" ]]; then
+    elif session_waiting_on_human; then
         output="✗ Session unfinished: waiting on a human at ${NEEDS_HUMAN_GATE}"
     elif [[ "$CLAUDE_EXIT" -eq 0 ]]; then
         output="✓ Session complete"
@@ -495,6 +507,8 @@ write_final_status() {
     local footer
     if session_stopped; then
         footer="Session stopped"
+    elif session_waiting_on_human; then
+        footer="Session unfinished"
     elif [[ "$CLAUDE_EXIT" -eq 0 ]]; then
         footer="Session complete"
     else
@@ -538,8 +552,8 @@ claude "${CLAUDE_ARGS[@]}" -- "$PROMPT" > "$STREAM_FILE"
 CLAUDE_EXIT=$?
 
 # An exit 0 with a stop in the task ledger is an unfinished run
-STOP_REASON=$(read_state_line ".pairingbuddy/run/task/ledger.json" "if (state.stop && state.stop.reason) console.log(clip(state.stop.reason, ${STOP_REASON_CLIP}));")
-NEEDS_HUMAN_GATE=$(read_state_line ".pairingbuddy/run/task/ledger.json" "if (state.needsHuman && state.needsHuman.gate) console.log(clip(state.needsHuman.gate, ${STOP_REASON_CLIP}));")
+STOP_REASON=$(read_ledger_text stop reason "$STOP_REASON_CLIP")
+NEEDS_HUMAN_GATE=$(read_ledger_text needsHuman gate "$GATE_CLIP")
 
 # Stop the renderer before writing final status
 kill "$RENDERER_PID" 2>/dev/null || true
