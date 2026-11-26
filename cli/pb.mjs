@@ -1725,7 +1725,8 @@ function taskEnd(args) {
   rmSync(dir, { recursive: true });
   if (ledger.taskType === "spike") {
     closeUnit(join(root, ".pairingbuddy", "run"));
-    return { ok: true, removed: dir, plan, closed: "kept-local", reason: `a spike publishes nothing: the unit is closed and its commits stay on ${branch}` };
+    // In a plan the close is expected: the loop goes on, and the next unit opens from its own base, never from the spike's.
+    return { ok: true, removed: dir, plan, closed: "kept-local", reason: `a spike publishes nothing: the unit is closed and its commits stay on ${branch}`, ...(plan ? { continue: true } : {}) };
   }
   return { ok: true, removed: dir, plan };
 }
