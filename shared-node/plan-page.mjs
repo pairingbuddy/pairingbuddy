@@ -57,9 +57,20 @@ function tracerGroups(units) {
 // A unit's PR link: an anchor for a url, the text as written otherwise.
 const prLink = (pr) => (/^https?:\/\//.test(pr) ? `<a href="${escape(pr)}">${escape(pr)}</a>` : escape(pr));
 
-// The open unit's facts: its branch, base and every commit, the page having room for them all.
+// The open unit's facts: its branch and base. Its commits have their own fold.
 function openFacts(open) {
-  return [...(open.branch ? [`branch ${open.branch}`] : []), ...(open.base ? [`base ${open.base}`] : []), ...(open.commits ?? []).map((sha) => `commit ${sha.slice(0, 7)}`)];
+  return [...(open.branch ? [`branch ${open.branch}`] : []), ...(open.base ? [`base ${open.base}`] : [])];
+}
+
+// One commit's row: its short hash, then its subject when one is known.
+const commitRow = (sha, subjects) => `<li>${escape(sha.slice(0, 7))}${subjects[sha] ? ` ${escape(subjects[sha])}` : ""}</li>`;
+
+// The open unit's commits in one fold, folded, that counts them; inside, newest first. subjects: each commit's first line, by
+// its full hash, where the caller could read it.
+function commitsFold(commits = [], subjects = {}) {
+  if (commits.length === 0) return "";
+  const rows = [...commits].reverse().map((sha) => commitRow(sha, subjects));
+  return `<li class="facts"><details class="commits">\n<summary>${commits.length} commit${commits.length === 1 ? "" : "s"}</summary>\n<ul>\n${rows.join("\n")}\n</ul>\n</details></li>`;
 }
 
 // A line of plan text as HTML: escaped first, then `code` and **bold** only, so no markup in the plan reaches the page.
@@ -106,7 +117,7 @@ function taskItem(task, { inProgress, reached, isFocus }) {
   return `<li ${attrs}><details${isFocus ? " open" : ""}>\n<summary>${row}</summary>\n<div class="body">\n${bodyHtml(task.body)}\n</div>\n</details></li>`;
 }
 
-function unitSection(unit, { state, open, building, publishing, focusTask, reached }) {
+function unitSection(unit, { state, open, building, publishing, focusTask, reached, subjects }) {
   const isOpen = Boolean(open && open.unit === unit.unit);
   const words = unitWords(state, isOpen || holdsBuilding(unit, building), publishing);
   const facts = [...(unit.dependsOn ? [escape(`based on ${unit.dependsOn}`)] : []), ...(isOpen ? openFacts(open).map(escape) : []), ...(unit.pr ? [`PR ${prLink(unit.pr)}`] : [])];
@@ -115,7 +126,7 @@ function unitSection(unit, { state, open, building, publishing, focusTask, reach
   return `<details${holdsFocus ? " open" : ""}>
 <summary><h3>${escape(unit.unit)}${words ? escape(`${STATE_SEPARATOR}${words}`) : ""}</h3></summary>
 <ul>
-${facts.map((fact) => `<li class="facts">${fact}</li>`).join("\n")}${facts.length ? "\n" : ""}${tasks.join("\n")}
+${[...facts.map((fact) => `<li class="facts">${fact}</li>`), ...(isOpen ? [commitsFold(open.commits, subjects)].filter(Boolean) : []), ...tasks].join("\n")}
 </ul>
 </details>`;
 }
@@ -134,8 +145,8 @@ function tracerSection(tracer, intro, body, { holdsFocus, done, total }) {
 
 // plan: parsePlan's result; states: each unit's state, by position (unitStates); open: the open unit's record, resolved to
 // its plan unit; building: the title of the task the live run builds; publishing: a live publish run writes the open unit's
-// pull request; path: where the plan is, named in the header.
-export function renderPlanPage({ plan, states = [], open, building, publishing = false, path } = {}) {
+// pull request; path: where the plan is, named in the header; subjects: each open-unit commit's first line, by full hash.
+export function renderPlanPage({ plan, states = [], open, building, publishing = false, path, subjects = {} } = {}) {
   const units = plan?.units ?? [];
   const at = planFocus(units, building);
   const focusTask = at ? units[at.unit].tasks[at.task] : undefined;
@@ -143,7 +154,7 @@ export function renderPlanPage({ plan, states = [], open, building, publishing =
   const all = units.flatMap(({ tasks }) => tasks);
   const done = all.filter(({ checked }) => checked).length;
   const groups = tracerGroups(units).map(({ tracer, units: grouped }) => {
-    const body = grouped.map(({ unit, index }) => unitSection(unit, { state: states[index], open, building, publishing, focusTask, reached })).join("\n");
+    const body = grouped.map(({ unit, index }) => unitSection(unit, { state: states[index], open, building, publishing, focusTask, reached, subjects })).join("\n");
     const holdsFocus = grouped.some(({ unit }) => unit.tasks.includes(focusTask));
     const tasks = grouped.flatMap(({ unit }) => unit.tasks);
     const progress = { holdsFocus, done: tasks.filter(({ checked }) => checked).length, total: tasks.length };

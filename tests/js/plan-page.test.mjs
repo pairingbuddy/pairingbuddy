@@ -45,7 +45,7 @@ const STATES_PLAN = [
 ].join("\n");
 const OPEN_PAY = { unit: "Pay", branch: "feat/pay", base: "feat/add", commits: ["1".repeat(40), "2".repeat(40), "3".repeat(40), "4".repeat(40), "5".repeat(40), "6".repeat(40)] };
 
-test("the page tells each unit and task as the pane does: states, PR links, the open unit's facts in full, ▸ and waiting", () => {
+test("the page tells each unit and task as the pane does: states, PR links, the open unit's facts, ▸ and waiting", () => {
   const plan = parsePlan(STATES_PLAN);
   const html = renderPlanPage({ plan, states: ["published", "open", "open"], open: OPEN_PAY, building: "Task 3: Refund" });
   const text = textOf(html);
@@ -53,7 +53,7 @@ test("the page tells each unit and task as the pane does: states, PR links, the 
   assert.ok(text.includes("Add · published") && html.includes('<a href="https://github.com/o/r/pull/7">'), "a published unit with its PR link");
   assert.ok(text.includes("Pay · open"), "the open unit");
   assert.ok(text.includes("Receipt · to do"), "a unit pb has not opened has its work to do");
-  for (const fact of ["based on Add", "branch feat/pay", "base feat/add", "commit 1111111", "commit 6666666"]) assert.ok(text.includes(fact), `the open unit's ${fact}`);
+  for (const fact of ["based on Add", "branch feat/pay", "base feat/add", "6 commits"]) assert.ok(text.includes(fact), `the open unit's ${fact}`);
   assert.match(html, /<li class="building" id="now">▸ Task 3: Refund<\/li>/, "the task being built, which the page opens at");
   assert.match(html, /<li class="waiting">○ Task 4: \[HUMAN\] Check it · needs a person<\/li>/, "a [HUMAN] task the plan has not reached is lit and needs a person");
   assert.match(html, /<li class="waiting">○ Task 5: \[HUMAN\] Approve the receipt · needs a person<\/li>/, "every unticked [HUMAN] task reads alike, not just its unit's next");
@@ -158,4 +158,17 @@ test("the unit holding the task being built reads open, as the pane's open unit 
 
   assert.match(html, /<summary><h3>Add · open<\/h3><\/summary>/, "the unit being built is never to do");
   assert.match(html, /<summary><h3>Charge · to do<\/h3><\/summary>/, "a unit with no task being built still has its work to do");
+});
+
+test("the open unit's commits sit in one folded row, newest first, each with its subject; a commit with no subject shows its hash", () => {
+  const plan = parsePlan(STATES_PLAN);
+  const subjects = { ["1".repeat(40)]: "feat: take <b>payment</b>", ["6".repeat(40)]: "fix: refund rounding" };
+
+  const html = renderPlanPage({ plan, states: ["published", "open", "open"], open: OPEN_PAY, subjects });
+
+  assert.ok(!/<li class="facts">commit /.test(html), "no bare commit row among the unit's facts");
+  assert.match(html, /<details class="commits">\s*<summary>6 commits<\/summary>/, "one fold, folded, that counts them");
+  const fold = html.slice(html.indexOf('<details class="commits">'), html.indexOf("</details>", html.indexOf('<details class="commits">')));
+  const rows = [...fold.matchAll(/<li>([^<]*(?:<[^/][^>]*>[^<]*<\/[^>]+>[^<]*)*)<\/li>/g)].map(([, row]) => row);
+  assert.deepEqual(rows, ["6666666 fix: refund rounding", "5555555", "4444444", "3333333", "2222222", "1111111 feat: take &lt;b&gt;payment&lt;/b&gt;"]);
 });
