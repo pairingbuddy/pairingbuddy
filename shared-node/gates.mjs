@@ -643,9 +643,11 @@ export const askReason = (contract, ledger, gate, root, voided = null, opts = {}
 export const isDoubtReason = (reason) => typeof reason === "string" && AMBIGUITY_REASON.test(reason);
 
 // Under auto, a gate whose only reason to ask is open doubts passes, and its doubts wait on the unit's questions until
-// G:publish asks them (questions.mjs). Never G:publish itself, the gate that asks them.
+// G:publish asks them (questions.mjs). Never G:publish itself, the gate that asks them, nor G:type: the type picks the whole
+// workflow, so a question on it is asked before any work is built on it.
+const NEVER_DEFERS = [PUBLISH_GATE, TYPE_GATE];
 export const defersDoubts = (contract, ledger, gate, root, reason) =>
-  isDoubtReason(reason) && ledger.policy.mode === "auto" && gate.name !== PUBLISH_GATE && askReason(contract, ledger, gate, root, null, { skipDoubts: true }) === null;
+  isDoubtReason(reason) && ledger.policy.mode === "auto" && !NEVER_DEFERS.includes(gate.name) && askReason(contract, ledger, gate, root, null, { skipDoubts: true }) === null;
 
 // ---------- G:publish ----------
 
