@@ -389,7 +389,9 @@ print_header() {
 
 print_exit_summary() {
     local output
-    if [[ "$CLAUDE_EXIT" -eq 0 ]]; then
+    if [[ "$CLAUDE_EXIT" -eq 0 && -n "$STOP_REASON" ]]; then
+        output="✗ Session stopped: ${STOP_REASON}"
+    elif [[ "$CLAUDE_EXIT" -eq 0 ]]; then
         output="✓ Session complete"
     else
         output="✗ Session interrupted (exit code $CLAUDE_EXIT)"
@@ -481,7 +483,9 @@ write_final_status() {
 
     # Footer message
     local footer
-    if [[ "$CLAUDE_EXIT" -eq 0 ]]; then
+    if [[ "$CLAUDE_EXIT" -eq 0 && -n "$STOP_REASON" ]]; then
+        footer="Session stopped"
+    elif [[ "$CLAUDE_EXIT" -eq 0 ]]; then
         footer="Session complete"
     else
         footer="Session interrupted"
@@ -522,6 +526,9 @@ trap cleanup EXIT SIGTERM SIGINT
 
 claude "${CLAUDE_ARGS[@]}" -- "$PROMPT" > "$STREAM_FILE"
 CLAUDE_EXIT=$?
+
+# An exit 0 with a stop in the task ledger is an unfinished run
+STOP_REASON=$(read_state_line ".pairingbuddy/run/task/ledger.json" 'if (state.stop && state.stop.reason) console.log(clip(state.stop.reason, 200));')
 
 # Stop the renderer before writing final status
 kill "$RENDERER_PID" 2>/dev/null || true
