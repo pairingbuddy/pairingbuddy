@@ -9,13 +9,14 @@ function headOf({ argv }) {
 }
 
 export function summarizeDraftPrs({ creates, units }) {
-  // Order matters: a unit with no matching create is skipped here, and the count check below catches it.
+  // A unit with no matching create is skipped in this draft loop; the count check after it catches that.
   for (const u of units) {
     const create = creates.find((c) => headOf(c) === u.branch);
     if (create && !create.argv.includes(DRAFT_FLAG)) {
       throw new Error(`${u.unit}: pr create for ${u.branch} is not a draft`);
     }
   }
+  // Runs after the draft loop, so it is the check that reports a unit the loop skipped.
   if (creates.length !== units.length) {
     throw new Error(`expected ${units.length} pr creates, saw ${creates.length}`);
   }
