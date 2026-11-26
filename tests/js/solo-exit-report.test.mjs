@@ -189,7 +189,18 @@ test("summary-lists-every-pr-link", () => {
 });
 
 test("summary-lists-pr-links-on-failure-too", () => {
-  assert.fail("not implemented: summary-lists-pr-links-on-failure-too");
+  const plan = publishedPlan(["https://github.com/o/r/pull/21", "https://github.com/o/r/pull/22"]);
+
+  const { result } = runSolo({
+    stubs: () => ({ claude: "exit 0" }),
+    files: { "plan.md": plan, ".pairingbuddy/run/task/ledger.json": stoppedLedger() },
+  });
+
+  assert.match(
+    result.stdout,
+    /^✗ Session stopped: implement-tests ran out of fix attempts\npull requests:\n- https:\/\/github\.com\/o\/r\/pull\/21\n- https:\/\/github\.com\/o\/r\/pull\/22$/m,
+    "a failed run must still list the PR urls the plan already holds, right under its failure line, in plan order",
+  );
 });
 
 test("summary-with-pr-links-makes-no-gh-or-push-call", () => {
