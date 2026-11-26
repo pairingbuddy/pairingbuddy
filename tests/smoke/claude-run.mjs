@@ -20,6 +20,14 @@ export class SpendCapError extends SmokeError {}
 // The harness killed the run on purpose, through its abort signal.
 export class KilledError extends SmokeError {}
 
+// The requested --budget-usd text held at the smoke's cap; the cap itself when nothing was requested.
+export function clampBudget(requested, capUsd) {
+  if (requested === undefined) return capUsd;
+  const usd = Number(requested);
+  if (!Number.isFinite(usd) || usd <= 0) throw new SmokeError(`--budget-usd takes a positive number, not ${requested}`);
+  return Math.min(usd, capUsd);
+}
+
 export class Budget {
   constructor(total = BUDGET_USD) {
     this.total = total;

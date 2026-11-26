@@ -1020,14 +1020,14 @@ Solo Buddy is an autonomous execution mode where Pairing Buddy executes a pre-es
 
 Four components are Solo-aware:
 
-1. **Shell script** (`scripts/solo-buddy.sh`) — Sets env var, invokes `claude -p --dangerously-skip-permissions --output-format stream-json --verbose`, with stdout captured to `.pairingbuddy/solo-stream.jsonl`. On success, creates a GitHub PR via `gh pr create` using the sanitized branch name as the title and `SOLO_BUDDY_REPORT.md` as the body when present
+1. **Shell script** (`scripts/solo-buddy.sh`) — Sets env var, invokes `claude -p --dangerously-skip-permissions --output-format stream-json --verbose`, with stdout captured to `.pairingbuddy/solo-stream.jsonl`. The script does not push or create pull requests: the publish stages own both, open every Solo PR as a draft, and retry a failed publish once before stopping. A stop pushes nothing, and units already published stand
 2. **Guardian hook** (`hooks/guardian.mjs`) — Detects `PAIRINGBUDDY_SOLO`, injects Solo constraint prompt on SessionStart, uses halved injection interval (2.5 min) and short Solo reminder for PostToolUse
 3. **15 agents** — Agents with AskUserQuestion (Step 3 Human Review) check `PAIRINGBUDDY_SOLO` and skip review, assuming approval
-4. **Coding orchestrator** (`skills/coding/SKILL.md`) — `_ask_human` auto-returns `true` in Solo mode. Solo Mode section defines strict scope, sequential execution, resource exhaustion before stopping, bug handling, quality compliance, report generation, and push-to-remote
+4. **Coding orchestrator** (`skills/coding/SKILL.md`) — `_ask_human` auto-returns `true` in Solo mode. Solo Mode section defines strict scope, sequential execution, resource exhaustion before stopping, bug handling, quality compliance and report generation
 
 ### Report
 
-Solo sessions produce `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally — header at session start, task entry after each completion, stopped entry when blocked. The `_update_solo_report` function in the workflow pseudocode ensures report generation is a first-class workflow step.
+Solo sessions produce `.pairingbuddy/SOLO_BUDDY_REPORT.md` incrementally — header at session start, task entry after each completion, stopped entry when blocked. It is a run report only: the script no longer reads it as a PR body. The exit summary is built from the run's state, not from an exit code alone: `claude -p` exit 0 with a stop in the ledger, a human gate waiting or a stage still active is reported as a failure and the script exits 1. A stop at the attempt cap shows its attempts and each rollback's first lesson line, and the summary lists every `PR: <url> branch: <name>` link from the plan MD. Smoke S9 (`tests/smoke/s9.mjs`, by hand, capped at $6) runs Solo on a two-unit plan against the recording `gh` shim and asserts draft PRs, the report, and that a forced stop leaves its commits local. The `_update_solo_report` function in the workflow pseudocode ensures report generation is a first-class workflow step.
 
 ### Observability
 

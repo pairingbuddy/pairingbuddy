@@ -1,0 +1,68 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import * as s9 from "../smoke/s9.mjs";
+
+// Tests for the pure helpers of the S9 smoke (tests/smoke/s9.mjs).
+
+const draftCreate = (head) => ({ argv: ["pr", "create", "--head", head, "--draft"] });
+const units = [{ unit: "Unit A", branch: "fix/a" }, { unit: "Unit B", branch: "feat/b" }];
+
+test("s9-two-unit-plan-opens-two-draft-prs", () => {
+  const creates = [draftCreate("feat/b"), draftCreate("fix/a")];
+
+  const result = s9.summarizeDraftPrs({ creates, units });
+
+  assert.deepEqual(result, { count: 2, heads: ["fix/a", "feat/b"] }, "two draft PRs, heads taken from the units in plan order, not from the order of the creates");
+});
+
+test("s9-rejects-a-non-draft-pr", () => {
+  const creates = [draftCreate("fix/a"), { argv: ["pr", "create", "--head", "feat/b"] }];
+
+  assert.throws(() => s9.summarizeDraftPrs({ creates, units }), /Unit B/, "a pr create without --draft is rejected and the error names the unit");
+});
+
+test("s9-rejects-wrong-pr-count", () => {
+  const creates = [draftCreate("fix/a")];
+
+  assert.throws(() => s9.summarizeDraftPrs({ creates, units }), /expected 2 pr creates, saw 1$/, "one pr create for a two-unit plan is rejected and the error shows the expected and seen counts");
+});
+
+test("s9-rejects-too-many-prs", () => {
+  const creates = [draftCreate("fix/a"), draftCreate("feat/b"), draftCreate("feat/c")];
+
+  assert.throws(() => s9.summarizeDraftPrs({ creates, units }), /expected 2 pr creates, saw 3$/, "three pr creates for a two-unit plan are rejected and the error shows the expected and seen counts");
+});
+
+test("s9-accepts-report-with-both-pr-links", () => {
+  const urls = ["https://github.com/acme/shim/pull/1", "https://github.com/acme/shim/pull/2"];
+  const report = `Session complete\nPR: ${urls[0]} branch: fix/a\nPR: ${urls[1]} branch: feat/b\n`;
+
+  assert.doesNotThrow(() => s9.assertReportHasPrLinks({ report, urls }), "a report holding both PR URLs is accepted");
+});
+
+test("s9-forced-stop-leaves-commits-local", () => {
+  const remote = { before: ["refs/heads/main"], after: ["refs/heads/main"] };
+  const local = { branch: "fix/a", aheadOfRemote: 2 };
+
+  assert.doesNotThrow(() => s9.assertForcedStopLocal({ remote, local, creates: [] }), "a remote with no new refs, a local branch ahead of it and no pr create is accepted as commits left local");
+});
+
+test("s9-forced-stop-summary-reports-failure", () => {
+  const stopped = "✗ Session stopped: stage tdd hit its cap of 3\nfixes undone: 3 of 3 allowed\nlessons:\n- the stub always returned red";
+
+  assert.doesNotThrow(() => s9.assertForcedStopSummary({ summary: stopped }), "a summary that says Session stopped and not Session complete is accepted");
+});
+
+test("s9-forced-stop-summary-rejects-session-complete", () => {
+  const complete = "✓ Session complete\n✗ Session stopped: stage tdd hit its cap of 3";
+
+  assert.throws(() => s9.assertForcedStopSummary({ summary: complete }), /forced stop summary says Session complete/, "a summary that says Session complete is rejected even when it also says Session stopped");
+});
+
+test("s9-passes-six-dollar-cap-to-shared-clamp", () => {
+  const above = s9.parseOptions(["--budget-usd", "9"]);
+  const below = s9.parseOptions(["--budget-usd", "2"]);
+
+  assert.equal(above.budgetUsd, 6, "a requested budget of 9 is held at the $6 cap of S9");
+  assert.equal(below.budgetUsd, 2, "a requested budget of 2 stays 2, so the cap is a clamp and not a constant");
+});

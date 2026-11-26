@@ -53,6 +53,8 @@ const SCOPE_ROLE = "scope-refactoring";
 const SCOPE_STAGE = "code-refactor-scope";
 const SPIKE_UNIT_STAGE = "code-spike-unit";
 const SPIKE_SETUP_PATH = `.pairingbuddy/run/task/${SPIKE_SETUP_FILE}`;
+// A publish may be attempted twice: the first try and one retry.
+const PUBLISH_ATTEMPTS = 2;
 
 class UsageError extends Error {}
 class Refusal extends Error {}
@@ -1724,7 +1726,21 @@ function publish(args) {
   if (plan.refusals.length > 0) throw new Refusal(`not published: ${plan.refusals.join("; ")}`);
   // publishSteps only emits a push in a plan that also has open-pr, so open-pr alone marks a publishing plan.
   if (plan.steps.some((step) => step.do === "open-pr")) assertBaseCurrent(root, unit, gitConfig);
-  return executePublish(plan.steps, { root, unit, gitConfig, ledger, bound });
+  try {
+    return executePublish(plan.steps, { root, unit, gitConfig, ledger, bound });
+  } catch (e) {
+    if (e instanceof Refusal) updateLedger(path, recordPublishFailure);
+    throw e;
+  }
+}
+
+// The ledger with one more failed publish counted against the attempts.
+function recordPublishFailure(ledger) {
+  const used = (ledger.retries?.publish?.used ?? 0) + 1;
+  const recorded = { ...ledger, retries: { ...ledger.retries, publish: { used, max: PUBLISH_ATTEMPTS } } };
+  if (used < PUBLISH_ATTEMPTS) return recorded;
+  const reason = `${ATTEMPT_CAP}: pb publish failed ${used} times, its cap of ${PUBLISH_ATTEMPTS} attempts`;
+  return { ...recorded, stop: { reason, seq: ledger.seq + 1, code: ATTEMPT_CAP } };
 }
 
 // The human answered keep local at G:publish: nothing is pushed or opened, no unit or git state is read, and whatever the

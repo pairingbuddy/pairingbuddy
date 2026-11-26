@@ -87,7 +87,12 @@ export function nextAction(contract, ledger, root, pluginRoot) {
   const step = nextStep(contract, ledger);
   if (ledger.taskType === "spike" && !existsSync(join(root, ".pairingbuddy", "run", "task", SPIKE_SETUP_FILE))) return `The task is a spike and its setup is not recorded yet. Run the setting-up-spike skill in this conversation, then run ${pbCommand("spike setup")}, then run ${pbCommand("status --action")} again.`;
   if (step !== null) return startAction(step, pluginRoot, ledger.task);
-  if (finishVerb !== null) return isPublishApproved(ledger) ? `Every stage and gate is done and ${PUBLISH_GATE} is approved. Run ${pbCommand(finishVerb)}.` : `Gate ${PUBLISH_GATE} is due. Run ${pbCommand("gate eval")}.`;
+  if (finishVerb !== null) {
+    if (!isPublishApproved(ledger)) return `Gate ${PUBLISH_GATE} is due. Run ${pbCommand("gate eval")}.`;
+    const publishFailures = ledger.retries?.publish?.used ?? 0;
+    if (finishVerb === "publish" && publishFailures > 0) return `The last ${pbCommand("publish")} failed. Run ${pbCommand("publish")} once more as the retry.`;
+    return `Every stage and gate is done and ${PUBLISH_GATE} is approved. Run ${pbCommand(finishVerb)}.`;
+  }
   return `Every stage and gate is done. Run ${pbCommand("task end")}.`;
 }
 

@@ -11,9 +11,7 @@
 #   --use-api-key         Use ANTHROPIC_API_KEY for billing (default: unset to use subscription)
 #   -h, --help            Show this help and exit
 #
-# On success, creates a GitHub PR via `gh pr create`. The PR title is derived
-# from the current branch name (e.g. feature/my-thing -> My thing). When
-# .pairingbuddy/SOLO_BUDDY_REPORT.md exists it is used as the PR body.
+# Pushing and opening PRs belong to the publish stages, not to this script.
 
 set -euo pipefail
 
@@ -53,31 +51,13 @@ require_positive_number() {
     fi
 }
 
-sanitize_branch_name() {
-    local branch="$1"
-    # Strip common prefixes (feature/, fix/, bugfix/, hotfix/, chore/, etc.)
-    local name="${branch#*/}"
-    if [[ "$name" == "$branch" ]]; then
-        # No prefix found, use as-is
-        name="$branch"
-    fi
-    # Replace hyphens and underscores with spaces
-    name="${name//-/ }"
-    name="${name//_/ }"
-    # Capitalize first letter (portable, works with bash 3)
-    name="$(printf '%s' "$name" | awk '{$1=toupper(substr($1,1,1)) substr($1,2); print}')"
-    echo "$name"
-}
-
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS] <plan_file>
 
 Run Solo Buddy: autonomous execution of a tracer bullets plan.
 
-On success, creates a GitHub PR via \`gh pr create\`. The PR title is derived
-from the current branch name (e.g. feature/my-thing -> My thing). When
-.pairingbuddy/SOLO_BUDDY_REPORT.md exists it is used as the PR body.
+Pushing and opening PRs belong to the publish stages, not to this script.
 
 Options:
   -n <retries>          Max retries (default: 5)
@@ -175,6 +155,23 @@ fi
 LAST_RENDER_LINES=0
 SPINNER_INDEX=0
 FINAL_RENDERED=""
+STOP_REASON=""
+LEDGER_FILE=".pairingbuddy/run/task/ledger.json"
+LEDGER_TEXT_CLIP=200
+NOTES_DIR=".pairingbuddy/run/task/notes"
+ROLLBACK_HEADING="## Rollback"
+ATTEMPT_CAP_CODE="attempt-cap"
+# Matches a plan line "PR: <url> branch: <name>" and captures the url
+PR_LINE_PATTERN='^PR: \([^ ]*\).*$'
+EXIT_UNFINISHED=1
+NEEDS_HUMAN_GATE=""
+UNFINISHED_STAGE=""
+
+# True when the session exited 0 yet the task ledger holds a stop, waits on a human gate
+# or has a stage still active: the run is unfinished
+session_unfinished() {
+    [[ "$CLAUDE_EXIT" -eq 0 && -n "${STOP_REASON}${NEEDS_HUMAN_GATE}${UNFINISHED_STAGE}" ]]
+}
 
 # Print what a JS snippet says about a state file: `text` is its contents, `state` its parsed JSON
 # (undefined when the file is not one JSON document, as a JSONL stream is not).
@@ -185,6 +182,12 @@ read_state_line() {
     [[ -f "$file" ]] || return 0
     node -e "const text = require('fs').readFileSync(process.argv[1], 'utf8'); let state; try { state = JSON.parse(text); } catch (error) {} const clip = (value, max = 60) => { const plain = String(value).replace(/[\\u0000-\\u001f\\u007f-\\u009f]+/g, ' ').trim(); return plain.length > max ? plain.slice(0, max - 1) + '…' : plain; }; ${body}" "$file" 2>/dev/null || true
 }  # end read_state_line
+
+# Print one clipped text field of the task ledger: read_ledger_text <object> <field> <max>
+read_ledger_text() {
+    local object="$1" field="$2" max="$3"
+    read_state_line "$LEDGER_FILE" "if (state.${object} && state.${object}.${field}) console.log(clip(state.${object}.${field}, ${max}));"
+}  # end read_ledger_text
 
 render_status() {
     local spinner_chars=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
@@ -283,7 +286,7 @@ render_status() {
 
     # Read the stop reason or the current stage, and the human gate it waits on, from the task ledger
     local ledger_line
-    ledger_line=$(read_state_line ".pairingbuddy/run/task/ledger.json" '
+    ledger_line=$(read_state_line "$LEDGER_FILE" '
         const s = state.stage;
         const attempt = s && s.attempt !== undefined ? `(attempt ${s.attempt})` : "";
         if (state.stop && state.stop.reason) console.log(`Stopped: ${clip(state.stop.reason)}`);
@@ -407,20 +410,72 @@ print_header() {
     printf '%s\n\n' "$header"
 }
 
+# Print the lessons block: the first text line under each rollback heading in the active stage's notes file.
+# Prints nothing when the ledger names no stage or the stage has no notes file yet.
+read_rollback_lessons() {
+    read_state_line "$LEDGER_FILE" "
+        const stageName = state.stage && state.stage.name;
+        const notesFile = '${NOTES_DIR}/' + stageName + '.md';
+        const fs = require('fs');
+        const lessons = [];
+        if (stageName && fs.existsSync(notesFile)) {
+            let afterHeading = false;
+            for (const line of fs.readFileSync(notesFile, 'utf8').split('\\n')) {
+                if (line.startsWith('${ROLLBACK_HEADING}')) { afterHeading = true; continue; }
+                if (afterHeading && line.trim()) { lessons.push('- ' + clip(line, ${LEDGER_TEXT_CLIP})); afterHeading = false; }
+            }
+        }
+        if (lessons.length) console.log('lessons:\\n' + lessons.join('\\n'));
+    "
+}  # end read_rollback_lessons
+
+# Print the pull requests block: one "- <url>" line per "PR: <url> branch: <name>" line of the plan.
+# Prints nothing when the plan holds no such line.
+read_pr_links() {
+    local links
+    links=$(sed -n "s/${PR_LINE_PATTERN}/- \\1/p" "$PLAN_FILE")
+    if [[ -n "$links" ]]; then
+        printf 'pull requests:\n%s' "$links"
+    fi
+}  # end read_pr_links
+
 print_exit_summary() {
     local output
-    if [[ "$CLAUDE_EXIT" -eq 0 ]]; then
+    if session_unfinished; then
+        if [[ -n "$STOP_REASON" ]]; then
+            output="✗ Session stopped: ${STOP_REASON}"
+        elif [[ -n "$NEEDS_HUMAN_GATE" ]]; then
+            output="✗ Session unfinished: waiting on a human at ${NEEDS_HUMAN_GATE}"
+        else
+            output="✗ Session unfinished: stage ${UNFINISHED_STAGE} is active"
+        fi
+    elif [[ "$CLAUDE_EXIT" -eq 0 ]]; then
         output="✓ Session complete"
     else
         output="✗ Session interrupted (exit code $CLAUDE_EXIT)"
     fi
-    if [[ -n "${PR_URL:-}" ]]; then
+    local attempts_line
+    # The cap exists only in the stop reason's text ("... its cap of N"), so the line is skipped when that wording changes
+    attempts_line=$(read_state_line "$LEDGER_FILE" "
+        const cap = state.stop && state.stop.code === '${ATTEMPT_CAP_CODE}' && /its cap of (\\d+)/.exec(String(state.stop.reason));
+        const rollbacks = state.fixes && state.fixes.rollbacks;
+        if (cap && Array.isArray(rollbacks)) console.log(\`fixes undone: \${rollbacks.length} of \${cap[1]} allowed\`);
+    ")
+    if [[ -n "$attempts_line" ]]; then
         output="${output}
-  PR: ${PR_URL}"
+${attempts_line}"
+        local lessons
+        lessons=$(read_rollback_lessons)
+        if [[ -n "$lessons" ]]; then
+            output="${output}
+${lessons}"
+        fi
     fi
-    if [[ -n "${PR_ERROR:-}" ]]; then
+    local pr_links
+    pr_links=$(read_pr_links)
+    if [[ -n "$pr_links" ]]; then
         output="${output}
-  ⚠ PR: ${PR_ERROR}"
+${pr_links}"
     fi
     if [[ -n "${REPORT_FILE:-}" ]] && [[ -f "${REPORT_FILE}" ]]; then
         output="${output}
@@ -509,7 +564,13 @@ write_final_status() {
 
     # Footer message
     local footer
-    if [[ "$CLAUDE_EXIT" -eq 0 ]]; then
+    if session_unfinished; then
+        if [[ -n "$STOP_REASON" ]]; then
+            footer="Session stopped"
+        else
+            footer="Session unfinished"
+        fi
+    elif [[ "$CLAUDE_EXIT" -eq 0 ]]; then
         footer="Session complete"
     else
         footer="Session interrupted"
@@ -551,6 +612,11 @@ trap cleanup EXIT SIGTERM SIGINT
 claude "${CLAUDE_ARGS[@]}" -- "$PROMPT" > "$STREAM_FILE"
 CLAUDE_EXIT=$?
 
+# An exit 0 with a stop in the task ledger is an unfinished run
+STOP_REASON=$(read_ledger_text stop reason "$LEDGER_TEXT_CLIP")
+NEEDS_HUMAN_GATE=$(read_ledger_text needsHuman gate "$LEDGER_TEXT_CLIP")
+UNFINISHED_STAGE=$(read_state_line "$LEDGER_FILE" "if (state.stage && state.stage.status === 'active' && state.stage.name) console.log(clip(state.stage.name, ${LEDGER_TEXT_CLIP}));")
+
 # Stop the renderer before writing final status
 kill "$RENDERER_PID" 2>/dev/null || true
 while kill -0 "$RENDERER_PID" 2>/dev/null; do sleep 0.1; done
@@ -559,37 +625,12 @@ write_final_status
 render_status
 FINAL_RENDERED=true
 
-PR_URL=""
-PR_ERROR=""
 REPORT_FILE=".pairingbuddy/SOLO_BUDDY_REPORT.md"
 
-if [[ $CLAUDE_EXIT -eq 0 ]]; then
-    BRANCH=$(git branch --show-current)
-
-    # Never push to main/master
-    if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
-        PR_ERROR="refusing to push/create PR on $BRANCH"
-    else
-        # Push branch to remote first (gh pr create needs it)
-        git push -u origin "$BRANCH" 2>/dev/null || true
-
-        PR_TITLE=$(sanitize_branch_name "$BRANCH")
-        if [[ -f "$REPORT_FILE" ]]; then
-            if ! PR_URL=$(gh pr create --title "$PR_TITLE" --body-file "$REPORT_FILE" 2>&1); then
-                PR_ERROR="$PR_URL"
-                PR_URL=""
-                echo "Warning: gh pr create failed" >&2
-            fi
-        else
-            if ! PR_URL=$(gh pr create --title "$PR_TITLE" 2>&1); then
-                PR_ERROR="$PR_URL"
-                PR_URL=""
-                echo "Warning: gh pr create failed" >&2
-            fi
-        fi
-    fi
-fi
-
 print_exit_summary
+
+if session_unfinished; then
+    exit "$EXIT_UNFINISHED"
+fi
 
 exit $CLAUDE_EXIT

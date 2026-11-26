@@ -134,41 +134,6 @@ class TestFunctionDefinitionAndPlacement:
             "write_final_status must be called after CLAUDE_EXIT=$? is set"
         )
 
-    def test_called_before_if_block(self, script_content):
-        """write_final_status is called before `if [[ $CLAUDE_EXIT` exit-handling block."""
-        lines = script_content.splitlines()
-
-        in_function = False
-        write_final_status_call_line = None
-        if_claude_exit_line = None
-
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if re.match(r"^\w+\(\)\s*\{", stripped):
-                in_function = True
-                continue
-            if in_function and stripped == "}":
-                in_function = False
-                continue
-            if not in_function:
-                if (
-                    re.search(r"\bwrite_final_status\b", line)
-                    and "write_final_status()" not in line
-                ):
-                    write_final_status_call_line = i
-                if re.search(r"if\s+\[\[.*\$CLAUDE_EXIT", line):
-                    if_claude_exit_line = i
-
-        assert write_final_status_call_line is not None, (
-            "write_final_status must be called in the main body of solo-buddy.sh"
-        )
-        assert if_claude_exit_line is not None, (
-            "if [[ $CLAUDE_EXIT ... ]] block must exist in the main body of solo-buddy.sh"
-        )
-        assert write_final_status_call_line < if_claude_exit_line, (
-            "write_final_status must be called before the if [[ $CLAUDE_EXIT ]] block"
-        )
-
 
 class TestCheckboxCounting:
     """Tests for checkbox counting in plan file (scenario 2)."""

@@ -3,8 +3,8 @@
 Scenarios covered:
 - print-exit-summary-definition: print_exit_summary() exists and has required content
 - exit-summary-call-ordering: function is called at correct point in exit sequence
-- exit-summary-success-output: output shows success indicators with PR URL and report path
-- exit-summary-pr-failure-output: PR failure warning shown but success message still present
+- exit-summary-success-output: output shows success indicators and report path, with no PR URL
+- exit-summary-pr-failure-output: no PR failure warning shown, success message still present
 - exit-summary-interrupted-output: output shows failure indicators with exit code and report path
 """
 
@@ -210,8 +210,8 @@ class TestExitSummarySuccessOutput:
             assert "✓" in output, "Output must contain '✓' success indicator when CLAUDE_EXIT=0"
             assert "complete" in output.lower(), "Output must contain 'complete' when CLAUDE_EXIT=0"
 
-    def test_shows_pr_url(self, script_path):
-        """Output contains PR URL when PR_URL variable is set (behavioral)."""
+    def test_omits_pr_url(self, script_path):
+        """Output omits the PR URL even when PR_URL is set, since publish stages own PRs."""
         with tempfile.TemporaryDirectory() as tmpdir:
             pr_url = "https://github.com/test/test/pull/42"
             bash_code = build_print_exit_summary_script(
@@ -225,7 +225,8 @@ class TestExitSummarySuccessOutput:
             )
 
             output = result.stdout + result.stderr
-            assert pr_url in output, f"Output must contain PR URL '{pr_url}' when PR_URL is set"
+            assert "Session complete" in output, "the summary must print for the check to count"
+            assert pr_url not in output, f"Output must not contain PR URL '{pr_url}'"
 
     def test_shows_report_path(self, script_path):
         """Output contains report file path when report exists (behavioral)."""
@@ -254,8 +255,8 @@ class TestExitSummarySuccessOutput:
 class TestExitSummaryPRFailureOutput:
     """Tests for PR failure output (scenario 4: exit-summary-pr-failure-output)."""
 
-    def test_pr_failure_warning(self, script_path):
-        """Output contains '⚠' or 'warning' and 'PR' when PR_ERROR is set (behavioral)."""
+    def test_no_pr_failure_warning(self, script_path):
+        """Output carries no PR warning even when PR_ERROR is set (behavioral)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             bash_code = build_print_exit_summary_script(
                 script_path, tmpdir, claude_exit=0, pr_error="gh pr create failed"
@@ -268,10 +269,9 @@ class TestExitSummaryPRFailureOutput:
             )
 
             output = result.stdout + result.stderr
-            has_warning_indicator = "⚠" in output or "warning" in output.lower()
-            has_pr_mention = "pr" in output.lower()
-            assert has_warning_indicator and has_pr_mention, (
-                "Output must contain warning indicator and 'PR' when PR_ERROR is set"
+            assert "Session complete" in output, "the summary must print for the check to count"
+            assert "⚠" not in output and "gh pr create failed" not in output, (
+                "Output must not contain a PR warning when PR_ERROR is set"
             )
 
     def test_still_shows_success(self, script_path):
