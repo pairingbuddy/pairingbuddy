@@ -140,7 +140,7 @@ const writeJson = (path, value) => {
   renameSync(temp, path);
 };
 
-// The human answered question n of the open unit (pb human answer, /pb-answer): the answer lands on the question, and as
+// The human answered question n of the open unit (pb human answer, from /pb-questions): the answer lands on the question, and as
 // guidance every step that starts from now reads, so it takes effect between steps and never mid-step. Returns the
 // question and how many stay open. Throws a QuestionRefused with no unit open, no such question or no answer.
 export function answerQuestionInUnit(root, n, text, at = new Date().toISOString()) {

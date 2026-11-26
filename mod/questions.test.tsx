@@ -33,7 +33,7 @@ test('questions-the-unit-holds-are-counted-in-status-and-the-band', async ($, on
 
   const status = lines.find(line => line.startsWith('STATUS'))
   expect(status, `STATUS adds the count after what the run is doing: ${JSON.stringify(lines)}`).toMatch(/· 3 questions for you$/)
-  expect(band, 'the band counts them too, and says how to answer').toContain('3 questions for you · answer with /pb-answer')
+  expect(band, 'the band counts them too, and says how to answer').toContain('3 questions for you · /pb-questions')
 })
 
 test('a question the human answered is no longer counted', async ($, on) => {
@@ -41,7 +41,7 @@ test('a question the human answered is no longer counted', async ($, on) => {
 
   const status = lines.find(line => line.startsWith('STATUS'))
   expect(status, `only the open one counts: ${JSON.stringify(lines)}`).toMatch(/· 1 question for you$/)
-  expect(band).toContain('1 question for you · answer with /pb-answer')
+  expect(band).toContain('1 question for you · /pb-questions')
 })
 
 test('a new question sends one quiet notice, never repeated, with no sound and no status line', async ($, on) => {
@@ -60,12 +60,12 @@ test('a new question sends one quiet notice, never repeated, with no sound and n
   await start($)
   await rig.clock.advance(POLL_MS * 3)
 
-  expect(notified.map(({ text }) => text), 'one notice for the question').toEqual(['Question for you: Doubt 1? · answer with /pb-answer'])
+  expect(notified.map(({ text }) => text), 'one notice for the question').toEqual(['Question for you: Doubt 1? · /pb-questions'])
 
   serve(rig, { [LEDGER]: running, [UNIT]: unitWith([{ ...question(1), answer: 'Yes.', answeredAt: 't' }, question(2)]) })
   await rig.clock.advance(POLL_MS * 3)
 
-  expect(notified.map(({ text }) => text), 'the next question gets its own, the first is not repeated').toEqual(['Question for you: Doubt 1? · answer with /pb-answer', 'Question for you: Doubt 2? · answer with /pb-answer'])
+  expect(notified.map(({ text }) => text), 'the next question gets its own, the first is not repeated').toEqual(['Question for you: Doubt 1? · /pb-questions', 'Question for you: Doubt 2? · /pb-questions'])
   expect(played, 'no sound: the run is not stopped').toEqual([])
   expect(statuses.filter(Boolean), 'no warning status line either').toEqual([])
 })

@@ -264,7 +264,7 @@ const unsureClassifier = (gate, reason, { ambiguity }) =>
 const despite = (asked, doubts) => `${asked.replace(/\?$/, "")} despite ${doubts.length === 1 ? "this" : "these"}?`;
 
 // The question's lines, then its ask. fullAt null gives the full question file's lines: no list folds.
-// The unit's questions the human already answered (pb human answer, /pb-answer): G:publish lists them as handled, each
+// The unit's questions the human already answered (pb human answer, from /pb-questions): G:publish lists them as handled, each
 // with its answer, and asks only the open ones.
 const handledLine = ({ task, ambiguity, answer }) => `Answered by you${task ? ` (${task})` : ""}: ${doubtText(ambiguity)} → ${doubtText(answer)}`;
 const handledLines = ({ handled } = {}, fullAt) => (Array.isArray(handled) && handled.length > 0 ? folded(handled.map(handledLine), MAX_DOUBTS, fullAt) : []);

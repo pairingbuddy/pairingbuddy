@@ -169,7 +169,7 @@ export function questionsSeenKey(root: string) {
 // How many quiet notices one poll sends at most; the rest are counted in the last one.
 const NOTICES_PER_POLL = 3
 
-const noticeText = (text: string) => `Question for you: ${text.replace(/\s+/g, ' ').trim()} · answer with /pb-answer`
+const noticeText = (text: string) => `Question for you: ${text.replace(/\s+/g, ' ').trim()} · /pb-questions`
 
 // The third alert level: the run goes on, and has questions for you when you have time. Each question the unit gains gets
 // one quiet notice, never repeated: no sound, no status line, no pane opened, which stay for real stops. The count noticed
@@ -188,7 +188,7 @@ export async function noticeNewQuestions($: EngineInterface, unit: Unit | null) 
     const rest = fresh.length - shown.length
     shown.forEach((text, i) => {
       const more = i === shown.length - 1 && rest > 0 ? ` (+${rest} more)` : ''
-      quietly(() => $.ui.notify(text === null ? `${count - from} new questions for you · answer with /pb-answer` : `${noticeText(text)}${more}`, { title: NOTICE_TITLE }))
+      quietly(() => $.ui.notify(text === null ? `${count - from} new questions for you · /pb-questions` : `${noticeText(text)}${more}`, { title: NOTICE_TITLE }))
     })
   } catch {
     // A failed notice is dropped; the band still counts the questions.

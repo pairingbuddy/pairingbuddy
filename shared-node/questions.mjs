@@ -45,7 +45,7 @@ export function openQuestions(unit) {
   return { kept, more, count: kept.length + more };
 }
 
-// The unit with the human's answer on its question number n (1-based, as /pb-answer lists them). The question stays on the
+// The unit with the human's answer on its question number n (1-based, as /pb-questions shows them). The question stays on the
 // list, so G:publish can show it as handled. Throws a QuestionRefused when there is no such question or no answer.
 export function answerQuestion(unit, n, text, at) {
   const questions = listed(unit);
