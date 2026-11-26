@@ -1109,11 +1109,17 @@ const selectorOf = (row) => Object.fromEntries(SELECTOR_FIELDS.map((field) => [f
 
 // A row a step finished on is how a re-run knows what is done, so it cannot move, or a finished test would start again.
 // A row with only failed runs may: a wrong name is the likeliest reason it failed.
-function assertRowsKept(rows, { tests: { perTest = {} } }) {
-  for (const [id, { selector, red, green }] of Object.entries(perTest)) {
-    if (!red?.done && !green?.done) continue;
+// Only the human may take a test with evidence off the list: the refusal names their pb human cut-test line, with every
+// dropped id, so the session can show it.
+function assertRowsKept(rows, { tests: { perTest = {} } }, root) {
+  const finished = Object.entries(perTest).filter(([, { red, green }]) => red?.done || green?.done);
+  const dropped = finished.map(([id]) => id).filter((id) => !rows.some(({ test_id: rowId }) => rowId === id));
+  if (dropped.length > 0) {
+    const line = humanCommand(root, `cut-test ${dropped.join(" ")} --reason '<why>'`);
+    throw new Refusal(`${dropped.length === 1 ? `test ${dropped[0]} has` : `tests ${dropped.join(", ")} have`} evidence, and the tests artifact dropped ${dropped.length === 1 ? "it" : "them"}. Only the human can cut a test with evidence: they type ${line}`);
+  }
+  for (const [id, { selector }] of finished) {
     const row = rows.find(({ test_id: rowId }) => rowId === id);
-    if (row === undefined) throw new Refusal(`test ${id} has evidence, and the tests artifact dropped it`);
     if (!isDeepStrictEqual(selectorOf(row), selector)) throw new Refusal(`test ${id} has evidence for ${JSON.stringify(selector)}, and the tests artifact changed it`);
   }
 }
@@ -1128,7 +1134,7 @@ function assertSelectable(config, rows) {
 function checkedRows({ step, key, root, path, ledger }) {
   const config = readTestConfig(root, ledger.configHash);
   const rows = testRows(config, artifactsDirOf(root), ledger.stage, ledger.tests?.renamed);
-  assertRowsKept(rows, ledger);
+  assertRowsKept(rows, ledger, root);
   orStop(path, { step, key }, NO_SELECTOR_TEMPLATE, () => assertSelectable(config, rows));
   return { rows, testDirectories: [...new Set(rows.map((row) => testDirectoryOf(config, row)))] };
 }

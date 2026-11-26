@@ -588,6 +588,16 @@ describe("the placeholders step", IN_PARALLEL, () => {
     }
   });
 
+  test("a dropped row with evidence names the human's cut-test line, with the dropped ids", () => {
+    const evidence = { selector: { runner_id: "fake", test_file: "tests/a.mjs", test_function: "t1" }, red: { done: true } };
+    const repo = makeRepo({ ledger: { tests: { perTest: { t1: evidence } } } });
+    placeholders(repo, { tests: [row("t2")] });
+
+    const result = step(repo, "placeholders", TESTS_KEY);
+
+    assertRefused(repo, repo.head(), result, /pb(\.mjs)? human cut-test t1 --reason '/);
+  });
+
   test("a row whose only run failed can still be corrected on a re-run", () => {
     const repo = makeRepo({ ledger: { tests: { perTest: { t1: { selector: { runner_id: "fake", test_file: "tests/a.mjs", test_function: "typo" }, red: { done: false } } } } } });
     placeholders(repo);
