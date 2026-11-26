@@ -15,6 +15,9 @@ export function summarizeDraftPrs({ creates, units }) {
       throw new Error(`${u.unit}: pr create for ${u.branch} is not a draft`);
     }
   }
+  if (creates.length !== units.length) {
+    throw new Error(`expected ${units.length} pr creates, saw ${creates.length}`);
+  }
   const heads = units.map((u) => u.branch);
   return { count: creates.length, heads };
 }
