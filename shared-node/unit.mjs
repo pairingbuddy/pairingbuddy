@@ -2,9 +2,10 @@
 
 export class UnitRefused extends Error {}
 
-// Fills {type} and {slug}; an unknown placeholder is refused by name.
+// Fills {type}, {slug} and {key} when the unit has one; an unknown placeholder is refused by name.
 export function renderBranch(template, values) {
   return template.replace(/\{(\w+)\}/g, (_, name) => {
+    if (name === "key" && !Object.hasOwn(values, name)) throw new UnitRefused("branch_template needs a key ({key}), and none was given. Pass --key <key> to pb unit open, or give the plan a **Key:** line under its title");
     if (!Object.hasOwn(values, name)) throw new UnitRefused(`branch_template has unknown placeholder {${name}}`);
     return values[name];
   });

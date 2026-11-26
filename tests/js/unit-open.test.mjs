@@ -143,6 +143,21 @@ test("key-flag-fills-the-key-placeholder", () => {
   assert.equal(JSON.parse(readFileSync(unitPath(repo), "utf8")).key, "ABC-12", "the unit records its key");
 });
 
+test("a-key-template-with-no-key-refuses-naming-where-a-key-comes-from", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  writeBranchTemplate(repo, "{key}-{slug}");
+  const before = snapshotRepo(repo);
+
+  const refused = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
+
+  assert.equal(refused.code, 1, `a deliberate refusal: ${refused.stderr}`);
+  const said = refused.stderr + refused.stdout;
+  assert.match(said, /branch_template needs a key/, "says the template needs a key");
+  assert.match(said, /--key/, "names the flag");
+  assert.match(said, /\*\*Key:\*\*/, "names the plan's Key line");
+  assertUntouched(repo, before, "no key");
+});
+
 // Scenario: unit-open-without-flag
 
 test("policy-env-var-still-ignored", () => {
@@ -164,7 +179,7 @@ test("yes-flag-is-refused-as-unknown-and-touches-nothing", () => {
 
   const output = result.stderr + result.stdout;
   assert.equal(result.code, 2, "--yes is a usage error with exit code 2");
-  assert.match(output, /--yes is no longer accepted: pb unit open has no confirm step\. usage: pb unit open --type <type> --slug <slug> \[--branch <name>\]/, "the message names --yes and shows the usage");
+  assert.match(output, /--yes is no longer accepted: pb unit open has no confirm step\. usage: pb unit open --type <type> --slug <slug> \[--key <key>\] \[--branch <name>\]/, "the message names --yes and shows the usage");
   assertUntouched(repo, before, "--yes");
 });
 
