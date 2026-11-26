@@ -57,6 +57,8 @@ export type Rig = {
   reads: Map<string, number>
   // What a tool call answers, by tool name: a test sets a Bash call's output here. Any other tool answers 'ok'.
   toolResults: Map<string, unknown>
+  // A test's own answer to a tool call (a dialog the mod opens, say); undefined falls through to toolResults.
+  onToolCall?: (e: any) => unknown
 }
 
 // Registers the handlers once per test, before `$` is first touched (the engine allows one handler per
@@ -67,7 +69,7 @@ export function setupReplay(on: Function): Rig {
   on('agent.spawn', () => ({ model: 'recorded', agentId: `recorded-${++rig.spawned}` }))
   // The end of a recorded agent's turn: the mod hears it above this, which only answers it.
   on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
-  on('tool.call', (_: unknown, e: { tool: string }) => ({ result: rig.toolResults.has(e.tool) ? rig.toolResults.get(e.tool) : 'ok' }))
+  on('tool.call', (_: unknown, e: { tool: string }) => rig.onToolCall?.(e) ?? ({ result: rig.toolResults.has(e.tool) ? rig.toolResults.get(e.tool) : 'ok' }))
   on('session.root', () => ({ value: ROOT }))
   on('session.start', () => ({ cwd: ROOT }))
   on('fs.read', (_: unknown, e: { path: string }) => {

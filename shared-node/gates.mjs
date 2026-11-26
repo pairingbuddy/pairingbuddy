@@ -497,7 +497,9 @@ function openReturns(dir, ledger, settled) {
     const artifact = parsedOrNull(join(dir, file));
     if (artifact === null) return { open, unreadable: file };
     const { ambiguity = null } = artifact;
-    if (ambiguity !== null && ambiguity !== "" && !isSettled(file, settled, ledger) && doubtStands(file, artifact, dir, ledger)) open.push({ file, ambiguity });
+    // ambiguity_options: the answers the step suggests for its doubt, which the human may pick instead of typing one.
+    const options = Array.isArray(artifact.ambiguity_options) ? { options: artifact.ambiguity_options } : {};
+    if (ambiguity !== null && ambiguity !== "" && !isSettled(file, settled, ledger) && doubtStands(file, artifact, dir, ledger)) open.push({ file, ambiguity, ...options });
   }
   return { open };
 }
@@ -511,7 +513,7 @@ function ambiguityStop(dir, ledger, settled) {
   return files.length === 1 ? `the return ${files[0]} carries an open ambiguity` : `these returns carry an open ambiguity: ${files.join(", ")}`;
 }
 
-// The open ambiguities the gate's stop would name, by the same rule, as { file, ambiguity }; null when a return cannot be read.
+// The open ambiguities the gate's stop would name, by the same rule, as { file, ambiguity, options? }; null when a return cannot be read.
 export function openDoubts(contract, ledger, root) {
   const { open, unreadable } = openReturns(artifactsDir(root), ledger, doubtSettledStages(contract, ledger));
   return unreadable === undefined ? open : null;

@@ -31,7 +31,7 @@
         "type": "object",
         "required": ["gate", "task", "step", "ambiguity"],
         "properties": {
-          "gate": { "type": "string" }, "task": { "type": "string" }, "step": { "type": "string" }, "ambiguity": { "type": "string", "minLength": 1 },
+          "gate": { "type": "string" }, "task": { "type": "string" }, "step": { "type": "string" }, "ambiguity": { "type": "string", "minLength": 1 }, "options": { "description": "Answers the step suggested for its doubt, which /pb-answer offers as choices. May be absent.", "type": "array", "maxItems": 3, "items": { "type": "string", "minLength": 1 } },
           "answer": { "description": "The human's answer, from pb human answer or /pb-answer; the question then no longer counts as open.", "type": "string", "minLength": 1 },
           "answeredAt": { "type": "string" },
           "settled": { "description": "How the session settled the answer at the next task boundary: rework (a rework task was added to the plan) or keep (it only guides the work to come).", "enum": ["rework", "keep"] },

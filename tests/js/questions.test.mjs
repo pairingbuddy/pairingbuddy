@@ -2,6 +2,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
+import { readFileSync } from "node:fs";
+
+import { violations } from "./schema-check.mjs";
 import { QUESTIONS_KEPT, addQuestions, openQuestions, questionsLine } from "../../shared-node/questions.mjs";
 
 const doubt = (n) => ({ step: "a reviewer", ambiguity: `Doubt ${n}?` });
@@ -13,6 +16,16 @@ describe("the unit's questions list", () => {
 
     assert.deepEqual(next.questions, [{ gate: "G:task-end", task: "Task 1: one", step: "a reviewer", ambiguity: "Doubt 1?" }]);
     assert.deepEqual(openQuestions(next), { kept: next.questions, more: 0, count: 1 });
+  });
+
+  test("a doubt's suggested answers ride on its question: at most three, each a short line, none when it has none", () => {
+    const long = "word ".repeat(30).trim();
+    const doubts = [{ ...doubt(1), options: ["Always draft", " Draft on main only ", "", 7, long, "Never"] }, doubt(2)];
+
+    const next = addQuestions(unit(), { gate: "G:task-end", task: "Task 1: one", doubts });
+
+    assert.deepEqual(next.questions[0].options, ["Always draft", "Draft on main only", `${long.slice(0, 59).trimEnd()}…`]);
+    assert.equal("options" in next.questions[1], false, "no options key when the doubt has none");
   });
 
   test("a question keeps only its task's title, never the task's whole plan text", () => {
@@ -134,4 +147,26 @@ test("a rework task names the question's task by title even when an old record k
   const { text } = reworkTask("T1a", 1, { task: "Task 4: four\n\n**Goal:** Lots of text.", ambiguity: "Why?", answer: "Because." });
 
   assert.ok(text.includes("**The question (from Task 4: four):** Why?"), text);
+});
+
+describe("suggested answers in the records", () => {
+  const schemaOf = (name) => JSON.parse(readFileSync(new URL(`../../contracts/schemas/${name}`, import.meta.url), "utf8"));
+  // Every object schema that describes a doubt: it requires step and ambiguity.
+  const doubtSchemas = (node, found = []) => {
+    if (node && typeof node === "object") {
+      if (Array.isArray(node.required) && node.required.includes("step") && node.required.includes("ambiguity")) found.push(node);
+      for (const value of Object.values(node)) doubtSchemas(value, found);
+    }
+    return found;
+  };
+
+  test("the ledger's and the unit's doubt records accept the suggested answers", () => {
+    for (const name of ["ledger.schema.json", "unit.schema.json"]) {
+      const found = doubtSchemas(schemaOf(name));
+      assert.ok(found.length > 0, name);
+      for (const schema of found) {
+        assert.deepEqual(violations(schema, { gate: "G:task-end", task: "Task 1: one", step: "a reviewer", ambiguity: "Doubt?", options: ["Yes", "No"] }).filter((v) => !/gate|task/.test(v)), [], name);
+      }
+    }
+  });
 });

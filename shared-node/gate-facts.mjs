@@ -116,7 +116,7 @@ function doubtsOf(root, ledger, contract) {
   const open = openDoubts(contract, ledger, root);
   if (open === null || open.length === 0) return undefined;
   // A reviewer's doubt keeps the stage it reviewed, so the report can say which review raised it.
-  const doubts = open.map(({ file, ambiguity }) => ({ step: stepOf(file), ...reviewedStage(file), ambiguity: text(ambiguity) }));
+  const doubts = open.map(({ file, ambiguity, options }) => ({ step: stepOf(file), ...reviewedStage(file), ambiguity: text(ambiguity), ...(options?.length ? { options } : {}) }));
   return doubts.every(({ step, ambiguity }) => step !== undefined && ambiguity !== undefined) ? doubts : undefined;
 }
 

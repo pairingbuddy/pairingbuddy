@@ -95,3 +95,15 @@ test("lens-result-schema-requires-finding-kind", () => {
   assert.ok(item.required.includes("kind"), "kind is required on a finding");
   assert.deepEqual(item.properties.kind?.enum, ["fix-here", "risk", "drift"], "kind enum is fix-here | risk | drift");
 });
+
+test("a reviewer may suggest up to three answers to its question, as ambiguity_options; more, or a blank one, fails", () => {
+  const refuter = JSON.parse(readFileSync(new URL("../../contracts/schemas/refuter-verdict.schema.json", import.meta.url), "utf8"));
+  const light = JSON.parse(readFileSync(new URL("../../contracts/schemas/light-review-result.schema.json", import.meta.url), "utf8"));
+  const verdict = { pb_key: "k", ambiguity: "Empty cart: 0 or None?", not_checked: null, finding_id: "code-1", verdict: "survives", reason: "r" };
+
+  assert.deepEqual(violations(schema, { ...valid(), ambiguity: "Empty cart: 0 or None?", ambiguity_options: ["0", "None"] }), []);
+  assert.notDeepEqual(violations(schema, { ...valid(), ambiguity_options: ["a", "b", "c", "d"] }), [], "at most three");
+  assert.notDeepEqual(violations(schema, { ...valid(), ambiguity_options: [""] }), [], "never blank");
+  assert.ok(!violations(refuter, { ...verdict, ambiguity_options: ["0", "None"] }).some((v) => v.includes("ambiguity_options")), "the refuter too");
+  assert.ok(!violations(light, { pb_key: "k", ambiguity: "q?", ambiguity_options: ["0"], not_checked: null, focus_changes: [], findings: [] }).some((v) => v.includes("ambiguity_options")), "and a light review");
+});
