@@ -433,8 +433,10 @@ const artifactsDirOf = (root) => join(taskDirOf(root), "artifacts");
 const notesDirOf = (root) => join(taskDirOf(root), "notes");
 const reportPathOf = (root) => join(taskDirOf(root), "report.json");
 
-// The unit's open questions, shown at G:publish as its doubts; none leaves the facts as they were.
+// The unit's open questions, shown at G:publish as its doubts; none leaves the facts as they were. A refresh run has no
+// unit record, so no questions.
 function publishQuestions(root) {
+  if (!unitIsOpen(root)) return {};
   const doubts = unitQuestionDoubts(root);
   return doubts.length === 0 ? {} : { doubts };
 }
