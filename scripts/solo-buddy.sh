@@ -156,7 +156,9 @@ LAST_RENDER_LINES=0
 SPINNER_INDEX=0
 FINAL_RENDERED=""
 STOP_REASON=""
+LEDGER_FILE=".pairingbuddy/run/task/ledger.json"
 LEDGER_TEXT_CLIP=200
+ATTEMPT_CAP_CODE="attempt-cap"
 EXIT_UNFINISHED=1
 NEEDS_HUMAN_GATE=""
 UNFINISHED_STAGE=""
@@ -180,7 +182,7 @@ read_state_line() {
 # Print one clipped text field of the task ledger: read_ledger_text <object> <field> <max>
 read_ledger_text() {
     local object="$1" field="$2" max="$3"
-    read_state_line ".pairingbuddy/run/task/ledger.json" "if (state.${object} && state.${object}.${field}) console.log(clip(state.${object}.${field}, ${max}));"
+    read_state_line "$LEDGER_FILE" "if (state.${object} && state.${object}.${field}) console.log(clip(state.${object}.${field}, ${max}));"
 }  # end read_ledger_text
 
 render_status() {
@@ -280,7 +282,7 @@ render_status() {
 
     # Read the stop reason or the current stage, and the human gate it waits on, from the task ledger
     local ledger_line
-    ledger_line=$(read_state_line ".pairingbuddy/run/task/ledger.json" '
+    ledger_line=$(read_state_line "$LEDGER_FILE" '
         const s = state.stage;
         const attempt = s && s.attempt !== undefined ? `(attempt ${s.attempt})` : "";
         if (state.stop && state.stop.reason) console.log(`Stopped: ${clip(state.stop.reason)}`);
@@ -420,11 +422,12 @@ print_exit_summary() {
         output="✗ Session interrupted (exit code $CLAUDE_EXIT)"
     fi
     local attempts_line
-    attempts_line=$(read_state_line ".pairingbuddy/run/task/ledger.json" '
-        const cap = state.stop && state.stop.code === "attempt-cap" && /its cap of (\d+)/.exec(String(state.stop.reason));
+    # The cap exists only in the stop reason's text ("... its cap of N"), so the line is skipped when that wording changes
+    attempts_line=$(read_state_line "$LEDGER_FILE" "
+        const cap = state.stop && state.stop.code === '${ATTEMPT_CAP_CODE}' && /its cap of (\\d+)/.exec(String(state.stop.reason));
         const rollbacks = state.fixes && state.fixes.rollbacks;
-        if (cap && Array.isArray(rollbacks)) console.log(`fixes: ${rollbacks.length} tried, undone: ${rollbacks.length} of ${cap[1]} allowed`);
-    ')
+        if (cap && Array.isArray(rollbacks)) console.log(\`fixes undone: \${rollbacks.length} of \${cap[1]} allowed\`);
+    ")
     if [[ -n "$attempts_line" ]]; then
         output="${output}
 ${attempts_line}"
@@ -567,7 +570,7 @@ CLAUDE_EXIT=$?
 # An exit 0 with a stop in the task ledger is an unfinished run
 STOP_REASON=$(read_ledger_text stop reason "$LEDGER_TEXT_CLIP")
 NEEDS_HUMAN_GATE=$(read_ledger_text needsHuman gate "$LEDGER_TEXT_CLIP")
-UNFINISHED_STAGE=$(read_state_line ".pairingbuddy/run/task/ledger.json" "if (state.stage && state.stage.status === 'active' && state.stage.name) console.log(clip(state.stage.name, ${LEDGER_TEXT_CLIP}));")
+UNFINISHED_STAGE=$(read_state_line "$LEDGER_FILE" "if (state.stage && state.stage.status === 'active' && state.stage.name) console.log(clip(state.stage.name, ${LEDGER_TEXT_CLIP}));")
 
 # Stop the renderer before writing final status
 kill "$RENDERER_PID" 2>/dev/null || true

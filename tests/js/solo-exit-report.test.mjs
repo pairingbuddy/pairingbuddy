@@ -115,7 +115,7 @@ test("attempt-cap-stop-shows-attempt-count", () => {
 
   assert.match(
     result.stdout,
-    /^✗ Session stopped: attempt-cap: stage code-scenarios rolled back 3 fix attempts, its cap of 5\nfixes: 3 tried, undone: 3 of 5 allowed$/m,
+    /^✗ Session stopped: attempt-cap: stage code-scenarios rolled back 3 fix attempts, its cap of 5\nfixes undone: 3 of 5 allowed$/m,
     "the summary must show the stop line, then the attempts made (3, from the rollbacks) against the cap (5, from the stop reason)",
   );
 });
