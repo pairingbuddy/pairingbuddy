@@ -2315,11 +2315,13 @@ function reconciledUnit(unit, result) {
 function unitOpen(args) {
   const type = flagValue(args, "--type");
   const slug = flagValue(args, "--slug");
-  const usage = "usage: pb unit open --type <type> --slug <slug> [--branch <name>] [--plan <plan.md>]";
+  const usage = "usage: pb unit open --type <type> --slug <slug> [--key <key>] [--branch <name>] [--plan <plan.md>]";
   if (args.includes("--yes")) throw new UsageError(`--yes is no longer accepted: pb unit open has no confirm step. ${usage}`);
   if (!type || !slug) throw new UsageError(usage);
   const plan = args.includes("--plan") ? flagValue(args, "--plan") : null;
   if (plan !== null && (!plan || plan.startsWith("--"))) throw new UsageError(usage);
+  const keyFlag = args.includes("--key") ? flagValue(args, "--key") : null;
+  if (keyFlag !== null && (!keyFlag || keyFlag.startsWith("--"))) throw new UsageError(usage);
   const chosen = chosenBranch(args);
   const root = toplevel();
   if (existsSync(unitPathOf(root))) throw new Refusal("a unit is already open (run/unit.json exists); nothing was touched");
@@ -2328,7 +2330,8 @@ function unitOpen(args) {
   const planned = plan === null ? null : steppedPlan(plan);
   if (planned && !planned.next) throw new Refusal(`the plan ${plan} has no task left, nothing was touched`);
   const gitConfig = loadGitConfigOrRefuse(root);
-  const branch = chosen ?? renderBranchOrRefuse(gitConfig.branch_template, { type, slug });
+  const key = keyFlag;
+  const branch = chosen ?? renderBranchOrRefuse(gitConfig.branch_template, { type, slug, ...(key ? { key } : {}) });
   assertUsableBranch(root, gitConfig, branch);
   if (branchExists(root, branch)) throw new Refusal(`branch ${branch} already exists; choose another name`);
   const configHash = validatedConfigHash(root);
@@ -2341,7 +2344,7 @@ function unitOpen(args) {
   const parent = stackOn?.branch ?? base;
   const baseSha = git("rev-parse", `${gitConfig.remote}/${parent}`);
   ensureRunRoot(root);
-  const unit = { ...newUnit({ branch, base: parent, baseSha, configHash, gitConfigHash }), type };
+  const unit = { ...newUnit({ branch, base: parent, baseSha, configHash, gitConfigHash }), type, ...(key ? { key } : {}) };
   if (stackOn) unit.stackedOn = withoutDepth(stackOn);
   if (planned) Object.assign(unit, { unit: planned.next.unit, plan: planned.context.plan, tracer: planned.next.tracer });
   writeJsonAtomic(unitPathOf(root), unit, { exclusive: true });

@@ -127,6 +127,22 @@ test("custom-branch-template-is-honoured", () => {
   assertUntouched(bad, before, "unknown placeholder");
 });
 
+const writeBranchTemplate = (repo, branch_template) => {
+  mkdirSync(join(repo.dir, ".pairingbuddy"), { recursive: true });
+  writeFileSync(join(repo.dir, ".pairingbuddy", "git-config.json"), JSON.stringify({ branch_template }));
+};
+
+test("key-flag-fills-the-key-placeholder", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  writeBranchTemplate(repo, "{key}-{slug}");
+
+  const created = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "ci-script", "--key", "ABC-12");
+
+  assert.equal(created.code, 0, `pb unit open exits 0: ${created.stderr}`);
+  assert.equal(gitIn(repo, "rev-parse", "--abbrev-ref", "HEAD"), "ABC-12-ci-script");
+  assert.equal(JSON.parse(readFileSync(unitPath(repo), "utf8")).key, "ABC-12", "the unit records its key");
+});
+
 // Scenario: unit-open-without-flag
 
 test("policy-env-var-still-ignored", () => {
