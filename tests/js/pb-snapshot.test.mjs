@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { VERBS } from "../../cli/pb.mjs";
-import { NEAREST_TOTAL_CAP, namedFiles, nearestFiles } from "../../shared-node/snapshot.mjs";
+import { NEAREST_TOTAL_CAP, SUBJECT_DIFF_MAX_LINES, namedFiles, nearestFiles } from "../../shared-node/snapshot.mjs";
 import { buildKey } from "../../shared-node/keys.mjs";
 import { classOf } from "../../shared-node/verbs.mjs";
 import { existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
@@ -408,4 +408,33 @@ test("snapshot_records_no_untracked_files_past_the_bound", () => {
   assert.equal(result.code, 0, `pb snapshot succeeds, stderr: ${result.stderr}`);
   const ledger = JSON.parse(readFileSync(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"), "utf8"));
   assert.equal(ledger.fixes?.untrackedAtStart, undefined, "1001 untracked files are past the bound, so none is recorded");
+});
+
+// A unit whose diff is past Node's default 1 MB output buffer: 40 files of 3,000 lines each, about 2 MB of diff.
+function repoWithBigDiff() {
+  const repo = repoWithOpenUnitAndCommits();
+  const lines = Array.from({ length: 3000 }, (_, i) => `line ${i} ${"x".repeat(10)}`).join("\n");
+  for (let n = 0; n < 40; n += 1) writeFileSync(join(repo.dir, `big-${String(n).padStart(2, "0")}.txt`), `${lines}\n`);
+  for (const args of [["add", "."], ["commit", "-q", "-m", "big change"]]) execFileSync("git", args, { cwd: repo.dir, env: env(), stdio: "ignore" });
+  return repo;
+}
+
+test("snapshot_survives_a_diff_past_the_default_output_buffer", () => {
+  const repo = repoWithBigDiff();
+
+  const result = pb(repo, "snapshot");
+
+  assert.equal(result.code, 0, `pb snapshot succeeds on a big diff, stderr: ${result.stderr}`);
+});
+
+test("snapshot_bounds_a_big_subject_diff_and_opens_it_with_the_diffstat", () => {
+  const repo = repoWithBigDiff();
+
+  const result = pb(repo, "snapshot");
+
+  assert.equal(result.code, 0, `pb snapshot succeeds, stderr: ${result.stderr}`);
+  const diff = readFileSync(join(repo.dir, ".pairingbuddy", "run", "subject.diff"), "utf8");
+  assert.match(diff.split("\n")[0], /too big to show whole/, "the agents read a note first");
+  assert.match(diff, /files? changed, \d+ insertions/, "then the diffstat");
+  assert.ok(diff.split("\n").length <= SUBJECT_DIFF_MAX_LINES + 20, "and no more than the bound");
 });

@@ -23,7 +23,8 @@ import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { QuestionRefused, answeredQuestions } from "../shared-node/questions.mjs";
 import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, answerQuestionInUnit, clearQuestionsInUnit, settleQuestionInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
-import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
+import { OUTPUT_MAX_BUFFER } from "../shared-node/output-buffer.mjs";
+import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, boundDiff, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, subjectStatArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, removeCreated, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
 import { normalizeApproach } from "../shared-node/mistake-check.mjs";
 import { parseFixNotes, rollbackHeading } from "../shared-node/fix-notes.mjs";
@@ -1750,7 +1751,7 @@ function unitPlan(root, unit) {
 // Null where git says no (or the remote is unreachable): the caller treats that as "nothing there".
 function tryGit(cwd, args) {
   try {
-    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: OUTPUT_MAX_BUFFER }).trim();
   } catch {
     return null;
   }
@@ -1977,9 +1978,9 @@ function flagValue(args, flag) {
 }
 
 // One runner for git and gh. `context` says what was reached and what to do next, and is appended to the failure.
-function run(cwd, command, args, { context = "", input, trim = true, env, maxBuffer } = {}) {
+function run(cwd, command, args, { context = "", input, trim = true, env, maxBuffer = OUTPUT_MAX_BUFFER } = {}) {
   try {
-    const out = execFileSync(command, args, { cwd, encoding: "utf8", input, env: env === undefined ? process.env : { ...process.env, ...env }, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"], ...(maxBuffer === undefined ? {} : { maxBuffer }) });
+    const out = execFileSync(command, args, { cwd, encoding: "utf8", input, env: env === undefined ? process.env : { ...process.env, ...env }, stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"], maxBuffer });
     return trim ? out.trim() : out;
   } catch (e) {
     const why = String(e.stderr ?? "").trim() || e.message;
@@ -2050,12 +2051,10 @@ async function unitStatus() {
   return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack, ...rebaseSuite };
 }
 
-// The patch-id of a commit's change.
-// A large diff must not hit the default 1 MB buffer, so the diff is read with a generous maxBuffer.
-const DIFF_MAX_BUFFER = 1024 * 1024 * 1024;
+// The patch-id of a commit's change. run reads the diff with the shared output limit, past the default 1 MB.
 function patchIdOf(root, sha) {
   const context = "nothing was written";
-  const diff = runGit(root, ["diff-tree", "-p", "--root", sha], { trim: false, maxBuffer: DIFF_MAX_BUFFER, context });
+  const diff = runGit(root, ["diff-tree", "-p", "--root", sha], { trim: false, context });
   const out = runGit(root, ["patch-id", "--stable"], { input: diff, context });
   return out.split(/\s+/)[0];
 }
@@ -2242,7 +2241,7 @@ const GH_TIMEOUT_MS = 10000;
 // A stalled gh is killed at the timeout, which throws and becomes the gh-unavailable note.
 function gh(root, args) {
   return execFileSync("gh", args, {
-    cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+    cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: OUTPUT_MAX_BUFFER,
     timeout: GH_TIMEOUT_MS, killSignal: "SIGKILL", env: { ...process.env, GH_PROMPT_DISABLED: "1" },
   });
 }
@@ -2343,7 +2342,7 @@ function snapshot(args) {
   const subject = readPrSubjectOrRefuse(root);
   assertNoArgs(args, "snapshot");
   const git = (argv) => runGit(root, argv, { trim: false, env: GIT_ENV });
-  const diff = git(subjectDiffArgv(subject.baseSha));
+  const diff = boundDiff(git(subjectDiffArgv(subject.baseSha)), git(subjectStatArgv(subject.baseSha)), subject.baseSha);
   const changed = parseChanged(git(changedArgv(subject.baseSha)));
   const ledgerPath = ledgerPathOf(root);
   const ledger = existsSync(ledgerPath) ? readLedger(ledgerPath) : null;
