@@ -276,3 +276,20 @@ describe("pb checkpoint --step refactor", IN_PARALLEL, () => {
     assertRefused(repo, repo.head(), refactor(repo, key), /names no test/);
   });
 });
+
+// A refactor-tests fix may rename a test or split it in two. It declares that in its return's `renamed`, so pb selects
+// each test by its new name from then on. Without it, the old name selects nothing and the fix is refused.
+describe("pb checkpoint --step refactor with renamed tests", IN_PARALLEL, () => {
+  const renamedFix = (repo, key, renamed, files = ["tests/a.mjs"]) => writeArtifact(repo, key, { pb_key: key, ambiguity: "", commit_subject: "test: name the rule", files_changed: files, renamed });
+
+  test("a declared rename commits, and the test runs by its new name", () => {
+    const repo = makeRepo({ outcomes: { "tests/a.mjs::bills_two_minutes": 0 } });
+    repo.write("tests/a.mjs", "renamed test\n");
+    renamedFix(repo, testsKey(), [{ test_id: "t1", to: [{ test_function: "bills_two_minutes" }] }]);
+
+    const done = assertPasses(refactor(repo, testsKey()));
+
+    assert.equal(done.committed, true);
+    assert.deepEqual(repo.runs(), [["tests/a.mjs::bills_two_minutes"]], "the new name selects the test");
+  });
+});
