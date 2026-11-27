@@ -689,6 +689,13 @@ test("auto-asks-nothing-of-its-own: under auto the loop never asks to continue, 
   assert.doesNotMatch(skill(), /G:type passes only when the classifier reports certain/, "G:type also passes a likely type with no question under auto");
 });
 
+test("config-change-is-proposed: a protected config change goes to pb config propose, never to a hand edit by the human", () => {
+  const section = routerSection();
+
+  sentencesSaying("the session proposes the change", section, /`pb config propose /, /test-config\.json|git-config\.json/);
+  sentencesSaying("the human applies it with the line pb prints, never by editing the file", section, /`apply`/, /[Nn]ever/, /sed|edit the file/);
+});
+
 test("plan-tasks-curate-with-skill-and-solo-has-no-old-plan-loop", () => {
   const section = planLoopSection();
   const sentences = sentencesOf(section);

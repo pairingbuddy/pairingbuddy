@@ -79,6 +79,16 @@ function gitDirectories(root, canonicalPath) {
 
 const hasGitSegment = (path) => path.split(sep).includes(".git");
 
+// Where the run stands, in the pane's words: a stage running, the run open between stages, or only the unit open.
+function runMoment(runDir) {
+  try {
+    const ledger = JSON.parse(readFileSync(join(runDir, "task", "ledger.json"), "utf8"));
+    return ledger.stage?.status === "active" ? "a stage of the run is going" : "the run is open between stages";
+  } catch {
+    return "the unit is open between runs";
+  }
+}
+
 function assertNotProtected(root, targets, canonicalPath) {
   const stateDir = join(root, ".pairingbuddy");
   const runDir = join(stateDir, "run");
@@ -90,7 +100,7 @@ function assertNotProtected(root, targets, canonicalPath) {
     if (isWithin(target, runDir)) throw new Denied(`${target} is inside .pairingbuddy/run, which is denied during a run.`);
     if (isWithin(target, join(root, SHIM_DIR))) throw new Denied(`${target} holds the pb a human's typed line runs, so it cannot change during a run.`);
     const config = PROTECTED_CONFIGS.find((name) => target === join(stateDir, name));
-    if (config !== undefined) throw new Denied(`${config} cannot change during a run: ${target}.`);
+    if (config !== undefined) throw new Denied(`${config} is pinned while ${runMoment(runDir)}, so it cannot be edited: ${target}. Propose the change instead, and do not ask the human to edit the file: pb config propose ${config} <key> <value> --reason <why>. pb checks it and prints the one line the human types to apply it.`);
     if (isClaudeSettings(target)) throw new Denied(`.claude/settings files can set the gate policy, so they cannot change during a run: ${target}.`);
     if (isWithin(target, canonicalPath(sessionsDirectory()))) throw new Denied(`${target} binds a session to its run, which is denied during a run.`);
   }
@@ -501,6 +511,7 @@ function isMainCommand({ tool_name: tool, tool_input: toolInput, ...payload }, v
   if (tool !== "Bash" || isSubagentCall(payload) || typeof toolInput?.command !== "string" || !toolInput.command.startsWith(PB_START)) return false;
   const rest = toolInput.command.slice(PB_START.length);
   if (QUOTED_QUESTION.test(rest)) return verbs.includes("question add");
+  if (QUOTED_PROPOSAL.test(rest)) return verbs.includes("config propose");
   const words = rest.split(" ");
   return words.every((word) => PLAIN_WORD.test(word)) && verbs.includes(matchVerb(words));
 }
@@ -508,6 +519,10 @@ function isMainCommand({ tool_name: tool, tool_input: toolInput, ...payload }, v
 // pb question add's doubt is free words, so it alone may end in one single-quoted argument with no quote inside, which the
 // shell takes literally: nothing in it runs.
 const QUOTED_QUESTION = /^question add --text '[^'\n]+'$/;
+
+// pb config propose's value and reason are free text too, a template's braces included: plain file and key words, then one
+// single-quoted value and one single-quoted reason, each with no quote inside.
+const QUOTED_PROPOSAL = /^config propose (?:test|git)-config\.json [A-Za-z0-9_.]+ '[^'\n]*' --reason '[^'\n]+'$/;
 
 // Before a run exists the main context starts or inspects one with these, so they need no prompt either.
 const NO_RUN_VERBS = ["status", "unit open", "unit status", "unit rebase", "run open", "plan next", "question settle", "question add", "guidance record"];

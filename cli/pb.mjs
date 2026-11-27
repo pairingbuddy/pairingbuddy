@@ -13,7 +13,7 @@ import { gateFacts } from "../shared-node/gate-facts.mjs";
 import { baselineFailures, judgedRecord } from "../shared-node/baseline.mjs";
 import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, finalChecksDoubt, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, defersScope, scopeDoubts, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, seenRecently, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
-import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
+import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig, validateGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, boxesUnder, planFile, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
@@ -23,7 +23,7 @@ import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/un
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
 import { QuestionRefused, addQuestions, answeredQuestions } from "../shared-node/questions.mjs";
-import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, answerQuestionInUnit, clearQuestionsInUnit, settleQuestionInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, KEPT_RUNS, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
+import { SPIKE_SETUP_FILE, UnitConfigRefused, abandonRun, acceptConfigInUnit, pinGitConfigInUnit, answerQuestionInUnit, clearQuestionsInUnit, settleQuestionInUnit, closeUnit, deferQuestionsInUnit, endRun, keepRun, KEPT_RUNS, keptAcceptedConfigHash, unitIsOpen } from "../shared-node/unit-files.mjs";
 import { OUTPUT_MAX_BUFFER } from "../shared-node/output-buffer.mjs";
 import { CHANGED_FILE, CORPUS_FILE, GIT_ENV, SUBJECT_DIFF_FILE, boundDiff, buildCorpus, changedArgv, namedFiles, nearestFiles, parseChanged, parseTracked, repoRelative, subjectDiffArgv, subjectStatArgv, trackedFilesArgv } from "../shared-node/snapshot.mjs";
 import { RollbackRefused, pathsOfCommit, removeCreated, rollbackCommitted, rollbackUncommitted } from "../shared-node/rollback.mjs";
@@ -43,6 +43,7 @@ import { declaredRenames, splitId } from "../shared-node/test-renames.mjs";
 import { ConfigHashChanged, TestRunRefused, collectedNoTest, cycleRun, failedRunsText, ranNoTest, fullSuitePlans, hasSelector, lintNote, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
+import { PROPOSABLE, ProposalRefused, parsedValue, readProposals, valueAt, withValue, writeProposals } from "../shared-node/config-propose.mjs";
 import { APPROVAL_GATE, CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS, approvalQuestion, configQuestion } from "../shared-node/config-wait.mjs";
 import { VERB_CLASSES, ensureShim, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
 
@@ -973,6 +974,83 @@ function questionAdd(args) {
   deferQuestionsInUnit(root, { gate: "session", task, doubts: [{ step: "the session", ambiguity: text }] });
   const unit = JSON.parse(readFileSync(unitPathOf(root), "utf8"));
   return { ok: true, added: true, open: (unit.questions?.length ?? 0) + (unit.questionsMore ?? 0) };
+}
+
+// The config file's own object with the change made, checked as pb checks the file when it loads it. Throws a Refusal.
+function proposedFile(root, file, key, value) {
+  const path = join(root, ".pairingbuddy", file);
+  const own = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {};
+  try {
+    const changed = withValue(own, key, value);
+    if (file === "git-config.json") validateGitConfig(changed);
+    else fullSuitePlans(changed, root);
+    return changed;
+  } catch (e) {
+    if (e instanceof ProposalRefused || e instanceof GitConfigRefused || e instanceof TestRunRefused) throw new Refusal(`${e.message}. Nothing was proposed`);
+    throw e;
+  }
+}
+
+// pb config propose <file> <key> <value> --reason <words>: a change to a config file a run protects, kept pending until
+// the human types pb human config apply. Nothing is written to the file here.
+function configPropose(args) {
+  const usage = "usage: pb config propose <test-config.json|git-config.json> <key> <value> --reason <words>";
+  const [file, key, value, flag, ...reasonWords] = args;
+  const reason = reasonWords.join(" ").trim();
+  if (!PROPOSABLE.includes(file) || !key || value === undefined || flag !== "--reason" || reason === "") throw new UsageError(usage);
+  const root = toplevel();
+  if (!existsSync(join(root, ".pairingbuddy", "run"))) throw new Refusal(`no run or unit is open, so ${file} is not pinned: edit .pairingbuddy/${file} directly`);
+  // git-config's old value is the one in force, a default included; test-config has no defaults.
+  const current = file === "git-config.json" ? loadGitConfigOrRefuse(root) : JSON.parse(readFileSync(join(root, ".pairingbuddy", file), "utf8"));
+  const proposed = parsedValue(value);
+  proposedFile(root, file, key, proposed); // refuses a change the file would not accept
+  const proposals = readProposals(root);
+  const proposal = { n: proposals.length + 1, file, key, old: valueAt(current, key) ?? null, new: proposed, reason, status: "pending" };
+  writeProposals(root, [...proposals, proposal]);
+  const typed = (action) => humanCommand(root, `config ${action} ${proposal.n}`);
+  return { ok: true, proposal, apply: typed("apply"), refuse: typed("refuse"), next: "Show the human the file, key, old and new value and the reason, with both lines, and wait for their answer" };
+}
+
+// pb human config apply|refuse <n>: the human's answer to proposal n. Apply writes the change and pins the new file in
+// the open unit and run, so neither reads it as a change since they opened; refuse writes nothing.
+function humanConfig(args) {
+  const [action, number] = args;
+  const n = Number(number);
+  if (!["apply", "refuse"].includes(action) || !Number.isInteger(n) || args.length !== 2) throw new UsageError("usage: pb human config apply|refuse <n>");
+  const root = toplevel();
+  const proposals = readProposals(root);
+  const proposal = proposals[n - 1];
+  if (proposal === undefined) throw new Refusal(`there is no config proposal ${n}. Nothing was touched`);
+  if (proposal.status !== "pending") throw new Refusal(`config proposal ${n} is already ${proposal.status}. Nothing was touched`);
+  const at = new Date().toISOString();
+  if (action === "refuse") return finishProposal(root, proposals, n, { status: "refused", at });
+  const changed = proposedFile(root, proposal.file, proposal.key, proposal.new);
+  const path = join(root, ".pairingbuddy", proposal.file);
+  writeFileSync(path, `${JSON.stringify(changed, null, 2)}\n`);
+  const pinned = proposal.file === "git-config.json" ? pinGitConfig(root, fileHash(path)) : pinTestConfig(root);
+  return { ...finishProposal(root, proposals, n, { status: "applied", at }), ...pinned };
+}
+
+function finishProposal(root, proposals, n, outcome) {
+  const done = proposals.map((proposal, i) => (i === n - 1 ? { ...proposal, ...outcome } : proposal));
+  writeProposals(root, done);
+  return { ok: true, proposal: done[n - 1] };
+}
+
+function pinGitConfig(root, newHash) {
+  pinGitConfigInUnit(root, newHash);
+  const path = ledgerPathOf(root);
+  if (existsSync(path) && readLedger(path).gitConfigHash !== undefined) updateLedger(path, (ledger) => ({ ...ledger, gitConfigHash: newHash }));
+  return { gitConfigHash: newHash };
+}
+
+// test-config goes the way a human's own edit of it goes: the run's ledger and the unit accept it.
+function pinTestConfig(root) {
+  const path = ledgerPathOf(root);
+  if (existsSync(path)) return { config: acceptedConfig(root, path) };
+  const newHash = validatedConfigHash(root);
+  acceptConfigInUnit(root, { newHash, seq: 0 });
+  return { config: { newHash } };
 }
 
 // pb final-check <id> --pass|--fail --note <words>: the result of a final check the session ran itself (a live, paid or manual
@@ -3008,8 +3086,8 @@ export const VERBS = {
   rollback,
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "unit rebase": unitRebase, "git doctor": gitDoctor, "pr lint": prLint,
-  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human cut-test": humanCutTest, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
-  "plan next": planNext, "question settle": questionSettle, "question add": questionAdd, "final-check": finalCheck, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human cut-test": humanCutTest, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, "human config": humanConfig, test: runTests, checkpoint,
+  "plan next": planNext, "question settle": questionSettle, "question add": questionAdd, "config propose": configPropose, "final-check": finalCheck, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 // The human changed test-config.json while a stage ran: the attempt ends and the run waits on the human, with no stop, so
