@@ -144,7 +144,8 @@ Apply any guidance from prior agents to avoid repeating mistakes or assumptions.
    b. Break the TB goal into individual tasks, each suitable for one `/code` session
    c. Order tasks for natural TDD progression (structure first, then behavior, then edge cases)
    d. Write rich task descriptions for each: goal, what to build, acceptance criteria, architecture doc links, files likely involved
-   e. Append a verification task describing what "working end-to-end" means for this TB
+   e. Give every task except a `[HUMAN]` task a `Type: <type>` line, one of `new_feature`, `bug_fix`, `refactoring`, `config_change` or `spike` (`config_change` only for configuration or CI files with no code or test work). When a task's type is unclear, ask about it at Step 3 (Human Review) with the options you weigh, and write the type the human picks: the run takes this line as the task's type and never asks it again.
+   f. Append a verification task describing what "working end-to-end" means for this TB
 3. Number tasks sequentially across all TBs (Task 1, Task 2, ... not resetting per TB)
 4. Write the complete plan as a markdown document to the path specified in `plan_config.output_path`:
    - Use checkboxes for each task: `- [ ] **Task N: Title**`
