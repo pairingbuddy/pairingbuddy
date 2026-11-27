@@ -73,6 +73,11 @@ export function eventsFor(event: string, matcher: Record<string, unknown>): Even
       const check = { tool: 'AskUserQuestion', input: { questions: [] }, tool_use_id: 'tu1' }
       return { surveyed: check, idle: check }
     }
+    // The model's own question at the settings PreToolUse step, raised by the engine: the mod hands it on to the gate.
+    case 'classic.PreToolUse': {
+      const call = { tool: 'AskUserQuestion', questions: [], tool_use_id: 'tu1' }
+      return { surveyed: call, idle: call }
+    }
     default:
       throw new Error(`no representative events for the "${event}" hook: add a case to eventsFor`)
   }

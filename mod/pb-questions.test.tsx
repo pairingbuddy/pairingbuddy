@@ -169,8 +169,9 @@ test('pb-questions with none open but some answered offers to see what was answe
 // Under auto mode with a run open, the gate denies the session's own AskUserQuestion. The bottom tool.check stands in for that
 // verdict, as the engine folds the PreToolUse hook's deny into it. The menu is this plugin's own dialog, so it still opens.
 const GATE_DENY = 'Under auto mode nobody is asked while a run or unit is open: only the question pb gate eval gives reaches the human.'
+// The gate is a settings PreToolUse hook: its deny comes in tool.call, before tool.check could ever overrule it.
 function gateDeniesQuestions(on: Function) {
-  on('tool.check', (_: unknown, e: { tool: string }) => (e.tool === 'AskUserQuestion' ? { decision: 'deny', reason: GATE_DENY } : { decision: 'allow' }))
+  on('classic.PreToolUse', (_: unknown, e: { tool: string }, next: Function) => (e.tool === 'AskUserQuestion' ? { deny: GATE_DENY } : next(e)))
 }
 
 test('pb-questions opens its menu and walks the questions even where the gate denies the session its own questions', async ($, on) => {
@@ -194,9 +195,10 @@ test('the session own question stays denied where the gate denies it: only this 
   gateDeniesQuestions(on)
   await start($)
 
-  const verdict: any = await $.tool.check({ tool: 'AskUserQuestion', input: { questions: [{ question: 'Go on?', header: 'Go on', options: [] }] } })
+  // A deny resolves the call errored, its reason the text.
+  const asked: any = await $.tool.call({ tool: 'AskUserQuestion', tool_use_id: 'tu1', questions: [{ question: 'Go on?', header: 'Go on', options: [] }] })
 
-  expect(verdict).toEqual({ decision: 'deny', reason: GATE_DENY })
+  expect({ isError: asked.isError, text: asked.text }).toEqual({ isError: true, text: GATE_DENY })
 })
 
 test('pb-questions opens the page instead when its dialog cannot open, and says so, rather than reading it as Esc', async ($, on) => {
@@ -209,5 +211,30 @@ test('pb-questions opens the page instead when its dialog cannot open, and says 
   const result: any = await $.command.run({ command: 'pb-questions', args: '' })
 
   expect(writes.length, 'the questions page').toBe(1)
-  expect(result?.text).toBe(`Pairing Buddy: couldn't open the dialog; opened the page instead: ${writes[0].path}`)
+  expect(result?.text).toBe(`Pairing Buddy: couldn't open the dialog (no answer (no one to ask in a -p run)); opened the page instead: ${writes[0].path}`)
+})
+
+test('pb-questions with words that say answer goes straight to the questions, skipping the menu', async ($, on) => {
+  const rig = setupReplay(on)
+  rig.served.set(UNIT, unitWith([question(1)]))
+  recordWrites(on)
+  recordRuns(on, { exitCode: 0, stdout: JSON.stringify({ ok: true, open: 0 }) })
+  const asked = playDialogs(rig, ['Stop answering'])
+  await start($)
+
+  await $.command.run({ command: 'pb-questions', args: 'Answer now' })
+
+  expect(asked.map(a => a.header)).toEqual(['Q 1 of 1'])
+})
+
+test('pb-questions with words that say see all opens the page, skipping the menu', async ($, on) => {
+  const rig = setupReplay(on)
+  rig.served.set(UNIT, unitWith([question(1)]))
+  const { writes } = recordReportCalls(on)
+  const asked = playDialogs(rig, [])
+  await start($)
+
+  await $.command.run({ command: 'pb-questions', args: 'see all' })
+
+  expect({ dialogs: asked.length, pages: writes.length }).toEqual({ dialogs: 0, pages: 1 })
 })

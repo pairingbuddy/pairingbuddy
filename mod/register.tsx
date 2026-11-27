@@ -113,12 +113,14 @@ export const register: Register = (on, options) => {
   })
 
   // A question this plugin asks itself (the /pb-questions dialogs, through $.ui.ask) is the person's own choice to answer, not
-  // the session asking: the gate's deny of the session's questions under auto mode does not apply. The host sets next.origin
-  // from where the call came from, so the model cannot raise a call that reads as this plugin's; the model's own reads engine.
-  on('tool.check', { tool: 'AskUserQuestion' }, ($, e, next) => {
+  // the session asking: the gate's deny of the session's questions under auto mode does not apply. The gate is a settings
+  // PreToolUse hook, and its deny ends the call inside tool.call, so the dialog is let through here, above it: allow skips
+  // the settings hooks beneath. The host sets next.origin from where the call came from, so the model cannot raise a call
+  // that reads as this plugin's; the model's own reads engine and goes on to the gate.
+  on('classic.PreToolUse', ($, e, next) => {
     const raisedBy = (next as { origin?: { plugin?: string } }).origin?.plugin
-    if (raisedBy === undefined || raisedBy === 'engine') return next(e)
-    return Promise.resolve(next(e)).then(verdict => ({ ...verdict, decision: 'allow' as const }))
+    if (e.tool !== 'AskUserQuestion' || raisedBy === undefined || raisedBy === 'engine') return next(e)
+    return { allow: true as const }
   })
 
   // A pb publish call is read for what it opened once it has run; never held, denied or changed.
@@ -134,7 +136,7 @@ export const register: Register = (on, options) => {
     if (e.command === 'pb') return togglePane($, pbToggle).then(done => ({ text: `Pairing Buddy pane ${done}` }))
     if (e.command === 'pb-report') return openReport($, spawns, calls).then(outcome => ({ text: reportLine(outcome) }))
     if (e.command === 'pb-plan') return Promise.all([viewNow($, spawns, calls), $.clock.now()]).then(([{ view, planPath }, now]) => openPlan($, view, planPath, now)).then(outcome => ({ text: planLine(outcome) }))
-    if (e.command === 'pb-questions') return runQuestions($).then(text => ({ text }))
+    if (e.command === 'pb-questions') return runQuestions($, e.args).then(text => ({ text }))
     return next(e)
   })
 
