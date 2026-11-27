@@ -20,6 +20,7 @@ import { buildKey } from "../../shared-node/keys.mjs";
 import { lensRow } from "./lens-return-fixture.mjs";
 import { lensSlug } from "../../shared-node/keys.mjs";
 import { loadStages, pipelineAgents, validateStages } from "../../shared-node/stages.mjs";
+import { graphFor, nextStage } from "../../shared-node/stage-graph.mjs";
 import { COMMIT_FAILED, HUMAN_STOPPED } from "../../shared-node/verbs.mjs";
 
 const HUMAN_STOP = { reason: "the human answered stop at G:task-end", seq: 1, code: HUMAN_STOPPED };
@@ -424,6 +425,23 @@ describe("stage finish", IN_PARALLEL, () => {
     assertRefused(pb(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY), /changed nothing: Which file did the task mean\?/);
 
     assert.match(repo.ledger().stop?.reason ?? "", /changed nothing/);
+  });
+
+  // The config agent found the task is no config change: the run goes on as the type it named, where an unattended run
+  // would otherwise stand stopped all night on a question the task's own type answers.
+  test("a config return that names the task's real type finishes code-config and re-types the task, so its graph goes on", () => {
+    const repo = makeRepo();
+    writeReturn(repo, CONFIG_KEY, { files_changed: [], retype: "new_feature", notes: "it renames code and adds tests" });
+    ok(repo, "checkpoint", "--step", "config", "--from", CONFIG_KEY);
+
+    ok(repo, "stage", "finish");
+
+    const ledger = repo.ledger();
+    assert.equal(ledger.stop, null);
+    assert.equal(ledger.taskType, "new_feature");
+    const [entry] = workStages(ledger);
+    assert.deepEqual([entry.name, entry.status, entry.retypedTo], [CONFIG, "done", "new_feature"]);
+    assert.equal(nextStage(graphFor(loadStages(ROOT), ledger.taskType), ledger), "code-scenarios");
   });
 
   test("a docs checkpoint with no change is evidence as it stands", () => {

@@ -7,7 +7,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "n
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
-import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, CheckpointStopped, CommitHookRefused, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, untrackedFiles, writesDiff } from "../shared-node/checkpoint.mjs";
+import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, isRetype, CheckpointStopped, CommitHookRefused, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, untrackedFiles, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
 import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, finalChecksDoubt, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, defersScope, scopeDoubts, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
@@ -1519,12 +1519,22 @@ function stageFinish(args) {
     const report = buildReport(ledger, artifactsDir);
     writeReport(reportPathOf(root), report);
     finished = { stage: name, attempt, agents: report.spend.agents };
-    const closed = closeStage(ledger, "done", report.spend);
+    const retype = configRetype(artifactsDir, ledger.stage);
+    const closed = closeStage(ledger, "done", report.spend, retype === null ? {} : { retypedTo: retype });
+    if (retype !== null) return { ...closed, taskType: retype };
     if (!safetyNetStages(contract).includes(name)) return closed;
     return { ...closed, lenses: { ...closed.lenses, "safety-net": lensRecordOf(ledger, report) } };
   });
   if (missing !== null) throw new Refusal(`${missing}. The run stopped: pb stage fail clears it`);
   return { ok: true, ...finished, report: reportPathOf(root) };
+}
+
+// The type a code-config return re-routed its task to, or null: a config step that found the task is no config change
+// names the type it is, and the run goes on as that type.
+function configRetype(artifactsDir, { name, attempt }) {
+  if (name !== "code-config") return null;
+  const type = readReturn(artifactsDir, buildKey({ stage: name, role: "apply-config-change", item: null, round: 1, attempt }))?.retype;
+  return isRetype(type) ? type : null;
 }
 
 // A stage's script stops a run this way, because it has no shell of its own. The first stop stands: it says why.

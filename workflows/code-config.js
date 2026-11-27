@@ -5,14 +5,15 @@ if (args === undefined) return { started: false };
 const RESULT_SCHEMA = {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Apply Config Change Result",
-  "description": "Return of the apply-config-change agent: the pb key it was given, any open ambiguity, the proposed commit subject and the files it changed",
+  "description": "Return of the apply-config-change agent: the pb key it was given, any open ambiguity, the proposed commit subject, the files it changed, and the real task type when the task is no configuration change",
   "type": "object",
   "required": [
     "pb_key",
     "ambiguity",
     "notes",
     "commit_subject",
-    "files_changed"
+    "files_changed",
+    "retype"
   ],
   "properties": {
     "pb_key": {
@@ -38,6 +39,16 @@ const RESULT_SCHEMA = {
         "type": "string",
         "pattern": "^(?!/)"
       }
+    },
+    "retype": {
+      "type": "string",
+      "enum": [
+        "",
+        "new_feature",
+        "bug_fix",
+        "refactoring"
+      ],
+      "description": "The task type this task really is when it is no configuration change (it needs new or changed tests, renames or moves code, or spans several steps), with files_changed empty and the reason in notes; pb then runs it as that type. An empty string for a configuration change"
     }
   },
   "additionalProperties": false

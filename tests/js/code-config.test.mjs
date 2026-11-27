@@ -214,3 +214,21 @@ for (const [name, pluginRoot] of [["missing", undefined], ["null", null], ["empt
     assert.deepEqual(phases, [], "no phase starts");
   });
 }
+
+// A task that is no config change is handed back with its real type, so pb re-routes it instead of stopping the run.
+test("code-config-schema-lets-the-agent-name-the-real-task-type", async () => {
+  const { calls } = await runWith({ attempt: 1, task: "t" });
+
+  const { retype } = calls[0].opts.schema.properties;
+  assert.ok(calls[0].opts.schema.required.includes("retype"), "retype is required");
+  assert.deepEqual(retype.enum, ["", "new_feature", "bug_fix", "refactoring"]);
+});
+
+// The agent picks the sensible reading of an open choice and asks about it, so an unattended run is not stopped by it.
+test("code-config-agent-makes-the-sensible-change-and-asks-or-hands-back-the-real-type", () => {
+  const agent = readFileSync(new URL("../../agents/apply-config-change.md", import.meta.url), "utf8");
+
+  assert.match(agent, /one reading is the most sensible, make the change that reading gives, and put the choice in `ambiguity`/);
+  assert.match(agent, /Only when no reading is sensible at all, make no change/);
+  assert.match(agent, /If the task is no configuration change, make no change[^\n]*set `retype` to the type it is/);
+});
