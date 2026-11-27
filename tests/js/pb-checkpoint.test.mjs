@@ -5,7 +5,7 @@
 // Output contract: a commit prints {ok, step, key, committed: true, sha, message, paths, hookRetried}, and no change
 // prints {ok, step, key, committed: false}. Both exit 0. A refusal exits 1 and commits nothing, except that an attempt
 // ending during the commit itself leaves that commit listed in ledger.commits and no evidence. A stop exits 1 and sets
-// ledger.stop. Bad arguments exit 2. The config step stops on any return that changed nothing, naming its ambiguity
+// ledger.stop. Bad arguments exit 2. The config step stops on any return that changed nothing and names no real task type, naming its ambiguity
 // when it gives one, so a config task is never ticked with nothing built. The docs step takes no change as it is.
 import "./isolated-tmpdir.mjs";
 import { after, describe, test } from "node:test";
@@ -362,6 +362,21 @@ describe("the config step must prove a no-change", IN_PARALLEL, () => {
 
     assertStops(repo, /the config change changed nothing: Which file did the task mean\?/);
     assert.deepEqual(repo.ledger().checkpoints ?? [], [], "no evidence is recorded");
+    assert.equal(repo.testRuns(), 0);
+  });
+
+  // A task that is not a config change (it needs tests, renames code, spans several steps) is re-routed, not stopped: the
+  // return names the type it is, and pb stage finish re-types the task, so an unattended run carries on.
+  test("an empty list that names the task's real type commits nothing and does not stop", () => {
+    const repo = makeRepo();
+    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: [], retype: "new_feature", notes: "the task renames code and adds tests" }));
+    const seed = repo.head();
+
+    const result = checkpoint(repo);
+
+    assert.equal(result.committed, false);
+    assert.equal(repo.head(), seed);
+    assert.equal(repo.ledger().stop, null);
     assert.equal(repo.testRuns(), 0);
   });
 

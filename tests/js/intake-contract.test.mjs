@@ -79,3 +79,11 @@ test("intake-row-classification-sonnet-brief-refute-none", () => {
   assert.equal(row.refute, "none", "intake has no refuters");
   assert.equal(row.fix, "course-checker", "intake fixes through the course-checker");
 });
+
+// A task that renames code, sets up tests and changes CI was classified config_change, and its config step stood stopped all
+// night. config_change is configuration values only: anything touching code, tests or several steps is another type.
+test("classifier-keeps-multi-step-tasks-out-of-config-change", () => {
+  const agent = readFileSync(new URL("../../agents/classify-task.md", import.meta.url), "utf8");
+
+  assert.match(agent, /config_change\*\*: Changing configuration values only\. A task that also renames or moves code, adds or changes tests or test setup, or spans several steps is never config_change/, "the classifier keeps code and test work out of config_change");
+});

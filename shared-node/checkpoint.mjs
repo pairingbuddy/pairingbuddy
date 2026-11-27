@@ -265,15 +265,21 @@ function assertNothingElseStaged(root, listed) {
   if (stray.length > 0) throw new CheckpointRefused(`changes outside the list are staged, so the commit would carry them: ${stray.join(", ")}`);
 }
 
+// The types a config step may re-route a task to: the ones that build with tests or tidy code.
+export const RETYPES = ["new_feature", "bug_fix", "refactoring"];
+export const isRetype = (type) => RETYPES.includes(type);
+
 const isSaid = (text) => typeof text === "string" && text.trim() !== "";
 
 // A refused edit leaves the tree as it was and the agent's return may not say so. Only an empty list that says why is a
 // no-change anyone can trust: no_change_reason for nothing left to change (an earlier fix already resolved it), which no
 // human is asked about, or an ambiguity for a doubt (an edit that failed, a fix it could not make), which pb gate eval asks about.
-function assertChangeProven(step, { ambiguity, no_change_reason: noChangeReason }, listed, paths) {
+function assertChangeProven(step, { ambiguity, no_change_reason: noChangeReason, retype }, listed, paths) {
   const unchanged = listed.filter((path) => !paths.includes(path));
   if (unchanged.length > 0) throw new CheckpointStopped(`step ${step} lists files that did not change: ${unchanged.join(", ")}. pb stage fail clears this`);
   if (listed.length > 0) return;
+  // A config step that found the task is no config change names its real type; pb stage finish re-types the task.
+  if (step === "config" && isRetype(retype)) return;
   // A config change exists to change something, so a config step that changed nothing stops with its question: carrying
   // on would tick the task with nothing built, and under auto mode the question would wait until the pull request.
   if (step === "config") throw new CheckpointStopped(`the config change changed nothing: ${isSaid(ambiguity) ? ambiguity.trim() : "its return gives no ambiguity to say why"}. pb stage fail clears this`);

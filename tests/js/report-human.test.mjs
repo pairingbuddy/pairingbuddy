@@ -130,6 +130,17 @@ describe("report-leads-with-what-you-need", () => {
     assert.ok(section.includes("The task type changed after a review: now bug fix, was new feature."), `got ${section}`);
   });
 
+  test("CHANGES says the config step re-routed a task that was no config change", () => {
+    const configured = [intake("classify-task", "-", 1, classified("config_change", "likely"))];
+    const stages = [{ name: "intake", status: "done", attempt: 1 }, { name: "code-config", status: "done", attempt: 1, retypedTo: "new_feature" }];
+    const html = report({ runs: [{ ...RUNS[0], ledger: { ...RUNS[0].ledger, taskType: "new_feature", stages }, calls: [...configured, ...RUNS[0].calls] }, RUNS[1]] });
+
+    const section = sectionOf(html, "CHANGES");
+
+    assert.ok(section.includes("The config step found this is no config change, so it was built as a new feature."), `got ${section}`);
+    assert.ok(!section.includes("after a review"), `got ${section}`);
+  });
+
   test("CHANGES leaves out a new confidence in the same task type", () => {
     assert.throws(() => sectionOf(withCodeCalls(reclassified(classified("new_feature", "likely"))), "CHANGES"), /no CHANGES/);
   });

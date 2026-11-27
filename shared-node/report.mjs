@@ -647,6 +647,8 @@ function typeChange(task) {
     .sort((a, b) => a.key.attempt - b.key.attempt || a.key.round - b.key.round)[0]?.input;
   const now = code.ledger?.taskType;
   if (!first || typeof now !== "string" || first.task_type === now) return [];
+  const rerouted = (Array.isArray(code.ledger?.stages) ? code.ledger.stages : []).some((stage) => stage?.name === "code-config" && stage.retypedTo === now);
+  if (rerouted) return [`The config step found this is no config change, so it was built as a ${escape(typeWord(now))}.`];
   return [`The task type changed after a review: now ${escape(typeWord(now))}, was ${escape(typeWord(first.task_type))}.`];
 }
 

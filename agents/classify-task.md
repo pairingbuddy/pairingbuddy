@@ -62,7 +62,7 @@ With a `<paths>` block that includes `classification` (an earlier classification
    - **new_feature**: Adding new functionality that requires new tests
    - **bug_fix**: Fixing incorrect behavior (needs regression test)
    - **refactoring**: Improving code structure without changing behavior
-   - **config_change**: Changing configuration values only
+   - **config_change**: Changing configuration values only. A task that also renames or moves code, adds or changes tests or test setup, or spans several steps is never config_change: classify it by its code work (usually new_feature, or refactoring when no behaviour changes), even when it also edits config or CI files
    - **spike**: Exploratory coding to answer questions or compare approaches
 4. If unclear, ask the human operator to clarify
 5. With a `<paths>` block, return the result as StructuredOutput instead of writing a file. Otherwise write classification to `.pairingbuddy/task-classification.json`
@@ -74,7 +74,7 @@ With a `<paths>` block that includes `classification` (an earlier classification
 | **new_feature** | "add", "implement", "create", "build", new functionality |
 | **bug_fix** | "fix", "broken", "doesn't work", "incorrect", error reports |
 | **refactoring** | "refactor", "extract", "reorganize", "clean up", no behavior change |
-| **config_change** | "update config", "change setting", "set value", no code logic |
+| **config_change** | "update config", "change setting", "set value", no code logic, no test changes, one step |
 | **spike** | "explore", "compare", "try out", "figure out", "which is better", "prototype", "experiment", feasibility questions |
 
 ### File Creation Restrictions
