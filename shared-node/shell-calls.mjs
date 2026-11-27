@@ -407,14 +407,41 @@ function canRunPb({ text, words, run, span }, index, isFileName) {
 }
 
 // True when the shell rewrites text at or after a pb name in the same simple command.
-const SINGLE_QUOTED = /'[^']*'/g;
+const GLOB_OR_BRACE = new Set(["{", "?", "*", "["]);
+
+// The text with what the shell leaves literal taken out: a single-quoted word's content, and inside double quotes the
+// glob and brace characters, which only $, a backtick and a backslash can rewrite there.
+function expandableText(text) {
+  let out = "";
+  let quote = null;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (quote === "'") {
+      if (char === "'") quote = null;
+      continue;
+    }
+    if (quote === null && char === "\\") {
+      out += char + (text[i + 1] ?? "");
+      i += 1;
+      continue;
+    }
+    if (quote === '"' && char === "\\") {
+      out += char;
+      continue;
+    }
+    if (char === "'" && quote === null) quote = "'";
+    else if (char === '"') quote = quote === '"' ? null : '"';
+    else if (!(quote === '"' && GLOB_OR_BRACE.has(char))) out += char;
+  }
+  return out;
+}
 
 function rewritesPbWords(simple) {
   return simple.words.some((word, index) => {
     const name = PB_WORD.exec(word);
     if (name === null || !canRunPb(simple, index, name[1] !== undefined)) return false;
-    // The shell expands nothing inside single quotes, so a single-quoted argument (pb question add's text) is literal.
-    return PB_THEN_EXPANSION.test(simple.text.slice(simple.span.words[index].start, simple.span.end).replace(SINGLE_QUOTED, "''"));
+    // A single-quoted argument (pb question add's text, a config template) is literal, and so is a brace inside double quotes.
+    return PB_THEN_EXPANSION.test(expandableText(simple.text.slice(simple.span.words[index].start, simple.span.end)));
   });
 }
 

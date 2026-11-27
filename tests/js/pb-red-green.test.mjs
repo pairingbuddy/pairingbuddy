@@ -757,6 +757,19 @@ describe("a test an earlier GREEN covered", IN_PARALLEL, () => {
     assert.match(stop.options.join("\n"), /regression guard/);
   });
 
+  test("the stop sums up the run that passed in one line and keeps its output apart", () => {
+    const repo = makeRepo({ outcomes: { "tests/a.mjs::t1": 0 } });
+    const seed = repo.head();
+    repo.write("tests/a.mjs", "real test\n");
+    writeArtifact(repo, redKey(), fileReturn(redKey(), { files_changed: ["tests/a.mjs"] }));
+
+    assertRefused(repo, seed, step(repo, "red", redKey()), /^pb: the run stopped: /m);
+
+    const { stop } = repo.ledger();
+    assert.match(stop.detail, /Its run: it exited 0\.$/);
+    assert.match(stop.output, /ran tests\/a\.mjs/);
+  });
+
   test("only exit 0 is covered: a code that is neither RED nor a pass is refused after a GREEN too", () => {
     const repo = makeRepo({ rows: TWO });
     coveredReady(repo, { "tests/a.mjs::t1": 0, "tests/a.mjs::t2": 5 });

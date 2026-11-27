@@ -492,6 +492,9 @@ const DISGUISED = [
   ["pb.mjs under a wrapper option no list knows", "sudo -u me node cli/pb.mjs $V"],
   ["a quoted pb.mjs under a wrapper no list knows", `caffeinate node "cli/pb.mjs" $V`],
   ["pb.mjs inside find -exec", `find . -exec node cli/pb.mjs {} +`],
+  ["a variable inside double quotes", `node cli/pb.mjs config propose git-config.json pr.title_template "$V"`],
+  ["a substitution inside double quotes", `node cli/pb.mjs config propose git-config.json pr.title_template "{type}-$(whoami)"`],
+  ["an unquoted brace", `node cli/pb.mjs config propose git-config.json pr.title_template {type}-{summary}`],
 ];
 
 describe("pb takes literal words", IN_PARALLEL, () => {
@@ -537,12 +540,19 @@ const LITERAL_COMMANDS = [
   "echo pb $HOME",
   `echo "pb.mjs $HOME"`,
   `node "$PLUGIN/cli/pb.mjs" status`,
+  `${PB} config propose git-config.json pr.title_template "{type}-{summary}" --reason "the repo puts the type first"`,
 ];
 
 test("the deny for a rebuilt word states the rule", async () => {
   assert.match(denialReason(await runGate(bashCall(`node cli/pb.mjs $(echo human) approve ${GATE_ARG}`))), LITERAL_RULE);
   assert.match(denialReason(await runGate(bashCall(`node cli/pb.mjs hum?n approve ${GATE_ARG}`))), LITERAL_RULE);
   assert.match(denialReason(await runGate(bashCall(`echo human approve ${GATE_ARG} | xargs node cli/pb.mjs`))), LITERAL_RULE);
+});
+
+test("the deny for an expanded value says to single-quote it", async () => {
+  const reason = denialReason(await runGate(bashCall(`node cli/pb.mjs config propose git-config.json pr.title_template "{type}-$V"`)));
+
+  assert.match(reason, /single quotes/);
 });
 
 describe("a literal pb stays untouched", IN_PARALLEL, () => {

@@ -155,20 +155,20 @@ function barRows(status: Status, columns: number): Part[][] {
   })
 }
 
-// WHY's bounds: the cause, each option and how many options; the whole text is in the report.
-const WHY_CAUSE_MAX = 240
-const WHY_OPTION_MAX = 160
+// WHY's bounds, in lines of the pane's width: the cause, each option and how many options; the whole text is in the report.
+const WHY_CAUSE_LINES = 3
+const WHY_OPTION_LINES = 2
 const WHY_OPTIONS_MOST = 3
-const bounded = (text: string, most: number) => (text.length <= most ? text : `${text.slice(0, most - 1).trimEnd()}${ELLIPSIS}`)
+const plainLines = (text: string, width: number, most: number): Part[][] => barLines(text, width, most).map((line: string) => [{ text: line, props: {} }])
 
-// Under STATUS, what a stop recorded: what happened, then what the human can do, numbered. Each part is bounded, and the
-// last line points at the report, which keeps it whole. None for a stop that recorded nothing.
+// Under STATUS, what a stop recorded: what happened, then what the human can do, numbered. Each part wraps and is cut
+// only past its lines, so an option that fits is read whole, and the last line points at the report, which keeps it whole.
+// None for a stop that recorded nothing.
 function whyRows(status: Status, width: number) {
   if (!status.cause) return []
-  const options = (status.options ?? []).slice(0, WHY_OPTIONS_MOST).map((option, i) => `${i + 1}. ${bounded(option, WHY_OPTION_MAX)}`)
-  const parts = [bounded(status.cause, WHY_CAUSE_MAX), ...options]
+  const options = (status.options ?? []).slice(0, WHY_OPTIONS_MOST).map((option, i) => plainLines(`${i + 1}. ${option}`, width, WHY_OPTION_LINES))
   // Plain: the bar above is the one thing in the state's colour.
-  const lines: Part[][] = parts.flatMap(part => wrapped(part, width))
+  const lines: Part[][] = [...plainLines(status.cause, width, WHY_CAUSE_LINES), ...options.flat()]
   return rowLines('WHY', [...lines, [{ text: 'full text: /pb-report', props: { dimColor: true } }]], FIRST_GLANCE_LABEL)
 }
 

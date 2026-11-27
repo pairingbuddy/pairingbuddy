@@ -59,6 +59,14 @@ describe("report-leads-with-what-you-need", () => {
     assert.ok(section.includes("<ol><li>Tell the session what to change.</li><li>Or say it cannot be done.</li></ol>"), "every option");
   });
 
+  test("NEEDS YOU of a stop with a run's output shows that output as it was printed", () => {
+    const stop = { code: "red-passes", reason: "red-passes", seq: 9, why: "t1 passed before any code", detail: "test t1 already passes. Its run: 1 test, 1 passed.", output: "ok t1 <a>\nℹ pass 1" };
+    const stopped = { ...CODE_RUN, stage: { ...CODE_RUN.stage, name: "code-tdd", status: "active" }, stages: CODE_RUN.stages.slice(0, 2), stop };
+    const section = sectionOf(renderReport({ ledger: stopped, spawns: [] }), "NEEDS YOU");
+
+    assert.ok(section.includes("<pre>ok t1 &lt;a&gt;\nℹ pass 1</pre>"), `the raw output, got ${section}`);
+  });
+
   test("NEEDS YOU of a run waiting on a question names the question, and the doubts it asks over", () => {
     const doubt = { step: "write test scenarios", ambiguity: "Does an empty order total 0.0?" };
     const waiting = { ...CODE_RUN, stage: { ...CODE_RUN.stage, name: "code-scenarios", status: "done" }, stages: CODE_RUN.stages.slice(0, 2), gates: { "G:type": CODE_RUN.gates["G:type"] }, needsHuman: { gate: "G:scenarios", reason: "open doubts", seq: 9, doubts: [doubt] } };
