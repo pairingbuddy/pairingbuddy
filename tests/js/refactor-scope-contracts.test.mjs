@@ -194,3 +194,21 @@ test("no-paths-block-keeps-flat-files", () => {
   assert.match(humanReview, /using AskUserQuestion/, "the Human Review step still uses AskUserQuestion outside the paths-block skip");
   assert.ok(sectionOf(text, "## Input").includes(".pairingbuddy/task.json"), "the Input section still reads .pairingbuddy/task.json");
 });
+
+// Intake's finishing runner records the task's baseline with pb test --baseline, as the safety net's runs pb test --full.
+test("test-baseline-allowed-in-runner-allow-list", async () => {
+  const { checkCall } = await import("../../shared-node/gate-rules.mjs");
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "test-baseline-allow-list-")));
+  mkdirSync(join(root, ".pairingbuddy", "run", "task"), { recursive: true });
+  writeLedger(join(root, ".pairingbuddy", "run", "task", "ledger.json"), {
+    ...baseLedger(),
+    policy: { mode: "", source: "" },
+    stage: { name: "intake", status: "running", runId: "wf_1", attempt: 1 },
+    stages: [{ name: "intake", status: "running" }],
+  });
+  const payload = { session_id: "s1", cwd: root, tool_name: "Bash", permission_mode: "default", agent_id: "a1", agent_type: "pairingbuddy:runner", tool_input: { command: pbCommand("test --baseline") } };
+
+  const decision = checkCall({ runRoots: [root], sessionRoot: null, payload, targets: [], canonicalPath: (path) => path });
+
+  assert.equal(decision, "Runner CLI command, auto-allowed by the Pairing Buddy gate.");
+});

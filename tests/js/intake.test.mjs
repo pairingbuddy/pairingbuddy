@@ -34,7 +34,7 @@ test("intake-spawns-one-classify-task-with-paths-task-and-key", async () => {
   assert.deepEqual(opts.schema.properties.pb_key.enum, [key], "the schema pins the intake classify-task key");
 });
 test("intake-runs-stage-finish-after-classifier", async () => {
-  // Safeguard: the code already does this. After classify-task, exactly one runner agent runs stage finish and nothing else is spawned.
+  // After classify-task, the finishing runner records the full suite as the task's baseline, then runs stage finish.
   const agent = quietAgent;
 
   const { calls } = await runScript(stagePath(), { args: ARGS, agent });
@@ -42,7 +42,7 @@ test("intake-runs-stage-finish-after-classifier", async () => {
   assert.deepEqual(calls.map(({ opts }) => opts.agentType), ["pairingbuddy:classify-task", "pairingbuddy:runner", "pairingbuddy:lens", "pairingbuddy:runner"], "the classifier, the snapshot runner, the lens, then the finishing runner");
   const prompt = calls[3].prompt;
   const commands = prompt.slice(prompt.indexOf("<commands>\n") + "<commands>\n".length, prompt.indexOf("\n</commands>")).split("\n");
-  assert.deepEqual(commands, [`node /plugins/pairingbuddy/cli/pb.mjs stage finish`], "the runner runs stage finish alone");
+  assert.deepEqual(commands, [`node /plugins/pairingbuddy/cli/pb.mjs test --baseline`, `node /plugins/pairingbuddy/cli/pb.mjs stage finish`], "the runner records the baseline, before any change, then runs stage finish");
 });
 test("intake-prompt-names-its-key-the-guidance-path-and-the-task-as-data", async () => {
   const key = buildKey({ stage: "intake", role: "classify-task", item: null, round: 1, attempt: 3 });

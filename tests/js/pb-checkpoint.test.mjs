@@ -526,6 +526,18 @@ describe("the tests must pass", IN_PARALLEL, () => {
     assert.equal(repo.ledger().stop, null, "a failed test is a refusal, not a stop");
   });
 
+  test("a run that fails only where the task's baseline failed commits, and keeps the failures it was excused", () => {
+    const failing = "console.log('FAIL tests/a.mjs > renders a pdf'); process.exit(1);";
+    const baselineRun = { runner: "fake", argv: ["node", "fake.mjs"], exitCode: 1, signal: null, timedOut: false, durationMs: 1, excerpt: "", excerptTruncated: false, failures: ["FAIL tests/a.mjs > renders a pdf"] };
+    const repo = changedRepo({ tests: failing, ledger: { tests: { baseline: { stage: "intake", attempt: 1, passed: false, red: true, runs: [baselineRun] } } } });
+
+    const result = checkpoint(repo);
+
+    assert.equal(result.committed, true);
+    assert.equal(repo.ledger().tests.checkpoint.passed, true);
+    assert.deepEqual(repo.ledger().tests.checkpoint.preexisting, [{ runner: "fake", failures: ["FAIL tests/a.mjs > renders a pdf"], broken: false }]);
+  });
+
   test("the refusal names the failing runner and gives its output", () => {
     const repo = changedRepo({ tests: "console.log('expected 3, got 4'); process.exit(1);" });
 

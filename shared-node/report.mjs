@@ -9,6 +9,7 @@ import { stageNamesFor } from "./stage-graph.mjs";
 import contract from "./stages-contract.mjs";
 import { FINDING_WORDS, distinctFindings, findingGist, lensRound } from "./lens-round.mjs";
 import { parseKey } from "./keys.mjs";
+import { baselineFailures } from "./baseline.mjs";
 import { lensOfFinding } from "./lens-merge.mjs";
 import { taskEnded, taskSpend, taskWaited } from "./task-runs.mjs";
 import { shortName } from "./now-building.mjs";
@@ -334,6 +335,16 @@ function finalChecksSection({ task }) {
   if (rows.length + cuts.length === 0) return "";
   const item = ({ description, command, why }) => `<li>${escape(description)}${command ? `: <code>${escape(command)}</code>` : ""}${why ? ` (${escape(why)})` : ""}</li>`;
   return section("FINAL CHECKS", `<p>Run live by a person: they need a live, paid or manual run, so they were not built as tests.</p>\n<ul>\n${[...rows, ...cuts].map(item).join("\n")}\n</ul>`);
+}
+
+// What the full suite already failed before the task changed anything (its baseline): the run did not count these
+// against the task's work, so they are listed here once. No section when the baseline was green or not taken.
+function alreadyFailingSection({ task }) {
+  const rows = baselineFailures(codeRunIn(task)?.ledger?.tests?.baseline);
+  if (rows.length === 0) return "";
+  const item = ({ runner, failures, broken }) =>
+    broken ? `<li>runner ${escape(runner)}: could not run any test</li>` : `<li>runner ${escape(runner)}:\n<ul>\n${failures.map((line) => `<li>${escape(line)}</li>`).join("\n")}\n</ul></li>`;
+  return section("ALREADY FAILING", `<p>These failed before the task changed anything, so the run did not count them against its work.</p>\n<ul>\n${rows.map(item).join("\n")}\n</ul>`);
 }
 
 function scenariosSection({ scenarios }) {
@@ -802,7 +813,7 @@ ${goalSection(code?.task ?? ledger?.task)}
 ${statusSection({ ledger, task, url })}
 </header>
 ${needsYouSection({ ledger, task, spawns, tests })}
-${finalChecksSection({ task })}${doneSection({ task, changed })}${changesSection({ task, spawns })}
+${finalChecksSection({ task })}${alreadyFailingSection({ task })}${doneSection({ task, changed })}${changesSection({ task, spawns })}
 <details>
 <summary>HOW IT RAN</summary>
 ${taskSection(code?.task ?? ledger?.task)}${atAGlance({ ledger, spawns, ranFor: Number.isFinite(ranFor) ? ranFor : timing?.seconds, tests, testsComplete, task, taskType: code?.taskType, now })}${doubtsSection({ task })}

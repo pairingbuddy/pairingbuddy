@@ -61,6 +61,8 @@ function closedTests({ tests: { perTest } }) {
 
 const fullSuitePassed = ({ tests: { full } }) => (full?.passed === true ? true : undefined);
 const lintNoteOf = ({ tests: { full } }) => (typeof full?.lint === "string" ? full.lint : undefined);
+// The failures the task's baseline already had, which the full run was excused (judgedRecord in test-run.mjs).
+const preexistingOf = ({ tests: { full } }) => (Array.isArray(full?.preexisting) && full.preexisting.length > 0 ? full.preexisting : undefined);
 
 // The lens that reads the change against the repo's docs and plan: the safety net's goal check.
 const GOAL_LENS = "corpus-misalignment";
@@ -92,6 +94,7 @@ function taskEndFacts(root, ledger) {
     tests: fact(() => closedTests(ledger)),
     passing: fact(() => fullSuitePassed(ledger)),
     lint: fact(() => lintNoteOf(ledger)),
+    preexisting: fact(() => preexistingOf(ledger)),
     ...fact(() => reviewOf(root, ledger)),
   };
   return Object.fromEntries(Object.entries(facts).filter(([, value]) => value !== undefined));
