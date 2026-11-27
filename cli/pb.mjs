@@ -975,6 +975,21 @@ function questionAdd(args) {
   return { ok: true, added: true, open: (unit.questions?.length ?? 0) + (unit.questionsMore ?? 0) };
 }
 
+// pb final-check <id> --pass|--fail --note <words>: the result of a final check the session ran itself (a live, paid or manual
+// run no test covers), kept on the run's ledger, newest last. A failed one is no doubt for the inbox: G:task-end asks the
+// human while it stands, under auto too, and the report shows each result.
+function finalCheck(args) {
+  const usage = "usage: pb final-check <id> --pass|--fail --note <what happened>";
+  const [id, verdict] = args;
+  const at = args.indexOf("--note");
+  const note = at === -1 ? "" : args.slice(at + 1).join(" ").trim();
+  if (!id || id.startsWith("--") || !["--pass", "--fail"].includes(verdict) || at !== 2 || note === "") throw new UsageError(usage);
+  const { path } = runLedgerPath("no run here, so there is no task to record a final check on");
+  const check = { id, result: verdict.slice(2), note, at: new Date().toISOString() };
+  updateLedger(path, (ledger) => ({ ...ledger, finalChecks: [...(ledger.finalChecks ?? []), check] }));
+  return { ok: true, recorded: id, result: check.result };
+}
+
 // pb guidance record --mode auto|human --kept N --dropped M [--doubt <words>]: the curating-guidance skill's record of how it
 // carried the guidance over, kept on the open unit until pb run open moves it onto the task's run.
 function guidanceRecord(args) {
@@ -2994,7 +3009,7 @@ export const VERBS = {
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "unit rebase": unitRebase, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human cut-test": humanCutTest, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
-  "plan next": planNext, "question settle": questionSettle, "question add": questionAdd, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
+  "plan next": planNext, "question settle": questionSettle, "question add": questionAdd, "final-check": finalCheck, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 
 // The human changed test-config.json while a stage ran: the attempt ends and the run waits on the human, with no stop, so

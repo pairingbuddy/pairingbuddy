@@ -145,6 +145,18 @@ describe("each gate asks in plain words", () => {
     ].join("\n"));
   });
 
+  test("G:task-end gives each final check the session ran, with its result and note", () => {
+    const finalChecks = [{ id: "smokes", result: "fail", note: "S4 and S5 failed live" }, { id: "deploy", result: "pass", note: "staging is up" }];
+    const facts = { goal: "Add order_total.", files: ["cart.py"], tests: 1, passing: true, finalChecks };
+
+    const { question } = gateQuestion("G:task-end", { reason: "a final check failed: smokes", facts });
+
+    assert.equal(question.split("\n").slice(2, 4).join("\n"), [
+      "Final check smokes failed: S4 and S5 failed live",
+      "Final check deploy passed: staging is up",
+    ].join("\n"));
+  });
+
   test("G:task-end gives the goal check's gist when it had something to say", () => {
     const goalCheck = [{ gist: "The README does not name order_total", outcome: "fixed" }, { gist: "Plan says cents", outcome: "left as is" }];
     const { question } = gateQuestion("G:task-end", { reason: POLICY, facts: { review: ["fixed", "left as is"], goalCheck }, fullAt: FULL_AT });

@@ -114,6 +114,13 @@ describe("G:task-end", () => {
     assert.deepEqual(gateFacts("G:task-end", root, atStage(SAFETY_NET, { tests })).preexisting, preexisting);
   });
 
+  test("carries the final checks the session ran and recorded, so the human sees each result", () => {
+    const root = makeRoot();
+    const finalChecks = [{ id: "smokes", result: "fail", note: "S4 failed live", at: "2026-11-27T10:00:00.000Z" }];
+
+    assert.deepEqual(gateFacts("G:task-end", root, { ...atStage(SAFETY_NET), finalChecks }).finalChecks, finalChecks);
+  });
+
   const finding = (claim, extra = {}) => ({ rule: "R", severity: "medium", kind: "fix-here", claim, where: "cart.py:3", ...extra });
 
   // The safety-net round of a new feature: the code lens found one issue, its refuter upheld it, and the check kept the fix;
