@@ -696,6 +696,13 @@ test("config-change-is-proposed: a protected config change goes to pb config pro
   sentencesSaying("the human applies it with the line pb prints, never by editing the file", section, /`apply`/, /[Nn]ever/, /sed|edit the file/);
 });
 
+test("publish-refusal-is-reported-never-done-by-hand: a pb publish refusal is reported with its way through, never worked around with a hand push or PR", () => {
+  const section = routerSection();
+
+  sentencesSaying("a refusal is followed through pb or reported", section, /`pb publish` refuses/, /way through/, /stop/);
+  sentencesSaying("the human is never handed a push or a PR to make", section, /[Nn]ever/, /`git push`/, /`gh pr create`/, /human/);
+});
+
 test("plan-tasks-curate-with-skill-and-solo-has-no-old-plan-loop", () => {
   const section = planLoopSection();
   const sentences = sentencesOf(section);

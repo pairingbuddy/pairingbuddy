@@ -2,7 +2,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
-import { NO_COMMITS_REASON, PR_URL, branchShapeProblem, evidenceRefusals, foreignPrReason, publishSteps, pushArgv, unitRefPrefix } from "../../shared-node/publish.mjs";
+import { newTaskRecord } from "../../shared-node/unit.mjs";
+import { NO_COMMITS_REASON, isSpikeTask, PR_URL, branchShapeProblem, evidenceRefusals, foreignPrReason, publishSteps, pushArgv, unitHasLensRecords, unitRefPrefix } from "../../shared-node/publish.mjs";
 
 const HEAD = "a".repeat(40);
 const OLD = "b".repeat(40);
@@ -195,7 +196,7 @@ describe("publish-rebase-suite-evidence", () => {
     assert.match(failedAtHead, /full suite failed at/, "a failed rebaseSuite at HEAD says the full suite failed at HEAD");
     assert.ok(failedAtHead.includes(HEAD.slice(0, 7)), "the refusal names HEAD");
     assert.ok(failedAtHead.includes("after the rebase"), "the refusal says it was after the rebase");
-    assert.ok(atOtherHead.includes(OLD.slice(0, 7)), "a rebaseSuite at another head falls back to the last-task message");
+    assert.ok(atOtherHead.includes(OTHER.slice(0, 7)) && atOtherHead.includes(`HEAD is ${HEAD.slice(0, 7)}`), "a rebaseSuite at another head is the newest result, named with HEAD");
   });
 });
 
@@ -209,5 +210,68 @@ describe("unticked-plan-box-blocks-publish", () => {
     assert.deepEqual(plan.steps, [], "an unticked [HUMAN] box plans no steps");
     assert.match(plan.refusals.join("\n"), /Task 2: \[HUMAN\] Check the fix by hand/, "the refusal names the unticked task");
     assert.match(plan.refusals.join("\n"), /ticked by the human/, "the refusal says a [HUMAN] task is ticked by the human once done");
+  });
+});
+
+describe("publish-spike-and-full-suite", () => {
+  const SPIKE_STAGES = ["intake", "code-spike-unit", "code-spike-document"];
+
+  test("spike-task-needs-no-safety-net: a spike task in the unit is not asked for a safety-net review, a code task still is", () => {
+    const spike = task({ title: "Spike", taskType: "spike", stages: SPIKE_STAGES, fullSuite: null });
+    const code = task({ title: "Task B", taskType: "bug_fix" });
+
+    assert.deepEqual(evidenceRefusals(facts({ unit: { ...facts().unit, tasks: [spike, code] } })), []);
+    const unreviewed = task({ title: "Task C", taskType: "bug_fix", stages: ["intake", "code-tdd"] });
+    assert.match(evidenceRefusals(facts({ unit: { ...facts().unit, tasks: [spike, unreviewed] } })).join(), /did not finish for Task C$/);
+  });
+
+  test("auto-approval-skips-spike-lens-record: the auto policy's lens-record check asks only the code tasks", () => {
+    const spike = task({ title: "Spike", taskType: "spike", stages: SPIKE_STAGES, fullSuite: null });
+    const code = task({ title: "Task B", taskType: "bug_fix", lenses: { "safety-net": { a: {} } } });
+
+    assert.deepEqual(evidenceRefusals(facts({ approval: "auto", unit: { ...facts().unit, tasks: [spike, code] } })), []);
+  });
+
+  test("auto-gate-lens-rule-skips-spikes: the auto pass at G:publish asks the lens record of the code tasks only, and still none of an empty unit", () => {
+    const spike = task({ title: "Spike", taskType: "spike", stages: SPIKE_STAGES, fullSuite: null });
+    const code = task({ title: "Task B", taskType: "bug_fix", lenses: { "safety-net": { a: {} } } });
+
+    assert.equal(unitHasLensRecords({ tasks: [spike, code] }), true);
+    assert.equal(unitHasLensRecords({ tasks: [spike, task({ title: "Task C", taskType: "bug_fix" })] }), false);
+    assert.equal(unitHasLensRecords({ tasks: [] }), false);
+  });
+
+  test("task-record-keeps-type: a finished task's record says its task type, which publish tells a spike by", () => {
+    const ledger = { task: "Spike", taskType: "spike", plan: null, gates: {}, stages: SPIKE_STAGES.map((name) => ({ name, attempt: 1 })), lenses: {}, tests: {} };
+
+    const record = newTaskRecord({ ledger, headSha: HEAD, lessons: [] });
+
+    assert.equal(record.taskType, "spike");
+    assert.equal(isSpikeTask(record), true);
+  });
+
+  test("run-suite-at-head-counts: a full suite that passed at HEAD in the publish run stands in for a stale task suite", () => {
+    const stale = { ...facts().unit, tasks: [task({ fullSuite: { passed: true, head: OLD } })] };
+
+    assert.match(evidenceRefusals(facts({ unit: stale })).join(), /passed at bbbbbbb but HEAD is aaaaaaa/);
+    assert.deepEqual(evidenceRefusals(facts({ unit: stale, runSuite: { passed: true, head: HEAD } })), []);
+    assert.match(evidenceRefusals(facts({ unit: stale, runSuite: { passed: false, head: HEAD } })).join(), /failed at HEAD aaaaaaa/);
+  });
+
+  test("same-tree-suite-counts: a suite at a commit whose tree is HEAD's tree (messages rewritten) counts, another tree does not", () => {
+    const TREE = "d".repeat(40);
+    const rewritten = { ...facts().unit, tasks: [task({ fullSuite: { passed: true, head: OLD } })] };
+
+    assert.deepEqual(evidenceRefusals(facts({ unit: rewritten, headTree: TREE, suiteTrees: { [OLD]: TREE } })), []);
+    assert.match(evidenceRefusals(facts({ unit: rewritten, headTree: TREE, suiteTrees: { [OLD]: "e".repeat(40) } })).join(), /HEAD is aaaaaaa/);
+    assert.match(evidenceRefusals(facts({ unit: rewritten, headTree: TREE, suiteTrees: { [OLD]: null } })).join(), /HEAD is aaaaaaa/);
+  });
+
+  test("changed-config-names-the-way-through: the refusal for a config changed since the unit opened says how pb records a wanted change", () => {
+    const reason = evidenceRefusals(facts({ changedConfigs: ["git-config.json"] })).join();
+
+    assert.match(reason, /git-config\.json/);
+    assert.match(reason, /pb config propose/);
+    assert.match(reason, /pb human config apply/);
   });
 });

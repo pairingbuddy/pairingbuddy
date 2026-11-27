@@ -18,7 +18,7 @@ import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
 import { PlanRefused, boxesUnder, planFile, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
 import { humanTasksLeft } from "../shared-node/plan-text.mjs";
-import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedTasks, refreshPrReason, targetBranch, untickedTasks, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
+import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedSuites, recordedTasks, refreshPrReason, targetBranch, untickedTasks, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
 import { remapCommits } from "../shared-node/rebase-map.mjs";
 import { UnitRefused, newTaskRecord, newUnit, renderBranch } from "../shared-node/unit.mjs";
@@ -2221,6 +2221,13 @@ function publishingFacts(root, unit, gitConfig, head) {
   };
 }
 
+// HEAD's tree and the tree of each head a full suite was recorded at, so a suite on a reworded commit still counts.
+function suiteTreesOf(root, facts) {
+  if (facts.head === undefined) return {};
+  const treeOf = (sha) => tryGit(root, ["rev-parse", "--verify", "--quiet", `${sha}^{tree}`]);
+  return { headTree: treeOf(facts.head), suiteTrees: Object.fromEntries(recordedSuites(facts).map(({ head }) => [head, treeOf(head)])) };
+}
+
 // The remote branch holds an earlier copy of the unit from before a rebase: it is not behind HEAD, yet every commit only
 // it has makes a change some unit commit makes. Then the push may replace it, leased on that tip. Work only the remote
 // has, or a tip whose objects were never fetched, keeps the plain push, which git rejects.
@@ -2252,9 +2259,10 @@ function publish(args) {
   const voidReason = bound === null ? null : refusing(() => publishVoidReason(ledger, root, bound.current));
   const facts = {
     unit, runStop: ledger.stop, publishMode: mode, coordination: bound?.draft.coordination ?? null, commits, changedConfigs: changedConfigs({ ...unit, acceptedConfigHash: keptAcceptedConfigHash(root, unit) }, root), approval: publishApproval(ledger), voidReason, lint: bound === null ? null : publishLint(root, bound.current.bodyHash),
-    taskRunOpen: !isPublishRun(ledger),
+    taskRunOpen: !isPublishRun(ledger), runSuite: ledger.tests?.full === undefined ? null : { passed: ledger.tests.full.passed, head: ledger.tests.full.head },
     ...(bound === null || mode === "none" ? {} : publishingFacts(root, unit, gitConfig, bound.current.headSha)),
   };
+  Object.assign(facts, suiteTreesOf(root, facts));
   if (voidReason !== null) updateLedger(path, (current) => voidPublish(current, voidReason));
   const plan = publishSteps(facts);
   if (plan.refusals.length > 0) throw new Refusal(`not published: ${plan.refusals.join("; ")}`);
