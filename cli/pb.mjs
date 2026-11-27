@@ -11,7 +11,7 @@ import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, isRetype, C
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
 import { baselineFailures, judgedRecord } from "../shared-node/baseline.mjs";
-import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, finalChecksDoubt, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, defersScope, scopeDoubts, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
+import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, finalChecksDoubt, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, defersScope, scopeDoubts, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, statedTypeOf, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, seenRecently, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig, validateGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
@@ -478,8 +478,10 @@ function recordDeferred(ledger, gate, doubts) {
 }
 
 // confidence: a G:type pass on a likely type keeps it, so the report says the type was not certain.
-function recordAuto(ledger, gate, binding = {}, confidence = null) {
-  const record = gate === PUBLISH_GATE ? approvalRecord("auto", binding) : { source: "auto", ...(confidence === null ? {} : { confidence }) };
+const TYPE_GATE = "G:type";
+
+function recordAuto(ledger, gate, binding = {}, confidence = null, stated = null) {
+  const record = gate === PUBLISH_GATE ? approvalRecord("auto", binding) : { source: "auto", ...(stated !== null ? { stated } : confidence === null ? {} : { confidence }) };
   return { ...ledger, gates: { ...ledger.gates, [gate]: record } };
 }
 
@@ -520,6 +522,7 @@ function gateEval(args) {
   let question;
   let full;
   let deferred = null;
+  let stated = null;
   const fullAt = join(ensureRunRoot(root), "question.md");
   // One transaction: the void of a stale approval, the due gate and the question, so no state sits between them.
   updateLedger(path, (ledger) => {
@@ -530,7 +533,8 @@ function gateEval(args) {
     if (gate === PUBLISH_GATE && shown === null) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
     reason = askReason(contract, open, due, root, voided);
     if (reason === null && gate === PUBLISH_GATE && autoBinding === undefined) throw new Refusal("the ledger changed while G:publish was being prepared; run pb gate eval again");
-    if (reason === null) return repeatedAfter(contract, recordAuto(open, gate, autoBinding, typePassedOn(root, open, gate)), gate, root);
+    if (reason === null && gate === TYPE_GATE) stated = statedTypeOf(contract, open);
+    if (reason === null) return repeatedAfter(contract, recordAuto(open, gate, autoBinding, typePassedOn(root, open, gate), stated), gate, root);
     // Under auto with a unit open, doubts alone do not stop the run: they wait on the unit's questions for G:publish.
     const unitOpen = unitIsOpen(root);
     if (unitOpen && defersDoubts(contract, open, due, root, reason)) deferred = gateFacts(gate, root, open, contract).doubts ?? null;
@@ -555,7 +559,7 @@ function gateEval(args) {
     deferQuestionsInUnit(root, { gate, task: readLedger(path).task, doubts: deferred });
     return { ok: true, result: "auto-pass", gate, source: "auto", deferred: deferred.length };
   }
-  if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto", ...deferFinalChecks(root, gate, path, contract) };
+  if (reason === null) return { ok: true, result: "auto-pass", gate, source: "auto", ...(stated === null ? {} : { stated }), ...deferFinalChecks(root, gate, path, contract) };
   writeWhole(fullAt, full);
   const asked = { ok: true, result: "needs-human", gate, reason, question, humanCommand: approveCommand(root, gate) };
   return gate === PUBLISH_GATE ? { ...asked, shown } : asked;

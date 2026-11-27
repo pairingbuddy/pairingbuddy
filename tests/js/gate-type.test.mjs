@@ -6,6 +6,8 @@ import { join } from "node:path";
 
 import { buildKey } from "../../shared-node/keys.mjs";
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { openDoubts } from "../../shared-node/gates.mjs";
+import { loadStages } from "../../shared-node/stages.mjs";
 import { RUNNER_WITHOUT_SELECTOR, makeRepo, pb } from "./cli-repo-fixture.mjs";
 import { INTAKE_DONE } from "./ledger-fixture.mjs";
 
@@ -313,7 +315,7 @@ test("gate-type-passes-under-auto-when-the-task-states-its-type-and-the-classifi
   const result = pb(repo, "gate", "eval");
 
   assert.equal(result.code, 0, `pb gate eval exits 0, stderr ${result.stderr}`);
-  assert.deepEqual(JSON.parse(result.stdout), { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto" }, "the type the approved plan states is certain, whatever the classifier thought");
+  assert.deepEqual(JSON.parse(result.stdout), { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto", stated: "config_change" }, "the type the approved plan states is certain, whatever the classifier thought");
 });
 
 const STATED_TASK = "Task 4: Cache the build\n\nType: config_change. Only CI files change.\n";
@@ -325,4 +327,23 @@ test("gate-type-passes-a-stated-type-under-a-non-auto-policy", () => {
 
   assert.equal(result.code, 0, `pb gate eval exits 0, stderr ${result.stderr}`);
   assert.equal(JSON.parse(result.stdout).result, "auto-pass", "the type the approved plan states needs no human, whatever the policy");
+});
+
+test("gate-type-passes-a-stated-type-with-no-question-on-a-classifier-doubt", () => {
+  const repo = repoAtTypeGate({ confidence: "likely", returnedType: "refactoring", ambiguity: "Is this refactoring rather than a config change?", task: STATED_TASK });
+  writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit: "T1a", tasks: [], commits: [] }));
+
+  const out = evalNeedsHuman(repo);
+
+  assert.deepEqual(out, { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto", stated: "config_change" }, "the stated type passes, and the classifier's doubt is asked nowhere, not even later");
+});
+
+test("gate-type-settles-the-classifier-doubt-once-a-stated-type-passes", () => {
+  const repo = repoAtTypeGate({ confidence: "likely", returnedType: "refactoring", ambiguity: "Is this refactoring rather than a config change?", task: STATED_TASK });
+  pb(repo, "gate", "eval");
+
+  const ledger = readLedger(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"));
+  const doubts = openDoubts(loadStages(new URL("../..", import.meta.url).pathname), ledger, repo.dir);
+
+  assert.deepEqual(doubts, [], "no later gate asks the classifier's doubt on a type the plan stated");
 });

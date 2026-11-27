@@ -440,7 +440,9 @@ function settledStages(contract, ledger) {
 function doubtSettledStages(contract, ledger) {
   const { nodes } = contract.taskTypes[graphFor(contract, ledger.taskType).taskType];
   const deferred = (gate) => Array.isArray(ledger.gates[gate]?.deferred);
-  const last = nodes.findLastIndex(({ gate }) => gate !== null && (isHumanApproved(ledger, gate) || deferred(gate)));
+  // A G:type passed on the type the task states settles the classifier's doubt: the plan already answered it.
+  const stated = (gate) => typeof ledger.gates[gate]?.stated === "string";
+  const last = nodes.findLastIndex(({ gate }) => gate !== null && (isHumanApproved(ledger, gate) || deferred(gate) || stated(gate)));
   return new Set(nodes.slice(0, last + 1).map(({ name }) => name));
 }
 
