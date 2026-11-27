@@ -286,19 +286,21 @@ describe("unit-status-rebase-cli", () => {
     assertDeliberateRefusal(result, /config hash changed/i, "the refusal names the config hash change", repo, unitBefore);
   });
 
-  test("reconciled-refusal-leaves-unit-unchanged", () => {
-    const { repo, unitFile } = rebasedUnitRepo({ suiteExitCode: 1 });
+  test("reconciled-adopts-human-commit", () => {
+    const fixture = rebasedUnitRepo();
+    const { repo, unitFile } = fixture;
     writeFileSync(join(repo.dir, "extra.txt"), "extra\n");
     git(repo, "add", "extra.txt");
-    git(repo, "commit", "-q", "-m", "extra commit outside the unit record");
+    git(repo, "commit", "-q", "-m", "a human commit outside the unit record");
     const extra = git(repo, "rev-parse", "HEAD");
-    const unitBefore = readFileSync(unitFile, "utf8");
 
     const result = pb(repo, "unit", "status");
 
-    assertDeliberateRefusal(result, /not in the unit record/i, "the refusal says a commit is not in the unit record", repo, unitBefore);
-    assert.ok(outputOf(result).includes(extra.slice(0, 7)), `the refusal names the extra commit ${extra}: ${outputOf(result)}`);
-    assert.doesNotMatch(outputOf(result), /full suite/i, "no suite ran: the refusal is the remap one, not the failing-suite one");
+    assert.equal(result.code, 0, `pb unit status adopts a commit a human made between runs instead of refusing: ${outputOf(result)}`);
+    assert.deepEqual(JSON.parse(result.stdout).adopted, [extra], "the OK JSON names the adopted commit");
+    const unit = JSON.parse(readFileSync(unitFile, "utf8"));
+    assert.deepEqual(unit.commits, [fixture.newFirst, fixture.newSecond, extra], "the adopted commit joins the unit's commits after the remapped ones");
+    assert.deepEqual(unit.humanCommits, [extra], "the unit marks it as a human commit");
   });
 
   test("reconciled-no-tasks-skips-suite", () => {

@@ -6,7 +6,8 @@ function findByPatchId(commit, range, used) {
   return range.find((candidate) => !used.has(candidate.sha) && candidate.patchId === commit.patchId);
 }
 
-// Pure remap of a unit's recorded commits onto the commits of a rebased range. No I/O.
+// Pure remap of a unit's recorded commits onto the commits of a rebased range. No I/O. Returns { mapping, adopted }:
+// a range commit no recorded commit matched was made by a human between runs, so it is adopted into the unit, in range order.
 export function remapCommits({ recorded, range, merges = [] }) {
   if (merges.length > 0) {
     refuse(`The rebased range contains a merge (${merges.join(", ")}); rebase instead of merging`);
@@ -27,7 +28,6 @@ export function remapCommits({ recorded, range, merges = [] }) {
     used.add(match.sha);
     mapping[commit.sha] = match.sha;
   }
-  const extra = range.find((candidate) => !used.has(candidate.sha));
-  if (extra) refuse(`The commit ${extra.sha} is not in the unit record`);
-  return mapping;
+  const adopted = range.filter((candidate) => !used.has(candidate.sha)).map(({ sha }) => sha);
+  return { mapping, adopted };
 }

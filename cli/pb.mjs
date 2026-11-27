@@ -2318,7 +2318,7 @@ async function unitStatus() {
   refuseRebaseNeeded(unit, result);
   if (result.status === "current") return { ok: true, status: "current", base: unit.base, baseSha: unit.baseSha };
   const hasTasks = unit.tasks.length > 0;
-  const unitAfterRemap = hasTasks ? remappedUnit(root, unit, result) : unit;
+  const { unit: unitAfterRemap, adopted } = hasTasks ? remappedUnit(root, unit, result) : { unit, adopted: [] };
   const suite = hasTasks ? await rebaseSuiteOf(root, unit) : null;
   const rebaseSuite = suite === null ? {} : { rebaseSuite: suite.rebaseSuite };
   writeJsonAtomic(unitPathOf(root), { ...reconciledUnit(unitAfterRemap, result), ...rebaseSuite });
@@ -2326,7 +2326,7 @@ async function unitStatus() {
   if (suite !== null && !suite.rebaseSuite.passed) {
     throw new Refusal(`the full suite failed at HEAD ${suite.rebaseSuite.head.slice(0, 7)} after the rebase: exit codes ${suite.exitCodes.join(", ")}. pb publish refuses until a full suite passes at HEAD; a new task in the unit can fix it`);
   }
-  return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack, ...rebaseSuite };
+  return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack, ...rebaseSuite, ...(adopted.length > 0 && { adopted }) };
 }
 
 // Rebases the open unit's branch onto its moved base, then reconciles as pb unit status does. Refused while a run is open,
@@ -2371,16 +2371,19 @@ function refusingAs(rule) {
   }
 }
 
-// The unit's commits and task head shas moved onto the rebased range; a mapping that cannot be made is a refusal.
+// The unit's commits and task head shas moved onto the rebased range; a mapping that cannot be made is a refusal. A range
+// commit no recorded one matched was made by a human between runs: it is adopted into commits and marked in humanCommits.
 function remappedUnit(root, unit, result) {
   const gitLines = (args) => runGit(root, args, { context: "nothing was written" }).split("\n").filter(Boolean);
   const range = `${result.baseSha}..HEAD`;
   const rangeCommits = gitLines(["rev-list", "--reverse", range]).map((sha) => ({ sha, patchId: patchIdOf(root, sha) }));
   const merges = gitLines(["rev-list", "--merges", range]);
   const recorded = unit.commits.map((sha) => ({ sha, patchId: patchIdOf(root, sha) }));
-  const mapping = refusingAs(() => remapCommits({ recorded, range: rangeCommits, merges }));
+  const { mapping, adopted } = refusingAs(() => remapCommits({ recorded, range: rangeCommits, merges }));
   const remap = (sha) => mapping[sha] ?? (sha === unit.baseSha ? result.baseSha : sha);
-  return { ...unit, commits: unit.commits.map(remap), tasks: unit.tasks.map((task) => ({ ...task, headSha: remap(task.headSha) })) };
+  const humanCommits = [...(unit.humanCommits ?? []).map(remap), ...adopted];
+  const remapped = { ...unit, commits: [...unit.commits.map(remap), ...adopted], tasks: unit.tasks.map((task) => ({ ...task, headSha: remap(task.headSha) })) };
+  return { unit: humanCommits.length === 0 ? remapped : { ...remapped, humanCommits }, adopted };
 }
 
 // The full suite at the rebased HEAD, recorded as passed and the head it ran at.
