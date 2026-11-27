@@ -5,6 +5,7 @@ import contract from '../shared-node/stages-contract.mjs'
 import { lensRound } from '../shared-node/lens-round.mjs'
 import type { LensRound } from '../shared-node/lens-round.mjs'
 import { unitStates } from '../shared-node/plan.mjs'
+import { tracerOf } from '../shared-node/tracer-context.mjs'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { questionsLine } from '../shared-node/questions.mjs'
 import { cycleMarker, progressRow, shortName, stepAge, testCounts } from '../shared-node/now-building.mjs'
@@ -51,6 +52,8 @@ export type View = {
   lensRound?: LensRound
   // The GOAL row: the task's first sentence from the moment the run knows its task, else a dash.
   goal: string
+  // The tracer bullet heading over the plan task the goal names, which the GOAL row and the band name before it.
+  goalTracer?: string
   // The STATUS row: what state the run is in (working, needs you, stopped, done, or quiet) and what about.
   status: Status
   // The unit's work is over with nothing left to run: the done alert fires on it.
@@ -278,6 +281,14 @@ function prOf(inputs: Inputs) {
 // The goal: the code run's task (kept through the publish run), else the run's own; a dash while neither names one.
 const goalText = ({ codeRun, ledger }: Inputs) => goalOf(codeRun?.task ?? ledger?.task) || EMPTY
 
+// The tracer over the plan task the goal names: the plan task the ledger names, else the task's first line (a publish run
+// keeps the code run's task).
+function goalTracer({ plan, codeRun, ledger }: Inputs): Pick<View, 'goalTracer'> {
+  const titles = [ledger?.plan?.title, (codeRun?.task ?? ledger?.task)?.split('\n')[0]?.trim()]
+  const tracer = titles.map(title => (title ? tracerOf(plan, title) : null)).find(Boolean)
+  return tracer ? { goalTracer: tracer } : {}
+}
+
 // The end rows once the task is done; while no stage runs, the work is finished and its review is told as one summary.
 // live: a run's ledger is read now. Done, STATUS says so with the goal's verdict and the pull request.
 // REVIEW's one rule: once the code is signed off, it is the code review, in the publish run too; the PR draft's own review
@@ -346,7 +357,7 @@ function withQuestions(view: View, unit: Inputs['unit']): View {
 
 // What the band and the pane show for what was read.
 export function buildView(inputs: Inputs): View {
-  const view = { ...toned(buildPlainView(inputs)), ...planFields(inputs), ...buildingTask(inputs.ledger) }
+  const view = { ...toned(buildPlainView(inputs)), ...planFields(inputs), ...buildingTask(inputs.ledger), ...goalTracer(inputs) }
   const { ledger } = inputs
   if (!ledger) return view
   const { doneStatus: _done, ...end } = endState(inputs, view.running, true)
@@ -430,6 +441,7 @@ export function buildEndedView(given: Inputs): View {
     unknownLabels,
     steps: unitSteps(inputs, true),
     goal: goalText(inputs),
+    ...goalTracer(inputs),
     ...buildTestRows(inputs, true),
     lensRound: ledger ? lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns, ended: true }) : undefined,
     ...end,

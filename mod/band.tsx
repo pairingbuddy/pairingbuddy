@@ -1,5 +1,7 @@
 import { fitBand, SEPARATOR } from '../shared-node/glance.mjs'
 import { barLines, goalGist, nextWords } from '../shared-node/end-state.mjs'
+import { tracerGoal } from '../shared-node/tracer-context.mjs'
+import { cutAtWord } from '../shared-node/lens-round.mjs'
 import { PHASES } from '../shared-node/labels.mjs'
 import { ACCENT_COLOUR, PHASE_COLOURS, STATUS_LOOKS } from './pane'
 import type { Segment, Tags } from './view'
@@ -26,9 +28,18 @@ export const bandColumns = (columns: number, hint: string = '') => columns - CON
 
 // The goal's gist for the band's first row: the whole goal when it fits beside the [-] control, else cut at the last clause
 // break, else the last word, that fits (never with "…"); undefined while no run names its goal. No room known cuts nothing.
-export function bandGoal(goal: string | undefined, columns: number) {
+// The tracer the task belongs to leads it, its name cut first ("TB12 › <goal>" at the least).
+export function bandGoal(goal: string | undefined, columns: number, tracer?: string) {
   if (!goal || goal === '—') return undefined
-  return goalGist(goal.trim().replace(/\s+/g, ' '), columns > 0 ? columns - CONTROL_WIDTH : 0)
+  const room = columns > 0 ? columns - CONTROL_WIDTH : 0
+  const text = goal.trim().replace(/\s+/g, ' ')
+  const led = tracerGoal(tracer, text, room)
+  if (!tracer || !(room > 0) || [...led].length <= room) return goalGist(led, room)
+  // The tracer kept what it could; the goal has the rest, cut at a clause that keeps most of it, else at a word.
+  const lead = led.slice(0, led.length - text.length)
+  const left = room - [...lead].length
+  const gist = goalGist(text, left)
+  return lead + ([...gist].length * 2 >= left ? gist : cutAtWord(text, left))
 }
 
 const LIT = { color: ACCENT_COLOUR, bold: true }
@@ -82,9 +93,10 @@ export function barRows(segment: Segment, room: number): string[][] {
 }
 
 // While a stage is active or a question waits, only the segments that fit; otherwise the quiet line. The commands hint follows.
-export function Band({ Box, Text, band, goal, columns, running, waiting, ended, done, between, next }: Pick<Tags, 'Box' | 'Text'> & {
+export function Band({ Box, Text, band, goal, goalTracer, columns, running, waiting, ended, done, between, next }: Pick<Tags, 'Box' | 'Text'> & {
   band: Segment[]
   goal?: string
+  goalTracer?: string
   columns: number
   running: boolean
   waiting?: boolean
@@ -108,7 +120,7 @@ export function Band({ Box, Text, band, goal, columns, running, waiting, ended, 
   const quietText = [...HINTS.map(form => `${quiet.words}${IDLE_SEPARATOR}${form}`), quiet.words].find(text => text.length <= room) ?? quiet.words
   // The goal leads on its own row, so the step below it stays where the eye learnt to find it: two rows at most.
   // A loud state's bar takes the goal's row (the pane keeps the goal), so the band stays two rows.
-  const gist = loud ? undefined : bandGoal(goal, columns)
+  const gist = loud ? undefined : bandGoal(goal, columns, goalTracer)
 
   return (
     <Box flexDirection="column">

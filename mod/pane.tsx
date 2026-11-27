@@ -1,4 +1,5 @@
 import { cutAtWord, lensLines, lensSummaryLines } from '../shared-node/lens-round.mjs'
+import { tracerGoal } from '../shared-node/tracer-context.mjs'
 import { endReviewLines, endReviewSummaryLines, goalLines, barLines, wrapAtParts } from '../shared-node/end-state.mjs'
 import { commitRows, firstUnticked, gapWords, holdsBuilding, humanWords, OPEN_COMMIT_ROWS, planFocus, PLAN_ROWS, problemRows, SHORT_COMMIT_ROWS, STATE_SEPARATOR, taskMark, unitWords, windowRows } from '../shared-node/plan-window.mjs'
 import { hiddenRows, moreRowsLine, paneBudget, PLAN_TARGET } from '../shared-node/pane-height.mjs'
@@ -95,11 +96,15 @@ function testsParts({ progress, test }: Pick<View, 'progress' | 'test'>, width: 
   return lines
 }
 
-// The GOAL row leads, bold, on up to two lines; a dash until the run names its task.
+// The GOAL row leads, bold, on up to two lines, the tracer before the task; a dash until the run names its task.
+const GOAL_LINES = 2
+const WRAP_SLACK = 12
 function goalRows(view: View, columns: number) {
   const width = columns > 0 ? columns - LABEL_WIDTH : 0
   const goal = view.goal ?? EMPTY
-  const lines = goal === EMPTY ? [emptyLine()] : goalLines(goal, width).map((text: string) => [{ text, props: { bold: true } }])
+  // The tracer leads the task, cut first so the task keeps its two lines; a word-wrapped line can come short of the width.
+  const led = goal === EMPTY ? goal : tracerGoal(view.goalTracer, goal, width > 0 ? GOAL_LINES * width - WRAP_SLACK : 0)
+  const lines = led === EMPTY ? [emptyLine()] : goalLines(led, width, GOAL_LINES).map((text: string) => [{ text, props: { bold: true } }])
   return rowLines('GOAL', lines, FIRST_GLANCE_LABEL)
 }
 
