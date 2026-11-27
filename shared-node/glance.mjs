@@ -8,7 +8,7 @@ import { clock } from "./duration.mjs";
 import { TOKENS_UNIT } from "./spent-line.mjs";
 import { permissionLine } from "./permission-wait.mjs";
 import { strandedLine } from "./stranded.mjs";
-import { HUMAN_STOPPED, RED_PASSES } from "./stop-codes.mjs";
+import { HUMAN_STOPPED, PR_LABEL_MISSING, RED_PASSES } from "./stop-codes.mjs";
 
 const UNKNOWN = "unknown";
 const AGENT_KINDS = ["Agent", "workflow_agent"];
@@ -231,12 +231,12 @@ function bandNeedsYou(ledger) {
 }
 
 // The two loud states, told apart so red stays for failures: WAITING, the run waits on a decision only the human can make (a
-// gate's question, a permission prompt, the human's own stop, a test that passed before any code); FAILED, something went wrong (a stop of any other code, a
+// gate's question, a permission prompt, the human's own stop, a test that passed before any code, a draft label the repo lacks); FAILED, something went wrong (a stop of any other code, a
 // stranded stage whose session or workflow is gone). Undefined while nothing stands.
 export const WAITING = "waiting";
 export const FAILED = "failed";
 
-const HUMAN_DECIDES = [HUMAN_STOPPED, RED_PASSES];
+const HUMAN_DECIDES = [HUMAN_STOPPED, RED_PASSES, PR_LABEL_MISSING];
 
 export function alertKind(ledger) {
   if (ledger?.stop) return HUMAN_DECIDES.includes(ledger.stop.code) ? WAITING : FAILED;

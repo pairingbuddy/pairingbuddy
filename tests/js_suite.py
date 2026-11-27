@@ -134,6 +134,7 @@ JS_TEST_FILES = [
     "tests/js/publish-gate-eval.test.mjs",
     "tests/js/publish-run.test.mjs",
     "tests/js/publish-comment.test.mjs",
+    "tests/js/publish-labels.test.mjs",
     "tests/js/progress-row.test.mjs",
     "tests/js/now-building-safeguards.test.mjs",
     "tests/js/report-content.test.mjs",

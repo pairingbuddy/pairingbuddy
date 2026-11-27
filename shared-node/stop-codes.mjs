@@ -16,6 +16,9 @@ export const HUMAN_STOPPED = "human-stopped";
 export const ATTEMPT_CAP = "attempt-cap";
 // A test that passes at RED before any code: no retry can change that, so the CLI stops at the first one.
 export const RED_PASSES = "red-passes";
+// A draft label the repo does not have: the approved draft cannot change between publish retries, so the run stops at
+// once and the draft is written again.
+export const PR_LABEL_MISSING = "pr-label-missing";
 // The views' own stop: no ledger holds it. They read it from the marker hooks/gate-watch.mjs leaves (shared-node/gate-off.mjs).
 export const GATE_OFF = "gate-off";
-export const STOP_CODES = [MISSING_ARTIFACT, COMMIT_PLAN_UNUSABLE, COMMIT_FAILED, NO_SELECTOR_TEMPLATE, HUMAN_STOPPED, RED_PASSES, GATE_OFF, ...Object.keys(STAGE_STOP_REASONS)];
+export const STOP_CODES = [MISSING_ARTIFACT, COMMIT_PLAN_UNUSABLE, COMMIT_FAILED, NO_SELECTOR_TEMPLATE, HUMAN_STOPPED, RED_PASSES, PR_LABEL_MISSING, GATE_OFF, ...Object.keys(STAGE_STOP_REASONS)];

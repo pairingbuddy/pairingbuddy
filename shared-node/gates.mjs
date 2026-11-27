@@ -901,6 +901,10 @@ function reopenStage(ledger, name, gates) {
   return withStageStatus({ ...ledger, gates: kept, stage: current }, stage, REDO_STATUS);
 }
 
+// The G:publish approval voided for reason and the draft stage set to run again: what a refusal the approved draft itself
+// causes leaves behind, so the next pr-draft run writes a new draft and the human is asked again.
+export const redoDraft = (ledger, gates, reason) => reopenStage(voidPublish(ledger, reason), PUBLISH_GATE, gates);
+
 // What the human is shown at G:publish and what an approval binds to: HEAD, where the unit started and where the PR goes.
 export function publishFacts(root) {
   const subject = readPrSubject(root);
@@ -917,7 +921,7 @@ export function publishBinding(root, ledger, shown = null) {
     throw new PublishRefused(`HEAD moved since the question: G:publish was shown ${short(shown.headSha)} and HEAD is ${short(facts.headSha)}, so nothing was approved`);
   }
   const draft = readDraftArtifact(root, ledger.stage);
-  const lint = runPrLint(root, draft.title);
+  const lint = runPrLint(root, draft.title, draft.labels ?? []);
   const failed = lint.ok ? {} : { lintOk: false, lintFailures: lint.failures };
   return { ...facts, bodyHash: lint.bodyHash, ...draftBinding(draft), ...failed };
 }

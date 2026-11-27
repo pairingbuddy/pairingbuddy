@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { readGitConfig } from "./gitconf.mjs";
 import { OUTPUT_MAX_BUFFER } from "./output-buffer.mjs";
 import { lintDraft } from "./pr-lint.mjs";
+import { labelFailures, parseRepoLabels } from "./pr-labels.mjs";
 import { returnsAt } from "./stage-run.mjs";
 
 export class PrLintRunRefused extends Error {}
@@ -75,13 +76,24 @@ function diffLinesSince(root, baseSha) {
   return out.split("\n").filter(Boolean).reduce((sum, row) => sum + row.split("\t").slice(0, 2).reduce((n, count) => n + (Number(count) || 0), 0), 0);
 }
 
-export function runPrLint(root, title) {
+// The repo's label names through gh, or null when gh cannot list them (then no label is called missing).
+export function listRepoLabels(root) {
+  try {
+    return parseRepoLabels(execFileSync("gh", ["label", "list", "--json", "name", "--limit", "500"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: OUTPUT_MAX_BUFFER }));
+  } catch {
+    return null;
+  }
+}
+
+// labels are the draft's: a label the repo does not have fails the lint, since gh would refuse the PR after the push.
+export function runPrLint(root, title, labels = []) {
   const unit = readPrSubject(root);
   if (!existsSync(prBodyPath(root))) throw new PrLintRunRefused("run/pr-body.md is missing, so there is no draft to lint");
   const body = readFileSync(prBodyPath(root), "utf8");
   const { pr } = readGitConfig(root);
-  const { ok, failures } = lintDraft({ title, body, diffLines: diffLinesSince(root, unit.baseSha), titleTemplate: pr.title_template, config: pr.lint });
-  const result = { ok, failures, bodyHash: sha256(body) };
+  const drafted = lintDraft({ title, body, diffLines: diffLinesSince(root, unit.baseSha), titleTemplate: pr.title_template, config: pr.lint });
+  const failures = [...drafted.failures, ...(labels.length === 0 ? [] : labelFailures(labels, listRepoLabels(root)))];
+  const result = { ok: failures.length === 0, failures, bodyHash: sha256(body) };
   const temp = `${prLintPath(root)}.${process.pid}.tmp`;
   writeFileSync(temp, `${JSON.stringify(result, null, 2)}\n`);
   renameSync(temp, prLintPath(root));

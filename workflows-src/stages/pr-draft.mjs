@@ -30,6 +30,8 @@ const paths = {
   unit: '.pairingbuddy/run/unit.json',
   git_config: '.pairingbuddy/git-config.json',
   human_guidance: '.pairingbuddy/human-guidance.json',
+  // The labels the repo has (pb run open writes it; labels is null when gh could not list them).
+  repo_labels: '.pairingbuddy/run/task/repo-labels.json',
   // A refresh run has no unit record, so its agents read these instead.
   refresh: '.pairingbuddy/run/refresh.json',
   old_body: '.pairingbuddy/run/refresh-body.md',

@@ -65,6 +65,7 @@ const PLAIN_NAMES = {
   "agent-budget": "the agent budget ran out",
   "step-failed": "a step kept failing",
   "red-passes": "a test passed before any code",
+  "pr-label-missing": "a PR label is not in the repo",
   "tests-red": "the tests were not green",
   "gate-off": "safety checks are off",
   // task types

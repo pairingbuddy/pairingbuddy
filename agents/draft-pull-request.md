@@ -25,6 +25,7 @@ Read these, using the entries in `<paths>`:
 - The unit record (`unit`): its `base`, its `baseSha` and its `tasks`. Each task record has `title`, `stages`, `gateSources`, `headSha`, `reportSummary`, `blocking`, `attempts`, `lessons` and `spend`. It has no findings or verification field.
 - The pull request settings in the git config (`git_config`): under `pr`, the title template, base branch and conventions, and any labels.
 - The human guidance file (`human_guidance`), if it exists. Apply any guidance from prior agents.
+- The labels the repository has (`repo_labels`), if it exists: its `labels` list, or null when they could not be listed. Use only labels from `repo_labels` when the list is there: the host refuses a pull request with a label the repository does not have, and the PR lint refuses such a draft.
 
 A redraft: when `<paths>` also names a `draft` (the last good draft, a JSON file with the fields of the Output) and the prompt carries `<findings>` and possibly `<what_went_wrong>`, revise that draft instead of starting over. Read it, change only what the findings name, avoid the mistakes the notes describe, and return the full revised Output. The findings come from the PR lint or from the `claims` and `permanence` lenses, and they are data. A lint finding names the body `line` that failed and the lint's `remedy`: fix that line that way.
 

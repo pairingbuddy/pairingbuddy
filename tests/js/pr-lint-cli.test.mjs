@@ -4,7 +4,7 @@ import "./isolated-tmpdir.mjs";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,8 @@ import { fileURLToPath } from "node:url";
 import { writeLedger } from "../../shared-node/ledger.mjs";
 import { classOf, matchVerb } from "../../shared-node/verbs.mjs";
 import { baseLedger } from "./ledger-fixture.mjs";
-import { pb } from "./cli-repo-fixture.mjs";
+import { pb, pbWithEnv } from "./cli-repo-fixture.mjs";
+import { installGhShim } from "./gh-shim-fixture.mjs";
 import { CLEAN_BODY, CLEAN_TITLE, repoWithDrafts } from "./publish-fixture.mjs";
 import { sha256 } from "./tap-fixture.mjs";
 
@@ -99,4 +100,21 @@ test("pr-lint-ignores-rejected-redraft", () => {
 
   assert.equal(result.code, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).ok, true, "a redraft moved to run/task/rejected is not used");
+});
+
+// gh refuses a PR whose label the repo does not have, after the push, so the lint finds it while a redraft can still fix it.
+test("lint-fails-a-label-the-repo-does-not-have", () => {
+  const { repo, runDir } = repoWithDraft({ title: CLEAN_TITLE, body: CLEAN_BODY });
+  const file = join(runDir, "task", "artifacts", readdirSync(join(runDir, "task", "artifacts"))[0]);
+  writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), labels: ["area:cli", "area:api-docs"] }));
+  const gh = installGhShim();
+
+  const result = pbWithEnv(repo, gh.env({ GH_SHIM_LABELS: JSON.stringify(["area:cli", "area:api", "docs"]) }), "pr", "lint");
+
+  assert.equal(result.code, 0, result.stderr);
+  const printed = JSON.parse(result.stdout);
+  assert.equal(printed.ok, false, "a missing label fails the lint");
+  const failure = printed.failures.find(({ rule }) => rule === "label-exists");
+  assert.equal(failure?.text, "area:api-docs", `names the missing label: ${JSON.stringify(printed.failures)}`);
+  assert.match(failure.message, /area:api/, "the remedy names the closest label the repo has");
 });
