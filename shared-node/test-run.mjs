@@ -326,6 +326,41 @@ function outputTail() {
   };
 }
 
+// The lines that name a failing test, read from the whole output (not only the tail), so a later run can be told apart
+// from the baseline by which tests fail, not only by its exit code. Runner spellings: vitest and jest (FAIL, ×, ●), pytest
+// (FAILED, ERROR), node --test (✖, not ok), go (--- FAIL). Durations and pytest's message are dropped, as they change
+// from run to run. Bounded, like the excerpt.
+const MAX_FAILURE_LINES = 500;
+const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
+const FAILURE_LINE = /^(?:FAIL|FAILED|ERROR|×|✗|✖|●|not ok \d+ -|--- FAIL:)\s+\S/;
+const normalFailure = (line) =>
+  line
+    .replace(/^(FAILED|ERROR)(\s+\S+::\S+?)\s+-\s.*$/, "$1$2")
+    .replace(/\s*\(\d+(?:\.\d+)?\s*m?s\)\s*$/, "")
+    .replace(/\s+\d+(?:\.\d+)?\s*m?s\s*$/, "")
+    .trim();
+
+function failureScanner() {
+  const found = new Set();
+  let partial = "";
+  const take = (line) => {
+    const clean = line.replace(ANSI, "").trim();
+    if (found.size < MAX_FAILURE_LINES && FAILURE_LINE.test(clean)) found.add(normalFailure(clean));
+  };
+  return {
+    add(chunk) {
+      const lines = (partial + chunk.toString("utf8")).split(/\r?\n/);
+      partial = lines.pop();
+      lines.forEach(take);
+    },
+    lines() {
+      if (partial !== "") take(partial);
+      partial = "";
+      return [...found];
+    },
+  };
+}
+
 function killGroup(pid) {
   try {
     process.kill(-pid, "SIGKILL");
@@ -353,11 +388,14 @@ export function runPlan({ runner, argv, timeoutMs: limit }, cwd) {
     const { NODE_TEST_CONTEXT: _parent, ...env } = process.env;
     const child = spawn(argv[0], argv.slice(1), { cwd, env, shell: false, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     const tail = outputTail();
+    const scanner = failureScanner();
     let timedOut = false;
     let drain;
     let stopForwarding = () => {};
-    child.stdout.on("data", tail.add);
-    child.stderr.on("data", tail.add);
+    for (const stream of [child.stdout, child.stderr]) {
+      stream.on("data", tail.add);
+      stream.on("data", scanner.add);
+    }
     const timer = setTimeout(() => {
       timedOut = true;
       killGroup(child.pid);
@@ -368,7 +406,8 @@ export function runPlan({ runner, argv, timeoutMs: limit }, cwd) {
       stopForwarding();
       child.stdout.destroy();
       child.stderr.destroy();
-      resolve({ runner, argv, exitCode, signal, timedOut, durationMs: Date.now() - started, excerpt: tail.text(), excerptTruncated: tail.truncated() });
+      const failures = exitCode === 0 && !timedOut ? [] : scanner.lines();
+      resolve({ runner, argv, exitCode, signal, timedOut, durationMs: Date.now() - started, excerpt: tail.text(), excerptTruncated: tail.truncated(), ...(failures.length > 0 ? { failures } : {}) });
     };
     child.once("spawn", () => {
       stopForwarding = forwardSignals(child.pid);

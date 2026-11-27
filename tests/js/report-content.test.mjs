@@ -285,6 +285,19 @@ describe("report-content", () => {
     assert.ok(section.includes("cut by you: needs a live S9 run"), "the human's reason");
   });
 
+  test("report-already-failing: the failures there before the task are listed once, by runner, with a runner that could not run named so", async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "done" });
+    const run = (runner, exitCode, failures) => ({ runner, argv: [], exitCode, signal: null, timedOut: false, durationMs: 1, excerpt: "", excerptTruncated: false, ...(failures ? { failures } : {}) });
+    const baseline = { stage: "intake", attempt: 1, passed: false, red: false, runs: [run("backend", 1, ["FAIL a.test.ts > renders a pdf"]), run("frontend", 1), run("worker", 0)] };
+    const ledger = { ...input.ledger, tests: { ...input.ledger.tests, baseline } };
+
+    const section = sectionOf(renderReport({ ...input, ledger }), "ALREADY FAILING");
+
+    assert.ok(section.includes("FAIL a.test.ts &gt; renders a pdf"), section);
+    assert.ok(section.includes("frontend") && section.includes("could not run any test"), "the broken runner");
+    assert.ok(!section.includes("worker"), "a runner that passed is not listed");
+  });
+
   test("report-built: every changed file is listed", async () => {
     const input = await recordedReportInput("probe-2", { outcome: "done" });
     const changed = Array.from({ length: 7 }, (_, i) => `src/file_${i + 1}.py`);

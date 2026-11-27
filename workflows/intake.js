@@ -1883,6 +1883,8 @@ const lensResult = await lensAttack({
 const stopped = await fixStop(stage, lensResult, 2);
 if (stopped !== null) return stopped;
 
-const runner = await runCommands(stage, ['stage finish'], { round: 2 });
+// The full suite before the task changes anything: the baseline later runs are judged against, so a failure that was
+// already there never rolls back a fix or blocks the task.
+const runner = await runCommands(stage, ['test --baseline', 'stage finish'], { round: 2 });
 
 return { started: true, ...endState(lensResult, result), pbKey, label, snapshot, lensAttack: lensResult, runner };

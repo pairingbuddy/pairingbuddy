@@ -136,6 +136,10 @@ function builtLine({ files, tests, passing }, fullAt) {
 // A full suite that checked no lint is said so, since "all passing" alone reads as a clean build.
 const lintLine = (note) => (typeof note === "string" && note !== "" ? [`Lint: ${note.replace(/[.\s]+$/, "")}.`] : []);
 
+// The failures the task's baseline already had, which the run did not count: shown, so the human still sees them.
+const preexistingPart = ({ runner, failures, broken }) => (broken ? `runner ${runner} could not run` : `runner ${runner}, ${counted(failures.length, "test")}`);
+const preexistingLine = (rows) => (Array.isArray(rows) && rows.length > 0 ? [`Already failing before this task, so not counted: ${rows.map(preexistingPart).join("; ")}.`] : []);
+
 function reviewLine(outcomes) {
   if (!Array.isArray(outcomes)) return [];
   if (outcomes.length === 0) return ["Review: no issues."];
@@ -158,7 +162,7 @@ const trimmed = (value) => (typeof value === "string" && value.trim() !== "" ? v
 // The goal's first sentence, whole: the question box wraps it. The full question file holds the whole goal.
 function taskEndLines({ facts, fullAt }) {
   const goal = fullAt === null ? trimmed(facts.goal) : firstSentence(facts.goal);
-  return [...(goal === null ? [] : [`Goal: ${goal}`]), ...builtLine(facts, fullAt), ...lintLine(facts.lint), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck, fullAt)];
+  return [...(goal === null ? [] : [`Goal: ${goal}`]), ...builtLine(facts, fullAt), ...preexistingLine(facts.preexisting), ...lintLine(facts.lint), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck, fullAt)];
 }
 
 const isHeading = (line) => /^#{1,6}\s/.test(line.trim());

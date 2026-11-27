@@ -29,7 +29,7 @@ const RUNNER_AGENT = `${PREFIX}runner`;
 const PB_COMMAND = `node ${shellWord(join(PLUGIN_ROOT, "cli", "pb.mjs"))}`;
 // Each stop reason is spelled out, and a bare `stage stop` is not on the list.
 const STAGE_STOPS = Object.keys(STAGE_STOP_REASONS).map((reason) => `stage stop ${reason}`);
-const RUNNER_COMMANDS = [...VERB_CLASSES.runner.filter((verb) => verb !== "stage stop"), ...STAGE_STOPS, "test --full"].map((args) => `${PB_COMMAND} ${args}`);
+const RUNNER_COMMANDS = [...VERB_CLASSES.runner.filter((verb) => verb !== "stage stop"), ...STAGE_STOPS, "test --full", "test --baseline"].map((args) => `${PB_COMMAND} ${args}`);
 const CHECKPOINT_START = `${PB_COMMAND} checkpoint --step `;
 const ROLLBACK_START = `${PB_COMMAND} rollback `;
 const ARTIFACT_CHECK_START = `${PB_COMMAND} artifact check `;

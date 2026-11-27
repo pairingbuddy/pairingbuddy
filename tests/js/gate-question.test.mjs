@@ -128,6 +128,23 @@ describe("each gate asks in plain words", () => {
     ].join("\n"));
   });
 
+  test("G:task-end names the failures that were there before the task, which the run did not count", () => {
+    const preexisting = [
+      { runner: "backend", failures: ["FAIL a.test.ts > renders", "FAIL b.test.ts > prints"], broken: false },
+      { runner: "frontend", failures: [], broken: true },
+    ];
+    const facts = { goal: "Add order_total.", files: ["cart.py"], tests: 1, passing: true, preexisting };
+
+    const { question } = gateQuestion("G:task-end", { reason: POLICY, facts });
+
+    assert.equal(question, [
+      "Goal: Add order_total.",
+      "Built: cart.py; 1 test, all passing.",
+      "Already failing before this task, so not counted: runner backend, 2 tests; runner frontend could not run.",
+      "Is the task done?",
+    ].join("\n"));
+  });
+
   test("G:task-end gives the goal check's gist when it had something to say", () => {
     const goalCheck = [{ gist: "The README does not name order_total", outcome: "fixed" }, { gist: "Plan says cents", outcome: "left as is" }];
     const { question } = gateQuestion("G:task-end", { reason: POLICY, facts: { review: ["fixed", "left as is"], goalCheck }, fullAt: FULL_AT });

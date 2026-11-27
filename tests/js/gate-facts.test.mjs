@@ -106,6 +106,14 @@ describe("G:task-end", () => {
     assert.equal(gateFacts("G:task-end", root, atStage(SAFETY_NET, { tests })).lint, "no lint configured");
   });
 
+  test("carries the failures the full run was excused, so the human still sees what was already failing", () => {
+    const root = makeRoot();
+    const preexisting = [{ runner: "backend", failures: ["FAIL a.test.ts > renders"], broken: false }];
+    const tests = { full: { stage: SAFETY_NET, attempt: 1, passed: true, head: "abc", preexisting } };
+
+    assert.deepEqual(gateFacts("G:task-end", root, atStage(SAFETY_NET, { tests })).preexisting, preexisting);
+  });
+
   const finding = (claim, extra = {}) => ({ rule: "R", severity: "medium", kind: "fix-here", claim, where: "cart.py:3", ...extra });
 
   // The safety-net round of a new feature: the code lens found one issue, its refuter upheld it, and the check kept the fix;

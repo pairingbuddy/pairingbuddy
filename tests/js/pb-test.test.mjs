@@ -662,3 +662,54 @@ describe("plain pb test takes its selectors from the tests artifact", IN_PARALLE
     assert.equal(repo.ledger().tests.selected.red, false);
   });
 });
+
+// A suite that was already red before the task: the baseline (pb test --baseline, run by intake before any change) keeps
+// what failed then, and a later full run is judged only on failures that are new against it.
+describe("failures that were there before the task", IN_PARALLEL, () => {
+  const failing = (...names) => `${names.map((name) => `console.log(${JSON.stringify(`FAIL tests/a.mjs > ${name}`)});`).join("")}process.exit(1);`;
+  const baselineOf = (repo) => {
+    recorded(repo, "--baseline");
+    return repo.ledger().tests.baseline;
+  };
+
+  test("a full run that fails only where the baseline failed passes, and lists them as already failing", () => {
+    const repo = makeRepo({ body: failing("renders a pdf") });
+    baselineOf(repo);
+
+    const result = recorded(repo, "--full");
+
+    assert.equal(result.passed, true);
+    assert.deepEqual(result.preexisting, [{ runner: "fake", failures: ["FAIL tests/a.mjs > renders a pdf"], broken: false }]);
+    assert.equal(repo.ledger().tests.full.passed, true);
+  });
+
+  test("a test that did not fail at baseline still fails the run", () => {
+    const repo = makeRepo({ body: failing("renders a pdf") });
+    baselineOf(repo);
+    writeFileSync(join(repo.dir, "fake.mjs"), script(failing("renders a pdf", "adds two numbers")));
+
+    const result = recorded(repo, "--full");
+
+    assert.equal(result.passed, false);
+    assert.equal(repo.ledger().tests.full.passed, false);
+  });
+
+  test("a runner that could not start at baseline is excused while it fails the same way, and named broken", () => {
+    const repo = makeRepo({ body: `console.error("Startup Error: no config found");process.exit(1);` });
+    baselineOf(repo);
+
+    const result = recorded(repo, "--full");
+
+    assert.equal(result.passed, true);
+    assert.deepEqual(result.preexisting, [{ runner: "fake", failures: [], broken: true }]);
+  });
+
+  test("the baseline run names what already fails, a runner that could not start as broken", () => {
+    const repo = makeRepo({ body: `console.error("Startup Error: no config found");process.exit(1);` });
+
+    const result = recorded(repo, "--baseline");
+
+    assert.deepEqual(result.alreadyFailing, [{ runner: "fake", failures: [], broken: true }]);
+    assert.equal(repo.ledger().tests.baseline.runs[0].exitCode, 1);
+  });
+});

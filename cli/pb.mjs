@@ -10,6 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, isRetype, CheckpointStopped, CommitHookRefused, assertCurrentKey, assertKeyIsCurrent, branchOf, checkedPath, checkpointVerbSteps, commitPaths, diffOfCommit, fileAtCommit, headOf, isCheckpointCall, isKey, isOnHead, parseRollbackArgs, planCommit, remainingFiles, stepCommitType, stepRoles, stepRunsFor, taskTypesOfStep, typesByPaths, untrackedFiles, writesDiff } from "../shared-node/checkpoint.mjs";
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
+import { baselineFailures, judgedRecord } from "../shared-node/baseline.mjs";
 import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, finalChecksDoubt, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, defersScope, scopeDoubts, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, seenRecently, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig } from "../shared-node/gitconf.mjs";
@@ -1012,14 +1013,16 @@ async function suiteRecord(plans, root, stage) {
   return runRecord(plans, runs, stage);
 }
 
-function isFullRun(args) {
-  if (args.length === 0) return false;
-  if (args.length === 1 && args[0] === "--full") return true;
-  throw new UsageError("usage: pb test [--full]");
+// Which run: null for the selected tests, "full" for the full suite, "baseline" for the full suite before the task changed anything.
+function runKind(args) {
+  if (args.length === 0) return null;
+  if (args.length === 1 && args[0] === "--full") return "full";
+  if (args.length === 1 && args[0] === "--baseline") return "baseline";
+  throw new UsageError("usage: pb test [--full | --baseline]");
 }
 
-function testPlans(full, config, root, stage) {
-  if (full) return { key: "full", plans: fullSuitePlans(config, root), selection: lintNote(config, root) };
+function testPlans(kind, config, root, stage) {
+  if (kind !== null) return { key: kind, plans: fullSuitePlans(config, root), selection: lintNote(config, root) };
   const { plans, testIds, attribution } = selectedPlans(config, join(root, ".pairingbuddy", "run", "task", "artifacts"), stage);
   return { key: "selected", plans, selection: { tests: testIds, attribution } };
 }
@@ -1027,14 +1030,16 @@ function testPlans(full, config, root, stage) {
 // Takes no selector: a model must not choose what RED is recorded for. A run that happened exits 0 whatever the
 // tests did, because exit 1 here means a refusal.
 async function runTests(args) {
-  const full = isFullRun(args);
+  const kind = runKind(args);
   const { root, path } = runLedgerPath();
-  const { configHash, stage } = readLedger(path);
-  const { key, plans, selection } = testPlans(full, readTestConfig(root, configHash), root, stage);
+  const { configHash, stage, tests } = readLedger(path);
+  const { key, plans, selection } = testPlans(kind, readTestConfig(root, configHash), root, stage);
   const head = headOf(root);
-  const record = { ...(await suiteRecord(plans, root, stage)), ...selection, head };
+  const run = { ...(await suiteRecord(plans, root, stage)), ...selection, head };
+  const record = kind === "full" ? judgedRecord(run, tests?.baseline) : run;
   updateLedger(path, (ledger) => ({ ...ledger, tests: { ...ledger.tests, [key]: record } }));
-  return { ok: true, key, ...record };
+  // The baseline says up front what already fails, a runner that could not start named broken, so it is seen once at task start.
+  return { ok: true, key, ...record, ...(kind === "baseline" ? { alreadyFailing: baselineFailures(record) } : {}) };
 }
 
 function parseCheckpoint(args) {
@@ -1046,9 +1051,10 @@ function parseCheckpoint(args) {
 }
 
 // A failed run is evidence, so it lands in the ledger before the refusal.
-async function requirePassingTests(root, path, { configHash, stage }) {
+// Failures the task's baseline already had are excused (judgedRecord), so they never refuse a commit or roll a fix back.
+async function requirePassingTests(root, path, { configHash, stage, tests }) {
   const plans = fullSuitePlans(readTestConfig(root, configHash), root);
-  const record = await suiteRecord(plans, root, stage);
+  const record = judgedRecord(await suiteRecord(plans, root, stage), tests?.baseline);
   updateLedger(path, (ledger) => ({ ...ledger, tests: { ...ledger.tests, checkpoint: record } }));
   if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${failedRunsText(record.runs)}`);
 }
