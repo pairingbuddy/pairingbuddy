@@ -2,7 +2,8 @@
 // the paths, and git runs with no shell. A model wrote the artifact, so nothing in it is trusted. Node built-ins only.
 import { spawnSync } from "node:child_process";
 import { OUTPUT_MAX_BUFFER } from "./output-buffer.mjs";
-import { lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, basename, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 
 import { parseKey } from "./keys.mjs";
@@ -317,6 +318,37 @@ const SCOPE_CHECKS = {
   },
 };
 
+// The old names of the renames among paths: a step that renames a file often lists only the new name, and leaving the
+// old one out would commit a copy and leave its deletion behind. Only an unstaged deletion of a tracked file that git
+// pairs with a listed new file counts, so any other deletion stays someone's work in progress. git pairs them in a
+// throwaway index, so the real index stays untouched.
+function renamedFrom(root, paths) {
+  const deleted = statusEntries(root).filter(({ index, worktree }) => index === " " && worktree === "D").map(({ path }) => path);
+  const added = statusEntries(root, paths).filter(({ index }) => index === "?" || index === "A").map(({ path }) => path);
+  if (deleted.length === 0 || added.length === 0) return [];
+  const scratch = mkdtempSync(join(tmpdir(), "pb-renames-"));
+  try {
+    const index = join(scratch, "index");
+    const realIndex = resolve(root, git(root, "rev-parse", "--git-path", "index").trim());
+    if (existsSync(realIndex)) copyFileSync(realIndex, index);
+    const env = { env: { ...process.env, GIT_INDEX_FILE: index } };
+    const inScratch = (...args) => {
+      const result = runGit(root, ["--literal-pathspecs", ...args], env);
+      if (result.status !== 0) throw new CheckpointRefused(`git ${args[0]} failed while pairing renames: ${(result.stderr || "").trim()}`);
+      return result.stdout;
+    };
+    inScratch("add", "--", ...added, ...deleted);
+    const fields = inScratch("diff", "--cached", "-M", "--name-status", "-z", "HEAD", "--", ...added, ...deleted).split("\0");
+    const olds = [];
+    for (let i = 0; i < fields.length; i += fields[i]?.startsWith("R") ? 3 : 2) {
+      if (fields[i]?.startsWith("R") && added.includes(fields[i + 2]) && deleted.includes(fields[i + 1])) olds.push(fields[i + 1]);
+    }
+    return olds;
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
 // What to commit, or null for no change. Every check that needs no test run is here, so a refusal costs none.
 // alreadyCommitted: this key has a commit, so a repeat of the step has nothing left to change.
 export function planCommit(root, artifactsDir, step, key, { alreadyCommitted = false, taskType = null, scope = null } = {}) {
@@ -330,7 +362,7 @@ export function planCommit(root, artifactsDir, step, key, { alreadyCommitted = f
   if (paths.length === 0) return null;
   const message = commitMessage(step, artifact.commit_subject, taskType, paths, scope);
   assertNothingElseStaged(root, listed);
-  return { paths, message };
+  return { paths: [...paths, ...renamedFrom(root, paths)], message };
 }
 
 // ---------- the commit ----------
