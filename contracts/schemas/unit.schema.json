@@ -71,6 +71,7 @@
         }
       }
     },
-    "commits": { "type": "array" }
+    "commits": { "type": "array" },
+    "humanCommits": { "description": "Commits a human made between runs, adopted into commits by pb unit status or a cleared stop. May be absent.", "type": "array", "items": { "type": "string" } }
   }
 }

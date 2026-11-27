@@ -652,6 +652,17 @@ describe("the task record carries the task ledger", IN_PARALLEL, () => {
     assert.equal(record.title, planTitle, "the task record's title is the plan title, not the task text");
   });
 
+  test("task-end-carries-the-human-commits-into-the-unit", () => {
+    const { repo, head } = finishedTaskInUnit({ commits: [], humanCommits: [] });
+    writeLedger(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"), { ...repo.ledger(), commits: [head], humanCommits: [head] });
+
+    ok(repo);
+
+    const unit = readUnitRecord(repo);
+    assert.deepEqual(unit.commits, [head], "the run's commits join the unit as before");
+    assert.deepEqual(unit.humanCommits, [head], "the commits the run adopted from a human stay marked as the human's in the unit");
+  });
+
   test("task-end-record-title-is-task-text-without-plan", () => {
     const { repo } = finishedTaskInUnit({ task: "Task A" });
 

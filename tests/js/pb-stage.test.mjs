@@ -650,6 +650,21 @@ describe("stage fail", IN_PARALLEL, () => {
 
   const RAISED = { reason: "the commit failed: lint", seq: 1, code: COMMIT_FAILED };
 
+  test("clearing a stop adopts the commits a human made while the run was stopped", () => {
+    const repo = makeRepo({ stage: { ...activeStage(), status: "failed" }, ledger: { stop: RAISED } });
+    const runCommit = git(repo.dir, "rev-parse", "HEAD");
+    writeLedger(repo.ledgerPath, { ...repo.ledger(), commits: [runCommit] });
+    writeFileSync(join(repo.dir, "a.txt"), "fixed by hand\n");
+    git(repo.dir, "commit", "-q", "-am", "a fix made by hand while the run was stopped");
+    const byHand = git(repo.dir, "rev-parse", "HEAD");
+
+    ok(repo, "stage", "fail");
+
+    assert.deepEqual(repo.ledger().commits, [runCommit, byHand], "the hand commit joins the run's commits, so the unit records it at task end");
+    assert.deepEqual(repo.ledger().humanCommits, [byHand], "the run marks it as a human commit");
+  });
+
+
   for (const [state, stage] of [
     ["a done stage", { ...activeStage(), status: "done" }],
     ["a failed stage", { ...activeStage(), status: "failed" }],

@@ -38,7 +38,7 @@ export const ADOPT_RECENT_MS = 10 * 60_000;
 
 // Whether the owner was seen within ADOPT_RECENT_MS.
 export const seenRecently = (lastSeen) => ownerAgeMs(lastSeen) < ADOPT_RECENT_MS;
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits", "guidance"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "humanCommits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits", "guidance"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -141,6 +141,7 @@ export function validateLedger(ledger) {
     gates: [isObject, "an object"],
     tests: [isObject, "an object"],
     commits: [(x) => Array.isArray(x) && x.every(isString), "an array of strings"],
+    humanCommits: [(x) => Array.isArray(x) && x.every(isString), "an array of strings"],
     retries: [isObject, "an object"],
     spend: [() => true, ""],
     stop: [() => true, ""],
@@ -158,7 +159,7 @@ export function validateLedger(ledger) {
     idleWaits: [Array.isArray, "an array"],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
     guidance: [isObject, "an object"],
-  }, errors, { optional: ["acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits", "guidance"] });
+  }, errors, { optional: ["humanCommits", "acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits", "guidance"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {

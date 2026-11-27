@@ -1642,8 +1642,9 @@ function stageFail(args) {
   assertNoArgs(args, "stage fail");
   const { root, path } = runLedgerPath();
   let failed;
-  updateLedger(path, (ledger) => {
-    assertNotHumanStop(ledger, root);
+  updateLedger(path, (current) => {
+    assertNotHumanStop(current, root);
+    const ledger = current.stop === null ? current : withHumanCommits(root, current);
     const { name, attempt } = ledger.stage;
     if (!isStageActive(ledger) && ledger.stop !== null) {
       failed = { stage: name, attempt, nextAttempt: null, clearedStop: ledger.stop.reason };
@@ -1654,6 +1655,18 @@ function stageFail(args) {
     return result.ledger;
   });
   return { ok: true, ...failed };
+}
+
+// A human may commit while the run is stopped, say to clear what stopped it. When the stop is cleared, those commits
+// join the run's commits, marked as the human's, so the unit records them at task end. They are the commits on HEAD past
+// the run's last commit, else past where the unit stood; with neither known nothing is adopted.
+function withHumanCommits(root, ledger) {
+  const start = ledger.commits.at(-1) ?? (unitIsOpen(root) ? (readUnit(root).tasks.at(-1)?.headSha ?? readUnit(root).baseSha) : null);
+  if (!start) return ledger;
+  const since = tryGit(root, ["rev-list", "--reverse", `${start}..HEAD`]);
+  const adopted = (since ?? "").split("\n").filter((sha) => sha && !ledger.commits.includes(sha));
+  if (adopted.length === 0) return ledger;
+  return { ...ledger, commits: [...ledger.commits, ...adopted], humanCommits: [...(ledger.humanCommits ?? []), ...adopted] };
 }
 
 // A start the gate marked but no run took up: the human declined the Workflow prompt, or the call failed before it began.
@@ -1900,17 +1913,18 @@ function readUnitForRecord(root, ledger) {
   const headSha = headOf(root);
   if (headSha === null) throw new Refusal("there is no commit yet, so the task cannot end. Nothing was touched");
   const lessons = taskLessons(root);
-  return { path, unit, record: newTaskRecord({ ledger, headSha, lessons }), commits: ledger.commits };
+  return { path, unit, record: newTaskRecord({ ledger, headSha, lessons }), commits: ledger.commits, humanCommits: ledger.humanCommits ?? [] };
 }
 
 // A retry after a crash finds its own record last, and appends nothing more.
 function appendTaskRecord(opened) {
   if (opened === null) return;
-  const { path, unit, record, commits } = opened;
+  const { path, unit, record, commits, humanCommits } = opened;
   const last = unit.tasks.at(-1);
   if (last?.title === record.title && last?.headSha === record.headSha) return;
   unit.tasks.push(record);
   unit.commits = [...new Set([...unit.commits, ...commits])];
+  if (humanCommits.length > 0) unit.humanCommits = [...new Set([...(unit.humanCommits ?? []), ...humanCommits])];
   writeJsonAtomic(path, unit);
 }
 
