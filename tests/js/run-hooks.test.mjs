@@ -182,6 +182,15 @@ describe("Stop hook", () => {
     assert.doesNotMatch(stopReason(stdout), /Wait for its workflow/);
   });
 
+  test("a stop that knows why names what failed and the human's options before what clears it", () => {
+    const explained = { ...STOP, code: "red-passes", why: "t1 passed before any code", detail: "test t1 already passes, before any code was written", options: ["Cut it: type !pb human cut-test t1, then say go on.", "Keep it as a regression guard."] };
+    const told = stopReason(stop(makeRun({ stage: ACTIVE, stop: explained }).dir));
+
+    assert.match(told, /What happened: test t1 already passes, before any code was written\./);
+    assert.match(told, /What the human can do: 1\. Cut it: type !pb human cut-test t1, then say go on\. 2\. Keep it as a regression guard\./);
+    assert.ok(told.indexOf("What happened") < told.indexOf("stage fail"), "the cause comes before what clears it");
+  });
+
   test("the stop stage finish really raises is told, here and at SessionStart", () => {
     const { dir, ledgerPath } = openRealRun();
     assert.equal(gate(dir, "Workflow", startCall()), null);

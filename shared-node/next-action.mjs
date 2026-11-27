@@ -63,6 +63,15 @@ function askHuman(root, gate, question, command = humanCommand(root, `approve ${
   return `If you have not asked them yet, ask with AskUserQuestion, passing exactly this question: ${asked}. Then run ${pbCommand("status --action")}. If you asked and it still waits, ${fallback}`;
 }
 
+const sentence = (text) => (/[.!?]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`);
+
+// A stop that recorded what happened says so, and what the human can do, before what clears it: a bare code is a black box.
+function stopCause(stop) {
+  if (typeof stop.detail !== "string") return sentence(stop.reason);
+  const options = Array.isArray(stop.options) && stop.options.length > 0 ? ` What the human can do: ${stop.options.map((option, i) => `${i + 1}. ${sentence(option)}`).join(" ")} Tell them both in plain words.` : "";
+  return `${plainName(stop.code) ?? stop.code}. What happened: ${sentence(stop.detail)}${options}`;
+}
+
 // The order is what the gate enforces: a stop, then a gate, and only then a stage. A stop comes before an active
 // stage because every stop the run raises leaves its stage active.
 export function nextAction(contract, ledger, root, pluginRoot) {
@@ -75,7 +84,7 @@ export function nextAction(contract, ledger, root, pluginRoot) {
   const answered = answeredGate(gates, ledger);
   if (answered?.answer === "stop") return `The human answered stop at ${plainGate(answered.name)}, so the run stays stopped. Report ${pbCommand("status")} to them and go no further. Only if they say they want to go on, run ${pbCommand("gate eval")}: it gives the question that asks them, and only their answer lifts the stop.`;
   if (answered !== undefined) return `The human answered ${answered.answer} at ${plainGate(answered.name)}. Only they can go on: ask them to type ${humanCommand(root, `approve ${answered.name}`)}`;
-  if (ledger.stop !== null) return `The run has stopped: ${ledger.stop.reason}. Nothing skips a stop, so report ${pbCommand("status")} to the human and go no further. Only if they say to go on, ${pbCommand("stage fail")} clears it.`;
+  if (ledger.stop !== null) return `The run has stopped: ${stopCause(ledger.stop)} Nothing skips a stop, so report ${pbCommand("status")} to the human and go no further. Only if they say to go on, ${pbCommand("stage fail")} clears it.`;
   if (isStageActive(ledger)) return activeAction(ledger, pluginRoot);
   if (ledger.needsHuman?.gate === CONFIG_GATE) return `The run is waiting on the human: ${CONFIG_WAIT_LINE}. ${askHuman(root, CONFIG_GATE, ledger.needsHuman.question, humanCommand(root, TYPED_FALLBACKS[CONFIG_GATE]))}`;
   if (ledger.needsHuman !== null) {
@@ -151,7 +160,9 @@ export function statusText(status, { owner, lastSeen, now = Date.now(), action }
   const line = (label, text) => `${`${label}:`.padEnd(11)}${text}`;
   const lines = [line("Stage", stage?.name ? `${named(stage.name)}, ${stage.status || "not started"}, ${stageRun(stage.attempt)}` : "none yet")];
   lines.push(line("Owner", owner ? `session ${owner}, last seen ${ago(lastSeen, now)}` : "none"));
-  if (stop) lines.push(line("Stopped", [plainName(stop.code), stop.reason && forYou(stop.reason)].filter(Boolean).join(": ") || "yes"));
+  if (stop) lines.push(line("Stopped", [plainName(stop.code), (stop.why ?? stop.reason) && forYou(stop.why ?? stop.reason)].filter(Boolean).join(": ") || "yes"));
+  if (typeof stop?.detail === "string") lines.push(line("Why", stop.detail));
+  if (Array.isArray(stop?.options)) stop.options.forEach((option, i) => lines.push(i === 0 ? line("You can", `1. ${option}`) : `${" ".repeat(11)}${i + 1}. ${option}`));
   if (needsHuman?.gate) lines.push(line("Needs you", named(needsHuman.gate)));
   lines.push(line("Next", nextLine(status, action)));
   return lines.join("\n");

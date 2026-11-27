@@ -309,6 +309,36 @@ test('pane-status-says-why-it-stopped-as-strongly-in-red', async ($, on) => {
   expect([rest.text, rest.props.color, rest.props.inverse], 'why follows in red, not a block').toEqual([` · ${plainName('step-failed')}`, 'error', undefined])
 })
 
+// No black box: a stop that recorded what happened says it under STATUS, with what the human can do, each bounded.
+const EXPLAINED_STOP = {
+  code: 'step-failed',
+  reason: 'step-failed',
+  seq: 3,
+  why: 'GREEN for t1 was refused 3 times',
+  detail: `GREEN for t1 was refused 3 times, so the stage stopped. The last refusal: ${'x'.repeat(400)}`,
+  options: ['Read the refusal and tell the session what to change.', `Cut it: ${'y'.repeat(300)}`],
+}
+
+test('pane-says-why-a-stop-happened-and-what-the-human-can-do', async ($, on) => {
+  engine(on, { ...SNAPSHOT_RUNNING, stop: EXPLAINED_STOP })
+  await start($)
+
+  const lines = await paneLines($)
+  const status = lines.findIndex(line => line.startsWith('STATUS'))
+  const why = lines.findIndex(line => line.startsWith('WHY'))
+  const rows = lines.slice(why, lines.findIndex((line, i) => i > why && /^[A-Z]{2,}/.test(line)))
+
+  expect(lines[status], 'STATUS says why in short').toBe('STATUS   ✗ STOPPED · GREEN for t1 was refused 3 times')
+  expect(why, 'WHY follows STATUS').toBeGreaterThan(status)
+  const parts = rows.map(line => line.replace(/^(WHY)?\s+/, ''))
+  expect(parts[0], 'the cause leads').toMatch(/^GREEN for t1 was refused 3 times, so the stage stopped\./)
+  expect(parts.findIndex(part => part.endsWith('x…')), 'the cause is cut with an ellipsis').toBeGreaterThan(0)
+  expect(parts.filter(part => /^\d\. /.test(part)), 'then each option, numbered').toEqual(['1. Read the refusal and tell the session what to change.', '2. Cut it:'])
+  expect(parts.some(part => part.endsWith('y…')), 'a long option is cut with an ellipsis').toBe(true)
+  expect(parts.at(-1), 'the whole text is in the report').toBe('full text: /pb-report')
+  expect(rows.join('').length, 'bounded').toBeLessThan(700)
+})
+
 // Three states: the human's own stop is no failure, so it waits in amber and red stays for what went wrong.
 test('pane-status-draws-the-humans-own-stop-as-waiting-not-as-a-failure', async ($, on) => {
   engine(on, { ...SNAPSHOT_RUNNING, stop: { code: 'human-stopped', reason: 'the human answered stop at G:scenarios', seq: 3 } })

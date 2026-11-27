@@ -41,7 +41,7 @@ import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, kep
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
 import { declaredRenames, splitId } from "../shared-node/test-renames.mjs";
 import { ConfigHashChanged, TestRunRefused, collectedNoTest, cycleRun, failedRunsText, ranNoTest, fullSuitePlans, hasSelector, lintNote, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
-import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
+import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, RED_PASSES, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
 import { PROPOSABLE, ProposalRefused, parsedValue, readProposals, valueAt, withValue, writeProposals } from "../shared-node/config-propose.mjs";
 import { APPROVAL_GATE, CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS, approvalQuestion, configQuestion } from "../shared-node/config-wait.mjs";
@@ -1172,6 +1172,22 @@ function orStop(path, { step, key }, code, action) {
   }
 }
 
+// A test that passes at RED before any code: no retry can change that, so the run stops at once and says what happened
+// and what the human can do. Only a current key raises it, as in orStop.
+function stopRedPasses({ step, key, path, root }, id, run) {
+  const detail = `test ${id} already passes, before any code was written, so its RED proves nothing, and no retry can change that: what it checks is already there. Its run: ${excerptTail(run.excerpt).trim()}`;
+  const options = [
+    `Cut it, if the code already does what it checks: type ${humanCommand(root, `cut-test ${id} --reason '<why>'`)}, then tell the session to go on.`,
+    "Keep it as a regression guard: tell the session to run it after a test that fails first, so it passes as covered.",
+    "Or the test is wrong: tell the session what it should check, so it fails before the code.",
+  ];
+  updateLedger(path, (ledger) => {
+    assertCurrentKey(step, key, ledger);
+    return { ...ledger, stop: { reason: detail, seq: ledger.seq + 1, code: RED_PASSES, why: `${id} passed before any code`, detail, options } };
+  });
+  throw new Refusal(`the run stopped: ${detail}`);
+}
+
 // The evidence for stage finish, so a step with no change counts as done too. It is stamped from the key, which was
 // checked against the ledger: whatever the ledger says by now is someone else's attempt.
 function withCheckpoint(ledger, record) {
@@ -1402,6 +1418,7 @@ async function cycleCheckpoint(context) {
   recordCycleRun(context, row, record);
   const after = passed ? null : coveredBy(step, run, ledger);
   if (after !== null) return coveredCheckpoint(context, plan, head, id, record, after);
+  if (step === "red" && run.exitCode === 0) stopRedPasses(context, id, run);
   if (!passed) throw new Refusal(stepNotMet(step, id, run));
   if (step === "green") await requireEarlierTestsPass(context, config, id);
   if (plan === null) return noChange(context, withCycleDone(step, id));
@@ -1585,7 +1602,49 @@ async function checkpoint(args) {
   const { root, path } = runLedgerPath();
   const ledger = readLedger(path);
   const branch = assertMayCommit(step, key, ledger, root);
-  return CHECKPOINT_FLOWS[step]({ step, key, root, path, ledger, branch });
+  try {
+    const done = await CHECKPOINT_FLOWS[step]({ step, key, root, path, ledger, branch });
+    noteRefusal(path, step, key, null);
+    return done;
+  } catch (e) {
+    if (e instanceof Refusal || e instanceof CheckpointRefused) noteRefusal(path, step, key, e.message);
+    throw e;
+  }
+}
+
+// How much of a refusal the stop keeps: enough to say what failed, bounded because the main context reads it.
+const REFUSAL_TEXT = 600;
+// The stage's newest checkpoint refusal, beside the ledger so a refusal still leaves the ledger alone.
+const lastRefusalPath = (ledgerPath) => join(dirname(ledgerPath), "last-refusal.json");
+
+function readLastRefusal(ledgerPath, { name, attempt }) {
+  try {
+    const last = JSON.parse(readFileSync(lastRefusalPath(ledgerPath), "utf8"));
+    return last?.stage === name && last?.attempt === attempt ? last : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Counted per step and item, or cleared by an accepted step. A key no longer current, or a run already stopped, notes
+// nothing: the stop it would explain is someone else's.
+function noteRefusal(path, step, key, text) {
+  const ledger = readLedger(path);
+  if (ledger.stop !== null || !isStageActive(ledger)) return;
+  try {
+    assertCurrentKey(step, key, ledger);
+  } catch {
+    return;
+  }
+  if (text === null) {
+    rmSync(lastRefusalPath(path), { force: true });
+    return;
+  }
+  const item = parseKey(key).item;
+  const last = readLastRefusal(path, ledger.stage);
+  const count = last?.step === step && last?.item === item ? last.count + 1 : 1;
+  const record = { stage: ledger.stage.name, attempt: ledger.stage.attempt, step, item, count, text: text.slice(0, REFUSAL_TEXT) };
+  writeFileSync(lastRefusalPath(path), `${JSON.stringify(record, null, 2)}\n`);
 }
 
 function assertNoArgs(args, verb) {
@@ -1642,12 +1701,30 @@ function stageStop(args) {
   const code = args[0];
   const reason = STAGE_STOP_REASONS[code];
   let stop;
-  updateLedger(runLedgerPath().path, (ledger) => {
+  const { path } = runLedgerPath();
+  updateLedger(path, (ledger) => {
     assertStageActive(ledger, "stop");
-    stop = ledger.stop ?? { reason, seq: ledger.seq + 1, code };
+    stop = ledger.stop ?? { reason, seq: ledger.seq + 1, code, ...(code === "step-failed" ? stepFailedWhy(readLastRefusal(path, ledger.stage)) : {}) };
     return { ...ledger, stop };
   });
   return { ok: true, stop };
+}
+
+const STEP_NAMES = { red: "RED", green: "GREEN", refactor: "the refactor", placeholders: "the test list", fix: "the fix" };
+const timesText = (count) => (count === 1 ? "once" : `${count} times`);
+
+// What a step-failed stop can say from the CLI's own record: the step whose tries ran out and its last refusal. With no
+// refusal recorded, the step's agent or runner never came back with anything the CLI could judge.
+function stepFailedWhy(last) {
+  const options = [
+    "Read the refusal: it names what the step got wrong. Tell the session what to change, or that the step cannot be done as asked, and it reruns the stage, which keeps every test already done.",
+  ];
+  if (last === undefined) {
+    return { why: "a step came back with nothing usable", detail: "An agent or a test runner of the stage came back with nothing the CLI could judge, on every try. Its transcript is in /pb-report.", options };
+  }
+  const stepName = STEP_NAMES[last.step] ?? last.step;
+  const subject = last.item === null ? stepName : `${stepName} for ${last.item}`;
+  return { why: `${subject} was refused ${timesText(last.count)}`, detail: `${subject} was refused ${timesText(last.count)}, so the stage stopped. The last refusal: ${last.text}`, options };
 }
 
 const artifactPath = (pbKey) => (pbKey === null ? null : `.pairingbuddy/run/task/artifacts/${pbKey}.json`);

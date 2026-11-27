@@ -147,10 +147,26 @@ function barRow(status: Status, columns: number): Part[] | undefined {
   return [{ text, props: look.headProps }, ...(pad > 0 ? [{ text: ' '.repeat(pad), props: look.headProps }] : [])]
 }
 
-// The first glance: GOAL, then STATUS, which answers "am I needed now?".
+// WHY's bounds: the cause, each option and how many options; the whole text is in the report.
+const WHY_CAUSE_MAX = 240
+const WHY_OPTION_MAX = 160
+const WHY_OPTIONS_MOST = 3
+const bounded = (text: string, most: number) => (text.length <= most ? text : `${text.slice(0, most - 1).trimEnd()}${ELLIPSIS}`)
+
+// Under STATUS, what a stop recorded: what happened, then what the human can do, numbered. Each part is bounded, and the
+// last line points at the report, which keeps it whole. None for a stop that recorded nothing.
+function whyRows(status: Status, width: number) {
+  if (!status.cause) return []
+  const options = (status.options ?? []).slice(0, WHY_OPTIONS_MOST).map((option, i) => `${i + 1}. ${bounded(option, WHY_OPTION_MAX)}`)
+  const parts = [bounded(status.cause, WHY_CAUSE_MAX), ...options]
+  const lines: Part[][] = parts.flatMap(part => wrapped(part, width, STATUS_LOOKS[status.state].whatProps))
+  return rowLines('WHY', [...lines, [{ text: 'full text: /pb-report', props: { dimColor: true } }]], FIRST_GLANCE_LABEL)
+}
+
+// The first glance: GOAL, then STATUS, which answers "am I needed now?", then WHY when a stop says what happened.
 function topRows(view: View, columns: number) {
   const width = columns > 0 ? columns - LABEL_WIDTH : 0
-  return [...goalRows(view, columns), ...rowLines('STATUS', statusLines(view.status, width), FIRST_GLANCE_LABEL)]
+  return [...goalRows(view, columns), ...rowLines('STATUS', statusLines(view.status, width), FIRST_GLANCE_LABEL), ...whyRows(view.status, width)]
 }
 
 // The plan as a tree: each tracer, its units nested under it, each unit's tasks under that, in plan order.

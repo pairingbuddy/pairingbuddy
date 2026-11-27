@@ -178,11 +178,11 @@ describe("reason-text-unchanged", () => {
   };
 
   test("stage stop agent-budget", () => {
-    assert.equal(reasonOf("stage stop agent-budget"), "agent-budget: the stage spawned its maxAgents, and a re-run continues from tests{}");
+    assert.equal(reasonOf("stage stop agent-budget"), "agent-budget: the stage spawned its maxAgents, and a re-run keeps every test already done");
   });
 
   test("stage stop step-failed", () => {
-    assert.equal(reasonOf("stage stop step-failed"), "step-failed: a step of the stage failed past its retries, and a re-run continues from tests{}");
+    assert.equal(reasonOf("stage stop step-failed"), "step-failed: a step of the stage failed past its retries, and a re-run keeps every test already done");
   });
 
   test("stage finish with no artifact", () => {
