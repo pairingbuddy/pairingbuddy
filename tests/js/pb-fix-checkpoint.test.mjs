@@ -258,3 +258,39 @@ test("pb rollback undoes a fix the commit hook refused, counts it as an undone a
   assert.equal(git(repo.dir, "status", "--porcelain", "--untracked-files=no"), "", "nothing staged or changed is left");
   assert.equal(repo.ledger().fixes.rollbacks.at(-1).kind, "hook");
 });
+
+// A return pb cannot commit from (an empty subject) is the fixer's mistake too: refused with a line the fix loop knows, so
+// the fix is rolled back and retried with pb's words, never a stop on the first try.
+function emptySubject(repo) {
+  const path = join(repo.dir, ".pairingbuddy", "run", "task", "artifacts", `${FIX_KEY}.json`);
+  writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, "utf8")), commit_subject: "" }));
+}
+
+// Test case: fix-return-refused-does-not-stop
+test("fix-return-refused-does-not-stop", () => {
+  const repo = makeRepo();
+  emptySubject(repo);
+
+  const result = checkpointFix(repo);
+
+  assert.notEqual(result.code, 0, "the checkpoint is refused");
+  assert.match(result.stderr, /^pb: the fix's return was refused, so nothing was committed: commit_subject says nothing/m);
+  assert.equal(repo.ledger().stop, null, "the run goes on");
+  assert.equal(repo.head(), repo.seed, "nothing was committed");
+  assert.equal(git(repo.dir, "diff", "--cached", "--name-only"), "", "nothing stays staged");
+});
+
+// Test case: fix-return-refused-rolls-back-with-pbs-words
+test("fix-return-refused-rolls-back-with-pbs-words", () => {
+  const repo = makeRepo();
+  emptySubject(repo);
+  checkpointFix(repo);
+
+  const result = pb(repo, "rollback", "--from", FIX_KEY);
+
+  assert.equal(result.code, 0, `exits 0, stderr: ${result.stderr}`);
+  const relayed = JSON.parse(result.stdout);
+  assert.equal(relayed.failedAttempts, 1, "it counts toward the attempt cap");
+  assert.match(relayed.note, /^pb refused the fix's return:\ncommit_subject says nothing/);
+  assert.equal(readFileSync(join(repo.dir, "src.mjs"), "utf8"), "original code\n", "the tree is back to HEAD");
+});

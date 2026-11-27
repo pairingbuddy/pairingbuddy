@@ -1259,6 +1259,19 @@ function hookRefusalOfFix(root, path, key, commit) {
   }
 }
 
+// A fix whose return pb cannot commit from (an empty subject, say) is the fixer's mistake, as a hook refusal is: nothing
+// stays staged, the change stays in the tree for pb rollback, and the fix loop retries with pb's words.
+function returnRefusalOfFix({ root, path, key }, plan) {
+  try {
+    return plan();
+  } catch (e) {
+    if (!(e instanceof CheckpointRefused)) throw e;
+    execFileSync("git", ["reset", "-q"], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    updateLedger(path, (ledger) => ({ ...ledger, fixes: { rollbacks: [], ...ledger.fixes, hookRefusals: [...(ledger.fixes?.hookRefusals ?? []), { key, output: e.message, source: "return" }] } }));
+    throw new Refusal(`the fix's return was refused, so nothing was committed: ${e.message}`);
+  }
+}
+
 // The attempt can end while the tests run, so that is looked at again here.
 function commitPlan({ step, key, root, path, branch, record }, plan, head, evidenceFor) {
   assertCommitAllowed(step, key, readLedger(path));
@@ -1278,7 +1291,7 @@ function scopeFor({ step, key, root, ledger }) {
 // A step with no change runs no test. The tests run code in the repo, so what they could change is looked at again
 // before the commit.
 async function suiteCheckpoint(context) {
-  const plan = planFor(context, scopeFor(context));
+  const plan = context.step === "fix" ? returnRefusalOfFix(context, () => planFor(context, scopeFor(context))) : planFor(context, scopeFor(context));
   if (plan === null) return noChange(context);
   const head = headOf(context.root);
   await requirePassingTests(context.root, context.path, context.ledger);
@@ -3265,7 +3278,7 @@ function rollback(args) {
     commit: { wrong: () => checkerAccount(root, parts), undo: () => rollbackCommitted(root, { key, prefix, sha: record.sha }) },
     red: { wrong: () => failedRunsExcerpts(ledger.tests.checkpoint), undo: () => rollbackUncommitted(root, { key, prefix, paths: own }) },
     // The hook's own words tell the next fixer what to change, as the failing runs do for a red fix.
-    hook: { wrong: () => `The commit hook refused the fix:\n${refusal.output}`, undo: () => rollbackUncommitted(root, { key, prefix, paths: own }) },
+    hook: { wrong: () => `${refusal.source === "return" ? "pb refused the fix's return" : "The commit hook refused the fix"}:\n${refusal.output}`, undo: () => rollbackUncommitted(root, { key, prefix, paths: own }) },
     repeated: {
       wrong: () => `The fix repeated an approach already rolled back for this group: ${repeated}`,
       // Nothing of its own is dirty: record only, with the base at HEAD.

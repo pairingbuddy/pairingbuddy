@@ -204,7 +204,7 @@ export function validateLedger(ledger) {
           checkObject(ledger.fixes.untrackedAtStart, "fixes.untrackedAtStart", { stage: [isNonEmptyString, "a non-empty string"], attempt: [isCount, "a non-negative integer"], paths: [(x) => Array.isArray(x) && x.every(isNonEmptyString), "an array of non-empty strings"] }, errors);
         }
         if (isObject(ledger.fixes) && Array.isArray(ledger.fixes.hookRefusals)) {
-          ledger.fixes.hookRefusals.forEach((r, i) => checkObject(r, `fixes.hookRefusals.${i}`, { key: [isNonEmptyString, "a non-empty string"], output: [isString, "a string"] }, errors));
+          ledger.fixes.hookRefusals.forEach((r, i) => checkObject(r, `fixes.hookRefusals.${i}`, { key: [isNonEmptyString, "a non-empty string"], output: [isString, "a string"], source: [(v) => v === "hook" || v === "return", "hook or return"] }, errors, { optional: ["source"] }));
         }
         if (isObject(ledger.fixes) && Array.isArray(ledger.fixes.rollbacks)) {
           ledger.fixes.rollbacks.forEach((r, i) => checkObject(r, `fixes.rollbacks.${i}`, {

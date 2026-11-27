@@ -283,7 +283,7 @@
       "additionalProperties": { "type": "object" }
     },
     "fixes": {
-      "description": "Fix bookkeeping. rollbacks lists each rolled-back fix group, oldest first: its key, kind (commit, red, artifact, repeated for a fix that repeated an approach already rolled back, or hook for a fix the repo's commit hook refused), the rollback ref that keeps the rejected work, sha (the commit that ref points at: the fix commit, or the commit holding the saved dirty paths), and base (HEAD after the rollback). ref is a string for kind commit, red or hook, and for kind repeated when the fix changed something; it is null for kind artifact, which records no git ref, and for kind repeated when the fix changed nothing. hookRefusals lists each fix whose commit the repo's commit hook refused: its key and the hook's output, which its rollback note carries. May be absent; when present it has rollbacks, and hookRefusals once a hook refused a fix.",
+      "description": "Fix bookkeeping. rollbacks lists each rolled-back fix group, oldest first: its key, kind (commit, red, artifact, repeated for a fix that repeated an approach already rolled back, or hook for a fix the repo's commit hook refused), the rollback ref that keeps the rejected work, sha (the commit that ref points at: the fix commit, or the commit holding the saved dirty paths), and base (HEAD after the rollback). ref is a string for kind commit, red or hook, and for kind repeated when the fix changed something; it is null for kind artifact, which records no git ref, and for kind repeated when the fix changed nothing. hookRefusals lists each fix whose commit the repo's commit hook refused, or whose return pb refused (source return): its key and the refusal's output, which its rollback note carries. May be absent; when present it has rollbacks, and hookRefusals once a hook refused a fix.",
       "type": "object",
       "additionalProperties": false,
       "required": ["rollbacks"],
@@ -332,7 +332,8 @@
             "required": ["key", "output"],
             "properties": {
               "key": { "type": "string", "minLength": 1 },
-              "output": { "type": "string" }
+              "output": { "type": "string" },
+              "source": { "enum": ["hook", "return"] }
             }
           }
         }
