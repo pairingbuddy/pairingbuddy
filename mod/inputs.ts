@@ -3,6 +3,7 @@ import { isStandingScenarios, isStandingTests, newestKeyAmong, scenarioRows } fr
 import { withPermissionAsk } from '../shared-node/permission-wait.mjs'
 import { standingGateOff, withGateOff } from '../shared-node/gate-off.mjs'
 import { withStranded } from '../shared-node/stranded.mjs'
+import { withHumanWait } from '../shared-node/human-wait.mjs'
 import { readLabel } from '../shared-node/labels.mjs'
 import { boxesUnder, humanTasksLeft } from '../shared-node/plan-text.mjs'
 import { parsePlan } from '../shared-node/plan.mjs'
@@ -14,6 +15,10 @@ const UNIT = '.pairingbuddy/run/unit.json'
 const CHANGED = '.pairingbuddy/run/changed.json'
 const ARTIFACTS = '.pairingbuddy/run/task/artifacts'
 const GATE_OFF = '.pairingbuddy/run/gate-off.json'
+// A wait on a line only the human types (shared-node/human-wait.mjs): the session's config proposals, and the last pb
+// refusal whose only way through is a pb human verb.
+const PROPOSALS = '.pairingbuddy/run/config-proposals.json'
+const HUMAN_WAIT = '.pairingbuddy/run/human-wait.json'
 // The project's shim for pb (shared-node/verbs.mjs SHIM), which the take-over line names.
 const SHIM = '.pairingbuddy/bin/pb'
 
@@ -34,7 +39,7 @@ export type Ledger = {
   commits?: string[]
   plan?: { path?: string; title?: string }
   stop?: { code?: string; reason?: string; seq?: number; fix?: string; why?: string; detail?: string; options?: string[] }
-  needsHuman?: { gate?: string | null; seq?: number; fix?: string; askedAt?: string }
+  needsHuman?: { gate?: string | null; seq?: number; fix?: string; askedAt?: string; why?: string; detail?: string; options?: string[] }
   // When the run stopped working, which SPENT's clock stops at (glance's pausedAtOf); set by the mod, never by pb.
   pausedAt?: number
 } | undefined
@@ -186,11 +191,12 @@ async function readGateOff($: EngineInterface): Promise<unknown> {
 // Claude Code's permission prompt, while it stands, reads as the question waiting on the human (withPermissionAsk), so STATUS,
 // the band and the alert treat it as any NEEDS YOU.
 async function readInputsAndTests($: EngineInterface, spawns: Spawn[]): Promise<Inputs> {
-  const [read, legacyFile, now, gateOff, ledgerWrittenMs, shim] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($), readGateOff($), writtenMs($, LEDGER), exists($, SHIM)])
+  const [read, legacyFile, now, gateOff, ledgerWrittenMs, shim, proposalsFile, refusal] = await Promise.all([readJson($, LEDGER) as Promise<Ledger>, readJson($, TESTS), readClock($), readGateOff($), writtenMs($, LEDGER), exists($, SHIM), readJson($, PROPOSALS), readJson($, HUMAN_WAIT)])
   const last = spawns.at(-1)
   const stageRanHere = spawns.some(spawn => readLabel(spawn.name).stage === read?.stage?.name)
   const seen = { now, ledgerWrittenMs, spawnAt: last?.startedAt, spawnRunning: spawns.some(spawn => !spawn.finished), shim, stageRanHere }
-  const ledger = pausedAtLastWrite(withGateOff(withStranded(withPermissionAsk(read), seen), gateOff) as Ledger, ledgerWrittenMs)
+  const waits = { proposals: (proposalsFile as { proposals?: unknown } | undefined)?.proposals, refusal }
+  const ledger = pausedAtLastWrite(withGateOff(withStranded(withHumanWait(withPermissionAsk(read), waits), seen), gateOff) as Ledger, ledgerWrittenMs)
   const testsFile = (await readStandingReturn($, ledger, isStandingTests)) ?? legacyFile
   return inputsOf({ ledger, testsFile, now, spawns })
 }

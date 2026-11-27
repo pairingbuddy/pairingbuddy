@@ -284,3 +284,17 @@ test('done with a unit left in the plan, the band and the done notice name that 
   // This rig keeps no store, so the once-per-run record does not hold: only the wording is checked here.
   expect([...new Set(notices)], 'the done notice names it too').toEqual(['done · next in the plan: Tax'])
 })
+
+test('the band says what the pane says once every step is done: next, write the pull request', async ($, on) => {
+  const rig = setupReplay(on)
+  serve(rig, { [LEDGER]: codeRun({ 'G:task-end': { source: 'human-cli', answer: 'approve' } }), [UNIT]: unitFile })
+  await rig.clock.set(Date.parse('2026-11-14T10:02:30.000Z'))
+  await start($)
+  await lensReturn($, 'corpus-misalignment', [])
+  await rig.clock.advance(POLL_MS * 2)
+
+  expect(rowOf(await paneLines($), 'STATUS')).toBe('STATUS   ● working · next: write the pull request')
+  const band = (await bandTexts($, { bodyColumns: 120 })).join('')
+  expect(band, 'the band agrees').toContain('next: write the pull request')
+  expect(band).not.toContain('all steps done')
+})

@@ -22,8 +22,11 @@ test("records a pending change with its old and new value, and writes nothing", 
   const { code, stdout, stderr } = pb(repo, "config", "propose", "git-config.json", "pr.title_template", "KEY-1 {summary}", "--reason", "the team puts the ticket key first");
 
   assert.equal(code, 0, stderr);
-  const { proposal } = JSON.parse(stdout);
-  assert.deepEqual(proposal, { n: 1, file: "git-config.json", key: "pr.title_template", old: "{type}: {summary}", new: "KEY-1 {summary}", reason: "the team puts the ticket key first", status: "pending" });
+  const { proposal, apply, refuse } = JSON.parse(stdout);
+  const { at, ...rest } = proposal;
+  assert.deepEqual(rest, { n: 1, file: "git-config.json", key: "pr.title_template", old: "{type}: {summary}", new: "KEY-1 {summary}", reason: "the team puts the ticket key first", status: "pending", lines: { apply, refuse } });
+  assert.ok(Number.isFinite(Date.parse(at)), `when it was proposed: ${at}`);
+  assert.deepEqual(JSON.parse(readFileSync(join(repo.dir, ".pairingbuddy", "run", "config-proposals.json"), "utf8")).proposals[0], proposal);
   assert.equal(gitConfigText(repo), before);
 });
 

@@ -225,7 +225,7 @@ export const needsYouLine = (gate) => `needs you: ${gateLine(gate)}`;
 // A gate reads by its plain name; a stop reads by the plain name of its code, never the code itself.
 function bandNeedsYou(ledger) {
   const gate = ledger?.needsHuman?.gate;
-  if (gate) return { id: "needsYou", text: needsYouLine(gate), standing: true };
+  if (gate) return { id: "needsYou", text: `needs you: ${waitWhat(ledger.needsHuman)}`, standing: true };
   if (!ledger?.stop) return { id: "needsYou", text: "needs you: no" };
   return { id: "needsYou", text: `needs you: ${stopName(ledger.stop) ?? STOPPED}`, standing: true };
 }
@@ -249,10 +249,13 @@ export function alertKind(ledger) {
 export const ALERT_WHAT_MAX = 60;
 export const boundAlertWhat = (text) => (text.length <= ALERT_WHAT_MAX ? text : `${text.slice(0, ALERT_WHAT_MAX - 1).trimEnd()}…`);
 
+// What a wait on the human is about: its own why when it recorded one (a wait on the human's typed line), else the gate's line.
+export const waitWhat = (needsHuman) => (typeof needsHuman?.why === "string" && needsHuman.why !== "" ? needsHuman.why : gateLine(needsHuman?.gate));
+
 // What a loud state is about, bounded: why the stop happened when it recorded that, else its plain name, else the gate's
 // line; undefined when nothing names it.
 function alertWhat(ledger) {
-  const what = ledger?.stop ? (typeof ledger.stop.why === "string" ? ledger.stop.why : stopName(ledger.stop)) : ledger?.needsHuman?.gate ? gateLine(ledger.needsHuman.gate) : undefined;
+  const what = ledger?.stop ? (typeof ledger.stop.why === "string" ? ledger.stop.why : stopName(ledger.stop)) : ledger?.needsHuman?.gate ? waitWhat(ledger.needsHuman) : undefined;
   return what === undefined ? undefined : boundAlertWhat(String(what));
 }
 
