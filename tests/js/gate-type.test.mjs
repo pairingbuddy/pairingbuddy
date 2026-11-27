@@ -315,3 +315,14 @@ test("gate-type-passes-under-auto-when-the-task-states-its-type-and-the-classifi
   assert.equal(result.code, 0, `pb gate eval exits 0, stderr ${result.stderr}`);
   assert.deepEqual(JSON.parse(result.stdout), { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto" }, "the type the approved plan states is certain, whatever the classifier thought");
 });
+
+const STATED_TASK = "Task 4: Cache the build\n\nType: config_change. Only CI files change.\n";
+
+test("gate-type-passes-a-stated-type-under-a-non-auto-policy", () => {
+  const repo = repoAtTypeGate({ confidence: "certain", task: STATED_TASK, mode: "default" });
+
+  const result = pb(repo, "gate", "eval");
+
+  assert.equal(result.code, 0, `pb gate eval exits 0, stderr ${result.stderr}`);
+  assert.equal(JSON.parse(result.stdout).result, "auto-pass", "the type the approved plan states needs no human, whatever the policy");
+});

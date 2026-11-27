@@ -659,8 +659,7 @@ function selectorReason(root, ledger, contract) {
 
 // Under auto, a likely type with no question for the human passes: asking at every plan task cost more than it caught. An
 // unsure type, or one with a question, still asks, since the type picks the whole workflow and cannot wait for G:publish.
-function classifierReason(root, ledger, contract) {
-  if (statedType(ledger.task, contract.migratedTypes) !== null) return null;
+function classifierReason(root, ledger) {
   const content = keptIntakeReturn(artifactsDir(root), ledger.stage.attempt)?.content;
   if (content?.confidence === "certain") return null;
   const quiet = content?.confidence === "likely" && String(content.ambiguity ?? "").trim() === "";
@@ -684,7 +683,7 @@ export function typePassedOn(root, ledger, gate) {
   return confidence === "likely" ? confidence : null;
 }
 
-const typeReason = (root, ledger, contract) => selectorReason(root, ledger, contract) ?? classifierReason(root, ledger, contract) ?? lensReason(root, ledger);
+const typeReason = (root, ledger, contract) => selectorReason(root, ledger, contract) ?? classifierReason(root, ledger) ?? lensReason(root, ledger);
 
 const TASK_END_GATE = "G:task-end";
 
@@ -711,9 +710,18 @@ const GATE_REASONS = {
 // A gate with its own reason decides for itself; the class reason is for gates that have none.
 const gateOwnReason = (gate, args) => (GATE_REASONS[gate.name] ? GATE_REASONS[gate.name](args) : (CLASS_REASONS[gate.class] ?? null));
 
+// The type the task states for itself on a Type: line, which the planner wrote and the human approved with the plan, or null.
+export const statedTypeOf = (contract, ledger) => statedType(ledger.task, contract.migratedTypes);
+
+// G:type with a stated type: that is the type, under any policy, and no doubt on it is asked. Only a stop, or a runner the
+// type cannot select tests with, still asks.
+const statedTypeReason = (contract, ledger, root) => stopReason(contract, ledger, root, { skipDoubts: true }) ?? selectorReason(root, ledger, contract);
+
 // Why this gate must ask a human, or null when it passes under the recorded policy.
 export const askReason = (contract, ledger, gate, root, voided = null, opts = {}) =>
-  stopReason(contract, ledger, root, opts) ?? gateOwnReason(gate, { root, ledger, voided, contract }) ?? policyReason(ledger);
+  gate.name === TYPE_GATE && statedTypeOf(contract, ledger) !== null
+    ? statedTypeReason(contract, ledger, root)
+    : stopReason(contract, ledger, root, opts) ?? gateOwnReason(gate, { root, ledger, voided, contract }) ?? policyReason(ledger);
 
 // Whether askReason gave a gate's open doubts as its reason.
 export const isDoubtReason = (reason) => typeof reason === "string" && AMBIGUITY_REASON.test(reason);
