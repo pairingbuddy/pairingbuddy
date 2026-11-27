@@ -3,7 +3,8 @@
 // before the pull request, though nothing stops the run.
 import { expect, test } from 'claude-code/testing'
 import { paneLines, setupReplay, type Rig } from './testing/replay'
-import { LEDGER, ROOT, SNAPSHOT_RUNNING, bandTexts, start } from './testing/band'
+import { BAND, LEDGER, ROOT, SNAPSHOT_RUNNING, bandTexts, start } from './testing/band'
+import { QUESTION_COLOUR } from './pane'
 import { POLL_MS } from './poll'
 
 const UNIT = '.pairingbuddy/run/unit.json'
@@ -42,7 +43,19 @@ test('questions-the-unit-holds-are-counted-in-status-and-the-band', async ($, on
 
   const status = statusText(lines)
   expect(status, `STATUS adds the count after what the run is doing, and how to answer: ${JSON.stringify(lines)}`).toMatch(/· 3 questions for you · type \/pb-questions$/)
-  expect(band, 'the band counts them too, and says how to answer').toContain('3 questions for you · type /pb-questions to answer')
+  expect(band, 'the band counts them too, and says how to answer').toContain('? 3 questions · /pb-questions')
+})
+
+// Three states: questions that wait while the run goes on are the quiet one: a blue count, no block, no bar.
+test('the-band-counts-questions-in-a-calm-blue-with-no-block', async ($, on) => {
+  await shown($, on, unitWith([question(1), question(2)]))
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  const nodes = (await band.findAll({ type: 'Text' })) as { text: string; props: Record<string, unknown> }[]
+  await band.unmount()
+
+  const count = nodes.find(node => node.text.startsWith('? '))
+  expect([count?.text, count?.props.color, count?.props.inverse], 'the count in blue, not a block').toEqual(['? 2 questions · /pb-questions', QUESTION_COLOUR, undefined])
+  expect(nodes.some(node => node.props.inverse === true), 'no bar: the run goes on').toBe(false)
 })
 
 test('a question the human answered is no longer counted', async ($, on) => {
@@ -50,7 +63,7 @@ test('a question the human answered is no longer counted', async ($, on) => {
 
   const status = statusText(lines)
   expect(status, `only the open one counts: ${JSON.stringify(lines)}`).toMatch(/· 1 question for you · type \/pb-questions$/)
-  expect(band).toContain('1 question for you · type /pb-questions to answer')
+  expect(band).toContain('? 1 question · /pb-questions')
 })
 
 test('a new question sends one notice and the soft question chime, never repeated, and no status line', async ($, on) => {

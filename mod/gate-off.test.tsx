@@ -36,7 +36,7 @@ test('the pane says the run stopped with the safety checks off, and gives the fi
 
   const status = statusOf(await paneLines($, { bodyColumns: 120 }))
 
-  expect(status, 'STATUS leads with the stop, then the one fix line').toEqual(['✕ STOPPED · safety checks are off', `fix: git -C ${PLUGIN} checkout -- hooks`])
+  expect(status, 'STATUS leads with the stop, then the one fix line').toEqual(['✗ STOPPED · safety checks are off', `fix: git -C ${PLUGIN} checkout -- hooks`])
 })
 
 test('the band leads with the same stop', async ($, on) => {
@@ -47,7 +47,7 @@ test('the band leads with the same stop', async ($, on) => {
   const row = (await bandRowTexts(band)).join('')
   await band.unmount()
 
-  expect(row, `the band leads with the stop: ${row}`).toMatch(/^✕ STOPPED · safety checks are off/)
+  expect(row, `the band leads with the stop: ${row}`).toMatch(/^✗ STOPPED · safety checks are off/)
 })
 
 test('a restored gate-boot.mjs clears it at once, before any hook runs again', async ($, on) => {
@@ -59,7 +59,7 @@ test('a restored gate-boot.mjs clears it at once, before any hook runs again', a
   expect(status[0], 'the run reads as working again').toBe('● working · write test scenarios')
 })
 
-// Live check on b3878b1: once the alert opened the pane the band read "✕ STOPPED · opened details".
+// Live check on b3878b1: once the alert opened the pane the band read "✗ STOPPED · opened details".
 test('the band keeps the reason once the alert opened the pane', async ($, on) => {
   engineWithMarker(on, undefined, true)
   on('ui.status', () => ({ value: undefined }))
@@ -70,5 +70,5 @@ test('the band keeps the reason once the alert opened the pane', async ($, on) =
   const row = (await bandRowTexts(band)).join('')
   await band.unmount()
 
-  expect(row, `the band says why: ${row}`).toMatch(/^✕ STOPPED · safety checks are off/)
+  expect(row, `the band says why: ${row}`).toMatch(/^✗ STOPPED · safety checks are off/)
 })

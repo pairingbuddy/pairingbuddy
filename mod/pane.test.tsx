@@ -274,8 +274,8 @@ test('pane-now-names-what-is-needed-in-the-strongest-treatment', async ($, on) =
 
   const { head, rest } = await statusNodes($)
 
-  expect(nowRow(await paneLines($)), 'STATUS names the gate').toBe('STATUS   ▲ NEEDS YOU · your OK on the scenarios')
-  expect([head.text, head.props.color, head.props.inverse, head.props.bold], 'the head is a yellow block, bold: the one thing not to miss').toEqual(['▲ NEEDS YOU', 'warning', true, true])
+  expect(nowRow(await paneLines($)), 'STATUS names the gate').toBe('STATUS   ⏸ WAITING FOR YOU · your OK on the scenarios')
+  expect([head.text, head.props.color, head.props.inverse, head.props.bold], 'the head is a yellow block, bold: the one thing not to miss').toEqual(['⏸ WAITING FOR YOU', 'warning', true, true])
   expect([rest.text, rest.props.color, rest.props.bold, rest.props.inverse], 'what it needs follows in yellow, bold, not a block').toEqual([' · your OK on the scenarios', 'warning', true, undefined])
 })
 
@@ -293,9 +293,9 @@ test('pane-and-band-say-needs-you-while-claude-code-asks-permission', async ($, 
   // STATUS wraps at its parts: the head, then what Claude Code asks on the line under it.
   const status = [lines[at], lines[at + 1]].map(line => line.replace(/^(STATUS)?\s+/, ''))
 
-  expect(status, 'STATUS says what Claude Code is asking').toEqual(['▲ NEEDS YOU', 'Claude Code is asking your permission to start the next step'])
-  expect([head.text, head.props.color, head.props.inverse], 'in the yellow block').toEqual(['▲ NEEDS YOU', 'warning', true])
-  expect(band, `the band leads with it and says what it asks: ${band}`).toMatch(/^▲ NEEDS YOU · Claude Code is asking your permission/)
+  expect(status, 'STATUS says what Claude Code is asking').toEqual(['⏸ WAITING FOR YOU', 'Claude Code is asking your permission to start the next step'])
+  expect([head.text, head.props.color, head.props.inverse], 'in the yellow block').toEqual(['⏸ WAITING FOR YOU', 'warning', true])
+  expect(band, `the band leads with it and says what it asks: ${band}`).toMatch(/^⏸ WAITING FOR YOU · Claude Code is asking your permission/)
 })
 
 test('pane-status-says-why-it-stopped-as-strongly-in-red', async ($, on) => {
@@ -304,9 +304,47 @@ test('pane-status-says-why-it-stopped-as-strongly-in-red', async ($, on) => {
 
   const { head, rest } = await statusNodes($)
 
-  expect(nowRow(await paneLines($)), 'STATUS says why').toBe(`STATUS   ✕ STOPPED · ${plainName('step-failed')}`)
-  expect([head.text, head.props.color, head.props.inverse, head.props.bold], 'the head is a red block, bold').toEqual(['✕ STOPPED', 'error', true, true])
+  expect(nowRow(await paneLines($)), 'STATUS says why').toBe(`STATUS   ✗ STOPPED · ${plainName('step-failed')}`)
+  expect([head.text, head.props.color, head.props.inverse, head.props.bold], 'the head is a red block, bold').toEqual(['✗ STOPPED', 'error', true, true])
   expect([rest.text, rest.props.color, rest.props.inverse], 'why follows in red, not a block').toEqual([` · ${plainName('step-failed')}`, 'error', undefined])
+})
+
+// Three states: the human's own stop is no failure, so it waits in amber and red stays for what went wrong.
+test('pane-status-draws-the-humans-own-stop-as-waiting-not-as-a-failure', async ($, on) => {
+  engine(on, { ...SNAPSHOT_RUNNING, stop: { code: 'human-stopped', reason: 'the human answered stop at G:scenarios', seq: 3 } })
+  await start($)
+
+  const { head } = await statusNodes($)
+
+  expect([head.text, head.props.color, head.props.inverse], 'the amber waiting head, not the red stop').toEqual(['⏸ WAITING FOR YOU', 'warning', true])
+})
+
+// Three states: a loud one draws a bar across the top of the pane, the pane's whole width, above GOAL.
+async function paneTop($: any, columns = 80) {
+  const pane = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: columns }, surface: 'terminal' })
+  const nodes = (await pane.findAll({ type: 'Text' })) as { text: string; props: Record<string, unknown> }[]
+  await pane.unmount()
+  const goal = nodes.findIndex(node => node.text.startsWith('GOAL'))
+  return nodes.slice(0, goal)
+}
+
+test('pane-draws-a-red-bar-the-whole-width-across-its-top-for-a-failure-stop', async ($, on) => {
+  engine(on, { ...SNAPSHOT_RUNNING, stop: { code: 'step-failed', reason: 'the stage failed three times', seq: 3 } })
+  await start($)
+
+  const bar = await paneTop($, 80)
+
+  const text = bar.map(node => node.text).join('')
+  expect(text.trimEnd(), 'the bar says why').toBe(`✗ STOPPED · ${plainName('step-failed')}`)
+  expect(text.length, 'the bar spans the pane').toBe(80)
+  expect(bar.every(node => node.props.color === 'error' && node.props.inverse === true && node.props.bold === true), 'all of it in red reverse, bold').toBe(true)
+})
+
+test('pane-draws-no-bar-while-the-run-works', async ($, on) => {
+  engine(on, SNAPSHOT_RUNNING)
+  await start($)
+
+  expect(await paneTop($), 'GOAL leads: nothing above it').toEqual([])
 })
 
 const STAGE_STARTED = '2026-11-04T08:19:00.000Z'

@@ -47,11 +47,13 @@ test('band-keeps-what-is-needed-whole-while-the-pane-waits-undrawn', async ($, o
   expect(run.calls.opened.length, 'the engine was asked to open the pane, so the unplaced answer was exercised').toBe(1)
   for (const bodyColumns of [50, 55]) {
     const shown = shownAt[bodyColumns]
-    const needsYou = shown.filter(text => text.startsWith('▲'))
+    const needsYou = shown.filter(text => text.startsWith('⏸'))
     expect(needsYou.length, `at ${bodyColumns} columns the needs-you segment is shown: ${JSON.stringify(shown)}`).toBe(1)
     expect(needsYou[0].includes('…'), `at ${bodyColumns} columns the needs-you segment is whole, not cut: ${JSON.stringify(needsYou)}`).toBe(false)
     expect(needsYou[0].endsWith('your sign-off at the end'), `at ${bodyColumns} columns it still says what is needed: ${JSON.stringify(needsYou)}`).toBe(true)
-    expect(shown.join('').length, `at ${bodyColumns} columns the band stays within its width: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(bodyColumns)
+    // The bar has a row of its own; the details row under it fits on its own too.
+    expect(needsYou[0].length, `at ${bodyColumns} columns the bar stays within its width: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(bodyColumns)
+    expect(shown.slice(1).join('').length, `at ${bodyColumns} columns the details row stays within its width: ${JSON.stringify(shown)}`).toBeLessThanOrEqual(bodyColumns)
   }
 })
 

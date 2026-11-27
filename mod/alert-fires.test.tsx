@@ -55,6 +55,20 @@ test('needs-human-sets-status-line', async ($, on) => {
   expect(run.calls.status[0].text, 'the line does not show the raw gate id').not.toContain('G:task-end')
 })
 
+test('the-status-line-says-waiting-for-you-apart-from-a-failure-stop', async ($, on) => {
+  const clock = mock.clock(on, { now: 0 })
+  const run = alertEngine(on)
+  await start($)
+
+  run.serve(needingHuman({ gate: 'G:task-end' }))
+  await clock.advance(POLL_MS)
+  run.serve(stopped({ code: 'step-failed' }))
+  await clock.advance(POLL_MS)
+
+  const texts = run.calls.status.map((call: { text?: string }) => call.text).filter(Boolean)
+  expect(texts, 'waiting on you reads apart from a failure').toEqual(['waiting for you: your sign-off at the end', 'stopped: a step kept failing'])
+})
+
 // Claude Code's own permission prompt, unanswered: the alert fires once for it, as for a gate question.
 test('a-permission-prompt-plays-one-sound-and-sets-the-status-line', async ($, on) => {
   const clock = mock.clock(on, { now: 0 })
@@ -66,7 +80,7 @@ test('a-permission-prompt-plays-one-sound-and-sets-the-status-line', async ($, o
   await clock.advance(POLL_MS)
 
   expect(run.calls.played.length, 'one sound, not one per poll').toBe(1)
-  expect(run.calls.status.map((call: { text: string }) => call.text), 'the line says what Claude Code asks').toEqual(['needs you: Claude Code is asking your permission to start the next step'])
+  expect(run.calls.status.map((call: { text: string }) => call.text), 'the line says what Claude Code asks').toEqual(['waiting for you: Claude Code is asking your permission to start the next step'])
 })
 
 test('stop-opens-pane', async ($, on) => {

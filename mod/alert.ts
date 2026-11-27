@@ -1,7 +1,7 @@
 import type { EngineInterface, PluginOptions } from 'claude-code'
 import type { Ledger, Unit } from './inputs'
 import { openPane } from './pane-open'
-import { needsYouLine, stopLine } from '../shared-node/glance.mjs'
+import { alertLine } from '../shared-node/glance.mjs'
 import { doneWords } from '../shared-node/end-state.mjs'
 
 const OPENED = { plugin: 'pairingbuddy', key: 'opened' }
@@ -134,13 +134,10 @@ const NOTICE_TITLE = 'Pairing Buddy'
 
 function statusWords(event: Event) {
   if (!('ledger' in event)) return null
-  const { ledger } = event
-  if (ledger.stop) return stopLine(ledger.stop)
-  const gate = ledger.needsHuman?.gate
-  return gate ? needsYouLine(gate) : null
+  return alertLine(event.ledger)
 }
 
-// The status line words the stop as the pane and band do.
+// The status line tells waiting on you apart from a failure stop, as the band and pane do (alertLine).
 function setStatus($: EngineInterface, event: Event) {
   const words = statusWords(event)
   if (words) return $.ui.status(words)

@@ -214,7 +214,8 @@ test('replay-keeps-one-layout-and-fits-at-widths', async ($, on) => {
         steps++
         const where = `${name} at ${columns} columns, step t=${step.t} (${step.kind})`
         const rows: any[] = ((step.nodes as any)?.children ?? []).filter(isRow)
-        const labels = rows.map(row => textOf(row.children[0]).trim()).filter(label => label !== '')
+        // A loud state's bar across the top is no labelled row.
+        const labels = rows.filter(row => row.children[0]?.props?.inverse !== true).map(row => textOf(row.children[0]).trim()).filter(label => label !== '')
         // One layout: every row, in the same order, at every step.
         expect(labels, `${where}: the rows`).toEqual(LABELS)
         // Every line fits the width, so no Text is cut with an ellipsis: the pane wraps, or cuts a test line at a word.

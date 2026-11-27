@@ -15,7 +15,7 @@ test('gate-status-has-no-plugin-name', async ($, on) => {
   await clock.advance(POLL_MS)
 
   expect(run.calls.status.length, 'the first poll that shows the gate sets one status line').toBe(1)
-  expect(run.calls.status[0].text, 'the status text is the plain gate words with no plugin name').toBe('needs you: your OK on the scenarios')
+  expect(run.calls.status[0].text, 'the status text is the plain gate words with no plugin name').toBe('waiting for you: your OK on the scenarios')
 })
 
 test('stop-status-has-no-plugin-name', async ($, on) => {

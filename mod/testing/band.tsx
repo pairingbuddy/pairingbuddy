@@ -150,7 +150,7 @@ export function engine(on: Function, ledger: unknown = SNAPSHOT_RUNNING, open: (
 export const isSeparatorRule = (node: { text?: string; props?: Record<string, unknown> }): boolean =>
   node.props?.dimColor === true && /^[─━═\-_—]{3,}$/.test((node.text ?? '').trim())
 
-// A status head the band leads its row with ('● ', '▲ NEEDS YOU', '✕ STOPPED', '✓ DONE', or a narrow band's mark alone), as
+// A status head the band leads its row with ('● ', '⏸ WAITING FOR YOU', '✗ STOPPED', '✓ DONE', or a narrow band's mark alone), as
 // drawn: in its state's head props.
 export const isStatusHead = (node: { text: string; props: Record<string, unknown> }): boolean =>
   Object.values(STATUS_LOOKS).some(look => [look.bandHead, look.mark].includes(node.text.trimEnd()) && node.props.color === (look.headProps as Record<string, unknown>).color && node.props.inverse === (look.headProps as Record<string, unknown>).inverse)
@@ -178,7 +178,8 @@ function join<T extends { text: string; props: Record<string, unknown> }>(nodes:
     if (last && (afterPhase || (open && !endsSegment(node.text)))) joined[joined.length - 1] = { ...last, text: `${last.text}${node.text}` }
     else {
       joined.push(node)
-      open = heads && isStatusHead(node)
+      // A loud state's bar is a row of its own, whole in one Text: it joins nothing after it.
+      open = heads && isStatusHead(node) && node.props.inverse !== true
     }
   }
   return joined
@@ -189,13 +190,17 @@ function join<T extends { text: string; props: Record<string, unknown> }>(nodes:
 export const isGoalRow = (node: { type?: string; text?: string; props?: Record<string, unknown> }): boolean =>
   (node.type === undefined || node.type === 'Text') && node.props?.bold === true && node.props?.color === undefined && node.props?.dimColor !== true && !(node.text ?? '').startsWith('Pairing Buddy') && !isStatusHead({ text: node.text ?? '', props: node.props ?? {} })
 
-// The text of every Text node on a mounted surface, in order, without the band's separator rule.
-export const texts = async (surface: any) =>
-  joinLit((await surface.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node))).map((node: any) => node.text as string)
+// The padding that carries a loud state's bar to the band's edge: spaces alone, in reverse colours. Read as text it says nothing.
+export const isBarPad = (node: { text?: string; props?: Record<string, unknown> }): boolean => node.props?.inverse === true && /^ +$/.test(node.text ?? '')
 
-// The band's step row on a mounted surface: its texts, without the rule and the goal row above it.
+// The text of every Text node on a mounted surface, in order, without the band's separator rule and the bar's padding.
+export const texts = async (surface: any) =>
+  joinLit((await surface.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isBarPad(node))).map((node: any) => node.text as string)
+
+// The band's step row on a mounted surface: its texts, without the rule and the goal row above it; a loud state's bar
+// (without its padding) leads, then the details under it.
 export const bandRowTexts = async (surface: any) =>
-  joinSegments((await surface.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node))).map((node: any) => node.text as string)
+  joinSegments((await surface.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node) && !isGoalRow(node) && !isBarPad(node))).map((node: any) => node.text as string)
 
 // The terminal band's step row as drawn now: mounts it, collects its texts and unmounts it. The goal row is left out.
 // Optional props merge into the band's props, for example { bodyColumns: 200 } for a wide terminal.
@@ -208,8 +213,8 @@ export async function bandTexts($: any, props: Record<string, unknown> = {}): Pr
 
 // What the band leads with for the default question (needingHuman, G:task-end) and stop (stopped, step-failed): what it needs
 // or why, also once the alert opened the pane, as the pane's STATUS does.
-export const NEEDS_YOU_LEAD = '▲ NEEDS YOU · your sign-off at the end'
-export const STOPPED_LEAD = '✕ STOPPED · a step kept failing'
+export const NEEDS_YOU_LEAD = '⏸ WAITING FOR YOU · your sign-off at the end'
+export const STOPPED_LEAD = '✗ STOPPED · a step kept failing'
 
 // Whether any line of the band's texts includes the wording.
 export function bandSays(shown: string[], wording: string): boolean {
