@@ -79,6 +79,21 @@ describe("pb-unit-status-cli", () => {
     assert.equal(result.code, 0, `pb unit status exits 0 when the base has not moved: ${outputOf(result)}`);
     assert.deepEqual(JSON.parse(result.stdout), { ok: true, status: "current", base: "main", baseSha: originTip }, "the JSON reports current with the base and its tip");
   });
+  test("cli-current-adopts-human-commit", () => {
+    const { repo, originTip } = openUnitRepo();
+    writeFileSync(join(repo.dir, "by-hand.txt"), "by hand\n");
+    git(repo, "add", "by-hand.txt");
+    git(repo, "commit", "-q", "-m", "a human commit between runs");
+    const byHand = git(repo, "rev-parse", "HEAD");
+
+    const result = pb(repo, "unit", "status");
+
+    assert.equal(result.code, 0, `pb unit status exits 0: ${outputOf(result)}`);
+    assert.deepEqual(JSON.parse(result.stdout), { ok: true, status: "current", base: "main", baseSha: originTip, adopted: [byHand] }, "the JSON reports current and the adopted commit");
+    const unit = JSON.parse(readFileSync(unitPath(repo), "utf8"));
+    assert.deepEqual(unit.commits, [byHand], "the commit joins the unit's commits");
+    assert.deepEqual(unit.humanCommits, [byHand], "the unit marks it as a human commit");
+  });
   test("cli-refuses-when-fetch-fails", () => {
     const { repo } = openUnitRepo();
     const unitBefore = readFileSync(unitPath(repo), "utf8");

@@ -2316,7 +2316,10 @@ async function unitStatus() {
   const gitConfig = loadGitConfigOrRefuse(root);
   const result = baseStatusFor(root, unit, gitConfig);
   refuseRebaseNeeded(unit, result);
-  if (result.status === "current") return { ok: true, status: "current", base: unit.base, baseSha: unit.baseSha };
+  if (result.status === "current") {
+    const adopted = adoptHumanCommits(root, unit);
+    return { ok: true, status: "current", base: unit.base, baseSha: unit.baseSha, ...(adopted.length > 0 && { adopted }) };
+  }
   const hasTasks = unit.tasks.length > 0;
   const { unit: unitAfterRemap, adopted } = hasTasks ? remappedUnit(root, unit, result) : { unit, adopted: [] };
   const suite = hasTasks ? await rebaseSuiteOf(root, unit) : null;
@@ -2327,6 +2330,15 @@ async function unitStatus() {
     throw new Refusal(`the full suite failed at HEAD ${suite.rebaseSuite.head.slice(0, 7)} after the rebase: exit codes ${suite.exitCodes.join(", ")}. pb publish refuses until a full suite passes at HEAD; a new task in the unit can fix it`);
   }
   return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack, ...rebaseSuite, ...(adopted.length > 0 && { adopted }) };
+}
+
+// With no run open, the commits past the base the unit has not recorded were made by a human between runs: they join the
+// unit's commits, in order, and are marked in humanCommits. A run's own commits join at task end, so a run open adopts nothing.
+function adoptHumanCommits(root, unit) {
+  if (openRunOf(root) !== null) return [];
+  const adopted = runGit(root, ["rev-list", "--reverse", `${unit.baseSha}..HEAD`], { context: "nothing was written" }).split("\n").filter((sha) => sha && !unit.commits.includes(sha));
+  if (adopted.length > 0) writeJsonAtomic(unitPathOf(root), { ...unit, commits: [...unit.commits, ...adopted], humanCommits: [...(unit.humanCommits ?? []), ...adopted] });
+  return adopted;
 }
 
 // Rebases the open unit's branch onto its moved base, then reconciles as pb unit status does. Refused while a run is open,
