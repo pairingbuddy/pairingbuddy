@@ -8,6 +8,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus } from "./stages.mjs";
 import { buildFindingId, buildKey } from "./keys.mjs";
 import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt } from "./stage-run.mjs";
+import { statedType } from "./stated-type.mjs";
 import { acceptVerdict, findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { forYou, plainName } from "./plain-names.mjs";
@@ -657,8 +658,10 @@ function selectorReason(root, ledger, contract) {
 }
 
 // Under auto, a likely type passes: asking at every plan task cost more than it caught, and a question on it waits on the
-// unit's questions (defersDoubts). An unsure type, or none, still asks.
-function classifierReason(root, ledger) {
+// unit's questions (defersDoubts). An unsure type, or none, still asks. A type the task states for itself (a plan task's Type:
+// line, approved with the plan) is certain, whatever the classifier reported.
+function classifierReason(root, ledger, contract) {
+  if (statedType(ledger.task, contract.migratedTypes) !== null) return null;
   const content = keptIntakeReturn(artifactsDir(root), ledger.stage.attempt)?.content;
   if (content?.confidence === "certain") return null;
   return content?.confidence === "likely" && ledger.policy.mode === "auto" ? null : "the classifier does not report certain";
@@ -681,7 +684,7 @@ export function typePassedOn(root, ledger, gate) {
   return confidence === "likely" ? confidence : null;
 }
 
-const typeReason = (root, ledger, contract) => selectorReason(root, ledger, contract) ?? classifierReason(root, ledger) ?? lensReason(root, ledger);
+const typeReason = (root, ledger, contract) => selectorReason(root, ledger, contract) ?? classifierReason(root, ledger, contract) ?? lensReason(root, ledger);
 
 const TASK_END_GATE = "G:task-end";
 

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { checkpointSteps } from "./checkpoint.mjs";
+import { statedType } from "./stated-type.mjs";
 
 export * from "./stage-graph.mjs";
 
@@ -72,6 +73,10 @@ export function validateStages(contract) {
 
 // The task type when the contract migrates it, else null: the one rule for what the ledger taskType may hold.
 export const migratedType = (stages, taskType) => (stages.migratedTypes.includes(taskType) ? taskType : null);
+
+// The run's task type from an intake return: the type the task states for itself (a plan task's Type: line, approved with
+// the plan) when it names a migrated type, else the returned one when migrated, else null.
+export const runTypeOf = (stages, task, returned) => statedType(task, stages.migratedTypes) ?? migratedType(stages, returned);
 
 export function loadStages(pluginRoot) {
   const path = join(pluginRoot, "contracts", "stages.json");

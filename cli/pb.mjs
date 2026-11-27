@@ -38,7 +38,7 @@ import { nextAction, runStatus, statusText } from "../shared-node/next-action.mj
 import { stageRun } from "../shared-node/plain-names.mjs";
 import { needsTestSelection } from "../shared-node/stage-graph.mjs";
 import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, standingScenariosKey, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
-import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, migratedType, nextAttempt, nextStage } from "../shared-node/stages.mjs";
+import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, nextAttempt, runTypeOf, nextStage } from "../shared-node/stages.mjs";
 import { declaredRenames, splitId } from "../shared-node/test-renames.mjs";
 import { ConfigHashChanged, TestRunRefused, collectedNoTest, cycleRun, failedRunsText, ranNoTest, fullSuitePlans, hasSelector, lintNote, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, RED_PASSES, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
@@ -3211,7 +3211,7 @@ function rollback(args) {
   const maxAttempts = LENS_MAP.maxAttempts;
   const stopped = failedAttempts >= maxAttempts;
   const capReason = stopped ? `${ATTEMPT_CAP}: stage ${parts.stage} rolled back ${failedAttempts} fix attempts, its cap of ${maxAttempts}` : null;
-  const restored = parts.stage === "intake" ? { restoredType: keptTypeOf(root, parts.attempt) } : {};
+  const restored = parts.stage === "intake" ? { restoredType: keptTypeOf(root, parts.attempt, ledger.task) } : {};
   recordRollback(path, entry, { droppedSha: record?.sha, capReason, ...restored });
   if (stopped) writeReport(reportPathOf(root), buildReport(readLedger(path), artifactsDirOf(root)));
   return { ok: true, key, note: wrong, failedAttempts, maxAttempts, stopped };
@@ -3227,8 +3227,8 @@ function untrackedSinceStart(root, ledger, { stage, attempt }) {
   return { created: now.filter((p) => !start.paths.includes(p)), kept: now.filter((p) => start.paths.includes(p)) };
 }
 
-function keptTypeOf(root, attempt) {
-  return migratedType(loadStages(PLUGIN_ROOT), keptIntakeReturn(artifactsDirOf(root), attempt)?.content?.task_type);
+function keptTypeOf(root, attempt, task) {
+  return runTypeOf(loadStages(PLUGIN_ROOT), task, keptIntakeReturn(artifactsDirOf(root), attempt)?.content?.task_type);
 }
 
 export const VERBS = {

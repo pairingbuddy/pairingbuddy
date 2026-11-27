@@ -636,3 +636,13 @@ test("an intake fix return from classify-task sets the ledger taskType", () =>
     assert.ok(existsSync(repo.artifact(k)), "the fix return is filed");
     assert.equal(JSON.parse(readFileSync(repo.ledgerPath, "utf8")).taskType, "new_feature", "the kept classification sets the task type");
   }));
+
+test("an intake return that differs from the task's stated type leaves the stated type on the ledger", () =>
+  withRepo({ ledger: { ...makeLedger({ name: "intake", status: "active", runId: null, attempt: 1 }), taskType: null, task: "Task 4: Cache the build\n\nType: config_change. Only CI files change.\n" } }, async (repo) => {
+    const k = buildKey({ stage: "intake", role: "classify-task", item: null, round: 1, attempt: 1 });
+
+    const res = await runTap(structured(repo.dir, k, { task_type: "refactoring", confidence: "likely", ambiguity: "Is it config or refactoring?" }, "pairingbuddy:classify-task"));
+
+    assert.equal(res.code, 0);
+    assert.equal(JSON.parse(readFileSync(repo.ledgerPath, "utf8")).taskType, "config_change", "the type the approved plan states wins over the classifier's");
+  }));

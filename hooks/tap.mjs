@@ -34,7 +34,7 @@ function agentMayFile(parsed, agentType) {
 
 const pluginRoot = () => process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("..", import.meta.url));
 
-function tapStructuredOutput({ loadStages, migratedType, parseKey, readLedger, updateLedger }, taskDir, ledgerPath, { tool_input: toolInput, agent_type: agentType }) {
+function tapStructuredOutput({ loadStages, runTypeOf, parseKey, readLedger, updateLedger }, taskDir, ledgerPath, { tool_input: toolInput, agent_type: agentType }) {
   const pbKey = toolInput?.pb_key;
   if (typeof pbKey !== "string") return;
   let parsed;
@@ -69,7 +69,7 @@ function tapStructuredOutput({ loadStages, migratedType, parseKey, readLedger, u
   renameSync(temp, join(dir, `${pbKey}.json`));
   writePrBody(taskDir, parsed, toolInput.body);
   // An intake classify-task or fix return sets the ledger taskType as it lands, before the course check; a rollback of a rejected fix puts the kept return's type back.
-  if (parsed.stage === "intake" && (parsed.role === "classify-task" || parsed.role === "fix")) updateLedger(ledgerPath, (ledger) => ({ ...ledger, taskType: migratedType(loadStages(pluginRoot()), toolInput.task_type) }));
+  if (parsed.stage === "intake" && (parsed.role === "classify-task" || parsed.role === "fix")) updateLedger(ledgerPath, (ledger) => ({ ...ledger, taskType: runTypeOf(loadStages(pluginRoot()), ledger.task, toolInput.task_type) }));
 }
 
 // The draft and its redraft (a fix) both carry the PR body, so both roles write pr-body.md.
@@ -206,12 +206,12 @@ function closeKeptLocal(modules, root, ledger) {
 }
 
 function tapRun(modules, root, input) {
-  const { loadStages, migratedType, parseKey, readLedger, updateLedger } = modules;
+  const { loadStages, runTypeOf, parseKey, readLedger, updateLedger } = modules;
   const taskDir = join(root, ".pairingbuddy", "run", "task");
   const ledgerPath = join(taskDir, "ledger.json");
   if (!existsSync(ledgerPath)) return;
   try {
-    if (input.tool_name === "StructuredOutput") tapStructuredOutput({ loadStages, migratedType, parseKey, readLedger, updateLedger }, taskDir, ledgerPath, input);
+    if (input.tool_name === "StructuredOutput") tapStructuredOutput({ loadStages, runTypeOf, parseKey, readLedger, updateLedger }, taskDir, ledgerPath, input);
     else if (input.tool_name === "Workflow") tapWorkflow({ readLedger, updateLedger }, taskDir, ledgerPath, input.tool_input, input.tool_response);
     else if (input.tool_name === "AskUserQuestion" && input.agent_id === undefined) tapQuestion(modules, root, ledgerPath, input.tool_response);
   } catch (e) {
@@ -226,11 +226,11 @@ try {
   const { pbCommand } = await import("../shared-node/verbs.mjs");
   const { acceptConfigInUnit, clearQuestionsInUnit, closeUnit, endRun, keepRun } = await import("../shared-node/unit-files.mjs");
   const { findSessionRoot } = await import("../shared-node/run-root.mjs");
-  const { loadStages, migratedType } = await import("../shared-node/stages.mjs");
+  const { loadStages, runTypeOf } = await import("../shared-node/stages.mjs");
   const { isHumanWait, recordWaitAnswer } = await import("../shared-node/human-waits.mjs");
   const input = JSON.parse(readFileSync(0, "utf8"));
   const root = findSessionRoot(input.cwd, input.session_id);
-  if (root !== null) tapRun({ acceptConfigInUnit, clearQuestionsInUnit, isHumanWait, recordWaitAnswer, KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, keepRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, untakenTypedAnswer, updateLedger, migratedType }, root, input);
+  if (root !== null) tapRun({ acceptConfigInUnit, clearQuestionsInUnit, isHumanWait, recordWaitAnswer, KEEP_LOCAL_LABEL, PUBLISH_LABEL, appendRedoFeedback, closeUnit, endRun, keepRun, gateAnswer, gatesFor, isBindingRefusal, isPublishRun, loadStages, parseKey, pbCommand, publishBinding, readLedger, recordAnswer, untakenTypedAnswer, updateLedger, runTypeOf }, root, input);
 } catch {
   // not a run situation
 }
