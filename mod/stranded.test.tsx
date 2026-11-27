@@ -3,15 +3,14 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, bandTexts, engine, start } from './testing/band'
 import { paneLines } from './testing/replay'
+import { firstGlance } from './testing/glance'
 import { POLL_MS } from './poll'
 
 const STARTED = Date.parse(SNAPSHOT_RUNNING.stage.startedAt)
 const MINUTE = 60_000
 
-const statusOf = (lines: string[]) => {
-  const at = lines.findIndex(line => line.startsWith('STATUS'))
-  return lines[at].replace(/^STATUS\s+/, '')
-}
+// The first glance's lead: a loud state's bar, else STATUS.
+const statusOf = (lines: string[]) => firstGlance(lines)[0]
 
 // The run as SNAPSHOT_RUNNING left it (its ledger last written at epoch 0), seen this many minutes after its stage started.
 async function seenAfter($: any, on: Function, minutes: number, open?: () => unknown) {
@@ -71,10 +70,9 @@ async function withShim($: any, on: Function, minutes: number) {
 test('with the project shim, STATUS gives the line that takes the run over', async ($, on) => {
   await withShim($, on, 11)
 
-  const lines = await paneLines($, { bodyColumns: 120 })
-  const at = lines.findIndex(line => line.startsWith('STATUS'))
+  const glance = firstGlance(await paneLines($, { bodyColumns: 120 }))
 
-  expect(lines[at + 1].trim(), 'the adopt line, under the head').toBe('type: !.pairingbuddy/bin/pb human adopt')
+  expect(glance[1], 'the adopt line, under the bar').toBe('type: !.pairingbuddy/bin/pb human adopt')
 })
 
 test('while stranded the SPENT time stops at the last move and says it is paused, in the pane and the band', async ($, on) => {

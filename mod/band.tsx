@@ -1,5 +1,5 @@
 import { fitBand, SEPARATOR } from '../shared-node/glance.mjs'
-import { goalGist, nextWords } from '../shared-node/end-state.mjs'
+import { barLines, goalGist, nextWords } from '../shared-node/end-state.mjs'
 import { PHASES } from '../shared-node/labels.mjs'
 import { ACCENT_COLOUR, PHASE_COLOURS, STATUS_LOOKS } from './pane'
 import type { Segment, Tags } from './view'
@@ -74,12 +74,11 @@ function quietLine({ between, ended, done, next }: { between?: string; ended?: b
 // A loud state (waiting on you, or stopped by a failure) leads the band.
 export const isLoud = (segment: Segment) => segment.state === 'needsYou' || segment.state === 'stopped'
 
-// The loud state's bar: its words, cut with "…" when wider than the room, then padding to the room's edge, so the reverse
-// colours span the band. No room known pads nothing.
-export function barParts(segment: Segment, room: number): string[] {
-  if (!(room > 0)) return [segment.text]
-  const text = segment.text.length <= room ? segment.text : `${segment.text.slice(0, Math.max(room - 1, 0))}…`
-  return text.length < room ? [text, ' '.repeat(room - text.length)] : [text]
+// The loud state's bar: its words wrapped at words onto at most BAND_BAR_LINES rows (only beyond them cut with "…"), each
+// padded to the room's edge, so the reverse colours span the band. No room known gives one row, unpadded.
+const BAND_BAR_LINES = 2
+export function barRows(segment: Segment, room: number): string[][] {
+  return barLines(segment.text, room, BAND_BAR_LINES).map((text: string) => (room > 0 && text.length < room ? [text, ' '.repeat(room - text.length)] : [text]))
 }
 
 // While a stage is active or a question waits, only the segments that fit; otherwise the quiet line. The commands hint follows.
@@ -115,7 +114,7 @@ export function Band({ Box, Text, band, goal, columns, running, waiting, ended, 
     <Box flexDirection="column">
     <Text key="rule" dimColor>{rule(columns)}</Text>
     {gist && <Text key="goal" bold wrap="truncate-end">{gist}</Text>}
-    {loud && <Box key="bar">{barParts(loud, bandColumns(columns)).map((part, i) => <Text key={`bar-${i}`} wrap="truncate-end" {...STATUS_LOOKS[loud.state!].headProps}>{part}</Text>)}</Box>}
+    {loud && barRows(loud, bandColumns(columns)).map((parts, row) => <Box key={`bar-${row}`}>{parts.map((part, i) => <Text key={`bar-${i}`} wrap="truncate-end" {...STATUS_LOOKS[loud.state!].headProps}>{part}</Text>)}</Box>)}
     <Box flexShrink={1}>
       {shown
         ? shown.flatMap((segment: Segment, i: number) => [

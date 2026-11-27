@@ -112,3 +112,21 @@ for (const options of [{ questionSound: false }, { alertSound: false }]) {
     expect(played, 'no chime with the sound turned off').toEqual([])
   })
 }
+
+// Live 2026-11-27: the count rode inside the red bar and pushed its end past the edge. The bar holds only the state and why;
+// the count keeps its own quiet line under it, in blue.
+test('a-stop-keeps-the-question-count-out-of-its-bar', async ($, on) => {
+  const rig = setupReplay(on)
+  serve(rig, { [LEDGER]: { ...running, stop: { code: 'step-failed', reason: 'r', seq: 3, why: 'GREEN for t1 was refused 3 times' } }, [UNIT]: unitWith([question(1), question(2)]) })
+  await rig.clock.set(Date.parse('2026-11-14T10:01:00.000Z'))
+  await start($)
+  await rig.clock.advance(POLL_MS * 2)
+  const pane = await $.ui.mount({ plugin: 'pairingbuddy', component: 'Pane', requestId: 'pairingbuddy', props: { title: 'Pairing Buddy', isFocused: false, bodyColumns: 120, placement: 'dock' }, surface: 'terminal' })
+  const nodes = (await pane.findAll({ type: 'Text' })) as { text: string; props: Record<string, unknown> }[]
+  await pane.unmount()
+
+  const bar = nodes.filter(node => node.props.inverse === true).map(node => node.text).join('').trimEnd()
+  const count = nodes.find(node => node.text.includes('questions for you'))
+  expect(bar, 'the bar is the state and why alone').toBe('✗ STOPPED · GREEN for t1 was refused 3 times')
+  expect([count?.text, count?.props.color], 'the count on its own line, in blue').toEqual(['2 questions for you · type /pb-questions', QUESTION_COLOUR])
+})

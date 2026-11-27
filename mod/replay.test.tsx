@@ -4,7 +4,7 @@ import { PANE, paneLines, replay, setupReplay, type Rig, type Step } from './tes
 import gOpen1 from './fixtures/replay/g-open-1'
 import probe2 from './fixtures/replay/probe-2'
 import s4Rollback from './fixtures/replay/s4-rollback'
-import { bandColumns, barParts, isLoud } from './band'
+import { bandColumns, barRows, isLoud } from './band'
 import { namedWhere, statusFirst } from './view'
 import { ACCENT_COLOUR, PHASE_COLOURS } from './pane'
 import { POLL_MS } from './poll'
@@ -71,7 +71,7 @@ function fittedBand(step: Step, tests: string[], since: string | undefined, body
   const segments = statusFirst(namedWhere(band, { ledger: step.ledger as any, spawns: step.fed as any, tests, testsComplete: true }), step.ledger as any)
   const loud = segments.find(isLoud)
   if (!loud) return fitBand(segments, bandColumns(bodyColumns))
-  return [{ ...loud, text: barParts(loud, bandColumns(bodyColumns))[0] }, ...fitBand(segments.filter(segment => segment !== loud), bandColumns(bodyColumns))]
+  return [{ ...loud, text: barRows(loud, bandColumns(bodyColumns)).map(row => row[0]).join(' ') }, ...fitBand(segments.filter(segment => segment !== loud), bandColumns(bodyColumns))]
 }
 
 // mod/fixtures/replay/g-open-1/ is a trimmed committed copy of one bug_fix run recorded in
@@ -245,9 +245,9 @@ test('colour-means-one-thing: across every drawn Text in the pane over the repla
   expect([...colours], 'the recordings drew the phases and the accent').toEqual(expect.arrayContaining([PHASE_COLOURS.RED, PHASE_COLOURS.GREEN, ACCENT_COLOUR]))
 })
 
-// STATUS draws the eye in proportion to urgency: a block (inverse) only for needs-you (yellow) and a stop (red), what follows it
-// in the same colour but no block; done bold and uncoloured; working in the accent, calm; a quiet state behind a dim ○. Yellow
-// and red appear nowhere but STATUS.
+// The first glance draws the eye in proportion to urgency: a loud state (needs-you in yellow, a stop in red) is a bar across
+// the top in reverse colours, said there once, with no head repeated on STATUS; done bold and uncoloured; working in the
+// accent, calm; a quiet state behind a dim ○. Yellow, red and blocks appear nowhere but the bar and STATUS.
 const STATUS_HEADS: Record<string, Record<string, unknown>> = {
   '⏸ WAITING FOR YOU': { color: 'warning', inverse: true, bold: true },
   '✗ STOPPED': { color: 'error', inverse: true, bold: true },
@@ -255,26 +255,34 @@ const STATUS_HEADS: Record<string, Record<string, unknown>> = {
   '● working': { color: ACCENT_COLOUR, inverse: undefined, bold: undefined },
   '○': { color: undefined, inverse: undefined, dimColor: true },
 }
-const statusRow = <T extends { text: string }>(pane: T[]) => pane.slice(pane.findIndex(node => node.text === 'STATUS   ') + 1, pane.findIndex(node => /^─{3,}$/.test(node.text)))
+const statusRow = <T extends { text: string }>(pane: T[]) => {
+  const at = pane.findIndex(node => node.text === 'STATUS   ')
+  return at < 0 ? [] : pane.slice(at + 1, pane.findIndex(node => /^─{3,}$/.test(node.text)))
+}
+const headOf = (text: string) => Object.keys(STATUS_HEADS).find(head => text === head || text.startsWith(`${head} `))
 
-// Checks one drawn pane's STATUS against STATUS_HEADS and returns the head it led with.
+// Checks one drawn pane's first glance against STATUS_HEADS and returns the head it led with.
 function checkStatus(pane: Step['texts'], at: string): string {
-  const row = statusRow(pane)
-  const [head, ...rest] = row.filter(node => node.text.trim() !== '')
-  const look = STATUS_HEADS[head.text]
-  expect(look, `${at}: STATUS leads with one of the five heads, not "${head.text}"`).toBeDefined()
-  for (const [prop, value] of Object.entries(look)) expect(head.props[prop], `${at}: "${head.text}" ${prop}`).toBe(value)
-  for (const node of rest) {
-    expect(node.props.inverse, `${at}: only the head is a block: "${node.text}"`).toBeUndefined()
-    expect(node.props.color, `${at}: what follows "${head.text}" is in its colour`).toBe(look.inverse ? look.color : undefined)
-  }
-  // A loud state's bar leads the pane, above GOAL, in its head's look; it is the one block outside STATUS.
   const bar = pane.slice(0, pane.findIndex(node => node.text.startsWith('GOAL')))
-  if (look.inverse) expect(bar.length > 0 && bar.every(node => node.props.inverse === true && node.props.color === look.color), `${at}: "${head.text}" draws its bar across the top`).toBe(true)
-  else expect(bar, `${at}: no bar while "${head.text}"`).toEqual([])
+  const row = statusRow(pane)
+  const [head, ...rest] = bar.length > 0 ? bar : row.filter(node => node.text.trim() !== '')
+  const name = headOf(head.text)
+  expect(name, `${at}: the first glance leads with one of the five heads, not "${head.text}"`).toBeDefined()
+  const look = STATUS_HEADS[name!]
+  for (const [prop, value] of Object.entries(look)) expect(head.props[prop], `${at}: "${head.text}" ${prop}`).toBe(value)
+  if (look.inverse) {
+    expect(bar.every(node => node.props.inverse === true && node.props.color === look.color), `${at}: "${name}" is a bar across the top`).toBe(true)
+    expect(row.filter(node => headOf(node.text)).map(node => node.text), `${at}: STATUS repeats no head under the bar`).toEqual([])
+  } else {
+    expect(bar, `${at}: no bar while "${name}"`).toEqual([])
+    for (const node of rest) {
+      expect(node.props.inverse, `${at}: no block: "${node.text}"`).toBeUndefined()
+      expect(node.props.color, `${at}: what follows "${name}" is uncoloured`).toBeUndefined()
+    }
+  }
   const elsewhere = pane.filter(node => !row.includes(node) && !bar.includes(node))
-  expect(elsewhere.filter(node => node.props.inverse !== undefined || MEANING_COLOURS.includes(String(node.props.color))).map(node => node.text), `${at}: no block, yellow or red outside STATUS`).toEqual([])
-  return head.text
+  expect(elsewhere.filter(node => node.props.inverse !== undefined || MEANING_COLOURS.includes(String(node.props.color))).map(node => node.text), `${at}: no block, yellow or red outside the bar and STATUS`).toEqual([])
+  return name!
 }
 
 test('colour-means-one-thing-in-status: a block only for a stop, working calm in the accent, over g-open-1 and probe-2', async ($, on) => {

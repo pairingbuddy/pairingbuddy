@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { codeRunOf, doneStatus, endRows, endReviewLines, goalGist, goalLines, goalOf, isUnitDone, prTitleOf, safetyNetRound, wrapAtParts } from "../../shared-node/end-state.mjs";
+import { barLines, codeRunOf, doneStatus, endRows, endReviewLines, goalGist, goalLines, goalOf, isUnitDone, prTitleOf, safetyNetRound, wrapAtParts } from "../../shared-node/end-state.mjs";
 
 const DASH = "—";
 const TASK = "Add order_total to cart.py. It sums the line totals.";
@@ -200,4 +200,10 @@ test("a finding title too long for the columns is cut at a word with an ellipsis
   const [, line] = endReviewLines({ findings }, 47).map(({ text }) => text);
 
   assert.equal(line, "  left as is · Needless alias sut in…");
+});
+
+test("a-bar-past-its-most-lines-cuts-only-its-last-line-at-a-word", () => {
+  const lines = barLines("✗ STOPPED · one two three four five six seven eight nine ten", 20, 2);
+
+  assert.deepEqual(lines, ["✗ STOPPED · one two", "three four five six…"]);
 });

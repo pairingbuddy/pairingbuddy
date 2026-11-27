@@ -3,6 +3,7 @@
 import { expect, test } from 'claude-code/testing'
 import { BAND, LEDGER_PATH, ROOT, SNAPSHOT_RUNNING, bandRowTexts, start } from './testing/band'
 import { paneLines } from './testing/replay'
+import { firstGlance } from './testing/glance'
 
 const PLUGIN = '/plugins/pairingbuddy'
 const GATE_BOOT = `${PLUGIN}/hooks/gate-boot.mjs`
@@ -25,10 +26,8 @@ function engineWithMarker(on: Function, gateBoot: { mtimeMs: number; size: numbe
   })
 }
 
-const statusOf = (lines: string[]) => {
-  const at = lines.findIndex(line => line.startsWith('STATUS'))
-  return lines.slice(at, at + 2).map(line => line.replace(/^(STATUS)?\s+/, ''))
-}
+// The bar, then STATUS's own lines (the fix).
+const statusOf = (lines: string[]) => firstGlance(lines).slice(0, 2)
 
 test('the pane says the run stopped with the safety checks off, and gives the fix line', async ($, on) => {
   engineWithMarker(on)
