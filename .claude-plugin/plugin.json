@@ -54,7 +54,13 @@
     "alertSound": {
       "type": "boolean",
       "title": "Alert sound",
-      "description": "Play a sound on stop or needs-you",
+      "description": "Play a sound on stop or needs-you. Off silences every Pairing Buddy sound",
+      "default": true
+    },
+    "questionSound": {
+      "type": "boolean",
+      "title": "Question chime",
+      "description": "Play a soft chime when a question waits for you while the run goes on",
       "default": true
     }
   }

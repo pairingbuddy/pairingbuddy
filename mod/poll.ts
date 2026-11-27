@@ -125,7 +125,7 @@ export async function startPoller($: EngineInterface, state: PollerState, option
       // Before the snapshot bookkeeping below, so a failure there never keeps the alert from seeing the ledger go.
       await alertOn($, polled.ledger, options, doneRunOf(polled), nextUnitOf(polled.plan))
       await openOnRunStart($, polled.ledger)
-      await noticeNewQuestions($, polled.unit ?? null)
+      await noticeNewQuestions($, polled.unit ?? null, options)
       // The last ledger read is kept as the snapshot; a new one overwrites it, and a gone ledger leaves it.
       if (polled.ledger) {
         await $.state.set(LAST_RUN, polled)

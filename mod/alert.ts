@@ -16,6 +16,9 @@ const STATUS_SET = { plugin: 'pairingbuddy', key: 'status-set' }
 
 const SOUND = { asset: 'mod/assets/alert.wav' }
 
+// The softer chime for a question that waits while the run goes on; the stop sound above stays for real stops.
+const QUESTION_SOUND = { asset: 'mod/assets/question.wav' }
+
 // Runs one alert effect fire and forget: a sync throw, a non-promise return or a rejection is dropped, so one failed effect never reaches the others. Never waits, since play settles only when the clip ends and the poll holds its lock while it waits on us.
 function quietly(effect: () => unknown) {
   try {
@@ -172,9 +175,10 @@ const NOTICES_PER_POLL = 3
 const noticeText = (text: string) => `Question for you: ${text.replace(/\s+/g, ' ').trim()} · /pb-questions`
 
 // The third alert level: the run goes on, and has questions for you when you have time. Each question the unit gains gets
-// one quiet notice, never repeated: no sound, no status line, no pane opened, which stay for real stops. The count noticed
-// is kept per unit in the mod's store, so a reload does not repeat them. Never throws.
-export async function noticeNewQuestions($: EngineInterface, unit: Unit | null) {
+// one notice, never repeated, and a poll that found any plays the soft question chime once; no status line and no pane
+// opened, which stay for real stops. The count noticed is kept per unit in the mod's store, so a reload does not repeat
+// them. Never throws.
+export async function noticeNewQuestions($: EngineInterface, unit: Unit | null, options: PluginOptions = {}) {
   try {
     if (!unit?.asked) return
     const key = questionsSeenKey(await $.session.root())
@@ -186,6 +190,7 @@ export async function noticeNewQuestions($: EngineInterface, unit: Unit | null) 
     const fresh = Array.from({ length: count - from }, (_, i) => texts[from + i] ?? null)
     const shown = fresh.slice(0, NOTICES_PER_POLL)
     const rest = fresh.length - shown.length
+    if (options.alertSound !== false && options.questionSound !== false) quietly(() => $.audio.play(QUESTION_SOUND))
     shown.forEach((text, i) => {
       const more = i === shown.length - 1 && rest > 0 ? ` (+${rest} more)` : ''
       quietly(() => $.ui.notify(text === null ? `${count - from} new questions for you · /pb-questions` : `${noticeText(text)}${more}`, { title: NOTICE_TITLE }))
