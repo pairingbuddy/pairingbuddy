@@ -661,6 +661,17 @@ describe("the placeholders step", IN_PARALLEL, () => {
     assert.equal(assertPasses(step(repo, "placeholders", key)).committed, false);
   });
 
+  const cutOf = (id) => ({ id, reason: "already covered", at: "2026-01-01T00:00:00.000Z", selector: { runner_id: "fake", test_file: "tests/a.mjs", test_function: id } });
+
+  test("a test the human cut, still in its file, is refused, naming the test and the file", () => {
+    const repo = makeRepo({ ledger: { tests: { cut: [cutOf("t_cut")] } } });
+    repo.write("tests/a.mjs", "def t1():\n    pass\n\ndef t_cut():\n    raise NotImplementedError\n");
+    placeholders(repo);
+
+    assertRefused(repo, repo.head(), step(repo, "placeholders", TESTS_KEY), /t_cut.*still in tests\/a\.mjs.*Remove/s);
+    assert.equal(repo.ledger().stop, null, "a new placeholders agent can remove it");
+  });
+
   test("a test id that names a method every object has starts with no evidence", () => {
     const repo = makeRepo({ rows: [row("constructor")], outcomes: { "tests/a.mjs::constructor": 1 } });
 
@@ -853,7 +864,7 @@ describe("pb tdd state", IN_PARALLEL, () => {
     const state = assertPasses(pb(repo, "tdd", "state"));
 
     const { testRunners, ...rest } = state;
-    assert.deepEqual(rest, { ok: true, taskType: "bug_fix", scenarios: path(SCENARIOS_KEY(2)), tests: null, red: [], green: [], covered: [], cut: [] });
+    assert.deepEqual(rest, { ok: true, taskType: "bug_fix", scenarios: path(SCENARIOS_KEY(2)), tests: null, red: [], green: [], covered: [], cut: [], cutPresent: [] });
   });
 
   test("lists the tests the human cut, so the stage skips them whatever the test list says", () => {
@@ -864,6 +875,18 @@ describe("pb tdd state", IN_PARALLEL, () => {
     const state = assertPasses(pb(repo, "tdd", "state"));
 
     assert.deepEqual(state.cut, ["t2"]);
+  });
+
+  test("names each cut test whose code is still in its file, so the placeholders agent can remove it", () => {
+    const selector = (id) => ({ runner_id: "fake", test_file: "tests/a.mjs", test_function: id });
+    const cut = ["t2", "t3"].map((id) => ({ id, reason: "already covered", at: "2026-01-01T00:00:00.000Z", selector: selector(id) }));
+    const repo = makeRepo({ rows: [row("t1"), row("t2")], ledger: { ...stagesWith(1), tests: { cut } } });
+    repo.write("tests/a.mjs", "def t1():\n    pass\n\ndef t2():\n    raise NotImplementedError\n");
+    scenarios(repo, 1);
+
+    const state = assertPasses(pb(repo, "tdd", "state"));
+
+    assert.deepEqual(state.cutPresent, [{ id: "t2", test_file: "tests/a.mjs", test_function: "t2" }]);
   });
 
   test("tdd-state-includes-test-runners", () => {
@@ -952,6 +975,31 @@ describe("pb stage stop", IN_PARALLEL, () => {
     assert.doesNotMatch(JSON.stringify(stop), /tests\{\}/, "no internal names");
     const status = assertPasses(pb(repo, "status"));
     assert.deepEqual([status.stop.why, status.stop.detail, status.stop.options], [stop.why, stop.detail, stop.options], "pb status gives them as fields");
+  });
+
+  test("step-failed sums up the runner output its last refusal quoted, and keeps the raw text for the report", () => {
+    const repo = makeRepo();
+    const text = "the tests failed, so nothing was committed. runner pytest failed with exit code 1. Its output:\nhe hash was recorded\\n ok 1 - a ledger\\n---\nFAILED tests/test_js_suite.py::test_js[gate] - AssertionError\n== 1 failed, 9 passed in 3.00s ==\n";
+    writeFileSync(join(repo.taskDir, "last-refusal.json"), JSON.stringify({ stage: STAGE, attempt: ATTEMPT, step: "fix", item: "g1", count: 1, text }));
+
+    assertPasses(pb(repo, "stage", "stop", "step-failed"));
+
+    const { stop } = repo.ledger();
+    assert.match(stop.detail, /The last refusal: the tests failed, so nothing was committed\. runner pytest failed with exit code 1: 1 test failed: tests\/test_js_suite\.py::test_js\[gate\]$/);
+    assert.doesNotMatch(stop.detail, /\\n|Its output/);
+    assert.equal(stop.output, text);
+  });
+
+  test("step-failed names the failing test even when the refusal's output runs past what the stop keeps of it", () => {
+    const repo = makeRepo();
+    greenReady(repo, { outcomes: { "tests/a.mjs::t1": 1 } });
+    const loud = `console.log(${JSON.stringify(`${"noise line\n".repeat(80)}FAILED tests/a.mjs::t1 - boom`)}); process.exit(1);`;
+    repo.write("fake.mjs", loud);
+    step(repo, "green", greenKey());
+
+    assertPasses(pb(repo, "stage", "stop", "step-failed"));
+
+    assert.match(repo.ledger().stop.detail, /1 test failed: tests\/a\.mjs::t1$/);
   });
 
   test("a stop already there stands", () => {
@@ -1124,5 +1172,35 @@ describe("a selected run that ran no test", IN_PARALLEL, () => {
     const repo = nodeRepo("t1");
 
     assertPasses(step(repo, "green", greenKey()));
+  });
+});
+
+describe("the cut step removes a cut test left in its file", IN_PARALLEL, () => {
+  const NET_KEY = `code-safety-net.refactor-tests.-.r1.a${ATTEMPT}`;
+  const cut = [{ id: "t_cut", reason: "already covered", at: "2026-01-01T00:00:00.000Z", selector: { runner_id: "fake", test_file: "tests/a.mjs", test_function: "t_cut" } }];
+  const netRepo = () => {
+    const repo = makeRepo({ ledger: { stage: { name: "code-safety-net", status: "active", runId: "wf_1", attempt: ATTEMPT, startedAt: null }, tests: { cut } } });
+    repo.write("tests/a.mjs", "def t1():\n    pass\n\ndef t_cut():\n    raise NotImplementedError\n");
+    git(repo.dir, "commit", "-q", "-am", "placeholders");
+    return repo;
+  };
+
+  test("commits the removal as a test commit and records it on the cut", () => {
+    const repo = netRepo();
+    repo.write("tests/a.mjs", "def t1():\n    pass\n");
+    writeArtifact(repo, NET_KEY, fileReturn(NET_KEY, { commit_subject: "remove the cut test", files_changed: ["tests/a.mjs"] }));
+
+    const done = assertPasses(step(repo, "cut", NET_KEY));
+
+    assert.equal(done.committed, true);
+    assert.equal(repo.message(), "test: remove the cut test");
+    assert.equal(repo.ledger().tests.cut[0].removed.sha, repo.head());
+  });
+
+  test("a cut test still in its file is refused, naming it", () => {
+    const repo = netRepo();
+    writeArtifact(repo, NET_KEY, fileReturn(NET_KEY, { files_changed: [] }));
+
+    assertRefused(repo, repo.head(), step(repo, "cut", NET_KEY), /t_cut.*still in tests\/a\.mjs/);
   });
 });

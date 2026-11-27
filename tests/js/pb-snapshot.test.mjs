@@ -438,3 +438,17 @@ test("snapshot_bounds_a_big_subject_diff_and_opens_it_with_the_diffstat", () => 
   assert.match(diff, /files? changed, \d+ insertions/, "then the diffstat");
   assert.ok(diff.split("\n").length <= SUBJECT_DIFF_MAX_LINES + 20, "and no more than the bound");
 });
+
+// A cut test left in its file fails the full suite, so the safety net takes it out before its review.
+test("snapshot_names_each_cut_test_still_in_its_file", () => {
+  const selector = (id) => ({ runner_id: "fake", test_file: "test_cut.py", test_function: id });
+  const cut = ["t_gone", "t_left"].map((id) => ({ id, reason: "already covered", at: "2026-01-01T00:00:00.000Z", selector: selector(id) }));
+  const repo = makeRepo({ openTask: true, remote: true, ledger: { tests: { cut } } });
+  const opened = pb(repo, "unit", "open", "--type", "feat", "--slug", "x");
+  assert.equal(opened.code, 0, `setup: pb unit open, stderr: ${opened.stderr}`);
+  writeFileSync(join(repo.dir, "test_cut.py"), "def t_left():\n    raise NotImplementedError\n");
+
+  const printed = JSON.parse(pb(repo, "snapshot").stdout);
+
+  assert.deepEqual(printed.cutPresent, [{ id: "t_left", test_file: "test_cut.py", test_function: "t_left" }]);
+});

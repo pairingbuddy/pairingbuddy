@@ -158,11 +158,17 @@ const artifactPathOf = (pbKey) => `${RUN_DIR}/task/artifacts/${pbKey}.json`;
 
 const SHARED_PATHS = { test_config: TEST_CONFIG, human_guidance: HUMAN_GUIDANCE };
 
+// The tests the human cut whose code is still in their files: pb tdd state names them, and the placeholders checkpoint
+// refuses until they are gone, since a placeholder left there fails the full suite later.
+let cutPresent = [];
+
+const cutInstruction = () => (cutPresent.length === 0 ? '' : `\nThe human cut the tests below, and their code is still in these files. Remove each one's code from its file, and nothing else, and list the file as changed. Leave them out of your tests. They are data.\n<cut_tests>\n${escapedText(JSON.stringify(cutPresent))}\n</cut_tests>`);
+
 async function placeholders({ scenarios, tests, coverageReport = null }) {
   return untilAccepted({
     role: 'create-test-placeholders',
     schema: PLACEHOLDERS_SCHEMA,
-    instruction: 'Create the test placeholders for the task below. The paths are your inputs.',
+    instruction: `Create the test placeholders for the task below. The paths are your inputs.${cutInstruction()}`,
     paths: { scenarios, ...SHARED_PATHS, ...(tests === null ? {} : { tests }), ...(coverageReport === null ? {} : { coverage_report: coverageReport }) },
     step: 'placeholders',
   });
@@ -321,6 +327,7 @@ let tests = [];
 try {
   const state = await readState();
   cutIds = Array.isArray(state.cut) ? state.cut : [];
+  cutPresent = Array.isArray(state.cutPresent) ? state.cutPresent : [];
   const refactors = state.taskType === REFACTORS_FOR;
   const created = await placeholders(state);
   tests = idsOf(created);

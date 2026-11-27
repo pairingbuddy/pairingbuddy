@@ -42,7 +42,7 @@ import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, i
 import { declaredRenames, splitId } from "../shared-node/test-renames.mjs";
 import { ConfigHashChanged, TestRunRefused, collectedNoTest, cycleRun, failedRunsText, ranNoTest, fullSuitePlans, hasSelector, lintNote, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, RED_PASSES, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
-import { runSummary } from "../shared-node/run-summary.mjs";
+import { refusalSummary, runSummary } from "../shared-node/run-summary.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
 import { PROPOSABLE, ProposalRefused, parsedValue, readProposals, valueAt, withValue, writeProposals } from "../shared-node/config-propose.mjs";
 import { APPROVAL_GATE, CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS, approvalQuestion, configQuestion } from "../shared-node/config-wait.mjs";
@@ -1150,7 +1150,13 @@ async function requirePassingTests(root, path, { configHash, stage, tests }) {
   const plans = fullSuitePlans(readTestConfig(root, configHash), root);
   const record = judgedRecord(await suiteRecord(plans, root, stage), tests?.baseline);
   updateLedger(path, (ledger) => ({ ...ledger, tests: { ...ledger.tests, checkpoint: record } }));
-  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${failedRunsText(record.runs)}`);
+  if (!record.passed) throw new Refusal(`the tests failed, so nothing was committed. ${cutTestsCause(root, { tests })}${failedRunsText(record.runs)}`);
+}
+
+// A cut test left in its file is the likeliest cause of a red suite no change of the step's own explains, so it comes first.
+function cutTestsCause(root, ledger) {
+  const present = cutTestsPresent(root, ledger);
+  return present.length === 0 ? "" : `The likely cause is not this change: the human cut ${present.length === 1 ? "a test" : "tests"} whose code is still there, ${cutTestsText(present)}. `;
 }
 
 function assertCommitAllowed(step, key, ledger) {
@@ -1324,7 +1330,50 @@ function assertRowsNew(root, base, rows) {
   if (row !== undefined) throw new Refusal(`${row.test_function} (test ${row.test_id}) is already in ${row.test_file} at ${base.slice(0, 12)}, the commit before the placeholders, so it passes before any GREEN and proves nothing. List only the tests you create`);
 }
 
+// The tests the human cut whose code is still in the working tree: a placeholder left behind fails the full suite later,
+// where the fix that meets it is refused for a failure it did not cause. pb finds each by name in its file, as it does a
+// test already there (isDefinedIn): a file or name that is gone selects nothing.
+function cutTestsPresent(root, ledger) {
+  const cuts = Array.isArray(ledger.tests?.cut) ? ledger.tests.cut : [];
+  return cuts.filter(({ selector }) => {
+    if (typeof selector?.test_file !== "string" || typeof selector?.test_function !== "string") return false;
+    try {
+      return isDefinedIn(readFileSync(join(root, selector.test_file), "utf8"), selector.test_function);
+    } catch {
+      return false;
+    }
+  });
+}
+
+// What a stage hands the agent that takes a cut test out: the test and where it is.
+const cutTestRows = (root, ledger) => cutTestsPresent(root, ledger).map(({ id, selector }) => ({ id, test_file: selector.test_file, test_function: selector.test_function }));
+
+const cutTestsText = (present) => present.map(({ id, selector }) => `test ${id} (${selector.test_function}) is still in ${selector.test_file}`).join("; ");
+
+function assertCutTestsGone(root, ledger) {
+  const present = cutTestsPresent(root, ledger);
+  if (present.length > 0) throw new Refusal(`the human cut ${present.length === 1 ? "a test" : "tests"} whose code is still there: ${cutTestsText(present)}. Remove ${present.length === 1 ? "its" : "their"} code from the file, and nothing else, and list the file as changed: a placeholder left there fails the full suite later`);
+}
+
+// Every cut whose code is gone carries the commit that took it out, or null when it was never in the tree.
+const withCutsRemoved = (root, sha) => (ledger) => {
+  const present = new Set(cutTestsPresent(root, ledger).map(({ id }) => id));
+  const at = new Date().toISOString();
+  const cut = (ledger.tests?.cut ?? []).map((entry) => (present.has(entry.id) || entry.removed ? entry : { ...entry, removed: { sha: sha ?? null, at } }));
+  return { ...ledger, tests: { ...ledger.tests, cut } };
+};
+
+// A cut test left in its file, taken out by a tests fixer: no test runs, since the full suite after it proves the rest.
+function cutCheckpoint(context) {
+  assertCutTestsGone(context.root, context.ledger);
+  const config = readTestConfig(context.root, context.ledger.configHash);
+  const plan = planFor(context, { testDirectories: Object.values(config.runners).map(({ test_directory: directory }) => directory) });
+  if (plan === null) return noChange(context, withCutsRemoved(context.root, null));
+  return commitPlan(context, plan, headOf(context.root), (sha) => withCutsRemoved(context.root, sha));
+}
+
 function placeholdersCheckpoint(context) {
+  assertCutTestsGone(context.root, context.ledger);
   const scope = checkedRows(context);
   const base = placeholdersBase(context);
   assertRowsNew(context.root, base, scope.rows);
@@ -1385,7 +1434,7 @@ const EXCERPT_TAIL = 300;
 const excerptTail = (excerpt, chars = EXCERPT_TAIL) => excerpt.slice(-chars);
 
 const noTestCollected = (run) => (collectedNoTest(run) ? ", which is pytest collecting no test: its selector names none" : "");
-const stepNotMet = (step, id, run) => `test ${id} is not ${step.toUpperCase()}: exit ${run.exitCode}${provesNothing(step, run.exitCode)}${noTestCollected(run)}, so nothing was committed. ${excerptTail(run.excerpt)}`;
+const stepNotMet = (step, id, run) => `test ${id} is not ${step.toUpperCase()}: exit ${run.exitCode}${provesNothing(step, run.exitCode)}${noTestCollected(run)}, so nothing was committed. Its output:\n${excerptTail(run.excerpt)}`;
 
 // The first GREEN this task finished, by where its commit sits in the run's commits, or null before any.
 function earliestGreen({ tests: { perTest = {} }, commits }) {
@@ -1593,6 +1642,7 @@ const CHECKPOINT_FLOWS = {
   fix: suiteCheckpoint,
   "refactor-step": suiteCheckpoint,
   placeholders: placeholdersCheckpoint,
+  cut: cutCheckpoint,
   red: cycleCheckpoint,
   green: cycleCheckpoint,
   refactor: refactorCheckpoint,
@@ -1655,7 +1705,8 @@ function noteRefusal(path, step, key, text) {
   const item = parseKey(key).item;
   const last = readLastRefusal(path, ledger.stage);
   const count = last?.step === step && last?.item === item ? last.count + 1 : 1;
-  const record = { stage: ledger.stage.name, attempt: ledger.stage.attempt, step, item, count, text: text.slice(0, REFUSAL_TEXT) };
+  // The summary reads the whole text, since a run's failing tests come at the end of its output, past what text keeps.
+  const record = { stage: ledger.stage.name, attempt: ledger.stage.attempt, step, item, count, text: text.slice(0, REFUSAL_TEXT), summary: refusalSummary(text) };
   writeFileSync(lastRefusalPath(path), `${JSON.stringify(record, null, 2)}\n`);
 }
 
@@ -1722,7 +1773,7 @@ function stageStop(args) {
   return { ok: true, stop };
 }
 
-const STEP_NAMES = { red: "RED", green: "GREEN", refactor: "the refactor", placeholders: "the test list", fix: "the fix" };
+const STEP_NAMES = { red: "RED", green: "GREEN", refactor: "the refactor", placeholders: "the test list", fix: "the fix", cut: "taking out a cut test" };
 const timesText = (count) => (count === 1 ? "once" : `${count} times`);
 
 // What a step-failed stop can say from the CLI's own record: the step whose tries ran out and its last refusal. With no
@@ -1736,7 +1787,8 @@ function stepFailedWhy(last) {
   }
   const stepName = STEP_NAMES[last.step] ?? last.step;
   const subject = last.item === null ? stepName : `${stepName} for ${last.item}`;
-  return { why: `${subject} was refused ${timesText(last.count)}`, detail: `${subject} was refused ${timesText(last.count)}, so the stage stopped. The last refusal: ${last.text}`, options };
+  const summary = typeof last.summary === "string" ? last.summary : refusalSummary(last.text);
+  return { why: `${subject} was refused ${timesText(last.count)}`, detail: `${subject} was refused ${timesText(last.count)}, so the stage stopped. The last refusal: ${summary}`, options, output: last.text };
 }
 
 const artifactPath = (pbKey) => (pbKey === null ? null : `.pairingbuddy/run/task/artifacts/${pbKey}.json`);
@@ -1755,7 +1807,7 @@ function tddState(args) {
   const artifactsDir = artifactsDirOf(root);
   const scenarios = standingScenariosKey(artifactsDir, ledger);
   if (scenarios === null) throw new Refusal("no scenarios return stands, so there is nothing to write tests from");
-  return { ok: true, taskType: ledger.taskType, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered"), cut: cutIdsOf(ledger), testRunners: testRunnersOf(readTestConfig(root, ledger.configHash)) };
+  return { ok: true, taskType: ledger.taskType, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered"), cut: cutIdsOf(ledger), cutPresent: cutTestRows(root, ledger), testRunners: testRunnersOf(readTestConfig(root, ledger.configHash)) };
 }
 
 // What the refactor-apply stage cannot see for itself: the scope's issues as numbered steps, code issues first.
@@ -2909,7 +2961,7 @@ function snapshot(args) {
   replaceFiles([[join(runDir, SUBJECT_DIFF_FILE), diff], [join(runDir, CHANGED_FILE), jsonText(changed)], [join(runDir, CORPUS_FILE), jsonText({ paths })]]);
   if (ledger !== null && ledger.stage.name !== "") recordUntrackedAtStart(ledgerPath, root, ledger.stage);
   const taskType = ledger === null ? null : ledger.taskType;
-  return { ok: true, paths, taskType, rolledBack: ledger === null ? 0 : rolledBackCount(ledger, ledger.stage.name) };
+  return { ok: true, paths, taskType, rolledBack: ledger === null ? 0 : rolledBackCount(ledger, ledger.stage.name), cutPresent: ledger === null ? [] : cutTestRows(root, ledger) };
 }
 
 // More untracked files than this and none is recorded, so no untracked file counts as a fix's: a rollback then refuses

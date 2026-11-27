@@ -520,3 +520,12 @@ test("code-tdd-a-restart-skips-every-test-the-human-cut-even-when-the-placeholde
   assert.equal(result.stopReason, null);
   assert.deepEqual(result.tests, ["t1", "t3"]);
 });
+
+test("code-tdd-tells-the-placeholders-agent-to-remove-each-cut-test-whose-code-is-still-there", async () => {
+  const cutPresent = [{ id: "t2", test_file: "tests/test_a.py", test_function: "test_t2" }];
+  const { calls } = await runStage({ tests: [row("t1"), row("t2")], state: { cut: ["t2"], cutPresent } }, { ...ARGS, attempt: 2 });
+
+  const prompt = calls.find(({ opts }) => opts.agentType === PLACEHOLDERS).prompt;
+  assert.deepEqual(JSON.parse(blockOf(prompt, "cut_tests")), cutPresent);
+  assert.match(prompt, /human cut/);
+});

@@ -553,6 +553,17 @@ describe("the tests must pass", IN_PARALLEL, () => {
     assert.deepEqual(repo.ledger().tests.checkpoint.preexisting, [{ runner: "fake", failures: ["FAIL tests/a.mjs > renders a pdf"], broken: false }]);
   });
 
+  test("a failing run with a cut test still in its file names that test and file first, as the likely cause", () => {
+    const cut = [{ id: "t_cut", reason: "already covered", at: "2026-01-01T00:00:00.000Z", selector: { runner_id: "fake", test_file: "b.txt", test_function: "t_cut" } }];
+    const repo = changedRepo({ tests: "process.exit(1);", ledger: { tests: { cut } } });
+    repo.write("b.txt", "def t_cut():\n    raise NotImplementedError\n");
+    git(repo.dir, "commit", "-q", "-m", "a placeholder", "b.txt");
+
+    const { stderr } = pb(repo, configArgs());
+
+    assert.match(stderr, /tests failed.*the human cut.*test t_cut \(t_cut\) is still in b\.txt/s, stderr);
+  });
+
   test("the refusal names the failing runner and gives its output", () => {
     const repo = changedRepo({ tests: "console.log('expected 3, got 4'); process.exit(1);" });
 
