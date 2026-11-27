@@ -294,3 +294,18 @@ test("fix-return-refused-rolls-back-with-pbs-words", () => {
   assert.match(relayed.note, /^pb refused the fix's return:\ncommit_subject says nothing/);
   assert.equal(readFileSync(join(repo.dir, "src.mjs"), "utf8"), "original code\n", "the tree is back to HEAD");
 });
+
+// A fix is judged on its first test run. A runner that runs the command again after a red one (a cheap model did) must
+// not turn the red fix into a commit: the second run repeats the red verdict, so the fix loop still rolls it back.
+// Test case: fix-red-once-stays-red
+test("fix-red-once-stays-red", () => {
+  const repo = makeRepo({ runnerPasses: false });
+  checkpointFix(repo);
+  writeFileSync(join(repo.dir, "fake.mjs"), "// a passing runner\n");
+
+  const again = checkpointFix(repo);
+
+  assert.notEqual(again.code, 0, "the second run is refused");
+  assert.match(again.stderr, /^pb: the tests failed, so nothing was committed/m);
+  assert.equal(repo.head(), repo.seed, "nothing was committed");
+});
