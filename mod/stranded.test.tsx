@@ -21,10 +21,10 @@ async function seenAfter($: any, on: Function, minutes: number, open?: () => unk
   await clock.advance(POLL_MS)
 }
 
-test('a stage whose session is gone reads as needs you: take over the run', async ($, on) => {
+test('a stage whose session is gone reads as stopped in red: take over the run', async ($, on) => {
   await seenAfter($, on, 11)
 
-  expect(statusOf(await paneLines($, { bodyColumns: 120 })), 'STATUS asks the human to take over').toBe('▲ NEEDS YOU · take over the run: its session is gone')
+  expect(statusOf(await paneLines($, { bodyColumns: 120 })), 'STATUS asks the human to take over').toBe('✗ STOPPED · take over the run: its session is gone')
 })
 
 test('a stage moved within the last ten minutes still reads as working', async ($, on) => {
@@ -49,7 +49,7 @@ test('the band leads with it too', async ($, on) => {
 
   const row = (await bandTexts($, { bodyColumns: 120 })).join('')
 
-  expect(row, `the band asks for the human: ${row}`).toMatch(/^▲ NEEDS YOU · take over the run/)
+  expect(row, `the band asks for the human: ${row}`).toMatch(/^✗ STOPPED · take over the run/)
 })
 
 // The run as seenAfter serves it, with the project's shim (.pairingbuddy/bin/pb, which pb run open writes) beside it.
@@ -96,7 +96,7 @@ test('the band keeps what it needs once the alert opened the pane', async ($, on
 
   const row = (await bandTexts($, { bodyColumns: 120 })).join('')
 
-  expect(row, `the band asks for the human, not "opened details": ${row}`).toMatch(/^▲ NEEDS YOU · take over the run/)
+  expect(row, `the band asks for the human, not "opened details": ${row}`).toMatch(/^✗ STOPPED · take over the run/)
 })
 
 // T4d run: the safety net's workflow threw, the session that ran it was alive, and the pane said its session was gone.
@@ -109,5 +109,5 @@ test('a stage whose workflow ended in this session reads as restart the step, no
   await $.turn.complete({ answer: '', durationMs: 1000, isAborted: false, turnId: 't1', agentId: spawned.agentId, reason: 'answer' })
   await clock.advance(11 * MINUTE)
 
-  expect(statusOf(await paneLines($, { bodyColumns: 120 })), 'STATUS asks for the step again').toBe('▲ NEEDS YOU · restart the step: its workflow ended without finishing')
+  expect(statusOf(await paneLines($, { bodyColumns: 120 })), 'STATUS asks for the step again').toBe('✗ STOPPED · restart the step: its workflow ended without finishing')
 })

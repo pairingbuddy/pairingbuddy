@@ -8,6 +8,7 @@ import { clock } from "./duration.mjs";
 import { TOKENS_UNIT } from "./spent-line.mjs";
 import { permissionLine } from "./permission-wait.mjs";
 import { strandedLine } from "./stranded.mjs";
+import { HUMAN_STOPPED } from "./stop-codes.mjs";
 
 const UNKNOWN = "unknown";
 const AGENT_KINDS = ["Agent", "workflow_agent"];
@@ -227,6 +228,48 @@ function bandNeedsYou(ledger) {
   if (gate) return { id: "needsYou", text: needsYouLine(gate), standing: true };
   if (!ledger?.stop) return { id: "needsYou", text: "needs you: no" };
   return { id: "needsYou", text: `needs you: ${stopName(ledger.stop) ?? STOPPED}`, standing: true };
+}
+
+// The two loud states, told apart so red stays for failures: WAITING, the run waits on a decision only the human can make (a
+// gate's question, a permission prompt, the human's own stop); FAILED, something went wrong (a stop of any other code, a
+// stranded stage whose session or workflow is gone). Undefined while nothing stands.
+export const WAITING = "waiting";
+export const FAILED = "failed";
+
+export function alertKind(ledger) {
+  if (ledger?.stop) return ledger.stop.code === HUMAN_STOPPED ? WAITING : FAILED;
+  const gate = ledger?.needsHuman?.gate;
+  if (!gate) return undefined;
+  return strandedLine(gate) ? FAILED : WAITING;
+}
+
+// The most characters a loud state's "what" takes; a longer one is cut and ends in "…" (the pane's STATUS keeps it whole).
+export const ALERT_WHAT_MAX = 60;
+export const boundAlertWhat = (text) => (text.length <= ALERT_WHAT_MAX ? text : `${text.slice(0, ALERT_WHAT_MAX - 1).trimEnd()}…`);
+
+// What a loud state is about, bounded: the stop's plain name, else the gate's line; undefined when nothing names it.
+function alertWhat(ledger) {
+  const what = ledger?.stop ? stopName(ledger.stop) : ledger?.needsHuman?.gate ? gateLine(ledger.needsHuman.gate) : undefined;
+  return what === undefined ? undefined : boundAlertWhat(String(what));
+}
+
+// The status line's words for a loud state, as the band and the pane tell it apart; null while nothing stands.
+const ALERT_WORDS = { [WAITING]: "waiting for you", [FAILED]: STOPPED };
+export function alertLine(ledger) {
+  const kind = alertKind(ledger);
+  if (!kind) return null;
+  const what = alertWhat(ledger);
+  return what ? `${ALERT_WORDS[kind]}: ${what}` : ALERT_WORDS[kind];
+}
+
+// The full-width bar a loud state draws across the band and the top of the pane: its head, then what about; null while
+// nothing stands.
+export const ALERT_HEADS = { [WAITING]: "⏸ WAITING FOR YOU", [FAILED]: "✗ STOPPED" };
+export function alertBar(ledger) {
+  const kind = alertKind(ledger);
+  if (!kind) return null;
+  const what = alertWhat(ledger);
+  return { kind, text: what ? `${ALERT_HEADS[kind]} · ${what}` : ALERT_HEADS[kind] };
 }
 
 // A band segment only when its value is known; an unknown one says nothing, so it is left out.

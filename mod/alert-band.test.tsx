@@ -6,7 +6,7 @@ import { alertEngine, cleared, needingHuman, sameEventPolledThenNewEvent, stoppe
 import { PANE } from './testing/replay'
 import { POLL_MS } from './poll'
 
-// Live check of --gate-boot-parse: the band read "✕ STOPPED · opened details" while the pane said why. The band says why too.
+// Live check of --gate-boot-parse: the band read "✗ STOPPED · opened details" while the pane said why. The band says why too.
 test('band-gives-the-stop-reason-once-the-pane-opened', async ($, on) => {
   alertEngine(on, { ledger: stopped(), open: 'ok' })
   await start($)
@@ -24,7 +24,7 @@ test('band-shows-needs-you-without-opened-when-pane-unseated', async ($, on) => 
 
   const shown = await bandTexts($)
 
-  expect(shown[0], `the band leads with the stop and its plain name: ${JSON.stringify(shown)}`).toBe('✕ STOPPED · a step kept failing')
+  expect(shown[0], `the band leads with the stop and its plain name: ${JSON.stringify(shown)}`).toBe('✗ STOPPED · a step kept failing')
   expect(shown.some(text => text.includes('opened details')), `the band never claims "opened details" when the pane did not seat: ${JSON.stringify(shown)}`).toBe(false)
 })
 
@@ -45,7 +45,7 @@ test('band-for-stop-and-for-needs-human: needs human, unseated', async ($, on) =
   // Wide enough that the needs-you segment is not shortened to make room.
   const shown = await bandTexts($, { bodyColumns: 120 })
 
-  expect(shown[0], `the band leads with "▲ NEEDS YOU · your sign-off at the end": ${JSON.stringify(shown)}`).toBe('▲ NEEDS YOU · your sign-off at the end')
+  expect(shown[0], `the band leads with "⏸ WAITING FOR YOU · your sign-off at the end": ${JSON.stringify(shown)}`).toBe('⏸ WAITING FOR YOU · your sign-off at the end')
   expect(shown.some(text => text.includes('opened details')), `the band never claims "opened details" when the pane did not seat: ${JSON.stringify(shown)}`).toBe(false)
 })
 
@@ -73,7 +73,7 @@ test('ui-open-not-placed-band-still-alerts', async ($, on) => {
 
   const shown = await bandTexts($)
 
-  expect(shown[0], `the band still leads with the stop and its plain name when the pane did not seat: ${JSON.stringify(shown)}`).toBe('✕ STOPPED · a step kept failing')
+  expect(shown[0], `the band still leads with the stop and its plain name when the pane did not seat: ${JSON.stringify(shown)}`).toBe('✗ STOPPED · a step kept failing')
   expect(run.calls.opened.length, 'the engine was asked to open the pane, so the not-placed answer was exercised').toBe(1)
   expect(run.calls.played.length, 'the sound still plays when the pane did not seat').toBe(1)
   expect(run.calls.status.length, 'the status line is still set when the pane did not seat').toBe(1)
@@ -98,9 +98,9 @@ for (const open of ['reject', 'throw'] as const) {
     expect(run.calls.status.length, `the status line is still set when opening the pane ${open}s`).toBe(2)
     expect(run.calls.status[0].text, 'the status line names the first stop in plain words').toContain('a step kept failing')
     expect(run.calls.status[1].text, 'the status line names the second stop in plain words').toContain('the commit failed')
-    expect(afterFirstStop[0], `after the first stop the band still leads with the stop's plain name: ${JSON.stringify(afterFirstStop)}`).toBe('✕ STOPPED · a step kept failing')
+    expect(afterFirstStop[0], `after the first stop the band still leads with the stop's plain name: ${JSON.stringify(afterFirstStop)}`).toBe('✗ STOPPED · a step kept failing')
     expect(afterFirstStop.some(text => text.includes('opened details')), `the band never claims "opened details" when opening the pane failed: ${JSON.stringify(afterFirstStop)}`).toBe(false)
-    expect(afterSecondStop[0], `after the second stop the band leads with the new stop's plain name: ${JSON.stringify(afterSecondStop)}`).toBe('✕ STOPPED · the commit failed')
+    expect(afterSecondStop[0], `after the second stop the band leads with the new stop's plain name: ${JSON.stringify(afterSecondStop)}`).toBe('✗ STOPPED · the commit failed')
     expect(afterSecondStop.some(text => text.includes('a step kept failing')), `the band drops the first stop's name once the second stop arrives: ${JSON.stringify(afterSecondStop)}`).toBe(false)
     expect(afterSecondStop.some(text => text.includes('opened details')), `the band never claims "opened details" after the second failed open: ${JSON.stringify(afterSecondStop)}`).toBe(false)
   })

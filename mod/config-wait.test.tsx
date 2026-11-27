@@ -22,6 +22,6 @@ test('a changed test-config reads as needs you: answer the question, or the acce
 
   const status = statusOf(await paneLines($, { bodyColumns: 120 }))
 
-  expect(status[0], 'STATUS says what to do, in plain words').toBe('▲ NEEDS YOU · the test settings changed: check and accept them')
+  expect(status[0], 'STATUS says what to do, in plain words').toBe('⏸ WAITING FOR YOU · the test settings changed: check and accept them')
   expect(status[1], 'the fix line follows').toContain(FIX)
 })

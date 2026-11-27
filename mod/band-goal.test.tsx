@@ -43,7 +43,7 @@ async function bandRows($: any, bodyColumns = 80) {
   return (outer.children as any[]).map(read).filter(child => !(child.type === 'Text' && isSeparatorRule(child)))
 }
 
-test('the-goal-has-a-row-of-its-own-at-a-question-between-steps-and-after-the-run-and-none-while-idle', async ($, on) => {
+test('the-goal-has-a-row-of-its-own-between-steps-and-after-the-run-the-bar-takes-it-at-a-question-and-none-while-idle', async ($, on) => {
   const clock = mock.clock(on, { now: 0 })
   const run = engine(on, null)
   await start($)
@@ -62,7 +62,9 @@ test('the-goal-has-a-row-of-its-own-at-a-question-between-steps-and-after-the-ru
 
   expect(idle.length, 'idle, with no run, the band is one row').toBe(1)
   for (const [name] of states) {
-    expect(shown[name].length, `${name}: the goal row, then the step row: two rows at most`).toBe(2)
-    expect(shown[name][0].text, `${name}: the first row is the goal`).toBe(goalGist(GOAL, 80 - CONTROL_WIDTH))
+    expect(shown[name].length, `${name}: the goal row (or the bar), then the step row: two rows at most`).toBe(2)
+    // A loud state's bar takes the goal's row; the pane keeps the goal.
+    if (name === 'a question') expect(shown[name][0].type, `${name}: the first row is the bar`).toBe('Box')
+    else expect(shown[name][0].text, `${name}: the first row is the goal`).toBe(goalGist(GOAL, 80 - CONTROL_WIDTH))
   }
 })

@@ -52,6 +52,7 @@ JS_TEST_FILES = [
     "tests/js/fix-undo-cap.test.mjs",
     "tests/js/glance-sentences.test.mjs",
     "tests/js/glance-stop-names.test.mjs",
+    "tests/js/glance-alert-kind.test.mjs",
     "tests/js/glance-safeguards.test.mjs",
     "tests/js/harness.test.mjs",
     "tests/js/hook-stdin.test.mjs",

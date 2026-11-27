@@ -2,6 +2,7 @@ import { cutAtWord, lensLines, lensSummaryLines } from '../shared-node/lens-roun
 import { endReviewLines, endReviewSummaryLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
 import { commitRows, firstUnticked, gapWords, holdsBuilding, humanWords, OPEN_COMMIT_ROWS, planFocus, PLAN_ROWS, problemRows, SHORT_COMMIT_ROWS, STATE_SEPARATOR, taskMark, unitWords, windowRows } from '../shared-node/plan-window.mjs'
 import { hiddenRows, moreRowsLine, paneBudget, PLAN_TARGET } from '../shared-node/pane-height.mjs'
+import { ALERT_HEADS, boundAlertWhat, FAILED, WAITING } from '../shared-node/glance.mjs'
 import { resolveOpenUnit } from './view'
 import type { RowTones, Status, StatusState, Tags, View } from './view'
 
@@ -15,6 +16,8 @@ const BLANK = label('')
 export const PHASE_COLOURS: Record<string, string> = { RED: '#e5534b', GREEN: '#3fb950', REFACTOR: '#4c8dff' }
 // Where the run is now: the current step and the current test. Fixed for the same reason, and readable on dark and light.
 export const ACCENT_COLOUR = '#39c5cf'
+// Questions that wait while the run goes on: the calm state, a blue count beside the step, never a block.
+export const QUESTION_COLOUR = '#58a6ff'
 const LIT: Props = { color: ACCENT_COLOUR, bold: true }
 
 type Props = Record<string, unknown>
@@ -108,13 +111,13 @@ const one = (text: string, props: Props = {}): Part[][] => [[{ text, props: text
 // A row that wraps at its parts, then words, onto as many lines as it needs, never cut.
 const wrapped = (text: string, room: number, props: Props = {}): Part[][] => (text === EMPTY ? one(text) : wrapAtParts(text, room).map((line: string) => [{ text: line, props }]))
 
-// How each state leads STATUS: its head (its mark and the state's word) and how the head and what follows it are drawn.
+// How each state leads STATUS (needsYou: waiting on the human, in amber; stopped: a failure, the only state in red): its head (its mark and the state's word) and how the head and what follows it are drawn.
 // sep joins the head to what follows. The band leads its row with bandHead: the same head, but a working run's mark alone,
 // since the band's room goes to the step; a narrow band shortens a question or a stop to its mark alone.
 type Look = { mark: string; head: string; bandHead: string; sep: string; headProps: Props; whatProps: Props }
 export const STATUS_LOOKS: Record<StatusState, Look> = {
-  needsYou: { mark: '▲', head: '▲ NEEDS YOU', bandHead: '▲ NEEDS YOU', sep: ' · ', headProps: { color: 'warning', inverse: true, bold: true }, whatProps: { color: 'warning', bold: true } },
-  stopped: { mark: '✕', head: '✕ STOPPED', bandHead: '✕ STOPPED', sep: ' · ', headProps: { color: 'error', inverse: true, bold: true }, whatProps: { color: 'error' } },
+  needsYou: { mark: '⏸', head: ALERT_HEADS[WAITING], bandHead: ALERT_HEADS[WAITING], sep: ' · ', headProps: { color: 'warning', inverse: true, bold: true }, whatProps: { color: 'warning', bold: true } },
+  stopped: { mark: '✗', head: ALERT_HEADS[FAILED], bandHead: ALERT_HEADS[FAILED], sep: ' · ', headProps: { color: 'error', inverse: true, bold: true }, whatProps: { color: 'error' } },
   done: { mark: '✓', head: '✓ DONE', bandHead: '✓ DONE', sep: ' · ', headProps: { bold: true }, whatProps: {} },
   working: { mark: '●', head: '● working', bandHead: '●', sep: ' · ', headProps: { color: ACCENT_COLOUR }, whatProps: {} },
   quiet: { mark: '○', head: '○', bandHead: '○', sep: ' ', headProps: { dimColor: true }, whatProps: {} },
@@ -131,6 +134,17 @@ function statusLines(status: Status, width: number): Part[][] {
   })
   // The fix is a command to type, so it has its own line, plain, wrapped at words only.
   return status.fix ? [...lines, ...wrapAtParts(status.fix, width).map((line: string) => [{ text: line }])] : lines
+}
+
+// A loud state's bar across the top of the pane: its head and what about (cut at the shared bound), padded to the pane's
+// width so the reverse colours span it; none while the run works, is done or is quiet.
+function barRow(status: Status, columns: number): Part[] | undefined {
+  if (status.state !== 'needsYou' && status.state !== 'stopped') return undefined
+  const look = STATUS_LOOKS[status.state]
+  const words = [look.head, status.what && boundAlertWhat(status.what)].filter(Boolean).join(look.sep)
+  const text = columns > 0 && cells(words) > columns ? `${[...words].slice(0, columns - 1).join('')}${ELLIPSIS}` : words
+  const pad = columns > 0 ? columns - cells(text) : 0
+  return [{ text, props: look.headProps }, ...(pad > 0 ? [{ text: ' '.repeat(pad), props: look.headProps }] : [])]
 }
 
 // The first glance: GOAL, then STATUS, which answers "am I needed now?".
@@ -338,6 +352,7 @@ export function Pane({ Box, Text, view, columns = 0, room, offset = 0, focused =
   note?: string | null
 }) {
   const top = topRows(view, columns)
+  const bar = barRow(view.status, columns)
   // Under the details: the raw labels pb could not read and their count, the gap, and the note.
   const tail = [
     ...shownLabels(unknownLabels).map((raw, i) => <Text key={`unknown-${i}`}>{raw}</Text>),
@@ -346,7 +361,7 @@ export function Pane({ Box, Text, view, columns = 0, room, offset = 0, focused =
     ...(note ? [<Text key="note">{note}</Text>] : []),
   ]
   // The top rows, the rule and the tail never fold.
-  const rows = paneRows(view, columns, room, top.length + 1 + tail.length)
+  const rows = paneRows(view, columns, room, (bar ? 1 : 0) + top.length + 1 + tail.length)
   // One labelled row: its label, then its parts, each a Text cut at the body's edge.
   const labelled = (prefix: string) => ({ label: name, labelProps, parts }: Rows[number], row: number) => (
     <Box key={`${prefix}-${row}`}>
@@ -354,7 +369,8 @@ export function Pane({ Box, Text, view, columns = 0, room, offset = 0, focused =
       {parts.map((part, i) => <Text key={`part-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)}
     </Box>
   )
-  const drawn = [...top.map(labelled('top')), <Text key="top-rule" dimColor wrap="truncate-end">{goalRule(columns)}</Text>, ...rows.map(labelled('row')), ...tail]
+  const barLine = bar ? [<Box key="bar">{bar.map((part, i) => <Text key={`bar-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)}</Box>] : []
+  const drawn = [...barLine, ...top.map(labelled('top')), <Text key="top-rule" dimColor wrap="truncate-end">{goalRule(columns)}</Text>, ...rows.map(labelled('row')), ...tail]
   // The platform draws no "more" hint, so while the window is at the top its last row counts the rows below it.
   const hidden = offset > 0 ? 0 : hiddenRows(drawn.length, room)
   if (hidden > 0 && room !== undefined) drawn.splice(room - 1, 0, <Text key="more" dimColor wrap="truncate-end">{moreRowsLine(hidden, focused)}</Text>)

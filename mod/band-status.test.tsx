@@ -52,15 +52,32 @@ test('a-narrow-band-cuts-the-test-name-at-a-word-never-with-an-ellipsis', async 
   expect(row, 'nothing is cut with "…"').not.toContain('…')
 })
 
-test('a-band-at-a-question-leads-with-the-yellow-needs-you-block-and-what-it-needs', async ($, on) => {
+test('a-band-at-a-question-draws-nothing-but-its-bar-to-draw-the-eye', async ($, on) => {
   // The pane is not seated, so the band carries what is needed, not "opened details".
   engine(on, { ...SNAPSHOT_RUNNING, needsHuman: { gate: 'G:scenarios', reason: 'the human decides', seq: 6 } }, NOT_PLACED)
   await start($)
 
-  const [head, what, ...rest] = await rowNodes($)
+  const rest = (await rowNodes($)).filter(node => node.props.inverse !== true)
 
-  expect([head.text, head.props.color, head.props.inverse, head.props.bold], 'the yellow block leads, as in STATUS').toEqual(['▲ NEEDS YOU', 'warning', true, true])
-  expect([what.text, what.props.color, what.props.bold], 'what it needs follows, yellow and bold').toEqual([' · your OK on the scenarios', 'warning', true])
-  expect(rest.map(node => node.text).join(''), 'then the details: the step is no longer lit').toMatch(/^ │ write test scenarios │ /)
+  expect(rest.map(node => node.text).join(''), 'under the bar, the details: the step is no longer lit').toMatch(/^write test scenarios │ /)
   expect(rest.some(node => node.props.color === ACCENT_COLOUR), 'nothing else draws the eye').toBe(false)
+})
+
+// Three states: a loud one is a bar the band's whole width, in reverse colours, on its own row, so a stopped run is seen from
+// across the room; the details and the commands go to the row under it.
+test('a-band-waiting-on-you-draws-an-amber-bar-the-whole-width-then-the-details-under-it', async ($, on) => {
+  engine(on, { ...SNAPSHOT_RUNNING, needsHuman: { gate: 'G:scenarios', reason: 'the human decides', seq: 6 } }, NOT_PLACED)
+  await start($)
+
+  const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 80 }, surface: 'terminal' })
+  const nodes = (await band.findAll({ type: 'Text' })).filter((node: any) => !isSeparatorRule(node)) as { text: string; props: Record<string, unknown> }[]
+  await band.unmount()
+  const bar = nodes.filter(node => node.props.inverse === true)
+  const details = nodes.filter(node => node.props.inverse !== true)
+
+  const text = bar.map(node => node.text).join('')
+  expect(text.trimEnd(), 'the bar says what it waits for').toBe('⏸ WAITING FOR YOU · your OK on the scenarios')
+  expect(text.length, 'the bar spans the band, beside the [-] control').toBe(80 - 4)
+  expect(bar.every(node => node.props.color === 'warning' && node.props.bold === true), 'all of it in amber reverse, bold').toBe(true)
+  expect(details.map(node => node.text).join(''), 'the details and the commands follow on the next row, and no goal row').toMatch(/^write test scenarios │ .* │ details: \/pb/)
 })

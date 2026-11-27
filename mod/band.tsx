@@ -71,6 +71,17 @@ function quietLine({ between, ended, done, next }: { between?: string; ended?: b
   return { words: ended ? ENDED : IDLE, dim: true }
 }
 
+// A loud state (waiting on you, or stopped by a failure) leads the band.
+export const isLoud = (segment: Segment) => segment.state === 'needsYou' || segment.state === 'stopped'
+
+// The loud state's bar: its words, cut with "…" when wider than the room, then padding to the room's edge, so the reverse
+// colours span the band. No room known pads nothing.
+export function barParts(segment: Segment, room: number): string[] {
+  if (!(room > 0)) return [segment.text]
+  const text = segment.text.length <= room ? segment.text : `${segment.text.slice(0, Math.max(room - 1, 0))}…`
+  return text.length < room ? [text, ' '.repeat(room - text.length)] : [text]
+}
+
 // While a stage is active or a question waits, only the segments that fit; otherwise the quiet line. The commands hint follows.
 export function Band({ Box, Text, band, goal, columns, running, waiting, ended, done, between, next }: Pick<Tags, 'Box' | 'Text'> & {
   band: Segment[]
@@ -85,7 +96,9 @@ export function Band({ Box, Text, band, goal, columns, running, waiting, ended, 
 }) {
   // A question or a stop leads with what it needs or why, also once the alert opened the pane: the band is what a human
   // cycling sessions reads, and "opened details" told them nothing (live check, 2026-11-22).
-  const source = band
+  // A loud state takes a row of its own, a bar the band's whole width; the details and the commands go under it.
+  const loud = running || waiting ? band.find(isLoud) : undefined
+  const source = loud ? band.filter(segment => segment !== loud) : band
   // The hint is the lowest priority: it gives way to its short form, then to nothing, before any segment is cut.
   const content = running || waiting ? fitBand(source, bandColumns(columns)) : undefined
   const hint = content && HINTS.find(candidate => JSON.stringify(fitBand(source, bandColumns(columns, candidate))) === JSON.stringify(content))
@@ -95,12 +108,14 @@ export function Band({ Box, Text, band, goal, columns, running, waiting, ended, 
   const room = columns > 0 ? columns - CONTROL_WIDTH - (quiet.head?.length ?? 0) : Infinity
   const quietText = [...HINTS.map(form => `${quiet.words}${IDLE_SEPARATOR}${form}`), quiet.words].find(text => text.length <= room) ?? quiet.words
   // The goal leads on its own row, so the step below it stays where the eye learnt to find it: two rows at most.
-  const gist = bandGoal(goal, columns)
+  // A loud state's bar takes the goal's row (the pane keeps the goal), so the band stays two rows.
+  const gist = loud ? undefined : bandGoal(goal, columns)
 
   return (
     <Box flexDirection="column">
     <Text key="rule" dimColor>{rule(columns)}</Text>
     {gist && <Text key="goal" bold wrap="truncate-end">{gist}</Text>}
+    {loud && <Box key="bar">{barParts(loud, bandColumns(columns)).map((part, i) => <Text key={`bar-${i}`} wrap="truncate-end" {...STATUS_LOOKS[loud.state!].headProps}>{part}</Text>)}</Box>}
     <Box flexShrink={1}>
       {shown
         ? shown.flatMap((segment: Segment, i: number) => [

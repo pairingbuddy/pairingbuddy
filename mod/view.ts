@@ -1,5 +1,5 @@
 import type { ElementTable } from 'claude-code'
-import { currentStep, gateLine, glance, needsYouLine, pausedAtOf, stageOf, stopName } from '../shared-node/glance.mjs'
+import { alertKind, currentStep, FAILED, gateLine, glance, needsYouLine, pausedAtOf, stageOf, stopName } from '../shared-node/glance.mjs'
 import { isStageActive, stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
 import { lensRound } from '../shared-node/lens-round.mjs'
@@ -10,9 +10,9 @@ import { questionsLine } from '../shared-node/questions.mjs'
 import { cycleMarker, progressRow, shortName, stepAge, testCounts } from '../shared-node/now-building.mjs'
 import { doneStatus, endRows, goalOf, isUnitDone, nextUnitOf, prTitleOf, safetyNetRound } from '../shared-node/end-state.mjs'
 import type { Inputs, Ledger, OpenUnit } from './inputs'
-import { STATUS_LOOKS } from './pane'
+import { QUESTION_COLOUR, STATUS_LOOKS } from './pane'
 
-export type Tone = 'error' | 'warning' | 'dim'
+export type Tone = 'error' | 'warning' | 'dim' | typeof QUESTION_COLOUR
 // lit: where the run is now, drawn as the pane draws its current step (the accent with bold, the phase word in its colour).
 // state: the segment leads the band with the run's status; its text opens with that state's band head (or, in its short form,
 // the mark alone). short: the text fitBand takes when the room is short. shorter: the texts, longest first, a lead segment
@@ -117,11 +117,14 @@ const isUnknown = (text: string) => text === '-' || text === EMPTY || /unknown$/
 function bandTone(segment: Segment, ledger: NonNullable<Ledger>): Pick<Segment, 'tone' | 'bold' | 'lit'> {
   if (segment.id === 'needsYou') {
     if (!segment.standing) return {}
-    return ledger.needsHuman?.gate ? { tone: 'warning', bold: true } : { tone: 'error' }
+    return alertKind(ledger) === FAILED ? { tone: 'error' } : { tone: 'warning', bold: true }
   }
   if (segment.id === 'spent' || isUnknown(segment.text)) return { tone: 'dim' }
   return segment.id === 'where' ? { lit: true } : {}
 }
+
+// A loud state's look: red only for a failure, amber for a run that waits on the human.
+const loudState = (ledger: Ledger): StatusState => (alertKind(ledger) === FAILED ? 'stopped' : 'needsYou')
 
 const waitingGate = (ledger: NonNullable<Ledger>) => (ledger.stop ? undefined : ledger.needsHuman?.gate || undefined)
 
@@ -131,7 +134,8 @@ const waitingGate = (ledger: NonNullable<Ledger>) => (ledger.stop ? undefined : 
 export function statusFirst(band: Segment[], ledger?: Ledger): Segment[] {
   const standing = band.find(segment => segment.id === 'needsYou' && segment.standing)
   if (standing) {
-    const status: Status = ledger?.stop ? { state: 'stopped', what: stopName(ledger.stop) } : { state: 'needsYou', what: gateLine(ledger?.needsHuman?.gate) }
+    const what = ledger?.stop ? stopName(ledger.stop) : gateLine(ledger?.needsHuman?.gate)
+    const status: Status = { state: loudState(ledger), what }
     const look = STATUS_LOOKS[status.state]
     const lead = { ...standing, state: status.state, text: [look.bandHead, status.what].filter(Boolean).join(look.sep), short: [look.mark, status.what].filter(Boolean).join(' ') }
     return [lead, ...band.filter(segment => segment !== standing).map(segment => ({ ...segment, lit: undefined }))]
@@ -289,11 +293,12 @@ function nextAfterCode(unit: Inputs['unit']): string {
   return `next: you do ${task} and tick its box`
 }
 
-// What state a live run is in: stopped, needs you, or working on its step (or between steps).
+// What state a live run is in: stopped by a failure, waiting on the human (alertKind tells them apart), or working on its
+// step (or between steps).
 function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean, unit: Inputs['unit']): Status {
-  if (ledger.stop) return { state: 'stopped', what: stopName(ledger.stop), ...(ledger.stop.fix ? { fix: ledger.stop.fix } : {}) }
+  if (ledger.stop) return { state: loudState(ledger), what: stopName(ledger.stop), ...(ledger.stop.fix ? { fix: ledger.stop.fix } : {}) }
   const gate = waitingGate(ledger)
-  if (gate) return { state: 'needsYou', what: gateLine(gate), ...(ledger.needsHuman?.fix ? { fix: ledger.needsHuman.fix } : {}) }
+  if (gate) return { state: loudState(ledger), what: gateLine(gate), ...(ledger.needsHuman?.fix ? { fix: ledger.needsHuman.fix } : {}) }
   if (view.between === ALL_DONE && publishes && !isPublishRun(ledger)) return { state: 'working', what: nextAfterCode(unit) }
   return { state: 'working', what: view.rows.now }
 }
@@ -319,7 +324,8 @@ function buildingTask(ledger: Ledger): Pick<View, 'planBuilding' | 'planPublishi
 function withQuestions(view: View, unit: Inputs['unit']): View {
   const line = questionsLine(unit?.questions ?? 0)
   if (!line) return view
-  const segment: Segment = { id: 'questions', text: `${line}${STATUS_PART}type /pb-questions to answer`, tone: 'warning' }
+  const count = unit?.questions ?? 0
+  const segment: Segment = { id: 'questions', text: `? ${count} ${count === 1 ? 'question' : 'questions'}${STATUS_PART}/pb-questions`, tone: QUESTION_COLOUR }
   const band = view.band.length === 0 ? view.band : [view.band[0], segment, ...view.band.slice(1)]
   return { ...view, band, status: { ...view.status, what: [view.status.what, `${line}${STATUS_PART}type /pb-questions`].filter(Boolean).join(STATUS_PART) } }
 }
