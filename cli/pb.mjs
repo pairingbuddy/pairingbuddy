@@ -1339,7 +1339,18 @@ function assertCycleOrder(step, id, { red, green, covered }) {
   if (step === "green" && !red?.done) throw new Refusal(`test ${id} has no RED, so GREEN cannot stand on it`);
 }
 
+const cutIdsOf = (ledger) => (Array.isArray(ledger.tests?.cut) ? ledger.tests.cut.map(({ id }) => id) : []);
+
+// A test the human cut is off the list for good: the stage skips it, so a step that names it is pb's own bug.
+const cutTestOf = (ledger, id) => (Array.isArray(ledger.tests?.cut) ? ledger.tests.cut.find((cut) => cut.id === id) : undefined);
+
+function assertNotCut(ledger, id) {
+  const cut = cutTestOf(ledger, id);
+  if (cut !== undefined) throw new Refusal(`test ${id} was cut by the human (${cut.reason}), so it gets no step. The stage should have skipped it: this is a pb bug, so report it, and do not ask the human to cut it again`);
+}
+
 function selectedRow({ root, ledger }, config, id) {
+  assertNotCut(ledger, id);
   const row = testRows(config, artifactsDirOf(root), ledger.stage, ledger.tests?.renamed).find(({ test_id: rowId }) => rowId === id);
   if (row === undefined) throw new Refusal(`test ${id} is not in the tests artifact, so there is nothing to select`);
   return row;
@@ -1744,7 +1755,7 @@ function tddState(args) {
   const artifactsDir = artifactsDirOf(root);
   const scenarios = standingScenariosKey(artifactsDir, ledger);
   if (scenarios === null) throw new Refusal("no scenarios return stands, so there is nothing to write tests from");
-  return { ok: true, taskType: ledger.taskType, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered"), testRunners: testRunnersOf(readTestConfig(root, ledger.configHash)) };
+  return { ok: true, taskType: ledger.taskType, scenarios: artifactPath(scenarios), tests: artifactPath(newestReturn(artifactsDir, TESTS_ROLE)), red: doneAt(ledger.tests, "red"), green: doneAt(ledger.tests, "green"), covered: doneAt(ledger.tests, "covered"), cut: cutIdsOf(ledger), testRunners: testRunnersOf(readTestConfig(root, ledger.configHash)) };
 }
 
 // What the refactor-apply stage cannot see for itself: the scope's issues as numbered steps, code issues first.

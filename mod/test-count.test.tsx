@@ -136,3 +136,12 @@ test('a stopped run keeps its step age where the run stopped', async ($, on) => 
   const after = current(await paneLines($)) ?? (await paneLines($)).join('\n')
   expect(after, `the age stands still: ${before} then ${after}`).toBe(before)
 })
+
+test('a-test-the-human-cut-is-not-counted-even-while-the-test-list-still-holds-it', async ($, on) => {
+  const cut = { ...building, tests: { ...building.tests, cut: [{ id: SECOND, reason: 'already covered', at: '2026-11-04T08:19:30.000Z', selector: { runner_id: 'pytest', test_file: 'tests/test_cart.py', test_function: SECOND } }] } }
+  await serve($, on, cut, { [`${ARTIFACTS}/${PLACEHOLDERS_KEY}.json`]: placeholders }, `pb1 code-tdd GREEN implement-code ${FIRST} r1`)
+
+  const band = (await bandTexts($, { bodyColumns: 120 })).join('')
+
+  expect(band, 'the cut test is not part of the total').toContain('order total sums two lines · 1/1')
+})
