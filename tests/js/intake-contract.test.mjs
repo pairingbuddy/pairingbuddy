@@ -81,9 +81,19 @@ test("intake-row-classification-sonnet-brief-refute-none", () => {
 });
 
 // A task that renames code, sets up tests and changes CI was classified config_change, and its config step stood stopped all
-// night. config_change is configuration values only: anything touching code, tests or several steps is another type.
-test("classifier-keeps-multi-step-tasks-out-of-config-change", () => {
+// night. config_change is configuration and CI files only: anything touching code or tests is another type. Several steps
+// on config and CI files alone stay config_change, as plans label CI work.
+test("classifier-keeps-code-and-test-work-out-of-config-change", () => {
   const agent = readFileSync(new URL("../../agents/classify-task.md", import.meta.url), "utf8");
 
-  assert.match(agent, /config_change\*\*: Changing configuration values only\. A task that also renames or moves code, adds or changes tests or test setup, or spans several steps is never config_change/, "the classifier keeps code and test work out of config_change");
+  assert.match(agent, /config_change\*\*: Changing configuration or CI files only\. A task that also renames or moves code, changes product code, or adds or changes tests or test setup is never config_change/, "the classifier keeps code and test work out of config_change");
+  assert.match(agent, /Several steps that change only configuration or CI files are still config_change/, "multi-step CI work stays config_change");
+});
+
+// A plan task's Type: line was set by the planner and approved with the plan, so the classifier takes it.
+test("classifier-takes-a-type-the-task-states", () => {
+  const agent = readFileSync(new URL("../../agents/classify-task.md", import.meta.url), "utf8");
+
+  assert.match(agent, /When the task states its type on a `Type: <type>` line, return that type with confidence `certain`/, "a stated type is taken as certain");
+  assert.match(agent, /Raise no doubt about the type in `ambiguity`: if you disagree, say so in one sentence in `rationale`/, "a stated type gets no question, only a note");
 });

@@ -30,6 +30,12 @@ Each task must be self-contained — copyable to `/code` as-is:
 - **Acceptance criteria:** Testable conditions that define done
 - **Architecture docs:** Links to relevant docs for context
 - **Files likely involved:** Guidance, not prescription
+- **Type:** The task type, on its own line
+
+Every task except a `[HUMAN]` task carries a `Type: <type>` line, where the type is one of `new_feature`, `bug_fix`, `refactoring`, `config_change` or `spike`.
+The type is settled now, while the human reviews the plan: when the type of a task is unclear, ask the human at the plan review, never leave it for the run.
+At run time the stated type is the task's type, so the run never stops to ask it.
+`config_change` is for configuration or CI files only, in one step or several; any code or test work makes it another type.
 
 ### Plan MD Format
 
@@ -41,6 +47,8 @@ Each task must be self-contained — copyable to `/code` as-is:
 - [ ] **Task 1: Title**
 
   Goal and details...
+
+  Type: new_feature
 
   **Acceptance criteria:**
   - Criterion 1

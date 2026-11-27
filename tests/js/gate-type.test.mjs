@@ -6,6 +6,8 @@ import { join } from "node:path";
 
 import { buildKey } from "../../shared-node/keys.mjs";
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
+import { openDoubts } from "../../shared-node/gates.mjs";
+import { loadStages } from "../../shared-node/stages.mjs";
 import { RUNNER_WITHOUT_SELECTOR, makeRepo, pb } from "./cli-repo-fixture.mjs";
 import { INTAKE_DONE } from "./ledger-fixture.mjs";
 
@@ -15,7 +17,7 @@ const G_TYPE = "G:type";
 
 // A run whose intake is done at attempt 1 and whose G:type has no record yet, with the intake classify-task return filed.
 // testConfig, when given, replaces the repo's test-config.json and the ledger's configHash follows it.
-function repoAtTypeGate({ confidence, ambiguity = "", taskType = "config_change", mode = "auto", stageAttempt = 1, returnAttempt = 1, testConfig, stop, extraReturns = [] }) {
+function repoAtTypeGate({ confidence, ambiguity = "", taskType = "config_change", returnedType = taskType, task, mode = "auto", stageAttempt = 1, returnAttempt = 1, testConfig, stop, extraReturns = [] }) {
   const repo = makeRepo();
   const taskDir = join(repo.dir, ".pairingbuddy", "run", "task");
   const ledgerPath = join(taskDir, "ledger.json");
@@ -26,6 +28,7 @@ function repoAtTypeGate({ confidence, ambiguity = "", taskType = "config_change"
     ...ledger,
     configHash,
     ...(stop === undefined ? {} : { stop }),
+    ...(task === undefined ? {} : { task }),
     taskType,
     policy: { mode, source: "permission_mode" },
     stage: { name: "intake", status: "done", runId: "wf_1", attempt: stageAttempt, startedAt: null },
@@ -38,7 +41,7 @@ function repoAtTypeGate({ confidence, ambiguity = "", taskType = "config_change"
   }
   if (confidence === undefined) return repo;
   const pbKey = buildKey({ stage: "intake", role: "classify-task", item: null, round: 1, attempt: returnAttempt });
-  writeFileSync(join(taskDir, "artifacts", `${pbKey}.json`), JSON.stringify({ pb_key: pbKey, ambiguity, task_type: taskType, confidence, rationale: "test" }));
+  writeFileSync(join(taskDir, "artifacts", `${pbKey}.json`), JSON.stringify({ pb_key: pbKey, ambiguity, task_type: returnedType, confidence, rationale: "test" }));
   return repo;
 }
 
@@ -97,7 +100,7 @@ test("gate-type-asks-a-likely-type-with-a-question-even-with-a-unit-open-under-a
 
   const out = evalNeedsHuman(repo);
 
-  assert.equal(out.result, "needs-human", "the type picks the workflow, so its question is never set aside for G:publish");
+  assert.equal(out.result, "needs-human", "with no type stated in the task, a question on the type is asked now");
 });
 
 test("gate-type-asks-a-certain-type-with-a-question-even-with-a-unit-open-under-auto", () => {
@@ -107,6 +110,15 @@ test("gate-type-asks-a-certain-type-with-a-question-even-with-a-unit-open-under-
   const out = evalNeedsHuman(repo);
 
   assert.equal(out.result, "needs-human", "a question on the type is asked now, whatever the confidence");
+});
+
+test("gate-type-asks-an-unsure-type-with-a-question-even-with-a-unit-open-under-auto", () => {
+  const repo = repoAtTypeGate({ confidence: "unsure", ambiguity: "Is this a config change or a new feature?" });
+  writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit: "T1a", tasks: [], commits: [] }));
+
+  const out = evalNeedsHuman(repo);
+
+  assert.equal(out.result, "needs-human", "with no type the classifier stands behind, the run cannot pick a workflow, so it asks");
 });
 
 test("gate-type-asks-without-classification-return", () => {
@@ -295,4 +307,43 @@ test("a fix the ledger rolled back keeps its doubt, even with a better check", (
   const out = evalNeedsHuman(repo);
 
   assert.equal(out.reason, `the return ${FIX_FILE} carries an open ambiguity`);
+});
+
+test("gate-type-passes-under-auto-when-the-task-states-its-type-and-the-classifier-is-unsure", () => {
+  const repo = repoAtTypeGate({ confidence: "unsure", returnedType: "refactoring", task: "Task 4: Cache the build\n\nType: config_change. Only CI files change.\n" });
+
+  const result = pb(repo, "gate", "eval");
+
+  assert.equal(result.code, 0, `pb gate eval exits 0, stderr ${result.stderr}`);
+  assert.deepEqual(JSON.parse(result.stdout), { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto", stated: "config_change" }, "the type the approved plan states is certain, whatever the classifier thought");
+});
+
+const STATED_TASK = "Task 4: Cache the build\n\nType: config_change. Only CI files change.\n";
+
+test("gate-type-passes-a-stated-type-under-a-non-auto-policy", () => {
+  const repo = repoAtTypeGate({ confidence: "certain", task: STATED_TASK, mode: "default" });
+
+  const result = pb(repo, "gate", "eval");
+
+  assert.equal(result.code, 0, `pb gate eval exits 0, stderr ${result.stderr}`);
+  assert.equal(JSON.parse(result.stdout).result, "auto-pass", "the type the approved plan states needs no human, whatever the policy");
+});
+
+test("gate-type-passes-a-stated-type-with-no-question-on-a-classifier-doubt", () => {
+  const repo = repoAtTypeGate({ confidence: "likely", returnedType: "refactoring", ambiguity: "Is this refactoring rather than a config change?", task: STATED_TASK });
+  writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit: "T1a", tasks: [], commits: [] }));
+
+  const out = evalNeedsHuman(repo);
+
+  assert.deepEqual(out, { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto", stated: "config_change" }, "the stated type passes, and the classifier's doubt is asked nowhere, not even later");
+});
+
+test("gate-type-settles-the-classifier-doubt-once-a-stated-type-passes", () => {
+  const repo = repoAtTypeGate({ confidence: "likely", returnedType: "refactoring", ambiguity: "Is this refactoring rather than a config change?", task: STATED_TASK });
+  pb(repo, "gate", "eval");
+
+  const ledger = readLedger(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"));
+  const doubts = openDoubts(loadStages(new URL("../..", import.meta.url).pathname), ledger, repo.dir);
+
+  assert.deepEqual(doubts, [], "no later gate asks the classifier's doubt on a type the plan stated");
 });

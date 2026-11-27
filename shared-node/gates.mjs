@@ -8,6 +8,7 @@ import { isDeepStrictEqual } from "node:util";
 import { REDO_STATUS, graphFor, isVoidedAttempt, returnFileKey, withStageStatus } from "./stages.mjs";
 import { buildFindingId, buildKey } from "./keys.mjs";
 import { keptIntakeReturn, lensRoundAt, readReturn, returnsAt } from "./stage-run.mjs";
+import { statedType } from "./stated-type.mjs";
 import { acceptVerdict, findingOutcomes, lensOfFinding } from "./lens-merge.mjs";
 import { isPassed } from "./gate-passed.mjs";
 import { forYou, plainName } from "./plain-names.mjs";
@@ -439,7 +440,9 @@ function settledStages(contract, ledger) {
 function doubtSettledStages(contract, ledger) {
   const { nodes } = contract.taskTypes[graphFor(contract, ledger.taskType).taskType];
   const deferred = (gate) => Array.isArray(ledger.gates[gate]?.deferred);
-  const last = nodes.findLastIndex(({ gate }) => gate !== null && (isHumanApproved(ledger, gate) || deferred(gate)));
+  // A G:type passed on the type the task states settles the classifier's doubt: the plan already answered it.
+  const stated = (gate) => typeof ledger.gates[gate]?.stated === "string";
+  const last = nodes.findLastIndex(({ gate }) => gate !== null && (isHumanApproved(ledger, gate) || deferred(gate) || stated(gate)));
   return new Set(nodes.slice(0, last + 1).map(({ name }) => name));
 }
 
@@ -709,9 +712,18 @@ const GATE_REASONS = {
 // A gate with its own reason decides for itself; the class reason is for gates that have none.
 const gateOwnReason = (gate, args) => (GATE_REASONS[gate.name] ? GATE_REASONS[gate.name](args) : (CLASS_REASONS[gate.class] ?? null));
 
+// The type the task states for itself on a Type: line, which the planner wrote and the human approved with the plan, or null.
+export const statedTypeOf = (contract, ledger) => statedType(ledger.task, contract.migratedTypes);
+
+// G:type with a stated type: that is the type, under any policy, and no doubt on it is asked. Only a stop, or a runner the
+// type cannot select tests with, still asks.
+const statedTypeReason = (contract, ledger, root) => stopReason(contract, ledger, root, { skipDoubts: true }) ?? selectorReason(root, ledger, contract);
+
 // Why this gate must ask a human, or null when it passes under the recorded policy.
 export const askReason = (contract, ledger, gate, root, voided = null, opts = {}) =>
-  stopReason(contract, ledger, root, opts) ?? gateOwnReason(gate, { root, ledger, voided, contract }) ?? policyReason(ledger);
+  gate.name === TYPE_GATE && statedTypeOf(contract, ledger) !== null
+    ? statedTypeReason(contract, ledger, root)
+    : stopReason(contract, ledger, root, opts) ?? gateOwnReason(gate, { root, ledger, voided, contract }) ?? policyReason(ledger);
 
 // Whether askReason gave a gate's open doubts as its reason.
 export const isDoubtReason = (reason) => typeof reason === "string" && AMBIGUITY_REASON.test(reason);
