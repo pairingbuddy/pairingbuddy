@@ -331,6 +331,18 @@ describe("Stop hook", () => {
     assertBlocks(stop(makeRun(allDone({ gates: { [TASK_END]: { source: "auto" } } })).dir), /node \S*cli\/pb\.mjs task end/);
   });
 
+  test("a finished run waiting on the human's typed line says to wait for it, not to end the task again", () => {
+    const { dir } = makeRun(allDone({ gates: { [TASK_END]: { source: "auto" } } }));
+    const line = "!.pairingbuddy/bin/pb human config apply 1";
+    writeFileSync(join(dir, ".pairingbuddy", "run", "config-proposals.json"), JSON.stringify({ proposals: [{ n: 1, file: "test-config.json", key: "config_globs", old: [], new: ["ops/**"], reason: "r", status: "pending", lines: { apply: line, refuse: "!.pairingbuddy/bin/pb human config refuse 1" } }] }));
+
+    const told = stopReason(stop(dir));
+
+    assert.match(told, /waits on a line only the human types/);
+    assert.ok(told.includes(line), told);
+    assert.doesNotMatch(told, /task end/);
+  });
+
   test("finds the run a session left, from any cwd", () => {
     const { dir } = makeRun();
     const session = newSession();

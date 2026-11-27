@@ -1,5 +1,5 @@
 import type { ElementTable } from 'claude-code'
-import { alertKind, currentStep, FAILED, gateLine, glance, needsYouLine, pausedAtOf, stageOf, stopName } from '../shared-node/glance.mjs'
+import { alertKind, currentStep, FAILED, glance, pausedAtOf, stageOf, stopName, waitWhat } from '../shared-node/glance.mjs'
 import { isStageActive, stageNamesFor } from '../shared-node/stage-graph.mjs'
 import contract from '../shared-node/stages-contract.mjs'
 import { lensRound } from '../shared-node/lens-round.mjs'
@@ -131,7 +131,7 @@ type Stop = NonNullable<NonNullable<Ledger>['stop']>
 const stopWhat = (stop: Stop) => (typeof stop.why === 'string' && stop.why !== '' ? stop.why : stopName(stop))
 
 // What a stop recorded about what happened and what the human can do; nothing for one that recorded neither.
-function stopCause(stop: Stop): Pick<Status, 'cause' | 'options'> {
+function stopCause(stop: { detail?: string; options?: string[] }): Pick<Status, 'cause' | 'options'> {
   if (typeof stop.detail !== 'string' || stop.detail === '') return {}
   const options = Array.isArray(stop.options) ? stop.options.filter((option): option is string => typeof option === 'string') : []
   return { cause: stop.detail, ...(options.length > 0 ? { options } : {}) }
@@ -148,7 +148,7 @@ const waitingGate = (ledger: NonNullable<Ledger>) => (ledger.stop ? undefined : 
 export function statusFirst(band: Segment[], ledger?: Ledger): Segment[] {
   const standing = band.find(segment => segment.id === 'needsYou' && segment.standing)
   if (standing) {
-    const what = ledger?.stop ? stopWhat(ledger.stop) : gateLine(ledger?.needsHuman?.gate)
+    const what = ledger?.stop ? stopWhat(ledger.stop) : waitWhat(ledger?.needsHuman)
     const status: Status = { state: loudState(ledger), what }
     const look = STATUS_LOOKS[status.state]
     const lead = { ...standing, state: status.state, text: [look.bandHead, status.what].filter(Boolean).join(look.sep), short: [look.mark, status.what].filter(Boolean).join(' ') }
@@ -312,7 +312,7 @@ function nextAfterCode(unit: Inputs['unit']): string {
 function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean, unit: Inputs['unit']): Status {
   if (ledger.stop) return { state: loudState(ledger), what: stopWhat(ledger.stop), ...(ledger.stop.fix ? { fix: ledger.stop.fix } : {}), ...stopCause(ledger.stop) }
   const gate = waitingGate(ledger)
-  if (gate) return { state: loudState(ledger), what: gateLine(gate), ...(ledger.needsHuman?.fix ? { fix: ledger.needsHuman.fix } : {}) }
+  if (gate) return { state: loudState(ledger), what: waitWhat(ledger.needsHuman), ...(ledger.needsHuman?.fix ? { fix: ledger.needsHuman.fix } : {}), ...stopCause(ledger.needsHuman ?? {}) }
   if (view.between === ALL_DONE && publishes && !isPublishRun(ledger)) return { state: 'working', what: nextAfterCode(unit) }
   return { state: 'working', what: view.rows.now }
 }
@@ -351,7 +351,9 @@ export function buildView(inputs: Inputs): View {
   if (!ledger) return view
   const { doneStatus: _done, ...end } = endState(inputs, view.running, true)
   const status = liveStatus(view, ledger, publishesAfter(inputs), inputs.unit)
-  return withQuestions({ ...view, goal: goalText(inputs), status, ...buildTestRows(inputs, false), steps: unitSteps(inputs, false), lensRound: lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns }), ...end }, inputs.unit)
+  // Once every step is done, the band's quiet line says what STATUS says comes next, never a different "all steps done".
+  const between = view.between === ALL_DONE && status.state === 'working' ? status.what : view.between
+  return withQuestions({ ...view, ...(between === undefined ? {} : { between }), goal: goalText(inputs), status, ...buildTestRows(inputs, false), steps: unitSteps(inputs, false), lensRound: lensRound({ ledger, calls: inputs.calls, spawns: inputs.spawns }), ...end }, inputs.unit)
 }
 
 // agents: the count the task's kept runs recorded, once it has ended; else the live ledger's, its running attempt's spawns and,
@@ -391,7 +393,7 @@ function buildPlainView(inputs: Inputs): View {
   const gate = waitingGate(ledger)
   if (gate) {
     const band = running ? named : named.filter((segment: Segment) => segment.id === 'needsYou')
-    return { ...base, waiting: true, band, rows: { ...rows, now: needsYouLine(gate) } }
+    return { ...base, waiting: true, band, rows: { ...rows, now: `needs you: ${waitWhat(ledger.needsHuman)}` } }
   }
   if (running) return { ...base, rows }
   // A live run with no active stage is between steps, never idle.

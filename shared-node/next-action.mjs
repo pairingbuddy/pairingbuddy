@@ -1,6 +1,6 @@
 // What a run does next: the status pb prints and the one sentence the hooks tell a turn. It reads and never writes,
 // and it is loaded only once run state is found, so a hook outside a run never pays for it. Node built-ins only.
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, blockingGate, gatesFor, isPublishApproved, publishApproval } from "./gates.mjs";
@@ -11,6 +11,7 @@ import { humanCommand, pbCommand, shaMismatchRemedy } from "./verbs.mjs";
 import { SPIKE_SETUP_FILE } from "./unit-files.mjs";
 import { fixesLine, forYou, plainName, stageRun } from "./plain-names.mjs";
 import { CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS } from "./config-wait.mjs";
+import { HUMAN_WAIT_FILE, withHumanWait } from "./human-wait.mjs";
 
 function nextStep(contract, ledger) {
   if (isStageActive(ledger)) return null;
@@ -119,10 +120,32 @@ export function readRun(pluginRoot, root) {
     const contract = loadStages(pluginRoot);
     const ledger = readLedger(ledgerPath);
     const status = runStatus(contract, ledger, join(taskDir, "artifacts"));
-    return { root, taskDir, running: isRunning(ledger), owner: ledger.owner.sessionId, lastSeen: ledger.owner.lastSeen, status, action: nextAction(contract, ledger, root, pluginRoot) };
+    const action = humanLineAction(ledger, root) ?? nextAction(contract, ledger, root, pluginRoot);
+    return { root, taskDir, running: isRunning(ledger), owner: ledger.owner.sessionId, lastSeen: ledger.owner.lastSeen, status, action };
   } catch (e) {
     return { root, taskDir, running: false, owner: null, lastSeen: null, status: null, action: unreadable(root, e) };
   }
+}
+
+function readJsonOr(path, fallback) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+// What stands between the run and its next step while the human has a line to type (a config proposal's apply or refuse,
+// a refusal pb handed them): the session waits for it, so the Stop hook tells it once and lets it idle, never "task end"
+// again. Undefined while no such wait stands, or while a stop or a gate question already has the human.
+function humanLineAction(ledger, root) {
+  const run = join(root, ".pairingbuddy", "run");
+  const proposals = readJsonOr(join(run, "config-proposals.json"), {}).proposals;
+  const refusal = readJsonOr(join(run, HUMAN_WAIT_FILE), undefined);
+  const wait = withHumanWait(ledger, { proposals, refusal })?.needsHuman;
+  if (wait === ledger.needsHuman || wait?.gate === undefined) return undefined;
+  const lines = wait.options.map((option) => (option.endsWith(".") ? option : `${option}.`)).join(" ");
+  return `The run waits on a line only the human types: ${wait.why}. ${lines} You have shown it to them: go no further until they type it, then go on.`;
 }
 
 // How the human moves the run here. An owner seen recently makes a plain adopt refuse, so the line is the --force one at

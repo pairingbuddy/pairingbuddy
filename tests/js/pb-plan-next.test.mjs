@@ -51,6 +51,8 @@ function snapshot(dir) {
     }
   };
   walk(dir);
+  // The one note a refusal leaves: the line it handed the human, which the views show as waiting (shared-node/human-wait.mjs).
+  delete files["/.pairingbuddy/run/human-wait.json"];
   return files;
 }
 

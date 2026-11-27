@@ -33,6 +33,7 @@ import { StackRefused, dependencyChainOf, stackFor } from "../shared-node/stack.
 import { isHumanTitle, parsePlan, planStep, unitStates } from "../shared-node/plan.mjs";
 import { shellWord } from "../shared-node/shell-word.mjs";
 import { findRunRoot } from "../shared-node/run-root.mjs";
+import { HUMAN_WAIT_FILE, humanLinesIn } from "../shared-node/human-wait.mjs";
 import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus, statusText } from "../shared-node/next-action.mjs";
 import { stageRun } from "../shared-node/plain-names.mjs";
@@ -1010,9 +1011,11 @@ function configPropose(args) {
   const proposed = parsedValue(value);
   proposedFile(root, file, key, proposed); // refuses a change the file would not accept
   const proposals = readProposals(root);
-  const proposal = { n: proposals.length + 1, file, key, old: valueAt(current, key) ?? null, new: proposed, reason, status: "pending" };
+  const n = proposals.length + 1;
+  const typed = (action) => humanCommand(root, `config ${action} ${n}`);
+  // The lines and the time ride on the record, so the views show the wait and what to type while it stands.
+  const proposal = { n, file, key, old: valueAt(current, key) ?? null, new: proposed, reason, status: "pending", at: new Date().toISOString(), lines: { apply: typed("apply"), refuse: typed("refuse") } };
   writeProposals(root, [...proposals, proposal]);
-  const typed = (action) => humanCommand(root, `config ${action} ${proposal.n}`);
   return { ok: true, proposal, apply: typed("apply"), refuse: typed("refuse"), next: "Show the human the file, key, old and new value and the reason, with both lines, and wait for their answer" };
 }
 
@@ -3261,14 +3264,64 @@ function configWait(e) {
   return waits ? new Refusal(`the run stopped for the human: ${CONFIG_WAIT_LINE}. ${e.message}`) : e;
 }
 
+// Where pb keeps the last refusal whose way through is a line only the human types (shared-node/human-wait.mjs), at the
+// run root, else the repo's top. Undefined outside a repo, or where no run or unit is open (.pairingbuddy/run is absent).
+function humanWaitPath() {
+  let root = findRunRoot(process.cwd());
+  if (root === null) {
+    try {
+      root = toplevel();
+    } catch {
+      return undefined;
+    }
+  }
+  const run = join(root, ".pairingbuddy", "run");
+  return existsSync(run) ? { root, path: join(run, HUMAN_WAIT_FILE) } : undefined;
+}
+
+// A refusal that hands the human a typed line is kept, so the views say WAITING FOR YOU with that line. Never throws: a
+// refusal must reach the session whatever happens here.
+function keepHumanWait(name, e) {
+  try {
+    const where = humanWaitPath();
+    if (where === undefined) return;
+    const lines = humanLinesIn(e.message, typedCommand(where.root, ""));
+    if (lines.length === 0) return;
+    writeFileSync(where.path, `${JSON.stringify({ verb: name, message: e.message, lines, at: new Date().toISOString() }, null, 2)}\n`);
+  } catch {
+    // The refusal stands as it is.
+  }
+}
+
+// The human's own verb, or the refused verb going through, ends the wait.
+function clearHumanWait(name) {
+  try {
+    const where = humanWaitPath();
+    if (where === undefined || !existsSync(where.path)) return;
+    const { verb } = JSON.parse(readFileSync(where.path, "utf8"));
+    if (name.startsWith("human ") || name === verb) rmSync(where.path, { force: true });
+  } catch {
+    // A wait that does not read clears on the next human verb's write.
+  }
+}
+
+const REFUSALS = [Refusal, LedgerRefused, TestRunRefused, CheckpointRefused, PlanRefused, RollbackRefused];
+
 async function runVerb(name, args) {
   try {
-    return await VERBS[name](args);
+    const result = await VERBS[name](args);
+    clearHumanWait(name);
+    return result;
   } catch (e) {
-    if (e instanceof LedgerShaMismatch) throw new Refusal(shaMismatchRemedy(e.message, findRunRoot(process.cwd())));
-    if (e instanceof ConfigHashChanged) throw configWait(e);
-    throw e;
+    if (e instanceof LedgerShaMismatch) throw keptWait(name, new Refusal(shaMismatchRemedy(e.message, findRunRoot(process.cwd()))));
+    if (e instanceof ConfigHashChanged) throw keptWait(name, configWait(e));
+    throw REFUSALS.some((kind) => e instanceof kind) ? keptWait(name, e) : e;
   }
+}
+
+function keptWait(name, e) {
+  keepHumanWait(name, e);
+  return e;
 }
 
 async function main(argv) {
