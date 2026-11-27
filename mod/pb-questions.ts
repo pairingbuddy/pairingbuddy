@@ -98,18 +98,24 @@ const SEE_FIRST = 'See them all first'
 const openCount = (unit: UnitRecord) => (Array.isArray(unit.questions) ? unit.questions.filter(q => !isAnswered(q)).length : 0)
   + (Number.isInteger(unit.questionsMore) ? Number(unit.questionsMore) : 0)
 
-// /pb-questions: one command with no words. It asks what the person wants to do with the questions for them, then does it.
-export async function runQuestions($: EngineInterface): Promise<string> {
+// Words after the command pick the menu's choice: "answer now" walks the questions, "see all" opens the page.
+const SAYS_ANSWER = /\banswer/i
+const SAYS_SEE = /\b(see|show|all|page|list)\b/i
+
+// /pb-questions: it asks what the person wants to do with the questions for them, then does it; words after it pick that.
+export async function runQuestions($: EngineInterface, args = ''): Promise<string> {
   const unit = await unitRecord($)
   if (unit === null) return 'Pairing Buddy: no unit is open, so there are no questions for you'
   const count = openCount(unit)
   if (count === 0) return answeredOnly($, unit)
+  if (SAYS_ANSWER.test(args)) return walk($, unit)
+  if (SAYS_SEE.test(args)) return seePage($, unit, `${count} ${count === 1 ? 'question' : 'questions'} for you`)
   const closed = `Pairing Buddy: closed. Your ${count} ${count === 1 ? 'question is' : 'questions are'} still open · /pb-questions to come back`
   let choice: string
   try {
     choice = await $.ui.ask(`${count} ${count === 1 ? 'question' : 'questions'} for you. Answer them now (one at a time, stop whenever you like), or see them all first on a page?`, { options: [ANSWER_NOW, SEE_FIRST], header: 'Questions' })
   } catch (error) {
-    return isDismissal(error) ? closed : dialogFailed($, unit)
+    return isDismissal(error) ? closed : dialogFailed($, unit, reasonOf(error))
   }
   if (choice === ANSWER_NOW) return walk($, unit)
   if (choice === SEE_FIRST) return seePage($, unit, `${count} ${count === 1 ? 'question' : 'questions'} for you`)
@@ -134,9 +140,11 @@ async function answeredOnly($: EngineInterface, unit: UnitRecord): Promise<strin
 // ui.ask rejects both when the person dismisses the dialog and when it cannot open (a deny, or no one to ask in a -p run).
 // Only a dismissal is the person's Esc; anything else leaves them the page, so a dialog that never showed is not read as a no.
 const DISMISSAL = /dismiss|cancel|abort|interrupt|reject|declin/i
-const isDismissal = (error: unknown) => DISMISSAL.test(error instanceof Error ? error.message : String(error))
+const reasonOf = (error: unknown) => oneLine(error instanceof Error ? error.message : error).replace(/^.*?\$\.ui\.ask:\s*/, "")
+const isDismissal = (error: unknown) => DISMISSAL.test(reasonOf(error))
 
-async function dialogFailed($: EngineInterface, unit: UnitRecord): Promise<string> {
+// The line names why the dialog did not open, so a deny or a busy session is seen, not guessed.
+async function dialogFailed($: EngineInterface, unit: UnitRecord, why: string): Promise<string> {
   const path = await writeQuestionsPage($, unit)
   if (path === null) return "Pairing Buddy: couldn't open the dialog or write the questions page"
   try {
@@ -144,7 +152,7 @@ async function dialogFailed($: EngineInterface, unit: UnitRecord): Promise<strin
   } catch {
     // The line still names the page, opened or not.
   }
-  return `Pairing Buddy: couldn't open the dialog; opened the page instead: ${path}`
+  return `Pairing Buddy: couldn't open the dialog${why ? ` (${why})` : ''}; opened the page instead: ${path}`
 }
 
 // Writes the questions page and opens it, in one line: what it holds, where it is, and how to answer when some are open.
