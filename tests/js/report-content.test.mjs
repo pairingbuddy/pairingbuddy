@@ -399,6 +399,13 @@ describe("report-content", () => {
 
   // R5-3 and DIRECTION ask for one self-contained page: inline CSS, no network. Neither calls for a dark-mode rule (R5-3 is a
   // single dark design, with no light/dark switch), so no prefers-color-scheme assertion is made.
+  test("report-marks-commits-a-human-made", async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "stopped" });
+    const html = renderReport({ ...input, ledger: { ...input.ledger, humanCommits: [FULL_SHA] }, commits: [{ sha: FULL_SHA, subject: "fix: by hand" }] });
+
+    assert.match(html, new RegExp(`${FULL_SHA.slice(0, 7)} fix: by hand \\(made by a human, adopted between runs\\)`), "the commit list says which commit a human made");
+  });
+
   test("report-is-self-contained", async () => {
     const html = renderReport({ ...(await recordedReportInput("probe-2", { outcome: "stopped" })), commits: [{ sha: FULL_SHA, subject: "test: ten percent off a hundred" }] });
 
