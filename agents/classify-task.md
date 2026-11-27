@@ -58,14 +58,15 @@ With a `<paths>` block that includes `classification` (an earlier classification
 
 1. Read the task from `.pairingbuddy/task.json`
 2. Analyze the task description and context. The branch name is not evidence of the task type: the branch was named before you classified, from a guess. Classify from the task alone.
-3. Classify into one of five types:
+3. When the task states its type on a `Type: <type>` line, return that type with confidence `certain`: the planner set it and the human approved it with the plan. If you think it is wrong, keep it and put your doubt in `ambiguity`.
+4. Otherwise classify into one of five types:
    - **new_feature**: Adding new functionality that requires new tests
    - **bug_fix**: Fixing incorrect behavior (needs regression test)
    - **refactoring**: Improving code structure without changing behavior
-   - **config_change**: Changing configuration values only. A task that also renames or moves code, adds or changes tests or test setup, or spans several steps is never config_change: classify it by its code work (usually new_feature, or refactoring when no behaviour changes), even when it also edits config or CI files
+   - **config_change**: Changing configuration or CI files only. A task that also renames or moves code, changes product code, or adds or changes tests or test setup is never config_change: classify it by its code work (usually new_feature, or refactoring when no behaviour changes), even when it also edits config or CI files. Several steps that change only configuration or CI files are still config_change
    - **spike**: Exploratory coding to answer questions or compare approaches
-4. If unclear, ask the human operator to clarify
-5. With a `<paths>` block, return the result as StructuredOutput instead of writing a file. Otherwise write classification to `.pairingbuddy/task-classification.json`
+5. If unclear, ask the human operator to clarify
+6. With a `<paths>` block, return the result as StructuredOutput instead of writing a file. Otherwise write classification to `.pairingbuddy/task-classification.json`
 
 ### Classification Guidelines
 
