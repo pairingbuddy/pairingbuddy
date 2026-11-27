@@ -22,18 +22,26 @@ export const untickedTasks = ({ planUnticked }) => {
   return `the plan has unticked tasks: ${list(planUnticked)}; a [HUMAN] task is ticked by the human once done, so the unit is not done`;
 };
 
+// A spike's graph has no safety-net stage: it explores and documents, so the review that guards code does not apply. A
+// record from before taskType was kept is told by its spike stages.
+export const isSpikeTask = (task) => task.taskType === "spike" || (task.taskType == null && task.stages.some((name) => name.startsWith("code-spike-")));
+const codeTasks = (unit) => unit.tasks.filter((task) => !isSpikeTask(task));
+
 const withoutSafetyNet = ({ unit, safetyNets }) => {
-  const unfinished = unit.tasks.filter((task) => !task.stages.some((name) => safetyNets.includes(name)));
+  const unfinished = codeTasks(unit).filter((task) => !task.stages.some((name) => safetyNets.includes(name)));
   return unfinished.length === 0 ? null : `${list(safetyNets)} did not finish for ${list(unfinished.map((task) => task.title))}`;
 };
 
 // The lens-record rule the auto policy and the publish evidence share: a task has a safety-net lens record when it is not empty.
 export const taskHasLensRecord = ({ lenses }) => Object.keys(lenses?.["safety-net"] ?? {}).length > 0;
 
+// The auto policy's rule for the whole unit: every code task has its lens record, and a unit with no tasks has none.
+export const unitHasLensRecords = (unit) => unit.tasks.length > 0 && codeTasks(unit).every(taskHasLensRecord);
+
 // Defence in depth: an auto approval stands only if every task has its safety-net lens record.
 const autoWithoutLensRecord = ({ unit, approval }) => {
   if (approval !== "auto") return null;
-  const lacking = unit.tasks.filter((task) => !taskHasLensRecord(task));
+  const lacking = codeTasks(unit).filter((task) => !taskHasLensRecord(task));
   return lacking.length === 0 ? null : `G:publish was passed by the auto policy, but these tasks have no safety-net lens record: ${list(lacking.map((task) => task.title))}`;
 };
 
@@ -49,17 +57,28 @@ const invalidGateSources = ({ unit }) => {
   return bad.length === 0 ? null : `invalid gate sources: ${list(bad)}`;
 };
 
-// A rebase suite recorded at exactly HEAD is the full-suite evidence; otherwise only the last task's suite can be at HEAD, so only that one is read.
-const staleFullSuite = ({ unit, head }) => {
+const RUN_FULL = "run pb test --full in this publish run, then pb publish again";
+
+// The full-suite results pb recorded for the unit, oldest first: each task's at its end, the suite after a rebase, then
+// one run in the publish run itself (a human's pb test --full included).
+export const recordedSuites = ({ unit, runSuite }) => [
+  ...unit.tasks.map((task) => task.fullSuite), unit.rebaseSuite && { ...unit.rebaseSuite, after: " after the rebase" }, runSuite,
+].filter((suite) => suite?.head);
+
+// A suite ran on HEAD's content when it ran at HEAD, or at a commit with HEAD's tree: a rewrite of the unit's commit
+// messages moves HEAD and changes no file. suiteTrees maps a recorded head to its tree, null when git no longer has it.
+const ranOnHead = ({ head, headTree, suiteTrees }) => (suite) => suite.head === head || (headTree != null && suiteTrees?.[suite.head] === headTree);
+
+// The newest result recorded on HEAD's content decides; with none there, the newest result says which head it was at.
+const staleFullSuite = (facts) => {
+  const { unit, head } = facts;
   if (unit.tasks.length === 0) return null;
-  const rebased = unit.rebaseSuite;
-  if (rebased && rebased.head === head) {
-    return rebased.passed === true ? null : `the full suite failed at HEAD ${short(head)} after the rebase; a new task in the unit can fix it`;
-  }
-  const suite = unit.tasks.at(-1).fullSuite;
-  if (!suite || suite.passed !== true) return "the last task has no passing full-suite result; run pb test --full";
-  if (!suite.head) return "the last task has no full-suite result at HEAD; run pb test --full";
-  return suite.head === head ? null : `the full suite passed at ${short(suite.head)} but HEAD is ${short(head)}; run pb test --full`;
+  const suites = recordedSuites(facts);
+  const atHead = suites.filter(ranOnHead(facts)).at(-1);
+  if (atHead) return atHead.passed === true ? null : `the full suite failed at HEAD ${short(head)}${atHead.after ?? ""}; a new task of the unit fixes the code, or for a failure that was not the code, ${RUN_FULL}`;
+  const newest = suites.at(-1);
+  if (!newest) return `no full-suite result at HEAD is recorded for the unit; ${RUN_FULL}`;
+  return `the full suite ${newest.passed === true ? "passed" : "failed"} at ${short(newest.head)} but HEAD is ${short(head)}; ${RUN_FULL}`;
 };
 
 const dirtyTree = ({ dirty }) => (dirty.length === 0 ? null : `the tree has uncommitted files: ${list(dirty)}`);
@@ -69,7 +88,7 @@ const openBlocking = ({ unit }) => {
   return open.length === 0 ? null : `blocking findings are open: ${list(open)}`;
 };
 
-const changedConfig = ({ changedConfigs }) => (changedConfigs.length === 0 ? null : `these files changed since the unit opened: ${list(changedConfigs)}`);
+const changedConfig = ({ changedConfigs }) => (changedConfigs.length === 0 ? null : `these files changed since the unit opened: ${list(changedConfigs)}. A wanted change is recorded by pb config propose <file> <key> '<value>', then the human's pb human config apply <n> (a pending proposal only needs the apply); an unwanted one is put back`);
 
 const stopped = ({ runStop }) => (runStop === null ? null : `the run stopped: ${runStop.reason}`);
 

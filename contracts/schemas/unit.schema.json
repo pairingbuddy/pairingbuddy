@@ -57,6 +57,10 @@
       "items": {
         "type": "object",
         "properties": {
+          "taskType": {
+            "description": "The task's type when it ended (spike, bug_fix, ...); publish skips the safety-net evidence for a spike. Absent in records written before it was kept.",
+            "type": ["string", "null"]
+          },
           "lenses": {
             "description": "The task ledger's lens records when the task ended (the safety-net record: stage, attempt, lenses, counts, uncovered names); absent when none was written.",
             "type": "object",

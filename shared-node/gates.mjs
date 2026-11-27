@@ -16,7 +16,7 @@ import { GitConfigRefused, gitConfigPath, readGitConfig } from "./gitconf.mjs";
 import { isRefreshRun } from "./ledger.mjs";
 import { needsTestSelection } from "./stage-graph.mjs";
 import { readTestConfig, selectorAdvice } from "./test-run.mjs";
-import { targetBranch, taskHasLensRecord } from "./publish.mjs";
+import { targetBranch, unitHasLensRecords } from "./publish.mjs";
 import { headOf } from "./checkpoint.mjs";
 import { openQuestions, taskTitle } from "./questions.mjs";
 import { PrLintConfigRefused } from "./pr-lint.mjs";
@@ -762,11 +762,8 @@ function lintReason(root) {
   return null;
 }
 
-// The auto policy needs the safety-net lens record of every task in the unit; a unit with no tasks has none.
-const everyTaskHasLensRecord = ({ tasks }) => tasks.length > 0 && tasks.every(taskHasLensRecord);
-
-// Whether the auto policy passes G:publish by itself: auto mode, an ok lint for the body on disk and the safety-net lens record of every task.
-export const autoPublishPasses = (ledger, root) => !isRefreshRun(ledger) && ledger.policy.mode === "auto" && publishLint(root).status === "ok" && everyTaskHasLensRecord(readUnit(root)) && openQuestions(readUnit(root)).count === 0;
+// Whether the auto policy passes G:publish by itself: auto mode, an ok lint for the body on disk and the safety-net lens record of every code task.
+export const autoPublishPasses = (ledger, root) => !isRefreshRun(ledger) && ledger.policy.mode === "auto" && publishLint(root).status === "ok" && unitHasLensRecords(readUnit(root)) && openQuestions(readUnit(root)).count === 0;
 
 // The doubts auto passes deferred to the unit (questions.mjs): G:publish asks them all, under any policy, before anything goes out.
 function questionsReason(ledger, root) {

@@ -155,6 +155,33 @@ describe("publish-evidence-refusals", () => {
     assert.ok(stderr.includes(unit.head.slice(0, 7)), "the refusal names the current HEAD");
   });
 
+  test("full-suite-in-publish-run-counts: a stale task suite, then pb test --full passing at HEAD in the publish run, publishes", () => {
+    const unit = publishableUnit({ fullSuite: { passed: true, head: "a".repeat(40) } });
+    appendFileSync(join(unit.repo.dir, ".git", "info", "exclude"), "fake.mjs\n");
+    writeFileSync(join(unit.repo.dir, "fake.mjs"), "process.exit(0);\n");
+
+    const full = pb(unit.repo, "test", "--full");
+    assert.equal(full.code, 0, `pb test --full: ${full.stderr}`);
+    const { result } = publishUnit(unit);
+
+    assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
+    assert.equal(JSON.parse(result.stdout).result, "published");
+  });
+
+  test("reworded-head-keeps-suite: the unit's last commit reworded (same tree), the task suite at the old head still counts", () => {
+    const unit = publishableUnit({ approval: "none" });
+    git(unit.repo, "commit", "-q", "--amend", "--no-verify", "-m", "reworded");
+    const newHead = git(unit.repo, "rev-parse", "HEAD");
+    changeUnit(unit.repo, { commits: readUnitRecord(unit.repo).commits.map((sha) => (sha === unit.head ? newHead : sha)) });
+    evalGate(unit.repo);
+    const approved = pb(unit.repo, "human", "approve", "G:publish");
+    assert.equal(approved.code, 0, approved.stderr);
+
+    const { result } = publishUnit(unit);
+
+    assert.equal(result.code, 0, `pb publish: ${result.stderr}`);
+  });
+
   test("refuses-dirty-tree", () => {
     const unit = publishableUnit({ dirty: true });
     writeFileSync(join(unit.repo.dir, ".pairingbuddy", "scratch.txt"), "ignored\n");

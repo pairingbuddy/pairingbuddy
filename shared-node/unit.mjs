@@ -21,6 +21,7 @@ export function newTaskRecord({ ledger, headSha, lessons }) {
   const gateSources = Object.fromEntries(Object.entries(ledger.gates).map(([gate, entry]) => [gate, entry.source]));
   return {
     title: ledger.plan?.title || ledger.task,
+    taskType: ledger.taskType ?? null,
     stages: ledger.stages.map((stage) => stage.name),
     gateSources,
     lenses: ledger.lenses,
