@@ -99,7 +99,9 @@ function cycleProblem({ ledger, artifactsDir, config }) {
     throw e;
   }
   const isClosed = ({ red, green, covered }) => covered?.done || (red?.done && green?.done);
-  const open = rows.map(({ test_id: id }) => id).filter((id) => !isClosed(perTestOf(ledger, id)));
+  // A test the human cut is off the list, whatever the test list still says.
+  const cut = new Set(Array.isArray(ledger.tests?.cut) ? ledger.tests.cut.map(({ id }) => id) : []);
+  const open = rows.map(({ test_id: id }) => id).filter((id) => !cut.has(id) && !isClosed(perTestOf(ledger, id)));
   return open.length === 0 ? null : `tests:cycle has no RED and GREEN, and no covered pass, for ${open.join(", ")}`;
 }
 

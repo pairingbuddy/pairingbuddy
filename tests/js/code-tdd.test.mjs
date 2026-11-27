@@ -502,3 +502,21 @@ for (const [name, args, reason] of [
     assert.equal(calls.length, 0);
   });
 }
+
+test("code-tdd-a-restart-skips-every-test-the-human-cut-even-when-the-placeholders-keep-it", async () => {
+  const { calls, result } = await runStage({ tests: [row("t1"), row("t2"), row("t3")], state: { red: ["t1"], green: ["t1"], cut: ["t2"] } }, { ...ARGS, attempt: 4 });
+
+  assert.deepEqual(stepsOf(calls), [
+    "tdd state",
+    "create-test-placeholders code-tdd.create-test-placeholders.-.r1.a4",
+    "checkpoint --step placeholders --from code-tdd.create-test-placeholders.-.r1.a4",
+    "implement-tests code-tdd.implement-tests.t3.r1.a4",
+    "checkpoint --step red --from code-tdd.implement-tests.t3.r1.a4",
+    "implement-code code-tdd.implement-code.t3.r1.a4",
+    "checkpoint --step green --from code-tdd.implement-code.t3.r1.a4",
+    "verify-test-coverage code-tdd.verify-test-coverage.-.r1.a4",
+    "stage finish",
+  ]);
+  assert.equal(result.stopReason, null);
+  assert.deepEqual(result.tests, ["t1", "t3"]);
+});

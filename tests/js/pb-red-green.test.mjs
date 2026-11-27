@@ -196,6 +196,17 @@ describe("RED", IN_PARALLEL, () => {
     });
   }
 
+  test("a test the human cut never runs at RED: pb refuses the step as its own bug, with no run and no stop", () => {
+    const cut = [{ id: "t1", reason: "already covered", at: "2026-01-01T00:00:00.000Z", selector: { runner_id: "fake", test_file: "tests/a.mjs", test_function: "t1" } }];
+    const repo = makeRepo({ outcomes: { "tests/a.mjs::t1": 0 }, ledger: { tests: { cut } } });
+    const seed = repo.head();
+    writeArtifact(repo, redKey(), fileReturn(redKey()));
+
+    assertRefused(repo, seed, step(repo, "red", redKey()), /t1 was cut by the human.*pb bug/);
+    assert.deepEqual(repo.runs(), [], "nothing ran");
+    assert.equal(repo.ledger().stop, null, "no stop offers to cut it again");
+  });
+
   test("a selection that matches nothing is not RED", () => {
     const repo = makeRepo({ outcomes: { "tests/a.mjs::other": 1 } });
     const seed = repo.head();
@@ -842,7 +853,17 @@ describe("pb tdd state", IN_PARALLEL, () => {
     const state = assertPasses(pb(repo, "tdd", "state"));
 
     const { testRunners, ...rest } = state;
-    assert.deepEqual(rest, { ok: true, taskType: "bug_fix", scenarios: path(SCENARIOS_KEY(2)), tests: null, red: [], green: [], covered: [] });
+    assert.deepEqual(rest, { ok: true, taskType: "bug_fix", scenarios: path(SCENARIOS_KEY(2)), tests: null, red: [], green: [], covered: [], cut: [] });
+  });
+
+  test("lists the tests the human cut, so the stage skips them whatever the test list says", () => {
+    const cut = [{ id: "t2", reason: "already covered", at: "2026-01-01T00:00:00.000Z", selector: { runner_id: "fake", test_file: "tests/a.mjs", test_function: "t2" } }];
+    const repo = makeRepo({ rows: [row("t1"), row("t2")], ledger: { ...stagesWith(1), tests: { cut } } });
+    scenarios(repo, 1);
+
+    const state = assertPasses(pb(repo, "tdd", "state"));
+
+    assert.deepEqual(state.cut, ["t2"]);
   });
 
   test("tdd-state-includes-test-runners", () => {
@@ -976,6 +997,17 @@ describe("stage finish and the report", IN_PARALLEL, () => {
     assert.equal(result.code, 1);
     assert.match(result.stderr, /tests:cycle.*t1/);
     assert.notEqual(repo.ledger().stop, null);
+  });
+
+  test("a test the human cut, still in the test list, does not keep the stage from finishing", () => {
+    const repo = finishable([row("t1"), row("t2")]);
+    placeholdersDone(repo);
+    greenReady(repo);
+    assertPasses(step(repo, "green", greenKey()));
+    coverageDone(repo);
+    assertPasses(pb(repo, "human", "cut-test", "t2", "--reason", "already covered"));
+
+    assertPasses(pb(repo, "stage", "finish"));
   });
 
   test("every test through RED and GREEN finishes it, and the report carries the RED excerpt per test", () => {

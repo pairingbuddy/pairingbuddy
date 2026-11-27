@@ -2557,7 +2557,9 @@ const checkCoverage = (scenarios, testsPath) => untilReturned({
   paths: { scenarios, tests: testsPath, ...SHARED_PATHS },
 });
 
-const idsOf = ({ result }) => result.tests.map(({ test_id: id }) => id);
+// A test the human cut stays off the list, whatever the placeholders agent returns: pb tdd state names them.
+let cutIds = [];
+const idsOf = ({ result }) => result.tests.map(({ test_id: id }) => id).filter((id) => !cutIds.includes(id));
 
 // Each gap sends the stage back to placeholders, which keep the rows so far and add tests for the gaps, and only the new
 // tests cycle. The bound holds whatever the gaps, and the spawn cap covers every round of it.
@@ -2591,6 +2593,7 @@ async function recordStop(reason) {
 let tests = [];
 try {
   const state = await readState();
+  cutIds = Array.isArray(state.cut) ? state.cut : [];
   const refactors = state.taskType === REFACTORS_FOR;
   const created = await placeholders(state);
   tests = idsOf(created);

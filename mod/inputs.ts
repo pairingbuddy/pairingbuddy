@@ -87,6 +87,12 @@ function seenTests(ledger: Ledger): string[] {
   return perTest && typeof perTest === 'object' ? Object.keys(perTest) : []
 }
 
+// The tests the human cut: off the list whatever the test list still says, so no total counts them.
+function cutTests(ledger: Ledger): string[] {
+  const cut = (ledger as { tests?: { cut?: unknown } } | undefined)?.tests?.cut
+  return Array.isArray(cut) ? cut.map(entry => (entry as { id?: unknown })?.id).filter((id): id is string => typeof id === 'string') : []
+}
+
 // tests.json's order, as the test list, once it lists every test the ledger has seen; otherwise undefined.
 function plannedTests(planned: string[], seen: string[]): string[] | undefined {
   return planned.length > 0 && seen.every(id => planned.includes(id)) ? planned : undefined
@@ -190,7 +196,8 @@ async function readInputsAndTests($: EngineInterface, spawns: Spawn[]): Promise<
 }
 
 function inputsOf({ ledger, testsFile, now, spawns }: { ledger: Ledger; testsFile: unknown; now: number | undefined; spawns: Spawn[] }): Inputs {
-  const listed = listedTests(testsFile)
+  const cut = cutTests(ledger)
+  const listed = listedTests(testsFile).filter(id => !cut.includes(id))
   const seen = seenTests(ledger)
   if (seen.length === 0) return { ledger, spawns, tests: listed, testsComplete: true, now }
   // A test list that holds every seen test is the whole planned list; otherwise the seen tests alone, with no invented total.
