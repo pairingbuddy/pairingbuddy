@@ -72,6 +72,19 @@ test("a stop and a question waiting each get their line, the gate by its plain n
   ]);
 });
 
+test("a stop that knows why says what happened and lists what the human can do", () => {
+  const stop = { code: "red-passes", reason: "test t1 already passes", seq: 3, why: "t1 passed before any code", detail: "test t1 already passes, before any code was written.", options: ["Cut it.", "Keep it as a regression guard."] };
+
+  const lines = statusText({ stage: ACTIVE, stop, needsHuman: null, next: null }, { owner: null, now: NOW }).split("\n");
+
+  assert.deepEqual(lines.slice(2, 6), [
+    "Stopped:   a test passed before any code: t1 passed before any code",
+    "Why:       test t1 already passes, before any code was written.",
+    "You can:   1. Cut it.",
+    "           2. Keep it as a regression guard.",
+  ]);
+});
+
 test("between stages, next names the stage to start and which run of it that is", () => {
   const status = { stage: { name: "code-scenarios", status: "done", runId: null, attempt: 1, startedAt: null }, stop: null, needsHuman: null, next: { stage: "code-tdd", attempt: 1 } };
 

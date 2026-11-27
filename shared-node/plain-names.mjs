@@ -64,6 +64,7 @@ const PLAIN_NAMES = {
   "attempt-cap": "it ran out of fix attempts",
   "agent-budget": "the agent budget ran out",
   "step-failed": "a step kept failing",
+  "red-passes": "a test passed before any code",
   "tests-red": "the tests were not green",
   "gate-off": "safety checks are off",
   // task types

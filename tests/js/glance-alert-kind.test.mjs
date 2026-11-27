@@ -50,3 +50,14 @@ test("a-long-what-is-cut-at-a-fixed-limit-with-an-ellipsis", () => {
   assert.ok(what.endsWith("…"), what);
   assert.ok(alertLine({ needsHuman: { gate, seq: 3 } }).endsWith("…"), "the status line is bounded too");
 });
+
+test("a-stop-that-recorded-why-says-why-on-the-bar-and-the-status-line", () => {
+  const stop = { code: "step-failed", seq: 3, why: "GREEN for t1 was refused 3 times" };
+  assert.deepEqual(alertBar({ stop }), { kind: FAILED, text: "✗ STOPPED · GREEN for t1 was refused 3 times" });
+  assert.equal(alertLine({ stop }), "stopped: GREEN for t1 was refused 3 times");
+});
+
+// Nothing broke: the code already does what the test checks, and only the human can say cut it or keep it.
+test("a-test-that-passed-before-any-code-waits-on-the-human-and-is-no-failure", () => {
+  assert.equal(alertKind({ stop: { code: "red-passes", seq: 4 } }), WAITING);
+});

@@ -14,7 +14,7 @@ export const VERB_CLASSES = {
   human: ["human approve", "human abandon", "human approve-config", "human accept", "human adopt", "human answer", "human reopen", "human cut-test", "human config"],
 };
 
-export { STAGE_STOP_REASONS, MISSING_ARTIFACT, COMMIT_PLAN_UNUSABLE, COMMIT_FAILED, NO_SELECTOR_TEMPLATE, HUMAN_STOPPED, ATTEMPT_CAP, GATE_OFF, STOP_CODES } from "./stop-codes.mjs";
+export { STAGE_STOP_REASONS, MISSING_ARTIFACT, COMMIT_PLAN_UNUSABLE, COMMIT_FAILED, NO_SELECTOR_TEMPLATE, HUMAN_STOPPED, ATTEMPT_CAP, RED_PASSES, GATE_OFF, STOP_CODES } from "./stop-codes.mjs";
 
 const ALL_VERBS = Object.values(VERB_CLASSES).flat();
 

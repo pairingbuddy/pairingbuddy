@@ -48,6 +48,17 @@ describe("report-leads-with-what-you-need", () => {
     assert.ok(section.includes("Re-run /pairingbuddy:code."), "how to go on");
   });
 
+  test("NEEDS YOU of a stop that recorded why keeps the whole cause and every option", () => {
+    const detail = `GREEN for t1 was refused 3 times. The last refusal: ${"x".repeat(500)} <end>`;
+    const stop = { code: "step-failed", reason: "step-failed", seq: 9, why: "GREEN for t1 was refused 3 times", detail, options: ["Tell the session what to change.", "Or say it cannot be done."] };
+    const stopped = { ...CODE_RUN, stage: { ...CODE_RUN.stage, name: "code-tdd", status: "active" }, stages: CODE_RUN.stages.slice(0, 2), stop };
+    const section = sectionOf(renderReport({ ledger: stopped, spawns: [] }), "NEEDS YOU");
+
+    assert.ok(section.includes("It stopped at build test by test: GREEN for t1 was refused 3 times."), `the short why, got ${section}`);
+    assert.ok(section.includes(`${"x".repeat(500)} &lt;end&gt;`), "the whole cause, escaped");
+    assert.ok(section.includes("<ol><li>Tell the session what to change.</li><li>Or say it cannot be done.</li></ol>"), "every option");
+  });
+
   test("NEEDS YOU of a run waiting on a question names the question, and the doubts it asks over", () => {
     const doubt = { step: "write test scenarios", ambiguity: "Does an empty order total 0.0?" };
     const waiting = { ...CODE_RUN, stage: { ...CODE_RUN.stage, name: "code-scenarios", status: "done" }, stages: CODE_RUN.stages.slice(0, 2), gates: { "G:type": CODE_RUN.gates["G:type"] }, needsHuman: { gate: "G:scenarios", reason: "open doubts", seq: 9, doubts: [doubt] } };

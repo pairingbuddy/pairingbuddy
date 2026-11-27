@@ -33,7 +33,7 @@ export type Ledger = {
   task?: string
   commits?: string[]
   plan?: { path?: string; title?: string }
-  stop?: { code?: string; reason?: string; seq?: number; fix?: string }
+  stop?: { code?: string; reason?: string; seq?: number; fix?: string; why?: string; detail?: string; options?: string[] }
   needsHuman?: { gate?: string | null; seq?: number; fix?: string; askedAt?: string }
   // When the run stopped working, which SPENT's clock stops at (glance's pausedAtOf); set by the mod, never by pb.
   pausedAt?: number

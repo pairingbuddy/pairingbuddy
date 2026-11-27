@@ -179,7 +179,7 @@ describe("RED", IN_PARALLEL, () => {
 
     const result = step(repo, "red", redKey());
 
-    assertRefused(repo, seed, result, /t1.*not RED|not RED.*t1/s);
+    assertRefused(repo, seed, result, /t1 already passes/);
     assert.deepEqual(repo.runs(), [["tests/a.mjs::t1"]], "the selection named the test, not its file");
     const { red } = repo.ledger().tests.perTest.t1;
     assert.deepEqual([red.passed, red.done, red.exitCodes], [false, false, [0]], "a refused run is still evidence");
@@ -740,14 +740,21 @@ describe("a test an earlier GREEN covered", IN_PARALLEL, () => {
     assert.deepEqual(done.after, { test_id: "t1", sha: firstGreen });
   });
 
-  test("a test that passes before any GREEN is still refused, as one that proves nothing", () => {
+  // A retry cannot change it: the behaviour is already there, so only the human can say cut it or keep it.
+  test("a test that passes before any GREEN stops the run at once, saying what passed and what the human can do", () => {
     const repo = makeRepo({ outcomes: { "tests/a.mjs::t1": 0 } });
     const seed = repo.head();
     repo.write("tests/a.mjs", "real test\n");
     writeArtifact(repo, redKey(), fileReturn(redKey(), { files_changed: ["tests/a.mjs"] }));
 
-    assertRefused(repo, seed, step(repo, "red", redKey()), /not RED.*no GREEN/s);
-    assert.equal(repo.ledger().tests.perTest.t1.covered, undefined);
+    assertRefused(repo, seed, step(repo, "red", redKey()), /^pb: the run stopped: /m);
+
+    const { stop } = repo.ledger();
+    assert.equal(stop.code, "red-passes");
+    assert.equal(stop.why, "t1 passed before any code");
+    assert.match(stop.detail, /test t1 already passes, before any code was written/);
+    assert.match(stop.options.join("\n"), /human cut-test t1 --reason '/);
+    assert.match(stop.options.join("\n"), /regression guard/);
   });
 
   test("only exit 0 is covered: a code that is neither RED nor a pass is refused after a GREEN too", () => {
@@ -893,6 +900,25 @@ describe("pb stage stop", IN_PARALLEL, () => {
       assert.equal(repo.ledger().stop, null);
     });
   }
+
+  // The stage script only knows a step ran out of tries; the CLI saw each refusal, so the stop names the last one.
+  test("step-failed names the step its tries ran out on and the last refusal, counting the tries", () => {
+    const repo = makeRepo();
+    greenReady(repo, { outcomes: { "tests/a.mjs::t1": 1 } });
+    step(repo, "green", greenKey());
+    writeArtifact(repo, greenKey("t1", 2), fileReturn(greenKey("t1", 2), { files_changed: ["src.mjs"] }));
+    step(repo, "green", greenKey("t1", 2));
+
+    assertPasses(pb(repo, "stage", "stop", "step-failed"));
+
+    const { stop } = repo.ledger();
+    assert.equal(stop.why, "GREEN for t1 was refused 2 times");
+    assert.match(stop.detail, /The last refusal: test t1 is not GREEN: exit 1/);
+    assert.ok(stop.options.length > 0, "it says what the human can do");
+    assert.doesNotMatch(JSON.stringify(stop), /tests\{\}/, "no internal names");
+    const status = assertPasses(pb(repo, "status"));
+    assert.deepEqual([status.stop.why, status.stop.detail, status.stop.options], [stop.why, stop.detail, stop.options], "pb status gives them as fields");
+  });
 
   test("a stop already there stands", () => {
     // Guards that a second pb stage stop does not replace an existing stop (checked by its reason).

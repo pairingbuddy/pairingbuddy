@@ -24,7 +24,8 @@ export type RowTones = Partial<Record<keyof Rows, Tone>>
 // (the step, the question, why it stopped, the verdict). quiet: nothing runs and nothing waits on the human.
 export type StatusState = 'needsYou' | 'stopped' | 'done' | 'working' | 'quiet'
 // fix: the one line that puts it right, when the state has one (the safety checks are off), drawn on its own line.
-export type Status = { state: StatusState; what?: string; fix?: string }
+// cause and options: what a stop recorded about what happened and what the human can do (the pane's WHY row).
+export type Status = { state: StatusState; what?: string; fix?: string; cause?: string; options?: string[] }
 // The kit's own types for the elements a render hook draws with: text only, as neither the band nor the pane has a control.
 export type Tags = Pick<ElementTable, 'Box' | 'Text'>
 
@@ -123,6 +124,18 @@ function bandTone(segment: Segment, ledger: NonNullable<Ledger>): Pick<Segment, 
   return segment.id === 'where' ? { lit: true } : {}
 }
 
+type Stop = NonNullable<NonNullable<Ledger>['stop']>
+
+// A stop reads by why it happened when it recorded that, else by the plain name of its code.
+const stopWhat = (stop: Stop) => (typeof stop.why === 'string' && stop.why !== '' ? stop.why : stopName(stop))
+
+// What a stop recorded about what happened and what the human can do; nothing for one that recorded neither.
+function stopCause(stop: Stop): Pick<Status, 'cause' | 'options'> {
+  if (typeof stop.detail !== 'string' || stop.detail === '') return {}
+  const options = Array.isArray(stop.options) ? stop.options.filter((option): option is string => typeof option === 'string') : []
+  return { cause: stop.detail, ...(options.length > 0 ? { options } : {}) }
+}
+
 // A loud state's look: red only for a failure, amber for a run that waits on the human.
 const loudState = (ledger: Ledger): StatusState => (alertKind(ledger) === FAILED ? 'stopped' : 'needsYou')
 
@@ -134,7 +147,7 @@ const waitingGate = (ledger: NonNullable<Ledger>) => (ledger.stop ? undefined : 
 export function statusFirst(band: Segment[], ledger?: Ledger): Segment[] {
   const standing = band.find(segment => segment.id === 'needsYou' && segment.standing)
   if (standing) {
-    const what = ledger?.stop ? stopName(ledger.stop) : gateLine(ledger?.needsHuman?.gate)
+    const what = ledger?.stop ? stopWhat(ledger.stop) : gateLine(ledger?.needsHuman?.gate)
     const status: Status = { state: loudState(ledger), what }
     const look = STATUS_LOOKS[status.state]
     const lead = { ...standing, state: status.state, text: [look.bandHead, status.what].filter(Boolean).join(look.sep), short: [look.mark, status.what].filter(Boolean).join(' ') }
@@ -296,7 +309,7 @@ function nextAfterCode(unit: Inputs['unit']): string {
 // What state a live run is in: stopped by a failure, waiting on the human (alertKind tells them apart), or working on its
 // step (or between steps).
 function liveStatus(view: View, ledger: NonNullable<Ledger>, publishes: boolean, unit: Inputs['unit']): Status {
-  if (ledger.stop) return { state: loudState(ledger), what: stopName(ledger.stop), ...(ledger.stop.fix ? { fix: ledger.stop.fix } : {}) }
+  if (ledger.stop) return { state: loudState(ledger), what: stopWhat(ledger.stop), ...(ledger.stop.fix ? { fix: ledger.stop.fix } : {}), ...stopCause(ledger.stop) }
   const gate = waitingGate(ledger)
   if (gate) return { state: loudState(ledger), what: gateLine(gate), ...(ledger.needsHuman?.fix ? { fix: ledger.needsHuman.fix } : {}) }
   if (view.between === ALL_DONE && publishes && !isPublishRun(ledger)) return { state: 'working', what: nextAfterCode(unit) }
