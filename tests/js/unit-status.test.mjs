@@ -115,11 +115,29 @@ describe("pb-unit-status-cli", () => {
 
     assertDeliberateRefusal(result, /gone from the remote/i, "the refusal says the base is gone from the remote", repo, unitBefore);
   });
-  test("cli-moved-refuses-with-recipe-and-writes-nothing", () => {
+  test("cli-moved-rebases-itself", () => {
+    const { repo } = openUnitRepo();
+    const unitBranch = JSON.parse(readFileSync(unitPath(repo), "utf8")).branch;
+    writeFileSync(join(repo.dir, "mine.txt"), "mine\n");
+    git(repo, "add", "mine.txt");
+    git(repo, "commit", "-q", "-m", "unit work");
+    const newSha = pushFromSecondClone(repo, "newer.txt");
+
+    const result = pb(repo, "unit", "status");
+
+    assert.equal(result.code, 0, `pb unit status rebases onto the moved base by itself, no human step: ${outputOf(result)}`);
+    const { status, baseSha } = JSON.parse(result.stdout);
+    assert.deepEqual({ status, baseSha }, { status: "reconciled", baseSha: newSha }, "the JSON reports reconciled onto the new base tip");
+    assert.equal(git(repo, "rev-parse", `${unitBranch}~1`), newSha, "the unit branch now sits on the new base tip");
+    assert.equal(git(repo, "rev-parse", "--abbrev-ref", "HEAD"), unitBranch, "HEAD is still on the unit branch");
+    assert.equal(JSON.parse(readFileSync(unitPath(repo), "utf8")).baseSha, newSha, "unit.json records the new base");
+  });
+  test("cli-moved-with-dirty-tree-refuses-with-recipe-and-writes-nothing", () => {
     const { repo, originTip: oldSha } = openUnitRepo();
     const unitBefore = readFileSync(unitPath(repo), "utf8");
     const unitBranch = JSON.parse(unitBefore).branch;
     const newSha = pushFromSecondClone(repo, "newer.txt");
+    writeFileSync(join(repo.dir, "work-in-progress.txt"), "wip\n");
 
     const result = pb(repo, "unit", "status");
 
@@ -129,21 +147,17 @@ describe("pb-unit-status-cli", () => {
     assert.ok(output.includes(newSha), `the refusal names the new SHA ${newSha}: ${output}`);
     assert.ok(output.split("\n").some((line) => line.trim() === `git rebase --onto origin/main ${oldSha} ${unitBranch}`), `the output has the rebase recipe line: ${output}`);
   });
-  test("cli-makes-no-rebase-or-push", () => {
+  test("cli-rebase-makes-no-push-or-branch", () => {
     const { repo } = openUnitRepo();
-    const unitBranch = JSON.parse(readFileSync(unitPath(repo), "utf8")).branch;
     pushFromSecondClone(repo, "newer.txt");
     const originRefs = () => gitIn(repo.remoteDir, "for-each-ref");
-    const before = { head: git(repo, "rev-parse", "HEAD"), tip: git(repo, "rev-parse", unitBranch), branches: git(repo, "branch", "--list"), origin: originRefs() };
+    const before = { branches: git(repo, "branch", "--list"), origin: originRefs() };
 
     const result = pb(repo, "unit", "status");
 
-    assert.equal(result.code, 1, `pb unit status refuses on the moved base: ${outputOf(result)}`);
-    assert.match(outputOf(result), /moved/i, "the command took the moved path");
-    assert.equal(git(repo, "rev-parse", "HEAD"), before.head, "HEAD is unchanged");
-    assert.equal(git(repo, "rev-parse", unitBranch), before.tip, "the unit branch tip is unchanged");
+    assert.equal(result.code, 0, `pb unit status rebases onto the moved base: ${outputOf(result)}`);
     assert.equal(git(repo, "branch", "--list"), before.branches, "the local branch list is unchanged");
-    assert.equal(originRefs(), before.origin, "every ref on the bare origin is unchanged");
+    assert.equal(originRefs(), before.origin, "every ref on the bare origin is unchanged: the rebase pushes nothing");
   });
   test("cli-reconciled-updates-unit-json", () => {
     const { repo, originTip: oldSha } = openUnitRepo();
@@ -163,6 +177,8 @@ describe("pb-unit-status-cli", () => {
     const { repo, shim, ghEnv, oldBase, newMain, branch } = stackedMergedRepo();
     t.after(() => removeAll(repo, shim));
     const unitBefore = readFileSync(unitPath(repo), "utf8");
+    const wip = join(repo.dir, "work-in-progress.txt");
+    writeFileSync(wip, "wip\n");
 
     const refused = statusWith(repo, ghEnv);
 
@@ -173,6 +189,7 @@ describe("pb-unit-status-cli", () => {
     assert.equal(views[0].argv.at(-1), FAKE_PR_URL, "the one view names the dependency PR url");
     assert.equal(views[0].argv.at(-2), "--", "the url follows a -- separator");
 
+    rmSync(wip);
     git(repo, "rebase", "--onto", "origin/main", oldBase, branch);
     const reconciled = statusWith(repo, ghEnv);
 
@@ -379,6 +396,21 @@ describe("pb-unit-rebase", () => {
     assert.equal(git(repo, "rev-parse", "HEAD"), tip, "the branch is where it was");
     assert.equal(git(repo, "status", "--porcelain"), "", "no rebase is left half done");
   });
+  test("unit-status-conflict-names-the-files-and-leaves-the-branch", () => {
+    const { repo } = openUnitRepo();
+    writeFileSync(join(repo.dir, "same.txt"), "ours\n");
+    git(repo, "add", "same.txt");
+    git(repo, "commit", "-q", "-m", "ours");
+    const tip = git(repo, "rev-parse", "HEAD");
+    pushFromSecondClone(repo, "same.txt");
+
+    const result = pb(repo, "unit", "status");
+
+    assert.equal(result.code, 1, outputOf(result));
+    assert.match(outputOf(result), /conflict.*aborted[\s\S]*same\.txt/i, "the refusal says the rebase was aborted and names the conflicting file");
+    assert.equal(git(repo, "rev-parse", "HEAD"), tip, "the branch is where it was");
+    assert.equal(git(repo, "status", "--porcelain"), "", "no rebase is left half done");
+  });
   test("a-dirty-tree-is-refused-before-anything-moves", () => {
     const { repo } = movedUnitRepo();
     const tip = git(repo, "rev-parse", "HEAD");
@@ -392,6 +424,7 @@ describe("pb-unit-rebase", () => {
   });
   test("moved-base-refusal-points-at-pb-unit-rebase", () => {
     const { repo } = movedUnitRepo();
+    writeFileSync(join(repo.dir, "work-in-progress.txt"), "wip\n");
 
     const result = pb(repo, "unit", "status");
 

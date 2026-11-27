@@ -2314,7 +2314,7 @@ async function unitStatus() {
   const root = toplevel();
   const unit = readUnitOrRefuse(root);
   const gitConfig = loadGitConfigOrRefuse(root);
-  const result = baseStatusFor(root, unit, gitConfig);
+  const result = rebasedWhenItCan(root, unit, gitConfig, baseStatusFor(root, unit, gitConfig));
   refuseRebaseNeeded(unit, result);
   if (result.status === "current") {
     const adopted = adoptHumanCommits(root, unit);
@@ -2355,14 +2355,29 @@ async function unitRebase() {
   if (dirty.length > 0) throw new Refusal(`the tree is dirty, so nothing was rebased. Commit or remove these first: ${dirty.join(", ")}`);
   const gitConfig = loadGitConfigOrRefuse(root);
   const result = baseStatusFor(root, unit, gitConfig);
-  if (result.status === "moved" || result.status === "merged") {
-    const rebase = spawnSync("git", ["rebase", "--onto", `${gitConfig.remote}/${result.base}`, result.from, unit.branch], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    if (rebase.status !== 0) {
-      spawnSync("git", ["rebase", "--abort"], { cwd: root, stdio: "ignore" });
-      throw new Refusal(`the rebase of ${unit.branch} onto ${gitConfig.remote}/${result.base} stopped on a conflict, so it was aborted and the branch is as it was. A human resolves it: ${(rebase.stderr || rebase.stdout).trim().split("\n").at(-1)}`);
-    }
-  }
+  if (result.status === "moved" || result.status === "merged") rebaseOntoBase(root, unit, gitConfig, result);
   return unitStatus();
+}
+
+// A moved or merged base is rebased onto at once when nothing stands in the way: no run open, HEAD on the unit's branch
+// and a clean tree. Teams merge to the base all the time, so this is routine, not a human step. Otherwise the result
+// passes through and pb unit status refuses with the recipe.
+function rebasedWhenItCan(root, unit, gitConfig, result) {
+  if (result.status !== "moved" && result.status !== "merged") return result;
+  if (openRunOf(root) !== null || currentBranch(root) !== unit.branch || remainingFiles(root).length > 0) return result;
+  rebaseOntoBase(root, unit, gitConfig, result);
+  return baseStatusFor(root, unit, gitConfig);
+}
+
+// git rebase --onto the base's remote tip. A rebase that stops on a conflict is aborted, so the branch is as it was, and
+// the refusal names the conflicting files.
+function rebaseOntoBase(root, unit, gitConfig, result) {
+  const rebase = spawnSync("git", ["rebase", "--onto", `${gitConfig.remote}/${result.base}`, result.from, unit.branch], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  if (rebase.status === 0) return;
+  const conflicts = (tryGit(root, ["diff", "--name-only", "--diff-filter=U"]) ?? "").split("\n").filter(Boolean);
+  spawnSync("git", ["rebase", "--abort"], { cwd: root, stdio: "ignore" });
+  const where = conflicts.length > 0 ? `these files conflict: ${conflicts.join(", ")}` : (rebase.stderr || rebase.stdout).trim().split("\n").at(-1);
+  throw new Refusal(`the rebase of ${unit.branch} onto ${gitConfig.remote}/${result.base} stopped on a conflict, so it was aborted and the branch is as it was. A human resolves it, ${where}`);
 }
 
 // The patch-id of a commit's change. run reads the diff with the shared output limit, past the default 1 MB.
