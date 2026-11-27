@@ -28,6 +28,12 @@ export function remapCommits({ recorded, range, merges = [] }) {
     used.add(match.sha);
     mapping[commit.sha] = match.sha;
   }
+  // The recorded commits keep their order: one found before an earlier recorded one means the history was rewritten.
+  // Two commits with the same change are interchangeable, so their order is not compared.
+  const positions = recorded.map(({ sha }) => range.findIndex((candidate) => candidate.sha === mapping[sha]));
+  const sameChange = (a, b) => a.patchId !== null && a.patchId === b.patchId;
+  const outOfOrder = recorded.find((commit, i) => i > 0 && positions[i] < positions[i - 1] && !sameChange(commit, recorded[i - 1]));
+  if (outOfOrder) refuse(`The recorded commit ${outOfOrder.sha} is out of order after the rebase (the recorded history was rewritten)`);
   const adopted = range.filter((candidate) => !used.has(candidate.sha)).map(({ sha }) => sha);
   return { mapping, adopted };
 }

@@ -27,13 +27,13 @@ describe("remap-commits-rule", () => {
       { sha: "keep2", patchId: null },
     ];
     const range = [
-      { sha: "keep2", patchId: "changed" },
       { sha: "keep1", patchId: "p9" },
+      { sha: "keep2", patchId: "changed" },
     ];
 
     const { mapping } = remapCommits({ recorded, range, merges: [] });
 
-    assert.deepEqual(mapping, { keep1: "keep1", keep2: "keep2" }, "a recorded sha present in the range maps to itself, whatever its patch-id or position");
+    assert.deepEqual(mapping, { keep1: "keep1", keep2: "keep2" }, "a recorded sha present in the range maps to itself, whatever its patch-id");
   });
 
   test("remap-duplicate-patch-id-uses-first-unused", () => {
@@ -101,6 +101,22 @@ describe("remap-commits-rule", () => {
 
     assert.deepEqual(mapping, { old1: "new1" }, "the recorded commit maps by patch-id as before");
     assert.deepEqual(adopted, ["extraSha5"], "a range commit no recorded commit matched is adopted, not refused: a human made it between runs");
+  });
+
+  test("remap-refuses-reordered-recorded-commits", () => {
+    const recorded = [
+      { sha: "old1", patchId: "p1" },
+      { sha: "old2", patchId: "p2" },
+    ];
+    const range = [
+      { sha: "new2", patchId: "p2" },
+      { sha: "new1", patchId: "p1" },
+    ];
+
+    const sut = () => remapCommits({ recorded, range, merges: [] });
+
+    assert.throws(sut, UnitStatusRefused, "recorded commits found out of their order mean the recorded history was rewritten, so it refuses");
+    assert.throws(sut, { message: /order/i }, "the refusal says the recorded commits are out of order");
   });
 
   test("remap-null-patch-id-never-matches", () => {
