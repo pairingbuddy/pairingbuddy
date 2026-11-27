@@ -112,6 +112,18 @@ export function acceptConfigInUnit(root, { newHash, seq }) {
   renameSync(temp, path);
 }
 
+// A git-config change the human applied (pb human config apply) is pinned in the open unit, so pb publish does not read it
+// as changed since the unit opened. A unit that never recorded a git-config hash is left as it is.
+export function pinGitConfigInUnit(root, newHash) {
+  const path = join(root, ".pairingbuddy", "run", "unit.json");
+  if (!existsSync(path)) return;
+  const unit = JSON.parse(readFileSync(path, "utf8"));
+  if (unit.gitConfigHash === undefined || unit.gitConfigHash === newHash) return;
+  const temp = `${path}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify({ ...unit, gitConfigHash: newHash }, null, 2)}\n`);
+  renameSync(temp, path);
+}
+
 // The doubts an auto pass deferred, added to the open unit's questions so G:publish asks them before anything goes out.
 // With no unit open there is nowhere to keep them: the gate asks them then and there (unitIsOpen).
 export function deferQuestionsInUnit(root, { gate, task, doubts }) {

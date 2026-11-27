@@ -92,6 +92,9 @@ function describeGot(value) {
   return typeof value === "number" ? JSON.stringify(value) : kindOf(value);
 }
 
+// The file's own object checked as loading it would check it; throws a GitConfigRefused.
+export const validateGitConfig = (parsed) => validateTypes(parsed, DEFAULTS);
+
 // Checks each known field against expectation(); nested objects recurse.
 function validateTypes(over, defaults, path = "") {
   for (const [key, value] of Object.entries(over)) {

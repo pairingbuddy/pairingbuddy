@@ -25,8 +25,8 @@ const PB = `node ${CLI}`;
 
 // D5, written out here so the test does not read its answer from the table it checks.
 const RUNNER_VERBS = ["test", "checkpoint", "stage finish", "stage stop", "tdd state", "refactor state", "spike state", "spike write", "snapshot", "artifact check", "pr lint", "rollback"];
-const MAIN_VERBS = ["unit open", "unit status", "unit rebase", "run open", "stage report", "stage fail", "stage release", "gate eval", "task end", "spike setup", "plan next", "question settle", "question add", "final-check", "guidance record", "publish", "pr refresh", "status", "git doctor"];
-const HUMAN_VERBS = ["human approve", "human abandon", "human approve-config", "human accept", "human adopt", "human answer", "human reopen", "human cut-test"];
+const MAIN_VERBS = ["unit open", "unit status", "unit rebase", "run open", "stage report", "stage fail", "stage release", "gate eval", "task end", "spike setup", "plan next", "question settle", "question add", "config propose", "final-check", "guidance record", "publish", "pr refresh", "status", "git doctor"];
+const HUMAN_VERBS = ["human approve", "human abandon", "human approve-config", "human accept", "human adopt", "human answer", "human reopen", "human cut-test", "human config"];
 
 // Rows of the class matrix. A human row carries an argument because the real calls have one, and so does stage stop,
 // which is allowed only with its reason.
@@ -853,6 +853,16 @@ describe("what counts as a run", IN_PARALLEL, () => {
       assertSilent(await runGate(bashCall(command, { cwd: makeRepo(), session: NEVER_IN_A_RUN })));
     });
   }
+
+  // A config change the session proposes: the value and the reason are free text, a template's braces included, so each
+  // comes as one single-quoted argument, which the shell takes literally.
+  const CONFIG_PROPOSE = `${PB} config propose git-config.json pr.title_template 'KEY-1 {summary}' --reason 'the team puts the ticket key first'`;
+  test("during a run the main context's pb config propose with its single-quoted value and reason is auto-allowed", async () => {
+    assertMainAutoAllowed(await runGate(bashCall(CONFIG_PROPOSE)));
+  });
+  test("pb config propose with a command after a quote ending the value early gets no decision", async () => {
+    assertSilent(await runGate(bashCall(`${PB} config propose git-config.json pr.title_template 'a' && rm -rf src '' --reason 'x'`)));
+  });
 
   // publish and pr refresh reach GitHub, and the rest need a run to act on, so with no run they keep their prompt.
   for (const args of ["publish", "pr refresh", "gate eval", "task end", "stage release", "git doctor"]) {

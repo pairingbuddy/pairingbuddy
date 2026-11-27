@@ -1280,6 +1280,16 @@ for (const [toolName, call] of FILE_TOOLS) {
   }
 }
 
+// The session never edits a protected config by hand or asks the human to: the deny names the verb that proposes the change.
+for (const config of ["test-config.json", "git-config.json"]) {
+  test(`an edit of ${config} during a run is told to propose it with pb config propose`, () =>
+    withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, editCall(repo.dir, join(repo.dir, ".pairingbuddy", config)), new RegExp(`pb config propose ${config.replace(".", "\\.")} <key> <value>`))));
+}
+
+// The pane says "between runs" when no stage is active, so the deny must not say a run is going on.
+test("between stages, the deny for a protected config says the run is open with no stage running", () =>
+  withRepo({}, (repo) => assertDeniedNamingWithoutWrite(repo, editCall(repo.dir, join(repo.dir, ".pairingbuddy", "git-config.json")), /the run is open between stages/)));
+
 for (const [label, path] of [
   ["user-level settings, which set a hook's environment too", (home) => join(home, ".claude", "settings.json")],
   ["another letter case of a file that does not exist yet", (home) => join(home, ".claude", "Settings.Local.JSON")],
