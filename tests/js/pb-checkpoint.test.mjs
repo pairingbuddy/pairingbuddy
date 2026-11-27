@@ -292,6 +292,43 @@ describe("only listed paths are staged", IN_PARALLEL, () => {
     assert.equal(existsSync(join(repo.dir, "b.txt")), false);
   });
 
+  test("a rename listed by its new name alone commits the old name's deletion too", () => {
+    const repo = makeRepo();
+    repo.write("b.renamed.txt", "b\n");
+    unlinkSync(join(repo.dir, "b.txt"));
+    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: ["b.renamed.txt"] }));
+
+    checkpoint(repo);
+
+    assert.deepEqual(git(repo.dir, "ls-tree", "--name-only", "HEAD").split("\n").sort(), ["a.txt", "b.renamed.txt", "fake.mjs"]);
+    assert.equal(git(repo.dir, "status", "--porcelain", "--", "b.txt", "b.renamed.txt"), "", "nothing of the rename is left behind");
+  });
+
+  test("a renamed file the step also edited still takes its old name's deletion along", () => {
+    const repo = makeRepo();
+    const body = Array.from({ length: 20 }, (_, i) => `line ${i}\n`).join("");
+    repo.write("long.txt", body);
+    git(repo.dir, "add", "long.txt");
+    git(repo.dir, "commit", "-q", "-m", "long");
+    repo.write("long.renamed.txt", `${body}one more line\n`);
+    unlinkSync(join(repo.dir, "long.txt"));
+    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: ["long.renamed.txt"] }));
+
+    checkpoint(repo);
+
+    assert.equal(git(repo.dir, "status", "--porcelain", "--", "long.txt", "long.renamed.txt"), "");
+  });
+
+  test("a deletion that is no rename of a listed file stays out, as someone's work in progress", () => {
+    const repo = changedRepo();
+    unlinkSync(join(repo.dir, "b.txt"));
+
+    checkpoint(repo);
+
+    assert.deepEqual(repo.committed(), ["a.txt"]);
+    assert.equal(git(repo.dir, "status", "--porcelain", "--", "b.txt"), "D b.txt");
+  });
+
   test("a listed path is a literal name, never a pathspec", () => {
     const repo = makeRepo();
     repo.write("*.txt", "star\n");
