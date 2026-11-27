@@ -126,7 +126,15 @@ export const untrackedFiles = (root) => statusEntries(root).filter(({ index }) =
 
 const stagedPaths = (root) => statusEntries(root).filter(({ index }) => index !== " " && index !== "?").map(({ path }) => path);
 
-const stage = (root, paths) => literalGit(root, "add", "--", ...paths);
+// A path whose deletion is already staged (git rm, or git rm --cached that keeps an ignored file on disk) is left as it is:
+// adding it again would track the file anew, or fail on a path that is ignored or gone.
+const stagedDeletions = (root, paths) => statusEntries(root, paths).filter(({ index }) => index === "D").map(({ path }) => path);
+
+function stage(root, paths) {
+  const deleted = stagedDeletions(root, paths);
+  const rest = paths.filter((path) => !deleted.includes(path));
+  if (rest.length > 0) literalGit(root, "add", "--", ...rest);
+}
 
 // The branch checked out at the run root, or null for a detached HEAD.
 export function branchOf(root) {

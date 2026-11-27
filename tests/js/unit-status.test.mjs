@@ -334,3 +334,63 @@ describe("unit-status-rebase-cli", () => {
     assert.deepEqual(JSON.parse(readFileSync(unitFile, "utf8")).commits, [newFirst, newSecond], "unit.json records the rebased commits");
   });
 });
+
+// A moved base, a unit branch with one commit of its own, and the new origin tip.
+function movedUnitRepo() {
+  const { repo, originTip: oldSha } = openUnitRepo();
+  const branch = JSON.parse(readFileSync(unitPath(repo), "utf8")).branch;
+  writeFileSync(join(repo.dir, "own.txt"), "own\n");
+  git(repo, "add", "own.txt");
+  git(repo, "commit", "-q", "-m", "own");
+  const newSha = pushFromSecondClone(repo, "newer.txt");
+  return { repo, oldSha, newSha, branch };
+}
+
+describe("pb-unit-rebase", () => {
+  test("a-conflict-aborts-and-leaves-the-branch-as-it-was", () => {
+    const { repo } = openUnitRepo();
+    writeFileSync(join(repo.dir, "same.txt"), "ours\n");
+    git(repo, "add", "same.txt");
+    git(repo, "commit", "-q", "-m", "ours");
+    const tip = git(repo, "rev-parse", "HEAD");
+    pushFromSecondClone(repo, "same.txt");
+
+    const result = pb(repo, "unit", "rebase");
+
+    assert.equal(result.code, 1, outputOf(result));
+    assert.match(outputOf(result), /conflict.*aborted/i);
+    assert.equal(git(repo, "rev-parse", "HEAD"), tip, "the branch is where it was");
+    assert.equal(git(repo, "status", "--porcelain"), "", "no rebase is left half done");
+  });
+  test("a-dirty-tree-is-refused-before-anything-moves", () => {
+    const { repo } = movedUnitRepo();
+    const tip = git(repo, "rev-parse", "HEAD");
+    writeFileSync(join(repo.dir, "own.txt"), "changed\n");
+
+    const result = pb(repo, "unit", "rebase");
+
+    assert.equal(result.code, 1);
+    assert.match(outputOf(result), /dirty.*own\.txt/);
+    assert.equal(git(repo, "rev-parse", "HEAD"), tip);
+  });
+  test("moved-base-refusal-points-at-pb-unit-rebase", () => {
+    const { repo } = movedUnitRepo();
+
+    const result = pb(repo, "unit", "status");
+
+    assert.equal(result.code, 1);
+    assert.match(outputOf(result), /pb unit rebase/, "the refusal names the pb verb that rebases the unit");
+  });
+  test("rebases-the-unit-onto-the-moved-base-and-reconciles", () => {
+    const { repo, newSha, branch } = movedUnitRepo();
+
+    const result = pb(repo, "unit", "rebase");
+
+    assert.equal(result.code, 0, `pb unit rebase exits 0: ${outputOf(result)}`);
+    assert.equal(git(repo, "rev-parse", "--abbrev-ref", "HEAD"), branch, "the unit branch stays checked out");
+    assert.equal(git(repo, "rev-parse", "HEAD~1"), newSha, "the unit's own commit sits on the new base tip");
+    assert.equal(JSON.parse(readFileSync(unitPath(repo), "utf8")).baseSha, newSha, "unit.json has the new baseSha");
+    assert.equal(JSON.parse(result.stdout).status, "reconciled");
+  });
+});
+

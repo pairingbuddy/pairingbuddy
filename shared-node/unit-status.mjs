@@ -1,6 +1,7 @@
 // Pure D18 base-status rule behind `pb unit status`. No I/O: the caller fetches and passes everything in.
 function rebaseRecipe({ remote, base, from, branch }) {
   return [
+    "Run pb unit rebase: it rebases the unit's branch onto the new base and reconciles. Or, by hand:",
     `git rebase --onto ${remote}/${base} ${from} ${branch}`,
     "If the branch was already pushed, the force push is yours to do.",
     "Then run pb unit status again.",

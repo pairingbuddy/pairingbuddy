@@ -10,7 +10,7 @@ const CLI_PATH = fileURLToPath(new URL("../cli/pb.mjs", import.meta.url));
 
 export const VERB_CLASSES = {
   runner: ["test", "checkpoint", "stage finish", "stage stop", "tdd state", "refactor state", "spike state", "spike write", "snapshot", "artifact check", "pr lint", "rollback"],
-  main: ["unit open", "unit status", "run open", "stage report", "stage fail", "stage release", "gate eval", "task end", "spike setup", "plan next", "question settle", "question add", "guidance record", "publish", "pr refresh", "status", "git doctor"],
+  main: ["unit open", "unit status", "unit rebase", "run open", "stage report", "stage fail", "stage release", "gate eval", "task end", "spike setup", "plan next", "question settle", "question add", "guidance record", "publish", "pr refresh", "status", "git doctor"],
   human: ["human approve", "human abandon", "human approve-config", "human accept", "human adopt", "human answer", "human reopen", "human cut-test"],
 };
 

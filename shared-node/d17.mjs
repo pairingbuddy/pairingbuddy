@@ -361,10 +361,12 @@ function classifySymbolicRef(tail) {
   return first === "HEAD" && (second !== undefined || hasShortOption(tail, "d")) ? [{ kind: "branch-change" }] : [];
 }
 
-// `rebase <upstream> <branch>` checks <branch> out first; --root does the same with one operand.
+// `rebase <upstream> <branch>` checks <branch> out first; --root does the same with one operand. When <branch> is the
+// branch already checked out, nothing switches: decide lets it through (keeps names it).
 function classifyRebase(tail) {
   const given = operands(tail, ["--onto", "-x", "--exec", "-s", "--strategy", "-X", "--strategy-option", "-C"]);
-  return given.length >= 2 || (given.length >= 1 && hasLongOption(tail, "--root")) ? [{ kind: "branch-change" }] : [];
+  if (given.length >= 2) return [{ kind: "branch-change", keeps: given[1] }];
+  return given.length >= 1 && hasLongOption(tail, "--root") ? [{ kind: "branch-change", keeps: given[0] }] : [];
 }
 
 // `stash branch` creates and switches to a branch; `stash drop` and `stash clear` lose work the other worktrees share.
@@ -551,6 +553,7 @@ function isProtectedPush({ broad, targets }, protectedList, branch, { unknownTar
 // picks the push target.
 export function decide({ runState, context, invocation, protectedBranches: protectedList = ["main", "master"], currentBranch: branch = null, unknownTarget = false, configuredPush = false }) {
   for (const entry of invocation) {
+    if (entry.kind === "branch-change" && entry.keeps !== undefined && branch !== null && entry.keeps === branch) continue;
     const kind = entry.kind === "push" && isProtectedPush(entry, protectedList, branch, { unknownTarget, configuredPush }) ? "push-protected" : entry.kind;
     if (D17_TABLE[kind][runState][context] === D) return { kind, reason: REASONS[kind](runState) };
   }
@@ -618,6 +621,14 @@ function withWholeTreePaths(call, cwd) {
   return { ...call, rest: call.rest.map((word) => (looksLikePath(word) && resolve(found.dir, expandHome(word)) === found.repo.top ? "." : word)) };
 }
 
+// A rebase that names a branch to keep needs the branch checked out, read from the repo's files; nothing else does.
+function keptBranchFacts(call, cwd, invocation) {
+  if (!invocation.some(({ keeps }) => keeps !== undefined)) return {};
+  const found = callRepo(call, cwd);
+  if (found === null || found.repo === null || !refsAreFiles(found.repo.gitDir)) return {};
+  return { currentBranch: currentBranch(found.repo.gitDir) };
+}
+
 const needsFacts = (runState, context) => runState === "none" && context === "subagent";
 
 // The reason to deny this Bash command, or null. runState is "none", "run" or "unit".
@@ -628,7 +639,7 @@ export function d17Denial({ command, cwd, runState, isSubagent }) {
     const call = withWholeTreePaths(found, cwd);
     const invocation = classify(call, { strict });
     if (invocation.length === 0) continue;
-    const facts = needsFacts(runState, context) && invocation.some(({ kind }) => kind === "push") ? branchFacts(call, cwd) : {};
+    const facts = needsFacts(runState, context) && invocation.some(({ kind }) => kind === "push") ? branchFacts(call, cwd) : keptBranchFacts(call, cwd, invocation);
     const verdict = decide({ runState, context, invocation, ...facts });
     if (verdict !== null) return verdict.reason;
   }

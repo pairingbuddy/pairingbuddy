@@ -319,6 +319,21 @@ describe("only listed paths are staged", IN_PARALLEL, () => {
     assert.equal(git(repo.dir, "status", "--porcelain", "--", "long.txt", "long.renamed.txt"), "");
   });
 
+  test("a file the step stopped tracking, kept on disk and ignored, is committed as a removal", () => {
+    const repo = makeRepo();
+    repo.write(".gitignore", "b.txt\n");
+    git(repo.dir, "add", ".gitignore");
+    git(repo.dir, "commit", "-q", "-m", "ignore b");
+    git(repo.dir, "rm", "-q", "--cached", "b.txt");
+    writeArtifact(repo, CONFIG_KEY, configArtifact({ files_changed: ["b.txt"] }));
+
+    checkpoint(repo);
+
+    assert.equal(git(repo.dir, "ls-tree", "--name-only", "HEAD", "--", "b.txt"), "", "b.txt is no longer tracked");
+    assert.equal(existsSync(join(repo.dir, "b.txt")), true, "the file stays on disk");
+    assert.equal(git(repo.dir, "status", "--porcelain", "--", "b.txt"), "");
+  });
+
   test("a deletion that is no rename of a listed file stays out, as someone's work in progress", () => {
     const repo = changedRepo();
     unlinkSync(join(repo.dir, "b.txt"));
