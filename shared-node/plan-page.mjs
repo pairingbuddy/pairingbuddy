@@ -181,6 +181,9 @@ function tracerSection(tracer, intro, body, { holdsFocus, done, total }) {
 // plan: parsePlan's result; states: each unit's state, by position (unitStates); open: the open unit's record, resolved to
 // its plan unit; building: the title of the task the live run builds; publishing: a live publish run writes the open unit's
 // pull request; path: where the plan is, named in the header; subjects: each open-unit commit's first line, by full hash.
+// A plan can be reordered to the order it runs while its tracers keep their ids, so the page says how to read the order.
+const ORDER_NOTE = `<p class="order-note">Tracer bullets are listed in the order they run; their numbers are the ids they got when the plan was written.</p>`;
+
 export function renderPlanPage({ plan, states = [], open, building, publishing = false, path, subjects = {} } = {}) {
   const units = plan?.units ?? [];
   const at = planFocus(units, building);
@@ -206,7 +209,7 @@ ${STYLE}
 <header>
 <h1>PLAN</h1>
 <p>${escape(path ?? "")}${path ? STATE_SEPARATOR : ""}${done} of ${all.length} tasks done${focusTask ? `${STATE_SEPARATOR}<a href="#now">where the plan is</a>` : ""}</p>
-${CONTROLS}
+${(plan?.tracers ?? []).length > 0 ? `${ORDER_NOTE}\n` : ""}${CONTROLS}
 </header>
 ${problemList}${groups.join("\n")}
 ${CONTROLS_SCRIPT}

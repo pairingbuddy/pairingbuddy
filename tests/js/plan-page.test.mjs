@@ -216,3 +216,9 @@ test("a question recorded with its task's whole plan text names the task by titl
   assert.ok(html.includes("Refund? (Task 2: Take payment)"));
   assert.ok(!html.includes("Money moves."));
 });
+
+test("the-header-says-tracers-are-listed-in-run-order-with-the-ids-they-were-written-with", () => {
+  const html = renderPlanPage({ plan: parsePlan(bigPlan(2, 0)), path: "docs/plans/big.md" });
+  const header = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
+  assert.match(header, /<p class="order-note">Tracer bullets are listed in the order they run; their numbers are the ids they got when the plan was written\.<\/p>/);
+});
