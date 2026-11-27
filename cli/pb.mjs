@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // pb: deterministic workflow CLI. Verbs live in the VERBS table; later tasks add more.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
@@ -2329,6 +2329,30 @@ async function unitStatus() {
   return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack, ...rebaseSuite };
 }
 
+// Rebases the open unit's branch onto its moved base, then reconciles as pb unit status does. Refused while a run is open,
+// on a dirty tree, or off the unit's branch; a rebase that stops on a conflict is aborted, so the branch is as it was.
+// Pushing the rebased branch, when it was pushed before, stays the human's.
+async function unitRebase() {
+  const root = toplevel();
+  const unit = readUnitOrRefuse(root);
+  const open = openRunOf(root);
+  if (open !== null) throw new Refusal(`a ${open.kind} run is open, so the unit's branch stays where it is. Nothing was touched: finish the run first`);
+  const branch = currentBranch(root);
+  if (branch !== unit.branch) throw new Refusal(`HEAD is on ${branch ?? "a detached HEAD"}, not the unit's branch ${unit.branch}. Nothing was touched`);
+  const dirty = remainingFiles(root);
+  if (dirty.length > 0) throw new Refusal(`the tree is dirty, so nothing was rebased. Commit or remove these first: ${dirty.join(", ")}`);
+  const gitConfig = loadGitConfigOrRefuse(root);
+  const result = baseStatusFor(root, unit, gitConfig);
+  if (result.status === "moved" || result.status === "merged") {
+    const rebase = spawnSync("git", ["rebase", "--onto", `${gitConfig.remote}/${result.base}`, result.from, unit.branch], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    if (rebase.status !== 0) {
+      spawnSync("git", ["rebase", "--abort"], { cwd: root, stdio: "ignore" });
+      throw new Refusal(`the rebase of ${unit.branch} onto ${gitConfig.remote}/${result.base} stopped on a conflict, so it was aborted and the branch is as it was. A human resolves it: ${(rebase.stderr || rebase.stdout).trim().split("\n").at(-1)}`);
+    }
+  }
+  return unitStatus();
+}
+
 // The patch-id of a commit's change. run reads the diff with the shared output limit, past the default 1 MB.
 function patchIdOf(root, sha) {
   const context = "nothing was written";
@@ -2410,7 +2434,7 @@ function statusInputsOf(root, unit, gitConfig) {
 // A moved or merged result is a refusal carrying the recipe the human types; any other result passes through.
 function refuseRebaseNeeded(unit, result) {
   const refuse = (lead) => {
-    throw new Refusal(`${lead}. ${NOTHING_CHANGED_BUT_FETCH}. The human types:\n${result.recipe}`);
+    throw new Refusal(`${lead}. ${NOTHING_CHANGED_BUT_FETCH}. Next:\n${result.recipe}`);
   };
   if (result.status === "moved") refuse(`the base ${result.base} moved from ${result.from} to ${result.to}`);
   if (result.status === "merged") refuse(`${unit.stackedOn.unit}'s PR merged, so the unit moves onto ${result.base} at ${result.to}`);
@@ -2909,7 +2933,7 @@ function keptTypeOf(root, attempt) {
 export const VERBS = {
   rollback,
   snapshot,
-  "unit open": unitOpen, "unit status": unitStatus, "git doctor": gitDoctor, "pr lint": prLint,
+  "unit open": unitOpen, "unit status": unitStatus, "unit rebase": unitRebase, "git doctor": gitDoctor, "pr lint": prLint,
   "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human cut-test": humanCutTest, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, test: runTests, checkpoint,
   "plan next": planNext, "question settle": questionSettle, "question add": questionAdd, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };

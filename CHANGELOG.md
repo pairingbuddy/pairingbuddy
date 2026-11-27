@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `pb unit rebase` rebases an open unit onto its moved base. Between tasks main moved, `pb unit status` gave the session a `git rebase --onto` recipe, and the gate denied it as a branch switch, so the human had to type it. The new verb refuses while a run is open, on a dirty tree or off the unit's branch, rebases the branch onto the new base, aborts a conflicted rebase and leaves the branch as it was, then reconciles as `pb unit status` does. The moved-base refusal now names it. The gate also lets a `git rebase` through whose branch operand is the branch already checked out, since nothing switches; naming any other branch is still denied.
+
+- A step that stops tracking a file (`git rm --cached`, the file kept on disk and ignored) now commits. The checkpoint ran `git add` on every listed path, which git refuses for an ignored file and which would have tracked the file again otherwise, so the config step stopped. A listed path whose deletion is already staged is now left as staged.
+
 - A linked worktree kept inside the main checkout (`<repo>/worktrees/<name>`) is a checkout of its own. The walk that finds a call's run went up past the worktree's top into the main checkout's `.pairingbuddy/`, so a session in the worktree was gated by the main checkout's run (a `git push` there was denied while `pb status` said no run). The walk (`shared-node/run-root.mjs` and the hooks' fallbacks) now stops at a linked worktree's top (a `.git` file naming `.git/worktrees/<name>`); a repo or submodule nested under the run is still the run's. Session pointers move to `<os.tmpdir()>/pairingbuddy-sessions-v2/`, so a session an older build bound to the wrong run is not held by it.
 - `pb unit open` adopts the branch already checked out when it is the branch named and has no commits of its own beyond the base (a worktree made for the work), instead of refusing it and leaving the session to open a second branch beside it. A checked-out branch with commits of its own is still refused.
 

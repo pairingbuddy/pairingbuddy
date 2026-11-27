@@ -510,7 +510,7 @@ function isMainCommand({ tool_name: tool, tool_input: toolInput, ...payload }, v
 const QUOTED_QUESTION = /^question add --text '[^'\n]+'$/;
 
 // Before a run exists the main context starts or inspects one with these, so they need no prompt either.
-const NO_RUN_VERBS = ["status", "unit open", "unit status", "run open", "plan next", "question settle", "question add", "guidance record"];
+const NO_RUN_VERBS = ["status", "unit open", "unit status", "unit rebase", "run open", "plan next", "question settle", "question add", "guidance record"];
 
 // With no run open, the reason to allow the main context's exact pb command, or null.
 export const noRunAllowReason = (payload) => (isMainCommand(payload, NO_RUN_VERBS) ? NO_RUN_AUTO_ALLOW_REASON : null);
