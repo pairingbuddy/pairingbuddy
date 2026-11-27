@@ -393,6 +393,20 @@ describe("publish-never-merges-or-forces", () => {
     assert.deepEqual(tracedPushes(traceFile), [["push", "--", "origin", `${head}:refs/heads/${branch}`]], "one plain push of the approved SHA, no force flag");
   });
 
+  test("rebased-branch-already-pushed-pushes-with-lease", () => {
+    const traceFile = newTraceFile();
+    const unit = publishableUnit();
+    const head = git(unit.repo, "rev-parse", "HEAD");
+    const beforeRebase = git(unit.repo, "commit-tree", `${head}^{tree}`, "-p", `${head}~1`, "-m", "the same change before a rebase");
+    git(unit.repo, "push", "-q", "origin", `${beforeRebase}:refs/heads/${unit.branch}`);
+
+    const { result } = publishUnit(unit, { GIT_TRACE: traceFile });
+
+    assert.equal(result.code, 0, `pb publish replaces the branch's pre-rebase copy: ${result.stderr}`);
+    assert.equal(remoteRef(unit.repo, `refs/heads/${unit.branch}`), head, "the remote unit branch is at the approved HEAD");
+    assert.deepEqual(tracedPushes(traceFile), [["push", `--force-with-lease=refs/heads/${unit.branch}:${beforeRebase}`, "--", "origin", `${head}:refs/heads/${unit.branch}`]], "one push, leased on the remote tip it read, so nothing else on the remote is overwritten");
+  });
+
   test("diverged-remote-branch-refuses-without-forcing", () => {
     const unit = publishableUnit();
     const remoteSha = divergeRemote(unit.repo, unit.branch);

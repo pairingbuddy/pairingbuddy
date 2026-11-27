@@ -1642,8 +1642,9 @@ function stageFail(args) {
   assertNoArgs(args, "stage fail");
   const { root, path } = runLedgerPath();
   let failed;
-  updateLedger(path, (ledger) => {
-    assertNotHumanStop(ledger, root);
+  updateLedger(path, (current) => {
+    assertNotHumanStop(current, root);
+    const ledger = current.stop === null ? current : withHumanCommits(root, current);
     const { name, attempt } = ledger.stage;
     if (!isStageActive(ledger) && ledger.stop !== null) {
       failed = { stage: name, attempt, nextAttempt: null, clearedStop: ledger.stop.reason };
@@ -1654,6 +1655,18 @@ function stageFail(args) {
     return result.ledger;
   });
   return { ok: true, ...failed };
+}
+
+// A human may commit while the run is stopped, say to clear what stopped it. When the stop is cleared, those commits
+// join the run's commits, marked as the human's, so the unit records them at task end. They are the commits on HEAD past
+// the run's last commit, else past where the unit stood; with neither known nothing is adopted.
+function withHumanCommits(root, ledger) {
+  const start = ledger.commits.at(-1) ?? (unitIsOpen(root) ? (readUnit(root).tasks.at(-1)?.headSha ?? readUnit(root).baseSha) : null);
+  if (!start) return ledger;
+  const since = tryGit(root, ["rev-list", "--reverse", `${start}..HEAD`]);
+  const adopted = (since ?? "").split("\n").filter((sha) => sha && !ledger.commits.includes(sha));
+  if (adopted.length === 0) return ledger;
+  return { ...ledger, commits: [...ledger.commits, ...adopted], humanCommits: [...(ledger.humanCommits ?? []), ...adopted] };
 }
 
 // A start the gate marked but no run took up: the human declined the Workflow prompt, or the call failed before it began.
@@ -1900,17 +1913,18 @@ function readUnitForRecord(root, ledger) {
   const headSha = headOf(root);
   if (headSha === null) throw new Refusal("there is no commit yet, so the task cannot end. Nothing was touched");
   const lessons = taskLessons(root);
-  return { path, unit, record: newTaskRecord({ ledger, headSha, lessons }), commits: ledger.commits };
+  return { path, unit, record: newTaskRecord({ ledger, headSha, lessons }), commits: ledger.commits, humanCommits: ledger.humanCommits ?? [] };
 }
 
 // A retry after a crash finds its own record last, and appends nothing more.
 function appendTaskRecord(opened) {
   if (opened === null) return;
-  const { path, unit, record, commits } = opened;
+  const { path, unit, record, commits, humanCommits } = opened;
   const last = unit.tasks.at(-1);
   if (last?.title === record.title && last?.headSha === record.headSha) return;
   unit.tasks.push(record);
   unit.commits = [...new Set([...unit.commits, ...commits])];
+  if (humanCommits.length > 0) unit.humanCommits = [...new Set([...(unit.humanCommits ?? []), ...humanCommits])];
   writeJsonAtomic(path, unit);
 }
 
@@ -2027,12 +2041,27 @@ function branchProblemOf(root, branch) {
 function publishingFacts(root, unit, gitConfig, head) {
   const branchProblem = branchProblemOf(root, unit.branch);
   const usable = branchProblem === null;
+  const remoteSha = usable ? (tryGit(root, ["ls-remote", "--", gitConfig.remote, `refs/heads/${unit.branch}`])?.split(/\s/)[0] || null) : null;
   return {
     safetyNets: safetyNetStages(loadStages(PLUGIN_ROOT)), ...unitPlan(root, unit), head, dirty: remainingFiles(root), branchProblem,
     branchIsProtected: usable && isProtected(gitConfig, root, unit.branch), currentBranch: branchOf(root),
     branchTip: usable ? tryGit(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${unit.branch}`]) : null,
-    remoteSha: usable ? (tryGit(root, ["ls-remote", "--", gitConfig.remote, `refs/heads/${unit.branch}`])?.split(/\s/)[0] || null) : null,
+    remoteSha, remoteRebased: remoteSha !== null && remoteIsRebasedCopy(root, unit, remoteSha, head),
   };
+}
+
+// The remote branch holds an earlier copy of the unit from before a rebase: it is not behind HEAD, yet every commit only
+// it has makes a change some unit commit makes. Then the push may replace it, leased on that tip. Work only the remote
+// has, or a tip whose objects were never fetched, keeps the plain push, which git rejects.
+function remoteIsRebasedCopy(root, unit, remoteSha, head) {
+  if (tryGit(root, ["merge-base", "--is-ancestor", remoteSha, head]) !== null) return false;
+  const onlyRemote = tryGit(root, ["rev-list", `${head}..${remoteSha}`]);
+  if (onlyRemote === null) return false;
+  const ours = new Set(unitCommits(root, unit).map((sha) => patchIdOf(root, sha)));
+  return onlyRemote.split("\n").filter(Boolean).every((sha) => {
+    const id = patchIdOf(root, sha);
+    return id !== "" && ours.has(id);
+  });
 }
 
 // Pushes the approved SHA, opens (or adopts) the PR, writes the plan line, deletes the unit's refs and closes the unit.
@@ -2104,7 +2133,7 @@ function executePublish(steps, ctx) {
   let pendingComment;
   for (const step of steps) {
     if (step.do === "push") {
-      runGit(root, pushArgv(remote, step.sha, step.branch), { context: "nothing was pushed or opened; the unit is intact" });
+      runGit(root, pushArgv(remote, step.sha, step.branch, step.leaseFrom), { context: "nothing was pushed or opened; the unit is intact" });
     } else if (step.do === "set-upstream") {
       runGit(root, upstreamArgv(remote, step.branch), { context: `${step.branch} is on ${remote} but its upstream is not set; run pb publish again, the push will not repeat` });
     } else if (step.do === "open-pr") {
@@ -2314,11 +2343,14 @@ async function unitStatus() {
   const root = toplevel();
   const unit = readUnitOrRefuse(root);
   const gitConfig = loadGitConfigOrRefuse(root);
-  const result = baseStatusFor(root, unit, gitConfig);
+  const result = rebasedWhenItCan(root, unit, gitConfig, baseStatusFor(root, unit, gitConfig));
   refuseRebaseNeeded(unit, result);
-  if (result.status === "current") return { ok: true, status: "current", base: unit.base, baseSha: unit.baseSha };
+  if (result.status === "current") {
+    const adopted = adoptHumanCommits(root, unit);
+    return { ok: true, status: "current", base: unit.base, baseSha: unit.baseSha, ...(adopted.length > 0 && { adopted }) };
+  }
   const hasTasks = unit.tasks.length > 0;
-  const unitAfterRemap = hasTasks ? remappedUnit(root, unit, result) : unit;
+  const { unit: unitAfterRemap, adopted } = hasTasks ? remappedUnit(root, unit, result) : { unit, adopted: [] };
   const suite = hasTasks ? await rebaseSuiteOf(root, unit) : null;
   const rebaseSuite = suite === null ? {} : { rebaseSuite: suite.rebaseSuite };
   writeJsonAtomic(unitPathOf(root), { ...reconciledUnit(unitAfterRemap, result), ...rebaseSuite });
@@ -2326,7 +2358,16 @@ async function unitStatus() {
   if (suite !== null && !suite.rebaseSuite.passed) {
     throw new Refusal(`the full suite failed at HEAD ${suite.rebaseSuite.head.slice(0, 7)} after the rebase: exit codes ${suite.exitCodes.join(", ")}. pb publish refuses until a full suite passes at HEAD; a new task in the unit can fix it`);
   }
-  return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack, ...rebaseSuite };
+  return { ok: true, status: "reconciled", base: result.base, baseSha: result.baseSha, unstack: result.unstack, ...rebaseSuite, ...(adopted.length > 0 && { adopted }) };
+}
+
+// With no run open, the commits past the base the unit has not recorded were made by a human between runs: they join the
+// unit's commits, in order, and are marked in humanCommits. A run's own commits join at task end, so a run open adopts nothing.
+function adoptHumanCommits(root, unit) {
+  if (openRunOf(root) !== null) return [];
+  const adopted = runGit(root, ["rev-list", "--reverse", `${unit.baseSha}..HEAD`], { context: "nothing was written" }).split("\n").filter((sha) => sha && !unit.commits.includes(sha));
+  if (adopted.length > 0) writeJsonAtomic(unitPathOf(root), { ...unit, commits: [...unit.commits, ...adopted], humanCommits: [...(unit.humanCommits ?? []), ...adopted] });
+  return adopted;
 }
 
 // Rebases the open unit's branch onto its moved base, then reconciles as pb unit status does. Refused while a run is open,
@@ -2343,14 +2384,29 @@ async function unitRebase() {
   if (dirty.length > 0) throw new Refusal(`the tree is dirty, so nothing was rebased. Commit or remove these first: ${dirty.join(", ")}`);
   const gitConfig = loadGitConfigOrRefuse(root);
   const result = baseStatusFor(root, unit, gitConfig);
-  if (result.status === "moved" || result.status === "merged") {
-    const rebase = spawnSync("git", ["rebase", "--onto", `${gitConfig.remote}/${result.base}`, result.from, unit.branch], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    if (rebase.status !== 0) {
-      spawnSync("git", ["rebase", "--abort"], { cwd: root, stdio: "ignore" });
-      throw new Refusal(`the rebase of ${unit.branch} onto ${gitConfig.remote}/${result.base} stopped on a conflict, so it was aborted and the branch is as it was. A human resolves it: ${(rebase.stderr || rebase.stdout).trim().split("\n").at(-1)}`);
-    }
-  }
+  if (result.status === "moved" || result.status === "merged") rebaseOntoBase(root, unit, gitConfig, result);
   return unitStatus();
+}
+
+// A moved or merged base is rebased onto at once when nothing stands in the way: no run open, HEAD on the unit's branch
+// and a clean tree. Teams merge to the base all the time, so this is routine, not a human step. Otherwise the result
+// passes through and pb unit status refuses with the recipe.
+function rebasedWhenItCan(root, unit, gitConfig, result) {
+  if (result.status !== "moved" && result.status !== "merged") return result;
+  if (openRunOf(root) !== null || currentBranch(root) !== unit.branch || remainingFiles(root).length > 0) return result;
+  rebaseOntoBase(root, unit, gitConfig, result);
+  return baseStatusFor(root, unit, gitConfig);
+}
+
+// git rebase --onto the base's remote tip. A rebase that stops on a conflict is aborted, so the branch is as it was, and
+// the refusal names the conflicting files.
+function rebaseOntoBase(root, unit, gitConfig, result) {
+  const rebase = spawnSync("git", ["rebase", "--onto", `${gitConfig.remote}/${result.base}`, result.from, unit.branch], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  if (rebase.status === 0) return;
+  const conflicts = (tryGit(root, ["diff", "--name-only", "--diff-filter=U"]) ?? "").split("\n").filter(Boolean);
+  spawnSync("git", ["rebase", "--abort"], { cwd: root, stdio: "ignore" });
+  const where = conflicts.length > 0 ? `these files conflict: ${conflicts.join(", ")}` : (rebase.stderr || rebase.stdout).trim().split("\n").at(-1);
+  throw new Refusal(`the rebase of ${unit.branch} onto ${gitConfig.remote}/${result.base} stopped on a conflict, so it was aborted and the branch is as it was. A human resolves it, ${where}`);
 }
 
 // The patch-id of a commit's change. run reads the diff with the shared output limit, past the default 1 MB.
@@ -2371,16 +2427,19 @@ function refusingAs(rule) {
   }
 }
 
-// The unit's commits and task head shas moved onto the rebased range; a mapping that cannot be made is a refusal.
+// The unit's commits and task head shas moved onto the rebased range; a mapping that cannot be made is a refusal. A range
+// commit no recorded one matched was made by a human between runs: it is adopted into commits and marked in humanCommits.
 function remappedUnit(root, unit, result) {
   const gitLines = (args) => runGit(root, args, { context: "nothing was written" }).split("\n").filter(Boolean);
   const range = `${result.baseSha}..HEAD`;
   const rangeCommits = gitLines(["rev-list", "--reverse", range]).map((sha) => ({ sha, patchId: patchIdOf(root, sha) }));
   const merges = gitLines(["rev-list", "--merges", range]);
   const recorded = unit.commits.map((sha) => ({ sha, patchId: patchIdOf(root, sha) }));
-  const mapping = refusingAs(() => remapCommits({ recorded, range: rangeCommits, merges }));
+  const { mapping, adopted } = refusingAs(() => remapCommits({ recorded, range: rangeCommits, merges }));
   const remap = (sha) => mapping[sha] ?? (sha === unit.baseSha ? result.baseSha : sha);
-  return { ...unit, commits: unit.commits.map(remap), tasks: unit.tasks.map((task) => ({ ...task, headSha: remap(task.headSha) })) };
+  const humanCommits = [...(unit.humanCommits ?? []).map(remap), ...adopted];
+  const remapped = { ...unit, commits: [...unit.commits.map(remap), ...adopted], tasks: unit.tasks.map((task) => ({ ...task, headSha: remap(task.headSha) })) };
+  return { unit: humanCommits.length === 0 ? remapped : { ...remapped, humanCommits }, adopted };
 }
 
 // The full suite at the rebased HEAD, recorded as passed and the head it ran at.

@@ -16,7 +16,7 @@ describe("remap-commits-rule", () => {
       { sha: "new2", patchId: "p2" },
     ];
 
-    const mapping = remapCommits({ recorded, range, merges: [] });
+    const { mapping } = remapCommits({ recorded, range, merges: [] });
 
     assert.deepEqual(mapping, { old1: "new1", old2: "new2" }, "each recorded sha maps to the range sha with the same patch-id");
   });
@@ -27,13 +27,13 @@ describe("remap-commits-rule", () => {
       { sha: "keep2", patchId: null },
     ];
     const range = [
-      { sha: "keep2", patchId: "changed" },
       { sha: "keep1", patchId: "p9" },
+      { sha: "keep2", patchId: "changed" },
     ];
 
-    const mapping = remapCommits({ recorded, range, merges: [] });
+    const { mapping } = remapCommits({ recorded, range, merges: [] });
 
-    assert.deepEqual(mapping, { keep1: "keep1", keep2: "keep2" }, "a recorded sha present in the range maps to itself, whatever its patch-id or position");
+    assert.deepEqual(mapping, { keep1: "keep1", keep2: "keep2" }, "a recorded sha present in the range maps to itself, whatever its patch-id");
   });
 
   test("remap-duplicate-patch-id-uses-first-unused", () => {
@@ -46,7 +46,7 @@ describe("remap-commits-rule", () => {
       { sha: "new2", patchId: "same" },
     ];
 
-    const mapping = remapCommits({ recorded, range, merges: [] });
+    const { mapping } = remapCommits({ recorded, range, merges: [] });
 
     assert.deepEqual(mapping, { old1: "new1", old2: "new2" }, "two recorded commits sharing a patch-id map to two distinct range commits, each used once");
   });
@@ -61,7 +61,7 @@ describe("remap-commits-rule", () => {
       { sha: "Z", patchId: "p1" },
     ];
 
-    const mapping = remapCommits({ recorded, range, merges: [] });
+    const { mapping } = remapCommits({ recorded, range, merges: [] });
 
     assert.deepEqual(mapping, { X: "Z", Y: "Y" }, "the recorded commit kept at its sha claims that range commit, so an earlier recorded commit sharing its patch-id maps to the other one and no range commit is used twice");
   });
@@ -90,17 +90,33 @@ describe("remap-commits-rule", () => {
     assert.throws(sut, { message: /changedSha7/ }, "the refusal names the recorded commit that no range commit matches");
   });
 
-  test("remap-refuses-unrecorded-range-commit", () => {
+  test("remap-adopts-unrecorded-range-commit", () => {
     const recorded = [{ sha: "old1", patchId: "p1" }];
     const range = [
       { sha: "new1", patchId: "p1" },
       { sha: "extraSha5", patchId: "p5" },
     ];
 
+    const { mapping, adopted } = remapCommits({ recorded, range, merges: [] });
+
+    assert.deepEqual(mapping, { old1: "new1" }, "the recorded commit maps by patch-id as before");
+    assert.deepEqual(adopted, ["extraSha5"], "a range commit no recorded commit matched is adopted, not refused: a human made it between runs");
+  });
+
+  test("remap-refuses-reordered-recorded-commits", () => {
+    const recorded = [
+      { sha: "old1", patchId: "p1" },
+      { sha: "old2", patchId: "p2" },
+    ];
+    const range = [
+      { sha: "new2", patchId: "p2" },
+      { sha: "new1", patchId: "p1" },
+    ];
+
     const sut = () => remapCommits({ recorded, range, merges: [] });
 
-    assert.throws(sut, UnitStatusRefused, "a range commit no recorded commit matched refuses with UnitStatusRefused");
-    assert.throws(sut, { message: /extraSha5[\s\S]*not in the unit record/i }, "the refusal names the leftover range commit as not in the unit record");
+    assert.throws(sut, UnitStatusRefused, "recorded commits found out of their order mean the recorded history was rewritten, so it refuses");
+    assert.throws(sut, { message: /order/i }, "the refusal says the recorded commits are out of order");
   });
 
   test("remap-null-patch-id-never-matches", () => {

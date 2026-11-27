@@ -428,10 +428,12 @@ function doubtsSection({ task }) {
 
 const SHORT_SHA = 7;
 
-const commitItem = (commit) => `<li>${escape(String(commit?.sha ?? "").slice(0, SHORT_SHA))} ${escape(commit?.subject)}</li>`;
+// A commit a human made between runs, which the run adopted, says so.
+const commitItem = (human) => (commit) => `<li>${escape(String(commit?.sha ?? "").slice(0, SHORT_SHA))} ${escape(commit?.subject)}${human.has(commit?.sha) ? " (made by a human, adopted between runs)" : ""}</li>`;
 
-function commitsSection({ commits }) {
-  const body = Array.isArray(commits) ? `<ul>\n${commits.map(commitItem).join("\n")}\n</ul>` : `<p>${UNKNOWN}</p>`;
+function commitsSection({ commits, humanCommits = [] }) {
+  const human = new Set(humanCommits);
+  const body = Array.isArray(commits) ? `<ul>\n${commits.map(commitItem(human)).join("\n")}\n</ul>` : `<p>${UNKNOWN}</p>`;
   return section("COMMITS", body);
 }
 
@@ -822,7 +824,7 @@ ${scenariosSection({ scenarios: task.find((run) => Array.isArray(run.scenarios))
 ${testsSection({ ledger: taskLedgerOf(task), spawns, tests, calls: task.flatMap((run) => run.calls ?? []) })}
 ${builtSection({ changed })}
 ${reviewSection({ task: runs ? task : [{ ...task[0], endedAt: undefined }], spawns })}
-${commitsSection({ commits })}
+${commitsSection({ commits, humanCommits: task.flatMap((run) => run.ledger?.humanCommits ?? []) })}
 </details>
 </body></html>`;
 }
