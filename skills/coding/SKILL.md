@@ -337,7 +337,7 @@ Do this before the first `pb unit open` when `.pairingbuddy/git-config.json` is 
 4. With no convention found and none from the human, write no `branch_convention`: branches stay `{type}/{slug}`
 5. Write the file, and say in one line of your report what you recorded and where you found it
 
-When `branch_convention` is set, name each unit's branch by it yourself and pass the name with `pb unit open --branch <name>`; `pb unit open` refuses a name that fails its `pattern` and says what the convention expects. When the convention needs a value for the unit that you cannot derive from the task, the plan or the repo, ask the human for it before `pb unit open`, once per unit.
+When `branch_convention` is set, name each unit's branch by it yourself and pass the name with `pb unit open --branch <name>`; `pb unit open` refuses a name that fails its `pattern` and says what the convention expects. When the checkout is already on a branch made for this work (a worktree cut from the base, with no commits of its own), pass that branch's name: `pb unit open` adopts it rather than making a second branch. When the convention needs a value for the unit that you cannot derive from the task, the plan or the repo, ask the human for it before `pb unit open`, once per unit.
 
 ### State File Management
 

@@ -10,6 +10,15 @@ import { fileURLToPath } from "node:url";
 
 const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)));
 
+// A linked worktree's top holds a .git file naming <repo>/.git/worktrees/<name>: the walk stops there (see run-root.mjs).
+function isLinkedWorktreeTop(dir) {
+  try {
+    return /^gitdir: .*[\\/]worktrees[\\/][^\\/]+\s*$/.test(readFileSync(join(dir, ".git"), "utf8"));
+  } catch {
+    return false;
+  }
+}
+
 function readPayload() {
   try {
     return JSON.parse(readFileSync(0, "utf8"));
@@ -21,13 +30,13 @@ function readPayload() {
 function hasRunAbove(start) {
   for (let dir = start; ; dir = dirname(dir)) {
     if (existsSync(join(dir, ".pairingbuddy", "run"))) return true;
-    if (dir === dirname(dir)) return false;
+    if (isLinkedWorktreeTop(dir) || dir === dirname(dir)) return false;
   }
 }
 
 function hasBoundRun(sessionId) {
   try {
-    const root = readFileSync(join(tmpdir(), "pairingbuddy-sessions", basename(sessionId)), "utf8");
+    const root = readFileSync(join(tmpdir(), "pairingbuddy-sessions-v2", basename(sessionId)), "utf8");
     return existsSync(join(root, ".pairingbuddy", "run"));
   } catch {
     return false;

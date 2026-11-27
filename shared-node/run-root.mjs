@@ -11,16 +11,28 @@ function holdsRun(dir) {
   return existsSync(join(run, "task", "ledger.json")) || existsSync(join(run, "unit.json"));
 }
 
-// The first directory at or above `start` whose .pairingbuddy/run/ holds run state. An empty run/ is not a run.
-export function findRunRoot(start) {
-  for (let dir = start; ; dir = dirname(dir)) {
-    if (holdsRun(dir)) return dir;
-    if (dir === dirname(dir)) return null;
+// A linked worktree's top holds a .git file naming <repo>/.git/worktrees/<name>. A nested repo or a submodule is not one.
+function isLinkedWorktreeTop(dir) {
+  try {
+    return /^gitdir: .*[\\/]worktrees[\\/][^\\/]+\s*$/.test(readFileSync(join(dir, ".git"), "utf8"));
+  } catch {
+    return false;
   }
 }
 
-// Outside the worktree, so that a session's run can be found from a cwd that has left it.
-export const sessionsDirectory = () => join(tmpdir(), "pairingbuddy-sessions");
+// The first directory at or above `start` whose .pairingbuddy/run/ holds run state. An empty run/ is not a run. The walk
+// stops at a linked worktree's top: one kept inside the main checkout (<repo>/worktrees/<name>) is a checkout of its own,
+// while a repo nested under the run is still the run's.
+export function findRunRoot(start) {
+  for (let dir = start; ; dir = dirname(dir)) {
+    if (holdsRun(dir)) return dir;
+    if (isLinkedWorktreeTop(dir) || dir === dirname(dir)) return null;
+  }
+}
+
+// Outside the worktree, so that a session's run can be found from a cwd that has left it. "-v2": pointers older builds
+// wrote may bind a session started in a linked worktree to the main checkout's run, so those are never read.
+export const sessionsDirectory = () => join(tmpdir(), "pairingbuddy-sessions-v2");
 
 const pointerPath = (sessionId) => (typeof sessionId === "string" && SESSION_ID.test(sessionId) ? join(sessionsDirectory(), sessionId) : null);
 

@@ -2445,7 +2445,9 @@ function unitOpen(args) {
   const gitConfig = loadGitConfigOrRefuse(root);
   const branch = chosen ?? renderBranchOrRefuse(gitConfig.branch_template, { type, slug });
   assertUsableBranch(root, gitConfig, branch);
-  if (branchExists(root, branch)) throw new Refusal(`branch ${branch} already exists; choose another name`);
+  // The branch already checked out, cut from the base with no commits of its own (a worktree made for this work), is adopted.
+  const adopting = branchExists(root, branch) && currentBranch(root) === branch;
+  if (branchExists(root, branch) && !adopting) throw new Refusal(`branch ${branch} already exists; choose another name`);
   const configHash = validatedConfigHash(root);
   const gitConfigHash = fileHash(gitConfigPath(root));
   const base = baseBranch(gitConfig, defaultBranchOf(root, gitConfig.remote));
@@ -2455,13 +2457,15 @@ function unitOpen(args) {
   const stackOn = planned ? stackOnOf(root, planned, gitConfig) : undefined;
   const parent = stackOn?.branch ?? base;
   const baseSha = git("rev-parse", `${gitConfig.remote}/${parent}`);
+  if (adopting && git("rev-list", `${baseSha}..HEAD`) !== "") throw new Refusal(`branch ${branch} already exists and has commits of its own; choose another name. ${NOTHING_CHANGED_BUT_FETCH}`);
   ensureRunRoot(root);
   const unit = { ...newUnit({ branch, base: parent, baseSha, configHash, gitConfigHash }), type };
   if (stackOn) unit.stackedOn = withoutDepth(stackOn);
   if (planned) Object.assign(unit, { unit: planned.next.unit, plan: planned.context.plan, tracer: planned.next.tracer });
   writeJsonAtomic(unitPathOf(root), unit, { exclusive: true });
   try {
-    git("switch", "-c", branch, baseSha);
+    if (adopting) git("merge", "--ff-only", "-q", baseSha);
+    else git("switch", "-c", branch, baseSha);
   } catch (e) {
     rmSync(unitPathOf(root), { force: true });
     throw e;

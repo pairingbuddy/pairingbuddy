@@ -22,6 +22,15 @@ const POLICY_ENV = "PAIRINGBUDDY_GATE_POLICY";
 const ABSENT_CODES = ["ENOENT", "ENOTDIR"];
 const PLUGIN = dirname(dirname(fileURLToPath(import.meta.url)));
 
+// A linked worktree's top holds a .git file naming <repo>/.git/worktrees/<name>: the walk stops there (see run-root.mjs).
+function isLinkedWorktreeTop(dir) {
+  try {
+    return /^gitdir: .*[\\/]worktrees[\\/][^\\/]+\s*$/.test(readFileSync(join(dir, ".git"), "utf8"));
+  } catch {
+    return false;
+  }
+}
+
 function readlinkOrNull(path) {
   try {
     return readlinkSync(path);
@@ -92,14 +101,14 @@ function workingDirectory(payload) {
 function nearestRunDirectory(start) {
   for (let dir = start; ; dir = dirname(dir)) {
     if (existsSync(join(dir, ".pairingbuddy", "run"))) return dir;
-    if (dir === dirname(dir)) return null;
+    if (isLinkedWorktreeTop(dir) || dir === dirname(dir)) return null;
   }
 }
 
 // Used only when run-root.mjs cannot load, and for the same reason: its only result is a deny.
 function pointedRunDirectory(sessionId) {
   try {
-    const root = readFileSync(join(tmpdir(), "pairingbuddy-sessions", basename(sessionId)), "utf8");
+    const root = readFileSync(join(tmpdir(), "pairingbuddy-sessions-v2", basename(sessionId)), "utf8");
     return existsSync(join(root, ".pairingbuddy", "run")) ? root : null;
   } catch {
     return null;

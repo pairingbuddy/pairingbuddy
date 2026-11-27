@@ -2,7 +2,7 @@ import "./isolated-tmpdir.mjs";
 // M1: a session stays bound to its run after its cwd leaves it. Every test drives the real hooks and the real CLI
 // as subprocesses, against a temp git repo.
 //
-// A pointer is a file <os.tmpdir()>/pairingbuddy-sessions/<session_id> holding the run root. The gate writes it for
+// A pointer is a file <os.tmpdir()>/pairingbuddy-sessions-v2/<session_id> holding the run root. The gate writes it for
 // a main-context payload inside a run, and both hooks read it when the walk up from the cwd finds nothing.
 import { withIntake } from "./ledger-fixture.mjs";
 import { after, describe, test } from "node:test";
@@ -74,7 +74,7 @@ const allDoneLedger = (over = {}) => ({
   ...over,
 });
 
-const sessionsDir = () => join(tmpdir(), "pairingbuddy-sessions");
+const sessionsDir = () => join(tmpdir(), "pairingbuddy-sessions-v2");
 const pointerPath = (session) => join(sessionsDir(), session);
 
 let sessions = 0;
@@ -264,7 +264,7 @@ describe("a main-context payload inside a run binds its session", () => {
   test("a pointer that cannot be written does not take the tools away", () => {
     const repo = makeRepo();
     const blocked = makeDir("binding-blocked-");
-    writeFileSync(join(blocked, "pairingbuddy-sessions"), "a file where the directory goes");
+    writeFileSync(join(blocked, "pairingbuddy-sessions-v2"), "a file where the directory goes");
     const session = newSession();
     const env = { ...hookEnv(), TMPDIR: blocked };
 
@@ -391,7 +391,7 @@ describe("a bound session is held to the run from any cwd", () => {
   test("a Write to the session's pointer is denied during a run", () => {
     const { repo, session } = boundRepo();
 
-    assertDenied(runGate(write(repo.dir, session, pointerPath(session))), /pairingbuddy-sessions/);
+    assertDenied(runGate(write(repo.dir, session, pointerPath(session))), /pairingbuddy-sessions-v2/);
   });
 });
 
