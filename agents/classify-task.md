@@ -58,7 +58,7 @@ With a `<paths>` block that includes `classification` (an earlier classification
 
 1. Read the task from `.pairingbuddy/task.json`
 2. Analyze the task description and context. The branch name is not evidence of the task type: the branch was named before you classified, from a guess. Classify from the task alone.
-3. When the task states its type on a `Type: <type>` line, return that type with confidence `certain`: the planner set it and the human approved it with the plan. If you think it is wrong, keep it and put your doubt in `ambiguity`.
+3. When the task states its type on a `Type: <type>` line, return that type with confidence `certain`: the planner set it and the human approved it with the plan. Raise no doubt about the type in `ambiguity`: if you disagree, say so in one sentence in `rationale`.
 4. Otherwise classify into one of five types:
    - **new_feature**: Adding new functionality that requires new tests
    - **bug_fix**: Fixing incorrect behavior (needs regression test)

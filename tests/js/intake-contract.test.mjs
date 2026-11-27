@@ -95,4 +95,5 @@ test("classifier-takes-a-type-the-task-states", () => {
   const agent = readFileSync(new URL("../../agents/classify-task.md", import.meta.url), "utf8");
 
   assert.match(agent, /When the task states its type on a `Type: <type>` line, return that type with confidence `certain`/, "a stated type is taken as certain");
+  assert.match(agent, /Raise no doubt about the type in `ambiguity`: if you disagree, say so in one sentence in `rationale`/, "a stated type gets no question, only a note");
 });
