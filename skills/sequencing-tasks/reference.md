@@ -103,6 +103,8 @@ The plan document uses markdown with checkboxes for progress tracking.
   - Criterion 1
   - Criterion 2
 
+  Type: new_feature
+
 ---
 
 - [ ] **Task 2: Title**
