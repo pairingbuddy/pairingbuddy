@@ -430,6 +430,19 @@ describe("auto-publish-gate-pass", () => {
     assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, "no auto-pass is recorded");
   });
 
+  // A task with no title (a /code task whose text starts on a blank line) leaves a question's task empty: G:publish still
+  // asks it, without the task, rather than writing a ledger pb refuses.
+  test("publish-gate-asks-a-question-with-no-task-title", () => {
+    const { repo, recorded } = publishRepo({ mode: "auto" });
+    seedTaskLensRecord(repo, recorded);
+    changeUnit(repo, { questions: [{ gate: "G:task-end", task: "", step: "a reviewer", ambiguity: "Is the wider change intended?" }] });
+
+    const asked = evalGate(repo);
+
+    assert.equal(asked.result, "needs-human");
+    assert.deepEqual(repo.ledger().needsHuman.doubts, [{ step: "a reviewer", ambiguity: "Is the wider change intended?" }]);
+  });
+
   test("an answered question is not asked again: G:publish lists it as handled and asks only the open one", () => {
     const { repo, recorded } = publishRepo({ mode: "auto" });
     seedTaskLensRecord(repo, recorded);

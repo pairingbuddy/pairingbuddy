@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- G:publish asks a unit question whose task has no title (an empty `task`) without the task, instead of writing a doubt pb's own ledger check refuses ("needsHuman.doubts must be a non-empty array"), which left `pb gate eval` failing on every try.
 - A safety-net fix is judged on its first test run. Once its run is red, `pb checkpoint --step fix` for the same key refuses with the same "the tests failed" verdict and runs nothing (the key is kept in the ledger's `tests.redFixes`), so the fix loop still rolls the fix back. A cheap runner agent had run a refused checkpoint again, and the second run committed the red fix.
 - A safety-net fix whose return pb cannot commit from (an empty commit subject, say) is now the fixer's mistake, as a commit hook's refusal is: `pb checkpoint --step fix` refuses with "the fix's return was refused, so nothing was committed", leaves nothing staged, and the fix loop rolls it back and retries with pb's words in the note. Such a fix used to stop the stage on the first try ("the fix for g1 was refused once").
 - With no human in the session (the auto policy or `claude -p`), the Stop hook tells a session that ends its turn with a unit open and no run to take the guidance step's no-human path and go on with `pb status --action`, once. A cheap model had ended there asking a human nobody is, so smoke S6's second session never reached Task 3. The guidance skill also counts a missing AskUserQuestion tool as no human.

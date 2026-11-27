@@ -785,7 +785,7 @@ function questionsReason(ledger, root) {
 }
 
 // The unit's questions as the doubts G:publish shows and its record keeps, each with the task that raised it.
-export const unitQuestionDoubts = (root) => openQuestions(readUnit(root)).kept.map(({ step, ambiguity, task }) => ({ step, ambiguity, task }));
+export const unitQuestionDoubts = (root) => openQuestions(readUnit(root)).kept.map(({ step, ambiguity, task }) => ({ step, ambiguity, ...(typeof task === "string" && task !== "" ? { task } : {}) }));
 
 // Why the publish gate asks whatever the policy says, or null. Under auto it passes once autoPublishPasses holds; any other policy is left to policyReason.
 function publishReason(ledger, root, voided) {
