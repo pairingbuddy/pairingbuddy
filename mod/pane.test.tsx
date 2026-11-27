@@ -2,6 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import { plainName } from '../shared-node/plain-names.mjs'
 import { BAND, bandTexts, SNAPSHOT_NO_STAGE, SNAPSHOT_RUNNING, ROOT, engine, serveLedger, start, bandRowTexts, texts, type Served } from './testing/band'
 import { PANE, paneLines, paneTexts } from './testing/replay'
+import { firstGlance } from './testing/glance'
 import { PANE_ID } from './pane-open'
 import { ACCENT_COLOUR } from './pane'
 import { POLL_MS } from './poll'
@@ -258,13 +259,13 @@ test('all-steps-done-before-task-end', async ($, on) => {
   expect(now, `STATUS never says run open: ${now}`).not.toContain('run open')
 })
 
-// STATUS's nodes as drawn: its head, then what follows it.
-async function statusNodes($: any) {
+// A loud state's bar as drawn: its first node (the state's words and what about) and its text, trimmed of the padding.
+async function barNodes($: any) {
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const drawn = await pane.findAll({ type: 'Text' })
+  const drawn = (await pane.findAll({ type: 'Text' })) as { text: string; props: Record<string, unknown> }[]
   await pane.unmount()
-  const at = drawn.findIndex((node: any) => node.text === 'STATUS   ')
-  return { head: drawn[at + 1], rest: drawn[at + 2] }
+  const bar = drawn.slice(0, drawn.findIndex(node => node.text.startsWith('GOAL')))
+  return { head: bar[0], text: bar.map(node => node.text).join('').trimEnd() }
 }
 
 test('pane-now-names-what-is-needed-in-the-strongest-treatment', async ($, on) => {
@@ -272,11 +273,10 @@ test('pane-now-names-what-is-needed-in-the-strongest-treatment', async ($, on) =
   engine(on, waiting)
   await start($)
 
-  const { head, rest } = await statusNodes($)
+  const { head, text } = await barNodes($)
 
-  expect(nowRow(await paneLines($)), 'STATUS names the gate').toBe('STATUS   ⏸ WAITING FOR YOU · your OK on the scenarios')
-  expect([head.text, head.props.color, head.props.inverse, head.props.bold], 'the head is a yellow block, bold: the one thing not to miss').toEqual(['⏸ WAITING FOR YOU', 'warning', true, true])
-  expect([rest.text, rest.props.color, rest.props.bold, rest.props.inverse], 'what it needs follows in yellow, bold, not a block').toEqual([' · your OK on the scenarios', 'warning', true, undefined])
+  expect(text, 'the bar names the gate').toBe('⏸ WAITING FOR YOU · your OK on the scenarios')
+  expect([head.props.color, head.props.inverse, head.props.bold], 'a yellow block, bold: the one thing not to miss').toEqual(['warning', true, true])
 })
 
 // Claude Code's own permission prompt, unanswered (hooks/permission.mjs opened the wait): the human is needed, as at a gate.
@@ -285,16 +285,14 @@ test('pane-and-band-say-needs-you-while-claude-code-asks-permission', async ($, 
   engine(on, asking)
   await start($)
 
-  const { head } = await statusNodes($)
+  const { head } = await barNodes($)
   const band = (await bandTexts($, { bodyColumns: 200 })).join('')
 
-  const lines = await paneLines($)
-  const at = lines.findIndex(line => line.startsWith('STATUS'))
-  // STATUS wraps at its parts: the head, then what Claude Code asks on the line under it.
-  const status = [lines[at], lines[at + 1]].map(line => line.replace(/^(STATUS)?\s+/, ''))
+  // Wider than a 70-column pane, the bar wraps at words onto a second line, never cut.
+  const bar = firstGlance(await paneLines($, { bodyColumns: 70 }))
 
-  expect(status, 'STATUS says what Claude Code is asking').toEqual(['⏸ WAITING FOR YOU', 'Claude Code is asking your permission to start the next step'])
-  expect([head.text, head.props.color, head.props.inverse], 'in the yellow block').toEqual(['⏸ WAITING FOR YOU', 'warning', true])
+  expect(bar, 'the bar says what Claude Code is asking, whole').toEqual(['⏸ WAITING FOR YOU · Claude Code is asking your permission to start the', 'next step'])
+  expect([head.props.color, head.props.inverse], 'in the yellow block').toEqual(['warning', true])
   expect(band, `the band leads with it and says what it asks: ${band}`).toMatch(/^⏸ WAITING FOR YOU · Claude Code is asking your permission/)
 })
 
@@ -302,11 +300,10 @@ test('pane-status-says-why-it-stopped-as-strongly-in-red', async ($, on) => {
   engine(on, { ...SNAPSHOT_RUNNING, stop: { code: 'step-failed', reason: 'the stage failed three times', seq: 3 } })
   await start($)
 
-  const { head, rest } = await statusNodes($)
+  const { head, text } = await barNodes($)
 
-  expect(nowRow(await paneLines($)), 'STATUS says why').toBe(`STATUS   ✗ STOPPED · ${plainName('step-failed')}`)
-  expect([head.text, head.props.color, head.props.inverse, head.props.bold], 'the head is a red block, bold').toEqual(['✗ STOPPED', 'error', true, true])
-  expect([rest.text, rest.props.color, rest.props.inverse], 'why follows in red, not a block').toEqual([` · ${plainName('step-failed')}`, 'error', undefined])
+  expect(text, 'the bar says why').toBe(`✗ STOPPED · ${plainName('step-failed')}`)
+  expect([head.props.color, head.props.inverse, head.props.bold], 'a red block, bold').toEqual(['error', true, true])
 })
 
 // No black box: a stop that recorded what happened says it under STATUS, with what the human can do, each bounded.
@@ -324,12 +321,11 @@ test('pane-says-why-a-stop-happened-and-what-the-human-can-do', async ($, on) =>
   await start($)
 
   const lines = await paneLines($)
-  const status = lines.findIndex(line => line.startsWith('STATUS'))
   const why = lines.findIndex(line => line.startsWith('WHY'))
   const rows = lines.slice(why, lines.findIndex((line, i) => i > why && /^[A-Z]{2,}/.test(line)))
 
-  expect(lines[status], 'STATUS says why in short').toBe('STATUS   ✗ STOPPED · GREEN for t1 was refused 3 times')
-  expect(why, 'WHY follows STATUS').toBeGreaterThan(status)
+  expect(lines[0].trimEnd(), 'the bar says why in short').toBe('✗ STOPPED · GREEN for t1 was refused 3 times')
+  expect(why, 'WHY follows the first glance').toBeGreaterThan(lines.findIndex(line => line.startsWith('GOAL')))
   const parts = rows.map(line => line.replace(/^(WHY)?\s+/, ''))
   expect(parts[0], 'the cause leads').toMatch(/^GREEN for t1 was refused 3 times, so the stage stopped\./)
   expect(parts.findIndex(part => part.endsWith('x…')), 'the cause is cut with an ellipsis').toBeGreaterThan(0)
@@ -344,9 +340,9 @@ test('pane-status-draws-the-humans-own-stop-as-waiting-not-as-a-failure', async 
   engine(on, { ...SNAPSHOT_RUNNING, stop: { code: 'human-stopped', reason: 'the human answered stop at G:scenarios', seq: 3 } })
   await start($)
 
-  const { head } = await statusNodes($)
+  const { head, text } = await barNodes($)
 
-  expect([head.text, head.props.color, head.props.inverse], 'the amber waiting head, not the red stop').toEqual(['⏸ WAITING FOR YOU', 'warning', true])
+  expect([text, head.props.color, head.props.inverse], 'the amber waiting bar, not the red stop').toEqual([`⏸ WAITING FOR YOU · ${plainName('human-stopped')}`, 'warning', true])
 })
 
 // Three states: a loud one draws a bar across the top of the pane, the pane's whole width, above GOAL.
@@ -481,4 +477,27 @@ test('pane-does-not-count-a-lens-call-made-before-the-stage-started', async ($, 
   const shown = await paneLines($)
 
   expect(hasReturnedLens(shown), `a call from before the stage is not a returned lens: ${JSON.stringify(shown)}`).toBe(false)
+})
+
+// Live 2026-11-27: STOPPED drawn in the bar and again on STATUS read as noise. The bar says it; nothing else in the pane repeats it.
+test('pane-says-a-loud-state-once-in-its-bar', async ($, on) => {
+  engine(on, { ...SNAPSHOT_RUNNING, stop: { code: 'step-failed', reason: 'the stage failed three times', seq: 3 } })
+  await start($)
+
+  const lines = await paneLines($)
+
+  expect(lines.filter(line => line.includes('STOPPED')), `STOPPED once: ${JSON.stringify(lines)}`).toHaveLength(1)
+})
+
+// Live 2026-11-27: "a lot of red there". The bar is the one red thing; what happened and the options under it read plain.
+test('pane-draws-why-in-plain-text-under-the-red-bar', async ($, on) => {
+  engine(on, { ...SNAPSHOT_RUNNING, stop: EXPLAINED_STOP })
+  await start($)
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const nodes = (await pane.findAll({ type: 'Text' })) as { text: string; props: Record<string, unknown> }[]
+  await pane.unmount()
+
+  const red = nodes.filter(node => node.props.color === 'error' && node.props.inverse !== true).map(node => node.text)
+
+  expect(red, 'no red outside the bar').toEqual([])
 })

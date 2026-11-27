@@ -81,3 +81,18 @@ test('a-band-waiting-on-you-draws-an-amber-bar-the-whole-width-then-the-details-
   expect(bar.every(node => node.props.color === 'warning' && node.props.bold === true), 'all of it in amber reverse, bold').toBe(true)
   expect(details.map(node => node.text).join(''), 'the details and the commands follow on the next row, and no goal row').toMatch(/^write test scenarios │ .* │ details: \/pb/)
 })
+
+// Live 2026-11-27: the band cut the bar's end with "…", where the why is. Wider than the band, it wraps onto a second row.
+test('a-band-bar-wider-than-the-band-wraps-onto-a-second-row-never-cut', async ($, on) => {
+  const why = 's4-registration passed before any code, so its RED proves nothing'
+  engine(on, { ...SNAPSHOT_RUNNING, stop: { code: 'red-passes', reason: 'r', seq: 3, why } }, NOT_PLACED)
+  await start($)
+
+  const band = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 60 }, surface: 'terminal' })
+  const boxes = (await band.findAll({ type: 'Box' })) as any[]
+  await band.unmount()
+  const textOf = (node: any): string => (node.children ?? []).map((child: any) => (typeof child === 'string' ? child : textOf(child))).join('')
+  const rows = boxes.filter(box => (box.children ?? []).length > 0 && box.children.every((child: any) => child?.type === 'Text' && child.props?.inverse === true)).map(box => textOf(box).trimEnd())
+
+  expect(rows, 'the bar on two rows, whole').toEqual(['⏸ WAITING FOR YOU · s4-registration passed before any', 'code, so its RED proves nothing'])
+})

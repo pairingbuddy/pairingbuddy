@@ -3,6 +3,7 @@
 import { expect, test } from 'claude-code/testing'
 import { SNAPSHOT_RUNNING, engine, start } from './testing/band'
 import { paneLines } from './testing/replay'
+import { firstGlance } from './testing/glance'
 
 const FIX = 'answer the question in the session, or type !.pairingbuddy/bin/pb human accept'
 const WAITING = {
@@ -11,10 +12,8 @@ const WAITING = {
   needsHuman: { gate: 'config-changed', reason: 'the config hash changed', seq: SNAPSHOT_RUNNING.seq + 1, askedAt: SNAPSHOT_RUNNING.stage.startedAt, fix: FIX },
 }
 
-const statusOf = (lines: string[]) => {
-  const at = lines.findIndex(line => line.startsWith('STATUS'))
-  return lines.slice(at, at + 2).map(line => line.replace(/^(STATUS)?\s+/, ''))
-}
+// The bar, then STATUS's own lines (the fix).
+const statusOf = (lines: string[]) => firstGlance(lines).slice(0, 2)
 
 test('a changed test-config reads as needs you: answer the question, or the accept line', async ($, on) => {
   engine(on, WAITING)

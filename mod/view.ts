@@ -25,7 +25,8 @@ export type RowTones = Partial<Record<keyof Rows, Tone>>
 export type StatusState = 'needsYou' | 'stopped' | 'done' | 'working' | 'quiet'
 // fix: the one line that puts it right, when the state has one (the safety checks are off), drawn on its own line.
 // cause and options: what a stop recorded about what happened and what the human can do (the pane's WHY row).
-export type Status = { state: StatusState; what?: string; fix?: string; cause?: string; options?: string[] }
+// questions: the count of doubts waiting and how to answer them, said after what (or under a loud state's bar, never in it).
+export type Status = { state: StatusState; what?: string; fix?: string; cause?: string; options?: string[]; questions?: string }
 // The kit's own types for the elements a render hook draws with: text only, as neither the band nor the pane has a control.
 export type Tags = Pick<ElementTable, 'Box' | 'Text'>
 
@@ -340,7 +341,7 @@ function withQuestions(view: View, unit: Inputs['unit']): View {
   const count = unit?.questions ?? 0
   const segment: Segment = { id: 'questions', text: `? ${count} ${count === 1 ? 'question' : 'questions'}${STATUS_PART}/pb-questions`, tone: QUESTION_COLOUR }
   const band = view.band.length === 0 ? view.band : [view.band[0], segment, ...view.band.slice(1)]
-  return { ...view, band, status: { ...view.status, what: [view.status.what, `${line}${STATUS_PART}type /pb-questions`].filter(Boolean).join(STATUS_PART) } }
+  return { ...view, band, status: { ...view.status, questions: `${line}${STATUS_PART}type /pb-questions` } }
 }
 
 // What the band and the pane show for what was read.

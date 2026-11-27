@@ -1,8 +1,8 @@
 import { cutAtWord, lensLines, lensSummaryLines } from '../shared-node/lens-round.mjs'
-import { endReviewLines, endReviewSummaryLines, goalLines, wrapAtParts } from '../shared-node/end-state.mjs'
+import { endReviewLines, endReviewSummaryLines, goalLines, barLines, wrapAtParts } from '../shared-node/end-state.mjs'
 import { commitRows, firstUnticked, gapWords, holdsBuilding, humanWords, OPEN_COMMIT_ROWS, planFocus, PLAN_ROWS, problemRows, SHORT_COMMIT_ROWS, STATE_SEPARATOR, taskMark, unitWords, windowRows } from '../shared-node/plan-window.mjs'
 import { hiddenRows, moreRowsLine, paneBudget, PLAN_TARGET } from '../shared-node/pane-height.mjs'
-import { ALERT_HEADS, boundAlertWhat, FAILED, WAITING } from '../shared-node/glance.mjs'
+import { ALERT_HEADS, FAILED, WAITING } from '../shared-node/glance.mjs'
 import { resolveOpenUnit } from './view'
 import type { RowTones, Status, StatusState, Tags, View } from './view'
 
@@ -123,28 +123,36 @@ export const STATUS_LOOKS: Record<StatusState, Look> = {
   quiet: { mark: '○', head: '○', bandHead: '○', sep: ' ', headProps: { dimColor: true }, whatProps: {} },
 }
 
-// STATUS as lines: the head, then what follows it, wrapping at its parts, then words; never cut.
+const isLoud = (status: Status) => status.state === 'needsYou' || status.state === 'stopped'
+
+// STATUS as lines: the head, then what follows it, wrapping at its parts, then words; never cut. A loud state's head and
+// what are the bar's, so STATUS keeps only the fix.
 function statusLines(status: Status, width: number): Part[][] {
+  // The fix is a command to type, so it has its own line, plain, wrapped at words only.
+  const fix: Part[][] = status.fix ? wrapAtParts(status.fix, width).map((line: string) => [{ text: line }]) : []
+  if (isLoud(status)) return [...(status.questions ? wrapAtParts(status.questions, width).map((line: string) => [{ text: line, props: { color: QUESTION_COLOUR } }]) : []), ...fix]
   const look = STATUS_LOOKS[status.state]
-  const text = [look.head, status.what].filter(Boolean).join(look.sep)
+  const text = [look.head, [status.what, status.questions].filter(Boolean).join(' · ')].filter(Boolean).join(look.sep)
   const lines: Part[][] = wrapAtParts(text, width).map((line: string, i: number) => {
     if (i > 0 || !line.startsWith(look.head)) return [{ text: line, props: look.whatProps }]
     const rest = line.slice(look.head.length)
     return [{ text: look.head, props: look.headProps }, ...(rest ? [{ text: rest, props: look.whatProps }] : [])]
   })
-  // The fix is a command to type, so it has its own line, plain, wrapped at words only.
-  return status.fix ? [...lines, ...wrapAtParts(status.fix, width).map((line: string) => [{ text: line }])] : lines
+  return [...lines, ...fix]
 }
 
-// A loud state's bar across the top of the pane: its head and what about (cut at the shared bound), padded to the pane's
-// width so the reverse colours span it; none while the run works, is done or is quiet.
-function barRow(status: Status, columns: number): Part[] | undefined {
-  if (status.state !== 'needsYou' && status.state !== 'stopped') return undefined
+// A loud state's bar across the top of the pane: its head and what about, wrapped at words onto at most BAR_LINES lines
+// (only beyond them cut, the report holds it whole), each padded to the pane's width so the reverse colours span it; none
+// while the run works, is done or is quiet.
+const BAR_LINES = 3
+function barRows(status: Status, columns: number): Part[][] {
+  if (!isLoud(status)) return []
   const look = STATUS_LOOKS[status.state]
-  const words = [look.head, status.what && boundAlertWhat(status.what)].filter(Boolean).join(look.sep)
-  const text = columns > 0 && cells(words) > columns ? `${[...words].slice(0, columns - 1).join('')}${ELLIPSIS}` : words
-  const pad = columns > 0 ? columns - cells(text) : 0
-  return [{ text, props: look.headProps }, ...(pad > 0 ? [{ text: ' '.repeat(pad), props: look.headProps }] : [])]
+  const words = [look.head, status.what].filter(Boolean).join(look.sep)
+  return barLines(words, columns, BAR_LINES).map((text: string) => {
+    const pad = columns > 0 ? columns - cells(text) : 0
+    return [{ text, props: look.headProps }, ...(pad > 0 ? [{ text: ' '.repeat(pad), props: look.headProps }] : [])]
+  })
 }
 
 // WHY's bounds: the cause, each option and how many options; the whole text is in the report.
@@ -159,14 +167,18 @@ function whyRows(status: Status, width: number) {
   if (!status.cause) return []
   const options = (status.options ?? []).slice(0, WHY_OPTIONS_MOST).map((option, i) => `${i + 1}. ${bounded(option, WHY_OPTION_MAX)}`)
   const parts = [bounded(status.cause, WHY_CAUSE_MAX), ...options]
-  const lines: Part[][] = parts.flatMap(part => wrapped(part, width, STATUS_LOOKS[status.state].whatProps))
+  // Plain: the bar above is the one thing in the state's colour.
+  const lines: Part[][] = parts.flatMap(part => wrapped(part, width))
   return rowLines('WHY', [...lines, [{ text: 'full text: /pb-report', props: { dimColor: true } }]], FIRST_GLANCE_LABEL)
 }
 
 // The first glance: GOAL, then STATUS, which answers "am I needed now?", then WHY when a stop says what happened.
 function topRows(view: View, columns: number) {
   const width = columns > 0 ? columns - LABEL_WIDTH : 0
-  return [...goalRows(view, columns), ...rowLines('STATUS', statusLines(view.status, width), FIRST_GLANCE_LABEL), ...whyRows(view.status, width)]
+  const status = statusLines(view.status, width)
+  // A loud state with nothing beside its bar has no STATUS row: the bar is its status.
+  const statusRows = status.length === 0 && isLoud(view.status) ? [] : rowLines('STATUS', status, FIRST_GLANCE_LABEL)
+  return [...goalRows(view, columns), ...statusRows, ...whyRows(view.status, width)]
 }
 
 // The plan as a tree: each tracer, its units nested under it, each unit's tasks under that, in plan order.
@@ -368,7 +380,7 @@ export function Pane({ Box, Text, view, columns = 0, room, offset = 0, focused =
   note?: string | null
 }) {
   const top = topRows(view, columns)
-  const bar = barRow(view.status, columns)
+  const bar = barRows(view.status, columns)
   // Under the details: the raw labels pb could not read and their count, the gap, and the note.
   const tail = [
     ...shownLabels(unknownLabels).map((raw, i) => <Text key={`unknown-${i}`}>{raw}</Text>),
@@ -377,7 +389,7 @@ export function Pane({ Box, Text, view, columns = 0, room, offset = 0, focused =
     ...(note ? [<Text key="note">{note}</Text>] : []),
   ]
   // The top rows, the rule and the tail never fold.
-  const rows = paneRows(view, columns, room, (bar ? 1 : 0) + top.length + 1 + tail.length)
+  const rows = paneRows(view, columns, room, bar.length + top.length + 1 + tail.length)
   // One labelled row: its label, then its parts, each a Text cut at the body's edge.
   const labelled = (prefix: string) => ({ label: name, labelProps, parts }: Rows[number], row: number) => (
     <Box key={`${prefix}-${row}`}>
@@ -385,7 +397,7 @@ export function Pane({ Box, Text, view, columns = 0, room, offset = 0, focused =
       {parts.map((part, i) => <Text key={`part-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)}
     </Box>
   )
-  const barLine = bar ? [<Box key="bar">{bar.map((part, i) => <Text key={`bar-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)}</Box>] : []
+  const barLine = bar.map((parts, row) => <Box key={`bar-${row}`}>{parts.map((part, i) => <Text key={`bar-${i}`} wrap="truncate-end" {...part.props}>{part.text}</Text>)}</Box>)
   const drawn = [...barLine, ...top.map(labelled('top')), <Text key="top-rule" dimColor wrap="truncate-end">{goalRule(columns)}</Text>, ...rows.map(labelled('row')), ...tail]
   // The platform draws no "more" hint, so while the window is at the top its last row counts the rows below it.
   const hidden = offset > 0 ? 0 : hiddenRows(drawn.length, room)

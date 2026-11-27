@@ -152,6 +152,16 @@ export function wrapAtParts(text, room) {
   return lines;
 }
 
+// A loud state's bar text on at most `most` lines of `room`, wrapped at words so its head and why share the first line;
+// only when it needs more is the last line what is left, cut at a word and marked by "…". No room known gives one line.
+export function barLines(text, room, most) {
+  if (!(room > 0)) return [text];
+  const lines = wrapAtWords(text, room);
+  if (lines.length <= most) return lines;
+  const rest = lines.slice(most - 1).join(" ");
+  return [...lines.slice(0, most - 1), `${cutAtWord(rest, room - 1)}…`];
+}
+
 // The goal on at most `most` lines of `room`: wrapped, and only when it needs more, its last line cut at a clause break or
 // a word (goalGist). The report holds the whole task.
 export function goalLines(goal, room, most = 2) {
