@@ -22,6 +22,7 @@ const STEPS = {
   config: { type: "chore", roles: ["apply-config-change"], provesChange: true, tests: "full" },
   docs: { type: "docs", roles: ["update-documentation"], provesChange: false, tests: "full" },
   placeholders: { type: "test", roles: ["create-test-placeholders"], provesChange: false, tests: "none" },
+  cut: { type: "test", roles: [REFACTOR_TESTS_ROLE], provesChange: true, tests: "none" },
   red: { type: "test", roles: ["implement-tests"], provesChange: false, tests: "selected", item: "test" },
   green: { types: { bug_fix: "fix", new_feature: "feat" }, roles: ["implement-code"], provesChange: false, tests: "selected", item: "test" },
   fix: { typeOfPaths: true, writesDiff: true, roles: ["fix"], provesChange: true, tests: "full", item: "group" },

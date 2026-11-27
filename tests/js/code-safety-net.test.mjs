@@ -613,3 +613,27 @@ test("code-safety-net-negative-rolled-back-does-not-raise-the-cap", async () => 
   assert.equal(result.stopReason, "attempt-cap", "the stage stops on the attempt cap");
   assert.equal(countOf(calls, "pairingbuddy:refactor-code"), 5, "a negative rolledBack counts as 0, so exactly maxAttempts fix agents run");
 });
+
+// A cut test left in its file fails the full suite, so every fix would be refused for a failure it did not cause. The
+// stage takes it out first, and snapshots again so the review sees the tree without it.
+test("code-safety-net-removes-a-cut-test-the-snapshot-names-before-its-review", async () => {
+  const cutPresent = [{ id: "t2", test_file: "tests/test_a.py", test_function: "test_t2" }];
+  let snapshots = 0;
+  const agent = async (prompt, { agentType, schema }) => {
+    const pb_key = schema.properties.pb_key.enum[0];
+    if (agentType === "pairingbuddy:runner") {
+      if (prompt.includes(" snapshot")) {
+        snapshots += 1;
+        return { pb_key, cli_exit_code: 0, cli_output: JSON.stringify({ ok: true, paths: [], taskType: "no_lenses", cutPresent: snapshots === 1 ? cutPresent : [] }) };
+      }
+      return { pb_key, cli_exit_code: 0, cli_output: "{\"ok\":true}" };
+    }
+    return { pb_key, ambiguity: "", commit_subject: "x", files_changed: [] };
+  };
+
+  const { calls } = await runStage(ARGS, agent);
+
+  const steps = calls.map(({ prompt, opts }) => (opts.agentType === "pairingbuddy:runner" ? blockOf(prompt, "commands").replace(/node \S+ /g, "") : opts.agentType));
+  assert.deepEqual(steps, ["snapshot", "pairingbuddy:refactor-tests", "checkpoint --step cut --from code-safety-net.refactor-tests.-.r1.a2", "snapshot", "pairingbuddy:update-documentation", "checkpoint --step docs --from code-safety-net.update-documentation.-.r1.a2\ntest --full\nstage finish"]);
+  assert.deepEqual(JSON.parse(blockOf(calls[1].prompt, "cut_tests")), cutPresent);
+});
