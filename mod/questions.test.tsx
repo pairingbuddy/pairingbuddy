@@ -7,6 +7,7 @@ import { LEDGER, ROOT, SNAPSHOT_RUNNING, bandTexts, start } from './testing/band
 import { POLL_MS } from './poll'
 
 const UNIT = '.pairingbuddy/run/unit.json'
+const QUESTION_SOUND = { asset: 'mod/assets/question.wav' }
 const question = (n: number) => ({ gate: 'G:task-end', task: 'Task 1: one', step: 'a reviewer', ambiguity: `Doubt ${n}?` })
 const unitWith = (questions: unknown[], more?: number) => ({
   unit: null, plan: null, tracer: null, branch: 'feat/x', base: 'main', baseSha: 'abc', tasks: [], commits: [],
@@ -52,7 +53,7 @@ test('a question the human answered is no longer counted', async ($, on) => {
   expect(band).toContain('1 question for you · type /pb-questions to answer')
 })
 
-test('a new question sends one quiet notice, never repeated, with no sound and no status line', async ($, on) => {
+test('a new question sends one notice and the soft question chime, never repeated, and no status line', async ($, on) => {
   const notified: any[] = []
   const played: unknown[] = []
   const statuses: unknown[] = []
@@ -74,6 +75,27 @@ test('a new question sends one quiet notice, never repeated, with no sound and n
   await rig.clock.advance(POLL_MS * 3)
 
   expect(notified.map(({ text }) => text), 'the next question gets its own, the first is not repeated').toEqual(['Question for you: Doubt 1? · /pb-questions', 'Question for you: Doubt 2? · /pb-questions'])
-  expect(played, 'no sound: the run is not stopped').toEqual([])
+  expect(played.map((e: any) => e.clip), 'the soft question chime, once per poll that found new questions, never the stop sound').toEqual([QUESTION_SOUND, QUESTION_SOUND])
   expect(statuses.filter(Boolean), 'no warning status line either').toEqual([])
 })
+
+// The question chime has its own off switch, and the alertSound switch silences every sound, the chime included.
+for (const options of [{ questionSound: false }, { alertSound: false }]) {
+  test(`a new question plays no chime with ${JSON.stringify(options)}, and still sends its notice`, { options }, async ($, on) => {
+    const notified: any[] = []
+    const played: unknown[] = []
+    on('ui.notify', (_: unknown, e: any) => (notified.push(e), { value: { isSent: true, channel: 'terminal_bell' } }))
+    on('audio.play', (_: unknown, e: unknown) => (played.push(e), { value: undefined }))
+    const store = new Map<string, unknown>()
+    on('store.get', (_: unknown, e: { key: string }) => ({ value: store.get(e.key) }))
+    on('store.set', (_: unknown, e: { key: string; value: unknown }) => (store.set(e.key, e.value), { value: undefined }))
+    const rig = setupReplay(on)
+    serve(rig, { [LEDGER]: running, [UNIT]: unitWith([question(1)]) })
+    await rig.clock.set(Date.parse('2026-11-14T10:01:00.000Z'))
+    await start($)
+    await rig.clock.advance(POLL_MS * 3)
+
+    expect(notified.map(({ text }) => text), 'the notice still goes out').toEqual(['Question for you: Doubt 1? · /pb-questions'])
+    expect(played, 'no chime with the sound turned off').toEqual([])
+  })
+}
