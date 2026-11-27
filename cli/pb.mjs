@@ -1259,6 +1259,31 @@ function hookRefusalOfFix(root, path, key, commit) {
   }
 }
 
+// A fix is judged on its first test run: once red, a run of the same key again repeats the red verdict, so a runner that
+// retries a refused command cannot turn the red fix into a commit, and the fix loop still rolls it back.
+async function fixJudgedOnce({ key, path, ledger }, run) {
+  if ((ledger.tests?.redFixes ?? []).includes(key)) throw new Refusal(`the tests failed, so nothing was committed: ${key} already ran red, and a fix is judged on its first run. Roll it back.`);
+  try {
+    await run();
+  } catch (e) {
+    if (e instanceof Refusal && /^the tests failed/.test(e.message)) updateLedger(path, (now) => ({ ...now, tests: { ...now.tests, redFixes: [...(now.tests?.redFixes ?? []), key] } }));
+    throw e;
+  }
+}
+
+// A fix whose return pb cannot commit from (an empty subject, say) is the fixer's mistake, as a hook refusal is: nothing
+// stays staged, the change stays in the tree for pb rollback, and the fix loop retries with pb's words.
+function returnRefusalOfFix({ root, path, key }, plan) {
+  try {
+    return plan();
+  } catch (e) {
+    if (!(e instanceof CheckpointRefused)) throw e;
+    execFileSync("git", ["reset", "-q"], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    updateLedger(path, (ledger) => ({ ...ledger, fixes: { rollbacks: [], ...ledger.fixes, hookRefusals: [...(ledger.fixes?.hookRefusals ?? []), { key, output: e.message, source: "return" }] } }));
+    throw new Refusal(`the fix's return was refused, so nothing was committed: ${e.message}`);
+  }
+}
+
 // The attempt can end while the tests run, so that is looked at again here.
 function commitPlan({ step, key, root, path, branch, record }, plan, head, evidenceFor) {
   assertCommitAllowed(step, key, readLedger(path));
@@ -1278,10 +1303,11 @@ function scopeFor({ step, key, root, ledger }) {
 // A step with no change runs no test. The tests run code in the repo, so what they could change is looked at again
 // before the commit.
 async function suiteCheckpoint(context) {
-  const plan = planFor(context, scopeFor(context));
+  const plan = context.step === "fix" ? returnRefusalOfFix(context, () => planFor(context, scopeFor(context))) : planFor(context, scopeFor(context));
   if (plan === null) return noChange(context);
   const head = headOf(context.root);
-  await requirePassingTests(context.root, context.path, context.ledger);
+  if (context.step === "fix") await fixJudgedOnce(context, () => requirePassingTests(context.root, context.path, context.ledger));
+  else await requirePassingTests(context.root, context.path, context.ledger);
   const done = commitPlan(context, plan, head);
   if (writesDiff(context.step)) writeFileSync(fixDiffPathOf(context.root), diffOfCommit(context.root, done.sha));
   return done;
@@ -3265,7 +3291,7 @@ function rollback(args) {
     commit: { wrong: () => checkerAccount(root, parts), undo: () => rollbackCommitted(root, { key, prefix, sha: record.sha }) },
     red: { wrong: () => failedRunsExcerpts(ledger.tests.checkpoint), undo: () => rollbackUncommitted(root, { key, prefix, paths: own }) },
     // The hook's own words tell the next fixer what to change, as the failing runs do for a red fix.
-    hook: { wrong: () => `The commit hook refused the fix:\n${refusal.output}`, undo: () => rollbackUncommitted(root, { key, prefix, paths: own }) },
+    hook: { wrong: () => `${refusal.source === "return" ? "pb refused the fix's return" : "The commit hook refused the fix"}:\n${refusal.output}`, undo: () => rollbackUncommitted(root, { key, prefix, paths: own }) },
     repeated: {
       wrong: () => `The fix repeated an approach already rolled back for this group: ${repeated}`,
       // Nothing of its own is dirty: record only, with the base at HEAD.

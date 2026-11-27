@@ -417,9 +417,17 @@ function assertOutOfCorpusReadDenied(captured, repo, record, agents) {
   }
 }
 
+// The read calls whose id the gate never saw. Claude Code writes a PreToolUse attachment to the transcript only when the
+// hook prints something, and the gate's allow is silent, so the gate's own trace (PAIRINGBUDDY_GATE_TRACE) is the record.
+export const readsMissingFromTrace = (readIds, trace) => readIds.filter((id) => !trace.some(({ tool_use_id: seen }) => seen === id));
+
+const readTrace = (path) => (existsSync(path) ? readFileSync(path, "utf8").split("\n").filter((line) => line !== "").map((line) => JSON.parse(line)) : []);
+
 // The lens agent's own calls under confinement: no tool result is an error or a denial, each read passed the gate's
-// PreToolUse hook, and the lens returned through StructuredOutput.
-function assertLensCallsAllowed(agents) {
+// PreToolUse hook (its trace names the call), and the lens returned through StructuredOutput.
+function assertLensCallsAllowed(agents, tracePath) {
+  const trace = readTrace(tracePath);
+  const readIds = [];
   const lenses = agents.filter(({ meta }) => meta.agentType === `pairingbuddy:${LENS_ROLE}`);
   const counts = { calls: 0, reads: 0, structuredOutputs: 0 };
   for (const lens of lenses) {
@@ -437,11 +445,13 @@ function assertLensCallsAllowed(agents) {
       check(denials.length === 0, `the gate denied the lens ${name} call ${id}`);
       if (READ_TOOLS.includes(name)) {
         counts.reads += 1;
-        check(preHooks.some(({ attachment }) => attachment.toolUseID === id && attachment.hookName === `PreToolUse:${name}`), `the lens ${name} call ${id} never reached the gate's PreToolUse hook`);
+        readIds.push(id);
       }
       if (name === "StructuredOutput") counts.structuredOutputs += 1;
     }
   }
+  const missing = readsMissingFromTrace(readIds, trace);
+  check(missing.length === 0, `the lens read calls ${missing.join(", ")} never reached the gate's PreToolUse hook: the gate trace has ${trace.length} lines`);
   check(counts.structuredOutputs >= lenses.length, `${counts.structuredOutputs} StructuredOutput calls from ${lenses.length} lens agents`);
   return counts;
 }
@@ -563,7 +573,8 @@ async function runS4(budget, record, out, type, task, pluginDir) {
   forceFirstFixRed(repo, marker);
   const outside = mkdtempSync(join(tmpdir(), "pb-smoke-s4-outside-"));
   const gh = installGhShim({ parent: record, remember: true });
-  const env = assertCleanEnv({ ...cleanEnv(), ...gh.env() });
+  const gateTrace = join(record, "gate-trace.jsonl");
+  const env = assertCleanEnv({ ...cleanEnv(), ...gh.env(), PAIRINGBUDDY_GATE_TRACE: gateTrace });
   const recorder = new ScenariosRecorder(repo, out, { streamPath: join(record, "stream.jsonl") }).start();
   const result = { passed: false, cause: "", runNote: "", humanApprovals: [] };
   try {
@@ -606,7 +617,7 @@ async function runS4(budget, record, out, type, task, pluginDir) {
     result.spend = assertSpend(captured, stage, keys, report, wfReturn, result.caps.refuters);
     result.models = assertLensModels(agents, keys, env);
     result.snapshot = assertSnapshot(captured, stage, repo, agents, wfReturn);
-    result.confinement = { ...assertOutOfCorpusReadDenied(captured, repo, outside, agents), lensCalls: assertLensCallsAllowed(agents), session: assertReadsReachGate(recorder.stream) };
+    result.confinement = { ...assertOutOfCorpusReadDenied(captured, repo, outside, agents), lensCalls: assertLensCallsAllowed(agents, gateTrace), session: assertReadsReachGate(recorder.stream) };
     const findings = refuting.plan.sent.length + refuting.plan.pastCut.length;
     if (type === "new_feature") {
       check(recorder.tdd !== null, `the ${TDD_STAGE} stage never finished, so the light review cannot be judged; ${result.runNote}`);

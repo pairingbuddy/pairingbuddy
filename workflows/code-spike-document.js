@@ -1076,6 +1076,8 @@ const attemptAgents = (artifactMode) => (artifactMode ? 4 : 5);
 const TESTS_FAILED = /^pb: the tests failed, so nothing was committed/m;
 // The repo's commit hook (a lint or format check) refused the fix: the fixer's mistake, rolled back like red tests.
 const HOOK_REFUSED = /^pb: the commit hook refused the fix, so nothing was committed/m;
+// pb refused what the fixer returned (an empty commit subject, say): the fixer's mistake too, rolled back and retried.
+const RETURN_REFUSED = /^pb: the fix's return was refused, so nothing was committed/m;
 const FIX_DIFF_PATH = '.pairingbuddy/run/fix.diff';
 // Survivors grouped by the lens that found them (lensOfFinding), in survivor order, as g1, g2, ...
 function fixGroupsOf(survivors) {
@@ -1144,6 +1146,7 @@ async function fixGroup(config, attempt, spent) {
     if (isBrokenRelay(relay)) return { outcome: 'failed', key };
     if (relay.cli_exit_code !== 0 && TESTS_FAILED.test(relay.cli_output ?? '')) return { outcome: 'red', key, approach };
     if (relay.cli_exit_code !== 0 && HOOK_REFUSED.test(relay.cli_output ?? '')) return { outcome: 'hook-refused', key, approach };
+    if (relay.cli_exit_code !== 0 && RETURN_REFUSED.test(relay.cli_output ?? '')) return { outcome: 'return-refused', key, approach };
     if (relay.cli_exit_code !== 0) return { outcome: 'failed', key };
     // No commit means fix.diff is stale (pb only accepts a no-change fix that says why: in no_change_reason, or as a doubt in ambiguity, which reaches the human), so skip the checker.
     if (relayedJson(relay.cli_output ?? '')?.committed === false) return { outcome: 'kept', key, approach, checked: false };
@@ -1177,6 +1180,7 @@ function mistakeKeysOf(outcome, group, verdict) {
   if (outcome === 'red') return group.findings.map((finding) => mistakeKey(finding, 'tests-red'));
   if (outcome === 'lint-failed') return group.findings.map((finding) => mistakeKey(finding, 'lint-failed'));
   if (outcome === 'hook-refused') return group.findings.map((finding) => mistakeKey(finding, 'hook-refused'));
+  if (outcome === 'return-refused') return group.findings.map((finding) => mistakeKey(finding, 'return-refused'));
   const finding = group.findings.find((f) => f.id === verdict.finding_id);
   return [mistakeKey(finding, verdict.mistake)];
 }

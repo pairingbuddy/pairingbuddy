@@ -152,6 +152,7 @@ JS_TEST_FILES = [
     "tests/js/session-binding.test.mjs",
     "tests/js/shell-hooks-isolation.test.mjs",
     "tests/js/smoke-s2.test.mjs",
+    "tests/js/smoke-s4.test.mjs",
     "tests/js/smoke-s5.test.mjs",
     "tests/js/smoke-s5-spike.test.mjs",
     "tests/js/smoke-s6.test.mjs",
