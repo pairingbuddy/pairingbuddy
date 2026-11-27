@@ -61,3 +61,8 @@ test("a-stop-that-recorded-why-says-why-on-the-bar-and-the-status-line", () => {
 test("a-test-that-passed-before-any-code-waits-on-the-human-and-is-no-failure", () => {
   assert.equal(alertKind({ stop: { code: "red-passes", seq: 4 } }), WAITING);
 });
+
+// Nothing broke either: the draft names a label the repo does not have, and the human approves the new draft or makes the label.
+test("a-draft-label-the-repo-lacks-waits-on-the-human-and-is-no-failure", () => {
+  assert.equal(alertKind({ stop: { code: "pr-label-missing", seq: 4 } }), WAITING);
+});

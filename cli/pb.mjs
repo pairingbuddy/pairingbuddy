@@ -11,7 +11,7 @@ import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE, CheckpointRefused, isRetype, C
 import { repeatAfterPass, repeatingNode } from "../shared-node/repeat.mjs";
 import { gateFacts } from "../shared-node/gate-facts.mjs";
 import { baselineFailures, judgedRecord } from "../shared-node/baseline.mjs";
-import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, finalChecksDoubt, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, defersScope, scopeDoubts, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, statedTypeOf, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
+import { GO_ON_WAIT, PUBLISH_GATE, answeredGate, goOnQuestion, approvalRecord, askReason, autoPublishPasses, blockingGate, changedConfigs, defersDoubts, finalChecksDoubt, unitQuestionDoubts, dueGate, fileHash, fullQuestion, gateQuestion, gatesFor, isPassed, isBindingRefusal, currentBinding, defersScope, redoDraft, scopeDoubts, publishApproval, publishBinding, publishFacts, publishLint, publishVoidReason, questionDoubts, recordApproval, reopenedGate, statedTypeOf, typePassedOn, voidPublish } from "../shared-node/gates.mjs";
 import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs, seenRecently, LedgerRefused, LedgerShaMismatch, NoHandEdit, acceptLedger, readLedger, updateLedger, writeLedger } from "../shared-node/ledger.mjs";
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig, validateGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
@@ -42,9 +42,10 @@ import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, kep
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, nextAttempt, runTypeOf, nextStage } from "../shared-node/stages.mjs";
 import { declaredRenames, splitId } from "../shared-node/test-renames.mjs";
 import { ConfigHashChanged, TestRunRefused, collectedNoTest, cycleRun, failedRunsText, ranNoTest, fullSuitePlans, hasSelector, lintNote, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
-import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, RED_PASSES, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
+import { missingLabels, missingLabelText } from "../shared-node/pr-labels.mjs";
+import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, PR_LABEL_MISSING, RED_PASSES, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { refusalSummary, runSummary } from "../shared-node/run-summary.mjs";
-import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
+import { PrLintRunRefused, listRepoLabels, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
 import { PROPOSABLE, ProposalRefused, parsedValue, readProposals, valueAt, withValue, writeProposals } from "../shared-node/config-propose.mjs";
 import { APPROVAL_GATE, CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS, approvalQuestion, configQuestion } from "../shared-node/config-wait.mjs";
 import { VERB_CLASSES, ensureShim, humanCommand, matchVerb, pbCommand, shaMismatchRemedy, typedCommand } from "../shared-node/verbs.mjs";
@@ -295,9 +296,17 @@ function runOpen(args) {
   // and stops, which is the safe side.
   if (planned?.namedUnit) writeJsonAtomic(unitPathOf(root), planned.namedUnit);
   if (curated) takeCurated(root, curated, task);
+  if (kind === "publish") writeRepoLabels(dir);
   // The short pb a human's ! line names from here on.
   ensureShim(root);
   return { ok: true, kind, branch, runDir: dir };
+}
+
+// The labels the repo has, for the pull request draft to choose from (run/task/repo-labels.json, so it ends with the run;
+// null when gh cannot list them). gh refuses a PR with a label the repo lacks, and only after the push, so the draft picks
+// from these.
+function writeRepoLabels(runDir) {
+  writeJsonAtomic(join(runDir, "repo-labels.json"), { labels: listRepoLabels(runDir) });
 }
 
 // What the curating-guidance skill recorded on the open unit (pb guidance record) before this run opened, or null when there
@@ -2338,11 +2347,55 @@ function publish(args) {
   if (plan.refusals.length > 0) throw new Refusal(`not published: ${plan.refusals.join("; ")}`);
   // publishSteps only emits a push in a plan that also has open-pr, so open-pr alone marks a publishing plan.
   if (plan.steps.some((step) => step.do === "open-pr")) assertBaseCurrent(root, unit, gitConfig);
+  const missing = missingDraftLabels(root, unit, gitConfig, plan.steps, bound);
+  if (missing.length > 0) stopForMissingLabels(path, missing, "nothing was pushed or opened");
   try {
     return executePublish(plan.steps, { root, unit, gitConfig, ledger, bound });
   } catch (e) {
+    if (e instanceof LabelRefused) stopForMissingLabels(path, missingLabels([e.label], listRepoLabels(root) ?? []), `${unit.branch} is pushed to ${gitConfig.remote}, but no PR was opened; the push will not repeat`);
     if (e instanceof Refusal) updateLedger(path, recordPublishFailure);
     throw e;
+  }
+}
+
+// Refuses, before the push, a draft label the repo does not have: gh would refuse to open the PR after the push, and
+// every retry with the same approved draft would fail the same way. Skipped when the PR is already recorded, when the
+// draft has no labels, or when the repo's labels cannot be listed. An open PR on the branch (opened by hand) is adopted
+// by the open-pr step whatever its labels, so it is not refused here either.
+function missingDraftLabels(root, unit, gitConfig, steps, bound) {
+  const open = steps.find((step) => step.do === "open-pr");
+  const labels = bound?.draft.labels ?? [];
+  if (open === undefined || open.recordedUrl !== null || labels.length === 0) return [];
+  const missing = missingLabels(labels, listRepoLabels(root));
+  if (missing.length === 0 || openPrOnBranch(root, unit.branch, targetBranch(gitConfig, unit))) return [];
+  return missing;
+}
+
+// A missing label stops the run at once, with no publish attempt used: a retry with the same approved draft can only fail
+// the same way. The approval is voided and the draft stage set to run again, so going on writes a draft with the repo's
+// labels (the lint checks them) and asks the human again.
+function stopForMissingLabels(path, missing, reached) {
+  const named = missing.map(missingLabelText).join("; ");
+  const detail = `the approved pull request draft asks for labels the repo does not have: ${named}. gh refuses to open a PR with them, so ${reached}, and retrying the same draft cannot work.`;
+  const options = [
+    "Tell the session to go on: it clears the stop, rewrites the pull request draft with labels the repo has, and asks you to approve it again.",
+    `Or create the label in the repo first (gh label create ${missing[0].label}), then tell the session to go on.`,
+  ];
+  const why = `label ${missing.map(({ label }) => label).join(", ")} is not in the repo`;
+  updateLedger(path, (ledger) => ({
+    ...redoDraft(ledger, gatesFor(loadStages(PLUGIN_ROOT), ledger.taskType), `the draft's labels are not all in the repo: ${named}`),
+    stop: { reason: detail, seq: ledger.seq + 1, code: PR_LABEL_MISSING, why, detail, options },
+  }));
+  throw new Refusal(`not published: ${detail} The run has stopped: tell the human what happened and what they can do: ${options.map((option, i) => `${i + 1}. ${option}`).join(" ")}`);
+}
+
+// Whether gh knows a PR from the unit branch into the target.
+function openPrOnBranch(root, branch, target) {
+  try {
+    verifiedPr(viewPr(root, branch), branch, target);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -2474,6 +2527,16 @@ function openPr({ root, unit, gitConfig, ledger, bound }, recordedUrl) {
   return url;
 }
 
+// gh's refusal of a label the repo does not have: no retry with the same draft can open the PR.
+class LabelRefused extends Refusal {
+  constructor(message, label) {
+    super(message);
+    this.label = label;
+  }
+}
+
+const REFUSED_LABEL = /could not add label: '([^']+)' not found/;
+
 function createdPr(root, unit, target, bodyFile, draft, policyMode, opened) {
   const argv = prCreateArgv({ title: draft.title, bodyFile, base: target, branch: unit.branch, labels: draft.labels, policyMode });
   let printed;
@@ -2484,7 +2547,8 @@ function createdPr(root, unit, target, bodyFile, draft, policyMode, opened) {
     try {
       view = viewPr(root, unit.branch);
     } catch {
-      throw failure;
+      const label = REFUSED_LABEL.exec(failure.message)?.[1];
+      throw label === undefined ? failure : new LabelRefused(failure.message, label);
     }
     return verifiedPr(view, unit.branch, target);
   }
@@ -2894,10 +2958,10 @@ function gitDoctor() {
 
 // The title is the one the tap filed in the draft artifact of the current pr-draft attempt, found through the ledger
 // (the tap writes no separate title file).
-function currentDraftTitle(root) {
+function currentDraft(root) {
   const { stage } = readLedger(ledgerPathOf(root));
   if (stage.name !== "pr-draft") throw new Refusal(`the current stage is ${stage.name || "none"}, not pr-draft, so there is no draft to lint`);
-  return readDraft(root, stage).title;
+  return readDraft(root, stage);
 }
 
 // The draft artifact the tap filed for this attempt of pr-draft.
@@ -2909,9 +2973,9 @@ function prLint(args) {
   assertNoArgs(args, "pr lint");
   const root = toplevel();
   if (!existsSync(unitPathOf(root)) && !existsSync(refreshPathOf(root))) throw new Refusal("no unit is open (run/unit.json is missing), so there is no draft to lint");
-  const title = currentDraftTitle(root);
+  const { title, labels } = currentDraft(root);
   // Issue 1, by plan: a lint failure is recorded here (exit 0) and goes to the human at G:publish, not stopped here.
-  return refusing(() => runPrLint(root, title));
+  return refusing(() => runPrLint(root, title, labels ?? []));
 }
 
 // The shared lint and binding code throws its own refusals; the CLI reports them as its own.

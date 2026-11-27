@@ -3,9 +3,12 @@
 // that `gh` is the first on PATH. Every call appends one JSON line to the log: { argv, bodyFile } where bodyFile is the
 // content of the file named by --body-file, read at call time (pb publish removes it afterwards), or null. `gh pr create`
 // prints a fake PR URL. A call fails when the shim is told to, through the environment: GH_SHIM_FAIL is a subcommand
-// prefix ("pr create", "pr comment"). GH_SHIM_URL replaces the URL `gh pr create` prints. `gh pr view` answers with the
+// prefix ("pr create", "pr comment"), and GH_SHIM_FAIL_MESSAGE replaces the failure's stderr. GH_SHIM_URL replaces the URL `gh pr create` prints. `gh pr view` answers with the
 // JSON in GH_SHIM_VIEW (see viewEnv); when that is unset it answers with the PR a successful `gh pr create` opened, if
 // the shim was installed with { remember: true }, and otherwise fails with "no pull requests found".
+//
+// GH_SHIM_LABELS is an optional JSON list of label names that `gh label list` prints, as gh's --json name output;
+// unset, `gh label list` prints nothing.
 //
 // GH_SHIM_VIEWS (see viewsEnv) is an optional JSON map from the last argument of `gh pr view` (the branch or PR url) to
 // its answer; an argument it does not name falls back to the rules above.
@@ -30,7 +33,7 @@ if (at !== -1) {
 appendFileSync(process.env.GH_SHIM_LOG, JSON.stringify({ argv, bodyFile }) + "\\n");
 const fail = process.env.GH_SHIM_FAIL;
 if (fail && argv.join(" ").startsWith(fail)) {
-  process.stderr.write(${JSON.stringify(GH_FAILURE)} + "\\n");
+  process.stderr.write((process.env.GH_SHIM_FAIL_MESSAGE ?? ${JSON.stringify(GH_FAILURE)}) + "\\n");
   process.exit(1);
 }
 const opened = process.env.GH_SHIM_OPENED;
@@ -43,6 +46,9 @@ if (argv[0] === "pr" && argv[1] === "view") {
     process.exit(1);
   }
   process.stdout.write(view + "\\n");
+}
+if (argv[0] === "label" && argv[1] === "list" && process.env.GH_SHIM_LABELS) {
+  process.stdout.write(JSON.stringify(JSON.parse(process.env.GH_SHIM_LABELS).map((name) => ({ name }))) + "\\n");
 }
 if (argv[0] === "pr" && argv[1] === "create") {
   const url = process.env.GH_SHIM_URL ?? ${JSON.stringify(FAKE_PR_URL)};
