@@ -325,8 +325,8 @@ describe("Stop hook", () => {
   test("finds the run a session left, from any cwd", () => {
     const { dir } = makeRun();
     const session = newSession();
-    mkdirSync(join(tmpdir(), "pairingbuddy-sessions"), { recursive: true });
-    writeFileSync(join(tmpdir(), "pairingbuddy-sessions", session), dir);
+    mkdirSync(join(tmpdir(), "pairingbuddy-sessions-v2"), { recursive: true });
+    writeFileSync(join(tmpdir(), "pairingbuddy-sessions-v2", session), dir);
     assertBlocks(stop(makeDir(), { session_id: session }), /pairingbuddy:code-config/);
   });
 

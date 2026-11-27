@@ -69,8 +69,8 @@ describe("gate watch", () => {
 
   test("finds a run the session is bound to from a cwd that has left it", () => {
     const root = makeRun();
-    mkdirSync(join(tmpdir(), "pairingbuddy-sessions"), { recursive: true });
-    writeFileSync(join(tmpdir(), "pairingbuddy-sessions", "bound-1"), root);
+    mkdirSync(join(tmpdir(), "pairingbuddy-sessions-v2"), { recursive: true });
+    writeFileSync(join(tmpdir(), "pairingbuddy-sessions-v2", "bound-1"), root);
 
     const out = watch(makePlugin({ broken: true }), { hook_event_name: "PostToolUse", session_id: "bound-1", cwd: makeDir("gate-watch-away-"), tool_name: "Bash" });
 

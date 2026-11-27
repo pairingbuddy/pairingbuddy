@@ -13,6 +13,15 @@ const HOOKS = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = dirname(HOOKS);
 const GATE_BOOT = join(HOOKS, "gate-boot.mjs");
 
+// A linked worktree's top holds a .git file naming <repo>/.git/worktrees/<name>: the walk stops there (see run-root.mjs).
+function isLinkedWorktreeTop(dir) {
+  try {
+    return /^gitdir: .*[\\/]worktrees[\\/][^\\/]+\s*$/.test(readFileSync(join(dir, ".git"), "utf8"));
+  } catch {
+    return false;
+  }
+}
+
 function readPayload() {
   try {
     return JSON.parse(readFileSync(0, "utf8")) ?? {};
@@ -26,7 +35,7 @@ const holdsRun = (dir) => existsSync(join(dir, ".pairingbuddy", "run", "task", "
 function runRootAbove(start) {
   for (let dir = start; ; dir = dirname(dir)) {
     if (holdsRun(dir)) return dir;
-    if (dir === dirname(dir)) return null;
+    if (isLinkedWorktreeTop(dir) || dir === dirname(dir)) return null;
   }
 }
 
@@ -34,7 +43,7 @@ function runRootAbove(start) {
 function boundRoot(sessionId) {
   if (typeof sessionId !== "string" || !/^[\w-][\w.-]*$/.test(sessionId)) return null;
   try {
-    const root = readFileSync(join(tmpdir(), "pairingbuddy-sessions", sessionId), "utf8");
+    const root = readFileSync(join(tmpdir(), "pairingbuddy-sessions-v2", sessionId), "utf8");
     return isAbsolute(root) && holdsRun(root) ? root : null;
   } catch {
     return null;

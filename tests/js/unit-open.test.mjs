@@ -802,3 +802,33 @@ test("gh-answering-non-json-refuses-with-the-parse-error", () => {
   assert.ok(message.includes(parseError), `the refusal carries the JSON parse error "${parseError}": ${message}`);
   assertUntouched(repo, before, "non-JSON from gh");
 });
+
+// Scenario: the current branch, cut from the base with no commits of its own, is adopted as the unit branch
+
+test("unit-open-adopts-the-checked-out-branch-when-it-has-no-commits-of-its-own", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  gitIn(repo, "switch", "-q", "-c", "feat/x", "origin/main");
+  const before = snapshotRepo(repo);
+
+  const opened = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
+
+  assert.equal(opened.code, 0, opened.stderr + opened.stdout);
+  assert.equal(JSON.parse(readFileSync(unitPath(repo), "utf8")).branch, "feat/x", "the unit runs on the branch already checked out");
+  assert.equal(gitIn(repo, "rev-parse", "--abbrev-ref", "HEAD"), "feat/x", "HEAD stays on the adopted branch");
+  assert.equal(gitIn(repo, "branch", "--list"), before.branches, "no second branch was made");
+});
+
+test("unit-open-refuses-the-checked-out-branch-when-it-has-commits-of-its-own", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+  gitIn(repo, "switch", "-q", "-c", "feat/x", "origin/main");
+  writeFileSync(join(repo.dir, "own.txt"), "own\n");
+  gitIn(repo, "add", "own.txt");
+  gitIn(repo, "commit", "-q", "-m", "own work");
+  const before = snapshotRepo(repo);
+
+  const refused = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
+
+  assert.equal(refused.code, 1, refused.stderr + refused.stdout);
+  assert.match(refused.stderr + refused.stdout, /branch feat\/x already exists and has commits of its own/);
+  assertUntouched(repo, before, "own commits");
+});
