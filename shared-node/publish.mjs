@@ -131,8 +131,11 @@ export const NO_COMMITS_REASON = "the unit has no commits past its base, so ther
 export const KEPT_LOCAL_REASON = "the human answered keep local at G:publish, so the unit is closed and nothing was published";
 export const LOCAL_REASON = "pr.publish is none, so the commits, branch and refs stay local";
 
-// Never --force, never a merge: exactly the approved SHA goes to the unit branch on the remote, as a plain push.
-export const pushArgv = (remote, sha, branch) => ["push", "--", remote, `${sha}:refs/heads/${branch}`];
+// Never --force, never a merge: exactly the approved SHA goes to the unit branch on the remote, as a plain push. After a
+// rebase, the unit's own earlier copy on the remote is replaced with a lease on the tip pb read, so nothing else is lost.
+export const pushArgv = (remote, sha, branch, leaseFrom) => [
+  "push", ...(leaseFrom ? [`--force-with-lease=refs/heads/${branch}:${leaseFrom}`] : []), "--", remote, `${sha}:refs/heads/${branch}`,
+];
 export const upstreamArgv = (remote, branch) => ["branch", `--set-upstream-to=${remote}/${branch}`, branch];
 
 // What `gh pr view` has to say about the unit branch's PR, and the shape of a PR URL.
@@ -173,7 +176,8 @@ const refused = (refusals) => ({ refusals, steps: [] });
 // steps, or the steps in the order to run them. Facts:
 //   runStop, publishMode, commits (SHAs past the base), taskRunOpen (a run other than the publish run is open),
 //   changedConfigs, approval ("human" | "keep-local" | "auto" | "none"), voidReason, head (the approved SHA),
-//   remoteSha (null when absent or unreadable), unit, plus what the checks above read.
+//   remoteSha (null when absent or unreadable), remoteRebased (the remote branch is the unit's own pre-rebase copy), unit,
+//   plus what the checks above read.
 export function publishSteps(facts) {
   if (facts.runStop !== null && facts.runStop !== undefined) return refused([stopped(facts)]);
   if (facts.commits.length === 0) {
@@ -191,7 +195,7 @@ export function publishSteps(facts) {
   return {
     refusals: [],
     steps: [
-      ...(facts.remoteSha === facts.head ? [] : [{ do: "push", sha: facts.head, branch }]),
+      ...(facts.remoteSha === facts.head ? [] : [{ do: "push", sha: facts.head, branch, ...(facts.remoteRebased && { leaseFrom: facts.remoteSha }) }]),
       { do: "set-upstream", branch },
       { do: "open-pr", recordedUrl: pr?.url ?? null },
       ...(facts.coordination === null || pr?.commented === true ? [] : [{ do: "comment", text: facts.coordination }]),

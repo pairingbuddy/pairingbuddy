@@ -2027,12 +2027,27 @@ function branchProblemOf(root, branch) {
 function publishingFacts(root, unit, gitConfig, head) {
   const branchProblem = branchProblemOf(root, unit.branch);
   const usable = branchProblem === null;
+  const remoteSha = usable ? (tryGit(root, ["ls-remote", "--", gitConfig.remote, `refs/heads/${unit.branch}`])?.split(/\s/)[0] || null) : null;
   return {
     safetyNets: safetyNetStages(loadStages(PLUGIN_ROOT)), ...unitPlan(root, unit), head, dirty: remainingFiles(root), branchProblem,
     branchIsProtected: usable && isProtected(gitConfig, root, unit.branch), currentBranch: branchOf(root),
     branchTip: usable ? tryGit(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${unit.branch}`]) : null,
-    remoteSha: usable ? (tryGit(root, ["ls-remote", "--", gitConfig.remote, `refs/heads/${unit.branch}`])?.split(/\s/)[0] || null) : null,
+    remoteSha, remoteRebased: remoteSha !== null && remoteIsRebasedCopy(root, unit, remoteSha, head),
   };
+}
+
+// The remote branch holds an earlier copy of the unit from before a rebase: it is not behind HEAD, yet every commit only
+// it has makes a change some unit commit makes. Then the push may replace it, leased on that tip. Work only the remote
+// has, or a tip whose objects were never fetched, keeps the plain push, which git rejects.
+function remoteIsRebasedCopy(root, unit, remoteSha, head) {
+  if (tryGit(root, ["merge-base", "--is-ancestor", remoteSha, head]) !== null) return false;
+  const onlyRemote = tryGit(root, ["rev-list", `${head}..${remoteSha}`]);
+  if (onlyRemote === null) return false;
+  const ours = new Set(unitCommits(root, unit).map((sha) => patchIdOf(root, sha)));
+  return onlyRemote.split("\n").filter(Boolean).every((sha) => {
+    const id = patchIdOf(root, sha);
+    return id !== "" && ours.has(id);
+  });
 }
 
 // Pushes the approved SHA, opens (or adopts) the PR, writes the plan line, deletes the unit's refs and closes the unit.
@@ -2104,7 +2119,7 @@ function executePublish(steps, ctx) {
   let pendingComment;
   for (const step of steps) {
     if (step.do === "push") {
-      runGit(root, pushArgv(remote, step.sha, step.branch), { context: "nothing was pushed or opened; the unit is intact" });
+      runGit(root, pushArgv(remote, step.sha, step.branch, step.leaseFrom), { context: "nothing was pushed or opened; the unit is intact" });
     } else if (step.do === "set-upstream") {
       runGit(root, upstreamArgv(remote, step.branch), { context: `${step.branch} is on ${remote} but its upstream is not set; run pb publish again, the push will not repeat` });
     } else if (step.do === "open-pr") {
