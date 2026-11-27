@@ -1987,3 +1987,17 @@ test("skill-coding-names-pr-refresh", () => {
   assert.match(skill, /review fixes/, "the coding skill ties pb pr refresh to review fixes");
   assert.match(skill, /never[^.\n]*gh pr edit|gh pr edit[^.\n]*never/i, "the coding skill says never to run gh pr edit yourself");
 });
+
+// A silent allow leaves no trace in the transcript, so a smoke cannot tell the hook ran: PAIRINGBUDDY_GATE_TRACE, when
+// set, names a file where the gate appends one line per call it saw, with the call's id and its decision.
+test("gate-trace-records-a-silent-allow", () =>
+  withRepo({}, async (repo) => {
+    const trace = join(repo.dir, "..", "gate-trace.jsonl");
+    const call = { ...fileCall(repo.dir, "Read", { file_path: join(repo.dir, "README.md") }), tool_use_id: "toolu_trace_1" };
+
+    const result = await runGate(call, { env: { PAIRINGBUDDY_GATE_TRACE: trace } });
+
+    assertAllowed(result);
+    const lines = readFileSync(trace, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    assert.deepEqual(lines, [{ tool_use_id: "toolu_trace_1", tool_name: "Read", agent_type: null, decision: "none" }]);
+  }));

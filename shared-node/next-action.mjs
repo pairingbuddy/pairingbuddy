@@ -112,6 +112,10 @@ function unreadable(root, e) {
 
 // status is null when there is nothing to report but the action. action is null for run state with no open task.
 // owner is null with no owner, and for a ledger that cannot say who owns it.
+// A unit open with no run: the session carries the guidance over and opens the next run. Only a session with no human is
+// told, since with a human the session may be rightly waiting on their answer there.
+export const UNIT_WITH_NO_RUN = "A unit is open with no run, and no human answers in this session. Do not wait for one: take the guidance step's no-human path (carry the guidance over as it stands and record it), then run pb status --action and go on with what it says, as opening the next task's run.";
+
 export function readRun(pluginRoot, root) {
   const taskDir = join(root, ".pairingbuddy", "run", "task");
   const ledgerPath = join(taskDir, "ledger.json");

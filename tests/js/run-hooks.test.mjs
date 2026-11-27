@@ -168,11 +168,11 @@ describe("Stop hook", () => {
     assert.equal(stop(makeRun({ stage: { ...STRANDED, startedAt: secondsAgo(1) } }).dir), "");
   });
 
-  test("stays silent with run/unit.json and no task, which has no action to give", () => {
+  test("stays silent with run/unit.json and no task when a human answers, since the session may be waiting on them", () => {
     const dir = makeDir();
     mkdirSync(join(dir, ".pairingbuddy", "run"), { recursive: true });
     writeFileSync(join(dir, ".pairingbuddy", "run", "unit.json"), "{}");
-    assert.equal(stop(dir), "");
+    assert.equal(stop(dir, { permission_mode: "default" }, { env: { CLAUDE_CODE_ENTRYPOINT: "cli", PAIRINGBUDDY_GATE_POLICY: "" } }), "");
   });
 
   test("a stop with a stage active is told, with its reason and what clears it", () => {
@@ -754,4 +754,35 @@ describe("session-start-adoption-line", () => {
     assert.doesNotMatch(report, /must not drive/, report);
     assert.ok(!report.includes("session-A"), report);
   });
+});
+
+// A unit open with no run is where the session runs the guidance step and opens the next task's run. A cheap model has
+// ended its turn there, asking a human nobody is, so with no human the Stop hook tells it to go on, once.
+function makeUnitOnly() {
+  const dir = makeDir();
+  execFileSync("git", ["init", "-q"], { cwd: dir });
+  mkdirSync(join(dir, ".pairingbuddy", "run"), { recursive: true });
+  writeFileSync(join(dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ branch: "feat/x", tasks: [] }));
+  return dir;
+}
+
+const HUMAN_ENV = { CLAUDE_CODE_ENTRYPOINT: "cli", PAIRINGBUDDY_GATE_POLICY: "" };
+
+test("stop-unit-with-no-run-tells-a-no-human-session-to-go-on", () => {
+  const dir = makeUnitOnly();
+  const session = newSession();
+
+  const first = stop(dir, { session_id: session, permission_mode: "auto" }, { env: HUMAN_ENV });
+  const again = stop(dir, { session_id: session, permission_mode: "auto", stop_hook_active: true }, { env: HUMAN_ENV });
+
+  assertBlocks(first, /no human answers[\s\S]*guidance[\s\S]*pb status --action/i);
+  assert.equal(again, "", "the same notice is told once");
+});
+
+test("stop-unit-with-no-run-tells-a-session-with-a-human-nothing", () => {
+  const dir = makeUnitOnly();
+
+  const output = stop(dir, { session_id: newSession(), permission_mode: "default" }, { env: HUMAN_ENV });
+
+  assert.equal(output, "", "with a human the session may be waiting on their answer");
 });

@@ -8,7 +8,7 @@
 // unless the run has no owner, and Solo is told nothing, because its own Plan Loop drives the stages.
 // stop_hook_active cannot be the guard: it stays true down the chain, so it would leave a second stage untold.
 // Any failure stays silent, because a hook that errors here must not cost a turn. Built-ins only outside a run.
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,14 +46,26 @@ function shouldTell({ taskDir, action }, sessionId, inChain) {
 
 const isForSession = ({ running, action, owner }, sessionId) => !running && action !== null && (owner === null || owner === sessionId);
 
+// The same test the gate and SessionStart use: the auto policy, or claude -p.
+const noHumanAnswers = (payload) =>
+  payload.permission_mode === "auto" || process.env.PAIRINGBUDDY_GATE_POLICY === "auto" || process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-cli";
+
+// A unit open with no run: readRun has no action there, since a session with a human may be rightly waiting on them. With
+// no human, the session is told to go on, once, with the notice kept in run/.
+function withUnitOnly(run, root, payload, action) {
+  const runDir = join(root, ".pairingbuddy", "run");
+  if (run.action !== null || !existsSync(join(runDir, "unit.json")) || !noHumanAnswers(payload)) return run;
+  return { ...run, taskDir: runDir, action };
+}
+
 async function tellNextAction() {
   const payload = JSON.parse(readFileSync(0, "utf8"));
   const cwd = typeof payload.cwd === "string" && isAbsolute(payload.cwd) ? payload.cwd : process.cwd();
   const { findSessionRoot } = await import("../shared-node/run-root.mjs");
   const root = findSessionRoot(cwd, payload.session_id);
   if (root === null) return;
-  const { readRun } = await import("../shared-node/next-action.mjs");
-  const run = readRun(PLUGIN, root);
+  const { readRun, UNIT_WITH_NO_RUN } = await import("../shared-node/next-action.mjs");
+  const run = withUnitOnly(readRun(PLUGIN, root), root, payload, UNIT_WITH_NO_RUN);
   if (isForSession(run, payload.session_id) && shouldTell(run, payload.session_id, payload.stop_hook_active === true)) {
     process.stdout.write(JSON.stringify({ decision: "block", reason: `Pairing Buddy run at ${root}. ${run.action}` }));
   }

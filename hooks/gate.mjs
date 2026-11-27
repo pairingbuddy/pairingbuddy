@@ -9,7 +9,7 @@
 // Any error with run state denies.
 // This wrapper imports only built-ins and loads everything else dynamically, so that a failed import can
 // still deny, and so that a call outside a run costs little more than Node's startup.
-import { existsSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -156,7 +156,11 @@ function readPaths(payload, cwd) {
   return [base, ...starts.map(canonicalPath)];
 }
 
+// What the gate decided for this call: "none" is the silent allow, which leaves no line in the transcript.
+let decided = "none";
+
 function decide(permissionDecision, permissionDecisionReason) {
+  decided = permissionDecision;
   const hookSpecificOutput = { hookEventName: "PreToolUse", permissionDecision, permissionDecisionReason };
   process.stdout.write(JSON.stringify({ hookSpecificOutput }));
 }
@@ -340,8 +344,10 @@ function addRunRoot(start) {
   if (root !== null) runRoots.add(root);
 }
 
+let traced = null;
 try {
   const payload = readPayload();
+  traced = payload;
   const cwd = canonicalPath(workingDirectory(payload));
   const sessionRoot = findSessionRoot(cwd, payload?.session_id);
   if (sessionRoot !== null) runRoots.add(sessionRoot);
@@ -369,4 +375,16 @@ try {
   }
 } catch (e) {
   if (runRoots.size > 0) decide("deny", e.gateDenial ? e.message : `Gate error during a run, so the call is denied: ${e?.message ?? e}`);
+}
+
+// PAIRINGBUDDY_GATE_TRACE names a file the smokes read: one line per call, so a silent allow shows the hook ran.
+// Any failure here is ignored, because the trace must never change a decision.
+const TRACE = process.env.PAIRINGBUDDY_GATE_TRACE;
+if (typeof TRACE === "string" && isAbsolute(TRACE)) {
+  try {
+    const line = { tool_use_id: traced?.tool_use_id ?? null, tool_name: traced?.tool_name ?? null, agent_type: traced?.agent_type ?? null, decision: decided };
+    appendFileSync(TRACE, `${JSON.stringify(line)}\n`);
+  } catch {
+    // the trace is for the smokes only
+  }
 }

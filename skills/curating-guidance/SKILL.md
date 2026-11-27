@@ -54,7 +54,7 @@ Never go on to the output after feedback: always redo the analysis and ask again
 
 ## When No Human Can Answer
 
-With no human, carry the guidance over silently. There is no human under the auto policy or `claude -p`, which the `<pairingbuddy-no-human>` block from SessionStart says. The same holds if `PAIRINGBUDDY_SOLO` is `true`, or if AskUserQuestion is ever denied with "No human answers". Then:
+With no human, carry the guidance over silently. There is no human under the auto policy or `claude -p`, which the `<pairingbuddy-no-human>` block from SessionStart says. The same holds if `PAIRINGBUDDY_SOLO` is `true`, or if AskUserQuestion is ever denied with "No human answers", or is not among your tools at all. Then:
 
 1. Ask nothing and offer nothing: never ask in chat, and do not offer to bootstrap.
 2. Keep every persistent entry unchanged, field for field. Drop every entry with `task_scoped: true`. If the file is missing, start from `{"guidance": []}`.
