@@ -114,7 +114,11 @@
           "properties": {
             "reason": { "type": "string", "minLength": 1 },
             "seq": { "type": "integer", "minimum": 0 },
-            "code": { "type": "string", "minLength": 1 }
+            "code": { "type": "string", "minLength": 1 },
+            "why": { "description": "The cause in a few words, for the bar. May be absent.", "type": "string", "minLength": 1 },
+            "detail": { "description": "What happened, in plain words. May be absent.", "type": "string", "minLength": 1 },
+            "options": { "description": "What the human can do. May be absent.", "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "output": { "description": "The raw tail of the test run behind the stop, shown only in the report. May be absent.", "type": "string" }
           }
         }
       ]

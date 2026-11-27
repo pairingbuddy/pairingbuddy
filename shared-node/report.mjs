@@ -572,12 +572,13 @@ const looseItem = (doubt) => `<li>Decide: ${escape(doubt.ambiguity)} <small>(${e
 function stopItem({ ledger, spawns, tests }) {
   if (!ledger?.stop) return [];
   const step = plainName(ledger.stage?.name);
-  const { why: recorded, detail, options } = ledger.stop;
+  const { why: recorded, detail, options, output } = ledger.stop;
   const why = typeof recorded === "string" && recorded !== "" ? recorded : stopName(ledger.stop);
   // What the stop recorded is kept whole here: the pane cuts it and points at this report.
   const cause = typeof detail === "string" && detail !== "" ? `<br>${escape(detail)}` : "";
   const listed = Array.isArray(options) && options.length > 0 ? `<ol>${options.map((option) => `<li>${escape(option)}</li>`).join("")}</ol>` : "";
-  return [`<li>It stopped${step ? ` at ${escape(step)}` : ""}${why ? `: ${escape(why)}` : ""}. ${escape(rerunStep(spawns, tests))}${cause}${listed}</li>`];
+  const printed = typeof output === "string" && output !== "" ? `<pre>${escape(output)}</pre>` : "";
+  return [`<li>It stopped${step ? ` at ${escape(step)}` : ""}${why ? `: ${escape(why)}` : ""}. ${escape(rerunStep(spawns, tests))}${cause}${printed}${listed}</li>`];
 }
 
 // A question pb asked and the human has not answered yet. A finished code run that was not signed off asks for the

@@ -335,6 +335,20 @@ test('pane-says-why-a-stop-happened-and-what-the-human-can-do', async ($, on) =>
   expect(rows.join('').length, 'bounded').toBeLessThan(700)
 })
 
+// An option that fits in two lines of a 120-column pane is shown whole: its end ("then tell the session to go on") is
+// what the human acts on.
+test('pane-shows-an-option-whole-when-it-fits-in-two-lines', async ($, on) => {
+  const cut = "Cut it, if the code already does what it checks: type !.pairingbuddy/bin/pb human cut-test s4-gate-denies-outside --reason '<why>', then tell the session to go on."
+  engine(on, { ...SNAPSHOT_RUNNING, stop: { ...EXPLAINED_STOP, options: [cut] } })
+  await start($)
+
+  const lines = await paneLines($, { bodyColumns: 120 })
+  const why = lines.findIndex(line => line.startsWith('WHY'))
+  const text = lines.slice(why).map(line => line.replace(/^(WHY)?\s+/, '').trimEnd()).join(' ')
+
+  expect(text, 'the option whole').toContain('then tell the session to go on.')
+})
+
 // Three states: the human's own stop is no failure, so it waits in amber and red stays for what went wrong.
 test('pane-status-draws-the-humans-own-stop-as-waiting-not-as-a-failure', async ($, on) => {
   engine(on, { ...SNAPSHOT_RUNNING, stop: { code: 'human-stopped', reason: 'the human answered stop at G:scenarios', seq: 3 } })

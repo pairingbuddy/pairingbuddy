@@ -441,7 +441,7 @@ function checkBash(payload, _ledgerPath, root) {
     throw new Denied(`pb ${wrongVerb} belongs to ${VERB_OWNERS[classOf(wrongVerb)]}, so this caller cannot run it.`);
   }
   if (disguisesPb(command)) {
-    throw new Denied("pb takes literal words: nothing a shell expands ($, a backtick, {, a backslash, ?, *, [) may follow its name, xargs may not feed it, and pb.mjs takes no other letter case.");
+    throw new Denied("pb takes literal words: nothing a shell expands ($, a backtick, {, a backslash, ?, *, [) may follow its name, xargs may not feed it, and pb.mjs takes no other letter case. Put a value with such characters, a template's {braces} included, in single quotes: the shell leaves it as typed.");
   }
   if (pbWithEnvironment(command)) {
     throw new Denied("pb takes no environment of its own: an assignment before it, or the env command, could change what its tests run or skip a commit hook. Run it exactly as given.");

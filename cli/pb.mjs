@@ -42,6 +42,7 @@ import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, i
 import { declaredRenames, splitId } from "../shared-node/test-renames.mjs";
 import { ConfigHashChanged, TestRunRefused, collectedNoTest, cycleRun, failedRunsText, ranNoTest, fullSuitePlans, hasSelector, lintNote, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, RED_PASSES, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
+import { runSummary } from "../shared-node/run-summary.mjs";
 import { PrLintRunRefused, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
 import { PROPOSABLE, ProposalRefused, parsedValue, readProposals, valueAt, withValue, writeProposals } from "../shared-node/config-propose.mjs";
 import { APPROVAL_GATE, CONFIG_GATE, CONFIG_WAIT_LINE, TYPED_FALLBACKS, approvalQuestion, configQuestion } from "../shared-node/config-wait.mjs";
@@ -1175,7 +1176,7 @@ function orStop(path, { step, key }, code, action) {
 // A test that passes at RED before any code: no retry can change that, so the run stops at once and says what happened
 // and what the human can do. Only a current key raises it, as in orStop.
 function stopRedPasses({ step, key, path, root }, id, run) {
-  const detail = `test ${id} already passes, before any code was written, so its RED proves nothing, and no retry can change that: what it checks is already there. Its run: ${excerptTail(run.excerpt).trim()}`;
+  const detail = `test ${id} already passes, before any code was written, so its RED proves nothing, and no retry can change that: what it checks is already there. Its run: ${runSummary(run.excerpt, run.exitCode)}.`;
   const options = [
     `Cut it, if the code already does what it checks: type ${humanCommand(root, `cut-test ${id} --reason '<why>'`)}, then tell the session to go on.`,
     "Keep it as a regression guard: tell the session to run it after a test that fails first, so it passes as covered.",
@@ -1183,7 +1184,7 @@ function stopRedPasses({ step, key, path, root }, id, run) {
   ];
   updateLedger(path, (ledger) => {
     assertCurrentKey(step, key, ledger);
-    return { ...ledger, stop: { reason: detail, seq: ledger.seq + 1, code: RED_PASSES, why: `${id} passed before any code`, detail, options } };
+    return { ...ledger, stop: { reason: detail, seq: ledger.seq + 1, code: RED_PASSES, why: `${id} passed before any code`, detail, options, output: excerptTail(run.excerpt).trim() } };
   });
   throw new Refusal(`the run stopped: ${detail}`);
 }
