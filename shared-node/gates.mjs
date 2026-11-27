@@ -160,9 +160,18 @@ function goalCheckLine(findings, fullAt) {
 const trimmed = (value) => (typeof value === "string" && value.trim() !== "" ? value.trim() : null);
 
 // The goal's first sentence, whole: the question box wraps it. The full question file holds the whole goal.
+// Each final check the session ran and recorded (pb final-check), newest result per id, with its note on one line.
+const FINAL_CHECK_NOTE_MAX = 200;
+function ranFinalCheckLines(finalChecks) {
+  if (!Array.isArray(finalChecks)) return [];
+  const latest = new Map(finalChecks.map((check) => [check.id, check]));
+  const note = (text) => { const flat = String(text).trim().replace(/\s+/g, " "); return flat.length > FINAL_CHECK_NOTE_MAX ? `${flat.slice(0, FINAL_CHECK_NOTE_MAX - 1)}…` : flat; };
+  return [...latest.values()].map(({ id, result, note: text }) => `Final check ${id} ${result === "fail" ? "failed" : "passed"}: ${note(text)}`);
+}
+
 function taskEndLines({ facts, fullAt }) {
   const goal = fullAt === null ? trimmed(facts.goal) : firstSentence(facts.goal);
-  return [...(goal === null ? [] : [`Goal: ${goal}`]), ...builtLine(facts, fullAt), ...preexistingLine(facts.preexisting), ...lintLine(facts.lint), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck, fullAt)];
+  return [...(goal === null ? [] : [`Goal: ${goal}`]), ...builtLine(facts, fullAt), ...ranFinalCheckLines(facts.finalChecks), ...preexistingLine(facts.preexisting), ...lintLine(facts.lint), ...reviewLine(facts.review), ...goalCheckLine(facts.goalCheck, fullAt)];
 }
 
 const isHeading = (line) => /^#{1,6}\s/.test(line.trim());
@@ -675,8 +684,23 @@ export function typePassedOn(root, ledger, gate) {
 
 const typeReason = (root, ledger, contract) => selectorReason(root, ledger, contract) ?? classifierReason(root, ledger) ?? lensReason(root, ledger);
 
+const TASK_END_GATE = "G:task-end";
+
+// The final checks the session recorded failed, newest record per id (pb final-check). A failed one is no doubt to set aside:
+// G:task-end asks the human under any policy, auto included.
+export function failedFinalChecks(ledger) {
+  const latest = new Map((Array.isArray(ledger.finalChecks) ? ledger.finalChecks : []).map((check) => [check.id, check]));
+  return [...latest.values()].filter(({ result }) => result === "fail");
+}
+
+function finalCheckReason(ledger) {
+  const failed = failedFinalChecks(ledger).map(({ id }) => id);
+  return failed.length === 0 ? null : `a final check failed: ${failed.join(", ")}`;
+}
+
 // The reasons only one gate has, by gate name.
 const GATE_REASONS = {
+  [TASK_END_GATE]: ({ ledger }) => finalCheckReason(ledger),
   [SCOPE_GATE]: ({ root, ledger }) => scopeReason(root, ledger),
   [TYPE_GATE]: ({ root, ledger, contract }) => typeReason(root, ledger, contract),
   [PUBLISH_GATE]: ({ root, ledger, voided }) => publishReason(ledger, root, voided),

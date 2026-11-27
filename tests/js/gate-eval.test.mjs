@@ -283,6 +283,29 @@ describe("auto policy", () => {
     assertAutoPassed(repo, output);
   });
 
+  test("G:task-end asks under auto while a final check the session ran is recorded failed, and names it", () => {
+    const repo = makeRepo({ ledger: { finalChecks: [{ id: "smokes", result: "fail", note: "S4 and S5 failed", at: "2026-11-27T10:00:00.000Z" }] } });
+
+    const output = gateEval(repo, "auto");
+
+    assertAsks(output);
+    assert.match(output.reason, /final check failed: smokes/);
+    assertNoRecord(repo);
+  });
+
+  test("the gate lets the session record a final check during a run under auto", () => {
+    const repo = makeRepo();
+
+    assertNotDenied(runGate(repo, mainBash(repo, `node ${join(repo.plugin, "cli", "pb.mjs")} final-check smokes --fail --note 'S4 failed live'`, "auto")));
+  });
+
+  test("G:task-end passes under auto when a failed final check was rerun and recorded passing", () => {
+    const at = "2026-11-27T10:00:00.000Z";
+    const repo = makeRepo({ ledger: { finalChecks: [{ id: "smokes", result: "fail", note: "S4 failed", at }, { id: "smokes", result: "pass", note: "all pass", at }] } });
+
+    assertAutoPassed(repo, gateEval(repo, "auto"));
+  });
+
   test("Solo's env var, seen by the hook, passes a continue gate under another mode", () => {
     const repo = makeRepo();
 

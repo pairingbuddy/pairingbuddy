@@ -38,7 +38,7 @@ export const ADOPT_RECENT_MS = 10 * 60_000;
 
 // Whether the owner was seen within ADOPT_RECENT_MS.
 export const seenRecently = (lastSeen) => ownerAgeMs(lastSeen) < ADOPT_RECENT_MS;
-const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "humanCommits", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits", "guidance"];
+const TOP_KEYS = ["v", "seq", "sha", "kind", "taskType", "owner", "task", "plan", "configHash", "gitConfigHash", "policy", "stage", "stages", "gates", "tests", "commits", "humanCommits", "finalChecks", "retries", "spend", "stop", "needsHuman", "acceptances", "configAcceptances", "checkpoints", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits", "guidance"];
 
 // A ledger the CLI reports as a refusal rather than a crash.
 export class LedgerRefused extends Error {}
@@ -122,6 +122,9 @@ function checkNullableObject(value, path, shape, errors, options) {
   if (value !== null) checkObject(value, path, shape, errors, options);
 }
 
+// One final check's result as the session recorded it with pb final-check: a live, paid or manual run it did itself.
+const isFinalCheck = (x) => isObject(x) && isString(x.id) && x.id !== "" && ["pass", "fail"].includes(x.result) && isString(x.note) && isString(x.at);
+
 export function validateLedger(ledger) {
   const errors = [];
   checkObject(ledger, "", {
@@ -142,6 +145,7 @@ export function validateLedger(ledger) {
     tests: [isObject, "an object"],
     commits: [(x) => Array.isArray(x) && x.every(isString), "an array of strings"],
     humanCommits: [(x) => Array.isArray(x) && x.every(isString), "an array of strings"],
+    finalChecks: [(x) => Array.isArray(x) && x.every(isFinalCheck), "an array of { id, result pass|fail, note, at }"],
     retries: [isObject, "an object"],
     spend: [() => true, ""],
     stop: [() => true, ""],
@@ -159,7 +163,7 @@ export function validateLedger(ledger) {
     idleWaits: [Array.isArray, "an array"],
     runId: [(x) => isString(x) && x !== "", "a non-empty string"],
     guidance: [isObject, "an object"],
-  }, errors, { optional: ["humanCommits", "acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits", "guidance"] });
+  }, errors, { optional: ["humanCommits", "finalChecks", "acceptances", "configAcceptances", "checkpoints", "runId", "gitConfigHash", "configApproval", "lenses", "fixes", "voidedGates", "gateWaits", "permissionWaits", "stopWaits", "idleWaits", "guidance"] });
   if (!isObject(ledger)) return { valid: false, errors };
 
   for (const key of TOP_KEYS) {

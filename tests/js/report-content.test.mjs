@@ -285,6 +285,19 @@ describe("report-content", () => {
     assert.ok(section.includes("cut by you: needs a live S9 run"), "the human's reason");
   });
 
+  test("report-final-checks-ran: each final check the session ran shows its recorded result and note", async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "done" });
+    const key = "code-scenarios.enumerate-scenarios-and-test-cases.-.r1.a1";
+    const finalChecks = [{ check_id: "smokes", description: "S1 to S6 pass live within their caps", command: "node tests/smoke/run.mjs S1-S6" }];
+    const calls = [...(input.calls ?? []), { input: { pb_key: key, ambiguity: "", scenarios: [], final_checks: finalChecks } }];
+    const ran = [{ id: "smokes", result: "fail", note: "S4 and S5 failed live", at: "2026-11-27T10:00:00.000Z" }];
+    const ledger = { ...input.ledger, finalChecks: ran };
+
+    const section = sectionOf(renderReport({ ...input, calls, ledger }), "FINAL CHECKS");
+
+    assert.ok(section.includes("failed: S4 and S5 failed live"), section);
+  });
+
   test("report-already-failing: the failures there before the task are listed once, by runner, with a runner that could not run named so", async () => {
     const input = await recordedReportInput("probe-2", { outcome: "done" });
     const run = (runner, exitCode, failures) => ({ runner, argv: [], exitCode, signal: null, timedOut: false, durationMs: 1, excerpt: "", excerptTruncated: false, ...(failures ? { failures } : {}) });

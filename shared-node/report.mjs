@@ -329,12 +329,20 @@ function finalChecksSection({ task }) {
   const byKey = new Map(calls.map(({ input }) => [input?.pb_key, input]).filter(([key]) => typeof key === "string"));
   const ledger = codeRunIn(task)?.ledger ?? {};
   const key = newestKeyAmong([...byKey.keys()].map((pbKey) => `${pbKey}.json`), isStandingScenarios(ledger));
-  const rows = (key === null ? undefined : finalCheckRows(byKey.get(key)?.final_checks)) ?? [];
+  const planned = key === null ? undefined : byKey.get(key)?.final_checks;
+  // Each row keeps its check_id (the raw list's, by position), so the result the session recorded can sit beside it.
+  const rows = (key === null ? undefined : finalCheckRows(planned))?.map((row, i) => ({ ...row, id: planned[i]?.check_id })) ?? [];
   // A test the human took off the list with pb human cut-test is left to a person too, with their reason.
-  const cuts = (Array.isArray(ledger.tests?.cut) ? ledger.tests.cut : []).map(({ id, reason }) => ({ description: id, why: `cut by you: ${reason}` }));
-  if (rows.length + cuts.length === 0) return "";
-  const item = ({ description, command, why }) => `<li>${escape(description)}${command ? `: <code>${escape(command)}</code>` : ""}${why ? ` (${escape(why)})` : ""}</li>`;
-  return section("FINAL CHECKS", `<p>Run live by a person: they need a live, paid or manual run, so they were not built as tests.</p>\n<ul>\n${[...rows, ...cuts].map(item).join("\n")}\n</ul>`);
+  const cuts = (Array.isArray(ledger.tests?.cut) ? ledger.tests.cut : []).map(({ id, reason }) => ({ id, description: id, why: `cut by you: ${reason}` }));
+  // The results the session recorded with pb final-check, newest per id; a check run that no row names is listed by its id.
+  const ran = new Map((Array.isArray(ledger.finalChecks) ? ledger.finalChecks : []).map((check) => [check.id, check]));
+  const listed = new Set([...rows, ...cuts].map(({ id }) => id));
+  const unlisted = [...ran.keys()].filter((id) => !listed.has(id)).map((id) => ({ id, description: id }));
+  const all = [...rows, ...cuts, ...unlisted];
+  if (all.length === 0) return "";
+  const result = (id) => (ran.has(id) ? ` <strong>${ran.get(id).result === "fail" ? "failed" : "passed"}: ${escape(ran.get(id).note)}</strong>` : "");
+  const item = ({ id, description, command, why }) => `<li>${escape(description)}${command ? `: <code>${escape(command)}</code>` : ""}${why ? ` (${escape(why)})` : ""}${result(id)}</li>`;
+  return section("FINAL CHECKS", `<p>They need a live, paid or manual run, so they were not built as tests. A result shows where the session ran one; the rest are left to a person.</p>\n<ul>\n${all.map(item).join("\n")}\n</ul>`);
 }
 
 // What the full suite already failed before the task changed anything (its baseline): the run did not count these
