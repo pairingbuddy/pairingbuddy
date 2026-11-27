@@ -657,14 +657,14 @@ function selectorReason(root, ledger, contract) {
   return `${advice}. Once the human has added it, the run asks them to accept the changed file at its next test run, and goes on`;
 }
 
-// Under auto, a likely type passes: asking at every plan task cost more than it caught, and a question on it waits on the
-// unit's questions (defersDoubts). An unsure type, or none, still asks. A type the task states for itself (a plan task's Type:
-// line, approved with the plan) is certain, whatever the classifier reported.
+// Under auto, a likely type with no question for the human passes: asking at every plan task cost more than it caught. An
+// unsure type, or one with a question, still asks, since the type picks the whole workflow and cannot wait for G:publish.
 function classifierReason(root, ledger, contract) {
   if (statedType(ledger.task, contract.migratedTypes) !== null) return null;
   const content = keptIntakeReturn(artifactsDir(root), ledger.stage.attempt)?.content;
   if (content?.confidence === "certain") return null;
-  return content?.confidence === "likely" && ledger.policy.mode === "auto" ? null : "the classifier does not report certain";
+  const quiet = content?.confidence === "likely" && String(content.ambiguity ?? "").trim() === "";
+  return quiet && ledger.policy.mode === "auto" ? null : "the classifier does not report certain";
 }
 
 function lensReason(root, ledger) {
@@ -719,9 +719,9 @@ export const askReason = (contract, ledger, gate, root, voided = null, opts = {}
 export const isDoubtReason = (reason) => typeof reason === "string" && AMBIGUITY_REASON.test(reason);
 
 // Under auto, a gate whose only reason to ask is open doubts passes, and its doubts wait on the unit's questions until
-// G:publish asks them (questions.mjs). Never G:publish itself, the gate that asks them. G:type defers too once the classifier
-// named a type it is at least likely on: the run goes on with that type, and the human can still redirect it.
-const NEVER_DEFERS = [PUBLISH_GATE];
+// G:publish asks them (questions.mjs). Never G:publish itself, the gate that asks them, nor G:type: the type picks the whole
+// workflow, so a question on it is asked before any work is built on it.
+const NEVER_DEFERS = [PUBLISH_GATE, TYPE_GATE];
 export const defersDoubts = (contract, ledger, gate, root, reason) =>
   isDoubtReason(reason) && ledger.policy.mode === "auto" && !NEVER_DEFERS.includes(gate.name) && askReason(contract, ledger, gate, root, null, { skipDoubts: true }) === null;
 

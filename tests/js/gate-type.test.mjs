@@ -92,22 +92,22 @@ test("gate-type-asks-a-likely-type-under-a-non-auto-policy", () => {
   assert.match(out.reason, /classifier does not report certain/, "outside auto, a likely type still asks, as before");
 });
 
-test("gate-type-passes-a-likely-type-with-a-question-and-defers-it-with-a-unit-open-under-auto", () => {
+test("gate-type-asks-a-likely-type-with-a-question-even-with-a-unit-open-under-auto", () => {
   const repo = repoAtTypeGate({ confidence: "likely", ambiguity: "Is this a config change or a new feature?" });
   writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit: "T1a", tasks: [], commits: [] }));
 
   const out = evalNeedsHuman(repo);
 
-  assert.deepEqual(out, { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto", deferred: 1 }, "auto mode goes on with the named type and keeps its question for the human");
+  assert.equal(out.result, "needs-human", "with no type stated in the task, a question on the type is asked now");
 });
 
-test("gate-type-passes-a-certain-type-with-a-question-and-defers-it-with-a-unit-open-under-auto", () => {
+test("gate-type-asks-a-certain-type-with-a-question-even-with-a-unit-open-under-auto", () => {
   const repo = repoAtTypeGate({ confidence: "certain", ambiguity: "Is this a config change or a new feature?" });
   writeFileSync(join(repo.dir, ".pairingbuddy", "run", "unit.json"), JSON.stringify({ unit: "T1a", tasks: [], commits: [] }));
 
   const out = evalNeedsHuman(repo);
 
-  assert.deepEqual(out, { ok: true, result: "auto-pass", gate: G_TYPE, source: "auto", deferred: 1 }, "a certain type goes on and its question waits for the human");
+  assert.equal(out.result, "needs-human", "a question on the type is asked now, whatever the confidence");
 });
 
 test("gate-type-asks-an-unsure-type-with-a-question-even-with-a-unit-open-under-auto", () => {
