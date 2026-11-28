@@ -426,7 +426,7 @@ describe("report-content", () => {
 
   // An empty or partial recording must still give a whole page: the human's sections and How it ran's core are present, and
   // what has no record is left out rather than worded as unknown.
-  const SECTIONS = ["NEEDS YOU", "DONE", "AT A GLANCE", "STEPS", "TESTS"];
+  const SECTIONS = ["NEEDS YOU", "DONE", "AT A GLANCE", "STEPS"];
   test("a task type auto mode passed on likely says so beside the type", () => {
     const html = renderReport({ ledger: { task: "Add a flag", taskType: "config_change", gates: { "G:type": { source: "auto", confidence: "likely" } } } });
 
@@ -450,7 +450,9 @@ describe("report-content", () => {
     const html = renderReport({ ledger: { task: "Fix a bug", taskType: "bug_fix" } });
     const titles = [...html.matchAll(/<h2>([^<]+)<\/h2>/g)].map(([, title]) => title);
 
-    for (const title of ["SCENARIOS", "BUILT", "COMMITS"]) assert.ok(!titles.includes(title), `no ${title} section without data, got ${titles}`);
+    for (const title of ["SCENARIOS", "BUILT", "COMMITS", "TESTS"]) assert.ok(!titles.includes(title), `no ${title} section without data, got ${titles}`);
+    const none = renderReport({ ledger: { task: "Fix a bug", taskType: "bug_fix" }, commits: [] });
+    assert.doesNotMatch(none, /<h2>COMMITS<\/h2>/, "an empty commit list is no section either");
     assert.doesNotMatch(sectionOf(html, "AT A GLANCE"), /unknown/, `no glance row or part reads unknown, got ${sectionOf(html, "AT A GLANCE")}`);
   });
 

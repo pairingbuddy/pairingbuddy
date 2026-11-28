@@ -311,7 +311,7 @@ function testsSection({ ledger, spawns, tests, calls }) {
   const items = order;
   const last = currentStep(spawns)?.item;
   const cards = items.map((item) => testCard(spawns, item, order.indexOf(item) + 1, perTest, item === last ? ledger?.stop : null, { checkpoints: ledger?.checkpoints, calls }));
-  return section("TESTS", cards.join("\n"), "tests");
+  return cards.length === 0 ? "" : section("TESTS", cards.join("\n"), "tests");
 }
 
 const NOT_REACHED = "not reached";
@@ -496,8 +496,8 @@ const commitItem = (human) => (commit) => `<li>${escape(String(commit?.sha ?? ""
 
 function commitsSection({ commits, humanCommits = [] }) {
   const human = new Set(humanCommits);
-  // No commits passed: no section. null: the git read failed, which the human should know.
-  if (commits === undefined) return "";
+  // No commits passed or none made: no section. null: the git read failed, which the human should know.
+  if (commits === undefined || (Array.isArray(commits) && commits.length === 0)) return "";
   const body = Array.isArray(commits) ? `<ul>\n${commits.map(commitItem(human)).join("\n")}\n</ul>` : "<p>could not read the commits from git</p>";
   return section("COMMITS", body);
 }
