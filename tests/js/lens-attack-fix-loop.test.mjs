@@ -794,11 +794,24 @@ test("A checkpoint relay that shows pb never ran is run again once, with no fix 
   assert.equal(result.stopReason, null);
 });
 
-test("A checkpoint relay broken twice ends the loop with step-failed, still rolling nothing back", async () => {
-  const { respond } = scriptedAgents({ lenses: { code: [finding("R1", "one")] }, checkpoints: ["not run", "not run either"] });
+// Live S4 run: the fix ran red, and both checkpoint runners relayed exit 1 with no output. pb knew the fix was red; the
+// loop stopped step-failed on a relay. A relay broken twice asks pb to roll the fix back, and pb decides from its ledger.
+test("A checkpoint relay broken twice asks pb to roll the fix back, and a fresh fix is tried", async () => {
+  const { respond } = scriptedAgents({ lenses: { code: [finding("R1", "one")] }, checkpoints: ["", "", undefined] });
+
+  const { calls, result } = await runFixLoop(baseConfig(), guardFixSpawns(respond));
+
+  assert.equal(rollbackCallsOf(calls).length, 1, "pb is asked to roll the fix back");
+  assert.equal(fixCallsOf(calls).length, 2, "a fresh fix is tried");
+  assert.equal(result.stopReason, null);
+});
+
+test("A checkpoint relay broken twice whose rollback pb refuses (pb never ran the fix) ends the loop with step-failed", async () => {
+  const refused = { cli_exit_code: 1, cli_output: "pb: code-safety-net.fix.g1.r1.a1 has no commit and no red test run, so there is nothing to roll back and nothing was touched" };
+  const { respond } = scriptedAgents({ lenses: { code: [finding("R1", "one")] }, checkpoints: ["not run", "not run either"], rollbacks: () => refused });
 
   const { calls, result } = await runFixLoop(baseConfig(), guardFixSpawns(respond));
 
   assert.equal(result.stopReason, "step-failed");
-  assert.equal(rollbackCallsOf(calls).length, 0);
+  assert.equal(fixCallsOf(calls).length, 1, "no retry");
 });

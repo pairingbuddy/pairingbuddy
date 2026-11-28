@@ -1099,6 +1099,7 @@ const fixArtifactPathOf = (key) => `.pairingbuddy/run/task/artifacts/${key}.json
 //   'kept': the checker found it better, or (fix.lint, a LINT_LENS group) the lint passed, with no checker; in artifact mode the kept artifact becomes the next group's `before`.
 //   'lint-failed' (artifact mode with fix.lint only): the lint ran and reported ok false, so the redraft is rolled back without a checker.
 //   'rejected': any other verdict, rolled back.
+//   'relay-lost': the checkpoint relay was broken twice, so pb rolls the fix back from its own ledger and a fresh fix is tried; a rollback pb refuses (it never ran the fix) ends the loop with step-failed.
 //   'repeated': the fix's approach equals (once normalized) one of attempt.rejectedApproaches; refused before any checkpoint or checker, rolled back.
 // (fixLoop also stops with step-failed when a rollback is refused.)
 async function fixGroup(config, attempt, spent) {
@@ -1141,7 +1142,8 @@ async function fixGroup(config, attempt, spent) {
       spent.count += 1;
       ({ result: relay } = await runCommands(config.stage, [`checkpoint --step fix --from ${key}`], { item: `${group.id}-relay`, round }));
     }
-    if (isBrokenRelay(relay)) return { outcome: 'failed', key };
+    // Broken twice: pb's ledger, not the relay, knows what became of the fix, so pb is asked to roll it back.
+    if (isBrokenRelay(relay)) return { outcome: 'relay-lost', key, approach };
     if (relay.cli_exit_code !== 0 && TESTS_FAILED.test(relay.cli_output ?? '')) return { outcome: 'red', key, approach };
     if (relay.cli_exit_code !== 0 && HOOK_REFUSED.test(relay.cli_output ?? '')) return { outcome: 'hook-refused', key, approach };
     if (relay.cli_exit_code !== 0 && RETURN_REFUSED.test(relay.cli_output ?? '')) return { outcome: 'return-refused', key, approach };
@@ -1179,6 +1181,7 @@ function mistakeKeysOf(outcome, group, verdict) {
   if (outcome === 'lint-failed') return group.findings.map((finding) => mistakeKey(finding, 'lint-failed'));
   if (outcome === 'hook-refused') return group.findings.map((finding) => mistakeKey(finding, 'hook-refused'));
   if (outcome === 'return-refused') return group.findings.map((finding) => mistakeKey(finding, 'return-refused'));
+  if (outcome === 'relay-lost') return [];
   const finding = group.findings.find((f) => f.id === verdict.finding_id);
   return [mistakeKey(finding, verdict.mistake)];
 }
