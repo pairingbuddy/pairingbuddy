@@ -787,7 +787,12 @@ function lintReason(root) {
 // Whether the auto policy passes G:publish by itself: auto mode, an ok lint for the body on disk and the safety-net lens record of every code task.
 // The unit's plan tasks the human recorded with pb human task done: pb never reviewed them. Empty with no plan to read.
 export function handDoneTasks(root) {
-  const unit = readUnit(root);
+  let unit;
+  try {
+    unit = readUnit(root);
+  } catch {
+    return [];
+  }
   if (typeof unit?.plan !== "string" || unit.plan === "" || typeof unit.unit !== "string") return [];
   let text;
   try {
