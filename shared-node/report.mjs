@@ -84,6 +84,13 @@ function waitWords(seconds) {
   return m > 0 ? `${m}m` : `${Math.floor(seconds)}s`;
 }
 
+// The glance rows that say something: a part of a row that reads unknown ("time unknown") is dropped, and so is a row left empty.
+const isUnknownPart = (part) => part === UNKNOWN || part.endsWith(` ${UNKNOWN}`);
+function known(rows) {
+  const kept = Object.entries(rows).map(([key, text]) => [key, String(text ?? "").split(" · ").filter((part) => part !== "" && !isUnknownPart(part)).join(" · ")]);
+  return Object.fromEntries(kept.filter(([, text]) => text !== ""));
+}
+
 function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskType, now }) {
   const spend = taskSpend(task);
   // Once every run has ended, the agents are the ones the runs recorded; the session's spawns may be gone.
@@ -100,7 +107,7 @@ function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskTyp
   // With no human to ask, the record says so: the run went on with the classifier's type, whatever its confidence.
   const typeGate = ledger?.gates?.["G:type"];
   const likely = typeGate?.noHuman === true ? ` (${typeGate.confidence}, and no human to ask: the run went on with it)` : typeGate?.confidence === "likely" ? " (likely, not certain: auto mode went on)" : "";
-  const typed = { type: `${plainName(taskType) ?? UNKNOWN}${likely}`, ...guidanceRow(ledger), ...rows };
+  const typed = known({ type: plainName(taskType) ? `${plainName(taskType)}${likely}` : UNKNOWN, ...guidanceRow(ledger), ...rows });
   const lines = Object.entries(typed).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
   return section("AT A GLANCE", lines.join("\n"), "glance");
 }
@@ -404,14 +411,14 @@ function alreadyFailingSection({ task }) {
 }
 
 function scenariosSection({ scenarios }) {
-  const body = Array.isArray(scenarios) ? `<ul>\n${scenarios.map(scenarioItem).join("\n")}\n</ul>` : `<p>${UNKNOWN}</p>`;
-  return section("SCENARIOS", body);
+  if (!Array.isArray(scenarios)) return "";
+  return section("SCENARIOS", `<ul>\n${scenarios.map(scenarioItem).join("\n")}\n</ul>`);
 }
 
-// Every file run/changed.json lists: the task-done question folds a long list into this. Absent reads as unknown.
+// Every file run/changed.json lists: the task-done question folds a long list into this. No section when absent.
 function builtSection({ changed }) {
-  const body = Array.isArray(changed) ? `<ul>\n${changed.map((path) => `<li>${escape(path)}</li>`).join("\n")}\n</ul>` : `<p>${UNKNOWN}</p>`;
-  return section("BUILT", body);
+  if (!Array.isArray(changed)) return "";
+  return section("BUILT", `<ul>\n${changed.map((path) => `<li>${escape(path)}</li>`).join("\n")}\n</ul>`);
 }
 
 // The doubts the human approved past, each with the gate whose record keeps it: the human's answer there settled it.
@@ -489,7 +496,9 @@ const commitItem = (human) => (commit) => `<li>${escape(String(commit?.sha ?? ""
 
 function commitsSection({ commits, humanCommits = [] }) {
   const human = new Set(humanCommits);
-  const body = Array.isArray(commits) ? `<ul>\n${commits.map(commitItem(human)).join("\n")}\n</ul>` : `<p>${UNKNOWN}</p>`;
+  // No commits passed: no section. null: the git read failed, which the human should know.
+  if (commits === undefined) return "";
+  const body = Array.isArray(commits) ? `<ul>\n${commits.map(commitItem(human)).join("\n")}\n</ul>` : "<p>could not read the commits from git</p>";
   return section("COMMITS", body);
 }
 
