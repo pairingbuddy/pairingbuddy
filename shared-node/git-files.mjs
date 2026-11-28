@@ -91,3 +91,20 @@ export function protectedBranches(repo) {
   const trunk = common === null ? null : /^ref:\s*refs\/remotes\/[^/]+\/(.+?)\s*$/m.exec(readText(join(common, "refs", "remotes", remote, "HEAD")) ?? "");
   return trunk === null ? list : [...list, trunk[1]];
 }
+
+// The first value of section[.subsection].key in the repo's config (names compare as git compares them: section and key
+// in any case, the subsection exactly), or null.
+export function configValue(gitDir, section, subsection, key) {
+  if (gitDir === null) return null;
+  let here = false;
+  for (const line of configText(gitDir).split("\n")) {
+    const header = /^\s*\[\s*([^\s\]"]+)(?:\s+"([^"]*)")?\s*\]\s*(.*)$/.exec(line);
+    if (header !== null) here = header[1].toLowerCase() === section && (header[2] ?? null) === subsection;
+    const setting = /^\s*([A-Za-z][\w-]*)\s*=\s*(.*?)\s*$/.exec(header === null ? line : header[3]);
+    if (here && setting !== null && setting[1].toLowerCase() === key) return setting[2];
+  }
+  return null;
+}
+
+// remote.<name>.pushurl, else remote.<name>.url, or null when the remote has neither.
+export const remoteUrl = (gitDir, name) => configValue(gitDir, "remote", name, "pushurl") ?? configValue(gitDir, "remote", name, "url");

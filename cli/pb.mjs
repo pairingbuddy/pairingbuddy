@@ -43,6 +43,8 @@ import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, i
 import { declaredRenames, splitId } from "../shared-node/test-renames.mjs";
 import { ConfigHashChanged, TestRunRefused, collectedNoTest, cycleRun, failedRunsText, ranNoTest, fullSuitePlans, hasSelector, lintNote, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
 import { missingLabels, missingLabelText } from "../shared-node/pr-labels.mjs";
+import { allowLeak, leakRefusalText, outgoingFindings, pendingLeaks } from "../shared-node/leak-check.mjs";
+import { HOME_REPO_FILE, authorEmails, crossRepo, homeRepoOf, identityOf } from "../shared-node/repo-boundary.mjs";
 import { ATTEMPT_CAP, COMMIT_FAILED, COMMIT_PLAN_UNUSABLE, MISSING_ARTIFACT, NO_SELECTOR_TEMPLATE, PR_LABEL_MISSING, RED_PASSES, STAGE_STOP_REASONS } from "../shared-node/stop-codes.mjs";
 import { refusalSummary, runSummary } from "../shared-node/run-summary.mjs";
 import { PrLintRunRefused, listRepoLabels, prBodyPath, prLintPath, newestDraftKey, readDraftArtifact, readPrSubject, readUnit, refreshBodyPathOf, refreshPathOf, runPrLint, sha256 } from "../shared-node/pr-lint-run.mjs";
@@ -449,6 +451,7 @@ function applyRefresh(root) {
     updateLedger(join(runRoot, "task", "ledger.json"), (current) => voidPublish(current, voidReason));
     throw new Refusal(`not refreshed: ${voidReason}`);
   }
+  refuseTextLeaks(root, draftTexts(bound), loadGitConfigOrRefuse(root), "not refreshed");
   withBodySnapshot(root, bound.body, (snapshot) => run(root, "gh", prEditArgv({ url, title: bound.draft.title, bodyFile: snapshot })));
   const posted = bound.draft.coordination === null ? { warnings: [] } : postComment({ root }, url, bound.draft.coordination);
   endRefreshRun(root);
@@ -1066,6 +1069,24 @@ function pinTestConfig(root) {
   const newHash = validatedConfigHash(root);
   acceptConfigInUnit(root, { newHash, seq: 0 });
   return { config: { newHash } };
+}
+
+// The repo boundary's home (shared-node/repo-boundary.mjs), fixed for the unit: origin can change later, this cannot,
+// since run/ is closed to every write tool during a run.
+function recordHomeRepo(root) {
+  const { slug } = homeRepoOf(root);
+  if (slug !== null) writeJsonAtomic(join(root, ".pairingbuddy", "run", HOME_REPO_FILE), { slug });
+}
+
+// pb human leak allow <n>: hit n of pb publish's last leak check is a false alarm, so it goes through from now on.
+function humanLeak(args) {
+  const [action, number] = args;
+  const n = Number(number);
+  if (action !== "allow" || !Number.isInteger(n) || args.length !== 2) throw new UsageError("usage: pb human leak allow <n>");
+  const runDir = join(toplevel(), ".pairingbuddy", "run");
+  const finding = existsSync(runDir) ? allowLeak(runDir, n) : null;
+  if (finding === null) throw new Refusal(`there is no leak finding ${n} from the last pb publish. Nothing was allowed`);
+  return { ok: true, allowed: { n, kind: finding.kind, shown: finding.shown, where: finding.where }, next: "Tell the session to go on: pb publish lets this hit through" };
 }
 
 // pb final-check <id> --pass|--fail --note <words>: the result of a final check the session ran itself (a live, paid or manual
@@ -2369,6 +2390,10 @@ function publish(args) {
   if (plan.steps.some((step) => step.do === "open-pr")) assertBaseCurrent(root, unit, gitConfig);
   const missing = missingDraftLabels(root, unit, gitConfig, plan.steps, bound);
   if (missing.length > 0) stopForMissingLabels(path, missing, "nothing was pushed or opened");
+  if (plan.steps.some((step) => ["push", "open-pr", "comment"].includes(step.do))) {
+    refuseForeignRemote(root, gitConfig.remote);
+    refuseLeaks(root, unit, bound, gitConfig);
+  }
   try {
     return executePublish(plan.steps, { root, unit, gitConfig, ledger, bound });
   } catch (e) {
@@ -2376,6 +2401,42 @@ function publish(args) {
     if (e instanceof Refusal) updateLedger(path, recordPublishFailure);
     throw e;
   }
+}
+
+// Refuses a push whose remote is not the unit's home repo (shared-node/repo-boundary.mjs): origin can be repointed after
+// unit open, the recorded home cannot.
+function refuseForeignRemote(root, remote) {
+  const home = homeRepoOf(root);
+  const url = tryGit(root, ["remote", "get-url", "--push", remote]);
+  const target = url === null ? `remote ${remote}, which has no URL` : identityOf(url, root);
+  if (home.slug !== null && target !== home.slug) throw new Refusal(`not published: ${crossRepo(`pb publish's push to ${remote}`, target, home)} Nothing was pushed or opened`);
+}
+
+// True only when gh says the repo is private: git-config.json's leak_denylist holds for a public repo and for one gh
+// cannot tell.
+function repoIsPrivate(root) {
+  try {
+    return JSON.parse(execFileSync("gh", ["repo", "view", "--json", "isPrivate"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })).isPrivate === true;
+  } catch {
+    return false;
+  }
+}
+
+// Refuses, before anything leaves the machine, a secret or personal data in what would go out (shared-node/leak-check.mjs).
+// No attempt is used: the human allows a false alarm with pb human leak allow, or the session takes the hit out.
+function refuseLeaks(root, unit, bound, gitConfig) {
+  const head = bound?.current.headSha ?? "HEAD";
+  const messages = unitCommits(root, unit).map((sha) => ({ sha, text: tryGit(root, ["log", "-1", "--format=%B", sha]) ?? "" }));
+  const diff = tryGit(root, ["diff", "--no-color", "--no-ext-diff", unit.baseSha, head]) ?? "";
+  refuseTextLeaks(root, { ...draftTexts(bound), messages, diff }, gitConfig, "not published");
+}
+
+const draftTexts = (bound) => ({ title: bound?.draft.title ?? "", body: bound?.body?.toString("utf8") ?? "", comment: bound?.draft.coordination ?? "" });
+
+function refuseTextLeaks(root, texts, gitConfig, outcome) {
+  const denylist = Array.isArray(gitConfig.leak_denylist) && !repoIsPrivate(root) ? gitConfig.leak_denylist.filter((word) => typeof word === "string") : [];
+  const pending = pendingLeaks(join(root, ".pairingbuddy", "run"), outgoingFindings(texts, { allowedEmails: authorEmails(root), denylist }));
+  if (pending.length > 0) throw new Refusal(leakRefusalText(pending, (n) => humanCommand(root, `leak allow ${n}`)).replace(/^not published/, outcome));
 }
 
 // Refuses, before the push, a draft label the repo does not have: gh would refuse to open the PR after the push, and
@@ -2886,6 +2947,7 @@ function unitOpen(args) {
     rmSync(unitPathOf(root), { force: true });
     throw e;
   }
+  recordHomeRepo(root);
   return { ok: true, branch, base: parent, baseSha, doctor: doctorReport(root) };
 }
 
@@ -3326,7 +3388,7 @@ export const VERBS = {
   rollback,
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "unit rebase": unitRebase, "git doctor": gitDoctor, "pr lint": prLint,
-  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human cut-test": humanCutTest, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, "human config": humanConfig, test: runTests, checkpoint,
+  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human cut-test": humanCutTest, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, "human config": humanConfig, "human leak": humanLeak, test: runTests, checkpoint,
   "plan next": planNext, "question settle": questionSettle, "question add": questionAdd, "config propose": configPropose, "final-check": finalCheck, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 

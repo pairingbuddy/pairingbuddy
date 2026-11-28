@@ -8,6 +8,11 @@ from pathlib import Path
 
 JS_TEST_FILES = [
     "tests/js/alert-config.test.mjs",
+    "tests/js/leak-scan.test.mjs",
+    "tests/js/leak-check.test.mjs",
+    "tests/js/repo-boundary.test.mjs",
+    "tests/js/repo-boundary-gate.test.mjs",
+    "tests/js/publish-leak.test.mjs",
     "tests/js/band-width.test.mjs",
     "tests/js/claude-run-kill.test.mjs",
     "tests/js/code-command.test.mjs",

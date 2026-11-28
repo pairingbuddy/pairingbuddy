@@ -230,6 +230,30 @@ The gate hook (`hooks/gate.mjs`) denies git and gh calls in Bash commands by run
 
 **Accepted gaps** (Section 8): built command words, `${IFS}` splitting, aliases and scripts in config, and commits made without `git commit`.
 
+### Repo Boundary and Leak Check
+
+A session where pb works never reaches another repo, and nothing it sends out carries a secret or personal data. Both are enforced in code, run or no run, for the main context and subagents alike. Only the human can cross the line, by running the call themselves.
+
+**Home repo.** `pb unit open` records the repo's identity in `.pairingbuddy/run/home-repo.json` (`shared-node/repo-boundary.mjs`): the origin's `host/owner/name`, or a local origin's path. Without a record it is origin's. The record goes with the unit, and run/ is closed to every write tool during a run, so repointing origin later moves nothing.
+
+**The gate** (`hooks/gate.mjs`) applies the boundary wherever pb works: a run's root, or the repo at or above the session's cwd when it has `.pairingbuddy/`. It denies:
+
+| Call | Denied when |
+|------|-------------|
+| `git push` | The remote (`--repo`, the first operand, else the one git picks for the branch) is not the home repo, or cannot be read. |
+| `git remote add`/`set-url` | The URL is another repo's. |
+| Any other git call that changes something | It runs in another repo's checkout (`cd`, `-C`, `--git-dir`). Reads and `fetch` pass. |
+| `gh` writes (`pr`, `issue`, `release`, `api` with a write flag, ...) | `-R`/`--repo`, a github.com URL or an `api` path `repos/<owner>/<name>` names another repo, or the call runs in another repo's checkout. Reads pass. |
+| `gh gist create`/`edit`/..., `gh repo create`/`fork`/... | Always: they make a place no run owns. |
+| Write, Edit, NotebookEdit | The file is in another repo's checkout. A linked worktree or another clone of the home repo is not another repo; a file in no repo passes. |
+| `gh pr`/`issue`/`release` that posts text | Its title, body, notes or body file hold a leak finding. |
+
+**Leak scan** (`shared-node/leak-scan.mjs`, pattern rules, no imports). Secrets: AWS, GitHub, Slack, Stripe, Anthropic, OpenAI and Google keys, GCP service accounts, private key blocks, a random-looking value given to a secret-like name (16+ characters, letters and digits, 3.5+ bits of entropy per character), and `.env` files (templates such as `.env.example` pass). Personal data: email addresses other than the author's `user.email` (noreply and example domains pass), international phone numbers, Swedish personal identity numbers with a valid check digit, US social security numbers. A hit is shown with its first four characters only.
+
+**pb publish and pb pr refresh** (`shared-node/leak-check.mjs`) refuse before anything leaves the machine when the push remote is not the home repo, or when the outgoing diff's added lines, the unit's commit messages, the PR title, body or coordination comment hold a finding. git-config.json's `leak_denylist` words count too unless `gh repo view` says the repo is private. A refusal pushes and opens nothing, uses no attempt, numbers each hit in `run/leak-findings.json` and gives the human one line per hit: `pb human leak allow <n>` marks a false alarm in `run/leak-allowed.json`, and the next publish lets it through. The refusal hands the human a typed line, so the views show WAITING FOR YOU.
+
+**Accepted gaps.** The gate cannot scan a raw `git push`'s diff, since hooks never call git: during a run D17 denies raw pushes, so every push goes through `pb publish`, which scans. With no run open a human-driven push is the human's. A file in a git submodule reads as another repo. The patterns catch common shapes, not every secret: gitleaks or the host's own secret scanning remain worth running.
+
 ### State Management
 
 State files live in `.pairingbuddy/` at the git root of the target project:

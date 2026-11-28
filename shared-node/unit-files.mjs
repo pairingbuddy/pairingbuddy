@@ -5,7 +5,8 @@ import { cpSync, existsSync, readFileSync, readdirSync, renameSync, rmSync, writ
 import { join } from "node:path";
 
 // The files that belong to one unit: its record and the PR draft's body and lint result.
-export const UNIT_FILES = ["unit.json", "pr-body.md", "pr-lint.json"];
+// home-repo.json and the leak files hold for one unit only (shared-node/repo-boundary.mjs, shared-node/leak-check.mjs).
+export const UNIT_FILES = ["unit.json", "pr-body.md", "pr-lint.json", "home-repo.json", "leak-findings.json", "leak-allowed.json"];
 
 // The spike setup a spike run records in run/task once G:type has passed.
 export const SPIKE_SETUP_FILE = "spike.json";

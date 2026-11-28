@@ -18,8 +18,9 @@ test("schema-accepts-defaults-and-rejects-bad-types", () => {
   assert.equal(schema.$schema, "http://json-schema.org/draft-07/schema#", "schema declares the pinned draft-07 version");
   assert.match(config, new RegExp(`^\\s*- ${SCHEMA_NAME.replaceAll(".", "\\.")}\\s*$`, "m"), "schema is registered in agent-config.yaml schemas list");
   assert.deepEqual(violations(schema, DEFAULTS), [], "schema accepts the gitconf DEFAULTS");
-  // branch_convention has no default: it is written only once the repo's convention is found or given.
-  const OPTIONAL = ["branch_convention"];
+  // branch_convention has no default: it is written only once the repo's convention is found or given. leak_denylist is
+  // the human's own list, written only by them.
+  const OPTIONAL = ["branch_convention", "leak_denylist"];
   assert.deepEqual(Object.keys(schema.properties).filter((key) => !OPTIONAL.includes(key)).sort(), Object.keys(DEFAULTS).sort(), "schema describes every top-level DEFAULTS field");
   const bad = violations(schema, { ...DEFAULTS, protected_branches: "main" });
   assert.equal(bad.length, 1, "schema rejects protected_branches given as a string");

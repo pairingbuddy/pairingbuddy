@@ -140,7 +140,7 @@ function gitGlobals(words, before = []) {
 // gh's words split into the group and subcommand (past any flags, -R/--repo and --hostname taking a word, wherever they
 // stand before the subcommand) and the words after the subcommand. For `api` the subcommand slot holds the endpoint, so
 // `after` is read from the group on.
-function ghParts(words) {
+export function ghParts(words) {
   const positional = [];
   let i = 0;
   for (; i < words.length && positional.length < 2; i += 1) {
@@ -420,7 +420,7 @@ const GIT_VERBS = {
 };
 
 // The verb of a git call, past its global options and any inline alias, and the words after it.
-function gitVerb(rest, before = []) {
+export function gitVerb(rest, before = []) {
   const { globals, args } = gitGlobals(rest, before);
   const [word, ...after] = args;
   if (word === undefined) return { globals, verb: undefined, tail: [] };
@@ -501,6 +501,13 @@ function ghReadsOnly({ group, sub, after }) {
   return GH_READ_ONLY[group]?.includes(sub) ?? false;
 }
 
+// True when a git or gh call only reads.
+export function readsOnly(call) {
+  if (call.name === "gh") return ghReadsOnly(ghParts(call.rest));
+  const { verb, tail } = gitVerb(call.rest, call.before);
+  return verb === undefined || gitReadsOnly(verb, tail);
+}
+
 // True when a subagent may make this call during a run: it reads, or it is a working-tree form the table lets through
 // (checkout, restore and switch with a single file; creating a branch or a worktree), as kinds gave it.
 function allowedForSubagent(call, kinds) {
@@ -531,7 +538,7 @@ const KNOWN_GIT = new Set([
 const KNOWN_GH = new Set(["pr", "issue", "repo", "run", "api", "release", "workflow", "auth", "gist", "label", "project", "secret", "variable", "cache", "codespace", "ruleset", "extension", "alias", "config", "browse", "status", "search", "ssh-key", "gpg-key", "org", "help", "version"]);
 
 // Whether the words after a git or gh found off the command word start a known verb.
-function recognizes(name, rest) {
+export function recognizes(name, rest) {
   if (name === "git") return KNOWN_GIT.has(gitVerb(rest).verb);
   return KNOWN_GH.has(ghParts(rest).group);
 }
@@ -588,7 +595,7 @@ function repoOverrides({ name, rest, before }) {
 }
 
 // What the call's directory, --git-dir and --work-tree say about the repo, or null when a word cannot be read.
-function callRepo(call, cwd) {
+export function callRepo(call, cwd) {
   const dir = callDirectory(call, cwd);
   if (dir === null) return null;
   const { gitDir, workTree } = repoOverrides(call);
