@@ -3,6 +3,7 @@
 import { firstUnticked, holdsBuilding, humanWords, planFocus, STATE_SEPARATOR, taskMark, unitWords } from "./plan-window.mjs";
 import { openQuestions, taskTitle } from "./questions.mjs";
 import { PAGE_CSS, pill, progressBar } from "./page-design.mjs";
+import { plainName } from "./plain-names.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 export const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
@@ -32,6 +33,7 @@ li.building{--state:var(--blue);background:color-mix(in srgb,var(--blue) 9%,tran
 li.waiting{--state:var(--amber);background:color-mix(in srgb,var(--amber) 9%,transparent);color:var(--amber);font-weight:700}
 li.unticked{--state:var(--line)}
 li>details>summary{cursor:pointer}
+.pill.type{font-size:.62rem;padding:2px 5px;margin-left:4px;text-transform:none;letter-spacing:0}
 .body{color:var(--fg);font-weight:400;border-left:2px solid var(--line);margin:6px 0 4px 4px;padding:2px 0 2px 12px}
 .body p,.body ul{margin:0 0 6px}
 .body ul{list-style:disc;padding-left:20px}
@@ -132,14 +134,28 @@ function bodyHtml(body) {
 
 // One task's row: its mark and title, ▸ and lit for the one being built, and lit in the needs-you colour with humanWords for
 // an unticked [HUMAN] task. The focus is the row the page opens at.
+// A body line that only states the task's type (the sequencer's "Type: new_feature"), with the type it names.
+const TYPE_ONLY_LINE = /^[\s>*-]*\**Type\**\s*:\s*\**\s*`?([a-z_]+)`?\**\s*$/i;
+
+// The task's stated type and its body without that line: the type is shown beside the title, not run into the explanation.
+function typeApart(body) {
+  const lines = String(body ?? "").split("\n");
+  const at = lines.findIndex((line) => TYPE_ONLY_LINE.test(line));
+  if (at === -1) return { type: undefined, body: body ?? "" };
+  const type = TYPE_ONLY_LINE.exec(lines[at])[1].toLowerCase();
+  return { type, body: [...lines.slice(0, at), ...lines.slice(at + 1)].join("\n") };
+}
+
 function taskItem(task, { inProgress, reached, isFocus }) {
   const human = inProgress ? "" : humanWords(task, reached);
   const kind = task.checked ? "ticked" : inProgress ? "building" : human ? "waiting" : "unticked";
   const words = human ? `${STATE_SEPARATOR}${human}` : "";
-  const row = `${taskMark(task, inProgress)} ${escape(task.title)}${words}`;
+  const { type, body } = typeApart(task.body);
+  const typePill = type ? ` <span class="pill type">${escape(plainName(type) ?? type.replace(/_/g, " "))}</span>` : "";
+  const row = `${taskMark(task, inProgress)} ${escape(task.title)}${typePill}${words}`;
   const attrs = `class="${kind}"${isFocus ? ' id="now"' : ""}`;
-  if (!task.body?.trim()) return `<li ${attrs}>${row}</li>`;
-  return `<li ${attrs}><details${isFocus ? " open" : ""}>\n<summary>${row}</summary>\n<div class="body">\n${bodyHtml(task.body)}\n</div>\n</details></li>`;
+  if (!body.trim()) return `<li ${attrs}>${row}</li>`;
+  return `<li ${attrs}><details${isFocus ? " open" : ""}>\n<summary>${row}</summary>\n<div class="body">\n${bodyHtml(body)}\n</div>\n</details></li>`;
 }
 
 // The open unit's questions for you: the doubts auto passes set aside, which G:publish asks before the pull request. The

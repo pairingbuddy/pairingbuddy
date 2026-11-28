@@ -251,3 +251,15 @@ test("each tracer is a card that says its state, done, building, waiting for a p
   const waiting = renderPlanPage({ plan: parsePlan(STATES_PLAN.replace("- [ ] Task 3", "- [x] Task 3")), states: ["published", "open", "open"], open: OPEN_PAY });
   assert.match(tracerOf(waiting, "T1: Cart"), /^<section class="card tracer is-waiting">[\s\S]*<span class="pill is-waiting">▲ needs you<\/span>/);
 });
+
+// A task's Type: line is a fact about the task, not part of its explanation: it shows as a small pill beside the title.
+test("a task's Type line is a pill beside its title and is not run into the body", () => {
+  const plan = parsePlan(["# P", "", "## Tasks", "", "### T1: Cart", "", "- [ ] Task 1: Add an item", "  Type: new_feature", "  The cart shows the item and the total grows.", ""].join("\n"));
+
+  const html = renderPlanPage({ plan });
+  const row = html.slice(html.indexOf("Task 1: Add an item") - 200);
+
+  assert.match(row, /<summary>[^<]*Task 1: Add an item <span class="pill type">new feature<\/span><\/summary>/, `the type is a pill in the row, got ${row.slice(0, 400)}`);
+  assert.doesNotMatch(row, /Type:/, "the Type line is not repeated in the body");
+  assert.ok(row.includes("<p>The cart shows the item and the total grows.</p>"), "the explanation stays");
+});
