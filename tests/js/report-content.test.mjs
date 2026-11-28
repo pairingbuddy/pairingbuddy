@@ -86,6 +86,33 @@ describe("report-content", () => {
     assert.ok(!section.includes("sign-off"), "a stopped run does not ask for a sign-off");
   });
 
+  // One stop is said once: a plain line, the raw refusal once in a closed details, then the options.
+  test(`${WHAT_YOU_CAN_DO}: a stopped step's refusal shows once, folded, before the options`, async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "stopped" });
+    const why = "the fix for g1 was refused 2 times";
+    const raw = "the tests failed, so nothing was committed: fix g1 already ran red. Roll it back.";
+    const option = "Read the refusal and tell the session what to change.";
+    const stop = { ...input.ledger.stop, why, detail: `${why}, so the stage stopped. The last refusal: ${raw}`, output: raw, options: [option] };
+
+    const section = sectionOf(renderReport({ ...input, ledger: { ...input.ledger, stop } }), "NEEDS YOU");
+    const count = (text) => section.split(text).length - 1;
+    const folded = section.match(/<details>\s*<summary>[^<]*<\/summary>([\s\S]*?)<\/details>/)?.[1] ?? "";
+
+    assert.equal(count(why), 1, `the reason is said once, got ${section}`);
+    assert.equal(count("Roll it back."), 1, `the raw refusal is said once, got ${section}`);
+    assert.ok(folded.includes(raw), "the raw refusal sits in a closed details");
+    assert.ok(section.indexOf("</details>") < section.indexOf(option), "the options come after the refusal");
+  });
+
+  test(`${WHAT_YOU_CAN_DO}: a stop whose test is not recorded says nothing about it`, async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "stopped" });
+    const stop = { ...input.ledger.stop, why: "a step came back with nothing usable", options: ["Tell the session what to change."] };
+
+    const section = sectionOf(renderReport({ ...input, spawns: [], ledger: { ...input.ledger, stop } }), "NEEDS YOU");
+
+    assert.doesNotMatch(section, /unknown/, `no "unknown" sentence, got ${section}`);
+  });
+
   test(`${WHAT_YOU_CAN_DO}: done lists the sign-off step`, async () => {
     const section = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "done" })), "NEEDS YOU");
 

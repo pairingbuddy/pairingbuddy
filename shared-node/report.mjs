@@ -115,7 +115,7 @@ const numberedTests = (spawns, tests) => [...new Set([...(Array.isArray(tests) ?
 function rerunStep(spawns, tests) {
   const rerun = "Re-run /pairingbuddy:code.";
   const step = currentStep(spawns);
-  if (!step) return `${rerun} The recorded run does not say which test it stopped on, so what it keeps is unknown.`;
+  if (!step) return rerun;
   const current = numberedTests(spawns, tests).indexOf(step.item) + 1;
   if (current === 1) return `${rerun} It continues from test 1.`;
   const kept = current === 2 ? "test 1" : `tests 1 to ${current - 1}`;
@@ -616,17 +616,32 @@ const leftItem = ({ finding, questions }) => {
 
 const looseItem = (doubt) => `<li>Decide: ${escape(doubt.ambiguity)} <small>(${escape(raisedWords(doubt))})</small></li>`;
 
-// A stop, in plain words: the step it stopped at, why, and how to go on from it.
+// The part of a stop's detail the reason and the raw refusal do not already say: a detail that opens with the reason keeps
+// only what follows it, and with the raw refusal shown that rest is the refusal's summary, so nothing is left.
+function causeBeyond(detail, why, raw) {
+  if (typeof detail !== "string" || detail === "") return undefined;
+  if (raw && detail.includes(raw.trim())) return undefined;
+  if (!why || !detail.startsWith(why)) return detail;
+  const rest = detail.slice(why.length).replace(/^[\s,.;:]+/, "");
+  return raw || rest === "" ? undefined : rest;
+}
+
+// A stop, in plain words and said once: the step it stopped at and why, the raw refusal folded in a closed details,
+// then how to go on. A detail that only restates the reason and the refusal is left out.
 function stopItem({ ledger, spawns, tests }) {
   if (!ledger?.stop) return [];
   const step = plainName(ledger.stage?.name);
   const { why: recorded, detail, options, output } = ledger.stop;
   const why = typeof recorded === "string" && recorded !== "" ? recorded : stopName(ledger.stop);
-  // What the stop recorded is kept whole here: the pane cuts it and points at this report.
-  const cause = typeof detail === "string" && detail !== "" ? `<br>${escape(detail)}` : "";
+  const raw = typeof output === "string" && output.trim() !== "" ? output : undefined;
+  const said = causeBeyond(detail, why, raw);
+  const rerun = rerunStep(spawns, tests);
+  const next = rerun ? ` ${escape(rerun)}` : "";
+  const cause = said ? `<br>${escape(said)}` : "";
+  const folded = raw ? `<details><summary>What pb said</summary><pre>${escape(raw)}</pre></details>` : "";
   const listed = Array.isArray(options) && options.length > 0 ? `<ol>${options.map((option) => `<li>${escape(option)}</li>`).join("")}</ol>` : "";
-  const printed = typeof output === "string" && output !== "" ? `<pre>${escape(output)}</pre>` : "";
-  return [`<li>It stopped${step ? ` at ${escape(step)}` : ""}${why ? `: ${escape(why)}` : ""}. ${escape(rerunStep(spawns, tests))}${cause}${printed}${listed}</li>`];
+  const line = `It stopped${step ? ` at ${escape(step)}` : ""}${why ? `: ${escape(why)}` : ""}.`;
+  return [`<li>${line}${next}${cause}${folded}${listed}</li>`];
 }
 
 // A question pb asked and the human has not answered yet. A finished code run that was not signed off asks for the
