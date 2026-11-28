@@ -485,11 +485,11 @@ function recordDeferred(ledger, gate, doubts) {
   return { ...ledger, gates: { ...ledger.gates, [gate]: { source: "auto", deferred: doubts } } };
 }
 
-// confidence: a G:type pass on a likely type keeps it, so the report says the type was not certain.
+// passedOn: a G:type pass on a type that was not certain keeps its confidence (and noHuman), so the report says so.
 const TYPE_GATE = "G:type";
 
-function recordAuto(ledger, gate, binding = {}, confidence = null, stated = null) {
-  const record = gate === PUBLISH_GATE ? approvalRecord("auto", binding) : { source: "auto", ...(stated !== null ? { stated } : confidence === null ? {} : { confidence }) };
+function recordAuto(ledger, gate, binding = {}, passedOn = null, stated = null) {
+  const record = gate === PUBLISH_GATE ? approvalRecord("auto", binding) : { source: "auto", ...(stated !== null ? { stated } : passedOn ?? {}) };
   return { ...ledger, gates: { ...ledger.gates, [gate]: record } };
 }
 

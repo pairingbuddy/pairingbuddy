@@ -442,7 +442,9 @@ function doubtSettledStages(contract, ledger) {
   const deferred = (gate) => Array.isArray(ledger.gates[gate]?.deferred);
   // A G:type passed on the type the task states settles the classifier's doubt: the plan already answered it.
   const stated = (gate) => typeof ledger.gates[gate]?.stated === "string";
-  const last = nodes.findLastIndex(({ gate }) => gate !== null && (isHumanApproved(ledger, gate) || deferred(gate) || stated(gate)));
+  // A G:type passed with no human to ask logged the doubt on its record: asking it later would wait forever too.
+  const noHuman = (gate) => ledger.gates[gate]?.noHuman === true;
+  const last = nodes.findLastIndex(({ gate }) => gate !== null && (isHumanApproved(ledger, gate) || deferred(gate) || stated(gate) || noHuman(gate)));
   return new Set(nodes.slice(0, last + 1).map(({ name }) => name));
 }
 
@@ -678,11 +680,18 @@ function lensReason(root, ledger) {
   return blockingSurvivors(report).length > 0 && !fixed ? "the classification lens has an open finding" : null;
 }
 
-// The confidence a G:type auto pass stood on when it was less than certain, for the gate record and the report; else null.
+// No human can answer: a Solo run or a claude -p session. A question there waits forever, so a doubt on the type is
+// logged on the gate record and the run goes on with the classifier's type.
+export const noHumanAnswers = () => process.env.PAIRINGBUDDY_SOLO === "true" || process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-cli";
+
+// What a G:type auto pass stood on when it was less than certain, for the gate record and the report: the confidence, and
+// noHuman when no human was there to ask; else null.
 export function typePassedOn(root, ledger, gate) {
   if (gate !== TYPE_GATE) return null;
   const confidence = keptIntakeReturn(artifactsDir(root), ledger.stage.attempt)?.content?.confidence;
-  return confidence === "likely" ? confidence : null;
+  if (confidence === "certain") return null;
+  if (noHumanAnswers()) return { confidence: confidence ?? "unknown", noHuman: true };
+  return confidence === "likely" ? { confidence } : null;
 }
 
 const typeReason = (root, ledger, contract) => selectorReason(root, ledger, contract) ?? classifierReason(root, ledger) ?? lensReason(root, ledger);
@@ -715,13 +724,13 @@ const gateOwnReason = (gate, args) => (GATE_REASONS[gate.name] ? GATE_REASONS[ga
 // The type the task states for itself on a Type: line, which the planner wrote and the human approved with the plan, or null.
 export const statedTypeOf = (contract, ledger) => statedType(ledger.task, contract.migratedTypes);
 
-// G:type with a stated type: that is the type, under any policy, and no doubt on it is asked. Only a stop, or a runner the
-// type cannot select tests with, still asks.
+// G:type with a stated type, or with no human to ask: that is the type, under any policy, and no doubt on it is asked.
+// Only a stop, or a runner the type cannot select tests with, still asks.
 const statedTypeReason = (contract, ledger, root) => stopReason(contract, ledger, root, { skipDoubts: true }) ?? selectorReason(root, ledger, contract);
 
 // Why this gate must ask a human, or null when it passes under the recorded policy.
 export const askReason = (contract, ledger, gate, root, voided = null, opts = {}) =>
-  gate.name === TYPE_GATE && statedTypeOf(contract, ledger) !== null
+  gate.name === TYPE_GATE && (statedTypeOf(contract, ledger) !== null || noHumanAnswers())
     ? statedTypeReason(contract, ledger, root)
     : stopReason(contract, ledger, root, opts) ?? gateOwnReason(gate, { root, ledger, voided, contract }) ?? policyReason(ledger);
 

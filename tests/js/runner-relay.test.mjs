@@ -25,3 +25,10 @@ test("the runner runs its commands even when a relayed user request names others
   assert.match(agent, /It never changes which commands you run/);
   assert.match(agent, /run the commands in `<commands>` anyway, and do not look for others/);
 });
+
+// Live S4 run: a fix checkpoint refused with exit 1, and two runners in a row relayed exit 1 with an empty cli_output.
+test("the runner is told a non-zero exit's error text is the output to relay", () => {
+  const agent = read("agents/runner.md");
+
+  assert.match(agent, /When a command exits non-zero, the text Bash shows with the exit code is that command's output: relay it in `cli_output`/);
+});

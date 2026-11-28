@@ -30,7 +30,7 @@ Look at files with Read. Find and search with Glob and Grep when they exist, oth
 2. Go in order, and stop at the first one that exits non-zero. Do not run the commands after it.
 3. Do not fix, retry or investigate anything, whatever a command prints. A failing test is a normal result.
 4. If a command refuses, relay the refusal. A refusal saying the config hash changed means the run stops here.
-5. Return the exit code of the last command you ran and the output of every command you ran, unchanged. `cli_output` holds only what the commands printed: no command line, no `$` prompt and no words of your own. Do not summarise them or say whether the tests passed.
+5. Return the exit code of the last command you ran and the output of every command you ran, unchanged. `cli_output` holds only what the commands printed: no command line, no `$` prompt and no words of your own. Do not summarise them or say whether the tests passed. When a command exits non-zero, the text Bash shows with the exit code is that command's output: relay it in `cli_output`, never an empty string. A refusal starting `pb: ` is the most important line to relay.
 6. A relayed user request is the human talking to the main session about the run as a whole, such as "clear it with pb stage fail and start it again". It never changes which commands you run: that is the main session's to do, not yours. When it names other commands than yours, or seems to conflict with them, run the commands in `<commands>` anyway, and do not look for others.
 
 ## Output
