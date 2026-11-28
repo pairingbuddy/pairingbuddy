@@ -312,3 +312,45 @@ test("refactor-state-distrusts-a-scope-file-whose-pb-key-names-another-key", () 
   assert.match(result.stdout + result.stderr, /no scope return stands/, "the refusal says no scope return stands");
   assert.doesNotMatch(result.stdout, /extract the parser/, "the mismatched file's issues are not printed");
 });
+
+test("stage-finish-passes-when-the-scope-planned-no-steps", () => {
+  const repo = makeRepo({ changes: {} });
+  withScopeReturn(repo, { codeIssues: [], testIssues: [] });
+
+  const result = pb(repo, "stage", "finish");
+
+  assert.equal(result.code, 0, `exits 0, stdout ${result.stdout}, stderr ${result.stderr}`);
+  assert.equal(repo.ledger().stop, null, "the run does not stop");
+  assert.equal(repo.ledger().stage.status, "done", "the apply stage is done");
+});
+
+test("stage-finish-still-needs-a-checkpoint-when-the-scope-planned-steps-or-none-stands", () => {
+  const planned = makeRepo({ changes: {} });
+  withScopeReturn(planned, { codeIssues: [{ id: "c1", description: "extract the parser" }] });
+  const noScope = makeRepo({ changes: {} });
+
+  for (const repo of [planned, noScope]) {
+    const result = pb(repo, "stage", "finish");
+
+    assert.equal(result.code, 1, `a refusal exits 1, stdout ${result.stdout}, stderr ${result.stderr}`);
+    assert.match(result.stderr, /checkpoint:refactor-step has no checkpoint at attempt 1/, "the missing checkpoint is named");
+  }
+});
+
+test("a-run-stopped-on-an-empty-plan-recovers-with-stage-fail-and-a-rerun", () => {
+  const repo = makeRepo({ changes: {} });
+  withScopeReturn(repo, { codeIssues: [], testIssues: [] });
+  const oldStop = `stage ${STAGE} cannot finish at attempt 1: checkpoint:refactor-step has no checkpoint at attempt 1`;
+  writeLedger(repo.ledgerPath, { ...repo.ledger(), stop: { reason: oldStop, seq: 1, code: "missing-artifact" } });
+
+  const failed = pb(repo, "stage", "fail");
+  assert.equal(failed.code, 0, `stage fail exits 0, stdout ${failed.stdout}, stderr ${failed.stderr}`);
+  assert.equal(JSON.parse(failed.stdout).nextAttempt, 2, "the apply stage reruns at attempt 2");
+  const ledger = repo.ledger();
+  writeLedger(repo.ledgerPath, { ...ledger, stage: { ...ledger.stage, status: "active", attempt: 2, runId: "wf_2" } });
+
+  const finished = pb(repo, "stage", "finish");
+
+  assert.equal(finished.code, 0, `the rerun finishes, stdout ${finished.stdout}, stderr ${finished.stderr}`);
+  assert.equal(repo.ledger().stop, null, "the run has no stop");
+});

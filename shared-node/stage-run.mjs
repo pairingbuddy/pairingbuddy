@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
+import { REFACTOR_CODE_ROLE, REFACTOR_TESTS_ROLE } from "./checkpoint.mjs";
 import { parseFixNotes } from "./fix-notes.mjs";
 import { plainName } from "./plain-names.mjs";
 import { isStandingScenarios, newestKeyAmong } from "./standing-scenarios.mjs";
@@ -57,6 +58,25 @@ export function keptIntakeReturn(artifactsDir, attempt) {
 // stage writes tests from these, and G:scenarios shows them.
 export const standingScenariosKey = (artifactsDir, ledger) => newestReturnMatching(artifactsDir, isStandingScenarios(ledger));
 
+export const SCOPE_ROLE = "scope-refactoring";
+export const SCOPE_STAGE = "code-refactor-scope";
+
+// The scope return that stands, as { key, content }, or null: the newest scope-refactoring return of a scope attempt that is not void.
+export function standingScope(artifactsDir, ledger) {
+  const stands = ({ role, item, stage, attempt }) => role === SCOPE_ROLE && item === null && stage === SCOPE_STAGE && !isVoidedAttempt(ledger, stage, attempt);
+  const key = newestReturnMatching(artifactsDir, stands);
+  const content = key === null ? null : readReturn(artifactsDir, key);
+  return content === null ? null : { key, content };
+}
+
+// The refactor steps the standing scope plans, code issues first, or null when no scope stands.
+export function refactorSteps(artifactsDir, ledger) {
+  const scope = standingScope(artifactsDir, ledger);
+  if (scope === null) return null;
+  const { code_issues: code = [], test_issues: tests = [] } = scope.content;
+  return [...code.map((issue) => ({ role: REFACTOR_CODE_ROLE, issue })), ...tests.map((issue) => ({ role: REFACTOR_TESTS_ROLE, issue }))].map((step, index) => ({ item: `step${index + 1}`, ...step }));
+}
+
 // ---------- evidence ----------
 
 function artifactProblem(role, { artifactsDir, ledger: { stage } }) {
@@ -72,7 +92,12 @@ function artifactProblem(role, { artifactsDir, ledger: { stage } }) {
 
 const attemptCheckpoints = ({ checkpoints = [], stage }) => checkpoints.filter((record) => record.stage === stage.name && record.attempt === stage.attempt);
 
-function checkpointProblem(step, { ledger }) {
+// A step that runs once per planned item proves nothing when the plan holds no items: a scope that found the work already
+// done plans zero refactor steps, and the apply stage then has nothing to checkpoint.
+const PLANNED_ITEMS = { "refactor-step": refactorSteps };
+
+function checkpointProblem(step, { ledger, artifactsDir }) {
+  if (Object.hasOwn(PLANNED_ITEMS, step) && PLANNED_ITEMS[step](artifactsDir, ledger)?.length === 0) return null;
   const found = attemptCheckpoints(ledger).some((record) => record.step === step);
   return found ? null : `checkpoint:${step} has no checkpoint at attempt ${ledger.stage.attempt}`;
 }
