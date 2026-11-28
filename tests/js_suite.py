@@ -162,6 +162,7 @@ JS_TEST_FILES = [
     "tests/js/smoke-s5.test.mjs",
     "tests/js/smoke-s5-spike.test.mjs",
     "tests/js/smoke-s6.test.mjs",
+    "tests/js/force-red.test.mjs",
     "tests/js/spike-flip.test.mjs",
     "tests/js/spike-repeat.test.mjs",
     "tests/js/spike-setup.test.mjs",
