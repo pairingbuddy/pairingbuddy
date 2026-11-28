@@ -33,6 +33,9 @@ li.building{--state:var(--blue);background:color-mix(in srgb,var(--blue) 9%,tran
 li.waiting{--state:var(--amber);background:color-mix(in srgb,var(--amber) 9%,transparent);color:var(--amber);font-weight:700}
 li.unticked{--state:var(--line)}
 li>details>summary{cursor:pointer}
+.tablewrap{overflow-x:auto}
+.summary td{padding-top:8px;padding-bottom:8px}
+.summary .num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .pill.type{font-size:.62rem;padding:2px 5px;margin-left:4px;text-transform:none;letter-spacing:0}
 .body{color:var(--fg);font-weight:400;border-left:2px solid var(--line);margin:6px 0 4px 4px;padding:2px 0 2px 12px}
 .body p,.body ul{margin:0 0 6px}
@@ -200,10 +203,17 @@ function tracerState(tasks, { building, reached }) {
 }
 
 // One tracer's group: a card whose summary is its name, its state and its bar, opening to its intro and then its units.
-function tracerSection(tracer, intro, body, { holdsFocus, done, total, state }) {
+function tracerSection(tracer, intro, body, { holdsFocus, done, total, state, id }) {
   if (!tracer) return `<section>\n${body}\n</section>`;
   const head = `<h2>${escape(tracer)}${STATE_SEPARATOR}${done} of ${total} done</h2> ${pill(state, TRACER_LOOKS[state])}\n${progressBar(done, total, "tasks")}`;
-  return `<section class="card tracer is-${state}">\n<details${holdsFocus ? " open" : ""}>\n<summary>${head}</summary>\n${tracerIntro(intro)}${body}\n</details>\n</section>`;
+  return `<section class="card tracer is-${state}" id="${id}">\n<details${holdsFocus ? " open" : ""}>\n<summary>${head}</summary>\n${tracerIntro(intro)}${body}\n</details>\n</section>`;
+}
+
+// The page's index, as the verdict page opens: one row per tracer, its name linked to its card, its state pill and its count.
+function summaryTable(rows) {
+  if (rows.length === 0) return "";
+  const body = rows.map(({ tracer, id, state, done, total }) => `<tr><td><a href="#${id}">${escape(tracer)}</a></td><td>${pill(state, TRACER_LOOKS[state])}</td><td class="num">${done} of ${total}</td></tr>`).join("\n");
+  return `<div class="tablewrap"><table class="summary">\n<thead><tr><th>Tracer bullet</th><th>State</th><th>Tasks done</th></tr></thead>\n<tbody>\n${body}\n</tbody>\n</table></div>\n`;
 }
 
 // plan: parsePlan's result; states: each unit's state, by position (unitStates); open: the open unit's record, resolved to
@@ -219,11 +229,13 @@ export function renderPlanPage({ plan, states = [], open, building, publishing =
   const reached = firstUnticked(units);
   const all = units.flatMap(({ tasks }) => tasks);
   const done = all.filter(({ checked }) => checked).length;
+  const summary = [];
   const groups = tracerGroups(units).map(({ tracer, units: grouped }) => {
     const body = grouped.map(({ unit, index }) => unitSection(unit, { state: states[index], open, building, publishing, focusTask, reached, subjects })).join("\n");
     const holdsFocus = grouped.some(({ unit }) => unit.tasks.includes(focusTask));
     const tasks = grouped.flatMap(({ unit }) => unit.tasks);
-    const progress = { holdsFocus, done: tasks.filter(({ checked }) => checked).length, total: tasks.length, state: tracerState(tasks, { building, reached }) };
+    const progress = { holdsFocus, done: tasks.filter(({ checked }) => checked).length, total: tasks.length, state: tracerState(tasks, { building, reached }), id: `tracer-${summary.length + 1}` };
+    if (tracer) summary.push({ tracer, ...progress });
     return tracerSection(tracer, plan?.tracers?.find(({ name }) => name === tracer), body, progress);
   });
   const problems = plan?.problems ?? [];
@@ -242,7 +254,7 @@ ${PLAN_CSS}
 ${progressBar(done, all.length, "tasks")}
 ${(plan?.tracers ?? []).length > 0 ? `${ORDER_NOTE}\n` : ""}${CONTROLS}
 </header>
-${problemList}${groups.join("\n")}
+${summaryTable(summary)}${problemList}${groups.join("\n")}
 </main>
 ${CONTROLS_SCRIPT}
 </body></html>`;
