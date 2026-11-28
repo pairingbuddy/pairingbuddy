@@ -328,6 +328,30 @@ function isStageSkill(payload) {
   }
 }
 
+// ---------- the repo boundary ----------
+
+// Run or not, a session where pb works stays in its home repo, and a gh call posts no secret or personal data
+// (shared-node/repo-boundary.mjs). The home is the session's
+// run, else a run a target reaches, else the repo at or above cwd when pb works there (it has .pairingbuddy/).
+function pbRepoTop(cwd) {
+  for (let dir = cwd; ; dir = dirname(dir)) {
+    if (existsSync(join(dir, ".git"))) return existsSync(join(dir, ".pairingbuddy")) ? dir : null;
+    if (dir === dirname(dir)) return null;
+  }
+}
+
+const BOUNDARY_TOOLS = ["Bash", ...Object.keys(TARGET_KEYS)];
+
+async function crossRepoDenial(payload, cwd, targets, homeRoot) {
+  if (homeRoot === null || !BOUNDARY_TOOLS.includes(payload?.tool_name)) return null;
+  const { authorEmails, bashBoundaryDenial, homeRepoOf, outgoingTextDenial, writeBoundaryDenial } = await import("../shared-node/repo-boundary.mjs");
+  const home = homeRepoOf(homeRoot);
+  if (payload.tool_name !== "Bash") return writeBoundaryDenial(targets, home);
+  const command = payload.tool_input?.command;
+  if (typeof command !== "string") return null;
+  return bashBoundaryDenial({ command, cwd, home }) ?? outgoingTextDenial({ command, cwd, allowedEmails: authorEmails(homeRoot) });
+}
+
 // A failed import is held back, not thrown here: only the walk can say whether this call is inside a run.
 let findRunRoot = nearestRunDirectory;
 let findSessionRoot = (cwd, sessionId) => nearestRunDirectory(cwd) ?? pointedRunDirectory(sessionId);
@@ -355,7 +379,10 @@ try {
   const reads = readPaths(payload, cwd);
   targets.forEach(addRunRoot);
   if (payload?.tool_name === "Bash") await addCommandRunRoots(payload, cwd);
-  if (isUnaskedGuidanceQuestion(payload)) {
+  const crossRepo = await crossRepoDenial(payload, cwd, targets, sessionRoot ?? [...runRoots][0] ?? pbRepoTop(cwd));
+  if (crossRepo !== null) {
+    decide("deny", crossRepo);
+  } else if (isUnaskedGuidanceQuestion(payload)) {
     denyQuestionWithNoHuman();
   } else if (CONFINED_AGENT.test(payload?.agent_type) && runRoots.size === 0) {
     await denyConfinedCallWithNoRun(payload, cwd, reads);

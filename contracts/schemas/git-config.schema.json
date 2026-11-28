@@ -18,6 +18,7 @@
       "additionalProperties": true
     },
     "config_globs": { "type": "array", "items": { "type": "string" } },
+    "leak_denylist": { "type": "array", "items": { "type": "string" }, "description": "Words (company or product names) pb publish and pb pr refresh refuse to send to a repo gh does not confirm is private. Matched in any letter case." },
     "commit": {
       "type": "object",
       "properties": {

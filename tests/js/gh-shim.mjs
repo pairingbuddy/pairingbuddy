@@ -10,6 +10,8 @@
 // GH_SHIM_LABELS is an optional JSON list of label names that `gh label list` prints, as gh's --json name output;
 // unset, `gh label list` prints nothing.
 //
+// GH_SHIM_REPO_PRIVATE ("true" or "false") is what `gh repo view --json isPrivate` answers; unset, it prints nothing.
+//
 // GH_SHIM_VIEWS (see viewsEnv) is an optional JSON map from the last argument of `gh pr view` (the branch or PR url) to
 // its answer; an argument it does not name falls back to the rules above.
 //
@@ -49,6 +51,9 @@ if (argv[0] === "pr" && argv[1] === "view") {
 }
 if (argv[0] === "label" && argv[1] === "list" && process.env.GH_SHIM_LABELS) {
   process.stdout.write(JSON.stringify(JSON.parse(process.env.GH_SHIM_LABELS).map((name) => ({ name }))) + "\\n");
+}
+if (argv[0] === "repo" && argv[1] === "view" && process.env.GH_SHIM_REPO_PRIVATE) {
+  process.stdout.write(JSON.stringify({ isPrivate: process.env.GH_SHIM_REPO_PRIVATE === "true" }) + "\\n");
 }
 if (argv[0] === "pr" && argv[1] === "create") {
   const url = process.env.GH_SHIM_URL ?? ${JSON.stringify(FAKE_PR_URL)};

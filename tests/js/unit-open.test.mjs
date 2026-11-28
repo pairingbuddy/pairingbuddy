@@ -74,6 +74,18 @@ test("creates-template-branch-and-writes-record", () => {
   assert.deepEqual(violations(schema, unit), [], "the record validates against the unit schema");
 });
 
+// The repo boundary keeps a session in this repo: its identity is recorded at unit open, so a later change of origin
+// cannot move it.
+test("unit-open-records-the-home-repo", () => {
+  const repo = makeRepo({ openTask: false, remote: true });
+
+  const result = pbUnitOpen(repo, {}, "--type", "feat", "--slug", "x");
+
+  assert.equal(result.code, 0, result.stderr);
+  const home = JSON.parse(readFileSync(join(repo.dir, ".pairingbuddy", "run", "home-repo.json"), "utf8"));
+  assert.equal(home.slug, repo.remoteDir, "a local origin is named by its path");
+});
+
 test("unit-schema-rejects-bad-records", () => {
   const schema = JSON.parse(readFileSync(new URL("../../contracts/schemas/unit.schema.json", import.meta.url), "utf8"));
   const valid = {
