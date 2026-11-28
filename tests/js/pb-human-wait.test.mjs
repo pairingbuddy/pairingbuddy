@@ -30,8 +30,9 @@ test("a-refusal-that-hands-the-human-a-line-is-kept-with-that-line", () => {
   const wait = JSON.parse(readFileSync(waitPath(repo), "utf8"));
   assert.equal(wait.verb, "plan next");
   assert.equal(wait.message, refused.stderr.trim().replace(/^pb: /, ""));
-  assert.equal(wait.lines.length, 1, JSON.stringify(wait.lines));
-  assert.match(wait.lines[0], /^!.* human accept --legacy Release --plan docs\/plan\.md$/);
+  assert.equal(wait.lines.length, 2, JSON.stringify(wait.lines));
+  assert.match(wait.lines[0], /^!.* human task done 'Wire it' --plan docs\/plan\.md$/);
+  assert.match(wait.lines[1], /^!.* human accept --legacy Release --plan docs\/plan\.md$/);
   assert.ok(Number.isFinite(Date.parse(wait.at)));
   assert.equal(existsSync(waitPath(repo)), true);
 });
@@ -50,7 +51,8 @@ test("the-humans-next-verb-clears-the-wait", () => {
 
 test("a-refusal-with-no-typed-line-keeps-nothing", () => {
   const repo = handTickedRepo();
-  writeFileSync(join(repo.dir, "docs", "plan.md"), ["## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Release", "", "- [x] **Build it**", "- [x] **Wire it**", "- [ ] **Ship it**", ""].join("\n"));
+  // A task outside any unit is a format problem: the refusal names it and hands the human no line.
+  writeFileSync(join(repo.dir, "docs", "plan.md"), ["## Tasks", "", "- [ ] **Stray**", "", "### Tracer 1: Skeleton", "", "- [ ] **Ship it**", ""].join("\n"));
 
   const refused = pb(repo, "plan", "next", "docs/plan.md");
 

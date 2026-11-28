@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Smoke S9: Solo (scripts/solo-buddy.sh) on a two-unit plan, on a cheap model, with a clean env and the recording gh,
 // under one spend cap. Phase 1 lets Solo finish: two draft PRs on the shim, the exit summary lists each PR link, and
-// the remote holds both pushed branches. Phase 2 forces a stop: the sample's test command goes red on every safety-net
-// fix (force-red.mjs --always), the fix loop reaches its attempt cap, and Solo must report the stop as a failure while
-// every commit stays local. Run by hand (`node tests/smoke/s9.mjs`), never by a suite; the unit tests in
-// tests/js/smoke-s9.test.mjs exercise the pure helpers above the live run.
+// the remote holds both pushed branches. Phase 2 forces a stop: the sample's test command goes red on every GREEN check
+// (force-red.mjs --green), which every TDD task runs, so the fix loop reaches its attempt cap whatever the reviews
+// find, and Solo must report the stop as a failure while every commit stays local. Run by hand
+// (`node tests/smoke/s9.mjs`), never by a suite; the unit tests in tests/js/smoke-s9.test.mjs exercise the pure
+// helpers above the live run.
 
 import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -184,12 +185,12 @@ function makeSoloRepo(record) {
   return { repo, remote };
 }
 
-// The sample's test command, behind force-red.mjs --always: every safety-net fix goes red until the attempt cap.
-function forceEveryFixRed(repo, marker) {
+// The sample's test command, behind force-red.mjs --green: every GREEN check goes red until the attempt cap.
+function forceEveryGreenRed(repo, marker) {
   const path = join(repo, ".pairingbuddy", "test-config.json");
   const config = JSON.parse(readFileSync(path, "utf8"));
   const runner = config.runners[config.default_runner];
-  runner.command = `node ${FORCE_RED} --always ${marker} ${runner.command}`;
+  runner.command = `node ${FORCE_RED} --green ${marker} ${runner.command}`;
   writeFileSync(path, JSON.stringify(config));
 }
 
@@ -215,7 +216,7 @@ async function finishPhase(budget, record, pluginDir) {
 
 async function forcedStopPhase(budget, record, pluginDir) {
   const { repo, remote } = makeSoloRepo(join(record, "forced"));
-  forceEveryFixRed(repo, join(record, "forced", "force-red.marker"));
+  forceEveryGreenRed(repo, join(record, "forced", "force-red.marker"));
   const gh = installGhShim({ parent: record });
   const before = remoteRefs(remote);
   const capUsd = Number(budget.remaining.toFixed(2));

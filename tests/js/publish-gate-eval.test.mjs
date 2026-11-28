@@ -5,7 +5,7 @@
 import "./isolated-tmpdir.mjs";
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
 import { isGateQuestionCall } from "../../shared-node/gates.mjs";
@@ -427,6 +427,22 @@ describe("auto-publish-gate-pass", () => {
     assert.equal(asked.result, "needs-human");
     assert.equal(asked.reason, "questions for you are open: 3");
     assert.deepEqual(repo.ledger().needsHuman.doubts, questions.map(({ step, ambiguity, task }) => ({ step, ambiguity, task })));
+    assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, "no auto-pass is recorded");
+  });
+
+  // pb never reviewed a task the human recorded with pb human task done, so the auto policy hands G:publish to the human
+  test("publish-gate-asks-when-a-task-was-done-by-hand", () => {
+    const { repo, recorded } = publishRepo({ mode: "auto" });
+    seedTaskLensRecord(repo, recorded);
+    const plan = ["# Plan", "", "## Tasks", "", "### Tracer 1: Skeleton", "", "#### PR: Totals", "", "- [x] **Task 1: Add totals**", "- [x] **Task 2: Add discounts**", "  Done by hand: accepted", ""].join("\n");
+    mkdirSync(join(repo.dir, "docs"), { recursive: true });
+    writeFileSync(join(repo.dir, "docs", "plan.md"), plan);
+    changeUnit(repo, { plan: "docs/plan.md", unit: "Totals" });
+
+    const asked = evalGate(repo);
+
+    assert.equal(asked.result, "needs-human");
+    assert.equal(asked.reason, "these tasks were done by hand and pb never reviewed them: Task 2: Add discounts");
     assert.equal(Object.hasOwn(repo.ledger().gates, GATE), false, "no auto-pass is recorded");
   });
 

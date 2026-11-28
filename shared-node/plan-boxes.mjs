@@ -63,6 +63,20 @@ export function replaceFile(file, text) {
   renameSync(temp, file);
 }
 
+export const HAND_DONE_LINE = "Done by hand: accepted";
+
+// The text with the task's box ticked and HAND_DONE_LINE indented directly under it: the human's record that they
+// finished the task themselves. Pure; refuses (PlanRefused) when no box or more than one has the title.
+export function withHandDone(text, plan) {
+  const box = boxOf(text, plan);
+  const lineStart = text.lastIndexOf("\n", box.markAt) + 1;
+  const newline = text.indexOf("\n", box.markAt);
+  const lineEnd = newline === -1 ? text.length : newline;
+  const indent = /^\s*/.exec(text.slice(lineStart, lineEnd))[0];
+  const ticked = `${text.slice(0, box.markAt)}${TICKED_MARK}${text.slice(box.markAt + 1, lineEnd)}`;
+  return `${ticked}\n${indent}  ${HAND_DONE_LINE}${text.slice(lineEnd)}`;
+}
+
 // True when this call ticked the box. A box already ticked stays, so a repeat after a crash goes on to end the task.
 export function tickPlanBox(root, plan) {
   const file = planFile(root, plan.path);

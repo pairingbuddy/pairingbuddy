@@ -1,43 +1,62 @@
 #!/usr/bin/env node
-// Test tooling only: smoke S4 puts this in front of the sample repo's test command, so the first test run of the first
-// safety-net fix goes red and the fix loop has to roll that fix back. Nothing in the plugin names it; only S4's own
-// test-config.json does, by absolute path, in a throwaway repo.
+// Test tooling only: a smoke puts this in front of the sample repo's test command to turn chosen test runs red. Nothing
+// in the plugin names it; only a smoke's own test-config.json does, by absolute path, in a throwaway repo.
 //
-//     node force-red.mjs [--always] <marker file> <real test command words...>
+//     node force-red.mjs [--always | --green] <marker file> <real test command words...>
 //
-// It fails once, when the run's ledger is on code-safety-net, a fix return of that stage is filed and the marker does
-// not exist yet: it writes the marker and exits 1. Every other call runs the real command and exits with its status.
-// With --always it fails on every such call, so the fix loop runs out of attempts (smoke S9's forced stop).
+// Default (smoke S4): it fails once, when the run's ledger is on code-safety-net, a fix return of that stage is filed
+// and the marker does not exist yet: it writes the marker and exits 1.
+// --always: the same safety-net case fails on every call.
+// --green (smoke S9's forced stop): every test run of code-tdd fails once a GREEN return of the current attempt is on
+// file. Every TDD task runs GREEN, so the fix loop always reaches its attempt cap, whatever the reviews find.
+// Every other call runs the real command and exits with its status.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const STAGE = "code-safety-net";
-export const FORCED = "smoke S4 fixture: the first safety-net fix's test run is forced red";
+export const FORCED = "smoke fixture: this test run is forced red";
 const FIX_RETURN = new RegExp(`^${STAGE.replaceAll("-", "\\-")}\\.fix\\.`);
+const TDD_STAGE = "code-tdd";
+const GREEN_RETURN = /^code-tdd\.implement-code\..*\.a(\d+)\.json$/;
 
-function onSafetyNetFix(repo) {
+const MODES = { "--always": "always", "--green": "green" };
+
+// Whether this test run goes red. Pure: the ledger, the artifact file names and whether the marker exists.
+export function forcesRed({ mode, ledger, artifacts, markerExists }) {
+  const stage = ledger?.stage;
+  if (mode === "green") {
+    return stage?.name === TDD_STAGE && artifacts.some((file) => GREEN_RETURN.exec(file)?.[1] === String(stage.attempt));
+  }
+  if (stage?.name !== STAGE || !artifacts.some((file) => FIX_RETURN.test(file))) return false;
+  return mode === "always" || !markerExists;
+}
+
+function readRun(repo) {
   const task = join(repo, ".pairingbuddy", "run", "task");
   try {
-    const ledger = JSON.parse(readFileSync(join(task, "ledger.json"), "utf8"));
-    return ledger.stage?.name === STAGE && readdirSync(join(task, "artifacts")).some((file) => FIX_RETURN.test(file));
+    return { ledger: JSON.parse(readFileSync(join(task, "ledger.json"), "utf8")), artifacts: readdirSync(join(task, "artifacts")) };
   } catch {
-    return false;
+    return { ledger: null, artifacts: [] };
   }
 }
 
-const ALWAYS = "--always";
-const args = process.argv.slice(2);
-const always = args[0] === ALWAYS;
-const [marker, ...command] = always ? args.slice(1) : args;
-if (marker === undefined || command.length === 0) {
-  process.stderr.write("usage: force-red.mjs [--always] <marker file> <test command...>\n");
-  process.exit(2);
+function main() {
+  const args = process.argv.slice(2);
+  const mode = MODES[args[0]] ?? "once";
+  const [marker, ...command] = mode === "once" ? args : args.slice(1);
+  if (marker === undefined || command.length === 0) {
+    process.stderr.write("usage: force-red.mjs [--always | --green] <marker file> <test command...>\n");
+    process.exit(2);
+  }
+  if (forcesRed({ mode, ...readRun(process.cwd()), markerExists: existsSync(marker) })) {
+    writeFileSync(marker, `${new Date().toISOString()}\n`);
+    process.stdout.write(`${FORCED}\n`);
+    process.exit(1);
+  }
+  const run = spawnSync(command[0], command.slice(1), { stdio: "inherit" });
+  process.exit(run.status ?? 1);
 }
-if ((always || !existsSync(marker)) && onSafetyNetFix(process.cwd())) {
-  writeFileSync(marker, `${new Date().toISOString()}\n`);
-  process.stdout.write(`${FORCED}\n`);
-  process.exit(1);
-}
-const run = spawnSync(command[0], command.slice(1), { stdio: "inherit" });
-process.exit(run.status ?? 1);
+
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) main();

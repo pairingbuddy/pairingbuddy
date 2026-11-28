@@ -6,10 +6,12 @@ const GATE_SOURCES = ["auto", "human", "human-cli"];
 const short = (sha) => String(sha).slice(0, 7);
 const list = (items) => items.join(", ");
 
-// Agent (non-human) plan boxes under the unit's heading with no task record. With no agent boxes to go by, the unit must have a record at all.
-export const recordedTasks = ({ unit, planBoxes, planProblem }) => {
+// Agent (non-human) plan boxes under the unit's heading with no task record. With no agent boxes to go by, the unit must
+// have a record at all. A box the human recorded with pb human task done (planHandDone) needs no record.
+export const recordedTasks = ({ unit, planBoxes, planHandDone, planProblem }) => {
   if (planProblem) return planProblem;
-  const agentBoxes = (planBoxes ?? []).filter((label) => !isHumanTitle(label));
+  const handDone = new Set(planHandDone ?? []);
+  const agentBoxes = (planBoxes ?? []).filter((label) => !isHumanTitle(label) && !handDone.has(label));
   if (agentBoxes.length === 0) return unit.tasks.length > 0 ? null : "the unit has no task records";
   const titles = new Set(unit.tasks.map((task) => task.title));
   const missing = agentBoxes.filter((label) => !titles.has(label));
@@ -43,6 +45,12 @@ const autoWithoutLensRecord = ({ unit, approval }) => {
   if (approval !== "auto") return null;
   const lacking = codeTasks(unit).filter((task) => !taskHasLensRecord(task));
   return lacking.length === 0 ? null : `G:publish was passed by the auto policy, but these tasks have no safety-net lens record: ${list(lacking.map((task) => task.title))}`;
+};
+
+// pb never reviewed a task the human recorded with pb human task done, so the auto policy cannot publish it.
+const autoWithHandDone = ({ approval, planHandDone }) => {
+  if (approval !== "auto" || !planHandDone || planHandDone.length === 0) return null;
+  return `G:publish was passed by the auto policy, but these tasks were done by hand and pb never reviewed them: ${list(planHandDone)}. The human approves with pb human approve G:publish`;
 };
 
 // Defence in depth: an auto approval stands only if the PR lint passes at the body as it is now.
@@ -119,7 +127,7 @@ export const BRANCH_CHECKS = [branchUnusable, branchProtected, notOnUnitBranch, 
 // The evidence checks, in the order they are reported.
 export const EVIDENCE_CHECKS = [
   recordedTasks, untickedTasks, withoutSafetyNet, invalidGateSources, staleFullSuite, dirtyTree, openBlocking, changedConfig,
-  staleApproval, unapproved, autoWithoutLensRecord, autoWithFailingLint, unrecordedCommits,
+  staleApproval, unapproved, autoWithoutLensRecord, autoWithHandDone, autoWithFailingLint, unrecordedCommits,
 ];
 
 // What closing in place of a push needs: the same fresh approval and unchanged config files as a publish.
