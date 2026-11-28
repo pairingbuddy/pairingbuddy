@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 
 import { parsePlan } from "../../shared-node/plan.mjs";
 import { renderPlanPage } from "../../shared-node/plan-page.mjs";
+import { PAGE_CSS, progressBar } from "../../shared-node/page-design.mjs";
 
 // A plan of `tracers` tracers, each with two PR units of five tasks; the first `ticked` tasks are ticked.
 function bigPlan(tracers, ticked) {
@@ -111,7 +112,7 @@ test("a tracer opens to its Goal and Verification, then its units; a unit opens 
   const html = renderPlanPage({ plan });
 
   const t1 = html.slice(html.indexOf("T1: Cart") - 200, html.indexOf("T2: Pay"));
-  assert.match(t1, /<details[^>]*>\s*<summary><h2>T1: Cart[^<]*<\/h2><\/summary>/, "the tracer's title is the summary of its details");
+  assert.match(t1, /<details[^>]*>\s*<summary><h2>T1: Cart[^<]*<\/h2>/, "the tracer's title is the summary of its details");
   assert.ok(t1.includes("<strong>Goal:</strong> A shopper fills a cart.") && t1.includes("<strong>Verification:</strong> <code>npm test</code> passes."), "its Goal and Verification");
   assert.match(t1, /<details[^>]*>\s*<summary><h3>Add[^<]*<\/h3><\/summary>/, "each unit is a details of its own, under the tracer");
 });
@@ -140,8 +141,8 @@ test("a folded tracer still tells how far it is: its tasks done out of its tasks
 
   const html = renderPlanPage({ plan });
 
-  assert.match(html, /<summary><h2>T1: Cart · 1 of 2 done<\/h2><\/summary>/);
-  assert.match(html, /<summary><h2>T2: Pay · 0 of 1 done<\/h2><\/summary>/);
+  assert.match(html, /<summary><h2>T1: Cart · 1 of 2 done<\/h2>/);
+  assert.match(html, /<summary><h2>T2: Pay · 0 of 1 done<\/h2>/);
 });
 
 test("plan text never reaches the page as markup: tags in a body, a Goal or code are shown as text", () => {
@@ -221,4 +222,32 @@ test("the-header-says-tracers-are-listed-in-run-order-with-the-ids-they-were-wri
   const html = renderPlanPage({ plan: parsePlan(bigPlan(2, 0)), path: "docs/plans/big.md" });
   const header = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
   assert.match(header, /<p class="order-note">Tracer bullets are listed in the order they run; their numbers are the ids they got when the plan was written\.<\/p>/);
+});
+
+test("the plan page wears the shared look: the shared stylesheet inlined, the page in one main column", () => {
+  const html = renderPlanPage({ plan: parsePlan(DRILL_PLAN) });
+  assert.ok(html.includes(PAGE_CSS), "the shared stylesheet, inlined");
+  assert.match(html, /<body>\s*<main>[\s\S]*<\/main>\s*<script>/, "one main column, the scripts after it");
+});
+
+test("the header shows how far the whole plan is as a bar", () => {
+  const html = renderPlanPage({ plan: parsePlan(bigPlan(2, 7)), path: "docs/plans/big.md" });
+  const header = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
+  assert.ok(header.includes(progressBar(7, 20, "tasks")), header);
+});
+
+test("each tracer is a card that says its state, done, building, waiting for a person or to do, with its own bar", () => {
+  const tracerOf = (html, name) => html.slice(html.lastIndexOf("<section", html.indexOf(`<h2>${name}`)), html.indexOf("</summary>", html.indexOf(`<h2>${name}`)));
+
+  const building = renderPlanPage({ plan: parsePlan(DRILL_PLAN), building: "Task 2: Remove an item" });
+  assert.match(tracerOf(building, "T1: Cart"), /^<section class="card tracer is-running">/);
+  assert.ok(tracerOf(building, "T1: Cart").includes('<span class="pill is-running">● building</span>'));
+  assert.ok(tracerOf(building, "T1: Cart").includes(progressBar(1, 2, "tasks")));
+  assert.match(tracerOf(building, "T2: Pay"), /^<section class="card tracer is-todo">[\s\S]*<span class="pill is-todo">○ to do<\/span>/);
+
+  const done = renderPlanPage({ plan: parsePlan(bigPlan(2, 10)) });
+  assert.match(tracerOf(done, "T1: Tracer 1"), /^<section class="card tracer is-done">[\s\S]*<span class="pill is-done">✓ done<\/span>/);
+
+  const waiting = renderPlanPage({ plan: parsePlan(STATES_PLAN.replace("- [ ] Task 3", "- [x] Task 3")), states: ["published", "open", "open"], open: OPEN_PAY });
+  assert.match(tracerOf(waiting, "T1: Cart"), /^<section class="card tracer is-waiting">[\s\S]*<span class="pill is-waiting">▲ needs you<\/span>/);
 });

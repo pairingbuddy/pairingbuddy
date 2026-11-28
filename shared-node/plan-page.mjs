@@ -2,42 +2,42 @@
 // window of it. /pb-plan writes it under the reports folder and opens it. Pure; no I/O, no node: imports.
 import { firstUnticked, holdsBuilding, humanWords, planFocus, STATE_SEPARATOR, taskMark, unitWords } from "./plan-window.mjs";
 import { openQuestions, taskTitle } from "./questions.mjs";
+import { PAGE_CSS, pill, progressBar } from "./page-design.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 export const escape = (text) => String(text ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
 
-// The report's look: one monospace face, the pane's accent for the task being built, dim for what is done.
-export const STYLE = `:root{color-scheme:light dark;--bg:#15161a;--fg:#e3e4e8;--muted:#8a8d96;--rule:#2b2d34;--link:#39c5cf;--accent:#39c5cf;--needs-you:#e3b341}
-@media (prefers-color-scheme:light){:root{--bg:#fbfbf9;--fg:#1c1d21;--muted:#696c74;--rule:#e1e2e5;--link:#0a6f78;--accent:#0a6f78;--needs-you:#8a5a00}}
-*{font-size:inherit}
-body{background:var(--bg);color:var(--fg);font:14px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0 auto;padding:48px 32px 64px;max-width:110ch}
-h1,h2,h3,p,ul{margin:0}
-h1{font-weight:700}
-header{border-bottom:1px solid var(--rule);padding-bottom:10px;margin-bottom:24px}
+// The plan's own rules over the shared look: each tracer a card, each unit a block inside it, each task a row with a stripe in
+// its state's colour (ticked done, ▸ being built, a [HUMAN] task waiting for a person, the rest to come).
+const PLAN_CSS = `header{display:flex;flex-direction:column;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--line)}
 header p{color:var(--muted)}
-a{color:var(--link);text-underline-offset:3px}
-section{margin:0 0 20px}
-h2{font-weight:700}
-h3{font-weight:400;margin-top:6px}
-ul{list-style:none;padding:0 0 0 2ch}
-.facts{color:var(--muted)}
-.ticked{color:var(--muted)}
-.building{color:var(--accent);font-weight:700}
-.waiting{color:var(--needs-you);font-weight:700}
-.problems li{color:var(--needs-you)}
-summary{cursor:pointer}
-summary h2,summary h3{display:inline}
-summary::marker{color:var(--muted)}
-.intro,.body{color:var(--fg);border-left:2px solid var(--rule);margin:4px 0 8px 1ch;padding:2px 0 2px 2ch;font-weight:400}
-.intro{color:var(--muted)}
-.body p,.intro p{margin:0 0 6px}
-.body ul{list-style:disc;padding-left:3ch;margin:0 0 6px}
-.ticked .body,.waiting .body,.building .body{color:var(--fg);font-weight:400}
-code{background:var(--rule);border-radius:3px;padding:0 3px}
-.controls{margin-top:6px}
-.controls button{font:inherit;color:var(--link);background:none;border:1px solid var(--rule);border-radius:4px;padding:1px 8px;cursor:pointer}
-.controls button:hover{border-color:var(--link)}
-@media (max-width:600px){body{padding:28px 16px 48px}}`;
+.order-note{font-size:.9rem}
+section{margin:0}
+ul{list-style:none;margin:0;padding:0}
+.tracer>details>summary{list-style:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.tracer>details>summary::-webkit-details-marker{display:none}
+.tracer>details>summary h2{flex:1 1 auto}
+.tracer>details>summary h2::before{content:"\\25B8\\00A0";color:var(--muted)}
+.tracer>details[open]>summary h2::before{content:"\\25BE\\00A0"}
+.tracer>details>summary .bar{flex-basis:100%}
+.tracer>details>summary .bar>span:last-child,header .bar>span:last-child{display:none}
+.intro{color:var(--muted);border-left:2px solid var(--line);margin:12px 0 4px;padding:2px 0 2px 12px;display:flex;flex-direction:column;gap:4px}
+details:has(>summary>h3){margin-top:14px}
+summary>h3{display:inline}
+details:has(>summary>h3)>ul{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+details:has(>summary>h3)>ul>li{border-left:3px solid var(--state,var(--line));padding:3px 10px;border-radius:0 4px 4px 0}
+details:has(>summary>h3)>ul>li.facts{border-left-color:transparent;padding-top:0;padding-bottom:0;font-size:.9rem}
+li.ticked{--state:var(--pass);color:var(--muted)}
+li.building{--state:var(--blue);background:color-mix(in srgb,var(--blue) 9%,transparent);font-weight:700}
+li.waiting{--state:var(--amber);background:color-mix(in srgb,var(--amber) 9%,transparent);color:var(--amber);font-weight:700}
+li.unticked{--state:var(--line)}
+li>details>summary{cursor:pointer}
+.body{color:var(--fg);font-weight:400;border-left:2px solid var(--line);margin:6px 0 4px 4px;padding:2px 0 2px 12px}
+.body p,.body ul{margin:0 0 6px}
+.body ul{list-style:disc;padding-left:20px}
+.commits ul{padding-left:16px}
+.problems{--state:var(--amber)}
+.problems li{color:var(--amber)}`;
 
 // Expand all and Collapse all: hidden in the markup, shown by the page's own script, so a page whose script does not run
 // shows no button that does nothing; its folds still open by hand.
@@ -172,10 +172,22 @@ function tracerIntro(intro) {
   return lines.length ? `<div class="intro">\n${lines.map(([label, words]) => `<p>${inline(`**${label}:** ${words}`)}</p>`).join("\n")}\n</div>\n` : "";
 }
 
-// One tracer's group: a details whose summary is its name, opening to its intro and then its units.
-function tracerSection(tracer, intro, body, { holdsFocus, done, total }) {
+// A tracer's state, as its card says it: done when every task is ticked, waiting when the plan stands on one of its [HUMAN]
+// tasks, building while it holds the task being built, else to do.
+const TRACER_LOOKS = { done: "done", waiting: "needs you", running: "building", todo: "to do" };
+
+function tracerState(tasks, { building, reached }) {
+  if (tasks.length > 0 && tasks.every(({ checked }) => checked)) return "done";
+  if (tasks.some((task) => task.human && task === reached)) return "waiting";
+  if (tasks.some((task) => !task.checked && task.title === building)) return "running";
+  return "todo";
+}
+
+// One tracer's group: a card whose summary is its name, its state and its bar, opening to its intro and then its units.
+function tracerSection(tracer, intro, body, { holdsFocus, done, total, state }) {
   if (!tracer) return `<section>\n${body}\n</section>`;
-  return `<section>\n<details${holdsFocus ? " open" : ""}>\n<summary><h2>${escape(tracer)}${STATE_SEPARATOR}${done} of ${total} done</h2></summary>\n${tracerIntro(intro)}${body}\n</details>\n</section>`;
+  const head = `<h2>${escape(tracer)}${STATE_SEPARATOR}${done} of ${total} done</h2> ${pill(state, TRACER_LOOKS[state])}\n${progressBar(done, total, "tasks")}`;
+  return `<section class="card tracer is-${state}">\n<details${holdsFocus ? " open" : ""}>\n<summary>${head}</summary>\n${tracerIntro(intro)}${body}\n</details>\n</section>`;
 }
 
 // plan: parsePlan's result; states: each unit's state, by position (unitStates); open: the open unit's record, resolved to
@@ -195,7 +207,7 @@ export function renderPlanPage({ plan, states = [], open, building, publishing =
     const body = grouped.map(({ unit, index }) => unitSection(unit, { state: states[index], open, building, publishing, focusTask, reached, subjects })).join("\n");
     const holdsFocus = grouped.some(({ unit }) => unit.tasks.includes(focusTask));
     const tasks = grouped.flatMap(({ unit }) => unit.tasks);
-    const progress = { holdsFocus, done: tasks.filter(({ checked }) => checked).length, total: tasks.length };
+    const progress = { holdsFocus, done: tasks.filter(({ checked }) => checked).length, total: tasks.length, state: tracerState(tasks, { building, reached }) };
     return tracerSection(tracer, plan?.tracers?.find(({ name }) => name === tracer), body, progress);
   });
   const problems = plan?.problems ?? [];
@@ -203,15 +215,19 @@ export function renderPlanPage({ plan, states = [], open, building, publishing =
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Plan</title>
 <style>
-${STYLE}
+${PAGE_CSS}
+${PLAN_CSS}
 </style></head>
 <body>
+<main>
 <header>
 <h1>PLAN</h1>
 <p>${escape(path ?? "")}${path ? STATE_SEPARATOR : ""}${done} of ${all.length} tasks done${focusTask ? `${STATE_SEPARATOR}<a href="#now">where the plan is</a>` : ""}</p>
+${progressBar(done, all.length, "tasks")}
 ${(plan?.tracers ?? []).length > 0 ? `${ORDER_NOTE}\n` : ""}${CONTROLS}
 </header>
 ${problemList}${groups.join("\n")}
+</main>
 ${CONTROLS_SCRIPT}
 </body></html>`;
 }

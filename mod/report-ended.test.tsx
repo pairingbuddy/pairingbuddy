@@ -101,7 +101,7 @@ test('report-times-each-try-from-its-agents-turns', async ($, on) => {
   await runPbReport($)
 
   const html = recorder.writes[0]?.text ?? ''
-  expect(html, 'the RED try is timed from its writer and runner turns, with its result').toContain('<td>RED</td><td>1</td><td>0:48</td><td>0:41</td><td>0:07</td><td>failed, as it should (exit 1)</td>')
+  expect(html, 'the RED try is timed from its writer and runner turns, with its result').toContain('<td>RED</td><td>1</td><td>0:48</td><td>0:41</td><td>0:07</td><td class="is-done">failed, as it should (exit 1)</td>')
 })
 
 // What pb kept of the two runs when each ended (keepRun in shared-node/unit-files.mjs): ledger, returns and kept.json.

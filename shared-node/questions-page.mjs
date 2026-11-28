@@ -1,12 +1,19 @@
 // The questions page /pb-questions writes under the reports folder and opens: every question set aside for the human on the
 // open unit, in full, and those already answered. /pb-questions opens it on See them all first, to look before answering.
 // Pure; no I/O.
-import { escape, STYLE } from "./plan-page.mjs";
+import { escape, PAGE_CSS, pill } from "./page-design.mjs";
 import { openQuestions, taskTitle } from "./questions.mjs";
 
 const HOW = 'To answer: type /pb-questions in the Claude Code session and choose "Answer them now". You can stop at any question.';
 
-const QUESTION_STYLE = `.question{margin:0 0 18px}.answered summary{opacity:.55;cursor:pointer}.answered details[open] summary{margin-bottom:6px}`;
+// Each question a box in its state's colour: open ones amber (they wait for you), answered ones green and folded.
+const QUESTION_STYLE = `header{display:flex;flex-direction:column;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.question{--state:var(--amber);border:1px solid var(--line);border-left:4px solid var(--state);background:color-mix(in srgb,var(--state) 7%,var(--surface));border-radius:6px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.question.answered{--state:var(--pass);background:var(--surface)}
+.answered summary{color:var(--muted)}
+.answered details{display:flex;flex-direction:column;gap:6px}
+.answered details[open] summary{margin-bottom:6px;color:var(--fg)}`;
 
 const isAnswered = (question) => typeof question.answer === "string";
 
@@ -63,18 +70,19 @@ export function renderQuestionsPage({ unit } = {}) {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Questions for you</title>
 <style>
-${STYLE}
+${PAGE_CSS}
 ${QUESTION_STYLE}
 </style></head>
 <body>
+<main>
 <header>
 <h1>QUESTIONS FOR YOU</h1>
-<p>${count} open${answeredCount > 0 ? ` · ${answeredCount} answered` : ""}${unit?.unit ? ` · ${escape(unit.unit)}` : ""}</p>
+<p>${pill("waiting", `${count} open`)}${answeredCount > 0 ? ` · ${pill("done", `${answeredCount} answered`)}` : ""}${unit?.unit ? ` · ${escape(unit.unit)}` : ""}</p>
 <p>${escape(HOW)}</p>
 </header>
 <ul>
 ${numbered.map(({ question, n }) => (isAnswered(question) ? answeredItem(question, n, unit?.unit) : openItem(question, n))).join("\n")}
 </ul>
-${more > 0 ? `<p class="facts">+${more} more, only counted: the report has their text</p>\n` : ""}
+${more > 0 ? `<p class="facts">+${more} more, only counted: the report has their text</p>\n` : ""}</main>
 </body></html>`;
 }

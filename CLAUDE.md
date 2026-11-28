@@ -53,7 +53,7 @@ pairingbuddy/
 │   └── schemas/             # JSON schemas for state (64 total)
 ├── hooks/            # Claude Code hooks (SessionStart, PostToolUse)
 ├── mod/              # Claude Code mod (register.tsx, band.tsx, pane.tsx, view.ts, inputs.ts, poll.ts, alert.ts, pane-open.ts, report.ts, plan-page.ts, answer.ts, published.ts, assets/, *.test.tsx, testing/, fixtures/); writes only reports/, isolated from the shell hooks
-├── shared-node/      # Pure ESM shared by the CLI, hooks, workflows and the mod (labels, ledger, stage graph, glance, plain names, gate-passed rule, baseline judging, now-building block, end state, stacking rule, plan window and page, pane height budget)
+├── shared-node/      # Pure ESM shared by the CLI, hooks, workflows and the mod (labels, ledger, stage graph, glance, plain names, gate-passed rule, baseline judging, now-building block, end state, stacking rule, plan window and page, pane height budget, the one look of every HTML page)
 ├── commands/         # Slash commands (/pairingbuddy:code, /pairingbuddy:plan, /pairingbuddy:design-ux)
 └── tests/            # Structural tests (~2114)
 ```

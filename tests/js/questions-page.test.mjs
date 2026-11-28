@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { renderQuestionsPage } from "../../shared-node/questions-page.mjs";
+import { PAGE_CSS, pill } from "../../shared-node/page-design.mjs";
 
 const question = (n, extra = {}) => ({ gate: "G:task-end", task: `Task ${n}: t${n}`, step: "a reviewer", ambiguity: `Doubt ${n}?`, ...extra });
 const textOf = (html) => html.replace(/<(script|style)>[\s\S]*?<\/\1>/g, "").replace(/<[^>]+>/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ");
@@ -55,7 +56,7 @@ test("plan text never reaches the page as markup, and an old record's whole task
 test("the header counts the answered questions beside the open ones", () => {
   const html = renderQuestionsPage({ unit: { unit: "T1a", questions: [question(1, { answer: "Yes.", answeredAt: "t" }), question(2), question(3)] } });
 
-  assert.ok(textOf(html).includes("2 open · 1 answered · T1a"), textOf(html));
+  assert.ok(textOf(html).includes("▲ 2 open · ✓ 1 answered · T1a"), textOf(html));
 });
 
 test("a rework of a unit whose name has a colon still shows the rework's name whole", () => {
@@ -84,4 +85,12 @@ test("an answered question tells when it was answered and, once settled, whether
   assert.ok(!text.includes("led to rework: Rework 1 in T1a: Doubt 1?"), "the rework's title only, not the question again");
   assert.ok(text.includes("answered 2026-11-26 14:06 UTC · no rework needed"), text);
   assert.ok(text.includes("answered 2026-11-26 14:07 UTC · not yet weighed"), text);
+});
+
+test("the questions page wears the shared look: the shared stylesheet, one main column, the counts as pills", () => {
+  const html = renderQuestionsPage({ unit: { unit: "T1a", questions: [question(1, { answer: "Yes.", answeredAt: "t" }), question(2), question(3)] } });
+
+  assert.ok(html.includes(PAGE_CSS), "the shared stylesheet, inlined");
+  assert.match(html, /<body>\s*<main>[\s\S]*<\/main>\s*<\/body>/);
+  assert.ok(html.includes(`${pill("waiting", "2 open")} · ${pill("done", "1 answered")} · T1a`), "open and answered in their states' colours");
 });
