@@ -378,6 +378,12 @@ describe("report-content", () => {
     assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Task type<\/strong> config change \(likely, not certain: auto mode went on\)/, "the type reads as not certain");
   });
 
+  test("a task type passed unsure with no human to ask says so beside the type", () => {
+    const html = renderReport({ ledger: { task: "Add a flag", taskType: "config_change", gates: { "G:type": { source: "auto", confidence: "unsure", noHuman: true } } } });
+
+    assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Task type<\/strong> config change \(unsure, and no human to ask: the run went on with it\)/);
+  });
+
   test("the guidance the run started with says what was kept and dropped, and that nobody was asked under auto mode", () => {
     const html = renderReport({ ledger: { task: "Add a flag", taskType: "config_change", guidance: { mode: "auto", kept: 3, dropped: 2 } } });
 

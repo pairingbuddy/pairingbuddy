@@ -108,11 +108,11 @@ const SAMPLE_FILES = {
 
   **What to build:** Fix this bug in discount.py: apply_discount(100, 10) returns 10 and it should return 90. One regression test for exactly that case is the whole scope.
 
-#### PR: Discounted totals
+#### PR: Line totals
 
-- [ ] **Task 2: Add discounted_total**
+- [ ] **Task 2: Add line_total**
 
-  **What to build:** Add discounted_total(price, percent, quantity) to discount.py: it returns apply_discount(price, percent) times quantity, so discounted_total(100, 10, 2) returns 180. One test for exactly that example is the whole scope.
+  **What to build:** Add line_total(price, quantity) to discount.py: it returns price times quantity, so line_total(100, 2) returns 200. One test for exactly that example is the whole scope.
 `,
 };
 

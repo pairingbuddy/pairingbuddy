@@ -35,7 +35,7 @@ function makeDir(prefix) {
 
 const NO_HOME = makeDir("pb-no-home-");
 
-export const env = (extra = {}) => ({ ...process.env, ...ISOLATED_GIT, HOME: NO_HOME, XDG_CONFIG_HOME: NO_HOME, CLAUDE_PLUGIN_ROOT: ROOT, ...extra });
+export const env = (extra = {}) => ({ ...process.env, ...ISOLATED_GIT, HOME: NO_HOME, XDG_CONFIG_HOME: NO_HOME, CLAUDE_PLUGIN_ROOT: ROOT, CLAUDE_CODE_ENTRYPOINT: "cli", PAIRINGBUDDY_SOLO: "", ...extra });
 
 // openTask: false leaves the repo with no task in flight, so `pb run open` starts from a fresh repo.
 // remote: true gives the repo a local bare origin with its default branch "main" pushed and refs/remotes/origin/HEAD set;

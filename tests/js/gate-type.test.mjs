@@ -8,7 +8,7 @@ import { buildKey } from "../../shared-node/keys.mjs";
 import { readLedger, writeLedger } from "../../shared-node/ledger.mjs";
 import { openDoubts } from "../../shared-node/gates.mjs";
 import { loadStages } from "../../shared-node/stages.mjs";
-import { RUNNER_WITHOUT_SELECTOR, makeRepo, pb } from "./cli-repo-fixture.mjs";
+import { RUNNER_WITHOUT_SELECTOR, makeRepo, pb, pbWithEnv } from "./cli-repo-fixture.mjs";
 import { INTAKE_DONE } from "./ledger-fixture.mjs";
 
 // Placeholders for Task 92. Each one becomes a real test before its code is written.
@@ -66,6 +66,29 @@ test("gate-type-asks-when-unsure", () => {
 
   assert.equal(out.result, "needs-human", "an unsure classification asks at G:type");
   assert.match(out.reason, /classifier does not report certain/, "the reason names the classifier");
+});
+
+// Live S9 run: Solo (no human) stopped at G:type on an unsure type, and nobody could ever answer. With no human, pb takes
+// the classifier's type, and the record keeps that it was unsure and that no human was there.
+for (const [label, noHuman] of [["solo", { PAIRINGBUDDY_SOLO: "true" }], ["claude -p", { CLAUDE_CODE_ENTRYPOINT: "sdk-cli" }]]) {
+  test(`gate-type-passes-an-unsure-type-with-a-question-when-no-human-answers: ${label}`, () => {
+    const repo = repoAtTypeGate({ confidence: "unsure", ambiguity: "Should the helper change too?" });
+
+    const result = pbWithEnv(repo, noHuman, "gate", "eval");
+
+    assert.equal(result.code, 0, `pb gate eval exits 0, stderr ${result.stderr}`);
+    assert.equal(JSON.parse(result.stdout).result, "auto-pass", "no human answers, so the classifier's type stands");
+    const ledger = readLedger(join(repo.dir, ".pairingbuddy", "run", "task", "ledger.json"));
+    assert.deepEqual(ledger.gates[G_TYPE], { source: "auto", confidence: "unsure", noHuman: true }, "the record says it passed unsure with no human");
+  });
+}
+
+test("gate-type-still-asks-an-unsure-type-under-a-non-auto-policy-when-a-human-is-there", () => {
+  const repo = repoAtTypeGate({ confidence: "unsure", mode: "default" });
+
+  const out = evalNeedsHuman(repo);
+
+  assert.equal(out.result, "needs-human");
 });
 
 test("gate-type-passes-when-likely-with-no-doubt-under-auto", () => {
