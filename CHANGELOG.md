@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A refactoring task whose scope finds the work already done (zero steps) now gets through `code-refactor-apply`. `pb stage finish` waives `checkpoint:refactor-step` when the standing scope plans no steps, instead of stopping with "checkpoint:refactor-step has no checkpoint at attempt 1". A run already stopped that way recovers with `pb stage fail` and a rerun of the stage.
 - G:publish asks a unit question whose task has no title (an empty `task`) without the task, instead of writing a doubt pb's own ledger check refuses ("needsHuman.doubts must be a non-empty array"), which left `pb gate eval` failing on every try.
 - A safety-net fix is judged on its first test run. Once its run is red, `pb checkpoint --step fix` for the same key refuses with the same "the tests failed" verdict and runs nothing (the key is kept in the ledger's `tests.redFixes`), so the fix loop still rolls the fix back. A cheap runner agent had run a refused checkpoint again, and the second run committed the red fix.
 - A safety-net fix whose return pb cannot commit from (an empty commit subject, say) is now the fixer's mistake, as a commit hook's refusal is: `pb checkpoint --step fix` refuses with "the fix's return was refused, so nothing was committed", leaves nothing staged, and the fix loop rolls it back and retries with pb's words in the note. Such a fix used to stop the stage on the first try ("the fix for g1 was refused once").

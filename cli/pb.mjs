@@ -38,7 +38,7 @@ import { KEY_TOKEN, buildKey, parseKey } from "../shared-node/keys.mjs";
 import { nextAction, runStatus, statusText } from "../shared-node/next-action.mjs";
 import { stageRun } from "../shared-node/plain-names.mjs";
 import { needsTestSelection } from "../shared-node/stage-graph.mjs";
-import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, returnsAt, standingScenariosKey, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
+import { LENS_MAP, buildReport, rolledBackCount, closeStage, finishProblems, keptIntakeReturn, lensRecordOf, newestReturn, newestReturnMatching, perTestOf, readReportOf, readReturn, refactorSteps, returnsAt, standingScenariosKey, standingScope, unknownSpend, writeReport } from "../shared-node/stage-run.mjs";
 import { FAILED_STATUS, REDO_STATUS, safetyNetStages, graphFor, isStageActive, isStageUnstarted, isVoidedAttempt, loadStages, nextAttempt, runTypeOf, nextStage } from "../shared-node/stages.mjs";
 import { declaredRenames, splitId } from "../shared-node/test-renames.mjs";
 import { ConfigHashChanged, TestRunRefused, collectedNoTest, cycleRun, failedRunsText, ranNoTest, fullSuitePlans, hasSelector, lintNote, meetsStep, readTestConfig, selectorAdvice, runPlan, runRecord, selectedPlans, testDirectoryOf, testPlan, testRows, validatedConfigHash } from "../shared-node/test-run.mjs";
@@ -57,8 +57,6 @@ const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/,
 
 const FIX_ROLE = "fix";
 const TESTS_ROLE = "create-test-placeholders";
-const SCOPE_ROLE = "scope-refactoring";
-const SCOPE_STAGE = "code-refactor-scope";
 const SPIKE_UNIT_STAGE = "code-spike-unit";
 const SPIKE_SETUP_PATH = `.pairingbuddy/run/task/${SPIKE_SETUP_FILE}`;
 // A publish may be attempted twice: the first try and one retry.
@@ -1860,13 +1858,9 @@ function refactorState(args) {
   assertStageActive(ledger, "report on");
   if (!stepRunsFor("refactor-step", ledger.taskType)) throw new Refusal(`pb refactor state runs for refactoring tasks only, and this task is ${ledger.taskType}`);
   const artifactsDir = artifactsDirOf(root);
-  const standingScope = ({ role, item, stage, attempt }) => role === SCOPE_ROLE && item === null && stage === SCOPE_STAGE && !isVoidedAttempt(ledger, stage, attempt);
-  const scope = newestReturnMatching(artifactsDir, standingScope);
-  const standing = scope === null ? null : readReturn(artifactsDir, scope);
-  if (standing === null) throw new Refusal("no scope return stands, so there is nothing to refactor");
-  const { code_issues = [], test_issues = [] } = standing;
-  const issues = [...code_issues.map((issue) => ({ role: REFACTOR_CODE_ROLE, issue })), ...test_issues.map((issue) => ({ role: REFACTOR_TESTS_ROLE, issue }))];
-  return { ok: true, taskType: ledger.taskType, scope: artifactPath(scope), steps: issues.map(({ role, issue }, index) => ({ item: `step${index + 1}`, role, issue })) };
+  const scope = standingScope(artifactsDir, ledger);
+  if (scope === null) throw new Refusal("no scope return stands, so there is nothing to refactor");
+  return { ok: true, taskType: ledger.taskType, scope: artifactPath(scope.key), steps: refactorSteps(artifactsDir, ledger) };
 }
 
 // The artifact path of the newest spike-unit checkpoint for each unit that has one.
