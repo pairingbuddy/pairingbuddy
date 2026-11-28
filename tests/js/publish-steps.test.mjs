@@ -127,6 +127,27 @@ describe("evidence reasons", () => {
     assert.match(agentMissing[0], /no task record: Wire it$/, "the refusal names only the agent box");
   });
 
+  test("publish-evidence-takes-a-hand-done-box: a box the human recorded with pb human task done needs no task record", () => {
+    const built = { ...facts().unit, tasks: [task({ title: "Build it" })] };
+
+    const refusals = evidenceRefusals(facts({ unit: built, planBoxes: ["Build it", "Wire it"], planHandDone: ["Wire it"] }));
+
+    assert.deepEqual(refusals, [], "the hand-done box is not asked for a record");
+  });
+
+  test("publish-auto-refuses-hand-done-work: pb never reviewed a hand-done task, so only the human's approval publishes it", () => {
+    const built = { ...facts().unit, tasks: [task({ title: "Build it", lenses: { "safety-net": { code: {} } } })] };
+    const handDone = { unit: built, planBoxes: ["Build it", "Wire it"], planHandDone: ["Wire it"] };
+
+    const auto = evidenceRefusals(facts({ ...handDone, approval: "auto" }));
+    const human = evidenceRefusals(facts({ ...handDone, approval: "human" }));
+
+    assert.equal(auto.length, 1, `one refusal under auto: ${auto}`);
+    assert.match(auto[0], /done by hand and pb never reviewed them: Wire it/, "the refusal names the hand-done task");
+    assert.match(auto[0], /pb human approve G:publish/, "the refusal says how the human approves");
+    assert.deepEqual(human, [], "the human's own approval publishes it");
+  });
+
   test("publish-all-human-unit-needs-a-record: a unit whose plan boxes are all [HUMAN] and that has no task records still refuses", () => {
     const refusals = evidenceRefusals(facts({ unit: { ...facts().unit, tasks: [] }, planBoxes: ["Task 1: [HUMAN] Sign it", "[HUMAN] Sign it too"] }));
 

@@ -16,7 +16,7 @@ import { KINDS, LEDGER_VERSION, UNOWNED, isPublishRun, isRefreshRun, ownerAgeMs,
 import { GitConfigRefused, baseBranch, defaultBranchOf, gitConfigPath, isBranchProtected, loadGitConfig, protectedBranches, readGitConfig, validateGitConfig } from "../shared-node/gitconf.mjs";
 import { doctorWarnings } from "../shared-node/git-doctor.mjs";
 import { outsideGlobs } from "../shared-node/glob-match.mjs";
-import { PlanRefused, boxesUnder, planFile, replaceFile, tickPlanBox, writePrLine } from "../shared-node/plan-boxes.mjs";
+import { PlanRefused, boxesUnder, planFile, replaceFile, tickPlanBox, withHandDone, writePrLine } from "../shared-node/plan-boxes.mjs";
 import { humanTasksLeft } from "../shared-node/plan-text.mjs";
 import { KEPT_LOCAL_REASON, NO_COMMITS_REASON, PR_URL, branchShapeProblem, foreignPrReason, prCreateArgv, prEditArgv, prRefreshViewArgv, prViewArgv, publishSteps, pushArgv, recordedSuites, recordedTasks, refreshPrReason, targetBranch, untickedTasks, upstreamArgv, unitRefPrefix } from "../shared-node/publish.mjs";
 import { UnitStatusRefused, unitStatus as baseStatusOf } from "../shared-node/unit-status.mjs";
@@ -1089,6 +1089,40 @@ function humanLeak(args) {
   return { ok: true, allowed: { n, kind: finding.kind, shown: finding.shown, where: finding.where }, next: "Tell the session to go on: pb publish lets this hit through" };
 }
 
+// pb human task done <n|title> [--plan <plan.md>]: the human finished plan task n by hand, or a run did it without being
+// linked to the plan. Its box is ticked and "Done by hand: accepted" is written under it, so pb plan next counts it as
+// done and goes on. The plan is the open unit's when --plan is left out. The gate refuses pb human from a model.
+const TASK_NUMBER = /^Task\s+(\d+)\b/i;
+
+function humanTaskArgs(args) {
+  const usage = "usage: pb human task done <task number or title> [--plan <plan.md>]";
+  const [action, which, planFlag, plan] = args;
+  const ok = action === "done" && typeof which === "string" && which !== "" && !which.startsWith("-") && (args.length === 2 || (args.length === 4 && planFlag === "--plan" && !plan.startsWith("-")));
+  if (!ok) throw new UsageError(usage);
+  return { which, plan: args.length === 4 ? plan : null };
+}
+
+const matchesTask = (which) => (task) => (/^\d+$/.test(which) ? TASK_NUMBER.exec(task.title)?.[1] === which : task.title === which);
+
+function humanTask(args) {
+  const { which, plan: planArg } = humanTaskArgs(args);
+  const root = toplevel();
+  const plan = planArg ?? readOpenUnit(root)?.plan;
+  if (typeof plan !== "string" || plan === "") throw new Refusal("no unit with a plan is open, so name the plan: pb human task done <n> --plan <plan.md>. Nothing was written");
+  const { realPlan, text } = readPlan(plan);
+  const { units, problems } = parsePlan(text);
+  refusePlanProblems(problems);
+  const found = units.flatMap((unit) => unit.tasks.filter(matchesTask(which)).map((task) => ({ unit, task })));
+  if (found.length === 0) throw new Refusal(`the plan ${plan} has no task ${JSON.stringify(which)}. Nothing was written`);
+  if (found.length > 1) throw new Refusal(`the plan ${plan} has ${found.length} tasks matching ${JSON.stringify(which)}: ${found.map(({ task }) => task.title).join(", ")}. Name it by its full title. Nothing was written`);
+  const [{ unit, task }] = found;
+  if (task.human) throw new Refusal(`"${task.title}" is a [HUMAN] task: it needs no record, so just tick its box. Nothing was written`);
+  if (unit.pr) throw new Refusal(`unit "${unit.unit}" is already published (it has a PR: line). Nothing was written`);
+  if (task.handDone) return { ok: true, task: task.title, unit: unit.unit, plan, done: "already recorded" };
+  replaceFile(realPlan, withHandDone(text, { path: plan, title: task.title }));
+  return { ok: true, task: task.title, unit: unit.unit, plan, done: "recorded", next: "Tell the session to go on: pb plan next counts this task as done" };
+}
+
 // pb final-check <id> --pass|--fail --note <words>: the result of a final check the session ran itself (a live, paid or manual
 // run no test covers), kept on the run's ledger, newest last. A failed one is no doubt for the inbox: G:task-end asks the
 // human while it stands, under auto too, and the report shows each result.
@@ -2075,7 +2109,8 @@ function planStopMessage(root, plan, { reason, unit, tasks, title, body, humanLe
   if (reason === "human") return `unit "${unit}"'s next task "${title}" is a human task: only a person does it and ticks its box. Nothing was written. Its steps:\n${body}`;
   if (reason === "legacy") return `unit "${unit}" is fully checked with no PR: line. Nothing was written: ask the human to type ${acceptCommand}`;
   if (reason === "hand-ticked") {
-    const ticked = `unit "${unit}" has ticked tasks with no task record: ${tasks.join(", ")}. A box ticked by hand earns nothing. Nothing was written`;
+    const doneCommands = tasks.map((title) => humanCommand(root, `task done ${shellWord(TASK_NUMBER.exec(title)?.[1] ?? title)} --plan ${shellWord(plan)}`)).join(", then ");
+    const ticked = `unit "${unit}" has ticked tasks with no task record: ${tasks.join(", ")}. A box ticked by hand earns nothing. Nothing was written. If the human did the work by hand, or a run did it without the plan, the human records it by typing ${doneCommands}`;
     // A spike that closed its unit early left these ticks: pb kept its runs, so the human can rebuild the unit from them.
     const message = reopenable(root, plan, tasks) ? `${ticked}. A spike pb ran closed this unit before its other tasks, and its runs are kept: the human types ${humanCommand(root, `reopen --plan ${shellWord(plan)}`)}` : ticked;
     if (humanLeft === undefined) return message;
@@ -2303,12 +2338,14 @@ const unitCommits = (root, unit) => runGit(root, ["rev-list", "--reverse", `${un
 
 // The labels of the plan boxes under the unit's heading, and planUnticked, the unticked [HUMAN] ones (pb task end ticks
 // an agent box, a person ticks a human one). Both are null with no plan, no heading to go by, or no such heading;
-// planProblem says when the plan cannot be read.
+// planProblem says when the plan cannot be read. planHandDone names the tasks the human recorded with pb human task done.
 function unitPlan(root, unit) {
   if (typeof unit.plan !== "string" || unit.plan === "" || typeof unit.unit !== "string" || unit.unit === "") return { planBoxes: null, planUnticked: null, planProblem: null };
   try {
-    const boxes = boxesUnder(readFileSync(join(root, unit.plan), "utf8"), unit.unit);
-    return { planBoxes: boxes?.map(({ label }) => label) ?? null, planUnticked: boxes ? humanTasksLeft(boxes) : null, planProblem: null };
+    const text = readFileSync(join(root, unit.plan), "utf8");
+    const boxes = boxesUnder(text, unit.unit);
+    const planHandDone = parsePlan(text).units.find((u) => u.unit === unit.unit)?.tasks.filter((task) => task.handDone).map((task) => task.title) ?? [];
+    return { planBoxes: boxes?.map(({ label }) => label) ?? null, planUnticked: boxes ? humanTasksLeft(boxes) : null, planHandDone, planProblem: null };
   } catch (e) {
     return { planBoxes: null, planUnticked: null, planProblem: `the plan ${unit.plan} cannot be read: ${e.code ?? e.message}` };
   }
@@ -3388,7 +3425,7 @@ export const VERBS = {
   rollback,
   snapshot,
   "unit open": unitOpen, "unit status": unitStatus, "unit rebase": unitRebase, "git doctor": gitDoctor, "pr lint": prLint,
-  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human cut-test": humanCutTest, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, "human config": humanConfig, "human leak": humanLeak, test: runTests, checkpoint,
+  "run open": runOpen, "pr refresh": prRefresh, "gate eval": gateEval, "human approve": humanApprove, "human abandon": humanAbandon, "human reopen": humanReopen, "human cut-test": humanCutTest, "human adopt": humanAdopt, "human approve-config": humanApproveConfig, "human accept": humanAccept, "human answer": humanAnswer, "human config": humanConfig, "human leak": humanLeak, "human task": humanTask, test: runTests, checkpoint,
   "plan next": planNext, "question settle": questionSettle, "question add": questionAdd, "config propose": configPropose, "final-check": finalCheck, "guidance record": guidanceRecord, "stage finish": stageFinish, "stage stop": stageStop, "tdd state": tddState, "refactor state": refactorState, "spike state": spikeState, "spike write": spikeWrite, "spike setup": spikeSetup, "stage fail": stageFail, "stage release": stageRelease, "stage report": stageReport, "artifact check": artifactCheck, status, "task end": taskEnd, publish,
 };
 

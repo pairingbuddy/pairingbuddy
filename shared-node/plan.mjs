@@ -27,6 +27,9 @@ const TASKS_SECTION = "Tasks";
 const NON_TASK_SECTIONS = ["Requirements", "Architecture"];
 import { isHumanTitle } from "./plan-text.mjs";
 
+// The line pb human task done writes under a task's box (plan-boxes.mjs HAND_DONE_LINE), alone on its body line.
+const HAND_DONE = /^Done by hand: accepted$/m;
+
 export { isHumanTitle };
 
 // A level-1/2 heading opens a section; the task area is ## Tasks, or without it everything but Requirements and Architecture.
@@ -255,6 +258,7 @@ export function parsePlan(text) {
     openBody = { task, lines: [] };
   }
   closeBody();
+  for (const task of units.flatMap((u) => u.tasks)) if (HAND_DONE.test(task.body)) task.handDone = true;
   const misplaced = directUnits.filter(({ owner }) => groupedTracers.has(owner)).map(({ opened }) => opened);
   const unitsOut = units.filter((u) => !misplaced.includes(u));
   return { units: unitsOut, tracers, next: firstUnchecked(unitsOut), problems: formatProblems(strays, misplaced, unitsOut, repeatedDepends, text) };
@@ -267,7 +271,8 @@ function recordedTitles(unit, plan, openUnit) {
 }
 
 // Titles of the checked non-human tasks of a unit that have no record: a box ticked by hand earns nothing, but a [HUMAN] task is the human's to tick.
-const handTicked = (unit, recorded) => unit.tasks.filter((task) => task.checked && !task.human && !recorded.has(task.title)).map((task) => task.title);
+// A task the human recorded with pb human task done needs no record either.
+const handTicked = (unit, recorded) => unit.tasks.filter((task) => task.checked && !task.human && !task.handDone && !recorded.has(task.title)).map((task) => task.title);
 
 // What a hand-ticked stop adds: the hand-ticked task titles, and the unchecked titles when every unchecked task is a human's.
 function handTickedStop(unit, recorded) {
@@ -289,7 +294,7 @@ function unitState(unit, recorded) {
   if (unit.tasks.some((task) => !task.checked)) return handTicked(unit, recorded).length > 0 ? "hand-ticked" : "open";
   if (unit.legacy) return "accepted";
   const agentTasks = unit.tasks.filter((task) => !task.human);
-  return agentTasks.length > 0 && agentTasks.every((task) => recorded.has(task.title)) ? "unpublished" : "legacy";
+  return agentTasks.length > 0 && agentTasks.every((task) => recorded.has(task.title) || task.handDone) ? "unpublished" : "legacy";
 }
 
 // The state of every unit, in order, under the same records planStep uses.

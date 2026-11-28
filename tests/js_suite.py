@@ -99,6 +99,7 @@ JS_TEST_FILES = [
     "tests/js/pb-checkpoint.test.mjs",
     "tests/js/pb-cli-safeguards.test.mjs",
     "tests/js/pb-human-legacy.test.mjs",
+    "tests/js/pb-human-task-done.test.mjs",
     "tests/js/pb-human.test.mjs",
     "tests/js/owner-last-seen.test.mjs",
     "tests/js/pb-human-adopt.test.mjs",

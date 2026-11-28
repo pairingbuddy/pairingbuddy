@@ -20,6 +20,7 @@ import { readTestConfig, selectorAdvice } from "./test-run.mjs";
 import { targetBranch, unitHasLensRecords } from "./publish.mjs";
 import { headOf } from "./checkpoint.mjs";
 import { openQuestions, taskTitle } from "./questions.mjs";
+import { parsePlan } from "./plan.mjs";
 import { PrLintConfigRefused } from "./pr-lint.mjs";
 import { PrLintRunRefused, isRefreshSubject, prBodyPath, prLintPath, readDraftArtifact, readPrSubject, readUnit, runPrLint, sha256 } from "./pr-lint-run.mjs";
 
@@ -784,7 +785,25 @@ function lintReason(root) {
 }
 
 // Whether the auto policy passes G:publish by itself: auto mode, an ok lint for the body on disk and the safety-net lens record of every code task.
-export const autoPublishPasses = (ledger, root) => !isRefreshRun(ledger) && ledger.policy.mode === "auto" && publishLint(root).status === "ok" && unitHasLensRecords(readUnit(root)) && openQuestions(readUnit(root)).count === 0;
+// The unit's plan tasks the human recorded with pb human task done: pb never reviewed them. Empty with no plan to read.
+export function handDoneTasks(root) {
+  const unit = readUnit(root);
+  if (typeof unit?.plan !== "string" || unit.plan === "" || typeof unit.unit !== "string") return [];
+  let text;
+  try {
+    text = readFileSync(join(root, unit.plan), "utf8");
+  } catch {
+    return [];
+  }
+  return parsePlan(text).units.find((u) => u.unit === unit.unit)?.tasks.filter((task) => task.handDone).map((task) => task.title) ?? [];
+}
+
+const handDoneReason = (root) => {
+  const titles = handDoneTasks(root);
+  return titles.length === 0 ? null : `these tasks were done by hand and pb never reviewed them: ${titles.join(", ")}`;
+};
+
+export const autoPublishPasses = (ledger, root) => !isRefreshRun(ledger) && ledger.policy.mode === "auto" && publishLint(root).status === "ok" && unitHasLensRecords(readUnit(root)) && openQuestions(readUnit(root)).count === 0 && handDoneTasks(root).length === 0;
 
 // The doubts auto passes deferred to the unit (questions.mjs): G:publish asks them all, under any policy, before anything goes out.
 function questionsReason(ledger, root) {
@@ -799,7 +818,7 @@ export const unitQuestionDoubts = (root) => openQuestions(readUnit(root)).kept.m
 // Why the publish gate asks whatever the policy says, or null. Under auto it passes once autoPublishPasses holds; any other policy is left to policyReason.
 function publishReason(ledger, root, voided) {
   if (voided === null && autoPublishPasses(ledger, root)) return null;
-  return voided ?? lintReason(root) ?? questionsReason(ledger, root) ?? (isRefreshRun(ledger) ? "a pull request refresh is approved by a human" : null) ?? (ledger.policy.mode === "auto" ? "no lens record yet for the safety net" : null);
+  return voided ?? lintReason(root) ?? questionsReason(ledger, root) ?? handDoneReason(root) ?? (isRefreshRun(ledger) ? "a pull request refresh is approved by a human" : null) ?? (ledger.policy.mode === "auto" ? "no lens record yet for the safety net" : null);
 }
 
 const publishRecord = (ledger) => (Object.hasOwn(ledger.gates, PUBLISH_GATE) ? ledger.gates[PUBLISH_GATE] : undefined);
