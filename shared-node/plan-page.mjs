@@ -36,7 +36,7 @@ li>details>summary{cursor:pointer}
 .tablewrap{overflow-x:auto}
 .summary td{padding-top:8px;padding-bottom:8px}
 .summary .num{font-variant-numeric:tabular-nums;white-space:nowrap}
-.pill.type{font-size:.62rem;padding:2px 5px;margin-left:4px;text-transform:none;letter-spacing:0}
+.pill.type{--state:var(--muted);font-size:.62rem;padding:2px 5px;margin-left:4px;text-transform:none;letter-spacing:0}
 .body{color:var(--fg);font-weight:400;border-left:2px solid var(--line);margin:6px 0 4px 4px;padding:2px 0 2px 12px}
 .body p,.body ul{margin:0 0 6px}
 .body ul{list-style:disc;padding-left:20px}

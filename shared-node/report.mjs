@@ -800,11 +800,17 @@ function statusSection({ ledger, task, url }) {
 
 const prNumber = (url) => /\/pull\/(\d+)\/?$/.exec(url)?.[1];
 
-// The report's own rules over the shared look: each row a card with its label on top, GOAL large, STATUS and NEEDS YOU boxes
-// in their state's colour, each test a card with a stripe in its result's colour.
+// The report's own rules over the shared look, as the verdict page reads: GOAL large, STATUS and NEEDS YOU boxes in their
+// state's colour, every other section an open block under a rule with its label on top, each test a card with a stripe in
+// its result's colour.
 const REPORT_CSS = `header{display:flex;flex-direction:column;gap:12px}
-section{display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:0}
-section>h2{font:600 .72rem var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+section{display:flex;flex-direction:column;gap:8px;margin:0}
+section:not(.box):not(.goal){border-top:1px solid var(--line);padding-top:16px}
+section.box{border-radius:6px}
+section>h2{font:700 .78rem var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.needs>h2{color:var(--state)}
+.needs details{margin-top:6px}
+.needs details>summary{font-size:.9rem;color:var(--muted)}
 section>div{min-width:0;overflow-x:auto;display:flex;flex-direction:column;gap:4px}
 .goal{background:none;border:0;padding:0}
 .goal p{font-size:1.3rem;font-weight:700;line-height:1.35}
@@ -825,7 +831,7 @@ main>details{display:flex;flex-direction:column;gap:12px}
 main>details>summary{font:600 .8rem var(--mono);letter-spacing:.08em;color:var(--muted);padding:6px 0}
 main>details>summary:hover{color:var(--fg)}
 main>details[open]>summary{margin-bottom:12px}
-main>details>section+section{margin-top:12px}
+main>details>section+section{margin-top:20px}
 .tests{grid-template-columns:minmax(0,1fr)}
 .tests>div{gap:10px}
 article{border:1px solid var(--line);border-left:4px solid var(--state,var(--line));border-radius:6px;padding:10px 12px;overflow-x:auto}
