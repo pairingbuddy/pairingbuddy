@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { renderReport } from "../../shared-node/report.mjs";
 import { taskRuns } from "../../shared-node/task-runs.mjs";
 import { CHANGED, CODE_RUN, KEPT_FILES } from "../../mod/fixtures/ended-task/index.ts";
-import { headerOf, sectionOf, spentOf, textOf } from "./report-fixture.mjs";
+import { cardsOf, headerOf, recordedReportInput, sectionOf, spentOf, textOf } from "./report-fixture.mjs";
 
 // The kept runs as the mod reads them (readKeptRun in mod/inputs.ts): one per folder, its returns as calls.
 function keptRuns(files) {
@@ -250,4 +250,16 @@ describe("report-leads-with-what-you-need", () => {
   test("How it ran says nothing of waiting when no wait was recorded", () => {
     assert.doesNotMatch(sectionOf(report(), "AT A GLANCE"), /Waited/);
   });
+
+  test("each test card wears its test's state: a passing test green, the test a run stopped on red, and its results in their colour", async () => {
+    const [passing] = cardsOf(report());
+    assert.match(passing, /^ class="is-done">/, `got ${passing.slice(0, 60)}`);
+    assert.match(passing, /<td class="is-done">passed[^<]*<\/td>/, "a GREEN that passed is green");
+    assert.match(passing, /<td class="is-done">failed, as it should[^<]*<\/td>/, "a RED that failed as it should is green too");
+
+    const stopped = cardsOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })));
+    assert.match(stopped[1], /^ class="looped is-failed">/, "the test the run stopped on is red");
+    assert.match(stopped[0], /^ class="is-running">/, "a test with tries and no result yet is under way");
+  });
 });
+

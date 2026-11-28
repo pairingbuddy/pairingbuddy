@@ -12,6 +12,7 @@ import { buildReport } from "../../shared-node/stage-run.mjs";
 import { graphFor } from "../../shared-node/stage-graph.mjs";
 import { plainName } from "../../shared-node/plain-names.mjs";
 import { renderReport } from "../../shared-node/report.mjs";
+import { PAGE_CSS, progressBar } from "../../shared-node/page-design.mjs";
 import { glance } from "../../shared-node/glance.mjs";
 import { shortName } from "../../shared-node/now-building.mjs";
 import { RECORDED_STOP, recordedReportInput, headerOf, sectionOf, spentOf, cardsOf, rowsOf, noteOf, textOf } from "./report-fixture.mjs";
@@ -30,6 +31,32 @@ describe("report-content", () => {
     assert.ok(spentOf(stoppedHtml).includes("2:36"), "how it ran shows the elapsed time from the recording (156s)");
     assert.equal(textOf(sectionOf(done, "STATUS")), "STATUS ▲ NEEDS YOU · your sign-off at the end", "a finished run not signed off waits on the human");
     assert.ok(!done.includes("STOPPED"), "a finished run does not say STOPPED");
+  });
+
+  test("report-status-is-a-box-in-its-state's-colour", async () => {
+    const statusOf = async (outcome) => headerOf(renderReport(await recordedReportInput("probe-2", { outcome }))).match(/<section class="([^"]*)">\s*<h2>STATUS<\/h2>/)?.[1];
+
+    assert.equal(await statusOf("stopped"), "status box is-failed", "a stop is red");
+    assert.equal(await statusOf("done"), "status box is-waiting", "a run waiting on your sign-off is amber");
+    assert.equal(await statusOf("running"), "status box is-running", "a running run is blue");
+  });
+
+  test("report-needs-you-is-amber-while-something-waits-and-green-when-nothing-does", async () => {
+    const needsOf = (html) => html.match(/<section class="([^"]*)">\s*<h2>NEEDS YOU<\/h2>/)?.[1];
+
+    assert.equal(needsOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" }))), "needs box is-waiting");
+    assert.equal(needsOf(renderReport({ ledger: { stage: { name: "code-tdd", status: "active" } }, spawns: [] })), "needs box is-done");
+  });
+
+  test("report-steps-show-how-far-the-run-got-and-step-through-each-step-in-its-state", async () => {
+    const steps = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })), "STEPS");
+
+    assert.ok(steps.includes(progressBar(1, 4, "steps")), "one step of four done");
+    assert.match(steps, /<div class="slider" role="group" aria-label="Steps">/);
+    const dots = [...steps.matchAll(/<label for="steps-\d" class="dot is-(\w+)" title="([^"]*)">/g)].map(([, state, title]) => `${title}: ${state}`);
+    assert.deepEqual(dots, [`${plainName("intake")}: todo`, `${plainName("code-scenarios")}: done`, `${plainName("code-tdd")}: failed`, `${plainName("code-safety-net")}: todo`]);
+    assert.ok(steps.includes('id="steps-2" class="pick" checked>'), "it opens on the step the run stopped at");
+    assert.match(steps, /<table>/, "the table of times stays below");
   });
 
   test("report-status-of-a-running-run-names-its-step", async () => {
@@ -925,52 +952,19 @@ test("later-stages-still-not-reached", async () => {
   assert.deepEqual(row("code-scenarios"), [plainName("code-scenarios"), "0:00", "0:16", "0:16"], "a finished stage keeps its start, end and took columns");
 });
 
-// Scenario report-follows-color-scheme (Finding 27). Placeholders: fail until implemented.
-test("report-has-light-palette-under-prefers-color-scheme", async () => {
+// Scenario report-follows-color-scheme (Finding 27): the report wears the look every pb page shares, whose tokens have a
+// light and a dark set (page-design.test.mjs checks them), and stays self-contained.
+test("report-wears-the-shared-look-and-stays-self-contained", async () => {
   const html = renderReport(await recordedReportInput("probe-2", { outcome: "stopped" }));
   const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
-  const mediaStart = css.search(/@media\s*\(\s*prefers-color-scheme:\s*light\s*\)/);
-  const open = mediaStart < 0 ? -1 : css.indexOf("{", mediaStart);
-  let depth = 0;
-  let end = open;
-  for (; end >= 0 && end < css.length; end++) {
-    if (css[end] === "{") depth++;
-    if (css[end] === "}" && --depth === 0) break;
-  }
-  const lightBlock = open < 0 ? "" : css.slice(open + 1, end);
-  const customProps = (text) => new Set([...text.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
-  const lightProps = customProps(lightBlock);
-  const baseCss = open < 0 ? css : css.slice(0, mediaStart) + css.slice(end + 1);
-  const baseProps = customProps(baseCss);
-  const body = baseCss.match(/body\s*\{([^}]*)\}/)?.[1] ?? "";
 
-  assert.ok(open >= 0, "the stylesheet has a @media (prefers-color-scheme: light) block");
-  assert.match(css, /color-scheme:\s*(light dark|dark light)/, "color-scheme declares both light and dark so the browser follows the viewer");
-  assert.ok(lightProps.size >= 2, "the light block redefines custom properties (page background and text)");
-  assert.ok([...lightProps].every((name) => baseProps.has(name)), "every property the light block redefines has a dark default in the base styles");
-  assert.match(body, /background:\s*var\(--[\w-]+\)/, "the page background comes from a custom property");
-  assert.match(body, /(^|[;\s])color:\s*var\(--[\w-]+\)/, "the page text colour comes from a custom property");
-});
-
-test("report-stays-self-contained-with-light-palette", async () => {
-  const html = renderReport(await recordedReportInput("probe-2", { outcome: "stopped" }));
-  const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "";
-  const lightBlock = css.match(/@media\s*\(\s*prefers-color-scheme:\s*light\s*\)\s*\{\s*:root\s*\{([^}]*)\}/)?.[1] ?? "";
-  const definedInLight = (name) => new RegExp(`${name}\\s*:\\s*#[0-9a-fA-F]{3,8}\\b`).test(lightBlock);
-  const usedBy = (selector, name) => new RegExp(`${selector.replace(/\./g, "\\.")}[^{]*\\{[^}]*var\\(${name}\\)`).test(css);
-
-  assert.match(css, /prefers-color-scheme:\s*light/, "the light palette is present, so the self-contained check covers it");
+  assert.ok(css.includes(PAGE_CSS), "the shared stylesheet, inlined");
+  assert.match(html, /<body>\s*<main>[\s\S]*<\/main>\s*<\/body>/, "one main column");
   assert.doesNotMatch(html, /https?:\/\//i, "the page names no http(s) URL");
   assert.doesNotMatch(html, /\b(src|href)\s*=/i, "the page has no src or href attribute");
   assert.doesNotMatch(html, /<script|<link/i, "the page has no script or link tag");
   assert.doesNotMatch(html, /@import|url\s*\(/i, "the CSS imports nothing and loads no url() resource");
-  for (const name of ["--stopped", "--done", "--working", "--needs-you", "--amber"]) {
-    assert.ok(definedInLight(name), `${name} is defined as a colour in the light palette`);
-  }
-  for (const [tone, name] of [["stopped", "--stopped"], ["done", "--done"], ["working", "--working"], ["needs-you", "--needs-you"]]) {
-    assert.ok(usedBy(`.${tone}`, name), `STATUS's ${tone} head uses the ${name} colour`);
-  }
-  assert.ok(usedBy(".looped p strong", "--amber"), "the amber looping label uses the --amber colour");
+  assert.ok(/\.looped[^{]*\{[^}]*var\(--amber\)/.test(css), "the looping note is amber");
 });
 
 // buildReport merges the lens row of the ledger's taskType, the row the workflow ran.

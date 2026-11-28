@@ -122,6 +122,8 @@ JS_TEST_FILES = [
     "tests/js/pane-height.test.mjs",
     "tests/js/plan-window.test.mjs",
     "tests/js/plan-page.test.mjs",
+    "tests/js/page-design.test.mjs",
+    "tests/js/questions-page.test.mjs",
     "tests/js/tracer-context.test.mjs",
     "tests/js/questions.test.mjs",
     "tests/js/answer-any-time.test.mjs",
