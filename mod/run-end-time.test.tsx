@@ -124,7 +124,7 @@ test('new-run-clears-ended-at', async ($, on) => {
   expect(html, 'the live report is of the running run').toContain('● working')
 })
 
-test('report-without-recorded-end-stays-unknown', async ($, on) => {
+test('report-without-recorded-end-leaves-the-time-out', async ($, on) => {
   const runStart = '2026-11-04T09:58:00.000Z'
   const ledger = { ...SNAPSHOT_RUNNING, stages: [{ name: 'code-scenarios', status: 'done', attempt: 1, startedAt: runStart }] }
   const clock = mock.clock(on, { now: Date.parse('2026-11-04T10:00:00.000Z') })
@@ -152,6 +152,6 @@ test('report-without-recorded-end-stays-unknown', async ($, on) => {
   expect(kept.get('ended-at') ?? null, 'no end time was recorded').toBeNull()
   expect(writes.length, 'pressing the report button writes one report').toBe(1)
   const html = writes[0].text
-  expect(html, 'the report says the run time is unknown').toContain('time unknown')
+  expect(html, 'the report leaves the unknown run time out').not.toContain('unknown')
   expect(html, 'the report does not invent an end time from the clock').not.toContain('2:02')
 })

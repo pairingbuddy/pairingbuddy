@@ -12,10 +12,10 @@ const stoppedLedger = (perTest = {}, stop = STOP) => ({ taskType: "bug_fix", tas
 const red = (item) => ({ kind: "workflow_agent", name: `pb1 code-tdd RED implement-tests ${item} r1`, seconds: 10 });
 const nextStep = (html) => sectionOf(html, "NEEDS YOU");
 
-test("stopped-run-with-no-current-test-says-what-it-keeps-is-unknown", () => {
+test("stopped-run-with-no-current-test-offers-the-rerun-and-no-unknown", () => {
   const html = renderReport({ ledger: stoppedLedger(), spawns: [] });
 
-  assert.match(nextStep(html), /Re-run \/pairingbuddy:code\. The recorded run does not say which test it stopped on, so what it keeps is unknown\.<\/li>/);
+  assert.match(nextStep(html), /Re-run \/pairingbuddy:code\.<\/li>/);
 });
 
 test("stopped-run-on-test-1-continues-from-test-1", () => {

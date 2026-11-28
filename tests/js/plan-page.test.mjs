@@ -26,7 +26,9 @@ function bigPlan(tracers, ticked) {
 }
 
 // The page's text, tags dropped, one line per tree row.
-const textOf = (html) => html.replace(/<style[\s\S]*?<\/style>/, "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&");
+// The page's text, tags dropped, one line per tree row; the summary table at the top is the index, not the tree.
+const treeOf = (html) => html.replace(/<div class="tablewrap"><table class="summary">[\s\S]*?<\/table><\/div>/, "");
+const textOf = (html) => treeOf(html).replace(/<style[\s\S]*?<\/style>/, "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&");
 
 test("the page holds every tracer, unit and task of a 150-task plan, in plan order, with its tick", () => {
   const plan = parsePlan(bigPlan(15, 100));
@@ -109,7 +111,7 @@ test("a task with a body is a row that opens to its explanation: Goal, criteria 
 test("a tracer opens to its Goal and Verification, then its units; a unit opens to its tasks", () => {
   const plan = parsePlan(DRILL_PLAN);
 
-  const html = renderPlanPage({ plan });
+  const html = treeOf(renderPlanPage({ plan }));
 
   const t1 = html.slice(html.indexOf("T1: Cart") - 200, html.indexOf("T2: Pay"));
   assert.match(t1, /<details[^>]*>\s*<summary><h2>T1: Cart[^<]*<\/h2>/, "the tracer's title is the summary of its details");
@@ -240,14 +242,41 @@ test("each tracer is a card that says its state, done, building, waiting for a p
   const tracerOf = (html, name) => html.slice(html.lastIndexOf("<section", html.indexOf(`<h2>${name}`)), html.indexOf("</summary>", html.indexOf(`<h2>${name}`)));
 
   const building = renderPlanPage({ plan: parsePlan(DRILL_PLAN), building: "Task 2: Remove an item" });
-  assert.match(tracerOf(building, "T1: Cart"), /^<section class="card tracer is-running">/);
+  assert.match(tracerOf(building, "T1: Cart"), /^<section class="card tracer is-running"[^>]*>/);
   assert.ok(tracerOf(building, "T1: Cart").includes('<span class="pill is-running">● building</span>'));
   assert.ok(tracerOf(building, "T1: Cart").includes(progressBar(1, 2, "tasks")));
-  assert.match(tracerOf(building, "T2: Pay"), /^<section class="card tracer is-todo">[\s\S]*<span class="pill is-todo">○ to do<\/span>/);
+  assert.match(tracerOf(building, "T2: Pay"), /^<section class="card tracer is-todo"[^>]*>[\s\S]*<span class="pill is-todo">○ to do<\/span>/);
 
   const done = renderPlanPage({ plan: parsePlan(bigPlan(2, 10)) });
-  assert.match(tracerOf(done, "T1: Tracer 1"), /^<section class="card tracer is-done">[\s\S]*<span class="pill is-done">✓ done<\/span>/);
+  assert.match(tracerOf(done, "T1: Tracer 1"), /^<section class="card tracer is-done"[^>]*>[\s\S]*<span class="pill is-done">✓ done<\/span>/);
 
   const waiting = renderPlanPage({ plan: parsePlan(STATES_PLAN.replace("- [ ] Task 3", "- [x] Task 3")), states: ["published", "open", "open"], open: OPEN_PAY });
-  assert.match(tracerOf(waiting, "T1: Cart"), /^<section class="card tracer is-waiting">[\s\S]*<span class="pill is-waiting">▲ needs you<\/span>/);
+  assert.match(tracerOf(waiting, "T1: Cart"), /^<section class="card tracer is-waiting"[^>]*>[\s\S]*<span class="pill is-waiting">▲ needs you<\/span>/);
+});
+
+// A task's Type: line is a fact about the task, not part of its explanation: it shows as a small pill beside the title.
+test("a task's Type line is a pill beside its title and is not run into the body", () => {
+  const plan = parsePlan(["# P", "", "## Tasks", "", "### T1: Cart", "", "- [ ] Task 1: Add an item", "  Type: new_feature", "  The cart shows the item and the total grows.", ""].join("\n"));
+
+  const html = renderPlanPage({ plan });
+  const row = html.slice(html.indexOf("Task 1: Add an item") - 200);
+
+  assert.match(row, /<summary>[^<]*Task 1: Add an item <span class="pill type">new feature<\/span><\/summary>/, `the type is a pill in the row, got ${row.slice(0, 400)}`);
+  assert.doesNotMatch(row, /Type:/, "the Type line is not repeated in the body");
+  assert.ok(row.includes("<p>The cart shows the item and the total grows.</p>"), "the explanation stays");
+});
+
+// Like the verdict page: a summary table at the top, one row per tracer with its state pill and count, linked to its card.
+test("the page opens with a summary table: each tracer's state and count, linked to its card", () => {
+  const plan = parsePlan(bigPlan(3, 12));
+
+  const html = renderPlanPage({ plan });
+  const table = html.slice(html.indexOf('<table class="summary">'), html.indexOf("</table>"));
+  const rows = [...table.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(([, row]) => row).filter((row) => row.includes("<td"));
+
+  assert.ok(html.indexOf('<table class="summary">') < html.indexOf('class="card tracer'), "the table comes before the cards");
+  assert.equal(rows.length, 3, "one row per tracer");
+  assert.match(rows[0], /<a href="#tracer-1">T1: Tracer 1<\/a>[\s\S]*pill is-done[\s\S]*10 of 10/, `first tracer done, got ${rows[0]}`);
+  assert.match(rows[1], /pill is-todo[\s\S]*2 of 10/, `second tracer partly done, got ${rows[1]}`);
+  assert.match(html, /<section class="card tracer is-done" id="tracer-1">/, "the card has the id the row links to");
 });

@@ -84,6 +84,13 @@ function waitWords(seconds) {
   return m > 0 ? `${m}m` : `${Math.floor(seconds)}s`;
 }
 
+// The glance rows that say something: a part of a row that reads unknown ("time unknown") is dropped, and so is a row left empty.
+const isUnknownPart = (part) => part === UNKNOWN || part.endsWith(` ${UNKNOWN}`);
+function known(rows) {
+  const kept = Object.entries(rows).map(([key, text]) => [key, String(text ?? "").split(" · ").filter((part) => part !== "" && !isUnknownPart(part)).join(" · ")]);
+  return Object.fromEntries(kept.filter(([, text]) => text !== ""));
+}
+
 function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskType, now }) {
   const spend = taskSpend(task);
   // Once every run has ended, the agents are the ones the runs recorded; the session's spawns may be gone.
@@ -100,7 +107,7 @@ function atAGlance({ ledger, spawns, ranFor, tests, testsComplete, task, taskTyp
   // With no human to ask, the record says so: the run went on with the classifier's type, whatever its confidence.
   const typeGate = ledger?.gates?.["G:type"];
   const likely = typeGate?.noHuman === true ? ` (${typeGate.confidence}, and no human to ask: the run went on with it)` : typeGate?.confidence === "likely" ? " (likely, not certain: auto mode went on)" : "";
-  const typed = { type: `${plainName(taskType) ?? UNKNOWN}${likely}`, ...guidanceRow(ledger), ...rows };
+  const typed = known({ type: plainName(taskType) ? `${plainName(taskType)}${likely}` : UNKNOWN, ...guidanceRow(ledger), ...rows });
   const lines = Object.entries(typed).map(([key, text]) => `<p><strong>${labels[key]}</strong> ${escape(text)}</p>`);
   return section("AT A GLANCE", lines.join("\n"), "glance");
 }
@@ -115,7 +122,7 @@ const numberedTests = (spawns, tests) => [...new Set([...(Array.isArray(tests) ?
 function rerunStep(spawns, tests) {
   const rerun = "Re-run /pairingbuddy:code.";
   const step = currentStep(spawns);
-  if (!step) return `${rerun} The recorded run does not say which test it stopped on, so what it keeps is unknown.`;
+  if (!step) return rerun;
   const current = numberedTests(spawns, tests).indexOf(step.item) + 1;
   if (current === 1) return `${rerun} It continues from test 1.`;
   const kept = current === 2 ? "test 1" : `tests 1 to ${current - 1}`;
@@ -304,7 +311,7 @@ function testsSection({ ledger, spawns, tests, calls }) {
   const items = order;
   const last = currentStep(spawns)?.item;
   const cards = items.map((item) => testCard(spawns, item, order.indexOf(item) + 1, perTest, item === last ? ledger?.stop : null, { checkpoints: ledger?.checkpoints, calls }));
-  return section("TESTS", cards.join("\n"), "tests");
+  return cards.length === 0 ? "" : section("TESTS", cards.join("\n"), "tests");
 }
 
 const NOT_REACHED = "not reached";
@@ -404,14 +411,14 @@ function alreadyFailingSection({ task }) {
 }
 
 function scenariosSection({ scenarios }) {
-  const body = Array.isArray(scenarios) ? `<ul>\n${scenarios.map(scenarioItem).join("\n")}\n</ul>` : `<p>${UNKNOWN}</p>`;
-  return section("SCENARIOS", body);
+  if (!Array.isArray(scenarios)) return "";
+  return section("SCENARIOS", `<ul>\n${scenarios.map(scenarioItem).join("\n")}\n</ul>`);
 }
 
-// Every file run/changed.json lists: the task-done question folds a long list into this. Absent reads as unknown.
+// Every file run/changed.json lists: the task-done question folds a long list into this. No section when absent.
 function builtSection({ changed }) {
-  const body = Array.isArray(changed) ? `<ul>\n${changed.map((path) => `<li>${escape(path)}</li>`).join("\n")}\n</ul>` : `<p>${UNKNOWN}</p>`;
-  return section("BUILT", body);
+  if (!Array.isArray(changed)) return "";
+  return section("BUILT", `<ul>\n${changed.map((path) => `<li>${escape(path)}</li>`).join("\n")}\n</ul>`);
 }
 
 // The doubts the human approved past, each with the gate whose record keeps it: the human's answer there settled it.
@@ -489,7 +496,9 @@ const commitItem = (human) => (commit) => `<li>${escape(String(commit?.sha ?? ""
 
 function commitsSection({ commits, humanCommits = [] }) {
   const human = new Set(humanCommits);
-  const body = Array.isArray(commits) ? `<ul>\n${commits.map(commitItem(human)).join("\n")}\n</ul>` : `<p>${UNKNOWN}</p>`;
+  // No commits passed or none made: no section. null: the git read failed, which the human should know.
+  if (commits === undefined || (Array.isArray(commits) && commits.length === 0)) return "";
+  const body = Array.isArray(commits) ? `<ul>\n${commits.map(commitItem(human)).join("\n")}\n</ul>` : "<p>could not read the commits from git</p>";
   return section("COMMITS", body);
 }
 
@@ -616,17 +625,32 @@ const leftItem = ({ finding, questions }) => {
 
 const looseItem = (doubt) => `<li>Decide: ${escape(doubt.ambiguity)} <small>(${escape(raisedWords(doubt))})</small></li>`;
 
-// A stop, in plain words: the step it stopped at, why, and how to go on from it.
+// The part of a stop's detail the reason and the raw refusal do not already say: a detail that opens with the reason keeps
+// only what follows it, and with the raw refusal shown that rest is the refusal's summary, so nothing is left.
+function causeBeyond(detail, why, raw) {
+  if (typeof detail !== "string" || detail === "") return undefined;
+  if (raw && detail.includes(raw.trim())) return undefined;
+  if (!why || !detail.startsWith(why)) return detail;
+  const rest = detail.slice(why.length).replace(/^[\s,.;:]+/, "");
+  return raw || rest === "" ? undefined : rest;
+}
+
+// A stop, in plain words and said once: the step it stopped at and why, the raw refusal folded in a closed details,
+// then how to go on. A detail that only restates the reason and the refusal is left out.
 function stopItem({ ledger, spawns, tests }) {
   if (!ledger?.stop) return [];
   const step = plainName(ledger.stage?.name);
   const { why: recorded, detail, options, output } = ledger.stop;
   const why = typeof recorded === "string" && recorded !== "" ? recorded : stopName(ledger.stop);
-  // What the stop recorded is kept whole here: the pane cuts it and points at this report.
-  const cause = typeof detail === "string" && detail !== "" ? `<br>${escape(detail)}` : "";
+  const raw = typeof output === "string" && output.trim() !== "" ? output : undefined;
+  const said = causeBeyond(detail, why, raw);
+  const rerun = rerunStep(spawns, tests);
+  const next = rerun ? ` ${escape(rerun)}` : "";
+  const cause = said ? `<br>${escape(said)}` : "";
+  const folded = raw ? `<details><summary>What pb said</summary><pre>${escape(raw)}</pre></details>` : "";
   const listed = Array.isArray(options) && options.length > 0 ? `<ol>${options.map((option) => `<li>${escape(option)}</li>`).join("")}</ol>` : "";
-  const printed = typeof output === "string" && output !== "" ? `<pre>${escape(output)}</pre>` : "";
-  return [`<li>It stopped${step ? ` at ${escape(step)}` : ""}${why ? `: ${escape(why)}` : ""}. ${escape(rerunStep(spawns, tests))}${cause}${printed}${listed}</li>`];
+  const line = `It stopped${step ? ` at ${escape(step)}` : ""}${why ? `: ${escape(why)}` : ""}.`;
+  return [`<li>${line}${next}${cause}${folded}${listed}</li>`];
 }
 
 // A question pb asked and the human has not answered yet. A finished code run that was not signed off asks for the
@@ -776,11 +800,17 @@ function statusSection({ ledger, task, url }) {
 
 const prNumber = (url) => /\/pull\/(\d+)\/?$/.exec(url)?.[1];
 
-// The report's own rules over the shared look: each row a card with its label on top, GOAL large, STATUS and NEEDS YOU boxes
-// in their state's colour, each test a card with a stripe in its result's colour.
+// The report's own rules over the shared look, as the verdict page reads: GOAL large, STATUS and NEEDS YOU boxes in their
+// state's colour, every other section an open block under a rule with its label on top, each test a card with a stripe in
+// its result's colour.
 const REPORT_CSS = `header{display:flex;flex-direction:column;gap:12px}
-section{display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:0}
-section>h2{font:600 .72rem var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+section{display:flex;flex-direction:column;gap:8px;margin:0}
+section:not(.box):not(.goal){border-top:1px solid var(--line);padding-top:16px}
+section.box{border-radius:6px}
+section>h2{font:700 .78rem var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.needs>h2{color:var(--state)}
+.needs details{margin-top:6px}
+.needs details>summary{font-size:.9rem;color:var(--muted)}
 section>div{min-width:0;overflow-x:auto;display:flex;flex-direction:column;gap:4px}
 .goal{background:none;border:0;padding:0}
 .goal p{font-size:1.3rem;font-weight:700;line-height:1.35}
@@ -801,7 +831,7 @@ main>details{display:flex;flex-direction:column;gap:12px}
 main>details>summary{font:600 .8rem var(--mono);letter-spacing:.08em;color:var(--muted);padding:6px 0}
 main>details>summary:hover{color:var(--fg)}
 main>details[open]>summary{margin-bottom:12px}
-main>details>section+section{margin-top:12px}
+main>details>section+section{margin-top:20px}
 .tests{grid-template-columns:minmax(0,1fr)}
 .tests>div{gap:10px}
 article{border:1px solid var(--line);border-left:4px solid var(--state,var(--line));border-radius:6px;padding:10px 12px;overflow-x:auto}

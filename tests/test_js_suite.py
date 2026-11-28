@@ -46,6 +46,16 @@ def test_listed_js_files_pass():
     assert result.returncode == 0, f"node --test failed:\n{_output(result)}"
 
 
+def test_every_js_test_file_is_listed():
+    on_disk = sorted(
+        p.relative_to(REPO_ROOT).as_posix() for p in (REPO_ROOT / "tests/js").glob("*.test.mjs")
+    )
+
+    unlisted = [f for f in on_disk if f not in JS_TEST_FILES]
+
+    assert unlisted == [], f"add these to JS_TEST_FILES in tests/js_suite.py: {unlisted}"
+
+
 def test_passing_fixture_passes():
     result = run_node_tests([f"{FIXTURES}/passes.test.mjs"], cwd=REPO_ROOT)
 

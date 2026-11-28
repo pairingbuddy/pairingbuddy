@@ -205,6 +205,23 @@ JS_TEST_FILES = [
     "tests/js/rebase-map.test.mjs",
     "tests/js/stacking-branches-skill.test.mjs",
     "tests/js/workflow-resume.test.mjs",
+    "tests/js/ambiguity-definition.test.mjs",
+    "tests/js/branch-not-evidence.test.mjs",
+    "tests/js/linked-worktree-root.test.mjs",
+    "tests/js/output-buffer.test.mjs",
+    "tests/js/pb-final-check.test.mjs",
+    "tests/js/pb-guidance-record.test.mjs",
+    "tests/js/pb-human-cut-test.test.mjs",
+    "tests/js/pb-human-reopen.test.mjs",
+    "tests/js/pb-question-add.test.mjs",
+    "tests/js/publish-retry-stop.test.mjs",
+    "tests/js/smoke-s9.test.mjs",
+    "tests/js/solo-exit-report.test.mjs",
+    "tests/js/solo-new-workflows.test.mjs",
+    "tests/js/solo-no-pr-creation.test.mjs",
+    "tests/js/solo-output-format.test.mjs",
+    "tests/js/solo-renderer-state.test.mjs",
+    "tests/js/subject-diff-bound.test.mjs",
 ]
 
 

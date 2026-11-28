@@ -70,8 +70,8 @@ describe("report-content", () => {
     const section = sectionOf(renderReport(await recordedReportInput("probe-2", { outcome: "stopped" })), "AT A GLANCE");
 
     assert.match(section, /<strong>Where it stopped<\/strong>\s*stopped: a step kept failing/);
-    assert.match(section, /<strong>Spent<\/strong>\s*15 agents · 2:36 · tokens unknown<\/p>/);
-    assert.match(section, /<strong>Left<\/strong>\s*unknown/);
+    assert.match(section, /<strong>Spent<\/strong>\s*15 agents · 2:36<\/p>/, "a spend part with no record is left out");
+    assert.doesNotMatch(section, /<strong>Left<\/strong>/, "a row with no value is left out");
     assert.doesNotMatch(section, /Looping|Off track/);
   });
 
@@ -84,6 +84,33 @@ describe("report-content", () => {
 
     assert.ok(section.includes("Re-run /pairingbuddy:code. It continues from test 2 and keeps test 1 and its commits."), "a stopped run offers the re-run step from R5-3");
     assert.ok(!section.includes("sign-off"), "a stopped run does not ask for a sign-off");
+  });
+
+  // One stop is said once: a plain line, the raw refusal once in a closed details, then the options.
+  test(`${WHAT_YOU_CAN_DO}: a stopped step's refusal shows once, folded, before the options`, async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "stopped" });
+    const why = "the fix for g1 was refused 2 times";
+    const raw = "the tests failed, so nothing was committed: fix g1 already ran red. Roll it back.";
+    const option = "Read the refusal and tell the session what to change.";
+    const stop = { ...input.ledger.stop, why, detail: `${why}, so the stage stopped. The last refusal: ${raw}`, output: raw, options: [option] };
+
+    const section = sectionOf(renderReport({ ...input, ledger: { ...input.ledger, stop } }), "NEEDS YOU");
+    const count = (text) => section.split(text).length - 1;
+    const folded = section.match(/<details>\s*<summary>[^<]*<\/summary>([\s\S]*?)<\/details>/)?.[1] ?? "";
+
+    assert.equal(count(why), 1, `the reason is said once, got ${section}`);
+    assert.equal(count("Roll it back."), 1, `the raw refusal is said once, got ${section}`);
+    assert.ok(folded.includes(raw), "the raw refusal sits in a closed details");
+    assert.ok(section.indexOf("</details>") < section.indexOf(option), "the options come after the refusal");
+  });
+
+  test(`${WHAT_YOU_CAN_DO}: a stop whose test is not recorded says nothing about it`, async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "stopped" });
+    const stop = { ...input.ledger.stop, why: "a step came back with nothing usable", options: ["Tell the session what to change."] };
+
+    const section = sectionOf(renderReport({ ...input, spawns: [], ledger: { ...input.ledger, stop } }), "NEEDS YOU");
+
+    assert.doesNotMatch(section, /unknown/, `no "unknown" sentence, got ${section}`);
   });
 
   test(`${WHAT_YOU_CAN_DO}: done lists the sign-off step`, async () => {
@@ -261,14 +288,14 @@ describe("report-content", () => {
     assert.ok(items[1].includes("fix: apply the discount"), "the second entry shows the subject");
   });
 
-  test(`${COMMITS}: a failed git read leaves the section unknown and the report intact`, async () => {
+  test(`${COMMITS}: a failed git read says so and leaves the report intact`, async () => {
     const input = await recordedReportInput("probe-2", { outcome: "stopped" });
 
     const html = renderReport({ ...input, commits: null });
     const section = sectionOf(html, "COMMITS");
 
     assert.deepEqual(itemsOf(section), [], "no commit entries are invented");
-    assert.ok(section.includes("unknown"), "the section says the commits are unknown");
+    assert.ok(section.includes("could not read the commits from git"), "the section says the read failed");
     assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Where it stopped<\/strong>/, "the rest of the report still renders");
   });
 
@@ -397,8 +424,9 @@ describe("report-content", () => {
     });
   }
 
-  // An empty or partial recording must still give a whole page: every section present, every missing value worded as unknown.
-  const SECTIONS = ["NEEDS YOU", "DONE", "AT A GLANCE", "STEPS", "TESTS", "COMMITS"];
+  // An empty or partial recording must still give a whole page: the human's sections and How it ran's core are present, and
+  // what has no record is left out rather than worded as unknown.
+  const SECTIONS = ["NEEDS YOU", "DONE", "AT A GLANCE", "STEPS"];
   test("a task type auto mode passed on likely says so beside the type", () => {
     const html = renderReport({ ledger: { task: "Add a flag", taskType: "config_change", gates: { "G:type": { source: "auto", confidence: "likely" } } } });
 
@@ -417,6 +445,25 @@ describe("report-content", () => {
     assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Guidance<\/strong> kept 3, dropped 2 \(auto\)/);
   });
 
+  // A section or a glance row with nothing recorded is left out, rather than shown as a box that says "unknown".
+  test("report-hides-what-it-has-no-data-for", () => {
+    const html = renderReport({ ledger: { task: "Fix a bug", taskType: "bug_fix" } });
+    const titles = [...html.matchAll(/<h2>([^<]+)<\/h2>/g)].map(([, title]) => title);
+
+    for (const title of ["SCENARIOS", "BUILT", "COMMITS", "TESTS"]) assert.ok(!titles.includes(title), `no ${title} section without data, got ${titles}`);
+    const none = renderReport({ ledger: { task: "Fix a bug", taskType: "bug_fix" }, commits: [] });
+    assert.doesNotMatch(none, /<h2>COMMITS<\/h2>/, "an empty commit list is no section either");
+    assert.doesNotMatch(sectionOf(html, "AT A GLANCE"), /unknown/, `no glance row or part reads unknown, got ${sectionOf(html, "AT A GLANCE")}`);
+  });
+
+  test("report-says-a-failed-commit-read-plainly", async () => {
+    const input = await recordedReportInput("probe-2", { outcome: "stopped" });
+
+    const section = sectionOf(renderReport({ ...input, commits: null }), "COMMITS");
+
+    assert.ok(section.includes("could not read the commits from git"), `a failed git read is said, got ${section}`);
+  });
+
   const PARTIAL_RUNS = {
     "an empty object": {},
     "a null ledger": { ledger: null },
@@ -426,7 +473,7 @@ describe("report-content", () => {
   };
 
   for (const [name, input] of Object.entries(PARTIAL_RUNS)) {
-    test(`report-tolerates-partial-run: ${name} renders a page with unknown values`, () => {
+    test(`report-tolerates-partial-run: ${name} renders a whole page without unknown boxes`, () => {
       const html = renderReport(input);
 
       assert.equal(typeof html, "string", "the report is a string");
@@ -436,9 +483,8 @@ describe("report-content", () => {
         assert.doesNotThrow(() => sectionOf(html, title), `the page has the ${title} section`);
       }
       const glance = sectionOf(html, "AT A GLANCE");
-      assert.match(glance, /<strong>Where it is<\/strong>\s*unknown/, "where the run is reads unknown");
-      assert.match(glance, /<strong>Spent<\/strong>[^<]*time unknown · tokens unknown<\/p>/, "the spend reads unknown for time and tokens, and says nothing of a plan share");
-      assert.match(sectionOf(html, "COMMITS"), /<p>unknown<\/p>/, "the commits section says unknown when no commits were passed");
+      assert.doesNotMatch(glance, /unknown/, "no glance row reads unknown");
+      assert.doesNotMatch(html, /<h2>COMMITS<\/h2>/, "no commits section when no commits were passed");
       assert.ok(!/undefined|NaN|\[object Object\]/.test(html), "no raw undefined, NaN or object leaks into the page");
     });
   }
@@ -595,13 +641,13 @@ test('run-time-derived-from-stage-times', async () => {
   const html = renderReport({ ledger, spawns: [] });
   const noTimes = renderReport({ ledger: { ...bare, stages: [] }, spawns: [] });
 
-  assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Spent<\/strong>\s*\d+ agents? · 1:40 ·/);
+  assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Spent<\/strong>\s*\d+ agents? · 1:40( ·|<)/);
   const real = renderReport({ ledger: bare, spawns: [], endedAt: "2026-11-04T08:15:06.472Z" });
   const realNoEnd = renderReport({ ledger: bare, spawns: [] });
   assert.ok(spentOf(real).includes("1:40"), "real shape: the run time is endedAt minus the first startedAt");
-  assert.match(sectionOf(real, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]* · 1:40 ·/);
-  assert.ok(spentOf(realNoEnd).includes("time unknown"), "real shape without endedAt stays unknown");
-  assert.match(sectionOf(noTimes, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]*unknown/);
+  assert.match(sectionOf(real, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]* · 1:40( ·|<)/);
+  assert.ok(!spentOf(realNoEnd).includes("unknown"), "real shape without endedAt leaves the time out");
+  assert.doesNotMatch(sectionOf(noTimes, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]*unknown/);
 });
 
 const headersOf = (html) => [...sectionOf(html, "STEPS").matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map(([, cell]) => cell.trim().toLowerCase());
@@ -885,18 +931,18 @@ test("live-report-header-and-spent-show-elapsed-to-now", () => {
 
   const html = renderReport(input);
 
-  assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]* · 0:51 ·/, "SPENT shows the same elapsed time");
+  assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]* · 0:51( ·|<)/, "SPENT shows the same elapsed time");
   assert.ok(!sectionOf(html, "AT A GLANCE").includes("time unknown"), "SPENT does not say time unknown");
   assert.ok(glance({ ledger, spawns: [], now }).rows.spent.includes(" · 0:51 · "), "the pane shows the same elapsed text for the same ledger and now");
 });
 
-test("live-report-with-no-start-stays-unknown", () => {
+test("live-report-with-no-start-leaves-the-time-out", () => {
   const now = Date.parse("2026-11-04T08:14:17.000Z");
   const ledger = { task: "Fix the bug", taskType: "bug-fix", stage: { name: "code-tdd", status: "active" }, stages: [{ name: "code-tdd", status: "active" }] };
 
   const html = renderReport({ ledger, spawns: [], now });
 
-  assert.match(sectionOf(html, "AT A GLANCE"), /<strong>Spent<\/strong>[^<]* · (time )?unknown ·/, "SPENT says unknown for the time");
+  assert.doesNotMatch(sectionOf(html, "AT A GLANCE"), /unknown/, "SPENT leaves the unknown time out");
   assert.ok(!html.includes("NaN"), "no NaN leaks into the report");
 });
 

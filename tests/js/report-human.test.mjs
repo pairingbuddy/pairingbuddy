@@ -209,7 +209,8 @@ describe("report-leads-with-what-you-need", () => {
   });
 
   test("How it ran holds the rest, closed, at the bottom", () => {
-    const html = report();
+    const scenarios = [{ description: "the cart total", tests: ["sums the items"] }];
+    const html = report({ runs: [{ ...RUNS[0], scenarios }, ...RUNS.slice(1)], commits: [{ sha: "a".repeat(40), subject: "feat: total the cart" }] });
     const details = /<details>\s*<summary>HOW IT RAN<\/summary>([\s\S]*)<\/details>/.exec(html)?.[1];
 
     assert.ok(details, "a closed How it ran section");
