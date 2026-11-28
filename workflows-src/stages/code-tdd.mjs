@@ -138,7 +138,7 @@ async function untilAccepted(call) {
     if (result !== null) {
       const { result: relay } = await runStep([`checkpoint --step ${call.step} --from ${pbKey}`], call);
       if (relay.cli_exit_code === 0) return { pbKey, result, relay };
-      refusal = relay.cli_output ?? '';
+      refusal = refusalText(relay.cli_output);
     }
   }
   throw new StageHalted('step-failed');

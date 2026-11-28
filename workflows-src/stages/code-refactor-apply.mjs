@@ -102,7 +102,7 @@ async function untilAccepted({ item, role, issue }) {
     if (result === null) continue;
     const { result: relay } = await runStep([`checkpoint --step refactor-step --from ${pbKey}`], item);
     if (relay.cli_exit_code === 0) return;
-    refusal = relay.cli_output ?? '';
+    refusal = refusalText(relay.cli_output);
     if (RUN_STOPPED.test(refusal)) throw new StageHalted(NO_STOP_NEEDED);
   }
   throw new StageHalted('step-failed');

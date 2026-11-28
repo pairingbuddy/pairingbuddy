@@ -887,6 +887,14 @@ function isBrokenRelay(relay) {
   return !/^pb: /m.test(output) && relayedJson(output) === null;
 }
 
+// The refusal a retry is shown. A runner can relay a refused checkpoint as exit 1 with no output (live S4 run), which
+// tells the retry nothing; pb kept the refusal itself, so the retry is pointed at that record instead.
+const LAST_REFUSAL_PATH = '.pairingbuddy/run/task/last-refusal.json';
+function refusalText(output) {
+  const text = output ?? '';
+  return text.trim() === '' ? `The runner lost pb's words. pb kept the refusal: read ${LAST_REFUSAL_PATH}, whose text and summary say what to fix.` : text;
+}
+
 // The corpus is what pb snapshot found, relayed by the runner as the JSON the CLI printed. A snapshot that failed is no
 // corpus. Returns { paths, taskType, rolledBack, cutPresent }: the paths to attack, the task type pb snapshot printed beside them
 // (for choosing the lens row), and rolledBack, the stage's rollbacks already made as printed (0 unless a non-negative integer).
@@ -1270,7 +1278,7 @@ async function untilAccepted({ item, role, issue }) {
     if (result === null) continue;
     const { result: relay } = await runStep([`checkpoint --step refactor-step --from ${pbKey}`], item);
     if (relay.cli_exit_code === 0) return;
-    refusal = relay.cli_output ?? '';
+    refusal = refusalText(relay.cli_output);
     if (RUN_STOPPED.test(refusal)) throw new StageHalted(NO_STOP_NEEDED);
   }
   throw new StageHalted('step-failed');

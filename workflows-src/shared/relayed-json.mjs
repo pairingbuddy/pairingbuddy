@@ -26,3 +26,11 @@ function isBrokenRelay(relay) {
   const output = relay.cli_output ?? '';
   return !/^pb: /m.test(output) && relayedJson(output) === null;
 }
+
+// The refusal a retry is shown. A runner can relay a refused checkpoint as exit 1 with no output (live S4 run), which
+// tells the retry nothing; pb kept the refusal itself, so the retry is pointed at that record instead.
+const LAST_REFUSAL_PATH = '.pairingbuddy/run/task/last-refusal.json';
+function refusalText(output) {
+  const text = output ?? '';
+  return text.trim() === '' ? `The runner lost pb's words. pb kept the refusal: read ${LAST_REFUSAL_PATH}, whose text and summary say what to fix.` : text;
+}
